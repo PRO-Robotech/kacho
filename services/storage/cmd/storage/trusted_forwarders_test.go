@@ -13,10 +13,24 @@ package main
 // на пустом любой пир, прошедший проверку сертификата, присылал заголовки личности
 // жертвы, и субъектом проверки прав становилась она.
 //
-// Замки утверждают НАБЛЮДАЕМОЕ на цепочке, которую собирает боевая проводка
-// (unaryChain/streamChain из interceptors.go) со списком, полученным из боевой
-// конфигурации (config.TrustedForwarders) — а не с литералом, придуманным тестом.
-// Иначе тест доказывал бы работоспособность corelib, а не посадку storage.
+// Замки утверждают НАБЛЮДАЕМОЕ на паре звеньев извлечения личности — той самой,
+// которую носитель ставит в обе цепочки (`grpcsrv.PrincipalExtractUnary`), — с
+// кругом, взятым из ПРИНЯТОГО ДЕСКРИПТОРА, а не с литералом, придуманным тестом, и
+// не из конфигурации напрямую. Иначе тест доказывал бы работоспособность общего
+// фундамента, а не посадку storage.
+//
+// # Что изменилось при переезде на носитель, и почему это НЕ ослабление
+//
+// Прежде круг брался из `cfg.TrustedForwarders()` и подавался в собственный
+// сборщик цепочки storage. Собственного сборщика больше нет, и круг теперь
+// читается там, куда он реально уезжает, — из `desc.Spec().Forwarders`. То есть
+// звено между «настроили» и «поднялось» стало короче на одно посредническое
+// значение: пройти этот замок с одним кругом и подняться с другим больше нельзя.
+//
+// Порядок звеньев (личность пира по сертификату ДО решения о доверии) держит
+// носитель и его собственная проба
+// `pkg/servicehost.TestForwardedIdentityIsHonouredOnlyFromTheCircle`; здесь предмет
+// другой — ЧЕЙ круг доезжает до этой пары у storage.
 
 import (
 	"context"
@@ -26,6 +40,7 @@ import (
 	"log/slog"
 	"net/url"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -63,19 +78,40 @@ func prodCfg(forwarders ...string) config.Config {
 		AuthZIAMGRPCAddr:          "kacho-iam-internal:9091",
 		ListFilterEnabled:         true,
 		AuthZTrustedForwarderSANs: forwarders,
+		// Величины, которые конструктор дескриптора требует названными. Литералы
+		// здесь законны: предмет этого файла — круг отправителей, а не выбор
+		// величин (его судит describe_test.go на конфигурации из окружения).
+		AuthZCacheTTL:         5 * time.Second,
+		AuthZCheckTimeout:     2 * time.Second,
+		AuthZDenyBudgetPerSec: 100,
+		HandlingBudget:        30 * time.Second,
 	}
-	c.PublicServerMTLS.Enable = true
-	c.InternalServerMTLS.Enable = true
+	// Ручки транспорта слушателей здесь НЕ взводятся намеренно: взведённая ручка
+	// без файлов сертификата роняет сборку креденшелов, и проба падала бы на
+	// предмете, который она не проверяет. Транспорт судит describe_test.go.
 	return c
 }
 
-// listenerChain — ровно та цепочка, что уезжает в оба листенера: боевая
-// unaryChain со списком из боевой конфигурации. authz-звено не подключаем: оно
-// стоит ПОСЛЕ извлечения личности и читает уже готовый контекст, а предмет
-// проверки — именно то, какая личность в этот контекст попадает.
-func listenerChain(cfg config.Config) grpc.UnaryServerInterceptor {
+// listenerChain — ровно та пара звеньев, которую носитель ставит в ОБЕ цепочки,
+// с кругом из ПРИНЯТОГО дескриптора.
+//
+// Звено решения о доступе не подключаем: оно стоит ПОСЛЕ извлечения личности и
+// читает уже готовый контекст, а предмет проверки — именно то, какая личность в
+// этот контекст попадает.
+//
+// Транспорт слушателей здесь взведён ручкой, но не файлами, поэтому боевая посадка
+// отказала бы по непроверенному транспорту. Круг от посадки не зависит — он один и
+// тот же на любой, — поэтому дескриптор собирается в dev-режиме, а боевую строгость
+// судит describe_test.go.
+func listenerChain(t *testing.T, cfg config.Config) grpc.UnaryServerInterceptor {
+	t.Helper()
+	cfg.AuthMode = "dev"
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return chainUnary(unaryChain(logger, cfg.TrustedForwarders(), nil)...)
+	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger))
+	if err != nil {
+		t.Fatalf("дескриптор не принят — круг до цепочки не доедет вовсе: %v", err)
+	}
+	return chainUnary(grpcsrv.PrincipalExtractUnary(desc.Spec().Forwarders)...)
 }
 
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую
@@ -105,7 +141,7 @@ func seenIdentity(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.C
 // RED при возврате пустого списка (`forwarders := []string{}`): личность жертвы
 // доходит до обработчика и становится субъектом проверки прав.
 func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
-	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+	chain := listenerChain(t, prodCfg(gatewaySAN, computeSAN))
 
 	id, trusted, present := seenIdentity(t, chain, forwarded(verifiedPeer(t, neighbourSAN), victimUserID))
 
@@ -129,7 +165,7 @@ func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
 // сузить так, что перестанет работать рабочий путь. Без gateway встают все
 // пользовательские запросы, без compute — привязка тома.
 func TestListener_PinnedSendersKeepWorking(t *testing.T) {
-	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+	chain := listenerChain(t, prodCfg(gatewaySAN, computeSAN))
 
 	for name, san := range map[string]string{
 		"api-gateway (public :9090)": gatewaySAN,
@@ -153,7 +189,7 @@ func TestListener_PinnedSendersKeepWorking(t *testing.T) {
 // списка не увела внимание от него. Единственный замок на саму дыру —
 // TestListener_NeighbourWithValidCertCannotActAsSomeoneElse выше.
 func TestListener_UnverifiedPeerCannotForward(t *testing.T) {
-	chain := listenerChain(prodCfg(gatewaySAN, computeSAN))
+	chain := listenerChain(t, prodCfg(gatewaySAN, computeSAN))
 
 	id, trusted, _ := seenIdentity(t, chain, forwarded(unverifiedTLSPeer(), victimUserID))
 	if trusted || id == victimUserID {

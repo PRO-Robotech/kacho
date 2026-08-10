@@ -96,8 +96,22 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if guard < 0 || call < guard {
 		t.Fatal("posture line must be emitted AFTER the fail-closed cfg.Validate() boot guard")
 	}
-	listener := strings.Index(root, "grpcsrv.NewServer(")
-	if listener < 0 || call > listener {
-		t.Fatal("posture line must be emitted BEFORE the gRPC listeners are built")
+	// Якорь подъёма слушателей ПЕРЕАНКЕРЁН: собственной сборки серверов в этом
+	// корне больше нет — оба слушателя поднимает носитель, и точка их подъёма
+	// ровно одна. Оставленный как был, страж искал бы исчезнувший конструктор и
+	// падал бы на ВЕРНОМ коде.
+	listener := strings.Index(root, "servicehost.Serve(")
+	if listener < 0 {
+		t.Fatal("composition root must hand both listeners to the carrier: servicehost.Serve(…)")
+	}
+	if call > listener {
+		t.Fatal("posture line must be emitted BEFORE the carrier raises the listeners")
+	}
+	// И ПОСЛЕ приёма дескриптора: до него посадка ещё не прошла отказов старта,
+	// поэтому строка отчитывалась бы о конфигурации, по которой процесс, может
+	// быть, и не поднимется.
+	accepted := strings.Index(root, "desc, err := describe(")
+	if accepted < 0 || call < accepted {
+		t.Fatal("posture line must be emitted AFTER the descriptor has been accepted by its constructor")
 	}
 }

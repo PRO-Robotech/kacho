@@ -8,22 +8,36 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
+	// Дескрипторы обслуживаемых RPC обязаны быть в бинаре ЭТОГО пакета: полоса
+	// `scope_filtered` выводится из их аннотаций, и пустой реестр дал бы пустую
+	// полосу — то есть стражу, которой нечего охранять, неотличимую от стражи,
+	// у которой всё в порядке.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
 // scopeFilteredRPCs — методы карты прав, с которых снят per-RPC Check: их
-// авторизация целиком переехала на данные (per-object сужение прочитанной
+// авторизация целиком переехала на данные (пообъектное сужение прочитанной
 // страницы). Список отсортирован — текст отказа наблюдаем оператором и не должен
-// перетасовываться от прогона к прогону (обход map'ы не детерминирован).
+// перетасовываться от прогона к прогону (обход карты не детерминирован).
 //
-// Карта читается ЗДЕСЬ, а не передаётся композиционным корнем: страж, которому
-// список нужно вручить, no-op'ится на пустом аргументе, и «забыли передать» внешне
-// неотличимо от «нечего защищать». Пакет check зависимостей на config не имеет,
-// поэтому цикла нет.
+// Карта выводится ЗДЕСЬ из аннотаций дескрипторов — из того же источника, из
+// которого её выводит носитель на старте, — а не передаётся вызывающим: страж,
+// которому список нужно вручить, no-op'ится на пустом аргументе, и «забыли
+// передать» внешне неотличимо от «нечего защищать».
 func scopeFilteredRPCs() []string {
+	m, err := catalogderive.Derive(storageProtoPackages...)
+	if err != nil {
+		// Карта не вывелась — это свойство собранного бинаря, одинаковое на
+		// каждом старте. Молчать нельзя: пустой список погасил бы стражу
+		// fail-open, поэтому отказ называется прямо и роняет старт вместе с
+		// прочими находками Validate.
+		return []string{"<карта прав не выводится: " + err.Error() + ">"}
+	}
 	var out []string
-	for fullMethod, e := range check.PermissionMap() {
+	for fullMethod, e := range m {
 		if e.ScopeFiltered {
 			out = append(out, fullMethod)
 		}
@@ -32,115 +46,70 @@ func scopeFilteredRPCs() []string {
 	return out
 }
 
-// Validate — secure-by-default boot-guard: в production/production-strict операции
-// без mTLS, per-RPC authz Check и с plaintext-DB ЗАПРЕЩЕНЫ (refuse-to-start). Раньше
-// AuthMode был dead-code (объявлен, никогда не читался) → storage единственным из
-// сервисов boot'ился insecure в «production» с одним WARN. Validate восстанавливает
-// инвариант security.md «AuthN+AuthZ ВЕЗДЕ + любой деплой — production fail-closed»,
-// зеркаля vpc.Config.Validate / geo.validateSecurityConfig.
+// storageProtoPackages — proto-пакеты, чьи gRPC-службы поднимает storage. Тот же
+// набор, из которого носитель выводит карту прав по служимому набору RPC.
+var storageProtoPackages = []string{
+	"kacho.cloud.storage.v1",
+	// LRO-конверт: Operation.Get/Cancel поднимает каждый сервис.
+	"kacho.cloud.operation",
+}
+
+// Validate — остаток собственного стража старта: измерения, которых НОСИТЕЛЬ НЕ
+// ЗНАЕТ.
 //
-// dev осознанно терпит insecure-дефолты (WARN эмитит serve.go) — только для локальных
-// фикстур и dev-профиля стенда, НИКОГДА на кластере (KACHO_STORAGE_AUTH_MODE=dev на
-// проде — security-долг под снос).
+// # Что отсюда ушло и куда
 //
-// Гейтит ровно те измерения, которые serve.go реально wire'ит по конфигу:
-//   - mTLS листенеров — cfg.PublicServerMTLS.Enable / cfg.InternalServerMTLS.Enable;
-//   - per-RPC authz Check — подключается ⟺ непустой cfg.AuthZIAMGRPCAddr;
-//   - DB-транспорт — cfg.DBSSLMode в DSN;
-//   - per-object фильтр видимости — cfg.ListFilterEnabled (есть ли он вообще) и
-//     cfg.ListFilterFailOpen (не выключается ли он сам на первой ошибке iam);
-//   - круг отправителей чужой личности — cfg.TrustedForwarders() (ровно то
-//     значение, что уезжает в grpcsrv.WithTrustedForwarders на обоих листенерах).
+// Разбор режима, круг отправителей чужой личности, sslmode до своей БД, транспорт
+// обоих слушателей и ребро решения о доступе судит теперь конструктор дескриптора
+// (`pkg/servicecontract`) — один отказ на все сервисы вместо семи собственных.
+// Переезд не ослабил ни одного из них, а два усилил: транспорт спрашивается у
+// САМОГО ТРАНСПОРТА (`Info().SecurityProtocol`), а не у ручки `Enable`, и ребро
+// решения о доступе обязано быть объявлено на ЛЮБОЙ посадке, а не только в боевой.
 //
-// Поэтому «Validate прошёл в production» ⟺ «serve поднимется secure» by construction.
-// Перечень обязан оставаться полным: измерение, которое serve.go настраивает, но
-// Validate не проверяет, — это как раз тот класс, которым сюда попал список
-// доверенных отправителей (проводка была, ручки и стражи не было).
+// # Что осталось и почему это не дубль
+//
+// Носитель не знает про:
+//   - транспорт ИСХОДЯЩИХ рёбер storage→geo и storage→iam (кроме authz-половины
+//     последнего): у него нет ни адресов, ни ручек этих клиентов;
+//   - включённость пообъектного сужателя (`ListFilterEnabled`);
+//   - его degraded-ручку (`ListFilterFailOpen`).
+//
+// Перечень обязан оставаться полным: измерение, которое композиционный корень
+// настраивает, а ни носитель, ни этот страж не проверяют, — ровно тот класс,
+// которым сюда попал круг доверенных отправителей (проводка была, ручки и стражи
+// не было).
 func (c Config) Validate() error {
-	mode, err := parseMode(c.AuthMode)
+	mode, err := servicecontract.ParseMode(c.AuthMode)
 	if err != nil {
 		return fmt.Errorf("KACHO_STORAGE_AUTH_MODE: %w", err)
 	}
-	// ── круг отправителей чужой личности обязан быть сужен ──────────────────
-	// Считается ДО раннего возврата для dev: стража срабатывает на ЛЮБОМ старте,
-	// а не только в боевом режиме. Контроль, чья ветка на локальном стенде не
-	// исполняется ни разу, находит «забыл выставить круг» только на боевом
-	// профиле, где цена ошибки максимальна. Вне боевого режима пустой круг
-	// остаётся возможным, но как ЯВНЫЙ опт-ин.
-	//
-	// Аварийного режима у storage нет вовсе (осознанно — он уже строже
-	// остальных), поэтому освобождать здесь нечего.
-	//
-	// Стража общая на все семь сервисов: grpcsrv.TrustedForwarders.Require —
-	// один исход, один текст отказа, различаются только имена ручек.
-	forwardersErr := c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-		Production:   mode.IsProduction(),
-		DevTrustAny:  c.AuthZTrustAnyForwarder,
-		SANsKnob:     "KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS",
-		TrustAnyKnob: "KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER",
-	})
-
 	if !mode.IsProduction() {
-		// dev — прочие insecure-дефолты допустимы (WARN в serve.go, не fatal);
-		// круг отправителей остаётся единственным измерением, которое гейтится и
-		// здесь.
-		return forwardersErr
+		// dev — insecure-дефолты допустимы (WARN в serve.go, не fatal): локальные
+		// фикстуры и dev-профиль стенда. Круг отправителей здесь больше не
+		// считается: его стража переехала в конструктор дескриптора и там
+		// срабатывает на ЛЮБОМ старте, а не только в боевом.
+		return nil
 	}
 
 	var problems []string
 	// В боевом режиме отказ не возвращается сразу: оператор обязан увидеть ВЕСЬ
 	// список проблем за один прогон, а не чинить их по одной.
-	if forwardersErr != nil {
-		problems = append(problems, forwardersErr.Error())
-	}
 
-	// ── DB-транспорт: plaintext до БД в проде запрещён ──────────────────────
-	switch mode {
-	case ModeProduction:
-		// Конкретный TLS-режим (require|verify-ca|verify-full) — на усмотрение
-		// оператора; строгую проверку сертификата требует production-strict ниже.
-		if c.DBSSLMode == "" || c.DBSSLMode == "disable" {
-			problems = append(problems, fmt.Sprintf(
-				"KACHO_STORAGE_DB_SSLMODE must not be %q (use require|verify-ca|verify-full)", c.DBSSLMode))
-		}
-	case ModeProductionStrict:
-		switch c.DBSSLMode {
-		case "require", "verify-ca", "verify-full":
-		default:
-			problems = append(problems, fmt.Sprintf(
-				"KACHO_STORAGE_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", c.DBSSLMode))
-		}
-	}
-
-	// ── mTLS обязателен на ОБОИХ листенерах (internal :9091 НЕ освобождён) ──
-	if !c.PublicServerMTLS.Enable || !c.InternalServerMTLS.Enable {
-		problems = append(problems,
-			"mTLS required on both listeners: set KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE and KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE=true")
-	}
-
-	// ── per-RPC authz Check обязателен (иначе serve пропускает интерсептор) ──
-	if c.AuthZIAMGRPCAddr == "" {
-		problems = append(problems,
-			"per-RPC authz Check required on both listeners: set KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR")
-	}
-
-	// ── per-object list-filter обязателен ───────────────────────────────────
+	// ── пообъектный сужатель обязан быть включён ────────────────────────────
 	// Per-RPC Check гейтит публичный List лишь на project-tier `viewer`: он
 	// отвечает «этот caller вправе листать ЭТОТ проект», но НЕ сужает страницу до
-	// объектов, на которые есть грант. Сужение делает ТОЛЬКО list-filter
-	// (per-object `viewer` батчем по прочитанной странице — то же отношение, что
-	// энфорсит Get). Выключенный фильтр = любой член проекта видит КАЖДЫЙ
-	// том/снимок/образ проекта (over-show / BOLA-lite, CWE-862 / OWASP A01) —
-	// ровно та дыра, ради которой фильтр и появился.
+	// объектов, на которые есть грант. Сужение делает ТОЛЬКО фильтр (пообъектный
+	// `viewer` батчем по прочитанной странице — то же отношение, что энфорсит
+	// Get). Выключенный фильтр = любой член проекта видит КАЖДЫЙ том/снимок/образ
+	// проекта (over-show / BOLA-lite, CWE-862 / OWASP A01).
 	//
 	// Для InternalVolumeService/ListAttachments (:9091) фильтр — не второй слой, а
-	// ЕДИНСТВЕННЫЙ: этот RPC помечен ScopeFiltered (единичного объекта, про который
-	// можно спросить заранее, у него нет — инстансы называет вызывающий), поэтому
-	// per-RPC Check за него не задаётся вовсе. Замок на связь марки и этого гейта —
-	// check.TestScopeFilteredRPCs_AreBackedByTheProductionBootGuard.
+	// ЕДИНСТВЕННЫЙ: этот RPC помечен `scope_filtered` (единичного объекта, про
+	// который можно спросить заранее, у него нет — инстансы называет вызывающий),
+	// поэтому per-RPC Check за него не задаётся вовсе.
 	//
 	// Адрес authorize-эндпоинта отдельно не проверяем: он и есть AuthZIAMGRPCAddr,
-	// уже потребованный выше.
+	// который требует конструктор дескриптора как ребро решения о доступе.
 	if !c.ListFilterEnabled {
 		problems = append(problems,
 			"per-object List filter required: set KACHO_STORAGE_LIST_FILTER_ENABLED=true "+
@@ -149,19 +118,15 @@ func (c Config) Validate() error {
 				"check at all, would lose its only gate)")
 	}
 
-	// ── degraded-mode ручка того же фильтра: fail-open ──────────────────────
+	// ── degraded-ручка того же фильтра: fail-open ───────────────────────────
 	// Включённый фильтр, который на ошибке iam отдаёт страницу целиком, защищает
 	// не больше выключенного — он просто выключается позже и по чужой аварии.
-	// Пока в карте прав есть хоть одна запись ScopeFiltered, за этой ручкой не
-	// остаётся НИЧЕГО: у такого RPC per-RPC Check не задаётся вовсе (интерсептор
-	// отдаёт DecisionInternal), поэтому фильтр там не второй слой, а единственный,
-	// и деградация означает выдачу привязок любых названных инстансов — из чужих
-	// проектов и чужих аккаунтов.
+	// Пока в карте прав есть хоть одна запись `scope_filtered`, за этой ручкой не
+	// остаётся НИЧЕГО, и деградация означает выдачу привязок любых названных
+	// инстансов — из чужих проектов и чужих аккаунтов.
 	//
-	// Для публичных List (за ними project-tier Check остаётся) fail-open — это
-	// over-show внутри проекта; для ScopeFiltered — межтенантный. Гейт условный
-	// намеренно: он сам снимется, если ScopeFiltered-марки уйдут из карты, и не
-	// требует помнить о себе при этом.
+	// Гейт условный намеренно: он сам снимется, если полоса `scope_filtered` уйдёт
+	// из каталога, и не требует помнить о себе при этом.
 	//
 	// Осознанный размен: стенд, намеренно выставивший fail-open, перестанет
 	// подниматься. Это и есть цель — иначе защиту снимает одна ручка, молча.
@@ -176,16 +141,17 @@ func (c Config) Validate() error {
 	}
 
 	// ── транспорт ИСХОДЯЩИХ рёбер ───────────────────────────────────────────
-	// Выше проверены листенеры — то, КАК с нами говорят. Здесь — то, как говорим
-	// мы: клиентская сторона рёбер storage→iam и storage→geo.
+	// Транспорт слушателей — то, КАК с нами говорят, — судит конструктор
+	// дескриптора. Здесь — то, как говорим МЫ: клиентская сторона рёбер
+	// storage→iam и storage→geo.
 	//
-	// Почему это отдельное измерение, а не следствие проверки листенеров.
+	// Почему это отдельное измерение, а не следствие проверки слушателей.
 	// Невзведённая ручка клиента не даёт ошибки сама по себе:
 	// grpcclient.TLSClientCreds на Enable=false возвращает insecure-creds БЕЗ
-	// ошибки, поэтому процесс поднимается, печатает «peer edge configured» и
-	// «authz interceptor enabled», а каждый Check уходит по открытому каналу.
-	// Контроль, от которого зависит решение о доступе, при этом присутствует и
-	// не отказывает ни разу за свою жизнь.
+	// ошибки, поэтому процесс поднимается, печатает «peer edge configured», а
+	// каждый вызов уходит по открытому каналу. Контроль, от которого зависит
+	// решение о доступе, при этом присутствует и не отказывает ни разу за свою
+	// жизнь.
 	//
 	// Предикат активности — ТОТ ЖЕ, что читает проводка: composition root зовёт
 	// dialPeer(addr, creds, …), и dialPeer поднимает соединение ровно при

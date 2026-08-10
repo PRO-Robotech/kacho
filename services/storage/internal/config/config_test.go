@@ -54,18 +54,18 @@ func TestLoad_defaultAuthModeProduction(t *testing.T) {
 }
 
 // TestValidate_devTolerant — dev-режим осознанно терпит insecure-дефолты (plaintext
-// DB, mTLS off, authz off): локальные фикстуры и dev-стенд стартуют без kacho-iam.
-// Validate НЕ отказывает старту в dev (WARN эмитит serve.go, не fatal).
+// DB, mTLS off, authz off): локальные фикстуры стартуют без kacho-iam. Остаток
+// стражи НЕ отказывает старту в dev (WARN эмитит serve.go, не fatal).
 //
-// Круг отправителей — исключение из этой терпимости и потому выставлен явно: его
-// стража срабатывает на ЛЮБОМ старте, а опт-ин и есть тот способ, которым
-// локальная фикстура объявляет себя локальной. Собственная проба круга
-// (trusted_forwarders_test.go) опт-ина не ставит.
+// Круг отправителей здесь БОЛЬШЕ НЕ считается: его стража переехала в конструктор
+// дескриптора (`pkg/servicecontract`) и там срабатывает на ЛЮБОМ старте, а не
+// только в боевом. Ослаблением это не является — наоборот: прежде круг судили два
+// места, теперь одно, и оно общее на все сервисы. Проба на сам круг живёт рядом с
+// дескриптором (cmd/storage/describe_test.go).
 func TestValidate_devTolerant(t *testing.T) {
 	c := config.Config{
-		AuthMode:               "dev",
-		DBSSLMode:              "disable",
-		AuthZTrustAnyForwarder: true,
+		AuthMode:  "dev",
+		DBSSLMode: "disable",
 		// mTLS off, authz addr empty — всё insecure, но dev это допускает.
 	}
 	if err := c.Validate(); err != nil {
@@ -80,88 +80,16 @@ func TestValidate_productionSecureOK(t *testing.T) {
 	}
 }
 
-// TestValidate_productionRefusesInsecure — КЛЮЧЕВОЙ behaviour-lock (#56): production
-// с plaintext-DB + mTLS off + authz off ОБЯЗАН отказать старту (refuse-to-start).
-// Ранее AuthMode был dead-code → storage boot'ился insecure с одним WARN (единственный
-// сервис не fail-closed). Восстанавливает security.md «AuthN+AuthZ ВЕЗДЕ + production
-// fail-closed».
-func TestValidate_productionRefusesInsecure(t *testing.T) {
-	c := config.Config{
-		AuthMode:  "production",
-		DBSSLMode: "disable",
-		// mTLS off, authz addr empty.
-	}
-	err := c.Validate()
-	if err == nil {
-		t.Fatal("production mode with plaintext DB + no mTLS + no authz must refuse to start, got nil")
-	}
-	// Наблюдаемое поведение: отказ упоминает все три insecure-измерения.
-	msg := err.Error()
-	for _, want := range []string{"SSLMODE", "mTLS", "AUTHZ_IAM_GRPC_ADDR"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("refusal message must mention %q; got: %s", want, msg)
-		}
-	}
-}
-
-// TestValidate_productionRequiresDBSSL — production с secure mTLS+authz, но
-// plaintext DB (sslmode=disable) → refuse. Plaintext до БД в проде запрещён.
-func TestValidate_productionRequiresDBSSL(t *testing.T) {
-	c := secureProd()
-	c.DBSSLMode = "disable"
-	if err := c.Validate(); err == nil {
-		t.Fatal("production mode with sslmode=disable must refuse to start")
-	}
-	c.DBSSLMode = ""
-	if err := c.Validate(); err == nil {
-		t.Fatal("production mode with empty sslmode (libpq→disable) must refuse to start")
-	}
-}
-
-// TestValidate_productionRequiresMTLS — production с secure DB+authz, но mTLS off на
-// любом из листенеров → refuse. mTLS обязателен на ОБОИХ (public :9090 + internal
-// :9091 — internal НЕ освобождён, security.md).
-func TestValidate_productionRequiresMTLS(t *testing.T) {
-	c := secureProd()
-	c.PublicServerMTLS.Enable = false
-	if err := c.Validate(); err == nil {
-		t.Fatal("production mode with public mTLS off must refuse to start")
-	}
-	c = secureProd()
-	c.InternalServerMTLS.Enable = false
-	if err := c.Validate(); err == nil {
-		t.Fatal("production mode with internal mTLS off must refuse to start")
-	}
-}
-
-// TestValidate_productionRequiresAuthz — production с secure DB+mTLS, но пустой
-// authz-адрес → refuse. Без AuthZIAMGRPCAddr per-RPC Check не подключается (serve.go
-// пропускает authz-интерсептор) → неавторизованные запросы. Fail-closed.
-func TestValidate_productionRequiresAuthz(t *testing.T) {
-	c := secureProd()
-	c.AuthZIAMGRPCAddr = ""
-	if err := c.Validate(); err == nil {
-		t.Fatal("production mode with empty authz iam addr must refuse to start")
-	}
-}
-
-// TestValidate_productionStrictRequiresStrictSSL — production-strict требует
-// sslmode ∈ {require,verify-ca,verify-full}; disable/произвольное → refuse.
-func TestValidate_productionStrictRequiresStrictSSL(t *testing.T) {
-	c := secureProd()
-	c.AuthMode = "production-strict"
-	if err := c.Validate(); err != nil {
-		t.Fatalf("production-strict with sslmode=require must validate, got err = %v", err)
-	}
-	c.DBSSLMode = "disable"
-	if err := c.Validate(); err == nil {
-		t.Fatal("production-strict with sslmode=disable must refuse to start")
-	}
-	c.DBSSLMode = "allow"
-	if err := c.Validate(); err == nil {
-		t.Fatal("production-strict with sslmode=allow must refuse to start")
-	}
-}
+// Замки на sslmode до своей БД, транспорт ОБОИХ слушателей и ребро решения о
+// доступе стояли ЗДЕСЬ и переехали в cmd/storage/describe_test.go вместе со своим
+// предметом: эти измерения судит теперь конструктор дескриптора — один отказ на
+// все сервисы вместо семи собственных.
+//
+// Переезд не ослабил ни одного из них, а два усилил, и это проверяется там же:
+// транспорт спрашивается у САМОГО ТРАНСПОРТА (`Info().SecurityProtocol`), а не у
+// ручки `Enable`, поэтому взведённая ручка с выродившимися креденшелами больше не
+// проходит; а ребро решения о доступе обязано быть объявлено на ЛЮБОЙ посадке, а
+// не только в боевой.
 
 // TestValidate_unknownMode — незнакомый AuthMode → refuse (whitelist).
 func TestValidate_unknownMode(t *testing.T) {

@@ -1,0 +1,506 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// permission_map_test.go — замки на КАРТУ ПРАВ storage: какое отношение и про
+// какой объект спрашивается за каждым служимым RPC.
+//
+// # Почему файл переехал сюда из `internal/check`
+//
+// Пакет-обёртка над картой у storage был своим, седьмым по счёту, и вместе с ним
+// уехал единственный источник, который эти замки могли спросить. Карта теперь
+// ВЫВОДИТСЯ носителем из аннотаций дескрипторов служб, СЛУЖИМЫХ этим процессом, —
+// и замки спрашивают её тем же путём.
+//
+// # Почему это СТРОЖЕ прежнего
+//
+// Прежний перечень RPC брался обходом proto-пакета `kacho.cloud.storage.v1`:
+// «весь пакет» и «вся выставленная поверхность» совпадали ровно до тех пор, пока
+// storage служил все службы своего пакета. Здесь набор снимается У САМИХ СЕРВЕРОВ
+// после регистрации (`grpc.Server.GetServiceInfo`) — то есть у того же источника,
+// который читает носитель на старте. Служить RPC и не отдать его дескриптор
+// невозможно, это одна операция; значит метод, зарегистрированный в обход,
+// невидимым не останется, а метод, который перестали служить, перестанет и
+// требоваться.
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+
+	"google.golang.org/grpc"
+
+	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
+)
+
+// servedMethods — полные имена методов, которые процесс РЕАЛЬНО служит на обоих
+// слушателях, снятые у самих серверов после регистрации.
+//
+// Use-cases собираются с нулевыми портами: ни один обработчик здесь не
+// вызывается, предмет — только состав зарегистрированного.
+func servedMethods(t *testing.T) []string {
+	t.Helper()
+	volumeUC := volume.New(nil, nil, nil, nil, nil, nil)
+	snapshotUC := snapshot.New(nil, nil, nil, nil)
+	imageUC := image.New(nil, nil, nil, nil, nil, nil)
+	diskTypeUC := disktype.New(nil)
+	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+
+	var served []string
+	for _, reg := range []func(grpc.ServiceRegistrar){
+		func(r grpc.ServiceRegistrar) {
+			registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+		},
+		func(r grpc.ServiceRegistrar) { registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler) },
+	} {
+		srv := grpc.NewServer()
+		reg(srv)
+		for name, info := range srv.GetServiceInfo() {
+			for _, m := range info.Methods {
+				served = append(served, "/"+name+"/"+m.Name)
+			}
+		}
+	}
+	sort.Strings(served)
+	if len(served) == 0 {
+		t.Fatal("ни один метод не зарегистрирован — всякое утверждение про карту прав было бы " +
+			"верно и на пустом наборе, то есть не отличало бы исправное от сломанного")
+	}
+	return served
+}
+
+// permissionMap — карта прав, выведенная из доменов СЛУЖИМОГО набора: тот же путь,
+// которым её выводит носитель на старте.
+func permissionMap(t *testing.T) authz.RPCMap {
+	t.Helper()
+	domains := map[string]struct{}{}
+	for _, m := range servedMethods(t) {
+		svc, _, _ := strings.Cut(strings.TrimPrefix(m, "/"), "/")
+		if i := strings.LastIndex(svc, "."); i > 0 {
+			domains[svc[:i]] = struct{}{}
+		}
+	}
+	var list []string
+	for d := range domains {
+		list = append(list, d)
+	}
+	sort.Strings(list)
+	m, err := catalogderive.Derive(list...)
+	if err != nil {
+		t.Fatalf("карта прав не выводится из аннотаций доменов %v: %v", list, err)
+	}
+	t.Logf("осмотрено: доменов %v, строк карты %d", list, len(m))
+	return m
+}
+
+// TestPermissionMapCoversEveryServedRPC — гейт КЛАССА «служимый RPC без записи в
+// карте» (security.md инв. 4 «permission-catalog полон и в синхроне»).
+//
+// Звено решения о доступе fail-closed: RPC без записи → `PermissionDenied
+// "permission denied (rpc not mapped)"` на КАЖДЫЙ вызов, независимо от грантов и
+// транспорта. Класс стрелял дважды: публичный ImageService (108 падений e2e) и
+// InternalImageService/GetInternal (зарегистрирован, запись в каталоге края есть, в
+// карте сервиса не было).
+//
+// Носитель то же самое отвергает на старте (О2). Проба его не дублирует, а делает
+// отказ ВИДИМЫМ В ПРОГОНЕ: О2 сработает при подъёме процесса, то есть на стенде, а
+// здесь — в сборке, и назовёт метод.
+func TestPermissionMapCoversEveryServedRPC(t *testing.T) {
+	m := permissionMap(t)
+	served := servedMethods(t)
+
+	// Домен storage — единственный, чью ФОРМУ записи судит этот файл. LRO-конверт
+	// (`kacho.cloud.operation`) поднимает каждый сервис платформы, форма его
+	// записей — предмет владельца конверта, а не storage; утверждать про неё здесь
+	// значило бы завести седьмое место об одном предмете. Присутствие в карте
+	// требуется ОТ ВСЕГО служимого набора — это и есть то, из-за чего класс стрелял.
+	const ownDomain = "/kacho.cloud.storage.v1."
+	own, foreign := 0, 0
+
+	for _, fullMethod := range served {
+		entry, ok := m[fullMethod]
+		if !ok {
+			t.Errorf("%s служится, но записи в карте прав нет: звено отвергнет его как "+
+				"незамапленный на каждый вызов", fullMethod)
+			continue
+		}
+		if !strings.HasPrefix(fullMethod, ownDomain) {
+			foreign++
+			continue
+		}
+		own++
+		if entry.Permission == "" {
+			t.Errorf("%s: строка права пуста — аудит kacho-iam не отличит этот вызов ни от чего", fullMethod)
+		}
+
+		// `scope_filtered` — авторизация ПЕРЕЕХАЛА на данные (пообъектное сужение
+		// прочитанной страницы), а не исчезла: единичного объекта, про который
+		// можно спросить заранее, у такого RPC нет. Поэтому отношение и извлекатель
+		// у него не просто «не заполнены» — их наличие означало бы возврат к
+		// единичному вопросу. Требуем обратного явно, и запрещаем совмещение с
+		// exempt: это разные исходы.
+		if entry.ScopeFiltered {
+			if entry.Public {
+				t.Errorf("%s: запись одновременно scope_filtered и exempt — это разные исходы", fullMethod)
+			}
+			if entry.Relation != "" {
+				t.Errorf("%s: scope_filtered-запись несёт отношение %q — вопрос, который никто "+
+					"не задаёт", fullMethod, entry.Relation)
+			}
+			if entry.Extract != nil {
+				t.Errorf("%s: scope_filtered-запись несёт извлекатель объекта", fullMethod)
+			}
+			continue
+		}
+
+		if entry.Relation == "" {
+			t.Errorf("%s: required_relation не задано", fullMethod)
+		}
+		if entry.Extract == nil {
+			t.Errorf("%s: запись не несёт извлекателя объекта", fullMethod)
+		}
+	}
+	if own == 0 {
+		t.Fatalf("среди %d служимых методов нет НИ ОДНОГО из домена storage — форму записи "+
+			"не проверил никто, и «ноль находок» здесь означало бы «ноль прочитанного»", len(served))
+	}
+	t.Logf("осмотрено служимых методов: %d (домена storage — %d, чужих доменов — %d)",
+		len(served), own, foreign)
+}
+
+// TestPermissionMapObjectAndProjectScope — регрессия против
+// https://github.com/PRO-Robotech/kacho/issues/62.
+//
+// Внутрисервисный пол авторизации гейтил КАЖДЫЙ тенантский RPC на кластерном
+// синглтоне через статический извлекатель, поэтому project-scoped `editor` —
+// у которого ЕСТЬ `project:<p>#viewer/editor`, но нет кластерного гранта — получал
+// 403 на List/Get/Create/Update/Delete СВОЕГО проекта (край те же вызовы уже
+// разрешал). Посев с кластерным админом это маскировал.
+//
+// Ось — SCOPE, а не глагол в имени метода: то, что адресует САМ ресурс, спрашивает
+// его глагол; то, что анкерится на родительском проекте, спрашивает ярус проекта.
+func TestPermissionMapObjectAndProjectScope(t *testing.T) {
+	m := permissionMap(t)
+
+	type want struct{ objType, objID string }
+	cases := map[string]struct {
+		req  any
+		want want
+	}{
+		// ---- VolumeService: List/Create → project; object-self → storage_volume ----
+		"/kacho.cloud.storage.v1.VolumeService/List": {
+			req: &storagev1.ListVolumesRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.VolumeService/Create": {
+			req: &storagev1.CreateVolumeRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.VolumeService/Get": {
+			req: &storagev1.GetVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+		"/kacho.cloud.storage.v1.VolumeService/Update": {
+			req: &storagev1.UpdateVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+		"/kacho.cloud.storage.v1.VolumeService/Delete": {
+			req: &storagev1.DeleteVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+		"/kacho.cloud.storage.v1.VolumeService/ListOperations": {
+			req: &storagev1.ListVolumeOperationsRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+
+		// ---- SnapshotService ----
+		"/kacho.cloud.storage.v1.SnapshotService/List": {
+			req: &storagev1.ListSnapshotsRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.SnapshotService/Create": {
+			req: &storagev1.CreateSnapshotRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.SnapshotService/Get": {
+			req: &storagev1.GetSnapshotRequest{SnapshotId: "snp_1"}, want: want{"storage_snapshot", "snp_1"},
+		},
+		"/kacho.cloud.storage.v1.SnapshotService/Update": {
+			req: &storagev1.UpdateSnapshotRequest{SnapshotId: "snp_1"}, want: want{"storage_snapshot", "snp_1"},
+		},
+		"/kacho.cloud.storage.v1.SnapshotService/Delete": {
+			req: &storagev1.DeleteSnapshotRequest{SnapshotId: "snp_1"}, want: want{"storage_snapshot", "snp_1"},
+		},
+
+		// ---- ImageService ----
+		"/kacho.cloud.storage.v1.ImageService/List": {
+			req: &storagev1.ListImagesRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.ImageService/Create": {
+			req: &storagev1.CreateImageRequest{ProjectId: "prj_a"}, want: want{"project", "prj_a"},
+		},
+		"/kacho.cloud.storage.v1.ImageService/Get": {
+			req: &storagev1.GetImageRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
+		"/kacho.cloud.storage.v1.ImageService/Update": {
+			req: &storagev1.UpdateImageRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
+		"/kacho.cloud.storage.v1.ImageService/Delete": {
+			req: &storagev1.DeleteImageRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
+		"/kacho.cloud.storage.v1.ImageService/ListOperations": {
+			req: &storagev1.ListImageOperationsRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
+
+		// ---- InternalVolumeService (:9091, координация привязки) — пообъектно ----
+		//
+		// Записи ниже покрывают ТОЛЬКО том. Attach/Detach двухобъектные: запрос
+		// называет ещё и машину, у которой другой владелец, и право на неё
+		// спрашивает use-case (volume.requireInstanceControl) — у записи карты
+		// второго слота нет и быть не должно, это ответ на один вопрос. Не читать
+		// эти строки как «здесь весь гейт»: замок второго вопроса —
+		// volume.TestEveryStorageRPCNamingAnInstanceAsksTheModelAboutIt.
+		"/kacho.cloud.storage.v1.InternalVolumeService/Attach": {
+			req: &storagev1.AttachVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+		"/kacho.cloud.storage.v1.InternalVolumeService/Detach": {
+			req: &storagev1.DetachVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+		"/kacho.cloud.storage.v1.InternalVolumeService/GetInternal": {
+			req: &storagev1.GetInternalVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
+		},
+
+		// ---- InternalImageService (:9091, инфра-проекция) — пообъектно ----
+		"/kacho.cloud.storage.v1.InternalImageService/GetInternal": {
+			req: &storagev1.GetInternalImageRequest{ImageId: "img_1"}, want: want{"storage_image", "img_1"},
+		},
+	}
+
+	for fullMethod, tc := range cases {
+		entry, ok := m[fullMethod]
+		if !ok {
+			t.Errorf("%s: записи в карте прав нет", fullMethod)
+			continue
+		}
+		if entry.Extract == nil {
+			t.Errorf("%s: запись не несёт извлекателя объекта", fullMethod)
+			continue
+		}
+		objType, objID, err := entry.Extract(tc.req)
+		if err != nil {
+			t.Errorf("%s: извлекатель вернул ошибку: %v", fullMethod, err)
+			continue
+		}
+		if objType != tc.want.objType || objID != tc.want.objID {
+			t.Errorf("%s: вопрос задаётся про %s:%s, ожидалось %s:%s (зеркало каталога края)",
+				fullMethod, objType, objID, tc.want.objType, tc.want.objID)
+		}
+	}
+}
+
+// TestNoTenantDataOnTheClusterSingleton — на синглтон `cluster` можно вешать ТОЛЬКО
+// глобальный справочник.
+//
+// `cluster.viewer` включает userset `user:*`, и бутстрап кластера НАМЕРЕННО пишет
+// `cluster:<root>#viewer@user:*`, чтобы справочник (регионы, зоны, типы дисков)
+// читал любой аутентифицированный субъект. Поэтому cluster-`viewer` на RPC,
+// отдающем данные КОНКРЕТНЫХ тенантов, — не проверка, а её видимость: пропускает
+// всех. Ровно так перечисление привязок отдавало строки том↔машина для любых
+// названных машин, из чужих проектов и аккаунтов.
+//
+// Перечень берётся ИЗ САМОЙ КАРТЫ, поэтому НОВЫЙ RPC, повешенный на синглтон,
+// обязан быть здесь оправдан явно — тихо он не появится.
+func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
+	// Записи, для которых кластерный синглтон — правильный предмет вопроса:
+	// глобальный admin-curated каталог, одинаковый для всех тенантов.
+	clusterCatalog := map[string]bool{
+		"/kacho.cloud.storage.v1.DiskTypeService/Get":            true,
+		"/kacho.cloud.storage.v1.DiskTypeService/List":           true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Create": true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Update": true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Delete": true,
+	}
+	seen := 0
+	for fullMethod, entry := range permissionMap(t) {
+		// Тип объекта восстанавливается вызовом извлекателя на НУЛЕВОМ запросе
+		// метода (тот же приём, которым сверяется каталог края) — сам извлекатель
+		// хранится замыканием и прочитан быть не может.
+		objType, ok := catalogderive.ScopeObjectType(fullMethod, entry)
+		if !ok || objType != "cluster" {
+			continue // пообъектная запись: её извлекатель читает поле запроса
+		}
+		seen++
+		if !clusterCatalog[fullMethod] {
+			t.Errorf("%s анкерит проверку на кластерном синглтоне, а это позволено только "+
+				"глобальному каталогу типов дисков: `cluster:<root>#viewer@user:*` пишет бутстрап "+
+				"кластера, поэтому кластерный `viewer` пропускает каждого аутентифицированного "+
+				"субъекта. RPC, отдающий тенантские строки, обязан быть пообъектным либо "+
+				"scope_filtered", fullMethod)
+		}
+	}
+	// Анти-вакуум: восстановление типа идёт через proto-реестр и на неудаче молча
+	// отдаёт «нет ответа». Если бы оно перестало работать, обход не проверил бы
+	// НИЧЕГО и остался зелёным.
+	if seen != len(clusterCatalog) {
+		t.Fatalf("обход увидел %d кластерных записей вместо %d — проверка ничего не утверждает",
+			seen, len(clusterCatalog))
+	}
+}
+
+// TestListAttachmentsIsScopeFiltered — привязки томов авторизуются на уровне
+// ДАННЫХ, а не единичным вопросом.
+//
+// Машины называет вызывающий, а ответ касается томов, у каждого из которых свой
+// владелец: одного объекта, про который можно спросить заранее, здесь нет. Прежний
+// вопрос — `viewer` на синглтоне `cluster` — относился к ГЛОБАЛЬНОМУ СПРАВОЧНИКУ,
+// и бутстрап намеренно делает его выполнимым подстановкой. Значит проверка
+// пропускала всех.
+//
+// Locked здесь: кластерное отношение НЕ восстановлено, метод НЕ помечен exempt, и
+// имя метода совпадает с тем, на которое дескриптор несёт проводку сужателя, —
+// иначе носитель откажет в старте (О3/О4), но лучше узнать об этом в сборке.
+func TestListAttachmentsIsScopeFiltered(t *testing.T) {
+	e, ok := permissionMap(t)[string(listAttachmentsMethod)]
+	if !ok {
+		t.Fatalf("%s: записи в карте прав нет", listAttachmentsMethod)
+	}
+	if !e.ScopeFiltered {
+		t.Error("видимость обязана решаться пообъектно в use-case, а не единичным вопросом")
+	}
+	if e.Public {
+		t.Error("не exempt: авторизация переехала на данные, а не исчезла")
+	}
+	if e.Relation != "" {
+		t.Errorf("кластерное отношение %q здесь пропускало каждого аутентифицированного субъекта "+
+			"(`cluster:<root>#viewer@user:*` пишет бутстрап) — не восстанавливать", e.Relation)
+	}
+	if e.Extract != nil {
+		t.Error("объекта, про который можно спросить заранее, у этого RPC нет")
+	}
+	if e.Permission != "storage.volumes.listAttachments" {
+		t.Errorf("строка права = %q: метод обязан оставаться различимым в аудите", e.Permission)
+	}
+}
+
+// TestInterceptorAsksNothingForScopeFilteredAndStillAsksForTheNeighbour —
+// поведенческая пара на одном звене.
+//
+// Первая половина: за `scope_filtered`-RPC звено НЕ задаёт единичного вопроса и
+// пропускает вызов к обработчику, который сузит ответ пообъектно. `calls==0` ловит
+// регрессию, при которой сюда вернули бы кластерный вопрос (он снова пропускал бы
+// всех).
+//
+// Вторая обязательна: без неё «вопрос не задаётся» зеленело бы и на звене, которое
+// не спрашивает НИ ЗА ЧТО. Соседний internal RPC того же сервиса (объект в запросе
+// ЕСТЬ) обязан спросить модель и отвергнуть вызов на её «нет».
+func TestInterceptorAsksNothingForScopeFilteredAndStillAsksForTheNeighbour(t *testing.T) {
+	newLink := func(allow bool) (grpc.UnaryServerInterceptor, *int) {
+		calls := 0
+		return authz.NewInterceptor(authz.InterceptorOptions{
+			Cache:       authz.NewCache(0),
+			ServiceName: "kacho-storage-probe",
+			Map:         permissionMap(t),
+			Client: authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
+				calls++
+				return allow, nil
+			}),
+		}).Unary(), &calls
+	}
+	principal := operations.WithPrincipal(context.Background(), operations.Principal{
+		Type: "user", ID: "usr_alice", DisplayName: "probe",
+	})
+
+	t.Run("scope_filtered пропускается к обработчику без вопроса", func(t *testing.T) {
+		link, calls := newLink(false) // отказ: если вопрос задан, до обработчика не дойдём
+		reached := false
+		_, err := link(principal,
+			&storagev1.ListAttachmentsRequest{InstanceIds: []string{"ins-x"}},
+			&grpc.UnaryServerInfo{FullMethod: string(listAttachmentsMethod)},
+			func(context.Context, any) (any, error) {
+				reached = true
+				return &storagev1.ListAttachmentsResponse{}, nil
+			})
+		if err != nil {
+			t.Fatalf("вызов отвергнут: %v", err)
+		}
+		if !reached {
+			t.Fatal("обработчик не отработал — он и есть точка авторизации этого RPC")
+		}
+		if *calls != 0 {
+			t.Fatalf("единичный вопрос задан %d раз(а): спрашивать здесь нечего", *calls)
+		}
+	})
+
+	t.Run("пообъектный сосед по-прежнему спрашивает", func(t *testing.T) {
+		link, calls := newLink(false)
+		reached := false
+		_, err := link(principal,
+			&storagev1.GetInternalVolumeRequest{VolumeId: "vol00000000000000001"},
+			&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.storage.v1.InternalVolumeService/GetInternal"},
+			func(context.Context, any) (any, error) {
+				reached = true
+				return &storagev1.VolumeInternal{}, nil
+			})
+		if err == nil {
+			t.Fatal("модель ответила «нет», а вызов прошёл")
+		}
+		if reached {
+			t.Fatal("обработчик отработал вопреки отказу модели")
+		}
+		if *calls != 1 {
+			t.Fatalf("модель спрошена %d раз(а), ожидался ровно один вопрос", *calls)
+		}
+	})
+}
+
+// TestScopeFilteredRPCsAreBackedByTheProductionBootGuard — марка `scope_filtered`
+// снимает per-RPC вопрос, поэтому единственной защитой такого RPC остаётся
+// пообъектный сужатель. Значит сужатель не может быть просто ручкой, которую
+// выключили и не заметили: пока в карте есть хотя бы одна такая запись, остаток
+// собственного стража ОБЯЗАН отказывать в старте при выключенном сужателе.
+//
+// Проба связывает два артефакта наблюдаемо: карту (какие RPC остались без вопроса)
+// и `config.Validate` (что именно отвергается на старте). Уберут стражу —
+// покраснеет здесь, где видно, ЧТО осталось без защиты, а не только в конфиг-тестах.
+func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
+	var scopeFiltered []string
+	for fullMethod, e := range permissionMap(t) {
+		if e.ScopeFiltered {
+			scopeFiltered = append(scopeFiltered, fullMethod)
+		}
+	}
+	sort.Strings(scopeFiltered)
+	if len(scopeFiltered) == 0 {
+		t.Fatal("карта прав не несёт НИ ОДНОЙ записи scope_filtered: либо полоса ушла из каталога " +
+			"(тогда снимите и стражу, и эту пробу), либо карта не вывелась — и тогда проба молчит " +
+			"не потому, что защищать нечего")
+	}
+
+	cfg := bootConfig(t, map[string]string{
+		"KACHO_STORAGE_AUTH_MODE":              "production",
+		"KACHO_STORAGE_DB_SSLMODE":             "require",
+		"KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE": "true",
+		"KACHO_STORAGE_LIST_FILTER_ENABLED":    "false", // ослаблено ровно одно измерение
+	})
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("боевая посадка с выключенным сужателем обязана отказать в старте: %v остались "+
+			"без per-RPC вопроса и полагаются на него целиком", scopeFiltered)
+	}
+	if !strings.Contains(err.Error(), "LIST_FILTER_ENABLED") {
+		t.Fatalf("отказ обязан назвать ручку, получено: %v", err)
+	}
+
+	// Обратная сторона: та же посадка со включённым сужателем стартует — страж
+	// отвергает именно это измерение, а не «всё подряд».
+	cfg.ListFilterEnabled = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("та же посадка со включённым сужателем не стартует: %v", err)
+	}
+	t.Log(fmt.Sprintf("осмотрено scope_filtered-записей: %d (%s)",
+		len(scopeFiltered), strings.Join(scopeFiltered, ", ")))
+}
