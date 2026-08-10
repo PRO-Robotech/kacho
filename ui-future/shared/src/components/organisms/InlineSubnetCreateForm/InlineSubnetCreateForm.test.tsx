@@ -54,9 +54,7 @@ function show(props: Record<string, unknown> = {}) {
  * раскладку разметки, а не наблюдаемое.
  */
 const selectShowing = (optionText: string) =>
-  [...document.querySelectorAll("select")].find((s) =>
-    [...s.options].some((o) => o.textContent === optionText),
-  ) as HTMLSelectElement | undefined;
+  [...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.textContent === optionText));
 
 const pick = (optionText: string, value: string) =>
   fireEvent.change(selectShowing(optionText)!, { target: { value } });
@@ -67,11 +65,13 @@ const body = () => create.mock.calls[0][1] as Record<string, unknown>;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  list.mockImplementation(async (path: string) => {
-    if (path.includes("/networks")) return { networks: [{ id: "net-1", name: "основная" }] };
-    if (path.includes("/zones")) return { zones: [{ id: "ru-central1-a", name: "зона A" }] };
-    if (path.includes("/regions")) return { regions: [{ id: "ru-central1", name: "регион" }] };
-    return { route_tables: [] };
+  // Порт возвращает промис — заменитель возвращает его же, но ждать ему нечего:
+  // ответ известен сразу. `async` без `await` обещало ожидание, которого нет.
+  list.mockImplementation((path: string) => {
+    if (path.includes("/networks")) return Promise.resolve({ networks: [{ id: "net-1", name: "основная" }] });
+    if (path.includes("/zones")) return Promise.resolve({ zones: [{ id: "ru-central1-a", name: "зона A" }] });
+    if (path.includes("/regions")) return Promise.resolve({ regions: [{ id: "ru-central1", name: "регион" }] });
+    return Promise.resolve({ route_tables: [] });
   });
   create.mockResolvedValue({});
 });
@@ -133,7 +133,7 @@ describe("InlineSubnetCreateForm", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("без зоны зональная подсеть не отправляется", async () => {
+  it("без зоны зональная подсеть не отправляется", () => {
     show({ networkId: "net-1" });
 
     typeIn("10.20.0.0/24", "10.20.0.0/24");
@@ -143,7 +143,7 @@ describe("InlineSubnetCreateForm", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("без сети подсеть не отправляется", async () => {
+  it("без сети подсеть не отправляется", () => {
     // Положительный контроль отрицаний: сеть выбирается, и тогда всё уходит
     // (первый кейс). Здесь — её отсутствие.
     show();
@@ -155,7 +155,7 @@ describe("InlineSubnetCreateForm", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("заданная сеть заперта, незаданная — выбирается", async () => {
+  it("заданная сеть заперта, незаданная — выбирается", () => {
     // Пара, а не одиночное отрицание: «заперто» тривиально выполнялось бы и на
     // форме, где список сетей вообще не отрисован.
     show({ networkId: "net-1" });

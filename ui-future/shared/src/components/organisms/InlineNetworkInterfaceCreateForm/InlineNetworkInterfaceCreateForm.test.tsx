@@ -48,18 +48,18 @@ function show(props: Record<string, unknown> = {}) {
 }
 
 const selectShowing = (optionText: string) =>
-  [...document.querySelectorAll("select")].find((s) =>
-    [...s.options].some((o) => o.textContent === optionText),
-  ) as HTMLSelectElement | undefined;
+  [...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.textContent === optionText));
 
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Создать сетевой интерфейс" }));
 const body = () => create.mock.calls[0][1] as Record<string, unknown>;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  list.mockImplementation(async (path: string) => {
-    if (path.includes("/subnets")) return { subnets: [{ id: "sub-1", name: "внутренняя" }] };
-    return {};
+  // Порт возвращает промис — заменитель возвращает его же, но ждать ему нечего:
+  // ответ известен сразу. `async` без `await` обещало ожидание, которого нет.
+  list.mockImplementation((path: string) => {
+    if (path.includes("/subnets")) return Promise.resolve({ subnets: [{ id: "sub-1", name: "внутренняя" }] });
+    return Promise.resolve({});
   });
   create.mockResolvedValue({});
 });
@@ -87,7 +87,7 @@ describe("InlineNetworkInterfaceCreateForm", () => {
     expect(body().project_id).toBe("prj-1");
   });
 
-  it("заданная подсеть заперта — интерфейс не переносят между подсетями", async () => {
+  it("заданная подсеть заперта — интерфейс не переносят между подсетями", () => {
     show({ subnetId: "sub-1" });
 
     expect(selectShowing("Выберите подсеть")!.disabled).toBe(true);

@@ -48,7 +48,7 @@ jest.unstable_mockModule("antd", () => ({
             "aria-pressed": value === o.value,
             onClick: () => onChange?.(o.value),
           },
-          o.label as React.ReactNode,
+          o.label,
         ),
       ),
     ),
@@ -87,18 +87,22 @@ const specOf = (obj: Record<string, unknown>) =>
 beforeEach(() => {
   jest.clearAllMocks();
   contextApi.setProject({ id: "prj-1", name: "проект", accountId: "acc-1" });
-  list.mockImplementation(async (path: string) => {
-    if (path.includes("/networks")) return { networks: [{ id: "net-1", name: "основная" }] };
-    if (path.includes("/subnets")) return { subnets: [{ id: "sub-1", name: "внутренняя", network_id: "net-1" }] };
+  // Порт возвращает промис — заменитель возвращает его же, но ждать ему нечего:
+  // ответ известен сразу. `async` без `await` обещало ожидание, которого нет.
+  list.mockImplementation((path: string) => {
+    if (path.includes("/networks")) return Promise.resolve({ networks: [{ id: "net-1", name: "основная" }] });
+    if (path.includes("/subnets")) {
+      return Promise.resolve({ subnets: [{ id: "sub-1", name: "внутренняя", network_id: "net-1" }] });
+    }
     if (path.includes("/addresses")) {
-      return {
+      return Promise.resolve({
         addresses: [
           { id: "adr-ext", name: "публичный", external_ipv4_address: { address: "203.0.113.7" } },
           { id: "adr-int", internal_ipv4_address: { subnet_id: "sub-1", address: "10.0.1.5" } },
         ],
-      };
+      });
     }
-    return {};
+    return Promise.resolve({});
   });
 });
 

@@ -33,7 +33,11 @@ const confirms: ConfirmConfig[] = [];
 
 jest.unstable_mockModule("antd", () => {
   const base = antdStub();
-  const ModalRoot = base.Modal as unknown as React.FC<{ open?: boolean; children?: React.ReactNode }>;
+  // `antdStub()` объявлен как `Record<string, unknown>`, поэтому `base.Modal`
+  // УЖЕ `unknown` — прежнее `as unknown as` содержало лишний первый шаг, ничего
+  // не сообщавший компилятору. Второй шаг несущий: без него `Object.assign`
+  // ниже не принимает `unknown` целью.
+  const ModalRoot = base.Modal as React.FC<{ open?: boolean; children?: React.ReactNode }>;
   return {
     ...base,
     Modal: Object.assign(ModalRoot, {

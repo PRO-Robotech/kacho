@@ -37,8 +37,8 @@ jest.unstable_mockModule("antd", () => ({
         React.createElement(
           "li",
           { key: it.key },
-          React.createElement("span", null, it.label as React.ReactNode),
-          it.extra as React.ReactNode,
+          React.createElement("span", null, it.label),
+          it.extra,
         ),
       ),
     ),

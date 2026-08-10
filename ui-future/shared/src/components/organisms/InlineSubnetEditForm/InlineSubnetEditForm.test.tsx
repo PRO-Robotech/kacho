@@ -92,7 +92,7 @@ describe("InlineSubnetEditForm", () => {
   it("зона показана и заперта — размещение после создания не меняется", async () => {
     show();
 
-    const zone = (await screen.findByDisplayValue("ru-central1-a")) as HTMLInputElement;
+    const zone = await screen.findByDisplayValue<HTMLInputElement>("ru-central1-a");
     expect(zone.disabled).toBe(true);
     expect(screen.getByText("Зона доступности")).toBeInTheDocument();
   });
@@ -102,7 +102,7 @@ describe("InlineSubnetEditForm", () => {
     // говорить о регионе — иначе поле выглядит незаполненным.
     show({ ...ZONAL, zone_id: "", placement_type: "REGIONAL" });
 
-    const region = (await screen.findByDisplayValue("ru-central1")) as HTMLInputElement;
+    const region = await screen.findByDisplayValue<HTMLInputElement>("ru-central1");
     expect(region.disabled).toBe(true);
     expect(screen.getByText("Регион")).toBeInTheDocument();
     expect(screen.queryByText("Зона доступности")).not.toBeInTheDocument();

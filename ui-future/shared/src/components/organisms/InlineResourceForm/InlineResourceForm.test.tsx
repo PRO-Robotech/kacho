@@ -11,18 +11,28 @@
 import { jest } from "@jest/globals";
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { displayText } from "@shared/lib/display-text";
 import { REGISTRY } from "@shared/lib/resource-registry";
 
 type Wiring = Record<string, unknown>;
 
-/** Заменитель доменной формы: печатает своё имя и полученную проводку. */
+/**
+ * Заменитель доменной формы: печатает своё имя и полученную проводку.
+ *
+ * Значение проводки печатается через `displayText`, а не `String`: проводка
+ * объявлена как `unknown`, и `String(объект)` дал бы `[object Object]` —
+ * ОДИН И ТОТ ЖЕ текст для любого объекта. Тогда утверждение «форме досталась
+ * вот эта проводка» перестало бы отличать верное значение от любого другого
+ * нескаляра, то есть проверяло бы только факт наличия ключа.
+ */
 function marker(name: string, keys: string[]) {
-  return (props: Wiring) =>
-    React.createElement(
-      "div",
-      null,
-      `${name}(${keys.map((k) => `${k}=${String(props[k] ?? "")}`).join(", ")})`,
-    );
+  const Marker = (props: Wiring) =>
+    React.createElement("div", null, `${name}(${keys.map((k) => `${k}=${displayText(props[k])}`).join(", ")})`);
+  // Имя нужно не косметически: без него React показывает узел в дереве ошибки
+  // как анонимный, и промах в ВЫБОРЕ формы (а это предмет пробы) читается из
+  // отчёта хуже, чем мог бы.
+  Marker.displayName = `marker(${name})`;
+  return Marker;
 }
 
 jest.unstable_mockModule("@shared/components/organisms/InlineResourceCreateForm", () => ({

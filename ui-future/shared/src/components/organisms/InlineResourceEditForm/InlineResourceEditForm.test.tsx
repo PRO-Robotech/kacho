@@ -34,9 +34,9 @@ jest.unstable_mockModule("@shared/lib/use-operation", () => ({
 const { InlineResourceEditForm } = await import("./InlineResourceEditForm");
 
 const FIELDS: FormField[] = [
-  { type: "string", name: "name", label: "Имя" } as FormField,
-  { type: "string", name: "description", label: "Описание" } as FormField,
-  { type: "string", name: "cidr", label: "Диапазон", immutable: true } as FormField,
+  { type: "string", name: "name", label: "Имя" },
+  { type: "string", name: "description", label: "Описание" },
+  { type: "string", name: "cidr", label: "Диапазон", immutable: true },
 ];
 
 function spec(over: Partial<ResourceSpec> = {}): ResourceSpec {

@@ -36,7 +36,7 @@ jest.unstable_mockModule("@shared/lib/use-operation", () => ({
 const { groupedRoleOptions, fmtTs, CopyableMonoId, SystemTag, useIamMutation } = await import("./IamCommon");
 type Role = Parameters<typeof groupedRoleOptions>[0][number];
 
-const role = (over: Partial<Role>): Role => ({ id: "rol-1", name: "viewer", ...over }) as Role;
+const role = (over: Partial<Role>): Role => ({ id: "rol-1", name: "viewer", ...over });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -102,7 +102,7 @@ describe("CopyableMonoId", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("идентификатор показан и кладётся в буфер по нажатию", async () => {
+  it("идентификатор показан и кладётся в буфер по нажатию", () => {
     const writeText = jest.fn(async () => {});
     Object.assign(navigator, { clipboard: { writeText } });
     render(<CopyableMonoId id="usr-1" />);
@@ -190,7 +190,7 @@ describe("useIamMutation", () => {
   });
 
   it("пока операция не завершилась, форма занята и успеха не объявляет", async () => {
-    create.mockResolvedValue({ operation: { id: "opr-1", done: false } as Operation });
+    create.mockResolvedValue({ operation: { id: "opr-1", done: false } });
     show();
 
     start();
@@ -211,13 +211,13 @@ describe("useIamMutation", () => {
   });
 
   it("операция, завершившаяся ошибкой, показывает её, а не успех", async () => {
-    create.mockResolvedValue({ operation: { id: "opr-2", done: false } as Operation });
+    create.mockResolvedValue({ operation: { id: "opr-2", done: false } });
     show();
 
     start();
     await waitFor(() => expect(screen.getByText("занято")).toBeInTheDocument());
 
-    operation = { id: "opr-2", done: true, error: { code: 9, message: "quota exceeded" } } as Operation;
+    operation = { id: "opr-2", done: true, error: { code: 9, message: "quota exceeded" } };
     fireEvent.click(screen.getByRole("button", { name: "перечитать" }));
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("quota exceeded"));

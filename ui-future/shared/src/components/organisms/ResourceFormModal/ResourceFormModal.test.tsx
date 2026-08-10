@@ -11,6 +11,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { ApiError } from "@shared/api/client";
+import { displayText } from "@shared/lib/display-text";
 
 const apiGet = jest.fn<(path: string) => Promise<Record<string, unknown>>>();
 
@@ -29,7 +30,11 @@ jest.unstable_mockModule("@shared/components/organisms/InlineResourceForm", () =
       React.createElement(
         "span",
         null,
-        `форма ${String((p.spec as { id?: string })?.id)}/${String(p.action)} preset=${JSON.stringify(p.presetFields ?? null)} networkId=${String(p.networkId ?? "")}`,
+        // `networkId` печатается через `displayText`, а не `String`: проводка
+        // объявлена как `unknown`, и `String(объект)` дал бы `[object Object]` —
+        // один и тот же текст для любого объекта, то есть утверждение «контекст
+        // доехал» проходило бы и на потерянном контексте.
+        `форма ${String((p.spec as { id?: string })?.id)}/${String(p.action)} preset=${JSON.stringify(p.presetFields ?? null)} networkId=${displayText(p.networkId)}`,
       ),
       React.createElement("button", { type: "button", onClick: p.onCancel as () => void }, "закрыть"),
     ),

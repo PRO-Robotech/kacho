@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
 import { REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
+import { requestBody, requestUrl } from "@shared/test/fetch-capture";
 import { ResourceEditPage } from "./ResourceEditPage";
 
 interface Sent {
@@ -33,9 +34,9 @@ let sent: Sent[] = [];
 function stubFetch(read: Record<string, unknown>) {
   sent = [];
   globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
+    const url = requestUrl(input);
     const method = init?.method ?? "GET";
-    sent.push({ url, method, body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null });
+    sent.push({ url, method, body: requestBody(init?.body) });
     const payload = method === "GET" ? read : { id: "opr-1", done: true };
     return Promise.resolve({
       ok: true,

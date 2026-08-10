@@ -10,7 +10,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 
 jest.unstable_mockModule("@shared/api/client", () => ({
-  api: { get: jest.fn(async () => ({})), list: jest.fn(async () => ({})), action: jest.fn(), post: jest.fn() },
+  // Порты возвращают промис по контракту, но ждать заменителю нечего —
+  // `Promise.resolve` говорит это прямо, `async` без `await` обещало ожидание.
+  api: {
+    get: jest.fn(() => Promise.resolve({})),
+    list: jest.fn(() => Promise.resolve({})),
+    action: jest.fn(),
+    post: jest.fn(),
+  },
   ApiError,
 }));
 

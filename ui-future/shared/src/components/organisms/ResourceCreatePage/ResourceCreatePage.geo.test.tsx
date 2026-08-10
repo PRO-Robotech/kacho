@@ -19,6 +19,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useToasts } from "@shared/lib/toast";
+import { requestBody, requestUrl } from "@shared/test/fetch-capture";
 import { ResourceCreatePage } from "./ResourceCreatePage";
 
 /** Читает ту же toast-очередь, что и настоящий Toaster ремоута. */
@@ -45,9 +46,9 @@ let calls: Call[] = [];
 /** Stub fetch: POST answers with `createAnswer`, the operation poll with `opAnswer`. */
 function stubFetch(createAnswer: unknown, opAnswer: unknown) {
   globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
+    const url = requestUrl(input);
     const method = init?.method ?? "GET";
-    calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    calls.push({ url, method, body: requestBody(init?.body) ?? undefined });
     const payload = method === "POST" ? createAnswer : opAnswer;
     return Promise.resolve({
       ok: true,
