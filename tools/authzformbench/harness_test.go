@@ -83,7 +83,7 @@ func TestHarnessDiscriminatesOnDeliberatelyDifferentInput(t *testing.T) {
 	require.Equal(t, int64(40*4*5), cl[OpVolume].GrantTotal)
 
 	// (b) store round trips double — exact and machine-independent
-	require.Equal(t, 2*cs[OpGrant].Requests, cl[OpGrant].Requests,
+	require.Equal(t, 2*cs[OpGrant].ReqEngine, cl[OpGrant].ReqEngine,
 		"doubling N did not double the round trips of the shape whose cost IS N·M·S — "+
 			"the harness is not seeing its own input")
 
@@ -131,6 +131,88 @@ func TestHarnessDiscriminatesBetweenShapes(t *testing.T) {
 	require.Greater(t, vols[FormB], vols[FormD])
 	require.Greater(t, vols[FormC], vols[FormD])
 	require.NotEqual(t, vols[FormA], vols[FormBCD])
+
+	// Форма E втянута в доказательство ПОИМЁННО, а не «входит в перечень форм».
+	// Попадание в перечень втягивает её только в вопросник эквивалентности — он
+	// итерируется по перечню; неравенства объёмов здесь выписаны именами, и без
+	// своей строки шестая форма измерялась бы ВНЕ доказательства различимости, а
+	// «E неотличима от A» было бы неотличимо от «прибор для E сломан».
+	require.Greaterf(t, vols[FormD], vols[FormE],
+		"самая компактная форма движка (%d строк) не отличается от реляционной (%d) — "+
+			"прибор не видит разницы там, где арифметика форм её предсказывает",
+		vols[FormD], vols[FormE])
+	require.NotEqual(t, vols[FormA], vols[FormE])
+}
+
+// TestHarnessSeesTheInputOfFormE — вторая предпосылка на шестой форме: прибор
+// обязан быть показан различающим ЕЁ вход, а не только вход формы A.
+//
+// Точное удвоение здесь не требуется и требоваться не может: оно — арифметика
+// формы A (её цена ЕСТЬ N·M·S), и три формы из пяти уже сегодня его не дают.
+// Требование «вырасти вдвое», перенесённое на форму E, либо провалило бы её за
+// законное поведение, либо вынудило бы написать её пооператорно — то есть
+// исказить измеряемое ради утверждения о нём.
+//
+// Поэтому проверяется ПАРА, объявленная до прогона: (а) арифметика формы E
+// называет величину, обязанную вырасти с N, — это структурная часть (строка
+// зеркала на объект); (б) измерение показывает рост именно там и именно такой,
+// какой арифметика предсказала. И отдельно — что величина выдачи ПОСТОЯННА, как
+// её арифметика и объявляет: постоянство здесь результат, а не отказ прибора.
+func TestHarnessSeesTheInputOfFormE(t *testing.T) {
+	if testing.Short() {
+		t.Skip("real-OpenFGA proof; -short")
+	}
+	ctx := t.Context()
+	stack, canon := bootForTest(ctx, t)
+
+	cfg := DefaultConfig()
+	cfg.Forms = []Form{FormE}
+	cfg.WriteRepeats = 2
+	cfg.RelabelK = 5
+	r, err := NewRunner(stack, cfg, canon)
+	require.NoError(t, err)
+
+	small := NewScenario(20, 10, 5, "editor", DefaultVerbs())
+	large := NewScenario(40, 10, 5, "editor", DefaultVerbs())
+
+	cs := cellsByOp(r.RunWrites(ctx, FormE, small))
+	cl := cellsByOp(r.RunWrites(ctx, FormE, large))
+	require.Equalf(t, Measured, cs[OpVolume].Outcome, "объём при N=20: %s", cs[OpVolume].Reason)
+	require.Equalf(t, Measured, cl[OpVolume].Outcome, "объём при N=40: %s", cl[OpVolume].Reason)
+
+	// (а)+(б) величина, объявленная растущей, выросла — и ровно до предсказанного.
+	require.Equal(t, int64(ExpectedStructuralRows(FormE, small)), cs[OpVolume].StructuralRows,
+		"структурная часть формы E при N=20 разошлась с её объявленной арифметикой")
+	require.Equal(t, int64(ExpectedStructuralRows(FormE, large)), cl[OpVolume].StructuralRows)
+	require.Greater(t, cl[OpVolume].StructuralRows, cs[OpVolume].StructuralRows,
+		"ни одна величина формы E не ответила на удвоение входа — предпосылка «прибор различает» "+
+			"для шестой формы осталась бы недоказанной, и это находка постановки, а не результат")
+
+	// Величина ВЫДАЧИ постоянна — и это её объявленная арифметика, а не сбой.
+	require.Equal(t, int64(ExpectedGrantTuples(FormE, small)), cs[OpVolume].GrantTotal)
+	require.Equal(t, cs[OpVolume].GrantTotal, cl[OpVolume].GrantTotal,
+		"цена выдачи формы E изменилась с N, хотя её арифметика объявляет постоянство (S+2) — "+
+			"расходятся измерение и арифметика, и публиковать нельзя ни то, ни другое")
+
+	// Колонка стейтментов у формы E измерена, а не подставлена нулём, и сверена
+	// со СВОЕЙ объявленной до прогона арифметикой — по каждой операции.
+	//
+	// Это не педантизм, а дыра, найденная инъекцией в эту самую пробу: форма E,
+	// которая вдобавок к выдаче переразмечает весь набор, проходит ВСЕ утверждения
+	// об объёме (правка метки строк не добавляет) и падает только здесь. Пока
+	// величина сверялась только с «больше нуля», удвоение работы было невидимо.
+	require.Empty(t, cs[OpGrant].StmtNote, "производитель StmtSQL формы E не прошёл контроль")
+	for _, op := range []Op{OpGrant, OpRevoke, OpRelabel1, OpRelabelK, OpInlineGrant, OpInlineRevoke} {
+		want := ExpectedStatements(FormE, op)
+		require.Equalf(t, want, cs[op].StmtSQL,
+			"%s при N=20: измерено %d стейтментов против объявленных %d — расходятся измерение "+
+				"и арифметика, и публиковать нельзя ни то, ни другое", op, cs[op].StmtSQL, want)
+		require.Equalf(t, want, cl[op].StmtSQL,
+			"%s при N=40 стоила %d стейтментов против %d при N=20 — величина, объявленная "+
+				"постоянной по N, с N изменилась", op, cl[op].StmtSQL, cs[op].StmtSQL)
+	}
+	require.Zero(t, cs[OpGrant].ReqEngine,
+		"у формы E появились обращения к движку — она измеряется не тем, чем объявлена")
 }
 
 // TestTransformsActuallyTransform guards the one failure mode of a text rewrite: a

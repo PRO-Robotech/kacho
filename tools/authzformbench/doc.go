@@ -1,9 +1,10 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package authzformbench compares FIVE shapes of the same authorization grant
-// against a real OpenFGA over a real Postgres, and reports write cost, read cost
-// and volume for each — as a CURVE over N, not as one number.
+// Package authzformbench compares SIX shapes of the same authorization grant —
+// five of them against a real OpenFGA over a real Postgres, the sixth against a
+// Postgres of its own — and reports write cost, read cost and volume for each,
+// as a CURVE over N rather than as one number.
 //
 // It is a measuring instrument, not a product change. Nothing under services/,
 // pkg/, gateway/ or proto/ imports it, and it writes nothing into them: the
@@ -26,17 +27,42 @@
 // an indirection is worth what the indirection costs on the READ path, which is
 // hot: pages are narrowed in partitions and a page is up to 1000 objects.
 //
-// # The five shapes
+// # The six shapes
 //
 //	A  flat        one tuple per object × verb × subject          N·M·S      (today)
 //	B  group       grant to group#member, subjects are members    N·M + S
 //	C  role-rel    one role relation per object, verbs derive it  N·S
 //	D  container   objects point at a container, grant on it      N + S
 //	BCD combined   container + group                              N + S + 1
+//	E  relational  a row of binding + its selector; no engine     S + 2
 //
 // B needs NO model change: `group#member` is already an accepted subject on every
 // verb of every type. C and D need relations that do not exist today, which is why
 // they are transforms rather than a discipline of granting.
+//
+// # Форма E — не шестой способ писать кортежи, а их отсутствие
+//
+// Она вычисляет вердикт ЗАПРОСОМ к БД поверх того же зеркала объектов, которое
+// iam ведёт сегодня, и внешнего движка отношений у неё нет. Отсюда три вещи,
+// которых у прежних пяти не бывает и которые измеряются отдельно, а не сводятся
+// к «быстрее»:
+//
+//   - выдача и отзыв живут в ТОЙ ЖЕ транзакции, что предмет выдачи. У пяти
+//     прежних форм эта операция неприменима by construction — общей транзакции
+//     между БД сервиса и чужим движком не существует, — и это отдельный, четвёртый
+//     исход ячейки, никогда не сворачиваемый в «не выполнилось»;
+//   - колонка «обращений» расщеплена на две. У движка это HTTP-вызов, за которым
+//     стоит своё число запросов к его Postgres; у формы E — SQL-стейтмент. Обе
+//     печатаются под своими именами и не складываются ни в одной ячейке;
+//   - каскад трёх верхних уровней доступа у формы E — соединение ограниченной
+//     глубины по родительским указателям (leaf → project → account → cluster).
+//     Он не читает ничего, что доставляется очередью, — но того же свойства
+//     держится и действующая форма, поэтому каскад спрашивается ОБЕИМ, и
+//     утверждение о нём — о паритете, а не о преимуществе.
+//
+// Что форма E НЕ убирает и о чём отчёт обязан сказать против её интереса:
+// зеркало объектов и очередь его наполнения. Она убирает материализацию доступа,
+// а не зеркало; «очередей больше нет» — неверное прочтение.
 //
 // # What is measured, and in what unit
 //
@@ -60,13 +86,21 @@
 // reports for that store's rows. Index overhead is table-wide, not per-store, so it
 // is reported once for the whole table and never attributed to a shape.
 //
-// # Three outcomes, not two
+// # Four outcomes, not three
 //
-// Every cell is one of measured / refused / not-run. "Not-run" — the stack did not
-// come up, the operation timed out, the store refused the request — is NEVER
-// folded into a shape's favour and never silently omitted; it is carried through to
-// the report as its own category with the reason attached. A shape that could not
-// be measured did not win.
+// Every cell is one of measured / refused / not-run / not-applicable. "Not-run" —
+// the stack did not come up, the operation timed out, the store refused the
+// request — is NEVER folded into a shape's favour and never silently omitted; it
+// is carried through to the report as its own category with the reason attached. A
+// shape that could not be measured did not win.
+//
+// Четвёртая категория — «неприменимо by construction» — заведена ради ячеек,
+// которые СОДЕРЖАТЕЛЬНЫ именно своей пустотой: у движка отношений нет и не может
+// быть общей транзакции с БД предмета выдачи. Свернуть её в «не выполнилось»
+// значило бы напечатать «не-измеренных 20» и заставить читателя решить, что замер
+// не доехал, — тогда как это самый содержательный результат таблицы. Она
+// печатается своей строкой, с причиной, и сумма четырёх категорий обязана
+// равняться числу ячеек.
 //
 // # Behavioural equivalence is a PRECONDITION, not a footnote
 //
@@ -76,6 +110,16 @@
 // verb, after revoke, after a subject leaves the group, after an object leaves the
 // set) — and requires identical verdict vectors. The negatives are the half that
 // matters: an additive shape that never withdraws is green on every positive.
+//
+// Фикстура несёт ДВУХ арендаторов, и это не полнота картины, а условие того, что
+// предпосылка вообще о чём-то говорит. При одном аккаунте и одном проекте конъюнкт
+// «объект лежит в области выдачи» тождественно истинен для каждого спрошенного
+// объекта: его полное снятие оставляло зелёными все пробы вердикта, то есть
+// эквивалентность была обеспечена на одноарендном случае, а решение принимается
+// для многоарендной системы. Поэтому вопросник спрашивает про помеченный объект
+// ЧУЖОГО арендатора (у формы E отказать обязана область, у форм движка отказ
+// структурен), а каскад спрашивается ещё и про чужой аккаунт — иначе
+// «администратор ЭТОГО аккаунта» и «администратор любого» неразличимы.
 //
 // # Provenance
 //

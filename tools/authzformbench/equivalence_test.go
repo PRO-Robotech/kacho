@@ -28,11 +28,21 @@ type Question struct {
 // (green on "was it emitted", wrong on "was it withdrawn"). So: an outsider, an
 // object outside the set, a verb the role does not grant, and — after mutation —
 // a revoked subject and an object taken back out.
+//
+// И — вопрос про ЧУЖОГО арендатора, без которого предпосылка эквивалентности была
+// обеспечена только на одноарендной фикстуре. Он единственный, где у формы E
+// выполнены все конъюнкты вердикта, кроме области: субъект назван в привязке,
+// роль даёт спрошенный глагол, метка объекта попадает под селектор — и отказать
+// обязана ровно транзитивная вложенность области. У форм движка тот же отказ
+// СТРУКТУРЕН (на чужой объект не написано ни одного кортежа), и в этом весь смысл
+// пары: вопрос один, а держат его у двух форм разные механизмы, поэтому именно
+// здесь реляционная переписка правдоподобно разошлась бы с движком.
 func questionSet(sc Scenario, phase string) []Question {
 	var qs []Question
 	inSet := sc.Object(0)
 	inSet2 := sc.Object(sc.N - 1)
-	outSet := sc.Object(sc.N) // spare — never granted
+	outSet := sc.Object(sc.N)     // spare — never granted
+	foreign := sc.ForeignObject() // помечен меткой набора, но лежит у чужого арендатора
 	granted := map[string]bool{}
 	for _, v := range sc.Verbs {
 		granted[v] = true
@@ -50,6 +60,9 @@ func questionSet(sc Scenario, phase string) []Question {
 			Question{fmt.Sprintf("%s/other/%s/in-set-first", phase, v), other, v, inSet, want},
 			// object outside the selected set — never allowed, whatever the verb
 			Question{fmt.Sprintf("%s/member/%s/out-of-set", phase, v), member, v, outSet, false},
+			// объект ЧУЖОГО арендатора, помеченный меткой набора: отказать обязана
+			// область выдачи, все прочие конъюнкты выполнены
+			Question{fmt.Sprintf("%s/member/%s/foreign-tenant", phase, v), member, v, foreign, false},
 			// a principal in no binding at all — never allowed
 			Question{fmt.Sprintf("%s/stranger/%s/in-set", phase, v), stranger, v, inSet, false},
 		)
@@ -58,11 +71,15 @@ func questionSet(sc Scenario, phase string) []Question {
 }
 
 // askAll asks every question of one store and returns the verdict vector.
-func askAll(ctx context.Context, t *testing.T, st *Store, qs []Question) []bool {
+//
+// Спрашивается ГРАНИЦА, а не движок: до неё вопросник был неспособен обратиться к
+// шестой форме вовсе — то есть форма E не могла быть даже проверена на то,
+// отвечает ли она правильно, не то что измерена.
+func askAll(ctx context.Context, t *testing.T, st RightsStore, qs []Question) []bool {
 	t.Helper()
 	out := make([]bool, len(qs))
 	for i, q := range qs {
-		got, err := st.Check(ctx, q.Subject, q.Verb, q.Object)
+		got, _, err := st.Check(ctx, q.Subject, q.Verb, q.Object)
 		require.NoErrorf(t, err, "check %s", q.Name)
 		out[i] = got
 	}
@@ -117,7 +134,7 @@ func TestFormsAnswerIdentically(t *testing.T) {
 			// knowing: any withdrawal path that can run twice, or run beside another
 			// withdrawal, has to be idempotent by construction — the store will not make
 			// it so.)
-			seed := func(f Form, name string) *Store {
+			seed := func(f Form, name string) RightsStore {
 				st, err := r.NewSeededStore(ctx, f, sc, true, name)
 				require.NoErrorf(t, err, "seed %s", f)
 				return st
@@ -125,21 +142,21 @@ func TestFormsAnswerIdentically(t *testing.T) {
 			for _, f := range AllForms {
 				stG := seed(f, fmt.Sprintf("eq-%s-%s-granted", role, f))
 				v := vec{after: askAll(ctx, t, stG, questionSet(sc, "granted"))}
-				require.NoError(t, stG.Delete(ctx))
+				require.NoError(t, stG.Teardown(ctx))
 
 				// An object LEAVES the selected set. Every shape must stop allowing it.
 				stU := seed(f, fmt.Sprintf("eq-%s-%s-unlabelled", role, f))
-				_, err := stU.DeleteTuples(ctx, RelabelOne(f, sc, sc.Object(0)))
+				_, err := stU.Remove(ctx, RelabelOne(f, sc, sc.Object(0)))
 				require.NoErrorf(t, err, "unlabel %s", f)
 				v.removed = askAll(ctx, t, stU, questionSet(sc, "unlabelled"))
-				require.NoError(t, stU.Delete(ctx))
+				require.NoError(t, stU.Teardown(ctx))
 
 				// A subject is REVOKED. Every shape must stop allowing him.
 				stR := seed(f, fmt.Sprintf("eq-%s-%s-revoked", role, f))
-				_, err = stR.DeleteTuples(ctx, RevokeSubject(f, sc, sc.Subjects[0]))
+				_, err = stR.Remove(ctx, RevokeSubject(f, sc, sc.Subjects[0]))
 				require.NoErrorf(t, err, "revoke %s", f)
 				v.revoked = askAll(ctx, t, stR, questionSet(sc, "revoked"))
-				require.NoError(t, stR.Delete(ctx))
+				require.NoError(t, stR.Teardown(ctx))
 
 				got[f] = v
 			}
@@ -207,17 +224,40 @@ func TestFormCCannotExpressAnArbitraryVerbSubset(t *testing.T) {
 	// Form A expresses it exactly: it grants verb by verb.
 	stA, err := r.NewSeededStore(ctx, FormA, sc, true, "subset-A")
 	require.NoError(t, err)
-	defer func() { _ = stA.Delete(ctx) }()
+	defer func() { _ = stA.Teardown(ctx) }()
 	for _, v := range []string{"v_get", "v_delete"} {
-		ok, err := stA.Check(ctx, sc.Subjects[0], v, sc.Object(0))
+		ok, _, err := stA.Check(ctx, sc.Subjects[0], v, sc.Object(0))
 		require.NoError(t, err)
 		require.Truef(t, ok, "form A must grant %s", v)
 	}
 	for _, v := range []string{"v_list", "v_update"} {
-		ok, err := stA.Check(ctx, sc.Subjects[0], v, sc.Object(0))
+		ok, _, err := stA.Check(ctx, sc.Subjects[0], v, sc.Object(0))
 		require.NoError(t, err)
 		require.Falsef(t, ok, "form A must NOT grant %s", v)
 	}
+
+	// Форма E выражает тот же произвольный набор ТОЧНО — и это парный
+	// положительный к отрицанию ниже: без него «форма C не может» было бы
+	// неотличимо от «этого не может никто, и вопрос бессмысленный».
+	//
+	// Цена свёртки M у формы C — модельная (набор глаголов объявляется
+	// отношением, и произвольное подмножество требует нового отношения и нового
+	// идентификатора модели, то есть операции уровня кластера). У формы E набор
+	// глаголов роли — строки таблицы, и произвольное подмножество выражается
+	// выдачей, а не изменением модели.
+	stE, err := r.NewSeededStore(ctx, FormE, sc, true, "subset-E")
+	require.NoError(t, err)
+	defer func() { _ = stE.Teardown(ctx) }()
+	var gotE []bool
+	for _, v := range AllVerbs() {
+		ok, _, cerr := stE.Check(ctx, sc.Subjects[0], v, sc.Object(0))
+		require.NoError(t, cerr)
+		gotE = append(gotE, ok)
+	}
+	require.Equal(t, []bool{true, false, false, true}, gotE,
+		"форма E обязана выражать произвольное подмножество глаголов {v_get,v_delete} точно — "+
+			"иначе отрицание про форму C ниже утверждает не про свёртку M, а про то, что "+
+			"подмножество не выразимо вообще")
 
 	// Form C cannot: whichever declared role it writes, the verdict vector differs
 	// from the one asked for.
@@ -228,7 +268,7 @@ func TestFormCCannotExpressAnArbitraryVerbSubset(t *testing.T) {
 		require.NoError(t, err)
 		var got []bool
 		for _, v := range AllVerbs() {
-			ok, cerr := stC.Check(ctx, scC.Subjects[0], v, scC.Object(0))
+			ok, _, cerr := stC.Check(ctx, scC.Subjects[0], v, scC.Object(0))
 			require.NoError(t, cerr)
 			got = append(got, ok)
 		}
@@ -236,6 +276,6 @@ func TestFormCCannotExpressAnArbitraryVerbSubset(t *testing.T) {
 			"form C with role %q happened to express {v_get,v_delete} — "+
 				"if a declared role really covers an arbitrary subset this note is wrong "+
 				"and the finding must be rewritten, not deleted", role)
-		require.NoError(t, stC.Delete(ctx))
+		require.NoError(t, stC.Teardown(ctx))
 	}
 }
