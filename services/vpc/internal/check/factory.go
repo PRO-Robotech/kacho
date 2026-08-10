@@ -20,12 +20,14 @@ import (
 // (nil, nil), и caller обязан НЕ ставить authz-interceptor в цепочку
 // (graceful start без kacho-iam в dev).
 //
-// Breakglass — если true (через env `KACHO_VPC_AUTHZ__BREAKGLASS=true`),
-// interceptor пропускает все RPC без Check + emit'ит WARN-метрику. Dev-only.
+// Аварийного пропуска у фабрики больше нет: ручка, включавшая проход всех RPC без
+// проверки, снята вместе с переходом на общий носитель контура. Носитель ставит
+// звено решения о доступе БЕЗУСЛОВНО, и поля, способного его отменить, в
+// дескрипторе процесса не существует — значит и здесь такому полю нечего было бы
+// выражать: оно принималось бы и игнорировалось.
 type Options struct {
 	ServiceName string
 	IAMConn     grpc.ClientConnInterface
-	Breakglass  bool
 	Logger      *slog.Logger
 
 	// CheckTimeout — таймаут на один Check-вызов (default 2s).
@@ -50,7 +52,7 @@ type Options struct {
 
 // ErrIAMConnNotConfigured — IAM-conn = nil И break-glass=false. Caller'у
 // нужно либо подать IAMConn, либо включить break-glass (dev).
-var ErrIAMConnNotConfigured = errors.New("check: IAM connection not configured and Breakglass=false")
+var ErrIAMConnNotConfigured = errors.New("check: IAM connection not configured")
 
 // NewInterceptor собирает `*authz.Interceptor` из Options. Возвращает:
 //
@@ -65,22 +67,6 @@ var ErrIAMConnNotConfigured = errors.New("check: IAM connection not configured a
 func NewInterceptor(opts Options) (*authz.Interceptor, error) {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
-	}
-
-	// Break-glass mode: IAMConn может быть nil — interceptor все-равно
-	// нужен, чтобы emit'ить breakglass-метрики/логи.
-	if opts.Breakglass {
-		return authz.NewInterceptor(authz.InterceptorOptions{
-			ServiceName:          opts.ServiceName,
-			Map:                  PermissionMap(),
-			Client:               nil, // не используется при Breakglass=true
-			Cache:                authz.NewCache(opts.CacheTTL),
-			Logger:               opts.Logger,
-			Breakglass:           true,
-			DenyRateLimitPerSec:  opts.DenyRateLimitPerSec,
-			CheckTimeout:         opts.CheckTimeout,
-			AllowSystemPrincipal: opts.AllowSystemPrincipal,
-		}), nil
 	}
 
 	if opts.IAMConn == nil {

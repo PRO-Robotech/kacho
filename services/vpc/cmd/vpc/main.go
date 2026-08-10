@@ -5,11 +5,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -24,13 +22,13 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -50,11 +48,9 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/networkinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрирует DTO-трансферы (init); boot-check ниже
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/fgaboot"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/observability/health"
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
@@ -211,12 +207,6 @@ func runServe(cfg config.Config) error {
 	// метрики теперь экспортируются наружу (scrape).
 	metricsAdapter := vpcmetrics.New(buildVersion, buildCommit)
 
-	// Самоотчёт о security-posture: ПОСЛЕ всех boot-guard'ов (config/serverMTLS/
-	// peerTransport — т.е. конфиг уже ПРИНЯТ процессом) и ДО подъёма листенеров.
-	// Production-posture гейт обязан утверждать на этом наблюдаемом факте, а не
-	// на хранимом конфиге (см. observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, mtlsCfg))
-
 	// Cross-service gRPC dial — через единый builder: retries=3 / dialTimeout=10s /
 	// keepalive=30s / TLS / опц. dns:///+round_robin.
 	//
@@ -337,6 +327,37 @@ func runServe(cfg config.Config) error {
 	// неподключенным; SetConnected(true) срабатывает ниже, как только dial drainer'а
 	// успешен.
 	bootGate := bootgate.New(bootgate.Config{RequireIAM: cfg.IAM.Require, Service: "kacho-vpc"})
+	// ── объявление о себе ────────────────────────────────────────────────────
+	//
+	// Дескриптор собирается ПОСЛЕ пула: порт сверки существования живёт НА пуле, и
+	// собрать его без пула означало бы принести порт, который на первом же вопросе
+	// ответит «соединения нет». Probe читает МАСТЕР (авторитетно, без
+	// replica-lag false-absent): с реплики он на ограниченное, но не измеряемое
+	// отсюда время отвечал бы «объекта нет» про уже созданный объект, а этот ответ
+	// превращает отказ в правах в 404.
+	//
+	// Сужатель и загрузочный гейт уезжают ТЕМИ ЖЕ объектами, что провязаны в
+	// use-case'ах и в пробе готовности пода.
+	//
+	// И ДО фоновых проходов: дескриптор судит конфигурацию, а не окружение,
+	// поэтому его отказ обязан наступить раньше, чем процесс поднимет дренаж
+	// регистраций и соседние соединения. Открытие пула обратимо (defer выше) и
+	// дешевле ложной сверки существования — это единственное, что стоит перед ним.
+	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool))
+	if err != nil {
+		return fmt.Errorf("describe kacho-vpc: %w", err)
+	}
+
+	// Самоотчёт о посадке — ПОСЛЕ того, как дескриптор ПРИНЯТ (конфиг прошёл все
+	// отказы, которые являются его свойствами), и ДО подъёма слушателей. До приёма
+	// дескриптора отчёт описывал бы намерение, а не посадку: часть измерений (круг
+	// отправителей, транспорт обоих слушателей, ребро решения о доступе) судит
+	// именно конструктор, и напечатать их раньше значило бы напечатать то, что ещё
+	// может не пройти. Гейт посадки обязан утверждать на этом наблюдаемом факте, а
+	// не на хранимом конфиге: правка настроек без переката пода оставляет процесс
+	// с прежним окружением, и «под Ready» доказательством посадки не является.
+	observability.LogBootPosture(logger, bootPosture(cfg, mtlsCfg))
+
 	// Prometheus-backed outbox-recorder: backlog/oldest/poisoned register-outbox
 	// экспортируются на /metrics (заменяет in-memory MemRecorder). Тот же adapter
 	// — operations.Recorder для reconciler'а ниже.
@@ -371,149 +392,6 @@ func runServe(cfg config.Config) error {
 			"register-intents accumulate in fga_register_outbox unapplied")
 	}
 
-	// authz: per-RPC OpenFGA Check на public И internal listener'ах.
-	//
-	// IAMEndpoint пуст → interceptor НЕ навешивается (graceful start без
-	// kacho-iam в dev; production-deploy выставит authz.iam-endpoint в
-	// values.yaml). Breakglass=true → interceptor навешивается, но все
-	// пропускает + emit'ит WARN-метрику (dev / emergency).
-	//
-	// internal :9091 listener — С тем же authz-interceptor'ом (security-инвариант:
-	// authN+authZ и на internal'е). cluster-scoped admin RPC (InternalNetworkService,
-	// InternalAddressPoolService) проходят FGA Check на `cluster:cluster_kacho_root`;
-	// IPAM-примитивы InternalAddressService.* — object-scoped verb-bearing Check на
-	// самом ресурсе `vpc_address` (v_update/v_get, как публичный AddressService) — все
-	// они в PermissionMap, exempt-путей больше нет.
-	productionMode := cfg.AuthN.Mode.IsProduction()
-
-	// principal-extract ОБЯЗАН стоять ПЕРВЫМ в public-цепочке: authz-interceptor и
-	// use-case'ы, пишущие operations.principal_* колонки, читают principal'а из ctx.
-	// UnaryPrincipalExtract достает его из x-kacho-principal-* gRPC metadata (их
-	// форвардит api-gateway); без extract'а первым все request'ы получали бы
-	// SystemPrincipal()-fallback вместо реального principal'а.
-	//
-	// Boot-gate guardCreateUnary — ПЕРВЫМ в public-цепочке: мутирующий Create
-	// отвергается (UNAVAILABLE), когда KACHO_VPC_REQUIRE_IAM взведен, а
-	// register-drainer не подключен к IAM, — чтобы ни один tenant-ресурс не создавался
-	// без доставляемого owner-tuple intent. Read RPC не затронуты.
-	// request-deadline interceptor стоит сразу за recovery (второй в цепочке,
-	// внутри recovery-фрейма — recovery остаётся единственным outermost): кладёт
-	// верхнюю границу на всю обработку RPC (включая authz Check и DB-запросы),
-	// чтобы deadline-less/долгий запрос не держал pooled-connection бесконечно
-	// (bounded-pool exhaustion / DoS, CWE-770). timeout<=0 → no-op.
-	reqTimeout := cfg.APIServer.RequestTimeout
-	// Recovery-interceptor — ПЕРВЫЙ (outermost) в обеих цепочках: grpc-go не
-	// восстанавливает panic из handler'ов/интерсепторов, поэтому один nil-deref в
-	// sync request-path уронил бы весь процесс (вместе с LRO-worker'ом и
-	// register-drainer'ом). Ловит panic и из вложенных интерсепторов, и из
-	// handler'а → opaque codes.Internal (без leak'а panic-текста), stack — в лог.
-	// Симметрично async-guard'у (operations.Run / network/create.go defer recover).
-	//
-	// forwarders — круг отправителей, которым разрешено передавать личность
-	// конечного пользователя; читается из ТОЙ ЖЕ функции, что и стража старта и
-	// самоотчёт о посадке, поэтому проводка и отчёт разъехаться не могут.
-	forwarders := cfg.TrustedForwarders()
-	publicUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-		handler.UnaryTimeoutInterceptor(reqTimeout),
-		fgaboot.GuardCreateUnary(bootGate),
-	}
-	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	publicUnary = append(publicUnary, handler.AuthNUnaryInterceptor(productionMode))
-
-	publicStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-		handler.StreamTimeoutInterceptor(reqTimeout),
-	}
-	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	publicStream = append(publicStream, handler.AuthNStreamInterceptor(productionMode))
-
-	// internal listener :9091 — цепочка ТА ЖЕ, что у public, и это принципиально:
-	// «internal = доверенный» — запрещённое допущение. principal-extract стоит первым
-	// (authzIntr читает принципала из ctx и делает из него subject для Check'а),
-	// AuthN-guard требует, чтобы принципал вообще был, а решение о доступе принимает
-	// authzIntr ниже — mapped cluster-scoped internal RPC (InternalNetworkService.*,
-	// InternalAddressPoolService.*) на singleton `cluster:cluster_kacho_root`, IPAM
-	// InternalAddressService.* — per-object на `vpc_address` (v_update/v_get).
-	// Отдельного admin-гейта здесь больше нет: он поднимал привилегию из клиентского
-	// заголовка (её объявлял о себе сам звонящий) и вдобавок отвергал вызывающих,
-	// которым модель говорит «да». Привилегию выдаёт модель — см. authn_interceptor.go.
-	internalUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-		handler.UnaryTimeoutInterceptor(reqTimeout),
-	}
-	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	internalUnary = append(internalUnary, handler.AuthNUnaryInterceptor(productionMode))
-
-	internalStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-		handler.StreamTimeoutInterceptor(reqTimeout),
-	}
-	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	internalStream = append(internalStream, handler.AuthNStreamInterceptor(productionMode))
-
-	// authzConn (kacho-iam internal :9091, InternalIAMService.Check) собран один раз
-	// выше и общий с project-level List authz.
-	authzIntr, err := check.NewInterceptor(check.Options{
-		ServiceName:         "kacho-vpc",
-		IAMConn:             authzConn,
-		Breakglass:          cfg.AuthZ.Breakglass,
-		Logger:              logger,
-		CheckTimeout:        cfg.AuthZ.CheckTimeout,
-		DenyRateLimitPerSec: cfg.AuthZ.DenyRateLimitPerSec,
-		CacheTTL:            cfg.AuthZ.CacheTTL,
-		// Existence-hiding (Decision 1): object-scoped deny на отсутствующий
-		// vpc-ресурс → passthrough → handler отдаёт дословный NotFound 404. Probe читает
-		// master-pool (авторитетно, без replica-lag false-absent).
-		Probe: kachopg.NewExistenceProbe(pool),
-	})
-	// Fail-fast (S3): в production отсутствие authz-interceptor'а — фатально (не
-	// продолжаем как раньше с Warn). Защита от регрессии, обходящей S1-гард: без
-	// Check подделанная x-kacho-* metadata дала бы эскалацию. В dev — graceful
-	// Warn+continue.
-	authzIntr, err = authzWiringDecision(productionMode, authzIntr, err)
-	if err != nil {
-		return fmt.Errorf("authz wiring: %w", err)
-	}
-	if authzIntr != nil {
-		publicUnary = append(publicUnary, authzIntr.Unary())
-		publicStream = append(publicStream, authzIntr.Stream())
-		// Тот же authzIntr instance на internal listener'е (общий cache/метрики).
-		internalUnary = append(internalUnary, authzIntr.Unary())
-		internalStream = append(internalStream, authzIntr.Stream())
-		logger.Info("authz interceptor enabled",
-			"iam_endpoint", cfg.AuthZ.IAMEndpoint,
-			"breakglass", cfg.AuthZ.Breakglass,
-			"cache_ttl", cfg.AuthZ.CacheTTL,
-		)
-	} else {
-		// dev-стенд без kacho-iam — продолжаем без authz-interceptor'а.
-		logger.Warn("authz interceptor NOT enabled — authz.iam-endpoint not configured (dev mode)")
-	}
-
-	// Per-listener opt-in mTLS server-creds. enable=false (default) → insecure (dev
-	// backward-compat); enable=true → RequireAndVerifyClientCert (server-cert +
-	// client-CA), fail-closed при отсутствии cert-тройки (без тихого downgrade в
-	// insecure).
-	publicServerCreds, err := mtlsCfg.PublicServerCreds()
-	if err != nil {
-		return fmt.Errorf("public listener mTLS creds: %w", err)
-	}
-	internalServerCreds, err := mtlsCfg.InternalServerCreds()
-	if err != nil {
-		return fmt.Errorf("internal listener mTLS creds: %w", err)
-	}
-
-	grpcSrv := grpcsrv.NewServer(
-		publicServerCreds,
-		grpc.ChainUnaryInterceptor(publicUnary...),
-		grpc.ChainStreamInterceptor(publicStream...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		internalServerCreds,
-		grpc.ChainUnaryInterceptor(internalUnary...),
-		grpc.ChainStreamInterceptor(internalStream...),
-	)
 	logger.Info("kacho-vpc listener mTLS",
 		"public_mtls", mtlsCfg.PublicServerMTLS.Enable,
 		"internal_mtls", mtlsCfg.InternalServerMTLS.Enable)
@@ -528,8 +406,6 @@ func runServe(cfg config.Config) error {
 			"access to :9090 allows principal spoofing / cross-tenant authz bypass",
 			"mode", cfg.AuthN.Mode.String())
 	}
-	registerPublicServices(grpcSrv, svcs, opsRepo)
-	registerInternalServices(internalSrv, svcs)
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -560,77 +436,83 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("start LRO worker: %w", err)
 	}
 
-	publicAddr := cfg.APIServer.ListenAddress()
-	internalAddr := cfg.APIServer.InternalListenAddress()
-	listener, err := net.Listen("tcp", publicAddr)
-	if err != nil {
-		return err
-	}
-	internalListener, err := net.Listen("tcp", internalAddr)
-	if err != nil {
-		_ = listener.Close()
-		return err
-	}
-	logger.Info("kacho-vpc listening",
-		"public_endpoint", publicAddr,
-		"internal_endpoint", internalAddr)
-
 	gracefulTimeout := cfg.APIServer.GracefulShutdown
 	if gracefulTimeout <= 0 {
 		gracefulTimeout = 10 * time.Second
 	}
 
-	// Параллельный запуск public-сервера + internal-сервера + shutdown-waiter через
-	// `parallel.ExecAbstract` (`github.com/H-BF/corlib/pkg/parallel`).
-	// Failure-isolation: первая ошибка / SIGTERM / SIGINT триггерит graceful-stop
-	// ОБОИХ серверов — умерший internal не оставляет public крутиться.
+	// Отдельный контекст слушателей. Носитель гасит ОБА слушателя по отмене СВОЕГО
+	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
+	// этой отмены, а не одновременно с ней: kubelet перестаёт слать трафик до
+	// того, как соединения начнут закрываться. Одним контекстом на всё этот
+	// порядок был бы неразличим.
+	serveCtx, stopServe := context.WithCancel(context.Background())
+	defer stopServe()
+	// serveDone закрывается, когда носитель вернул управление. Нужен сторожу
+	// срока штатного завершения ниже.
+	serveDone := make(chan struct{})
+
+	// Параллельный запуск слушателей + shutdown-waiter через `parallel.ExecAbstract`
+	// (`github.com/H-BF/corlib/pkg/parallel`). Failure-isolation: первая ошибка /
+	// SIGTERM / SIGINT триггерит гашение ВСЕГО — умерший носитель не оставляет
+	// диагностический слушатель крутиться.
 	//
-	// `grpc.Server.Serve` не реагирует на ctx-cancel сам — поэтому `triggerShutdown`
-	// явно вызывает `GracefulStop` на обоих, после чего `Serve` возвращает
-	// `nil`/`grpc.ErrServerStopped` (трактуется как штатное завершение). `sync.Once`
-	// гарантирует, что параллельные триггеры (SIGTERM пришел одновременно с crash
-	// internal'а) не сделают двойной GracefulStop.
 	// shutdownCh закрывается ВНУТРИ triggerShutdown — он будит shutdown-waiter не
-	// только по SIGTERM/SIGINT (ctx.Done), но и когда graceful-stop инициирован крашем
-	// одного из серверов. Без этого waiter висел бы на `<-ctx.Done()` навечно (ctx —
+	// только по SIGTERM/SIGINT (ctx.Done), но и когда гашение инициировано крахом
+	// слушателей. Без этого waiter висел бы на `<-ctx.Done()` навечно (ctx —
 	// только сигнальный), и `parallel.ExecAbstract` никогда бы не вернулся —
 	// процесс-зомби.
 	shutdownCh := make(chan struct{})
 	var shutdownOnce sync.Once
 	triggerShutdown := func() {
 		shutdownOnce.Do(func() {
-			// Readiness флипает в shutting_down ДО GracefulStop — kubelet перестает
+			// Readiness флипает в shutting_down ДО гашения — kubelet перестаёт
 			// слать трафик, пока in-flight RPC дренируются.
 			healthAgg.SetShuttingDown()
 			close(shutdownCh)
-			internalSrv.GracefulStop()
-			grpcSrv.GracefulStop()
+			stopServe()
+			// Сторож срока штатного завершения. Носитель гасит слушатели ТОЛЬКО
+			// мягко (GracefulStop) — принудительного `Stop()` по истечении срока у
+			// него нет, и принести его сервису нечем: сервера корень не получает ни
+			// в каком виде. Поэтому величина `api-server.graceful-shutdown`
+			// сохраняет свой предмет — срок, за который завершение обязано
+			// уложиться, — но её нарушение теперь НАБЛЮДАЕТСЯ, а не исполняется.
+			// Молчаливой альтернативой было бы зависшее завершение, неотличимое от
+			// штатного, и ручка без читателя вдобавок.
+			go func() {
+				select {
+				case <-serveDone:
+				case <-time.After(gracefulTimeout):
+					logger.Error("graceful stop exceeded its budget; listeners are still draining",
+						"budget", gracefulTimeout,
+						"knob", "api-server.graceful-shutdown",
+						"note", "the carrier stops listeners gracefully only; there is no forced Stop behind this budget")
+				}
+			}()
 		})
 	}
 
 	tasks := []func() error{
-		// public gRPC server
+		// ОБА gRPC-слушателя — носитель контура. Он поднимает их с ОДНОЙ цепочкой
+		// звеньев, прогоняет отказы старта, которым нужен служимый набор RPC, и
+		// обслуживает до отмены serveCtx. Исход внутреннего слушателя учитывается
+		// наравне с публичным — это его свойство, а не наше.
 		func() error {
-			err := grpcSrv.Serve(listener)
-			if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-				triggerShutdown()
-				return fmt.Errorf("public grpc server: %w", err)
+			serr := servicehost.Serve(serveCtx, desc,
+				func(reg grpc.ServiceRegistrar) { registerPublicServices(reg, svcs, opsRepo) },
+				func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs) },
+			)
+			close(serveDone)
+			triggerShutdown()
+			if serr != nil {
+				logger.Error("grpc listeners stopped", "err", serr)
+				return fmt.Errorf("grpc: %w", serr)
 			}
 			return nil
 		},
-		// internal gRPC server (admin / kacho-only)
-		func() error {
-			err := internalSrv.Serve(internalListener)
-			if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-				logger.Error("internal grpc server stopped", "err", err)
-				triggerShutdown()
-				return fmt.Errorf("internal grpc server: %w", err)
-			}
-			return nil
-		},
-		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш сервера (shutdownCh) →
-		// graceful-stop обоих + дрейн LRO worker'ов. select по обоим каналам, иначе
-		// при краше сервера waiter висел бы на ctx навечно.
+		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →
+		// гашение + дрейн LRO worker'ов. select по обоим каналам, иначе при крахе
+		// слушателей waiter висел бы на ctx навечно.
 		func() error {
 			select {
 			case <-ctx.Done():
@@ -1079,7 +961,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 }
 
 // registerPublicServices — публичные RPC + OperationService на внешний listener.
-func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo) {
+func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo operations.Repo) {
 	vpcv1.RegisterNetworkServiceServer(srv, svcs.networkHandler)
 	vpcv1.RegisterSubnetServiceServer(srv, svcs.subnetHandler)
 	vpcv1.RegisterAddressServiceServer(srv, svcs.addressHandler)
@@ -1091,7 +973,7 @@ func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener.
-func registerInternalServices(srv *grpc.Server, svcs *services) {
+func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// `WithOwnedCreator` — путь `CreateOwnedAddress`: создание адреса, СРАЗУ
 	// привязанного к владельцу, одной writer-TX. Реализуется публичным
 	// транспортным handler'ом адреса, чтобы разбор тела создания оставался

@@ -191,14 +191,13 @@ sequenceDiagram
     <tr><td><strong>Инвалидация</strong></td><td><code>pg\_notify('kacho\_iam\_subjects', subject\_id)</code> → немедленный сброс по субъекту (revoke ≤ 10 с)</td></tr>
     <tr><td><strong>Mutation fail-mode</strong></td><td><strong>fail-closed</strong>: <code>kacho-iam</code> недоступен → <code>UNAVAILABLE</code> (мутацию не пропускаем)</td></tr>
     <tr><td><strong>Read fail-mode</strong></td><td>конфигурируемо: по умолчанию closed; опционально fail-open-logged для чтений</td></tr>
-    <tr><td><strong>Breakglass</strong></td><td><code>KACHO\_VPC\_AUTHZ\_\_BREAKGLASS=true</code> → bypass + WARN (только dev / emergency)</td></tr>
-  </tbody>
+      </tbody>
 </table>
 
 :::caution Production fail-closed по умолчанию
 Любой развернутый стенд работает в **production-mode**: анонимный запрос (без валидного
 Principal) — `PermissionDenied`, межсервисный транспорт — mTLS. Послабления (`dev`-mode, в котором
-caller без AuthN-headers трактуется как admin, и breakglass-bypass) допустимы **только** локально —
+caller без AuthN-headers трактуется как admin) допустимы **только** локально —
 в unit/integration-фикстурах и при разработке, **никогда** на кластере. Это инвариант: authN+authZ
 энфорсятся на каждом RPC обоих listener'ов (public `:9090` и internal `:9091`) — internal-периметр
 не считается доверенным.

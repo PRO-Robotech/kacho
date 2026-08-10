@@ -21,7 +21,7 @@ import (
 //	healthcheck:   { enable }
 //	repository:    { type, postgres }
 //	authn:         { mode, tls }
-//	authz:         { iam-endpoint, breakglass, ... }
+//	authz:         { iam-endpoint, check-timeout, ... }
 //	extapi:        { def-dial-duration, iam, geo }
 //	network:       { default-sg-inline, project-cache }
 //
@@ -65,21 +65,26 @@ type IAMConfig struct {
 	RegisterDrainerEnabled bool `mapstructure:"register-drainer-enabled"`
 }
 
-// AuthZConfig — секция authz. Если IAMEndpoint пуст и Breakglass=false —
-// interceptor НЕ навешивается (graceful start без kacho-iam в dev).
-// См. internal/check/factory.go.
+// AuthZConfig — секция authz.
+//
+// Ручки, снимающей проверку прав, здесь БОЛЬШЕ НЕТ: аварийный обход снят с
+// контракта вместе с переводом vpc на носитель контура (имя снятой ручки
+// называет `retired_knobs_test.go` — здесь оно намеренно не воспроизводится,
+// иначе перечень снятого нашёл бы его как возвращённое). Носитель ставит звено
+// решения о доступе ВСЕГДА — поля, которым его можно отменить, в дескрипторе
+// процесса не существует, — поэтому ручка перестала бы что-либо менять и стала
+// бы принятой-и-проигнорированной: оператор задаёт значение, чарт его
+// доставляет, поведение не меняется, и узнать об этом можно только по
+// последствиям. Снятие держит `retired_knobs_test.go`.
 type AuthZConfig struct {
 	// IAMEndpoint — gRPC адрес kacho-iam internal-port'а (обычно
-	// `kacho-iam.kacho.svc.cluster.local:9091`). Пустая строка → interceptor
-	// не навешивается, если только Breakglass=true.
+	// `kacho-iam.kacho.svc.cluster.local:9091`). Обязателен на ЛЮБОЙ посадке:
+	// ребро решения о доступе объявляется дескриптором явно, и незаданный адрес
+	// отвергает конструктор дескриптора (не только в боевом режиме).
 	IAMEndpoint string `mapstructure:"iam-endpoint"`
 
 	// IAMTLS — TLS на peer-вызов в kacho-iam.
 	IAMTLS TLSClient `mapstructure:"iam-tls"`
-
-	// Breakglass — если true, interceptor пропускает все RPC без Check
-	// (dev / emergency). Source: env `KACHO_VPC_AUTHZ__BREAKGLASS=true`.
-	Breakglass bool `mapstructure:"breakglass"`
 
 	// CheckTimeout — таймаут на один Check-вызов (default 2s).
 	CheckTimeout time.Duration `mapstructure:"check-timeout"`

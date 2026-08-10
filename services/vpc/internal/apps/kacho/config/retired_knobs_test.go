@@ -17,7 +17,7 @@ import (
 // Поле запроса или настройки, которое сервис принимает и ни разу не читает, — это
 // обещание, за которое никто не отвечает: оператор задаёт значение, чарт его
 // доставляет, а поведение не меняется, и узнать об этом можно только по
-// последствиям. Две такие ручки у vpc сняты целиком:
+// последствиям. Три такие ручки у vpc сняты целиком:
 //
 //   - `authz.tuple-write.*` — прямой FGA-writer убран (регистрация владения идёт
 //     намерением в своей транзакции и очередью через iam), а ветка настройки,
@@ -27,7 +27,7 @@ import (
 //     неё не имеет вовсе, поэтому доставить сюда было нечего.
 //
 // Проверка держит их снятыми: возвращаются такие ручки не заново продуманными, а
-// копированием у соседа, и тогда всё повторяется. Экземпляров два, поэтому и
+// копированием у соседа, и тогда всё повторяется. Экземпляров три, поэтому и
 // перечень закрытый — но осматривается ВСЁ дерево сервиса и ВСЕ профили стенда,
 // а не места, где ручки лежали.
 var retiredKnobs = []struct {
@@ -40,6 +40,10 @@ var retiredKnobs = []struct {
 	{"TupleWriteConfig", "the Go type behind authz.tuple-write.* is retired"},
 	{"AuthZ.TupleWrite", "the Go field behind authz.tuple-write.* is retired"},
 	{"list-filter.model-id", "authz.list-filter.model-id retired: iam pins the authorization model; BatchCheck has no field for a caller-supplied one"},
+	{"authz.breakglass", "authz.breakglass retired: the carrier (pkg/servicehost) installs the authorization decision link unconditionally — there is no field in the process descriptor that can cancel it, so the knob would be accepted and ignored"},
+	{"AUTHZ__BREAKGLASS", "KACHO_VPC_AUTHZ__BREAKGLASS retired together with authz.breakglass"},
+	{"authz.Breakglass", "the chart key behind authz.breakglass is retired"},
+	{"AuthZ.Breakglass", "the Go field behind authz.breakglass is retired"},
 	{"LIST_FILTER__MODEL_ID", "KACHO_VPC_AUTHZ__LIST_FILTER__MODEL_ID retired together with authz.list-filter.model-id"},
 	{"listFilter.modelId", "the chart key behind authz.list-filter.model-id is retired"},
 	{"ListFilter.ModelID", "the Go field behind authz.list-filter.model-id is retired"},

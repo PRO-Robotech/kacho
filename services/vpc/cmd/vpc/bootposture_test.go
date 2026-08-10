@@ -100,10 +100,27 @@ func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	})
 }
 
-// TestBootPosture_EmittedFromTheLiveBootPath — статический guard размещения:
-// строка обязана эмититься ИЗ composition root'а реальным логгером, ПОСЛЕ
-// boot-guard'ов и ДО подъёма листенеров. Без него posture-отчёт деградировал бы
-// в «функцию, которую никто не зовёт», и гейт снова читал бы намерение, а не факт.
+// TestBootPosture_EmittedFromTheLiveBootPath — статический страж РАЗМЕЩЕНИЯ:
+// строка посадки обязана эмититься ИЗ композиционного корня реальным логгером,
+// ПОСЛЕ приёма дескриптора и ДО того, как носитель поднимет слушатели. Без него
+// отчёт о посадке деградировал бы в «функцию, которую никто не зовёт», и гейт
+// посадки снова читал бы намерение, а не факт.
+//
+// # Почему нижняя граница переехала на приём ДЕСКРИПТОРА
+//
+// Прежде она стояла на собственном конструкторе сервера vpc — его больше нет,
+// слушатели поднимает носитель. Но замена не механическая: часть измерений
+// отчёта (круг отправителей, транспорт обоих слушателей, ребро решения о
+// доступе) судит именно КОНСТРУКТОР ДЕСКРИПТОРА, и напечатать их раньше значило
+// бы напечатать то, что ещё может не пройти, — то есть намерение вместо посадки.
+// Поэтому граница именно там, а не «где-нибудь до Serve».
+//
+// # Что здесь НЕ пинится намеренно
+//
+// Списки аргументов. Порядок вызовов к ним отношения не имеет, а якорь по полной
+// сигнатуре краснеет на верном коде при первой же правке проводки — это ровно тот
+// класс, из-за которого прежний якорь (`grpcsrv.NewServer(`) пережил свой предмет
+// незамеченным.
 func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
@@ -111,16 +128,28 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	}
 	root := string(src)
 
-	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(")
+	call := strings.Index(root, "observability.LogBootPosture(")
 	if call < 0 {
-		t.Fatal("composition root must emit the posture line: observability.LogBootPosture(logger, bootPosture(…))")
+		t.Fatal("composition root must emit the posture line: observability.LogBootPosture(…)")
 	}
-	guard := strings.Index(root, "cfg.ValidatePeerTransport(mtlsCfg)")
+	guard := strings.Index(root, "cfg.ValidatePeerTransport(")
 	if guard < 0 || call < guard {
 		t.Fatal("posture line must be emitted AFTER the secure-by-default boot guards (config/serverMTLS/peerTransport)")
 	}
-	listener := strings.Index(root, "grpcsrv.NewServer(")
-	if listener < 0 || call > listener {
-		t.Fatal("posture line must be emitted BEFORE the gRPC listeners are built")
+	accepted := strings.Index(root, "desc, err := describe(")
+	if accepted < 0 {
+		t.Fatal("composition root must build its descriptor: desc, err := describe(…)")
+	}
+	if call < accepted {
+		t.Fatal("posture line must be emitted AFTER the descriptor is accepted — before that it " +
+			"describes an intention, not a posture (the descriptor constructor judges the forwarder " +
+			"circle, both listener transports and the authorization decision edge)")
+	}
+	serve := strings.Index(root, "servicehost.Serve(")
+	if serve < 0 {
+		t.Fatal("composition root must raise both listeners through the carrier: servicehost.Serve(…)")
+	}
+	if call > serve {
+		t.Fatal("posture line must be emitted BEFORE the carrier raises the listeners")
 	}
 }

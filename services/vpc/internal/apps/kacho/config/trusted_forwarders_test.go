@@ -28,7 +28,7 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
 // fwdCfg — минимально-валидный production Config с заданным списком отправителей.
 func fwdCfg(mode Mode, sans []string) Config {
-	c := prodCfg(mode, "kacho-iam-internal.kacho.svc.cluster.local:9091", false)
+	c := prodCfg(mode, "kacho-iam-internal.kacho.svc.cluster.local:9091")
 	c.AuthZ.TrustedForwarderSANs = sans
 	return c
 }
@@ -80,7 +80,8 @@ func TestValidate_Production_ForwardersThatDegenerateToEmpty_RefusesToStart(t *t
 }
 
 // Вне боевого режима пустой круг ВОЗМОЖЕН, но только как ЯВНЫЙ опт-ин: стража
-// срабатывает на любом non-breakglass старте. Молчащая вне боевого режима стража —
+// срабатывает на ЛЮБОМ старте (прежде — на любом не-аварийном; ручки аварийного
+// обхода больше нет, и исключения у стражи не осталось). Молчащая вне боевого режима стража —
 // контроль, чья ветка на локальном стенде не исполняется ни разу, поэтому «забыл
 // выставить круг» находится только на боевом профиле, где цена ошибки максимальна.
 func TestValidate_Dev_EmptyTrustedForwarders_RefusesWithoutOptIn(t *testing.T) {

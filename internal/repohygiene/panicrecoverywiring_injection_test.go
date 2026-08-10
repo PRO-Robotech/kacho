@@ -228,3 +228,104 @@ func TestPanicRecoveryGateIgnoresLRORecoveryDecoyEvenWhenUnwired(t *testing.T) {
 	}
 	t.Logf("ловушка не обманула гейт: %s", strings.Join(res.findings, "\n"))
 }
+
+// synthCarrierRoot — композиционный корень НА НОСИТЕЛЕ: своих серверов не
+// собирает, цепочку не держит, зовёт `servicehost.Serve`. Ровно так выглядят
+// пять переведённых сервисов.
+const synthCarrierRoot = `package main
+
+import (
+	"context"
+
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+)
+
+func serve(ctx context.Context) error {
+	return servicehost.Serve(ctx, descriptor(),
+		func(reg grpc.ServiceRegistrar) {},
+		func(reg grpc.ServiceRegistrar) {},
+	)
+}
+`
+
+// synthMuteRoot — корень, который НЕ поднимает своих листенеров и НЕ зовёт
+// носитель. Он и есть неоднозначный случай: гейт «не нашёл листенеров» тут
+// неотличим от «распознавание сломано», если предпосылку не проверять.
+const synthMuteRoot = `package main
+
+func serve() error { return nil }
+`
+
+// synthCarrierPkg — минимальный носитель, чтобы импорт в синтетическом дереве
+// резолвился так же, как в настоящем.
+const synthCarrierPkg = `package servicehost
+
+import (
+	"context"
+
+	"google.golang.org/grpc"
+)
+
+type Registrar func(grpc.ServiceRegistrar)
+
+func Serve(ctx context.Context, d any, public, internal Registrar) error { return nil }
+`
+
+// TestPanicRecoveryGateAcceptsACarrierBorneComponent — направление (б) для
+// НОВОЙ половины предпосылки: компонент без своих листенеров законен ровно
+// тогда, когда листенеры поднимает носитель.
+//
+// Без этой пробы предпосылка ловила бы форму («листенеров ноль») вместо существа
+// («ноль, и никто не поднимает их вместо него») — и объявляла бы находкой сам
+// перевод, краснея тем сильнее, чем дальше он продвинулся.
+func TestPanicRecoveryGateAcceptsACarrierBorneComponent(t *testing.T) {
+	root := synthTree(t, synthCarrierRoot, map[string]string{
+		"pkg/servicehost/serve.go": synthCarrierPkg,
+	})
+	res := auditPanicRecoveryWiring(t, root)
+	t.Log(res.summary)
+	if len(res.findings) != 0 {
+		t.Fatalf("компонент на носителе объявлен находкой:\n%s", strings.Join(res.findings, "\n"))
+	}
+	if !strings.Contains(res.summary, "компонентов на носителе контура (своих листенеров нет) 1") {
+		t.Fatalf("перепись не назвала компонент на носителе — «ноль находок» неотличимо "+
+			"от «ноль прочитанного»:\n%s", res.summary)
+	}
+}
+
+// TestPanicRecoveryGateRefusesAComponentThatServesNothing — направление (а) для
+// той же половины: ни своих листенеров, ни носителя → предпосылка распознавания
+// не выполнена, и молчание гейта ничего не доказывало бы.
+//
+// Гоняется ТА ЖЕ функция, что исполняет предпосылку в гейте
+// (`componentsWithoutAListenerOrACarrier`), а не её копия: копия доказывала бы
+// свойство копии. Вход — тот же, что аудит собирает по дереву.
+func TestPanicRecoveryGateRefusesAComponentThatServesNothing(t *testing.T) {
+	components := []listenerComponent{{name: "demo", cmdRoot: "services/demo/cmd"}}
+
+	// (а) ни листенеров, ни носителя — предпосылка обязана назвать компонент.
+	carrierless, borne := componentsWithoutAListenerOrACarrier(components,
+		map[string]int{}, map[string]bool{})
+	if len(carrierless) == 0 {
+		t.Fatal("компонент без листенеров и без носителя принят — предпосылка распознавания " +
+			"не проверяется, и молчание гейта ничего не доказывает")
+	}
+	if !strings.Contains(strings.Join(carrierless, "\n"), "своих листенеров нет и носитель не позван") {
+		t.Fatalf("отказ не называет предмет:\n%s", strings.Join(carrierless, "\n"))
+	}
+	if borne != 0 {
+		t.Fatalf("компонент без носителя засчитан носителю: %d", borne)
+	}
+
+	// (б) законные близнецы той же формы: свои листенеры ЛИБО носитель — оба молчат.
+	if got, _ := componentsWithoutAListenerOrACarrier(components,
+		map[string]int{"demo": 2}, map[string]bool{}); len(got) != 0 {
+		t.Fatalf("компонент со своими листенерами объявлен находкой: %v", got)
+	}
+	if got, borne := componentsWithoutAListenerOrACarrier(components,
+		map[string]int{}, map[string]bool{"demo": true}); len(got) != 0 || borne != 1 {
+		t.Fatalf("компонент на носителе объявлен находкой (%v) либо не сосчитан (%d)", got, borne)
+	}
+}

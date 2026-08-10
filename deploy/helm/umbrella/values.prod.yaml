@@ -281,9 +281,10 @@ vpc:
     enabled: true
     adminPodsSelector: {}
   # AuthZ: per-RPC IAM Check (default iamEndpoint kacho-iam-internal:9091),
-  # FGA-filtered List ON + fail-closed, write-side FGA ON, breakglass OFF.
+  # FGA-filtered List ON + fail-closed, write-side FGA ON. Ручки обхода у vpc
+  # больше нет: контур поднимает общий носитель (pkg/servicehost), который ставит
+  # звено решения о доступе всегда, поэтому отменять его нечем.
   authz:
-    breakglass: false
     # Кто вправе ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*)
     # на оба листенера vpc. Пустой список НЕ означает «никому»: contract corelib
     # сужает круг только на непустом, поэтому пустой означает «любой пир с

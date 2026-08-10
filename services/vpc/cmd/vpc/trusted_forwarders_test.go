@@ -41,7 +41,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
 )
 
 const (
@@ -117,10 +116,14 @@ func chainOutcome(t *testing.T, ctx context.Context, forwarders grpcsrv.TrustedF
 		return nil, nil
 	}
 
-	// Порядок ровно тот, что собирает composition root: пара извлечения → AuthN →
-	// authz. Сворачиваем справа налево, чтобы первым исполнялось первое звено.
-	chain := append(grpcsrv.PrincipalExtractUnary(forwarders),
-		handler.AuthNUnaryInterceptor(true))
+	// Порядок ровно тот, что собирает носитель контура: пара извлечения → решение
+	// о доступе. Сворачиваем справа налево, чтобы первым исполнялось первое звено.
+	//
+	// Отдельного AuthN-стража между ними больше нет: звено решения о доступе само
+	// отвергает неназванного вызывающего безусловно (в любом режиме), тогда как
+	// снятый страж делал это только в боевом. Случаи ниже от этого не изменились —
+	// они утверждают на исходе, а исход прежний.
+	chain := grpcsrv.PrincipalExtractUnary(forwarders)
 	next := func(ctx context.Context, req any) (any, error) {
 		return authzIntr.Unary()(ctx, req, info, final)
 	}

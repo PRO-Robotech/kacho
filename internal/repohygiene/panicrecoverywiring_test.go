@@ -42,6 +42,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -60,11 +61,12 @@ import (
 // текстовый поиск «grpc.ChainUnaryInterceptor» был бы на этом слеп.
 const grpcImportPath = "google.golang.org/grpc"
 
-// carrierImportPath — общий носитель контура. Компонент, импортирующий его из
-// композиционного корня, СВОИХ листенеров не поднимает: их поднимает носитель, и
-// звено восстановления паники стоит в его цепочке. Признак читается по
-// ОБЪЯВЛЕНИЮ ИМПОРТА, а не по отсутствию находок: «ноль своих листенеров» и
-// «обход не прочитал корень» иначе выглядели бы одинаково.
+// carrierImportPath — носитель входящего пути. Компонент, переведённый на него,
+// СВОИХ листенеров не поднимает: их поднимает `servicehost.Serve`, и звено
+// восстановления паники стоит в ЕГО цепочке (вторым, сразу под журналом
+// доступа). Поэтому «у компонента ноль листенеров» перестало быть однозначным
+// признаком сломанного распознавания — но однозначным оно обязано остаться, и
+// различает два случая именно этот импорт.
 const carrierImportPath = "github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 // panicRecoveryScanRoots — где ищем сами звенья. Звено вправе жить в общем
@@ -166,8 +168,8 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		listeners       int
 		covered         int
 		withListeners   []string
-		carrierBorne    []string
-		silent          []string
+		compListeners   = map[string]int{}
+		compUsesCarrier = map[string]bool{}
 	)
 	for _, comp := range components {
 		svc := comp.name
@@ -179,8 +181,6 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 			continue // сервис без композиционного корня — предмета нет
 		}
 		serviceHasListener := false
-		serviceOnCarrier := false
-		scannedForThisComponent := 0
 		for _, b := range binDirs {
 			if !b.IsDir() {
 				continue
@@ -192,10 +192,11 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 					"ничего не доказывает", relTo(root, pkgDir), perr)
 			}
 			scannedPkgs++
-			scannedForThisComponent++
 			scannedFiles += len(pkg.files)
-			if pkg.importsAny(carrierImportPath) {
-				serviceOnCarrier = true
+			for _, f := range pkg.files {
+				if importLocalNameOf(f, carrierImportPath) != "" {
+					compUsesCarrier[svc] = true
+				}
 			}
 
 			sites := pkg.listenerSites()
@@ -203,6 +204,7 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 				continue
 			}
 			serviceHasListener = true
+			compListeners[svc] += len(sites)
 			for _, s := range sites {
 				listeners++
 				var calls []recoveryKey
@@ -228,54 +230,46 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		if serviceHasListener {
 			withListeners = append(withListeners, svc)
 		}
-		switch {
-		case serviceHasListener:
-		case serviceOnCarrier:
-			carrierBorne = append(carrierBorne, svc)
-		case scannedForThisComponent > 0:
-			// Корень прочитан, листенеров нет, носитель не импортирован — это НЕ
-			// «нечего проверять», а именно поломка распознавания: до перевода на
-			// носитель такого состояния у компонента с корнем не бывает.
-			silent = append(silent, svc)
-		}
 	}
 
+	carrierless, carrierBorne := componentsWithoutAListenerOrACarrier(components, compListeners, compUsesCarrier)
+
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
-	if scannedServices == 0 || scannedFiles == 0 || listeners == 0 {
-		t.Fatalf("гейт осмотрел %d компонентов, %d композиционных пакетов, %d файлов "+
-			"и нашёл %d листенеров — обход ничего не прочитал, молчание "+
-			"ничего не доказывает", scannedServices, scannedPkgs, scannedFiles, listeners)
+	//
+	// Ноль ЛИСТЕНЕРОВ сам по себе таким признаком быть перестал: компонент на
+	// носителе контура своих не поднимает, и дерево, где переведены все, дало бы
+	// здесь честный ноль. Поэтому предметом стало «ноль И ни одного компонента на
+	// носителе» — то есть обход не нашёл НИ ОДНОГО поднимающего слушатели, ни
+	// прямо, ни через носитель.
+	if scannedServices == 0 || scannedFiles == 0 || (listeners == 0 && carrierBorne == 0) {
+		t.Fatalf("гейт осмотрел %d компонентов, %d композиционных пакетов, %d файлов, "+
+			"нашёл %d листенеров и %d компонентов на носителе — обход ничего не прочитал, "+
+			"молчание ничего не доказывает",
+			scannedServices, scannedPkgs, scannedFiles, listeners, carrierBorne)
 	}
 	sort.Strings(withListeners)
 
-	// Предпосылка распознавания, и она ОБУСЛОВЛЕНА, а не абсолютна.
+	// Предпосылка распознавания, и она ДВУСОСТАВНАЯ с тех пор, как часть
+	// компонентов переехала на носитель контура.
 	//
 	// Прежняя редакция требовала «листенеров не меньше, чем компонентов»,
-	// объясняя это тем, что у каждого их по два (public :9090 + internal :9091,
-	// security.md «internal НЕ освобождён»). Основание перестало быть верным:
-	// компонент, переехавший на общий носитель контура (`pkg/servicehost`),
-	// СВОИХ листенеров не поднимает вовсе — их поднимает носитель, и звено
-	// восстановления паники стоит в ЕГО цепочке (одной на оба слушателя).
-	// Абсолютное сравнение объявляло бы такой переезд поломкой распознавания, а
-	// заодно было бы выполнимо случайно: на дереве до перевода compute оно
-	// сходилось РОВНО (восемь против восьми), то есть первый же следующий
-	// переезд его ронял.
+	// опираясь на то, что каждый поднимает свои два (public :9090 + internal
+	// :9091). Компонент на носителе своих не поднимает вовсе — их поднимает
+	// `servicehost.Serve`, — поэтому такое требование объявляло бы находкой
+	// САМ ПЕРЕВОД и краснело бы ровно по мере его продвижения. Одновременно
+	// отбросить требование нельзя: «ноль листенеров» обязано оставаться
+	// различимым, иначе сломанное распознавание читалось бы как чистое дерево.
 	//
-	// Поэтому предпосылка спрашивает с тех, у кого предмет есть: компонент,
-	// поднимающий листенеры сам, обязан поднимать оба; компонент на носителе
-	// обязан быть УЗНАН по импорту, а не по отсутствию находок. «Ноль своих
-	// листенеров» и «обход не прочитал корень» перестают выглядеть одинаково.
-	sort.Strings(carrierBorne)
-	sort.Strings(silent)
-	if len(silent) > 0 {
-		t.Fatalf("компоненты, у которых обход не нашёл НИ ОДНОГО листенера и которые при этом "+
-			"не стоят на носителе контура: %v — распознавание сломано, и зелёный гейт по ним "+
-			"означал бы «не нашёл», а не «всё есть»", silent)
-	}
-	if own := scannedServices - len(carrierBorne); listeners < own {
-		t.Fatalf("листенеров (%d) меньше, чем компонентов со СВОЕЙ сборкой (%d из %d; "+
-			"на носителе контура: %v) — распознавание листенеров сломано",
-			listeners, own, scannedServices, carrierBorne)
+	// Поэтому предпосылка теперь такая: НУЛЕВОЕ число своих листенеров у
+	// компонента законно РОВНО тогда, когда он зовёт носитель. Судится именно
+	// ноль — он и есть неоднозначный случай: найденный листенер доказывает, что
+	// распознавание работает, а ненайденный не доказывает ничего, пока не назван
+	// тот, кто поднимает листенеры вместо него.
+	if len(carrierless) > 0 {
+		sort.Strings(carrierless)
+		t.Fatalf("компоненты без своих листенеров и без носителя контура (%d):\n  %s\n"+
+			"Либо распознавание листенеров сломано (и молчание гейта ничего не доказывает), "+
+			"либо компонент не служит ничего.", len(carrierless), strings.Join(carrierless, "\n  "))
 	}
 
 	return panicRecoveryAudit{
@@ -289,9 +283,8 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 			"; распознано звеньев восстановления паники " + strconv.Itoa(len(known)) +
 			"; листенеров " + strconv.Itoa(listeners) +
 			", из них со звеном " + strconv.Itoa(covered) +
-			"; листенеры у: " + strings.Join(withListeners, ", ") +
-			"; на носителе контура (своих листенеров нет by construction): " +
-			strings.Join(carrierBorne, ", "),
+			"; компонентов на носителе контура (своих листенеров нет) " + strconv.Itoa(carrierBorne) +
+			"; листенеры у: " + strings.Join(withListeners, ", "),
 	}
 }
 
@@ -441,18 +434,6 @@ type listenerChainSite struct {
 	label string
 	args  []ast.Expr
 	fn    *ast.FuncDecl
-}
-
-// importsAny сообщает, импортирует ли ХОТЯ БЫ ОДИН файл пакета данный путь.
-func (p *chainPkgInfo) importsAny(path string) bool {
-	for _, f := range p.files {
-		for _, imp := range f.Imports {
-			if v, err := strconv.Unquote(imp.Path.Value); err == nil && v == path {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func loadPkgForChainScan(dir string) (*chainPkgInfo, error) {
@@ -813,4 +794,33 @@ func relTo(root, p string) string {
 		return p
 	}
 	return r
+}
+
+// componentsWithoutAListenerOrACarrier — ПРЕДПОСЫЛКА распознавания, вынесенная
+// отдельной функцией, чтобы пробы инъекции гоняли ТО ЖЕ САМОЕ, что гоняется по
+// дереву: проба, повторяющая предикат своей копией, доказывала бы свойство
+// копии.
+//
+// Возвращает компоненты, у которых нет ни своих листенеров, ни носителя, и
+// счётчик тех, чьи листенеры поднимает носитель. Второе значение нужно переписи:
+// «ноль находок» обязано быть отличимо от «ноль прочитанного», а компонент на
+// носителе иначе не виден в отчёте вовсе.
+func componentsWithoutAListenerOrACarrier(
+	components []listenerComponent,
+	listenersOf map[string]int,
+	usesCarrier map[string]bool,
+) (carrierless []string, carrierBorne int) {
+	for _, comp := range components {
+		if listenersOf[comp.name] > 0 {
+			continue
+		}
+		if usesCarrier[comp.name] {
+			carrierBorne++
+			continue
+		}
+		carrierless = append(carrierless, fmt.Sprintf("%s: своих листенеров нет и носитель не позван",
+			comp.name))
+	}
+	sort.Strings(carrierless)
+	return carrierless, carrierBorne
 }
