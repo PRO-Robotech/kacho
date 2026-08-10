@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/status"
@@ -775,10 +776,15 @@ type fakeFGARegisterOutbox struct{ w *fakeWriter }
 // настоящего, не даёт спутать проброс с выдумыванием на месте.
 func (o *fakeFGARegisterOutbox) Emit(_ context.Context, eventType string, intent domain.FGARegisterIntent) (time.Time, error) {
 	o.w.pendingFGA = append(o.w.pendingFGA, fgaIntentEvent{EventType: eventType, Intent: intent})
-	fakeFGAStampSeq++
-	return fakeFGAStampBase.Add(time.Duration(fakeFGAStampSeq) * time.Millisecond), nil
+	seq := atomic.AddInt64(&fakeFGAStampSeq, 1)
+	return fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond), nil
 }
 
+// Счётчик атомарный: рабочий очередей исполняет операции ПАРАЛЛЕЛЬНО, и две
+// пробы, эмитящие намерение одновременно, читали и писали его без синхронизации.
+// Состязание в дублёре — не «шум теста»: под `-race` оно роняет пакет, а без
+// `-race` даёт неповторяющиеся штампы, то есть тихо ломает то самое свойство,
+// ради которого дублёр версию и штампует.
 var (
 	fakeFGAStampBase = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	fakeFGAStampSeq  int64

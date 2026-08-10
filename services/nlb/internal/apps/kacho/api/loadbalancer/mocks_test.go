@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
@@ -839,10 +840,15 @@ func (o *fakeFGARegisterOutbox) Emit(ctx context.Context, eventType string, inte
 		return time.Time{}, o.w.r.failOnOutbox
 	}
 	o.w.pendingFGA = append(o.w.pendingFGA, fgaIntentEvent{EventType: eventType, Intent: intent})
-	fakeFGAStampSeq++
-	return fakeFGAStampBase.Add(time.Duration(fakeFGAStampSeq) * time.Millisecond), nil
+	seq := atomic.AddInt64(&fakeFGAStampSeq, 1)
+	return fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond), nil
 }
 
+// Счётчик атомарный: рабочий очередей исполняет операции ПАРАЛЛЕЛЬНО, и две
+// пробы, эмитящие намерение одновременно, читали и писали его без синхронизации.
+// Состязание в дублёре — не «шум теста»: под `-race` оно роняет пакет, а без
+// `-race` даёт неповторяющиеся штампы, то есть тихо ломает то самое свойство,
+// ради которого дублёр версию и штампует.
 var (
 	fakeFGAStampBase = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
 	fakeFGAStampSeq  int64
