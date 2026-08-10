@@ -83,6 +83,24 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"registry_registry": "Registry %s not found",
 }
 
+// OwnerNotFoundFormat отдаёт формат промаха владельца для типа объекта модели —
+// ровно тот, которым звено решения о доступе ответит на скрывающем отказе.
+//
+// Существует ради ОДНОГО читателя: носитель контура (`pkg/servicehost`) сверяет
+// с ним форму, объявленную сервисом в своём дескрипторе. Пока сверки не было,
+// про один и тот же текст утверждали в двух местах — здесь и в дескрипторе, — и
+// расхождение между ними осталось бы незамеченным ровно потому, что отвечает
+// всегда ЭТА таблица: дескриптор объявил бы одно, вызывающий увидел бы другое,
+// и «объявлено» перестало бы что-либо значить.
+//
+// ok ложен, если у типа нет текста владельца: тогда отказ отвечает нейтральным
+// «not found», отличимым от настоящего промаха, — и это находка на стороне
+// носителя, а не умолчание здесь.
+func OwnerNotFoundFormat(objectType string) (string, bool) {
+	f, ok := hideExistenceNotFoundFormats[objectType]
+	return f, ok
+}
+
 // hideExistenceMessage is the message returned when a read is refused on an
 // object the caller may not know exists.
 //

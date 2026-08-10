@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -37,40 +38,63 @@ import (
 
 func chainSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Logger:     slog.Default(),
-		Forwarders: grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		Service:        "kacho-demo",
+		Logger:         slog.Default(),
+		Forwarders:     grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		HandlingBudget: 30 * time.Second,
 	}
 }
 
-// TestPanicRecoveryIsOutermostAndDecisionIsLast — порядок звеньев.
+// TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast — порядок звеньев.
 //
-// Восстановление паники обязано быть ПЕРВЫМ: оно оборачивает всё нижележащее,
-// включая сами звенья. Иначе паника В ЗВЕНЕ уронит процесс, и дефект на пути
-// запроса одного тенанта прекратит обслуживание всех.
+// Журнал доступа обязан быть ПЕРВЫМ (самым внешним): он записывает исход любого
+// вызова, включая паниковавший. Стоя внутри восстановления паники, он пропускал
+// бы ровно тот исход, который тяжелее всех.
 //
-// Решение о доступе обязано быть ПОСЛЕДНИМ из четырёх: оно читает уже
-// извлечённого субъекта, а решение по ещё не извлечённой личности решением не
-// является.
-func TestPanicRecoveryIsOutermostAndDecisionIsLast(t *testing.T) {
+// Восстановление паники — ВТОРЫМ: оно оборачивает всё нижележащее, включая сами
+// звенья. Иначе паника В ЗВЕНЕ уронит процесс, и дефект на пути запроса одного
+// тенанта прекратит обслуживание всех.
+//
+// Решение о доступе обязано быть ПОСЛЕДНИМ: оно читает уже извлечённого
+// субъекта, а решение по ещё не извлечённой личности решением не является.
+func TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast(t *testing.T) {
 	var slot decisionSlot
 	unary := unaryChain(chainSpec(), &slot)
 	stream := streamChain(chainSpec(), &slot)
 
-	if len(unary) != 4 || len(stream) != 4 {
+	// Дескриптор пробы гейта мутаций не несёт (ось не объявлена), поэтому его
+	// звена в цепочке нет — отсюда шесть, а не семь. Длина утверждается вместе с
+	// причиной: правка длины обязана быть правкой контура, а не побочным
+	// следствием чужого изменения.
+	if len(unary) != 6 || len(stream) != 6 {
 		t.Fatalf("цепочка изменила длину: unary %d, stream %d. Это не косметика — "+
 			"позиции звеньев несут причину каждая, и правка длины обязана быть правкой контура",
 			len(unary), len(stream))
 	}
-	// Восстановление паники распознаётся ПО СУЩЕСТВУ (это то же значение, что
-	// отдаёт общее звено), а не по имени переменной.
+	// Звенья распознаются ПО СУЩЕСТВУ (то же значение, что отдаёт конструктор),
+	// а не по имени переменной.
+	if got, want := funcID(unary[0]), funcID(accessLogUnary(chainSpec().Logger)); got != want {
+		t.Fatalf("первым unary-звеном стоит %s, а обязан — журнал доступа (%s): "+
+			"внутри восстановления паники он не увидел бы паниковавший вызов", got, want)
+	}
+	if got, want := funcID(stream[0]), funcID(accessLogStream(chainSpec().Logger)); got != want {
+		t.Fatalf("первым stream-звеном стоит %s, а обязан — журнал доступа (%s)", got, want)
+	}
 	wantUnary := funcID(grpcsrv.UnaryPanicRecovery(chainSpec().Logger))
-	if got := funcID(unary[0]); got != wantUnary {
-		t.Fatalf("первым unary-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantUnary)
+	if got := funcID(unary[1]); got != wantUnary {
+		t.Fatalf("вторым unary-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantUnary)
 	}
 	wantStream := funcID(grpcsrv.StreamPanicRecovery(chainSpec().Logger))
-	if got := funcID(stream[0]); got != wantStream {
-		t.Fatalf("первым stream-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantStream)
+	if got := funcID(stream[1]); got != wantStream {
+		t.Fatalf("вторым stream-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantStream)
+	}
+	// Верхняя граница обработки — сразу за восстановлением: срок обязан накрывать
+	// и вопрос о доступе, и запросы к своей БД.
+	if got, want := funcID(unary[2]), funcID(handlingBudgetUnary(time.Second)); got != want {
+		t.Fatalf("третьим unary-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
+	}
+	if got, want := funcID(stream[2]), funcID(handlingBudgetStream(time.Second)); got != want {
+		t.Fatalf("третьим stream-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
 	}
 	// Последним — слот решения о доступе. Проверяем ПОВЕДЕНИЕМ, а не именем:
 	// пустой слот отказывает, и это его единственная наблюдаемая примета.
@@ -119,9 +143,13 @@ func TestForwarderCircleReachesBothChains(t *testing.T) {
 	}
 	var slot decisionSlot
 	chain := unaryChain(spec, &slot)
+	// Пара извлечения личности стоит НЕПОСРЕДСТВЕННО перед решением о доступе —
+	// её позиция отсчитывается от хвоста, а не от головы: иначе проба ломалась бы
+	// при появлении любого звена выше и краснела бы на исправном контуре.
+	at := len(chain) - 1 - len(pair)
 	for i, want := range pair {
-		if funcID(chain[i+1]) != funcID(want) {
-			t.Fatalf("звено %d цепочки не совпадает со звеном пары извлечения личности", i+1)
+		if funcID(chain[at+i]) != funcID(want) {
+			t.Fatalf("звено %d цепочки не совпадает со звеном пары извлечения личности", at+i)
 		}
 	}
 }

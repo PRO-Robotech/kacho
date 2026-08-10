@@ -251,21 +251,95 @@ func TestO5_HiddenTypeWithoutRefusalFormRefusesStart(t *testing.T) {
 	t.Logf("О5 (а) красный: %s", msg)
 }
 
+// ownerVoicedType — тип, у которого ДЕЙСТВИТЕЛЬНО есть текст владельца, вместе
+// с этим текстом.
+//
+// Имя типа выписано, а форма — НЕТ: она берётся у того, кто ею отвечает
+// (`pkg/authz`). Выписанная форма разошлась бы с производителем ровно тем
+// способом, который отказ О5 и ловит, — и проба зеленела бы на своей копии.
+// Отсутствие типа в таблице делает пробу невозможной, и это сказано вслух:
+// иначе «тип сняли» выглядело бы как «проверка прошла».
+func ownerVoicedType(t *testing.T) (servicecontract.ObjectType, servicecontract.NotFoundFormat) {
+	t.Helper()
+	const ot = "vpc_network"
+	form, ok := authz.OwnerNotFoundFormat(ot)
+	if !ok {
+		t.Fatalf("тип %q больше не значится в таблице промахов владельцев — законного близнеца "+
+			"построить не из чего. Возьмите любой действующий тип: проба обязана утверждать "+
+			"сходимость объявления с производителем текста, а не молчать", ot)
+	}
+	return ot, servicecontract.NotFoundFormat(form)
+}
+
 // TestO5_DeclaredFormSatisfiesTheCatalog — законный близнец.
 func TestO5_DeclaredFormSatisfiesTheCatalog(t *testing.T) {
+	ot, form := ownerVoicedType(t)
+
 	cat := lawfulCatalog()
 	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
 	row.HideExistence = true
-	row.ObjectType = "demo_widget"
+	row.ObjectType = ot
 	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
 
 	s := naAxes()
 	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
-		"demo_widget": "Widget %s not found",
+		ot: form,
 	})
 	if _, err := audit(s, lawfulServed(), cat, lawfulMap()); err != nil {
 		t.Fatalf("объявленная форма отказа объявлена находкой: %v", err)
 	}
+}
+
+// TestO5_DeclaredFormDivergingFromTheOwnerVoiceIsRefused — форма, разошедшаяся с
+// той, которой РЕАЛЬНО ответит звено решения о доступе.
+//
+// Это второе место об одном предмете: объявление в дескрипторе и таблица, из
+// которой берётся текст. Отвечает таблица, поэтому разошедшееся объявление
+// описывает не действительность — и без этого отказа расхождение не краснело бы
+// нигде.
+func TestO5_DeclaredFormDivergingFromTheOwnerVoiceIsRefused(t *testing.T) {
+	ot, form := ownerVoicedType(t)
+
+	cat := lawfulCatalog()
+	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
+	row.HideExistence = true
+	row.ObjectType = ot
+	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+
+	s := naAxes()
+	// Форма правильной ФОРМЫ (ровно один `%s`) и неправильного ТЕКСТА: проверка
+	// обязана ловить именно расхождение, а не подстановку.
+	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
+		ot: "Resource %s does not exist",
+	})
+	msg := refusesAudit(t, s, lawfulServed(), cat, lawfulMap(), string(ot), "расходится")
+	if !strings.Contains(msg, string(form)) {
+		t.Fatalf("отказ не назвал форму, которой ответит звено, — чинить по нему нечего:\n%s", msg)
+	}
+	t.Logf("расхождение объявления с голосом владельца красное: %s", msg)
+}
+
+// TestO5_TypeWithoutOwnerVoiceIsRefused — тип, у которого текста владельца нет
+// вовсе: звено ответило бы нейтральным «not found», не похожим ни на один ответ
+// владельца, — то есть той самой приметой, ради устранения которой скрытие и
+// делается.
+func TestO5_TypeWithoutOwnerVoiceIsRefused(t *testing.T) {
+	const absent = "demo_widget"
+	if _, ok := authz.OwnerNotFoundFormat(absent); ok {
+		t.Fatalf("тип %q завели в таблицу промахов владельцев — проба потеряла предмет "+
+			"и обязана взять другой отсутствующий тип, а не зеленеть", absent)
+	}
+	cat := lawfulCatalog()
+	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
+	row.HideExistence = true
+	row.ObjectType = absent
+	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+
+	s := naAxes()
+	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
+		absent: "Widget %s not found",
+	})
+	refusesAudit(t, s, lawfulServed(), cat, lawfulMap(), absent, "таблице промахов владельцев")
 }
 
 // TestO5_FormWithoutSingleVerbIsRefused — форма отказа обязана нести РОВНО один
