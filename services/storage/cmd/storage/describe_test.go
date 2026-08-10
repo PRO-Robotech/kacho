@@ -28,6 +28,7 @@ package main
 // ТРАНСПОРТА, а ребро решения о доступе обязано быть объявлено на ЛЮБОЙ посадке.
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -88,7 +89,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, error) {
 	t.Helper()
 	log := discard()
-	return describe(cfg, log, buildListFilter(cfg, nil, log))
+	return describe(cfg, log, buildListFilter(cfg, nil, log), probeExistence{})
 }
 
 // TestDescribeIsAcceptedByTheConstructor — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первым:
@@ -174,7 +175,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestJournalOfThisProcessGoesToItsOwnLogger(t *testing.T) {
 	mine := discard()
 	cfg := bootConfig(t, nil)
-	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine))
+	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine), probeExistence{})
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -489,4 +490,17 @@ func TestStorageServesNoServerStream(t *testing.T) {
 			"нет ни одного: величина утверждает решение про подписки там, где подписок нет", budget)
 	}
 	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: 0", methods)
+}
+
+// probeExistence — порт сверки существования для проб композиционного корня.
+//
+// Отвечает «объекта нет» на всё: предмет этих проб — отказы старта, которые
+// носитель считает ДО первого соединения, и до вопроса к базе дело не доходит.
+// Настоящая проба живёт на пуле (`internal/repo/pg`), и подменять её здесь
+// поведением было бы подменой предмета: конструктор требует ПРИНЕСЁННЫЙ порт, а
+// не работающий.
+type probeExistence struct{}
+
+func (probeExistence) ObjectExists(context.Context, string, string) (bool, error) {
+	return false, nil
 }

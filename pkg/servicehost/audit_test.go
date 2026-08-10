@@ -256,6 +256,28 @@ func TestO4_NilNarrowerIsNotWiring(t *testing.T) {
 	refusesAudit(t, s, lawfulServed(), cat, lawfulMap(), "Narrowers")
 }
 
+// hidingOnBothSides выставляет признак скрытия ТАМ ЖЕ, где он живёт на реальном
+// пути, — и в строке каталога, и в записи карты прав.
+//
+// Две структуры, один источник: обе приезжают из одной аннотации дескриптора.
+// Пробы выставляли признак только в каталоге, и это работало, пока судья читал
+// каталог. Судья сведён с рантаймом (`authz.HidesExistenceOnDeny` смотрит запись
+// карты), поэтому проба, правящая одну сторону, описывала бы состояние, которого
+// на реальном пути не бывает: аннотация не может приехать в каталог и не приехать
+// в карту.
+func hidingOnBothSides(cat catalogView, m authz.RPCMap, method string,
+	ot servicecontract.ObjectType) (catalogView, authz.RPCMap) {
+	row := cat.rows[servicecontract.MethodFQN(method)]
+	row.HideExistence = true
+	row.ObjectType = ot
+	cat.rows[servicecontract.MethodFQN(method)] = row
+
+	e := m[method]
+	e.HideExistence = true
+	m[method] = e
+	return cat, m
+}
+
 // ── О5: каталог называет тип среди скрывающих, форма отказа не объявлена ────
 
 func TestO5_HiddenTypeWithoutRefusalFormRefusesStart(t *testing.T) {
@@ -293,17 +315,14 @@ func ownerVoicedType(t *testing.T) (servicecontract.ObjectType, servicecontract.
 func TestO5_DeclaredFormSatisfiesTheCatalog(t *testing.T) {
 	ot, form := ownerVoicedType(t)
 
-	cat := lawfulCatalog()
-	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
-	row.HideExistence = true
-	row.ObjectType = ot
-	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+	cat, rights := hidingOnBothSides(lawfulCatalog(), lawfulMap(),
+		"/kacho.cloud.demo.v1.WidgetService/Get", ot)
 
 	s := naAxes()
 	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
 		ot: form,
 	})
-	if _, err := audit(s, lawfulServed(), cat, lawfulMap()); err != nil {
+	if _, err := audit(s, lawfulServed(), cat, rights); err != nil {
 		t.Fatalf("объявленная форма отказа объявлена находкой: %v", err)
 	}
 }
@@ -318,11 +337,8 @@ func TestO5_DeclaredFormSatisfiesTheCatalog(t *testing.T) {
 func TestO5_DeclaredFormDivergingFromTheOwnerVoiceIsRefused(t *testing.T) {
 	ot, form := ownerVoicedType(t)
 
-	cat := lawfulCatalog()
-	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
-	row.HideExistence = true
-	row.ObjectType = ot
-	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+	cat, rights := hidingOnBothSides(lawfulCatalog(), lawfulMap(),
+		"/kacho.cloud.demo.v1.WidgetService/Get", ot)
 
 	s := naAxes()
 	// Форма правильной ФОРМЫ (ровно один `%s`) и неправильного ТЕКСТА: проверка
@@ -330,7 +346,7 @@ func TestO5_DeclaredFormDivergingFromTheOwnerVoiceIsRefused(t *testing.T) {
 	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
 		ot: "Resource %s does not exist",
 	})
-	msg := refusesAudit(t, s, lawfulServed(), cat, lawfulMap(), string(ot), "расходится")
+	msg := refusesAudit(t, s, lawfulServed(), cat, rights, string(ot), "расходится")
 	if !strings.Contains(msg, string(form)) {
 		t.Fatalf("отказ не назвал форму, которой ответит звено, — чинить по нему нечего:\n%s", msg)
 	}
@@ -347,17 +363,14 @@ func TestO5_TypeWithoutOwnerVoiceIsRefused(t *testing.T) {
 		t.Fatalf("тип %q завели в таблицу промахов владельцев — проба потеряла предмет "+
 			"и обязана взять другой отсутствующий тип, а не зеленеть", absent)
 	}
-	cat := lawfulCatalog()
-	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
-	row.HideExistence = true
-	row.ObjectType = absent
-	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+	cat, rights := hidingOnBothSides(lawfulCatalog(), lawfulMap(),
+		"/kacho.cloud.demo.v1.WidgetService/Get", absent)
 
 	s := naAxes()
 	s.HideExistence = servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
 		absent: "Widget %s not found",
 	})
-	refusesAudit(t, s, lawfulServed(), cat, lawfulMap(), absent, "таблице промахов владельцев")
+	refusesAudit(t, s, lawfulServed(), cat, rights, absent, "таблице промахов владельцев")
 }
 
 // TestO5_FormWithoutSingleVerbIsRefused — форма отказа обязана нести РОВНО один
