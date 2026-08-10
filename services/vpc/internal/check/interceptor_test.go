@@ -287,31 +287,6 @@ func TestInterceptor_Unary_CacheHit(t *testing.T) {
 	require.Equal(t, 1, *calls, "повторный Check на ту же (subject,relation,object) должен попасть в cache (TTL 5s)")
 }
 
-// TestInterceptor_Unary_Breakglass_AllowsAll — Breakglass=true пропускает все
-// без Check.
-func TestInterceptor_Unary_Breakglass_AllowsAll(t *testing.T) {
-	intr := authz.NewInterceptor(authz.InterceptorOptions{
-		Cache:       authz.NewCache(0),
-		ServiceName: "kacho-vpc-test",
-		Map:         check.PermissionMap(),
-		Breakglass:  true,
-	})
-	uIntr := intr.Unary()
-	called := false
-	handler := func(ctx context.Context, req any) (any, error) {
-		called = true
-		return "ok", nil
-	}
-	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Delete"}
-	ctx := principalCtx("user", "usr_bob")
-	req := &vpcv1.DeleteNetworkRequest{NetworkId: "enp_x"}
-
-	resp, err := uIntr(ctx, req, info, handler)
-	require.NoError(t, err)
-	require.Equal(t, "ok", resp)
-	require.True(t, called)
-}
-
 // TestPermissionMap_CoverageSnapshot — drift-guard: должно быть >= 50 entries
 // (9 services × ~5-10 методов + Operation). Если карта схлопнулась —
 // видимо забыли регистрировать новый RPC.
@@ -320,26 +295,4 @@ func TestPermissionMap_CoverageSnapshot(t *testing.T) {
 	if len(m) < 50 {
 		t.Errorf("PermissionMap слишком мала (%d entries): подозрение на drift регистраций", len(m))
 	}
-}
-
-// TestFactory_NoIAMConn_NoBreakglass_Error — без IAMConn и без Breakglass
-// фабрика возвращает ErrIAMConnNotConfigured.
-func TestFactory_NoIAMConn_NoBreakglass_Error(t *testing.T) {
-	_, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-vpc-test",
-		IAMConn:     nil,
-		Breakglass:  false,
-	})
-	require.ErrorIs(t, err, check.ErrIAMConnNotConfigured)
-}
-
-// TestFactory_Breakglass_NoIAMConn_OK — Breakglass=true позволяет nil-IAMConn.
-func TestFactory_Breakglass_NoIAMConn_OK(t *testing.T) {
-	intr, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-vpc-test",
-		IAMConn:     nil,
-		Breakglass:  true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, intr)
 }

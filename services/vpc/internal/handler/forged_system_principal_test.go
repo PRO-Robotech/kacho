@@ -33,9 +33,11 @@ import (
 	"google.golang.org/grpc/status"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -120,44 +122,107 @@ func TestListByInstance_RealPrincipalStillAsksTheModel(t *testing.T) {
 	assert.Equal(t, 1, peer.Calls, "у настоящей личности видимость обязана спрашиваться у модели")
 }
 
-// Тот же вопрос на уровне AuthN-стража: предъявлена ли личность.
+// Тот же вопрос на уровне звена решения о доступе: предъявлена ли личность.
 //
-// Страж отвечал на него, перечисляя ДВА известных значения идентификатора
-// (`anonymous`, `bootstrap`), — то есть любое ТРЕТЬЕ значение при том же типе
-// проходило как «личность предъявлена». Признак же не в идентификаторе: тип
-// `system` целиком назначается вызывающим и служит на платформе ярлыком
-// анонимности, поэтому им не может называться никто. Ни один законный путь этот
-// тип не шлёт: служебные вызовы несут `user:system.<сервис>-<роль>`.
-func TestAuthN_DeclaredSystemTypeIsNotAnIdentity(t *testing.T) {
+// # Что здесь изменилось при переводе на носитель контура — и это НЕ косметика
+//
+// До перевода у vpc стоял СВОЙ страж (`handler.AuthNUnaryInterceptor`), который
+// отвергал ЛЮБОЙ принципал типа `system` — и делал это только в боевом режиме.
+// Носитель такого звена не ставит: цепочку принести нельзя, а решение о доступе
+// он принимает одним звеном (`pkg/authz`), чей предикат анонимности — общий на
+// платформу (`operations.Principal.IsAnonymous`) и сужает ИМЕННО анонимность:
+// пустую пару и зарезервированное слово `anonymous` в любом заявленном типе.
+//
+// Итог по полосам, названный прямо, а не сведённый к «всё то же самое»:
+//
+//   - метка анонимности края (`{system, anonymous}`) и отсутствие принципала
+//     вовсе → отказ ДО обращения к модели, и теперь БЕЗУСЛОВНО, в любом режиме,
+//     а не только в боевом. Это строже прежнего;
+//   - прочий заявленный `system` (`{system, bootstrap}`, `{system, <что угодно>}`)
+//     → доезжает до модели субъектом `user:<id>` и отвергается ОТСУТСТВИЕМ
+//     ВЫДАЧИ, а не свойством цепочки. Прежний страж отвергал его по построению.
+//     Дополнительной границы это не снимает: заявить тип и идентификатор может
+//     ТОЛЬКО пир из круга законных отправителей (пара извлечения личности
+//     проверяет сертификат), а такой пир и без того вправе прислать
+//     `{user, <идентификатор жертвы>}` — то есть ровно тот же субъект. Граница
+//     здесь одна, и её держит круг, а не отброшенный страж.
+//
+// Проба утверждает обе полосы на НАБЛЮДАЕМОМ: дошёл ли вызов до обработчика и
+// О КОМ спросили модель. Вторая половина обязательна — без неё «отказ» первой
+// полосы был бы неотличим от «модель ответила нет».
+func decisionOutcome(t *testing.T, p operations.Principal, modelSays bool) (reached bool, err error, asked []string) {
+	t.Helper()
+	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
+		ServiceName: "kacho-vpc-test",
+		Map:         check.PermissionMap(),
+		Client: authz.CheckClientFunc(func(_ context.Context, subject, _, _ string) (bool, error) {
+			asked = append(asked, subject)
+			return modelSays, nil
+		}),
+	})
+	ctx := context.Background()
+	if p.Type != "" || p.ID != "" {
+		ctx = operations.WithPrincipal(ctx, p)
+	}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/List"}
+	_, err = intr.Unary()(ctx, &vpcv1.ListNetworksRequest{ProjectId: "prj_x"}, info,
+		func(context.Context, any) (any, error) { reached = true; return nil, nil })
+	return reached, err, asked
+}
+
+// Анонимность личностью не является — и модель об этом даже не спрашивают.
+//
+// Модель здесь говорит «да» кому угодно: если бы отказ приходил от неё, проба
+// была бы зелёной по неверной причине. Утверждается именно то, что до неё не
+// дошли.
+func TestDecisionLink_AnonymityIsRefusedBeforeTheModelIsAsked(t *testing.T) {
 	for name, p := range map[string]operations.Principal{
-		"метка анонимности края": {Type: "system", ID: "anonymous"},
-		"fallback без auth":      {Type: "system", ID: "bootstrap"},
-		"третье значение id":     {Type: "system", ID: "sva_attacker"},
+		"метка анонимности края":    {Type: "system", ID: "anonymous"},
+		"личность не предъявлена":   {},
+		"анонимность с чужим типом": {Type: "user", ID: "anonymous"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			intr := handler.AuthNUnaryInterceptor(true)
-			reached := false
-			_, err := intr(
-				operations.WithPrincipal(context.Background(), p),
-				nil, &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/List"},
-				func(context.Context, any) (any, error) { reached = true; return nil, nil })
-
-			require.Error(t, err, "объявленный вызывающим тип не является предъявленной личностью")
+			reached, err, asked := decisionOutcome(t, p, true)
+			require.Error(t, err, "анонимность не является предъявленной личностью")
 			assert.Equal(t, codes.PermissionDenied, status.Code(err))
 			assert.False(t, reached)
+			assert.Empty(t, asked, "модель не должна опрашиваться о безымянном вызывающем")
 		})
 	}
 }
 
-// Контроль: настоящая личность по-прежнему проходит.
-func TestAuthN_RealPrincipalPasses(t *testing.T) {
-	intr := handler.AuthNUnaryInterceptor(true)
-	reached := false
-	_, err := intr(
-		operations.WithPrincipal(context.Background(),
-			operations.Principal{Type: "user", ID: "usr_alice"}),
-		nil, &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/List"},
-		func(context.Context, any) (any, error) { reached = true; return nil, nil })
+// Заявленный `system` с непустым идентификатором решает МОДЕЛЬ, а не цепочка.
+//
+// Проба закрепляет расхождение со снятым стражем именно как факт, а не как
+// «всё по-прежнему»: субъект собирается как `user:<id>` и уезжает в модель.
+// Изменится отображение принципала в субъект — проба покраснеет, и расхождение
+// не переживёт правку молча.
+func TestDecisionLink_DeclaredSystemPrincipalIsDecidedByTheModel(t *testing.T) {
+	for name, tc := range map[string]struct {
+		principal operations.Principal
+		subject   string
+	}{
+		"fallback без auth":  {operations.Principal{Type: "system", ID: "bootstrap"}, "user:bootstrap"},
+		"третье значение id": {operations.Principal{Type: "system", ID: "sva_attacker"}, "user:sva_attacker"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reached, err, asked := decisionOutcome(t, tc.principal, false)
+			require.Error(t, err, "выдачи на этот субъект нет — модель отвечает отказом")
+			assert.Equal(t, codes.PermissionDenied, status.Code(err))
+			assert.False(t, reached)
+			assert.Equal(t, []string{tc.subject}, asked,
+				"полоса обязана быть модельной: субъект назван и спрошен")
+		})
+	}
+}
+
+// Контроль: настоящая личность по-прежнему проходит. Без него оба отрицания выше
+// зеленели бы и от «сломали передачу личности вообще».
+func TestDecisionLink_RealPrincipalReachesTheHandler(t *testing.T) {
+	reached, err, asked := decisionOutcome(t,
+		operations.Principal{Type: "user", ID: "usr_alice"}, true)
 	require.NoError(t, err)
 	assert.True(t, reached)
+	assert.Equal(t, []string{"user:usr_alice"}, asked)
 }

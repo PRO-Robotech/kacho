@@ -63,7 +63,6 @@ authn:
 # от которой зависит решение о доступе, — прямое приглашение её удалить.
 authz:
   iamEndpoint: ""           # default cluster-internal kacho-iam-internal:9091
-  breakglass: false          # dev override — пропустить все Check
   checkTimeout: 2s
   cacheTtl: 5s
   denyRateLimitPerSec: 100

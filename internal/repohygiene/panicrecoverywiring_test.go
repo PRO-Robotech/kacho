@@ -42,6 +42,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -59,6 +60,14 @@ import (
 // имя `grpc` в каждом файле. Файл вправе импортировать его под своим именем;
 // текстовый поиск «grpc.ChainUnaryInterceptor» был бы на этом слеп.
 const grpcImportPath = "google.golang.org/grpc"
+
+// carrierImportPath — носитель входящего пути. Компонент, переведённый на него,
+// СВОИХ листенеров не поднимает: их поднимает `servicehost.Serve`, и звено
+// восстановления паники стоит в ЕГО цепочке (вторым, сразу под журналом
+// доступа). Поэтому «у компонента ноль листенеров» перестало быть однозначным
+// признаком сломанного распознавания — но однозначным оно обязано остаться, и
+// различает два случая именно этот импорт.
+const carrierImportPath = "github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 // panicRecoveryScanRoots — где ищем сами звенья. Звено вправе жить в общем
 // фундаменте, в сервисе или на крае; гейт не требует конкретного адреса, он
@@ -159,6 +168,8 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		listeners       int
 		covered         int
 		withListeners   []string
+		compListeners   = map[string]int{}
+		compUsesCarrier = map[string]bool{}
 	)
 	for _, comp := range components {
 		svc := comp.name
@@ -182,12 +193,18 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 			}
 			scannedPkgs++
 			scannedFiles += len(pkg.files)
+			for _, f := range pkg.files {
+				if importLocalNameOf(f, carrierImportPath) != "" {
+					compUsesCarrier[svc] = true
+				}
+			}
 
 			sites := pkg.listenerSites()
 			if len(sites) == 0 {
 				continue
 			}
 			serviceHasListener = true
+			compListeners[svc] += len(sites)
 			for _, s := range sites {
 				listeners++
 				var calls []recoveryKey
@@ -215,22 +232,44 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		}
 	}
 
+	carrierless, carrierBorne := componentsWithoutAListenerOrACarrier(components, compListeners, compUsesCarrier)
+
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
-	if scannedServices == 0 || scannedFiles == 0 || listeners == 0 {
-		t.Fatalf("гейт осмотрел %d компонентов, %d композиционных пакетов, %d файлов "+
-			"и нашёл %d листенеров — обход ничего не прочитал, молчание "+
-			"ничего не доказывает", scannedServices, scannedPkgs, scannedFiles, listeners)
+	//
+	// Ноль ЛИСТЕНЕРОВ сам по себе таким признаком быть перестал: компонент на
+	// носителе контура своих не поднимает, и дерево, где переведены все, дало бы
+	// здесь честный ноль. Поэтому предметом стало «ноль И ни одного компонента на
+	// носителе» — то есть обход не нашёл НИ ОДНОГО поднимающего слушатели, ни
+	// прямо, ни через носитель.
+	if scannedServices == 0 || scannedFiles == 0 || (listeners == 0 && carrierBorne == 0) {
+		t.Fatalf("гейт осмотрел %d компонентов, %d композиционных пакетов, %d файлов, "+
+			"нашёл %d листенеров и %d компонентов на носителе — обход ничего не прочитал, "+
+			"молчание ничего не доказывает",
+			scannedServices, scannedPkgs, scannedFiles, listeners, carrierBorne)
 	}
 	sort.Strings(withListeners)
 
-	// Предпосылка распознавания: у каждого компонента не меньше двух листенеров
-	// (public :9090 + internal :9091, security.md «internal НЕ освобождён»),
-	// значит листенеров заведомо не меньше, чем компонентов. Если это перестало
-	// быть так — распознавание сломалось, и зелёный гейт означал бы «не нашёл»,
-	// а не «всё есть».
-	if listeners < scannedServices {
-		t.Fatalf("листенеров (%d) меньше, чем компонентов (%d) — "+
-			"распознавание листенеров сломано", listeners, scannedServices)
+	// Предпосылка распознавания, и она ДВУСОСТАВНАЯ с тех пор, как часть
+	// компонентов переехала на носитель контура.
+	//
+	// Прежняя редакция требовала «листенеров не меньше, чем компонентов»,
+	// опираясь на то, что каждый поднимает свои два (public :9090 + internal
+	// :9091). Компонент на носителе своих не поднимает вовсе — их поднимает
+	// `servicehost.Serve`, — поэтому такое требование объявляло бы находкой
+	// САМ ПЕРЕВОД и краснело бы ровно по мере его продвижения. Одновременно
+	// отбросить требование нельзя: «ноль листенеров» обязано оставаться
+	// различимым, иначе сломанное распознавание читалось бы как чистое дерево.
+	//
+	// Поэтому предпосылка теперь такая: НУЛЕВОЕ число своих листенеров у
+	// компонента законно РОВНО тогда, когда он зовёт носитель. Судится именно
+	// ноль — он и есть неоднозначный случай: найденный листенер доказывает, что
+	// распознавание работает, а ненайденный не доказывает ничего, пока не назван
+	// тот, кто поднимает листенеры вместо него.
+	if len(carrierless) > 0 {
+		sort.Strings(carrierless)
+		t.Fatalf("компоненты без своих листенеров и без носителя контура (%d):\n  %s\n"+
+			"Либо распознавание листенеров сломано (и молчание гейта ничего не доказывает), "+
+			"либо компонент не служит ничего.", len(carrierless), strings.Join(carrierless, "\n  "))
 	}
 
 	return panicRecoveryAudit{
@@ -244,6 +283,7 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 			"; распознано звеньев восстановления паники " + strconv.Itoa(len(known)) +
 			"; листенеров " + strconv.Itoa(listeners) +
 			", из них со звеном " + strconv.Itoa(covered) +
+			"; компонентов на носителе контура (своих листенеров нет) " + strconv.Itoa(carrierBorne) +
 			"; листенеры у: " + strings.Join(withListeners, ", "),
 	}
 }
@@ -754,4 +794,33 @@ func relTo(root, p string) string {
 		return p
 	}
 	return r
+}
+
+// componentsWithoutAListenerOrACarrier — ПРЕДПОСЫЛКА распознавания, вынесенная
+// отдельной функцией, чтобы пробы инъекции гоняли ТО ЖЕ САМОЕ, что гоняется по
+// дереву: проба, повторяющая предикат своей копией, доказывала бы свойство
+// копии.
+//
+// Возвращает компоненты, у которых нет ни своих листенеров, ни носителя, и
+// счётчик тех, чьи листенеры поднимает носитель. Второе значение нужно переписи:
+// «ноль находок» обязано быть отличимо от «ноль прочитанного», а компонент на
+// носителе иначе не виден в отчёте вовсе.
+func componentsWithoutAListenerOrACarrier(
+	components []listenerComponent,
+	listenersOf map[string]int,
+	usesCarrier map[string]bool,
+) (carrierless []string, carrierBorne int) {
+	for _, comp := range components {
+		if listenersOf[comp.name] > 0 {
+			continue
+		}
+		if usesCarrier[comp.name] {
+			carrierBorne++
+			continue
+		}
+		carrierless = append(carrierless, fmt.Sprintf("%s: своих листенеров нет и носитель не позван",
+			comp.name))
+	}
+	sort.Strings(carrierless)
+	return carrierless, carrierBorne
 }
