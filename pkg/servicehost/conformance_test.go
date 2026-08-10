@@ -1,0 +1,177 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// conformance_test.go — свойства КОНТУРА, которые до носителя каждый сервис
+// держал у себя своей пробой.
+//
+// # Почему эти пробы переехали, а не были удалены
+//
+// Композиционный корень первого переведённого сервиса нёс 1176 строк проб, и их
+// предмет исчезает вместе с корнем: собственной сборки цепочки у сервиса больше
+// нет. Но СВОЙСТВА, которые они утверждали, никуда не делись — они стали
+// свойствами носителя, то есть общими на все семь. Удалить пробу вместе с её
+// предметом можно только назвав, что именно она держала и где это держится
+// теперь; здесь — то самое «теперь».
+//
+// Перенесены: порядок звеньев (восстановление паники внешним, личность до
+// решения о доступе), идентичность цепочек обоих слушателей, сведение исхода
+// процесса из ошибок двух слушателей. Остались у сервиса: разделение
+// public/internal при регистрации (свойство его домена, а не контура),
+// самоотчёт о посадке и не-gRPC диагностический слушатель.
+package servicehost
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
+
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+)
+
+func chainSpec() servicecontract.Spec {
+	return servicecontract.Spec{
+		Service:    "kacho-demo",
+		Logger:     slog.Default(),
+		Forwarders: grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+	}
+}
+
+// TestPanicRecoveryIsOutermostAndDecisionIsLast — порядок звеньев.
+//
+// Восстановление паники обязано быть ПЕРВЫМ: оно оборачивает всё нижележащее,
+// включая сами звенья. Иначе паника В ЗВЕНЕ уронит процесс, и дефект на пути
+// запроса одного тенанта прекратит обслуживание всех.
+//
+// Решение о доступе обязано быть ПОСЛЕДНИМ из четырёх: оно читает уже
+// извлечённого субъекта, а решение по ещё не извлечённой личности решением не
+// является.
+func TestPanicRecoveryIsOutermostAndDecisionIsLast(t *testing.T) {
+	var slot decisionSlot
+	unary := unaryChain(chainSpec(), &slot)
+	stream := streamChain(chainSpec(), &slot)
+
+	if len(unary) != 4 || len(stream) != 4 {
+		t.Fatalf("цепочка изменила длину: unary %d, stream %d. Это не косметика — "+
+			"позиции звеньев несут причину каждая, и правка длины обязана быть правкой контура",
+			len(unary), len(stream))
+	}
+	// Восстановление паники распознаётся ПО СУЩЕСТВУ (это то же значение, что
+	// отдаёт общее звено), а не по имени переменной.
+	wantUnary := funcID(grpcsrv.UnaryPanicRecovery(chainSpec().Logger))
+	if got := funcID(unary[0]); got != wantUnary {
+		t.Fatalf("первым unary-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantUnary)
+	}
+	wantStream := funcID(grpcsrv.StreamPanicRecovery(chainSpec().Logger))
+	if got := funcID(stream[0]); got != wantStream {
+		t.Fatalf("первым stream-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantStream)
+	}
+	// Последним — слот решения о доступе. Проверяем ПОВЕДЕНИЕМ, а не именем:
+	// пустой слот отказывает, и это его единственная наблюдаемая примета.
+	_, err := unary[len(unary)-1](context.Background(), nil,
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.demo.v1.WidgetService/Get"},
+		func(context.Context, any) (any, error) { return nil, nil })
+	if err == nil {
+		t.Fatal("последнее unary-звено не является слотом решения о доступе: пустой слот обязан отказать")
+	}
+}
+
+// TestBothListenersGetTheSameChain — оба слушателя получают ОДНУ И ТУ ЖЕ
+// цепочку.
+//
+// «Internal = доверенный» — запрещённое допущение, и внутренний слушатель от
+// звеньев не освобождён. До носителя это держалось тем, что автор написал два
+// одинаковых литерала; здесь — тем, что литерал один и другого нет.
+func TestBothListenersGetTheSameChain(t *testing.T) {
+	var slot decisionSlot
+	spec := chainSpec()
+	pub, intl := unaryChain(spec, &slot), unaryChain(spec, &slot)
+	if len(pub) != len(intl) {
+		t.Fatalf("цепочки слушателей разной длины: %d против %d", len(pub), len(intl))
+	}
+	for i := range pub {
+		if funcID(pub[i]) != funcID(intl[i]) {
+			t.Fatalf("звено %d различается: публичный %s, внутренний %s",
+				i, funcID(pub[i]), funcID(intl[i]))
+		}
+	}
+}
+
+// TestForwarderCircleReachesBothChains — круг отправителей ДОЕЗЖАЕТ до звена
+// обоих слушателей.
+//
+// Проба нужна потому, что круг легко «объявить и не провязать»: дескриптор его
+// несёт, отказ старта его проверяет, а до транспорта он не доходит — и тогда
+// переданную личность принимает любой проверенный пир. Здесь фиксируется, что
+// значение действительно уезжает в пару звеньев извлечения личности, причём то
+// же самое на обоих слушателях.
+func TestForwarderCircleReachesBothChains(t *testing.T) {
+	spec := chainSpec()
+	pair := grpcsrv.PrincipalExtractUnary(spec.Forwarders)
+	if len(pair) != 2 {
+		t.Fatalf("пара звеньев личности изменила состав: %d", len(pair))
+	}
+	var slot decisionSlot
+	chain := unaryChain(spec, &slot)
+	for i, want := range pair {
+		if funcID(chain[i+1]) != funcID(want) {
+			t.Fatalf("звено %d цепочки не совпадает со звеном пары извлечения личности", i+1)
+		}
+	}
+}
+
+// TestServeResultSurfacesInternalListenerFailure — исход процесса.
+//
+// Крах ВНУТРЕННЕГО слушателя обязан дать ненулевой исход. Если считать исход
+// только по публичной ошибке, отмена контекста погасит публичный слушатель, тот
+// по контракту вернёт nil, и процесс завершится успехом: оркестратор не
+// перезапустит его, а вся админ-плоскость тихо станет недоступной.
+func TestServeResultSurfacesInternalListenerFailure(t *testing.T) {
+	boom := errors.New("внутренний слушатель упал")
+	if got := serveResult(nil, boom); !errors.Is(got, boom) {
+		t.Fatalf("крах внутреннего слушателя дал исход %v — процесс завершился бы успехом", got)
+	}
+	pub := errors.New("публичный слушатель упал")
+	if got := serveResult(pub, boom); !errors.Is(got, pub) {
+		t.Fatalf("исход = %v, ждали ошибку публичного слушателя (первичный сигнал отказа)", got)
+	}
+	if got := serveResult(nil, nil); got != nil {
+		t.Fatalf("штатное завершение дало ошибку %v", got)
+	}
+}
+
+// funcID — ИМЯ КОНСТРУКТОРА, породившего это значение-функцию.
+//
+// # Почему не полное имя символа
+//
+// Замыкание в таблице символов называется по МЕСТУ ВСТРАИВАНИЯ: одно и то же
+// звено, собранное носителем и собранное пробой, получает разные имена
+// (`…unaryChain.UnaryPanicRecovery.func1` против
+// `…TestSomething.UnaryPanicRecovery.func2`). Сравнение полных имён краснело бы
+// на верном коде — и это первая редакция пробы делала.
+//
+// Поэтому берётся сегмент, стоящий ПЕРЕД хвостом `.funcN`, — имя конструктора
+// звена. Оно не зависит ни от места встраивания, ни от порядкового номера
+// замыкания, зато меняется при подмене звена другим. Имя локальной переменной в
+// нём не участвует вовсе.
+func funcID(v any) string {
+	f := runtime.FuncForPC(reflect.ValueOf(v).Pointer())
+	if f == nil {
+		return "<неизвестное значение-функция>"
+	}
+	parts := strings.Split(f.Name(), ".")
+	// Хвост вида `funcN` (в т.ч. `func1.2`) отбрасываем целиком.
+	for len(parts) > 1 && strings.HasPrefix(parts[len(parts)-1], "func") {
+		parts = parts[:len(parts)-1]
+	}
+	if len(parts) == 0 {
+		return f.Name()
+	}
+	return parts[len(parts)-1]
+}
