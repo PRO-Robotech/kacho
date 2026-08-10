@@ -13,9 +13,9 @@ package ports
 
 import (
 	"context"
-	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 )
 
