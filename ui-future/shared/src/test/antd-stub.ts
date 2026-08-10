@@ -200,13 +200,7 @@ export function antdStub(): Record<string, unknown> {
   // править» было ненаблюдаемо, хотя пользователь его видит.
   const Input = ({ prefix, suffix, ...props }: AnyProps & { prefix?: React.ReactNode; suffix?: React.ReactNode }) =>
     prefix || suffix
-      ? React.createElement(
-          "span",
-          null,
-          prefix as React.ReactNode,
-          React.createElement("input", props),
-          suffix as React.ReactNode,
-        )
+      ? React.createElement("span", null, prefix, React.createElement("input", props), suffix)
       : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
@@ -265,9 +259,9 @@ export function antdStub(): Record<string, unknown> {
           onChange?.(e.target.value, picked);
         },
       },
-      React.createElement("option", { key: "__placeholder__", value: "" }, placeholder as React.ReactNode),
+      React.createElement("option", { key: "__placeholder__", value: "" }, placeholder),
       ...(options ?? []).map((o) =>
-        React.createElement("option", { key: String(o.value), value: String(o.value) }, o.label as React.ReactNode),
+        React.createElement("option", { key: String(o.value), value: String(o.value) }, o.label),
       ),
       children,
     );
@@ -297,7 +291,7 @@ export function antdStub(): Record<string, unknown> {
   // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
   // проба о составе формы утверждала бы форму дублёра.
   const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
-    React.createElement("div", null, React.createElement("label", null, label as React.ReactNode), children);
+    React.createElement("div", null, React.createElement("label", null, label), children);
   const Form = Object.assign(Component, {
     Item: FormItem,
     List: Component,
@@ -397,7 +391,7 @@ export function antdStub(): Record<string, unknown> {
     // Настоящее уведомление показывает свои `message` и `description`;
     // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
     Alert: ({ children, message, description }: AlertProps) =>
-      React.createElement("div", { role: "alert" }, message as React.ReactNode, description as React.ReactNode, children),
+      React.createElement("div", { role: "alert" }, message, description, children),
     App: Component,
     AutoComplete: Input,
     Avatar: Component,
@@ -416,8 +410,8 @@ export function antdStub(): Record<string, unknown> {
       React.createElement(
         "div",
         domAttrs(rest),
-        React.createElement("div", null, title as React.ReactNode),
-        React.createElement("div", null, extra as React.ReactNode),
+        React.createElement("div", null, title),
+        React.createElement("div", null, extra),
         children,
       ),
     Cascader: Select,
@@ -437,8 +431,8 @@ export function antdStub(): Record<string, unknown> {
           React.createElement(
             "div",
             { key: it.key ?? i },
-            React.createElement("dt", null, it.label as React.ReactNode),
-            React.createElement("dd", null, it.children as React.ReactNode),
+            React.createElement("dt", null, it.label),
+            React.createElement("dd", null, it.children),
           ),
         ),
         children,
@@ -475,7 +469,7 @@ export function antdStub(): Record<string, unknown> {
                   "aria-current": (selectedKeys ?? []).includes(item.key ?? "") ? "page" : undefined,
                   onClick: () => onClick?.({ key: item.key ?? "" }),
                 },
-                item.label as React.ReactNode,
+                item.label,
               ),
         ),
         children,
@@ -488,9 +482,9 @@ export function antdStub(): Record<string, unknown> {
       React.createElement(
         "div",
         domAttrs(rest),
-        React.createElement("div", null, title as React.ReactNode),
-        React.createElement("div", null, subTitle as React.ReactNode),
-        React.createElement("div", null, extra as React.ReactNode),
+        React.createElement("div", null, title),
+        React.createElement("div", null, subTitle),
+        React.createElement("div", null, extra),
         children,
       ),
     // Настоящая радиогруппа — набор переключателей с общим именем. Её
@@ -519,7 +513,7 @@ export function antdStub(): Record<string, unknown> {
                   checked: value === o.value,
                   onChange: () => onChange?.({ target: { value: o.value } }),
                 }),
-                o.label as React.ReactNode,
+                o.label,
               ),
             ),
             children,
@@ -572,8 +566,17 @@ export function antdStub(): Record<string, unknown> {
       ),
     // Подпись подсказки достаётся нативным `title`: у настоящего antd она видна
     // при наведении, здесь — читается атрибутом. Пропасть она не может.
-    Tooltip: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) =>
-      React.createElement("span", title ? { title: String(title) } : {}, children),
+    //
+    // В атрибут уезжает ТОЛЬКО текстовая подпись. Атрибут `title` по своей природе
+    // строка, а `React.ReactNode` — это и узел: `String(<узел>)` дал бы
+    // `[object Object]`, то есть один и тот же текст для любой подсказки. Тогда
+    // проба, утверждающая «подсказка объясняет, почему нельзя править», проходила
+    // бы при ЛЮБОМ содержании подсказки — и при пустом тоже. Узловая подпись
+    // поэтому РИСУЕТСЯ: её содержимое остаётся наблюдаемым по тексту.
+    Tooltip: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) => {
+      const text = typeof title === "string" || typeof title === "number" ? String(title) : undefined;
+      return React.createElement("span", text ? { title: text } : {}, children, text === undefined ? title : null);
+    },
     Tree: Component,
     Typography,
     theme,

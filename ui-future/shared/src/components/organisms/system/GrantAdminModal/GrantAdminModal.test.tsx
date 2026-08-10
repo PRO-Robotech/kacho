@@ -61,7 +61,7 @@ jest.unstable_mockModule("antd", () => ({
             React.createElement(
               "button",
               { type: "button", onClick: () => onSelect?.(o.value, o) },
-              o.label as React.ReactNode,
+              o.label,
             ),
           ),
         ),
@@ -106,7 +106,7 @@ function show() {
 }
 
 const optionLabels = () => [...screen.getByTestId("options").querySelectorAll("button")].map((b) => b.textContent ?? "");
-const submit = () => screen.getByTestId("grant-admin-submit") as HTMLButtonElement;
+const submit = () => screen.getByTestId<HTMLButtonElement>("grant-admin-submit");
 
 beforeEach(() => {
   jest.clearAllMocks();

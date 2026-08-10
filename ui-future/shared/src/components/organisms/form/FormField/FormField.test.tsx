@@ -71,7 +71,7 @@ describe("FormFieldRenderer", () => {
   it("в правке неизменяемое поле заперто и объясняет запрет", () => {
     show({ ...nameField, immutable: true }, { name: "web" }, true);
 
-    expect((screen.getByDisplayValue("web") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByDisplayValue<HTMLInputElement>("web").disabled).toBe(true);
     expect(screen.getByText(/immutable после Create/)).toBeInTheDocument();
   });
 
@@ -80,7 +80,7 @@ describe("FormFieldRenderer", () => {
     // на ресурсе, который нельзя создать.
     show({ ...nameField, immutable: true }, { name: "web" }, false);
 
-    expect((screen.getByDisplayValue("web") as HTMLInputElement).disabled).toBe(false);
+    expect(screen.getByDisplayValue<HTMLInputElement>("web").disabled).toBe(false);
     expect(screen.queryByText(/immutable после Create/)).not.toBeInTheDocument();
   });
 

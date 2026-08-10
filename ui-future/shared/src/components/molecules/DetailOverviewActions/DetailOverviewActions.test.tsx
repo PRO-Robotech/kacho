@@ -10,11 +10,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 import { REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
 
+// Порты клиента возвращают промис — заменитель обязан вернуть его же, иначе
+// вызывающий не сможет его дождаться. Но ЖДАТЬ заменителю нечего: ответ известен
+// сразу, и `Promise.resolve` говорит это прямо. Прежнее `async () => ({})`
+// обещало ожидание, которого в теле нет.
 jest.unstable_mockModule("@shared/api/client", () => ({
   api: {
     get: jest.fn(),
-    list: jest.fn(async () => ({})),
-    delete: jest.fn(async () => ({})),
+    list: jest.fn(() => Promise.resolve({})),
+    delete: jest.fn(() => Promise.resolve({})),
   },
   ApiError,
 }));
@@ -26,7 +30,7 @@ function Address() {
 }
 
 function show(specId: string, over: Partial<ResourceSpec> = {}, data: Record<string, unknown> = {}) {
-  const spec = { ...REGISTRY[specId], ...over } as ResourceSpec;
+  const spec: ResourceSpec = { ...REGISTRY[specId], ...over };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <MemoryRouter initialEntries={["/here"]}>

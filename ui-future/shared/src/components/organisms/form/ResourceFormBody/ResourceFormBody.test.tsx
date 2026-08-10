@@ -161,7 +161,7 @@ describe("ResourceFormBody — что можно тронуть", () => {
             { value: "internal_v6", label: "внутренний v6" },
             { value: "external", label: "внешний" },
           ],
-        } as FormField,
+        },
       ],
       { fieldOptionsFilter: { _kind: ["internal", "internal_v6"] } },
     );

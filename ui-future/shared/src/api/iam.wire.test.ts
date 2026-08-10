@@ -9,6 +9,7 @@
 
 import { api } from "./client";
 import { buildCreateAccessBindingBody, iamApi } from "./iam";
+import { requestBody } from "../test/fetch-capture";
 
 type Captured = { url: string; method: string; body: Record<string, unknown> };
 
@@ -18,7 +19,7 @@ function captureFetch(): { calls: Captured[] } {
     calls.push({
       url: String(url),
       method: String(init.method),
-      body: init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
+      body: requestBody(init.body) ?? {},
     });
     return Promise.resolve({
       ok: true,

@@ -15,7 +15,9 @@ const toastError = jest.fn();
 const invalidate = jest.fn();
 
 jest.unstable_mockModule("@shared/api/client", () => ({
-  api: { get, update, list: jest.fn(async () => ({})), create: jest.fn(), delete: jest.fn(), action: jest.fn() },
+  // `list` возвращает промис по контракту порта, но ждать заменителю нечего —
+  // `Promise.resolve` говорит это прямо, `async` без `await` обещало ожидание.
+  api: { get, update, list: jest.fn(() => Promise.resolve({})), create: jest.fn(), delete: jest.fn(), action: jest.fn() },
   ApiError,
 }));
 

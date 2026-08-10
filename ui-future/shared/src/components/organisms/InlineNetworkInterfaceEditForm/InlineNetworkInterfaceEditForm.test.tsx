@@ -120,7 +120,7 @@ describe("InlineNetworkInterfaceEditForm", () => {
   it("подсеть показана и заперта — она неизменяема после создания", async () => {
     show();
 
-    const subnet = (await screen.findByDisplayValue("sub-1")) as HTMLInputElement;
+    const subnet = await screen.findByDisplayValue<HTMLInputElement>("sub-1");
     expect(subnet.disabled).toBe(true);
   });
 });

@@ -50,7 +50,7 @@ jest.unstable_mockModule("antd", () => ({
             "aria-current": (selectedKeys ?? []).includes(item.key) ? "page" : undefined,
             onClick: () => onClick?.({ key: item.key }),
           },
-          item.label as React.ReactNode,
+          item.label,
         ),
       ),
     ),

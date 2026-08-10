@@ -138,7 +138,7 @@ describe("RefSelect", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("подсказка выбора называет тип ресурса, если своей не задано", async () => {
+  it("подсказка выбора называет тип ресурса, если своей не задано", () => {
     show();
 
     expect(optionLabels()[0]).toMatch(/^Выбрать /);

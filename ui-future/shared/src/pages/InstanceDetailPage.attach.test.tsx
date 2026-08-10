@@ -78,7 +78,9 @@ describe("подключение тома", () => {
     const option = await screen.findByText("данные");
     const picker = option.closest("select") as HTMLSelectElement;
     fireEvent.change(picker, { target: { value: "vol-9" } });
-    await waitFor(() => expect((screen.getByRole("button", { name: "Подключить" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+        expect(screen.getByRole<HTMLButtonElement>("button", { name: "Подключить" }).disabled).toBe(false),
+      );
     fireEvent.click(screen.getByRole("button", { name: "Подключить" }));
 
     await waitFor(() => expect(action).toHaveBeenCalled());
