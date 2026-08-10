@@ -44,55 +44,28 @@ import (
 
 const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
-// --- 1. source-level wiring guards ---
-
-// TestListeners_TakeThePairFromTheSharedConstructor — все четыре цепочки (public
-// и internal, unary и stream) обязаны получать пару извлечения личности у ОБЩЕГО
-// конструктора grpcsrv.PrincipalExtract*, а не пересобирать её здесь.
+// # Куда делся страж проводки текстом исходника
 //
-// Почему требование сменилось со «звенья на месте и в правильном порядке» на «пара
-// берётся у конструктора». Пока пара выписывалась в каждом листенере вручную, её
-// можно было и разорвать (одно звено), и переставить (решение о доверии по ещё не
-// извлечённой личности), поэтому страж проверял оба свойства текстом. Теперь оба
-// свойства держит сам конструктор — он всегда отдаёт ДВА звена в одном порядке, и
-// это заперто в pkg/grpcsrv (TestPrincipalExtractPairOrderIsLoadBearing, где
-// перевёрнутый порядок доказательно теряет личность). Значит здесь остаётся ровно
-// то, что конструктор гарантировать не может: что его действительно позвали для
-// каждой цепочки.
+// Здесь стоял `TestListeners_TakeThePairFromTheSharedConstructor`: он читал
+// `main.go` и требовал, чтобы каждая из четырёх цепочек брала пару извлечения
+// личности у общего конструктора. Его предмет ИСЧЕЗ вместе с цепочками — собрать
+// свою пару композиционный корень больше не может, потому что поля
+// интерсепторного типа в дескрипторе нет, а цепочку ставит носитель контура.
 //
-// RED-демонстрация: заменить любой из четырёх вызовов на ручную пару — падает.
-func TestListeners_TakeThePairFromTheSharedConstructor(t *testing.T) {
-	src := readMainSrc(t)
-
-	for _, l := range []struct{ name, want string }{
-		{"publicUnary", "publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)"},
-		{"publicStream", "publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)"},
-		{"internalUnary", "internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)"},
-		{"internalStream", "internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)"},
-	} {
-		if !strings.Contains(src, l.want) {
-			t.Errorf("%s: цепочка не берёт пару у общего конструктора (ожидалось `%s`) — "+
-				"пара, собранная на месте, может потерять звено или переставить их, и тогда "+
-				"переданная личность принимается без привязки к сертификату (principal-spoofing)",
-				l.name, l.want)
-		}
-	}
-	// Безусловный извлекатель заголовков не должен остаться нигде: он читает
-	// x-kacho-principal-* без всякой проверки транспорта.
-	for _, legacy := range []string{"grpcsrv.UnaryPrincipalExtract()", "grpcsrv.StreamPrincipalExtract()"} {
-		if strings.Contains(src, legacy) {
-			t.Errorf("проводка всё ещё монтирует %s — пир без проверенного сертификата подделает личность", legacy)
-		}
-	}
-	// Ручная пересборка пары мимо конструктора — тот же класс: она снова
-	// становится разрываемой и переставляемой.
-	for _, manual := range []string{"grpcsrv.UnaryTrustedPrincipalExtract(", "grpcsrv.StreamTrustedPrincipalExtract("} {
-		if strings.Contains(src, manual) {
-			t.Errorf("проводка пересобирает пару вручную (%s) вместо grpcsrv.PrincipalExtract* — "+
-				"порядок и полнота пары снова держатся текстом, а не конструкцией", manual)
-		}
-	}
-}
+// Свойство не осталось без проверки, и вот чем оно держится теперь — тремя
+// артефактами вместо одного грепа:
+//
+//   - `pkg/servicehost` — `TestForwardedIdentityIsHonouredOnlyFromTheCircle` и
+//     `TestUnnarrowedCircleWouldHonourAnyVerifiedPeer`: пара стоит в цепочке
+//     носителя, в правильном порядке, и решает на исполняемом коде;
+//   - `internal/repohygiene` — `TestCompositionRootsCarryNoServerConstructionOfTheirOwn`:
+//     ни один корень не держит значений интерсепторного типа, и это свойство
+//     ДЕРЕВА, а не одного файла;
+//   - `describe_test.go` — `TestDescriptorCarriesTheConfiguredCircle`: какой круг
+//     приносит ИМЕННО ЭТОТ сервис и что значение зависит от входа.
+//
+// Поведенческие стражи ниже остались как были: они собирают пару у того же общего
+// конструктора и ничего не знали о проводке сервиса.
 
 // --- 2. behavioral guards ---
 

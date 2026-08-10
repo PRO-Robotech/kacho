@@ -146,7 +146,6 @@ var hostAdoptionExceptions = map[string]hostAdoptionException{
 			"дескриптор сегодня нечем. Основание держится пробой " +
 			"TestModelOwnerStillCarriesTheRubiconsTheDecisionRestsOn",
 	},
-	"compute": {kind: adoptionPending, why: "переводится вслед за первым"},
 }
 
 // adoptionFinding — одна находка с координатой.

@@ -140,25 +140,47 @@ func dialedEdgeFields(t *testing.T, root string) []string {
 			"so it would assert nothing; check that the resolver vocabulary still matches corelib")
 	}
 
-	f := parseGoFile(t, filepath.Join(root, "services", "compute", "cmd", "compute", "main.go"))
-
+	// Композиционный корень — КАТАЛОГ, а не один файл. С переездом контура на
+	// общий носитель транспорт обоих слушателей уехал из `main.go` в
+	// `describe.go`, и перепись, читавшая только первый, объявила бы эти два ребра
+	// несуществующими — то есть потребовала бы снять с них требование mTLS. Состав
+	// выводится обходом каталога: следующий файл корня попадает под перепись в
+	// момент появления, а не тогда, когда кто-нибудь вспомнит дополнить список.
+	dir := filepath.Join(root, "services", "compute", "cmd", "compute")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read composition root dir %s: %v", dir, err)
+	}
 	seen := map[string]struct{}{}
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, isCall := n.(*ast.CallExpr)
-		if !isCall {
-			return true
+	read := 0
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
 		}
-		if field, isResolver := tlsResolverArgField(call); isResolver {
-			seen[field] = struct{}{}
-			return true
-		}
-		if sel, isSel := call.Fun.(*ast.SelectorExpr); isSel {
-			if field, isAccessor := accessors[sel.Sel.Name]; isAccessor {
-				seen[field] = struct{}{}
+		read++
+		f := parseGoFile(t, filepath.Join(dir, name))
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, isCall := n.(*ast.CallExpr)
+			if !isCall {
+				return true
 			}
-		}
-		return true
-	})
+			if field, isResolver := tlsResolverArgField(call); isResolver {
+				seen[field] = struct{}{}
+				return true
+			}
+			if sel, isSel := call.Fun.(*ast.SelectorExpr); isSel {
+				if field, isAccessor := accessors[sel.Sel.Name]; isAccessor {
+					seen[field] = struct{}{}
+				}
+			}
+			return true
+		})
+	}
+	if read == 0 {
+		t.Fatalf("no non-test source read under %s — the census read nothing, so it asserted nothing", dir)
+	}
+	t.Logf("census read %d non-test file(s) of the composition root", read)
 
 	out := make([]string, 0, len(seen))
 	for f := range seen {

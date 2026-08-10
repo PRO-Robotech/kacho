@@ -1,6 +1,18 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
+// Command compute — API-сервер kacho-compute (gRPC public :9090 + internal :9091).
+//
+// # Чего этот корень БОЛЬШЕ НЕ делает
+//
+// Он не собирает серверы, не выстраивает цепочки звеньев, не строит карту прав,
+// не держит собственного звена решения о доступе и собственного загрузочного
+// гейта мутаций: всё это переехало в носитель контура (`pkg/servicehost`),
+// которому сервис приносит ОБЪЯВЛЕНИЕ о себе — дескриптор (`describe.go`). Оба
+// слушателя поднимает `servicehost.Serve`, он же гасит их по отмене контекста.
+//
+// Здесь остаётся домен: пул, слой доступа к данным, use-cases, peer-клиенты,
+// фоновые loop'ы под супервизором, диагностический слушатель и готовность.
 package main
 
 import (
@@ -9,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -26,12 +37,12 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
@@ -41,10 +52,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/check"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaboot"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/health"
@@ -103,12 +112,6 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
-	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'а validateAuthMode (конфиг
-	// уже ПРИНЯТ процессом) и ДО подъёма листенеров. Production-posture гейт
-	// обязан утверждать на этом наблюдаемом факте, а не на хранимом конфиге
-	// (см. observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg))
-
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return err
@@ -140,6 +143,59 @@ func runServe(cfg config.Config) error {
 	metricsAdapter := computemetrics.New(buildVersion, buildCommit)
 	var outboxRec metrics.Recorder = metricsAdapter
 	var lroRec operations.Recorder = metricsAdapter
+
+	// ── соединение с моделью прав ─────────────────────────────────────────────
+	// Одно на два предмета: пообъектное сужение видимости и синхронная регистрация
+	// владельца ресурса. ТРЕТИЙ предмет — вопрос о правах — с этого соединения
+	// снят: его задаёт носитель по ребру, объявленному дескриптором, и транспорт
+	// того же адреса он собирает у себя (см. describe.go). Собственного звена
+	// решения о доступе у корня больше нет.
+	var authzConn *grpc.ClientConn
+	if cfg.AuthZIAMGRPCAddr != "" {
+		// authz-conn → iam-internal:9091 — idle-prone (между всплесками активных
+		// стримов нет) → idle=true: пинги держат conn тёплым.
+		//
+		// Предъявляет client-cert mTLS через cfg.IAMAuthzMTLS (enable=false →
+		// insecure dev; enable=true без валидного cert-trio → startup error,
+		// fail-closed).
+		authzCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
+		if cerr != nil {
+			return fmt.Errorf("compute→iam list-filter/register mTLS creds: %w", cerr)
+		}
+		authzConn, err = dialPeerCreds(cfg.AuthZIAMGRPCAddr, authzCreds, true)
+		if err != nil {
+			return fmt.Errorf("dial kacho-iam (authz): %w", err)
+		}
+		defer authzConn.Close()
+		logger.Info("compute→iam read/authz mTLS state",
+			"project_get_mtls", cfg.IAMProjectMTLS.Enable,
+			"authz_check_listfilter_mtls", cfg.IAMAuthzMTLS.Enable,
+		)
+	}
+
+	// Пообъектный сужатель: он же уезжает ПРОВОДКОЙ в дескриптор, поэтому строится
+	// ДО него и ТЕМ ЖЕ объектом, что сужает строки в обработчиках. Собери его
+	// второй раз — носитель сверял бы с каталогом экземпляр, которого на пути
+	// запроса нет.
+	listFilter := buildListFilter(cfg, authzConn, logger)
+
+	// ── объявление о себе ─────────────────────────────────────────────────────
+	//
+	// Дескриптор собирается ПОСЛЕ пула и ДО фоновых проходов. После пула — потому
+	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
+	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
+	// выше) и дешевле ложной сверки.
+	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool))
+	if err != nil {
+		return err
+	}
+
+	// Самоотчёт о посадке — ПОСЛЕ приёма дескриптора (то есть после всех отказов
+	// старта, являющихся свойствами объявленного) и ДО подъёма слушателей. Гейт
+	// посадки обязан утверждать на этом наблюдаемом факте, а не на хранимом
+	// конфиге: правка настроек без переката пода оставляет процесс с прежним
+	// окружением, и «под Ready» доказательством посадки не является.
+	observability.LogBootPosture(logger, bootPosture(cfg))
 
 	// background — фоновые loop'ы под супервизором (errgroup): неожиданный exit
 	// флипает readiness в shutting-down и триггерит graceful-shutdown (не
@@ -213,129 +269,6 @@ func runServe(cfg config.Config) error {
 			"created resources will not get their per-resource FGA owner-tuple registered in IAM")
 	}
 
-	// principal — единственный subject per-RPC FGA Check. На ОБОИХ листенерах он
-	// привязан к транспорту через trust-aware связку (anti-spoof, security.md
-	// «authN+authZ на обоих listener'ах», «Internal = trusted — запрещённое
-	// допущение»):
-	//   1. UnaryCertIdentityExtract — извлекает module-identity SAN из
-	//      verified mTLS client-cert'а и помечает peer'а verified/unverified;
-	//      insecure dev-listener (mTLS off) → no-op (back-compat).
-	//   2. UnaryTrustedPrincipalExtract(WithTrustedForwarders(<gateway-SAN>)) —
-	//      читает x-kacho-principal-* metadata, но выставляет principal'а downstream
-	//      (operations.PrincipalFromContext → subject Check'а + Operation.created_by)
-	//      ТОЛЬКО когда peer mTLS-verified И (если allow-list задан) его SAN —
-	//      доверенный форвардер (api-gateway). На недоверенном/не-форвардер peer'е
-	//      forwarded principal снимается → SystemPrincipal → Check fail-closed.
-	//      MUST идти ПОСЛЕ CertIdentityExtract. Пустой allow-list (default) →
-	//      доверяем любому verified peer'у (паритет с kacho-iam internal).
-	// Прежняя grpcsrv.UnaryPrincipalExtract доверяла x-kacho-principal-* metadata
-	// любого peer'а безусловно (spoof: peer без cert'а форжил чужого principal'а).
-	//
-	// panic-recovery — ПЕРВЫМ (outermost) в цепочках ОБОИХ листенеров. grpc-go
-	// панику обработчика не восстанавливает: она уходит из серверной горутины и
-	// завершает процесс вместе с исполнителем операций и дренажом регистраций,
-	// то есть дефект в обработке одного запроса прекращает обслуживание всех.
-	// Звено стоит НАД boot-gate, принципалом и authz — фильтр паникует так же,
-	// как обработчик. Наблюдающего звена в этой цепочке нет, поэтому «под
-	// наблюдением» здесь совпадает с «снаружи всего».
-	//
-	// boot-gate: guardCreateUnary — первый из ГЕЙТОВ public-цепочки: a
-	// mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
-	// armed and the register-drainer is not IAM-connected, so no resource is created
-	// without a deliverable owner-tuple intent. Read RPCs are untouched.
-	forwarders := cfg.TrustedForwarders()
-	publicUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-		fgaboot.GuardCreateUnary(bootGate),
-	}
-	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	publicUnary = append(publicUnary, handler.TenantUnaryInterceptor(false, productionMode))
-	publicStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-	}
-	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	publicStream = append(publicStream, handler.TenantStreamInterceptor(false, productionMode))
-
-	// Internal listener (:9091) — тот же authN+authZ, что и public (security-инвариант:
-	// «authN+authZ на обоих listener'ах»; internal-периметр НЕ доверенный). Та же
-	// trust-aware principal-связка: CertIdentityExtract → TrustedPrincipalExtract.
-	// Catalog-admin internal RPC (InternalDiskTypeService mutations) relation-gated
-	// (`system_admin on cluster:cluster_kacho_root`, internal/check/permission_map.go);
-	// без verified cert'а / вне allow-list форвардеров их principal снимается →
-	// Check fail-closed. InternalWatchService/Watch несёт `ScopeFiltered: true`:
-	// единичный Check по одному объекту с него снят (запрос не называет ни одного
-	// ресурса), но личность вызывающего обязательна, а сужение идёт per-row в handler'е.
-	// Запись в PermissionMap нужна в любом случае — methodIsInternal-фолбэка в pinned
-	// corelib нет, незамапленный RPC (unary или stream) fail-closed'ится
-	// PermissionDenied.
-	internalUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-	}
-	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	internalUnary = append(internalUnary, handler.TenantUnaryInterceptor(true, productionMode))
-	internalStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-	}
-	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	internalStream = append(internalStream, handler.TenantStreamInterceptor(true, productionMode))
-
-	var authzConn *grpc.ClientConn
-	if cfg.AuthZIAMGRPCAddr != "" {
-		// authz-conn → iam-internal:9091 — idle-prone (между всплесками authz Check
-		// активных стримов нет) → idle=true: пинги держат conn тёплым.
-		//
-		// per-RPC InternalIAMService.Check + FGA-filtered List (этот conn
-		// шарится с list-filter через buildListFilter) предъявляют client-cert mTLS
-		// через cfg.IAMAuthzMTLS (enable=false → insecure dev; enable=true без
-		// валидного cert-trio → startup error, fail-closed). Заменяет удалённый
-		// server-auth-only bool-флаг, который не предъявлял cert (был бы отвергнут iam с
-		// required client-cert).
-		authzCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
-		if cerr != nil {
-			return fmt.Errorf("compute→iam Check/list-filter mTLS creds: %w", cerr)
-		}
-		authzConn, err = dialPeerCreds(cfg.AuthZIAMGRPCAddr, authzCreds, true)
-		if err != nil {
-			return fmt.Errorf("dial kacho-iam (authz): %w", err)
-		}
-		defer authzConn.Close()
-		logger.Info("compute→iam read/authz mTLS state",
-			"project_get_mtls", cfg.IAMProjectMTLS.Enable,
-			"authz_check_listfilter_mtls", cfg.IAMAuthzMTLS.Enable,
-		)
-	}
-	authzIntr, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-compute",
-		IAMConn:     authzConn,
-		Breakglass:  cfg.AuthZBreakglass,
-		Logger:      logger,
-		CacheTTL:    cfg.AuthZCacheTTL,
-	})
-	// Fail-closed (defense-in-depth): в production отсутствие authz-interceptor'а —
-	// фатально (без per-RPC FGA Check подделанная x-kacho-* metadata даёт эскалацию,
-	// а List отдаётся без list-filter). В dev — graceful Warn+continue. Зеркалит
-	// kacho-vpc/cmd/vpc/authz_wiring.go.
-	authzIntr, err = authzWiringDecision(productionMode, authzIntr, err)
-	if err != nil {
-		return fmt.Errorf("authz wiring: %w", err)
-	}
-	if authzIntr != nil {
-		// Same interceptor instance on both listeners (shared Map + Cache).
-		publicUnary = append(publicUnary, authzIntr.Unary())
-		publicStream = append(publicStream, authzIntr.Stream())
-		internalUnary = append(internalUnary, authzIntr.Unary())
-		internalStream = append(internalStream, authzIntr.Stream())
-		logger.Info("authz interceptor enabled",
-			"iam_endpoint", cfg.AuthZIAMGRPCAddr,
-			"breakglass", cfg.AuthZBreakglass,
-			"listeners", "public+internal",
-		)
-	} else {
-		// Dev — продолжаем без authz-interceptor'а (production-ветка уже отсеяна
-		// authzWiringDecision выше как fatal).
-		logger.Warn("authz interceptor NOT enabled — KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR not configured (dev mode)")
-	}
-
 	// sync-registrar owner-tuple (window-оптимизация): немедленная post-commit
 	// регистрация owner-tuple Instance через InternalIAMService.RegisterResource,
 	// сужающая eventual-consistency-окно до poll'а register-drainer'а. register-drainer
@@ -350,44 +283,6 @@ func runServe(cfg config.Config) error {
 		svcs.instance.WithOwnerRegistrar(reg)
 		logger.Info("owner-tuple sync-registrar enabled (Instance Create)")
 	}
-
-	// FGA-filtered List handlers. Build the filter from
-	// configurable env vars (ListFilter*). If iam-authz conn is unavailable
-	// (dev / breakglass), filter is nil → handler bypasses FGA filtering.
-	listFilter := buildListFilter(cfg, authzConn, logger)
-
-	// opt-in mTLS server-creds per listener (enable=false → insecure, dev
-	// backward-compat). Public :9090 + internal :9091 have independent TLSServer
-	// configs (PUBLIC_SERVER_MTLS / INTERNAL_SERVER_MTLS); enable=true with an
-	// unreadable cert / empty client-CA → fail-closed error (no silent insecure).
-	publicCreds, err := cfg.PublicServerCreds()
-	if err != nil {
-		return fmt.Errorf("public listener tls creds: %w", err)
-	}
-	internalCreds, err := cfg.InternalServerCreds()
-	if err != nil {
-		return fmt.Errorf("internal listener tls creds: %w", err)
-	}
-
-	// Публичный listener — requireAdmin=false; internal :9091 — requireAdmin=true.
-	//
-	// Это НЕ «поверх сетевой политики»: у compute её нет ни в одном профиле (см. пункт 13
-	// docs/architecture/07-known-divergences.md). Прежняя редакция называла её здесь
-	// действующим нижним слоем — второй экземпляр того же ложного утверждения в этом
-	// файле, и он опаснее первого: он описывает requireAdmin как ДОБАВКУ к
-	// несуществующему рубежу.
-	grpcSrv := grpcsrv.NewServer(
-		publicCreds,
-		grpc.ChainUnaryInterceptor(publicUnary...),
-		grpc.ChainStreamInterceptor(publicStream...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		internalCreds,
-		grpc.ChainUnaryInterceptor(internalUnary...),
-		grpc.ChainStreamInterceptor(internalStream...),
-	)
-	registerPublicServices(grpcSrv, svcs, opsRepo, listFilter)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -404,21 +299,19 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("start diagnostic listener: %w", err)
 	}
 
-	listener, err := net.Listen("tcp", ":"+cfg.GrpcPort)
-	if err != nil {
-		return err
-	}
-	internalListener, err := net.Listen("tcp", ":"+cfg.InternalGrpcPort)
-	if err != nil {
-		_ = listener.Close()
-		return err
-	}
-	logger.Info("kacho-compute listening", "public_port", cfg.GrpcPort, "internal_port", cfg.InternalGrpcPort)
+	// Отдельный контекст слушателей. Носитель гасит оба слушателя по отмене СВОЕГО
+	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
+	// этой отмены, а не одновременно с ней: kubelet перестаёт слать трафик до того,
+	// как соединения начнут закрываться. Одним контекстом на всё этот порядок был бы
+	// неразличим.
+	serveCtx, stopServe := context.WithCancel(context.Background())
+	defer stopServe()
 
 	// Единый shutdown-триггер (sync.Once): флипает readiness в shutting_down (kubelet
-	// перестаёт слать трафик ДО GracefulStop), отменяет ctx (фоновые loop'ы выходят),
-	// гасит оба gRPC-сервера. Вызывается из shutdown-waiter (SIGTERM), из краша
-	// любого supervised-task'а и из superviseBackground при неожиданном exit'е.
+	// перестаёт слать трафик ДО гашения слушателей), отменяет ctx (фоновые loop'ы
+	// выходят), затем просит носитель погасить слушатели. Вызывается из
+	// shutdown-waiter (SIGTERM), из краха любого supervised-task'а и из
+	// superviseBackground при неожиданном exit'е.
 	var shutdownOnce sync.Once
 	shutdownCh := make(chan struct{})
 	triggerShutdown := func() {
@@ -426,8 +319,7 @@ func runServe(cfg config.Config) error {
 			healthAgg.SetShuttingDown()
 			close(shutdownCh)
 			cancel()
-			internalSrv.GracefulStop()
-			grpcSrv.GracefulStop()
+			stopServe()
 		})
 	}
 
@@ -450,21 +342,32 @@ func runServe(cfg config.Config) error {
 			return nil
 		})
 	}
-	// internal gRPC server.
+	// ОБА gRPC-слушателя — носитель контура. Он поднимает их с ОДНОЙ парой цепочек,
+	// прогоняет отказы старта, которым нужен служимый набор RPC, и обслуживает до
+	// отмены serveCtx. Исход внутреннего слушателя учитывается наравне с публичным —
+	// это его свойство, а не наше.
+	//
+	// Регистраторы оборачиваются рубежом СВОЕГО слушателя (`internal/handler`):
+	// `x-kacho-admin` и `x-kacho-project-id` читаются только на внутреннем, и это
+	// свойство ПОСТРОЕНИЯ — публичный конструктор параметра «слушатель» не имеет.
+	// Разбор, почему рубеж живёт там, а не осью дескриптора, — в шапке
+	// `internal/handler/listener_scope.go`.
 	g.Go(func() error {
-		if serr := internalSrv.Serve(internalListener); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-			logger.Error("internal grpc server stopped", "err", serr)
+		serr := servicehost.Serve(serveCtx, desc,
+			func(reg grpc.ServiceRegistrar) {
+				registerPublicServices(handler.PublicRegistrar(reg, productionMode), svcs, opsRepo, listFilter)
+			},
+			func(reg grpc.ServiceRegistrar) {
+				registerInternalServices(handler.InternalRegistrar(reg, productionMode),
+					svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
+			},
+		)
+		if serr != nil {
+			logger.Error("grpc listeners stopped", "err", serr)
 			triggerShutdown()
-			return fmt.Errorf("internal grpc server: %w", serr)
+			return fmt.Errorf("grpc: %w", serr)
 		}
-		return nil
-	})
-	// public gRPC server.
-	g.Go(func() error {
-		if serr := grpcSrv.Serve(listener); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-			triggerShutdown()
-			return fmt.Errorf("public grpc server: %w", serr)
-		}
+		triggerShutdown()
 		return nil
 	})
 	// shutdown-waiter: SIGTERM/SIGINT (ctx) ИЛИ краш любого task'а (shutdownCh) →
@@ -964,7 +867,7 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 // FGA-фильтрация на List отключена (dev/breakglass). Catalog (DiskType) — public
 // read, FGA bypass not needed (handler skips). Region/Zone serving снят —
 // Geography принадлежит kacho-geo.
-func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter *authzfilter.Narrower) {
+func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo operations.Repo, listFilter *authzfilter.Narrower) {
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
@@ -1165,7 +1068,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
+func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 }
