@@ -59,6 +59,20 @@ type Stack struct {
 	Postgres string  // image actually used
 	BatchCap int     // measured, not assumed: the engine's BatchCheck ceiling
 
+	// RelDSN — СВОЙ Postgres формы E, отдельным контейнером.
+	//
+	// Отдельным, а не второй базой в датасторе движка, по двум причинам сразу, и
+	// вторая дороже первой: объём снимается по таблицам (смешались бы величины),
+	// а буферы, занятые кортежами движка, наказывали бы чтение формы E за чужие
+	// данные — и это выглядело бы свойством формы, а не посадки.
+	RelDSN      string
+	RelPostgres string
+
+	// StmtProducer — состояние производителя `StmtSQL` со стороны движка,
+	// снятое контролем в обе стороны при подъёме стека.
+	StmtProducer ProducerStatus
+	stmts        *pgStmtCounter
+
 	terminate func()
 }
 
@@ -116,6 +130,10 @@ func bootStack(ctx context.Context) (*Stack, error) {
 			"POSTGRES_PASSWORD": pgPass,
 			"POSTGRES_DB":       pgDB,
 		},
+		// Предзагрузка библиотеки статистики стейтментов — единственный способ
+		// узнать, сколько запросов движок посылает своему Postgres за одно HTTP-
+		// обращение. Правится СВОЙ контейнер харнесса, чужой прод-код не трогается.
+		Cmd:            []string{"postgres", "-c", "shared_preload_libraries=pg_stat_statements"},
 		Networks:       []string{net.Name},
 		NetworkAliases: map[string][]string{net.Name: {"benchpg"}},
 		WaitingFor: wait.ForListeningPort("5432/tcp").
@@ -217,13 +235,56 @@ func bootStack(ctx context.Context) (*Stack, error) {
 		return nil, fmt.Errorf("openfga port: %w", err)
 	}
 
+	// ── Postgres формы E ────────────────────────────────────────────────────────
+	// Свой контейнер, а не вторая база в датасторе движка: иначе смешались бы
+	// объём и нагрузка, и «форма E читает медленно» было бы неотличимо от
+	// «буферы заняты чужими кортежами».
+	relReq := testcontainers.ContainerRequest{
+		Image:        pgImage,
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_USER":     pgUser,
+			"POSTGRES_PASSWORD": pgPass,
+			"POSTGRES_DB":       pgDB,
+		},
+		WaitingFor: wait.ForListeningPort("5432/tcp").
+			WithStartupTimeout(90 * time.Second),
+	}
+	relc, err := testcontainers.GenericContainer(ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: relReq, Started: true})
+	if err != nil {
+		undo()
+		return nil, fmt.Errorf("start postgres формы E: %w", err)
+	}
+	stop = append(stop, func() { _ = relc.Terminate(context.Background()) })
+	relHost, err := relc.Host(ctx)
+	if err != nil {
+		undo()
+		return nil, fmt.Errorf("postgres формы E, хост: %w", err)
+	}
+	relPort, err := relc.MappedPort(ctx, "5432")
+	if err != nil {
+		undo()
+		return nil, fmt.Errorf("postgres формы E, порт: %w", err)
+	}
+
 	s := &Stack{
-		HTTPBase:  fmt.Sprintf("http://%s:%s", fHost, fPort.Port()),
-		DB:        db,
-		OpenFGA:   fgaImage,
-		Postgres:  pgImage,
+		HTTPBase:    fmt.Sprintf("http://%s:%s", fHost, fPort.Port()),
+		DB:          db,
+		OpenFGA:     fgaImage,
+		Postgres:    pgImage,
+		RelPostgres: pgImage,
+		RelDSN: fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+			pgUser, pgPass, relHost, relPort.Port(), pgDB),
 		terminate: undo,
 	}
+
+	// Производитель `StmtSQL` со стороны движка заводится ЗДЕСЬ и сразу проходит
+	// контроль в обе стороны. Непрошедший контроль стек не роняет: колонка тогда
+	// просто не печатается (не ноль и не прочерк), а формулировка «на общем для
+	// форм уровне» из отчёта снимается — исход назван заранее и не является
+	// выбором исполнителя.
+	s.stmts, s.StmtProducer = VerifyEngineStmtProducer(ctx, db)
 	return s, nil
 }
 
@@ -249,15 +310,26 @@ func waitDB(ctx context.Context, db *sql.DB) error {
 // table-wide and therefore cannot be attributed to a store without lying. The
 // whole-table figure is returned separately so a reader can see both and neither is
 // presented as the other.
-func (s *Stack) TupleBytes(ctx context.Context, storeID string) (count int64, rowBytes int64, tableTotal int64, err error) {
-	row := s.DB.QueryRowContext(ctx,
-		`SELECT count(*), COALESCE(sum(pg_column_size(t.*)),0) FROM tuple t WHERE t.store = $1`, storeID)
-	if err = row.Scan(&count, &rowBytes); err != nil {
-		return 0, 0, 0, fmt.Errorf("tuple bytes for store %s: %w", storeID, err)
+//
+// Структурная часть выделена ОТДЕЛЬНОЙ парой величин (правка XC-10): счёт строк
+// её вычитает, а байты — нет, и эта асимметрия базы сравнения молча переезжала бы
+// на шестую форму. Теперь она хотя бы видна: структурные строки и их байты
+// печатаются рядом, и читатель вправе вычесть их сам. Правило подсчёта у шестой
+// формы то же самое — иначе колонка была бы сопоставима только на бумаге.
+func (s *Stack) TupleBytes(ctx context.Context, storeID string) (
+	count, rowBytes, structRows, structBytes, tableTotal int64, err error) {
+	row := s.DB.QueryRowContext(ctx, `
+		SELECT count(*),
+		       COALESCE(sum(pg_column_size(t.*)), 0),
+		       count(*) FILTER (WHERE t.relation IN ('cluster', 'account', 'project')),
+		       COALESCE(sum(pg_column_size(t.*)) FILTER (WHERE t.relation IN ('cluster', 'account', 'project')), 0)
+		  FROM tuple t WHERE t.store = $1`, storeID)
+	if err = row.Scan(&count, &rowBytes, &structRows, &structBytes); err != nil {
+		return 0, 0, 0, 0, 0, fmt.Errorf("tuple bytes for store %s: %w", storeID, err)
 	}
 	if err = s.DB.QueryRowContext(ctx,
 		`SELECT pg_total_relation_size('tuple')`).Scan(&tableTotal); err != nil {
-		return count, rowBytes, 0, fmt.Errorf("tuple table size: %w", err)
+		return count, rowBytes, structRows, structBytes, 0, fmt.Errorf("tuple table size: %w", err)
 	}
-	return count, rowBytes, tableTotal, nil
+	return count, rowBytes, structRows, structBytes, tableTotal, nil
 }

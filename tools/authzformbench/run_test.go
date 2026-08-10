@@ -65,7 +65,19 @@ func TestRunMatrix(t *testing.T) {
 
 	// The engine's BatchCheck ceiling is MEASURED, once, before anything is timed —
 	// the report must print what this engine enforces, not what a comment says.
-	probe, err := stack.NewStore(ctx, "cap-probe", r.models[cfg.Forms[0]])
+	//
+	// Модель берётся у первой формы, У КОТОРОЙ ОНА ЕСТЬ: у формы E её нет вовсе, и
+	// прогон, состоящий из одной формы E, потолок движка не меряет — он ему не
+	// нужен, а взять nil-модель значило бы уронить прогон на пустом месте.
+	var probeModel []byte
+	for _, f := range cfg.Forms {
+		if m, ok := r.models[f]; ok {
+			probeModel = m
+			break
+		}
+	}
+	require.NotNil(t, probeModel, "ни у одной формы прогона нет модели — потолок движка мерить нечем")
+	probe, err := stack.NewStore(ctx, "cap-probe", probeModel)
 	require.NoError(t, err)
 	cap0, err := probe.probeBatchCap(ctx, BenchType, 1, 4096)
 	require.NoError(t, err)
