@@ -92,18 +92,22 @@ func chainOutcome(
 	}
 	info := &grpc.UnaryServerInfo{FullMethod: fullMethod}
 
-	// Порядок ровно тот, что собирает composition root: извлечение личности →
-	// AuthN → authz. Первое звено пары (cert-identity) здесь уже отработало —
+	// Порядок ровно тот, что собирает носитель контура: извлечение личности →
+	// решение о доступе. Первое звено пары (cert-identity) здесь уже отработало —
 	// forwarderPeerCtx кладёт его результат, — поэтому исполняем второе.
+	//
+	// Отдельного AuthN-стража в цепочке БОЛЬШЕ НЕТ, и это не ослабление: звено
+	// решения о доступе само отвергает неназванного вызывающего БЕЗУСЛОВНО —
+	// в любом режиме, а не только в боевом, как делал снятый страж. Аргумент
+	// productionMode остаётся у helper'а: случаи ниже читаются как «в боевой
+	// посадке», и обнулять эту разметку вместе со звеном было бы потерей смысла
+	// самих случаев.
 	inner := authzIntr.Unary()
-	authnIntr := AuthNUnaryInterceptor(productionMode)
 	trustIntr := grpcsrv.UnaryTrustedPrincipalExtract(
 		grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(testForwarderSAN)))
 
 	_, err = trustIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
-		return authnIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
-			return inner(ctx, req, info, handler)
-		})
+		return inner(ctx, req, info, handler)
 	})
 	return reached, err
 }

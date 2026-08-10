@@ -18,7 +18,7 @@ import (
 
 // prodCfg — минимально-валидный production Config (URL/listen заданы), с
 // настраиваемыми authz-полями.
-func prodCfg(mode Mode, iamEndpoint string, breakglass bool) Config {
+func prodCfg(mode Mode, iamEndpoint string) Config {
 	var c Config
 	c.AuthN.Mode = mode
 	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
@@ -27,7 +27,6 @@ func prodCfg(mode Mode, iamEndpoint string, breakglass bool) Config {
 	c.Repository.Postgres.SSLMode = "verify-full"
 	c.Logger.Level = "INFO"
 	c.AuthZ.IAMEndpoint = iamEndpoint
-	c.AuthZ.Breakglass = breakglass
 	// strict-смежные инварианты удовлетворены, чтобы изолировать проверяемый гард.
 	c.ExtAPI.IAM.TLS.Enable = true
 	// Исходящий vpc→geo edge удовлетворён server-TLS по умолчанию (как IAM выше),
@@ -42,13 +41,13 @@ func prodCfg(mode Mode, iamEndpoint string, breakglass bool) Config {
 
 // vpc8-C-01: production с настроенным authz-endpoint проходит Validate.
 func TestValidate_Production_WithAuthzEndpoint_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam.kacho.svc.cluster.local:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam.kacho.svc.cluster.local:9091")
 	require.NoError(t, c.Validate())
 }
 
-// vpc8-C-02: production без authz-endpoint и без breakglass → отказ.
+// vpc8-C-02: production без authz-endpoint → отказ.
 func TestValidate_Production_NoAuthzEndpoint_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "", false)
+	c := prodCfg(ModeProduction, "")
 	err := c.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "authz.iam-endpoint is required")
@@ -57,51 +56,53 @@ func TestValidate_Production_NoAuthzEndpoint_Fails(t *testing.T) {
 
 // vpc8-C-03: production-strict без authz-endpoint → тот же отказ (любой IsProduction()).
 func TestValidate_ProductionStrict_NoAuthzEndpoint_Fails(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "", false)
+	c := prodCfg(ModeProductionStrict, "")
 	err := c.Validate()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "authz.iam-endpoint is required")
 	require.Contains(t, err.Error(), "production mode (production-strict)")
 }
 
-// vpc8-C-04 (ужесточено): production + breakglass=true → ОТКАЗ СТАРТА.
+// vpc8-C-04: снятая ручка аварийного обхода больше не участвует в решении.
 //
-// Раньше vpc (как и compute) лишь предупреждал, а geo/nlb отвергали: одна и та же
-// настройка означала «поднят вообще без авторизации» в одних сервисах и «не
-// поднимется» в других. WARN не защищает — leftover breakglass после инцидента
-// переживает рестарт и оставляет оба листенера без per-RPC Check (security.md
-// «AuthN+AuthZ ВЕЗДЕ» + core rule #16). Assert'им СООБЩЕНИЕ: причина отказа —
-// часть контракта оператора.
-func TestValidate_Production_Breakglass_Fails(t *testing.T) {
+// Прежде здесь стояли ДВА случая: боевая посадка с аварийным обходом отвергается,
+// dev — принимает. Оба пережили свой предмет: обход снят с контракта вместе с
+// переводом vpc на носитель контура — тот ставит звено решения о доступе всегда,
+// и поля, которым его можно отменить, в дескрипторе процесса не существует.
+//
+// Что осталось предметом: требование адреса владельца модели в боевой посадке
+// теперь БЕЗУСЛОВНО. Раньше его снимал аварийный обход, то есть боевой процесс
+// мог подняться без ребра решения о доступе; проверяется именно это — отказ по
+// пустому адресу наступает в каждом боевом режиме, и снять его нечем.
+//
+// Полный запрет самого имени снятой ручки во всём дереве держит
+// `retired_knobs_test.go`; здесь — что ПОВЕДЕНИЕ от неё не зависит.
+func TestValidate_AuthzEndpointRequiredUnconditionallyInProduction(t *testing.T) {
 	for _, mode := range []Mode{ModeProduction, ModeProductionStrict} {
 		t.Run(mode.String(), func(t *testing.T) {
-			c := prodCfg(mode, "kacho-iam.kacho.svc.cluster.local:9091", true)
+			c := prodCfg(mode, "")
 			err := c.Validate()
-			require.Errorf(t, err, "breakglass in %s must refuse boot", mode)
-			require.Contains(t, err.Error(), "authz.breakglass")
-			require.Contains(t, err.Error(), "forbidden in production mode")
+			require.Errorf(t, err, "боевая посадка без ребра решения о доступе не поднимается (%s)", mode)
+			require.Contains(t, err.Error(), "authz.iam-endpoint is required")
+			require.Contains(t, err.Error(), "there is no knob that turns authz off")
 		})
 	}
 }
 
-// dev-режим breakglass'ом не затронут: аварийный обход остаётся доступным там, где
-// он и задуман, — ужесточение не запрещает сам механизм.
-func TestValidate_Dev_Breakglass_Passes(t *testing.T) {
-	var c Config
-	c.AuthN.Mode = ModeDev
-	c.AuthZ.Breakglass = true
-	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
-	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
-	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
-	c.Repository.Postgres.SSLMode = "disable"
-	c.Logger.Level = "INFO"
-	require.NoError(t, c.Validate())
+// Контроль к предыдущему: та же посадка С адресом принимается. Без него отрицание
+// выше зеленело бы и от «Validate отвергает вообще всё».
+func TestValidate_ProductionWithAuthzEndpointPasses(t *testing.T) {
+	for _, mode := range []Mode{ModeProduction, ModeProductionStrict} {
+		t.Run(mode.String(), func(t *testing.T) {
+			require.NoError(t, prodCfg(mode, "kacho-iam.kacho.svc.cluster.local:9091").Validate())
+		})
+	}
 }
 
 // vpc8-C-05: dev-режим гардрейлом authz-эндпоинта не затронут.
 //
 // Круг отправителей — отдельное измерение: его стража срабатывает на ЛЮБОМ
-// non-breakglass старте, поэтому здесь выставлен явный dev-опт-ин. Иначе тест
+// старте, поэтому здесь выставлен явный dev-опт-ин. Иначе тест
 // перестал бы отвечать на свой вопрос (про authz.iam-endpoint) и падал бы по
 // чужой причине.
 func TestValidate_Dev_NoGuardrail(t *testing.T) {
@@ -119,7 +120,7 @@ func TestValidate_Dev_NoGuardrail(t *testing.T) {
 
 // vpc8-C-07: production-strict без public-mTLS → отказ (ValidateServerMTLS).
 func TestValidateServerMTLS_ProductionStrict_RequiresPublicMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091", false)
+	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
 	var m MTLSConfig
 	m.InternalServerMTLS.Enable = true
 	m.PublicServerMTLS.Enable = false
@@ -130,7 +131,7 @@ func TestValidateServerMTLS_ProductionStrict_RequiresPublicMTLS(t *testing.T) {
 
 // vpc8-C-08: production-strict без internal-mTLS → отказ.
 func TestValidateServerMTLS_ProductionStrict_RequiresInternalMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091", false)
+	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = false
@@ -141,7 +142,7 @@ func TestValidateServerMTLS_ProductionStrict_RequiresInternalMTLS(t *testing.T) 
 
 // vpc8-C-09: production-strict с обоими server-mTLS → старт разрешен.
 func TestValidateServerMTLS_ProductionStrict_BothOn_Passes(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091", false)
+	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS = grpcsrv.TLSServer{Enable: true}
 	m.InternalServerMTLS = grpcsrv.TLSServer{Enable: true}
@@ -153,7 +154,7 @@ func TestValidateServerMTLS_ProductionStrict_BothOn_Passes(t *testing.T) {
 // из client-asserted x-kacho-* metadata; в production он не должен доверять ей по
 // незашифрованному транспорту без явного подтверждения границы доверия (CWE-290).
 func TestValidateServerMTLS_Production_NoMTLS_NoForwarder_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	var m MTLSConfig // оба server-mTLS выключены, trusted-forwarder не выставлен
 	err := c.ValidateServerMTLS(m)
 	require.Error(t, err)
@@ -166,7 +167,7 @@ func TestValidateServerMTLS_Production_NoMTLS_NoForwarder_Fails(t *testing.T) {
 
 // vpc8-C-10b: production + public-mTLS включён (без trusted-forwarder) → старт разрешён.
 func TestValidateServerMTLS_Production_PublicMTLS_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	// internal :9091 — service→service, mTLS обязателен в ЛЮБОМ production-режиме.
@@ -177,7 +178,7 @@ func TestValidateServerMTLS_Production_PublicMTLS_Passes(t *testing.T) {
 // vpc8-C-10c: production + trusted-forwarder=true (без public-mTLS) → старт разрешён
 // (оператор явно подтвердил, что listener за аутентифицированным forwarder'ом).
 func TestValidateServerMTLS_Production_TrustedForwarder_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // public-mTLS выключен, но internal обязателен всегда в production
 	m.InternalServerMTLS.Enable = true
@@ -194,7 +195,7 @@ func TestValidateServerMTLS_Production_TrustedForwarder_Passes(t *testing.T) {
 // principal-spoofing (CWE-306/290). У internal НЕТ trusted-forwarder escape-hatch
 // (в отличие от публичного user→edge listener'а).
 func TestValidateServerMTLS_Production_NoInternalMTLS_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true    // публичный удовлетворён
 	m.InternalServerMTLS.Enable = false // internal выключен → отказ
@@ -207,7 +208,7 @@ func TestValidateServerMTLS_Production_NoInternalMTLS_Fails(t *testing.T) {
 // vpc8-C-10g: production (non-strict) + trusted-forwarder НЕ спасает internal —
 // escape-hatch действует только для публичного listener'а.
 func TestValidateServerMTLS_Production_TrustedForwarder_StillRequiresInternalMTLS(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // оба выключены; trusted-forwarder закрывает только public
 	err := c.ValidateServerMTLS(m)
@@ -220,7 +221,7 @@ func TestValidateServerMTLS_Production_TrustedForwarder_StillRequiresInternalMTL
 // vpc8-C-10d: production-strict ИГНОРИРУЕТ trusted-forwarder — server-mTLS обязателен
 // всегда (escape-hatch не действует в strict).
 func TestValidateServerMTLS_ProductionStrict_TrustedForwarder_StillRequiresMTLS(t *testing.T) {
-	c := prodCfg(ModeProductionStrict, "kacho-iam:9091", false)
+	c := prodCfg(ModeProductionStrict, "kacho-iam:9091")
 	c.AuthN.TrustedForwarder = true
 	var m MTLSConfig // оба выключены
 	err := c.ValidateServerMTLS(m)
@@ -231,7 +232,7 @@ func TestValidateServerMTLS_ProductionStrict_TrustedForwarder_StillRequiresMTLS(
 
 // vpc8-C-10e: dev-режим гардом не затронут (public-mTLS не требуется).
 func TestValidateServerMTLS_Dev_NoMTLSRequired(t *testing.T) {
-	c := prodCfg(ModeDev, "kacho-iam:9091", false)
+	c := prodCfg(ModeDev, "kacho-iam:9091")
 	var m MTLSConfig
 	require.NoError(t, c.ValidateServerMTLS(m))
 }
@@ -264,7 +265,7 @@ func TestValidateBoot_ProductionStrict_AggregatesAllViolations(t *testing.T) {
 // открытым текстом). SEC-hardening r2 (2026-07-05, CWE-319): защищённый sslmode
 // требуется в ЛЮБОМ IsProduction() режиме, не только strict.
 func TestValidate_Production_SSLModeDisable_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	c.Repository.Postgres.SSLMode = "disable"
 	err := c.Validate()
 	require.Error(t, err)
@@ -274,7 +275,7 @@ func TestValidate_Production_SSLModeDisable_Fails(t *testing.T) {
 
 // vpc8-C-13: production с ssl-mode=require → проходит.
 func TestValidate_Production_SSLModeRequire_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	c.Repository.Postgres.SSLMode = "require"
 	require.NoError(t, c.Validate())
 }
@@ -295,7 +296,7 @@ func TestValidate_Dev_SSLModeDisable_Passes(t *testing.T) {
 // H-D3: невалидный logger.level → ошибка валидации при старте (fail-fast,
 // без тихого fallback в INFO).
 func TestValidate_InvalidLoggerLevel_Fails(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c := prodCfg(ModeProduction, "kacho-iam:9091")
 	c.Logger.Level = "LOUD"
 	err := c.Validate()
 	require.Error(t, err)

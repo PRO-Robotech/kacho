@@ -102,7 +102,6 @@ func RegisterDefaults(v *viper.Viper) {
 	// выставит iam-endpoint=kacho-iam.kacho.svc.cluster.local:9091.
 	v.SetDefault("authz.iam-endpoint", "")
 	v.SetDefault("authz.iam-tls.enable", false)
-	v.SetDefault("authz.breakglass", false)
 	v.SetDefault("authz.check-timeout", 2*time.Second)
 	v.SetDefault("authz.deny-rate-limit-per-sec", 100.0)
 	v.SetDefault("authz.cache-ttl", 5*time.Second)

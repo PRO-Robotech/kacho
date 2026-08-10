@@ -1,41 +1,34 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package check содержит per-service обвязку Check-interceptor'а kacho-vpc.
+// Package check — то, что kacho-vpc знает о СВОЕЙ карте прав, и только это.
 //
 // Состав:
-//   - permission_map.go   — RPCMap для всех публичных RPC kacho-vpc
-//     (8 сервисов × ≈ 5-10 методов: Network, Subnet, Address, RouteTable,
-//     SecurityGroup, Gateway, NetworkInterface + Operation).
-//   - check_client.go     — gRPC adapter поверх `iamv1.InternalIAMServiceClient.Check`
-//     (реализует port `authz.CheckClient` из kacho-corelib/authz).
-//   - factory.go          — фабрика, собирающая `*authz.Interceptor` из config
-//     (IAM-conn + breakglass + cache + map). Возвращает nil-safe interceptor,
-//     если IAM-conn не сконфигурирован (graceful start без kacho-iam в dev).
+//   - permission_map.go      — `authz.RPCMap`, ВЫВЕДЕННАЯ из аннотаций методов
+//     доменов `kacho.cloud.vpc.v1` и `kacho.cloud.operation`. Единственное, что
+//     сервис здесь заявляет, — какие RPC он обслуживает; требуемое отношение, тип
+//     объекта, поле с идентификатором и форма отказа приезжают из тех же
+//     аннотаций, из которых генерируется каталог края.
+//   - scope_filtered_rpcs.go — какие методы карты сняты с пообъектной проверки на
+//     крае и авторизуются на уровне ДАННЫХ. Читает загрузочная стража
+//     (`config.ValidateListFilter`) и дескриптор процесса.
 //
-// Wiring (composition root — `cmd/vpc/main.go`):
+// # Чего здесь БОЛЬШЕ НЕТ и почему
 //
-//	authzIntr, err := check.NewInterceptor(check.Options{
-//	    ServiceName: "kacho-vpc",
-//	    IAMConn:     iamConn,         // *grpc.ClientConn к kacho-iam:9091
-//	    Breakglass:  cfg.AuthZ.Breakglass,
-//	    Logger:      logger,
-//	})
-//	if err != nil { return err }
-//	if authzIntr != nil {
-//	    grpcSrv := grpcsrv.NewServer(
-//	        grpc.ChainUnaryInterceptor(
-//	            handler.AuthNUnaryInterceptor(productionMode),
-//	            authzIntr.Unary(),
-//	        ),
-//	        grpc.ChainStreamInterceptor(
-//	            handler.AuthNStreamInterceptor(productionMode),
-//	            authzIntr.Stream(),
-//	        ),
-//	    )
-//	}
+// Пакет держал ещё две вещи: адаптер решателя поверх
+// `iamv1.InternalIAMServiceClient.Check` (со сверкой существования на пути
+// отказа) и фабрику, собиравшую из конфигурации `*authz.Interceptor`. Обе сняты
+// вместе с переводом vpc на носитель контура (`pkg/servicehost`): звено решения о
+// доступе теперь ОДНО на все сервисы, его строит носитель по значениям
+// дескриптора, а сверку существования он надевает сам, получив от сервиса порт
+// (`servicecontract.Spec.Existence`) и выведя набор пообъектных типов из карты
+// прав. Своя фабрика после этого не «осталась про запас» — она стала второй
+// сборкой того же контура, то есть ровно тем, что носитель и убирает.
 //
-// Cache-invalidation (LISTEN/NOTIFY → `kacho_iam_subjects`) в этом MVP НЕ
-// подключен: достаточно TTL=5s + outbox-drain≤2s → ≤10s на propagation отзыва
-// доступа. Listen-loop добавится при наличии DSN'а на kacho-iam Postgres.
+// Разбор ПРОЗЫ причины отказа (`reason` содержит «no path» → пропустить к
+// обработчику) снят вместе с адаптером и НЕ воспроизведён: носитель не читает
+// текст чужого ответа, а различает «объекта нет» и «объект есть, но не твой»
+// вопросом к СВОЕЙ базе через порт существования. Для пообъектных типов исход
+// прежний; для иерархических якорей (`project`, `cluster`) прежний пропуск стал
+// отказом — то есть строже, а не слабее.
 package check

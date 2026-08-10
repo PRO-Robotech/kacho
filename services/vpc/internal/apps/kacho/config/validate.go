@@ -16,7 +16,7 @@ import (
 // меняются только осознанно. %s подставляет Mode.String() (production|production-strict).
 const (
 	errAuthzEndpointRequired = "production mode (%s): authz.iam-endpoint is required " +
-		"(set the kacho-iam internal endpoint, or authz.breakglass=true to bypass authz)"
+		"(set the kacho-iam internal endpoint; there is no knob that turns authz off)"
 	errPublicMTLSRequired = "production mode (%s): public listener mTLS required " +
 		"(set KACHO_VPC_PUBLIC_SERVER_MTLS_ENABLE=true with cert/key/ca) — the public :9090 " +
 		"listener derives the authorization principal from client-asserted x-kacho-* metadata; " +
@@ -61,19 +61,6 @@ const (
 		"the unfiltered page, so a single peer timeout or refusal silently removes that authorization. " +
 		"Set authz.list-filter.fail-open=false or drop ScopeFiltered from the permission map"
 
-	// errBreakglassForbiddenInProduction — breakglass в production ОТКАЗЫВАЕТ старту
-	// (раньше был только WARN, см. историю ниже). %s = Mode.String(). Текст — часть
-	// контракта оператора (наблюдаемая причина отказа), меняется только осознанно.
-	//
-	// Почему fail-closed, а не WARN: geo и nlb отвергали, vpc и compute — лишь
-	// предупреждали, т.е. одна и та же настройка означала «поднят вообще без
-	// авторизации» в одних сервисах и «не поднимется» в других. WARN не защищает:
-	// leftover breakglass после инцидента переживает рестарт и оставляет ОБА
-	// листенера без per-RPC Check (security.md «AuthN+AuthZ ВЕЗДЕ», core rule #16).
-	// В dev обход остаётся доступным — там он и задуман.
-	errBreakglassForbiddenInProduction = "authz.breakglass: forbidden in production mode (%s) — " +
-		"it bypasses ALL per-RPC authz Check on both listeners; breakglass is a dev-only emergency escape"
-
 	// S4-гардрейлы (транспорт исходящих vpc→iam рёбер обязан быть verified в
 	// production). %s = Mode.String(). Тексты — часть контракта (наблюдаемый отказ
 	// старта), меняются только осознанно.
@@ -81,8 +68,7 @@ const (
 		"(authz.iam-endpoint → InternalIAMService.Check) requires verified transport — set client mTLS " +
 		"(KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true) or verified server-TLS (authz.iam-tls.enable=true). Without it " +
 		"the per-RPC authorization Check is dialed over cleartext gRPC (dialPeer falls back to insecure creds); " +
-		"a network attacker can MITM the response and forge allowed=true — full authz bypass. Set authz.breakglass=true " +
-		"only to intentionally disable authz entirely (emergency)"
+		"a network attacker can MITM the response and forge allowed=true — full authz bypass"
 	errProjectPeerTransportRequired = "production mode (%s): outbound vpc→iam ProjectService.Get edge " +
 		"(extapi.iam → project existence / account lookup) requires verified transport — set client mTLS " +
 		"(KACHO_VPC_IAM_PROJECT_MTLS_ENABLE=true) or verified server-TLS (extapi.iam.tls.enable=true). Without it " +
@@ -122,7 +108,7 @@ const (
 //   - logger.level — известный уровень;
 //   - listen-endpoint'ы парсятся в адрес;
 //   - ssl-mode из допустимого набора;
-//   - в production (любом) требуется authz.iam-endpoint либо явный authz.breakglass;
+//   - в production (любом) требуется authz.iam-endpoint;
 //   - в production-strict дополнительно требуется extapi.iam.tls.enable и защищенный ssl-mode.
 //
 // Fail-closed boot-гардрейл (S1): secure-by-default (`authn.mode=production`)
@@ -162,42 +148,33 @@ func (c Config) Validate() error {
 			fmt.Errorf("repository.postgres.url is empty"))
 	}
 
-	// S1-pre: breakglass в production — ОТКАЗ СТАРТА (fail-closed), не WARN.
-	// Обоснование — у errBreakglassForbiddenInProduction.
-	if c.AuthN.Mode.IsProduction() && c.AuthZ.Breakglass {
-		errs = multierr.Append(errs,
-			fmt.Errorf(errBreakglassForbiddenInProduction, c.AuthN.Mode))
-	}
-
-	// S1: production (любой вариант) обязан нести сконфигурированный authz-эндпоинт
-	// либо явный break-glass. Без authz-Check production-инстанс принял бы
-	// подделанную x-kacho-* metadata как полноправного админа — обход авторизации.
-	// (В production breakglass отвергнут выше, поэтому там ветка сводится к
-	// «эндпоинт обязателен»; исключение остаётся значимым для dev.)
-	if c.AuthN.Mode.IsProduction() &&
-		strings.TrimSpace(c.AuthZ.IAMEndpoint) == "" &&
-		!c.AuthZ.Breakglass {
+	// S1: production (любой вариант) обязан нести сконфигурированный authz-эндпоинт.
+	// Ручки, снимающей это требование, больше нет: носитель контура ставит звено
+	// решения о доступе всегда, а ребро к владельцу модели объявляется дескриптором
+	// ЯВНО — незаданный адрес отвергает его конструктор на ЛЮБОЙ посадке. Здесь
+	// остаётся более ранний и более понятный оператору отказ, называющий ручку.
+	if c.AuthN.Mode.IsProduction() && strings.TrimSpace(c.AuthZ.IAMEndpoint) == "" {
 		errs = multierr.Append(errs,
 			fmt.Errorf(errAuthzEndpointRequired, c.AuthN.Mode))
 	}
 
-	// S1c: круг отправителей чужой личности обязан быть сужен на ЛЮБОМ
-	// non-breakglass старте — не только в боевом режиме. Стража общая на все семь
-	// сервисов (grpcsrv.TrustedForwarders.Require), поэтому исход и текст отказа
-	// у них одинаковы, а различаются только имена ручек. Вне боевого режима
-	// пустой круг остаётся возможным, но как ЯВНЫЙ опт-ин: его надо попросить, а
-	// не получить умолчанием.
+	// S1c: круг отправителей чужой личности обязан быть сужен на ЛЮБОМ старте —
+	// не только в боевом режиме. Стража общая на все семь сервисов
+	// (grpcsrv.TrustedForwarders.Require), поэтому исход и текст отказа у них
+	// одинаковы, а различаются только имена ручек. Вне боевого режима пустой круг
+	// остаётся возможным, но как ЯВНЫЙ опт-ин: его надо попросить, а не получить
+	// умолчанием.
 	//
-	// Аварийный режим освобождает: он и так снимает per-RPC проверку целиком, и в
-	// боевом режиме отвергается отдельно (выше).
-	if !c.AuthZ.Breakglass {
-		errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-			Production:   c.AuthN.Mode.IsProduction(),
-			DevTrustAny:  c.AuthZ.TrustAnyForwarder,
-			SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS)",
-			TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_VPC_AUTHZ__TRUST_ANY_FORWARDER)",
-		}))
-	}
+	// Освобождения у этой стражи БОЛЬШЕ НЕТ: прежде её снимал аварийный режим — на
+	// том основании, что он и так убирает пообъектную проверку целиком. Режим
+	// снят, и вместе с ним исчезло единственное условие, при котором круг мог
+	// остаться несужённым молча.
+	errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
+		Production:   c.AuthN.Mode.IsProduction(),
+		DevTrustAny:  c.AuthZ.TrustAnyForwarder,
+		SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS)",
+		TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_VPC_AUTHZ__TRUST_ANY_FORWARDER)",
+	}))
 
 	// S1b: защищённый DB-транспорт требуется в ЛЮБОМ production-режиме, не только
 	// strict (CWE-319). ssl-mode=disable в production → пароль KACHO_VPC_DB_PASSWORD
@@ -370,12 +347,12 @@ func scopeFilteredClause(scopeFiltered []string) string {
 //   - authz Check edge (authzConn → InternalIAMService.Check, :9091): несёт per-RPC
 //     authorization-решение. Cleartext → сетевой MITM подделывает allowed=true →
 //     ПОЛНЫЙ обход авторизации. Активен только когда authz.iam-endpoint задан И authz
-//     не выключен breakglass'ом (breakglass=true → Check не выполняется, ребро не несёт
+//     задан (ручки, отменяющей Check, больше нет; ребро не несёт
 //     security-решения — тот же escape, что в S1). Требует client-mTLS
 //     (IAMAuthzMTLS.Enable) ЛИБО verified server-TLS (AuthZ.IAMTLS.Enable).
 //   - ProjectService.Get edge (iamConn → extapi.iam, :9090): валидация project-existence /
 //     account-lookup на request-path Create/Update. Активен в любом production (обязательная
-//     валидация; breakglass его НЕ отключает — это authz-escape, не project-validation).
+//     валидация — она от настроек authz не зависит).
 //     Требует client-mTLS (IAMProjectMTLS.Enable) ЛИБО verified server-TLS (ExtAPI.IAM.TLS.Enable).
 //   - vpc→geo edge (geoConn → geo.v1.ZoneService.Get / RegionService.Get, :9090): cross-domain
 //     zone_id/region_id reference-validation на request-path Subnet/AddressPool.Create. Дилится
@@ -392,8 +369,7 @@ func scopeFilteredClause(scopeFiltered []string) string {
 //     edge — другой листенер и другие ручки транспорта, поэтому защита Check-ребра его НЕ
 //     покрывает; именно на этом расхождении оно и поднималось незащищённым при довольной
 //     страже. Активен, когда фильтр включён И адрес резолвится (ListFilterAuthorizeEndpoint).
-//     Breakglass его НЕ освобождает: breakglass снимает per-RPC Check, а фильтр продолжает
-//     дилиться и продолжает решать, что вызывающий увидит. Ребро использует client-cert creds,
+//     Ребро использует client-cert creds,
 //     поэтому требование — ListFilterEdgeUsesMTLS (тот же предикат, что читает проводка).
 //
 // MTLSConfig грузится отдельно от viper-Config (envconfig, LoadMTLS), поэтому проверка —
@@ -406,7 +382,7 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 	var errs error
 
 	// authz Check edge — только когда реально дилится и несёт authz-решение.
-	authzEdgeActive := strings.TrimSpace(c.AuthZ.IAMEndpoint) != "" && !c.AuthZ.Breakglass
+	authzEdgeActive := strings.TrimSpace(c.AuthZ.IAMEndpoint) != ""
 	if authzEdgeActive && !m.IAMAuthzMTLS.Enable && !c.AuthZ.IAMTLS.Enable {
 		errs = multierr.Append(errs, fmt.Errorf(errAuthzPeerTransportRequired, c.AuthN.Mode))
 	}
@@ -432,8 +408,7 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 	// list-filter authorize edge — активен ровно тогда, когда его поднимает
 	// composition root: фильтр включён И адрес резолвится. Оба условия читаются
 	// теми же методами, что и проводка, поэтому «страж видит ребро» ⟺ «ребро
-	// дилится». breakglass сюда не применяется — он снимает per-RPC Check, а не
-	// фильтр видимости.
+	// дилится».
 	listFilterEdgeActive := c.AuthZ.ListFilter.Enabled && c.ListFilterAuthorizeEndpoint() != ""
 	if listFilterEdgeActive && !c.ListFilterEdgeUsesMTLS(m) {
 		errs = multierr.Append(errs, fmt.Errorf(errListFilterPeerTransportRequired, c.AuthN.Mode))

@@ -29,15 +29,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/fgaboot"
 	pgrepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
@@ -136,66 +135,54 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond, "re-driven intent delivered exactly once")
 }
 
-// Test_1_4_31_FailClosedBootGate_RefusesCreate — при взведенном --require-iam и
-// неподключенном register-drainer guardCreateUnary отклоняет мутирующий Create
-// (UNAVAILABLE), ресурс не создается; read-RPC (не-Create) проходят. После
-// подключения drainer'а (SetConnected(true)) Create снова разрешен. Postgres не
-// нужен — проверяется чистое поведение gate + interceptor.
+// Test_1_4_31_FailClosedBootGate_RefusesCreate — при взведённом --require-iam и
+// неподключённом дренаже регистраций загрузочный гейт отвергает мутацию, а после
+// подключения (SetConnected(true)) снова её принимает. Postgres не нужен —
+// проверяется чистое поведение гейта и КЛАССИФИКАЦИЯ методов vpc.
+//
+// # Почему здесь больше нет своего интерсептора
+//
+// До перевода vpc на носитель контура пакет `internal/fgaboot` держал СВОЮ копию
+// связки «предикат гейтируемой мутации + unary-звено», дословно совпадавшую с
+// такой же копией у соседей. Копия снята вместе с переводом: звено ставит
+// носитель (`pkg/servicehost`), и его поведение — отказ на гейтируемой мутации,
+// молчание на всём прочем — закреплено ЕГО пробами. Воспроизводить здесь ту же
+// связку значило бы завести пятую копию предмета, который и убирали.
+//
+// Что осталось предметом ЭТОЙ пробы и чего носителева проба знать не может:
+// классификация РЕАЛЬНЫХ имён методов vpc общим предикатом
+// `servicehost.IsGatedMutation`. Тенантский Create гейтится, чтение — нет,
+// админский Internal-Create — нет (у него нет владельца, и гейтить его значило бы
+// закрыть админ-путь по причине, к нему не относящейся).
 func Test_1_4_31_FailClosedBootGate_RefusesCreate(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"})
 
-	// Еще не подключено → Ready() false, Create отклоняется.
+	// Ещё не подключено → Ready() false, мутация отвергается fail-closed.
 	assert.False(t, gate.Ready(), "require-iam + not connected → NotReady")
-
-	// Мутирующий Create отклонен с UNAVAILABLE; внутренний handler не вызывается.
-	createInvoked := false
-	createHandler := func(_ context.Context, _ any) (any, error) { createInvoked = true; return "ok", nil }
-	guard := fgaboot.GuardCreateUnary(gate)
-
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"}, createHandler)
+	err := gate.GuardMutation()
 	require.Error(t, err)
-	assert.Equal(t, codes.Unavailable, status.Code(err), "Create refused fail-closed (UNAVAILABLE)")
-	assert.False(t, createInvoked, "resource not created — handler never reached")
+	assert.Equal(t, codes.Unavailable, status.Code(err), "мутация отвергнута fail-closed (UNAVAILABLE)")
 
-	// Read-RPC (Get) не гейтится — проходит даже при неподключенном drainer'е.
-	getInvoked := false
-	getHandler := func(_ context.Context, _ any) (any, error) { getInvoked = true; return "net", nil }
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Get"}, getHandler)
-	require.NoError(t, err)
-	assert.True(t, getInvoked, "read RPC works on a not-yet-ready instance")
+	// Классификация реальных методов vpc общим предикатом носителя.
+	assert.True(t, servicehost.IsGatedMutation("/kacho.cloud.vpc.v1.NetworkService/Create"),
+		"тенантский Create записывает намерение регистрации — он под гейтом")
+	assert.False(t, servicehost.IsGatedMutation("/kacho.cloud.vpc.v1.NetworkService/Get"),
+		"чтение не записывает намерения — гейтить его нечем и незачем")
+	assert.False(t, servicehost.IsGatedMutation("/kacho.cloud.vpc.v1.InternalAddressPoolService/Create"),
+		"админский Internal-Create владельца не заводит — под гейт не попадает")
 
-	// Internal-admin Create (AddressPool) намеренно не гейтится — у него нет owner-tuple.
-	adminInvoked := false
-	adminHandler := func(_ context.Context, _ any) (any, error) { adminInvoked = true; return "pool", nil }
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.InternalAddressPoolService/Create"}, adminHandler)
-	require.NoError(t, err)
-	assert.True(t, adminInvoked, "Internal-admin Create not gated (no owner-tuple)")
-
-	// Drainer подключился → gate открывается, Create разрешен.
+	// Дренаж подключился → гейт открывается, мутация принимается.
 	gate.SetConnected(true)
 	assert.True(t, gate.Ready(), "connected → Ready")
-	createInvoked = false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"}, createHandler)
-	require.NoError(t, err)
-	assert.True(t, createInvoked, "Create allowed once IAM-register path connected")
+	require.NoError(t, gate.GuardMutation())
 }
 
-// Test_1_4_31_RequireIAMOff_NoOp — контраст: --require-iam=false (dev) → gate
-// no-op, Create всегда разрешен, Ready() всегда true.
+// Test_1_4_31_RequireIAMOff_NoOp — контраст: --require-iam=false (dev) → гейт
+// no-op, мутация всегда принимается, Ready() всегда true.
 func Test_1_4_31_RequireIAMOff_NoOp(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{RequireIAM: false, Service: "kacho-vpc"})
 	assert.True(t, gate.Ready(), "require-iam off → always Ready (dev)")
-	guard := fgaboot.GuardCreateUnary(gate)
-	invoked := false
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"},
-		func(_ context.Context, _ any) (any, error) { invoked = true; return "ok", nil })
-	require.NoError(t, err)
-	assert.True(t, invoked, "Create allowed in dev back-compat mode")
+	require.NoError(t, gate.GuardMutation(), "мутация принимается в dev back-compat режиме")
 }
 
 // Test_1_4_32_LongOutageNoPoison_ThenMetricsSurface — IAM Unavailable дольше, чем
