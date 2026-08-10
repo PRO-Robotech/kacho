@@ -105,6 +105,22 @@ data:
         max-entries: {{ default 10000 .Values.authz.listFilter.maxEntries }}
         fail-open: {{ default false .Values.authz.listFilter.failOpen }}
 
+    # iam — путь доставки намерения о владении ресурсом.
+    #
+    # require — fail-closed загрузочный гейт (pkg/outbox/bootgate): мутирующий
+    # Create отвергается, а под остаётся NotReady, пока register-drainer не
+    # подключён к kacho-iam. Смысл ровно в том, чтобы ресурс не создавался,
+    # пока намерение о владении им некуда доставить: созданный в это окно
+    # ресурс останется без владельца, и его создатель получит отказ на своём же
+    # ресурсе.
+    #
+    # Значение рендерится НАПРЯМУЮ, без `default`: умолчание, вписанное здесь
+    # вторым местом, пережило бы удаление ключа из values.yaml и молча вернуло
+    # бы выключенный гейт — правка одного values.yaml не имела бы силы. Так же
+    # и по той же причине рендерится соседний фильтр видимости.
+    iam:
+      require: {{ .Values.iam.require }}
+
     extapi:
       def-dial-duration: 10s
       iam:

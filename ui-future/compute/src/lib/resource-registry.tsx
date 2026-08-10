@@ -14,54 +14,20 @@
 
 import type { ReactNode } from "react";
 import { Typography } from "antd";
-import type { FormField } from "./form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 import { setByPath } from "./path";
 import { formatBytes } from "./bytes";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
+import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 
-export interface ResourceColumn {
-  header: string;
-  path: string;
-  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references";
-  className?: string;
-  render?: (row: Record<string, unknown>) => ReactNode;
-}
+// Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
+// сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
+// нет тела, поэтому разойтись с источником он не может. Собственное ОБЪЯВЛЕНИЕ формы
+// здесь запрещено (KAC #132) — его ловит scripts/check-resource-spec-single-source.mjs.
 
-export interface ResourceSpec {
-  id: string;
-  route: string;
-  apiPath: string;
-  payloadKey: string;
-  singular: string;
-  plural: string;
-  genitive?: string;
-  description?: string;
-  serviceTitle?: string;
-  scope: "global" | "project" | "account";
-  ops: {
-    create: boolean;
-    update: boolean;
-    delete: boolean;
-    restart?: boolean;
-    start?: boolean;
-    stop?: boolean;
-  };
-  columns: ResourceColumn[];
-  fields?: FormField[];
-  childRoute?: string;
-  template: (ctx: { projectId?: string; accountId?: string }) => unknown;
-  sanitize?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  hydrate?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  validate?: (obj: Record<string, unknown>) => string | null;
-  internalGetPath?: string;
-  related?: { childId: string; filterField: string | string[]; label?: string }[];
-  facet?: { path: string; label: string; options: { value: string; label: string }[] };
-  loadAllPages?: boolean;
-  docs?: { label: string; href: string }[];
-  emptyState?: { title: string; body: string; docs?: string[] };
-}
+export type { ResourceColumn, ResourceSpec };
 
 // ── Общие FormField-константы ──
 

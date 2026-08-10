@@ -69,7 +69,7 @@ func TestAuth_HybridMTLS_VerifiedCert_PrincipalFromSPIFFE_NoJWT(t *testing.T) {
 	).WithMTLSPrincipal(true)
 
 	ctx := peerCtxWithVerifiedCert(t,
-		"spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator")
+		"spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage")
 
 	called := false
 	handler := func(hctx context.Context, _ any) (any, error) {
@@ -77,11 +77,11 @@ func TestAuth_HybridMTLS_VerifiedCert_PrincipalFromSPIFFE_NoJWT(t *testing.T) {
 		p := operations.PrincipalFromContext(hctx)
 		// service_account principal derived from the SAN's sa segment.
 		assert.Equal(t, "service_account", p.Type)
-		assert.Equal(t, "kacho-vpc-operator", p.ID)
+		assert.Equal(t, "kacho-storage", p.ID)
 		// outgoing metadata carries the same principal for the backend hop.
 		md, _ := metadata.FromOutgoingContext(hctx)
 		assert.Equal(t, []string{"service_account"}, md.Get("x-kacho-principal-type"))
-		assert.Equal(t, []string{"kacho-vpc-operator"}, md.Get("x-kacho-principal-id"))
+		assert.Equal(t, []string{"kacho-storage"}, md.Get("x-kacho-principal-id"))
 		return nil, nil
 	}
 	// production-strict has NO Bearer and would otherwise reject — the verified

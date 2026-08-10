@@ -1,18 +1,17 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// absent_model_is_not_yes_test.go — «модели здесь нет» не есть «да».
+// absent_model_is_not_yes_test.go — «модели здесь нет» не есть «да», а «никого не
+// назвали» не есть «пусто».
 //
-// Эталон уже стоит в дереве, у соседа: storage AllowedOnObject на условии «порт
-// есть, спросить негде» ОТКАЗЫВАЕТ и говорит почему — «Это состояние посадки, а не
-// ответ модели». Здесь то же условие обслуживает ListByInstance, за которым per-RPC
-// Check не задаётся вовсе (ScopeFiltered).
+// Оба исхода теперь принимает ОДНА функция общего фундамента, поэтому проба
+// утверждает их вместе: они обязаны оставаться РАЗЛИЧИМЫМИ. Схлопни их — и фикс
+// одного спрятал бы регрессию другого, что и произошло однажды: закрыли шумный
+// подслучай, тихий выжил.
 //
-// Соседний файл уже закрыл ПОЛОВИНУ этого: вызывающий без личности отсекается
-// безусловно, и его godoc прямо называет причину — «привяжи мы fail-closed к наличию
-// фильтра, конфигурация без фильтра отдавала бы вообще всё и вообще всем». Вторая
-// половина — НАЗВАННЫЙ вызывающий при отсутствующем фильтре — осталась
-// непроведённой: закрыли шумный подслучай, тихий выжил.
+// Инстансы называет ВЫЗЫВАЮЩИЙ, а per-RPC Check за этим RPC не задаётся вовсе
+// (ScopeFiltered), поэтому проход при отсутствующей модели означал бы выдачу
+// привязок любых названных инстансов — из чужих проектов и аккаунтов.
 package nicinternal
 
 import (
@@ -24,50 +23,52 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
 
 // TestListByInstance_AbsentModelRefusesANamedCaller — фильтра нет, вызывающий назван:
-// привязки не отдаются. Инстансы называет ВЫЗЫВАЮЩИЙ, поэтому проход означал бы
-// выдачу привязок любых названных инстансов из чужих проектов и аккаунтов.
+// привязки не отдаются.
 func TestListByInstance_AbsentModelRefusesANamedCaller(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	svc := NewService(kr) // фильтр не подключён
+	svc := NewService(kr) // сужатель не подключён
 
-	att, err := svc.ListByInstance(context.Background(), "user:usr_alice", []string{"ins_theirs"})
+	att, err := svc.ListByInstance(narrowtest.Caller(), []string{"ins_theirs"})
 	require.Error(t, err, "спросить негде — значит отказ, а не «да»")
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 	assert.Empty(t, att)
 }
 
-// TestListByInstance_PresentModelStillAnswers — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ. Без него отказ
-// выше неотличим от «отказывает всегда» и зеленел бы на полностью сломанном пути.
+// TestListByInstance_UnnamedCallerIsRefusedByIdentityNotByWiring — второй исход, и он
+// обязан отличаться от первого КОДОМ: вызывающего никто не назвал, и это не про
+// посадку. Сужатель здесь подключён и разрешает всё — значит отказ приходит именно с
+// линии личности, а не «потому что всё сломано».
+func TestListByInstance_UnnamedCallerIsRefusedByIdentityNotByWiring(t *testing.T) {
+	kr := kachomock.NewRepository()
+	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
+
+	svc := NewService(kr).WithListFilter(narrowtest.AllowingAll())
+
+	att, err := svc.ListByInstance(context.Background(), []string{"ins_theirs"})
+	require.Error(t, err, "запрос никого не назвал — привязки не отдаются")
+	assert.Equal(t, codes.Unauthenticated, status.Code(err),
+		"ответ обязан быть про личность, а не про посадку: схлопнутые исходы прячут регрессию друг друга")
+	assert.Empty(t, att)
+}
+
+// TestListByInstance_PresentModelStillAnswers — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ к обоим отказам.
+// Без него они неотличимы от «отказывает всегда» и зеленели бы на полностью сломанном
+// пути.
 func TestListByInstance_PresentModelStillAnswers(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAttachedNIC(t, kr, "prj_mine", "e9b_sub1", "nic_mine", "ins_mine")
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	svc := NewService(kr).WithListFilter(&fakeNICFilter{allowed: []string{"nic_mine"}})
+	svc := NewService(kr).WithListFilter(narrowtest.Allowing("nic_mine"))
 
-	att, err := svc.ListByInstance(context.Background(), "user:usr_alice",
-		[]string{"ins_mine", "ins_theirs"})
+	att, err := svc.ListByInstance(narrowtest.Caller(), []string{"ins_mine", "ins_theirs"})
 	require.NoError(t, err, "модель на месте — ответ обязан быть получен")
 	assert.Equal(t, []string{"nic_mine"}, nicIDsOf(att), "и он обязан быть СУЖЕНИЕМ")
-}
-
-// TestListByInstance_AbsentModelDoesNotSwallowTheAnonymityCut — два класса не должны
-// схлопываться: безымянный вызывающий и при отсутствующем фильтре получает СВОЙ
-// исход (пусто), а не отказ «модели нет». Иначе один фикс спрятал бы регрессию
-// другого.
-func TestListByInstance_AbsentModelDoesNotSwallowTheAnonymityCut(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
-
-	svc := NewService(kr) // фильтр не подключён
-
-	att, err := svc.ListByInstance(context.Background(), "", []string{"ins_theirs"})
-	require.NoError(t, err, "безымянный вызывающий отсекается своим путём, до вопроса о модели")
-	assert.Empty(t, att)
 }

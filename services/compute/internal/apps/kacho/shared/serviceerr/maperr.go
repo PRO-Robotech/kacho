@@ -9,6 +9,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 )
 
 // MapRepoErr — единая трансляция repo-sentinel в gRPC status (копия VPC).
@@ -75,24 +77,46 @@ func mapRefErr(err error, resource, id string) error {
 
 // MapZoneRefErr транслирует ошибку existence-check zone_id (через ZoneRegistry —
 // kacho-geo geo.v1.ZoneService.Get; Geography принадлежит kacho-geo) в
-// gRPC-status, сохраняя контракт compute: неизвестная зона → InvalidArgument
-// "Zone <id> not found". Транспортная ошибка к kacho-geo (Unavailable)
-// пробрасывается как Unavailable с opaque-текстом (без leak'а raw peer-ошибки,
-// зеркалит project-check + MapRepoErr-дисциплину).
+// gRPC-status.
+//
+// Зона не резолвится у владельца — полоса peer-validate: FailedPrecondition
+// "Zone <id> not found" плюс машинный признак. Код здесь берётся у полосы, а не
+// выписывается: прежде он был InvalidArgument, и текст в контракт-тоне
+// отсутствия ресурса утверждал одно, а код — другое.
+//
+// Транспортная ошибка к kacho-geo пробрасывается как Unavailable с
+// opaque-текстом (без leak'а raw peer-ошибки, зеркалит project-check +
+// MapRepoErr-дисциплину).
 func MapZoneRefErr(err error, zoneID string) error {
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, ErrNotFound) {
-		return status.Errorf(codes.InvalidArgument, "Zone %s not found", zoneID)
+		return zoneMissing(zoneID)
 	}
 	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
-		return status.Errorf(codes.InvalidArgument, "Zone %s not found", zoneID)
+		return zoneMissing(zoneID)
 	}
 	// Opaque message: не эхоим raw peer transport-текст наружу (endpoint / dial
 	// error → info-leak, CWE-209). Зеркалит MapRepoErr-дисциплину (фиксированный
 	// текст, без leak'а). Детали остаются в server-side логах peer-клиента.
-	return status.Error(codes.Unavailable, "zone check: upstream geo service unavailable")
+	return kerrors.ReasonPeerUnavailable.Errf(
+		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.zone", ResourceID: zoneID},
+		"zone check: upstream geo service unavailable")
+}
+
+// serviceDomain — источник отказа в ErrorInfo.domain. Назван один раз на сервис:
+// повторённый по местам вызова литерал разъезжается молча, и разъедется он
+// именно там, где деталь читают машиной, а не глазом.
+const serviceDomain = "compute"
+
+// zoneMissing — одна форма для обеих веток промаха. Две ветки, собиравшие ответ
+// каждая сама, — это то, как один сервис начинает отвечать двумя кодами на один
+// текст; здесь у них общий конструктор, поэтому разойтись им нечем.
+func zoneMissing(zoneID string) error {
+	return kerrors.ReasonPeerResourceMissing.Errf(
+		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.zone", ResourceID: zoneID},
+		"Zone %s not found", zoneID)
 }
 
 // stripSentinel — извлекает «полезную» часть сообщения (после «sentinel: »),

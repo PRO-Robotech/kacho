@@ -28,6 +28,111 @@ interface MockColumn {
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
 }
 
+interface SelectOption {
+  value: unknown;
+  label?: React.ReactNode;
+}
+
+interface SelectProps {
+  children?: React.ReactNode;
+  options?: SelectOption[];
+  onChange?: (value: string, option?: SelectOption) => void;
+  value?: string;
+  placeholder?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface TagProps {
+  children?: React.ReactNode;
+  closable?: boolean;
+  onClose?: (e: { preventDefault: () => void }) => void;
+  [key: string]: unknown;
+}
+
+interface ResultProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  subTitle?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface AlertProps {
+  children?: React.ReactNode;
+  message?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+interface ButtonProps {
+  children?: React.ReactNode;
+  loading?: boolean;
+  disabled?: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+  htmlType?: string;
+  [key: string]: unknown;
+}
+
+interface CardProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface DescriptionItem {
+  key?: string | number;
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
+interface DescriptionsProps {
+  items?: DescriptionItem[];
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface MenuItemProps {
+  key?: string;
+  label?: React.ReactNode;
+  type?: string;
+  disabled?: boolean;
+}
+
+interface MenuProps {
+  items?: MenuItemProps[];
+  selectedKeys?: string[];
+  onClick?: (info: { key: string }) => void;
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface RadioOption {
+  value: unknown;
+  label?: React.ReactNode;
+}
+
+interface RadioGroupProps {
+  options?: RadioOption[];
+  value?: unknown;
+  onChange?: (e: { target: { value: unknown } }) => void;
+  children?: React.ReactNode;
+}
+
+interface SwitchProps {
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  [key: string]: unknown;
+}
+
+interface ModalRootProps {
+  children?: React.ReactNode;
+  open?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  [key: string]: unknown;
+}
+
 interface MockTableProps {
   columns?: MockColumn[];
   dataSource?: unknown[];
@@ -55,12 +160,48 @@ function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): s
   return index;
 }
 
+/**
+ * Только те свойства, которые настоящий компонент доносит до DOM: `data-*`,
+ * `aria-*`, `id`, `title`. Остальные (`width`, `destroyOnClose`, `maskClosable`,
+ * …) — параметры виджета: React ругается на них как на неизвестные атрибуты, а
+ * проба, которая начнёт их читать, будет утверждать форму дублёра.
+ */
+function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title") out[k] = v;
+  }
+  return out;
+}
+
 export function antdStub(): Record<string, unknown> {
   const Component = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("div", props, children);
-  const Button = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("button", { type: "button", ...props }, children);
-  const Input = (props: AnyProps) => React.createElement("input", props);
+  // Настоящая кнопка antd в состоянии `loading` НЕ принимает нажатий (защита от
+  // повторной отправки), а её вид задаётся `type`/`size`/`danger` — это
+  // параметры виджета, а не атрибуты DOM. Заменитель, отдававший всё в DOM,
+  // делал повторную отправку возможной и ронял `type="primary"` в атрибут
+  // нативной кнопки.
+  const Button = ({ children, loading, disabled, onClick, htmlType, ...props }: ButtonProps) =>
+    React.createElement(
+      "button",
+      {
+        type: (htmlType as string) ?? "button",
+        disabled: Boolean(disabled) || Boolean(loading),
+        onClick,
+        className: props.className as string | undefined,
+        style: props.style as React.CSSProperties | undefined,
+        ...domAttrs(props),
+      },
+      children,
+    );
+  // Настоящее поле ввода показывает свои `prefix`/`suffix` (замок с причиной,
+  // единицы измерения). Заменитель ронял их, и объяснение «почему нельзя
+  // править» было ненаблюдаемо, хотя пользователь его видит.
+  const Input = ({ prefix, suffix, ...props }: AnyProps & { prefix?: React.ReactNode; suffix?: React.ReactNode }) =>
+    prefix || suffix
+      ? React.createElement("span", null, prefix, React.createElement("input", props), suffix)
+      : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
@@ -102,8 +243,28 @@ export function antdStub(): Record<string, unknown> {
             ),
       ),
     );
-  const Select = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("select", props, children);
+  // Настоящий `Select` рисует ВАРИАНТЫ и отдаёт в `onChange` выбранное
+  // ЗНАЧЕНИЕ (не DOM-событие). Заменитель-`<select>` с `options` в атрибуте не
+  // показывал ни одного варианта и передавал событие: состав списка был
+  // ненаблюдаем, а выбор — невоспроизводим, поэтому проба поневоле утверждала
+  // бы форму дублёра.
+  const Select = ({ children, options, onChange, value, placeholder, ...props }: SelectProps) =>
+    React.createElement(
+      "select",
+      {
+        ...props,
+        value: value ?? "",
+        onChange: (e: { target: { value: string } }) => {
+          const picked = (options ?? []).find((o) => String(o.value) === e.target.value);
+          onChange?.(e.target.value, picked);
+        },
+      },
+      React.createElement("option", { key: "__placeholder__", value: "" }, placeholder),
+      ...(options ?? []).map((o) =>
+        React.createElement("option", { key: String(o.value), value: String(o.value) }, o.label),
+      ),
+      children,
+    );
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема
@@ -126,13 +287,84 @@ export function antdStub(): Record<string, unknown> {
     Header: Component,
     Sider: Component,
   });
+  // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
+  // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
+  // проба о составе формы утверждала бы форму дублёра.
+  const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
+    React.createElement("div", null, React.createElement("label", null, label), children);
   const Form = Object.assign(Component, {
-    Item: Component,
+    Item: FormItem,
     List: Component,
     useForm: () => [{}],
     useWatch: () => undefined,
   });
-  const Modal = Object.assign(Component, {
+  // Настоящее модальное окно СКРЫВАЕТ своё содержимое, пока `open` ложно.
+  // Заменитель-`<div>` рисовал его всегда, и утверждение «после клика окно
+  // показало X» проходило ещё ДО клика — то есть проба закрепляла форму
+  // дублёра, а не наблюдаемое. Пропуск `open` (неуправляемое окно) сохраняет
+  // прежнее поведение: скрывать нечего.
+  //
+  // `title` и `footer` РИСУЮТСЯ: настоящее окно показывает и то, и другое, а
+  // заменитель ронял их в атрибуты. В `footer` живут кнопки действия — то есть
+  // единственное, ради чего окно открывают; пока их не было, ни одна проба не
+  // могла нажать «Выдать»/«Сохранить», и всё поведение за этой кнопкой
+  // оставалось непроверяемым. `footer={null}` (окно без действий) уважается.
+  const ModalRoot = ({
+    children,
+    open,
+    title,
+    footer,
+    okText,
+    cancelText,
+    onOk,
+    onCancel,
+    okButtonProps,
+    className,
+    style,
+    ...rest
+  }: ModalRootProps) => {
+    if (open === false) return null;
+    // `footer={null}` — окно без действий, уважается. Отсутствие `footer` у
+    // настоящего окна означает НЕ «нет кнопок», а «кнопки по умолчанию»
+    // (`okText`/`cancelText`): именно ими подтверждают подключение тома,
+    // удаление и всякое другое необратимое действие. Пока их не было, эти
+    // пути были недостижимы для проб целиком.
+    const ok = okButtonProps as { disabled?: boolean; loading?: boolean } | undefined;
+    const defaultFooter =
+      footer === undefined
+        ? [
+            React.createElement(
+              "button",
+              {
+                key: "cancel",
+                type: "button",
+                onClick: onCancel as () => void,
+              },
+              (cancelText as React.ReactNode) ?? "Cancel",
+            ),
+            React.createElement(
+              "button",
+              {
+                key: "ok",
+                type: "button",
+                disabled: Boolean(ok?.disabled) || Boolean(ok?.loading),
+                onClick: onOk as () => void,
+              },
+              (okText as React.ReactNode) ?? "OK",
+            ),
+          ]
+        : footer === null
+          ? null
+          : [footer as React.ReactNode];
+    return React.createElement(
+      "div",
+      { className, style, role: "dialog", ...domAttrs(rest) },
+      React.createElement("div", null, title as React.ReactNode),
+      children,
+      defaultFooter === null ? null : React.createElement("div", null, ...defaultFooter),
+    );
+  };
+  const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
   });
@@ -156,18 +388,55 @@ export function antdStub(): Record<string, unknown> {
 
   return {
     __esModule: true,
-    Alert: Component,
+    // Настоящее уведомление показывает свои `message` и `description`;
+    // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
+    Alert: ({ children, message, description }: AlertProps) =>
+      React.createElement("div", { role: "alert" }, message, description, children),
     App: Component,
     AutoComplete: Input,
     Avatar: Component,
     Badge: Component,
+    // Поставщик темы обёртывает КАЖДЫЙ remote (`shared/src/lib/theme-context`).
+    // Пока его в наборе не было, любая проба, чей граф импортов доходит до темы,
+    // падала ссылкой на отсутствующий экспорт — и падала СУИТОЙ ЦЕЛИКОМ, ещё до
+    // первого утверждения, то есть сообщением не про свой предмет. Тема на
+    // наблюдаемое не влияет, поэтому заменитель — прозрачная обёртка.
+    ConfigProvider: ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children),
     Button,
-    Card: Component,
+    // Настоящая карточка показывает свои заголовок и дополнение; заменитель
+    // ронял их в атрибуты, поэтому счётчик/подпись в шапке карточки были
+    // ненаблюдаемы вовсе.
+    Card: ({ children, title, extra, ...rest }: CardProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title),
+        React.createElement("div", null, extra),
+        children,
+      ),
     Cascader: Select,
     Checkbox,
     Col: Component,
     Collapse: Component,
-    Descriptions: Component,
+    // Настоящий список свойств рисует ПАРЫ подпись→значение, и на карточке
+    // ресурса это весь обзор целиком. Заменитель-`<div>` ронял `items` в
+    // атрибут: ни одна строка обзора не была наблюдаема, поэтому «карточка
+    // показывает описание» проверить было нечем.
+    Descriptions: ({ items, title, children }: DescriptionsProps) =>
+      React.createElement(
+        "dl",
+        null,
+        title === undefined ? null : React.createElement("div", null, title as React.ReactNode),
+        (items ?? []).map((it, i) =>
+          React.createElement(
+            "div",
+            { key: it.key ?? i },
+            React.createElement("dt", null, it.label),
+            React.createElement("dd", null, it.children),
+          ),
+        ),
+        children,
+      ),
     Divider: Component,
     Dropdown: Component,
     // Настоящий `Empty` рисует своё пояснение; заменитель-`<div>` прятал его в
@@ -180,21 +449,134 @@ export function antdStub(): Record<string, unknown> {
     InputNumber: Input,
     Layout,
     List: Component,
-    Menu: Component,
+    // Настоящее меню рисует свои пункты. На карточке ресурса это рейл вкладок:
+    // пока пункты уезжали в атрибут, «какие вкладки обещаны» было ненаблюдаемо,
+    // и утверждение «вкладки, которой быть не должно, нет» зеленело на пустом
+    // заменителе — то есть на всём сразу.
+    Menu: ({ items, selectedKeys, onClick, children }: MenuProps) =>
+      React.createElement(
+        "nav",
+        null,
+        (items ?? []).map((item, i) =>
+          item.type === "divider"
+            ? React.createElement("hr", { key: item.key ?? `d${i}` })
+            : React.createElement(
+                "button",
+                {
+                  key: item.key ?? i,
+                  type: "button",
+                  disabled: Boolean(item.disabled),
+                  "aria-current": (selectedKeys ?? []).includes(item.key ?? "") ? "page" : undefined,
+                  onClick: () => onClick?.({ key: item.key ?? "" }),
+                },
+                item.label,
+              ),
+        ),
+        children,
+      ),
     Modal,
     Popconfirm: Component,
-    Result: Component,
+    // Настоящий `Result` показывает заголовок и пояснение; заменитель ронял их
+    // в атрибуты, и текст отказа (в т.ч. сообщение края) был ненаблюдаем.
+    Result: ({ children, title, subTitle, extra, ...rest }: ResultProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title),
+        React.createElement("div", null, subTitle),
+        React.createElement("div", null, extra),
+        children,
+      ),
+    // Настоящая радиогруппа — набор переключателей с общим именем. Её
+    // отсутствие в наборе не «обедняло проверку», а роняло суиту целиком:
+    // ESM-линкер не находит binding и уводит прогон ещё до первого утверждения.
+    Radio: Object.assign(
+      ({ children, value, ...rest }: React.PropsWithChildren<AnyProps>) =>
+        React.createElement(
+          "label",
+          null,
+          React.createElement("input", { type: "radio", value: value as string, ...domAttrs(rest) }),
+          children,
+        ),
+      {
+        Group: ({ children, options, value, onChange }: RadioGroupProps) =>
+          React.createElement(
+            "div",
+            { role: "radiogroup" },
+            (options ?? []).map((o) =>
+              React.createElement(
+                "label",
+                { key: String(o.value) },
+                React.createElement("input", {
+                  type: "radio",
+                  value: String(o.value),
+                  checked: value === o.value,
+                  onChange: () => onChange?.({ target: { value: o.value } }),
+                }),
+                o.label,
+              ),
+            ),
+            children,
+          ),
+        Button: ({ children, ...rest }: React.PropsWithChildren<AnyProps>) =>
+          React.createElement("button", { type: "button", ...domAttrs(rest) }, children),
+      },
+    ),
     Row: Component,
     Segmented: Component,
     Select,
     Space,
     Spin: Component,
     Statistic: Component,
-    Switch: Input,
+    // Настоящий переключатель отдаёт в `onChange` НОВОЕ СОСТОЯНИЕ (`boolean`),
+    // а не событие DOM. Заменитель-поле ввода отдавал событие: оно истинно
+    // всегда, поэтому «выключить» не срабатывало НИ РАЗУ, а проба, написанная
+    // на таком дублёре, закрепляла бы это как норму. Роль — `switch`, как у
+    // настоящего: иначе переключатель недостижим по доступному имени.
+    Switch: ({ checked, onChange, ...rest }: SwitchProps) =>
+      React.createElement("input", {
+        type: "checkbox",
+        role: "switch",
+        checked: Boolean(checked),
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.checked),
+        ...domAttrs(rest),
+      }),
     Table,
     Tabs: Component,
-    Tag: Component,
-    Tooltip: Component,
+    // Настоящий закрываемый `Tag` рисует крестик с доступным именем `close`
+    // (aria-label самого antd). Заменитель-`<div>` его не рисовал вовсе, и
+    // снятие элемента из набора было ненаблюдаемо — то есть проверялась
+    // только та половина виджета, где ничего не меняется.
+    Tag: ({ children, closable, onClose, color: _color, ...rest }: TagProps) =>
+      React.createElement(
+        "span",
+        rest,
+        children,
+        closable
+          ? React.createElement(
+              "button",
+              {
+                type: "button",
+                "aria-label": "close",
+                onClick: () => onClose?.({ preventDefault: () => {} }),
+              },
+              "\u00d7",
+            )
+          : null,
+      ),
+    // Подпись подсказки достаётся нативным `title`: у настоящего antd она видна
+    // при наведении, здесь — читается атрибутом. Пропасть она не может.
+    //
+    // В атрибут уезжает ТОЛЬКО текстовая подпись. Атрибут `title` по своей природе
+    // строка, а `React.ReactNode` — это и узел: `String(<узел>)` дал бы
+    // `[object Object]`, то есть один и тот же текст для любой подсказки. Тогда
+    // проба, утверждающая «подсказка объясняет, почему нельзя править», проходила
+    // бы при ЛЮБОМ содержании подсказки — и при пустом тоже. Узловая подпись
+    // поэтому РИСУЕТСЯ: её содержимое остаётся наблюдаемым по тексту.
+    Tooltip: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) => {
+      const text = typeof title === "string" || typeof title === "number" ? String(title) : undefined;
+      return React.createElement("span", text ? { title: text } : {}, children, text === undefined ? title : null);
+    },
     Tree: Component,
     Typography,
     theme,

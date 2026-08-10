@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: ui-future/package-lock.json
       - name: зависимости workspace
@@ -87,12 +87,17 @@ jobs:
     # («outside of base path»), поэтому общий код, который потребляют все девять
     # приложений, не попадал НИ В ОДНУ область линта: 351 отслеживаемый файл из 1369.
     #
-    # Здесь три гейта, и все способны упасть:
+    # Здесь четыре гейта, и все способны упасть:
     #   1. покрытие — каждый отслеживаемый линтуемый файл обязан попадать в область
     #      линта своего пакета (иначе «ноль находок» означает «ноль прочитанного»);
     #   2. долг shared — находки не растут сверх поимённо зафиксированного числа,
     #      и запись, которой больше нечего исключать, сама краснит гейт;
-    #   3. линт самой оснастки scripts/ — гейты судятся тем же инструментом, что и код.
+    #   3. единственный источник ФОРМЫ ресурса — типы, которыми консоль описывает
+    #      любой ресурс, объявлены ровно в одном модуле каждый (KAC #132). Форма жила
+    #      в пяти копиях, копии разошлись молча, и узналось это падением сборки трёх
+    #      приложений, а не проверкой. Гейт разбирает AST, поэтому реэкспорт (тела нет,
+    #      разойтись не может) законен, а повторное ОБЪЯВЛЕНИЕ — находка;
+    #   4. линт самой оснастки scripts/ — гейты судятся тем же инструментом, что и код.
     #
     # Линт девяти приложений в CI пока НЕ гоняется — это отдельный предмет со своими
     # находками (см. residual в описании ветки), а не забытый шаг: гейт покрытия
@@ -102,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: ui-future/package-lock.json
       - name: зависимости workspace
@@ -117,6 +122,8 @@ jobs:
         run: node scripts/check-lint-coverage.mjs
       - name: линт shared против зафиксированного долга
         run: node scripts/check-shared-lint-debt.mjs
+      - name: форма ресурса объявлена в одном месте
+        run: node scripts/check-resource-spec-single-source.mjs
       - name: линт оснастки scripts/
         working-directory: ui-future/scripts
         run: ../node_modules/.bin/eslint .
@@ -138,7 +145,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           cache-dependency-path: ui-future/package-lock.json
       - name: зависимости (workspace + standalone-пакет если нужно)

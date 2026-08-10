@@ -151,6 +151,15 @@ var RevocationPolicy = RevocationWindowPolicy{
 		"compute KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": 5 * time.Second,
 		"storage KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS": 5 * time.Second,
 
+		// Три площадки, у которых своей ручки НЕ БЫЛО: они строили кеш как
+		// NewCache(0) и потому держали умолчание политики. Значение не изменилось
+		// — изменилось то, что число стало ВЫБРАННЫМ: до этого оператор не мог
+		// сузить окно отзыва на конкретной посадке, а обсуждать было нечего, потому
+		// что величина принадлежала платформе, а не сервису.
+		"compute KACHO_COMPUTE_AUTHZ_CACHE_TTL": 5 * time.Second,
+		"storage KACHO_STORAGE_AUTHZ_CACHE_TTL": 5 * time.Second,
+		"geo KACHO_GEO_AUTHZ_CACHE_TTL":         5 * time.Second,
+
 		// Край — единственная площадка с ПРОАКТИВНЫМ снятием записи:
 		// `InternalAuthzCacheService.InvalidateSubject`, который зовёт дренаж
 		// `subject_change_outbox` из iam (отправитель реальный —
@@ -171,12 +180,13 @@ var RevocationPolicy = RevocationWindowPolicy{
 
 	// Inherited — площадки БЕЗ своей ручки: строятся как NewCache(0) и берут
 	// Default. Перечислены явно, потому что «у сервиса нет ручки» — записанный
-	// факт, а не следствие того, что гейт ничего не нашёл. Ключи держат форму
-	// «<сервис> <ручка>», чтобы самоистечение переписи их не считало
-	// просроченными.
-	Inherited: map[string]bool{
-		"compute authz.cache-ttl": true, // services/compute/internal/check/factory.go
-		"geo authz.cache-ttl":     true, // services/geo/internal/check/factory.go
-		"storage authz.cache-ttl": true, // services/storage/internal/check/factory.go
-	},
+	// факт, а не следствие того, что гейт ничего не нашёл.
+	//
+	// СЕГОДНЯ ЗДЕСЬ ПУСТО, и это измерение, а не забытая карта: три площадки,
+	// стоявшие тут (compute, geo, storage), завели собственные ручки и переехали
+	// в Windows выше. Карта остаётся, потому что её предмет — не «эти трое», а
+	// свойство: сервис, взявший окно умолчанием, обязан быть записан. Восьмой,
+	// который построит кеш как NewCache(0), попадёт сюда — иначе его окно не
+	// будет записано нигде, ведь в его конфиге искать нечего.
+	Inherited: map[string]bool{},
 }

@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
@@ -32,19 +33,19 @@ import (
 // это нормально для cursor-пагинации, next_page_token берётся от последней
 // ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListSubnetsUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo     Repo
+	narrower *listnarrow.Narrower
 }
 
 // NewListSubnetsUseCase создает ListSubnetsUseCase. filter может быть nil
 // (list-filter disabled / dev) → unfiltered passthrough.
-func NewListSubnetsUseCase(r Repo, filter ListFilter) *ListSubnetsUseCase {
-	return &ListSubnetsUseCase{repo: r, filter: filter}
+func NewListSubnetsUseCase(r Repo, n *listnarrow.Narrower) *ListSubnetsUseCase {
+	return &ListSubnetsUseCase{repo: r, narrower: n}
 }
 
 // Execute — проверяет project_id, читает страницу и фильтрует её per-object.
 // iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
-func (u *ListSubnetsUseCase) Execute(ctx context.Context, subjectID string, f SubnetFilter, p Pagination) ([]*kachorepo.SubnetRecord, string, error) {
+func (u *ListSubnetsUseCase) Execute(ctx context.Context, f SubnetFilter, p Pagination) ([]*kachorepo.SubnetRecord, string, error) {
 	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
 	//
 	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
@@ -59,55 +60,37 @@ func (u *ListSubnetsUseCase) Execute(ctx context.Context, subjectID string, f Su
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
+	// Предусловие сужения — ДО чтения страницы из БД.
+	//
+	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением
+	// лежит курсорный запрос к своей базе: безымянный запрос оплачивал бы его, чтобы
+	// получить отказ на прочитанном. Проверка формата остаётся ПЕРВОЙ и выше —
+	// ответ на некорректный ввод не должен зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
 	r, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}
 	defer func() { _ = r.Close() }()
 
-	if subjectID == "" && u.filter != nil {
-		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
-		return nil, "", nil
-	}
 	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
 	// проверки как авторитетный backstop служимого пути.
 	subs, next, lerr := r.Subnets().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || len(subs) == 0 {
+	if len(subs) == 0 {
 		return subs, next, nil
 	}
-	visible, ferr := filterVisibleSubnets(ctx, u.filter, subjectID, subs)
+	visible, ferr := listnarrow.Page(ctx, u.narrower,
+		authzfilter.ResourceTypeSubnet, authzfilter.ActionSubnetList, subs,
+		func(rec *kachorepo.SubnetRecord) string { return rec.ID })
 	if ferr != nil {
 		return nil, "", ferr
 	}
 	return visible, next, nil
-}
-
-// filterVisibleSubnets оставляет из страницы только видимые subject'у строки,
-// сохраняя порядок курсора.
-func filterVisibleSubnets(ctx context.Context, filter ListFilter, subjectID string, subs []*kachorepo.SubnetRecord) ([]*kachorepo.SubnetRecord, error) {
-	pageIDs := make([]string, 0, len(subs))
-	for _, s := range subs {
-		pageIDs = append(pageIDs, s.ID)
-	}
-	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
-		authzfilter.ResourceTypeSubnet, authzfilter.ActionSubnetList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kachorepo.SubnetRecord, 0, len(visibleIDs))
-	for _, s := range subs {
-		if _, ok := visible[s.ID]; ok {
-			out = append(out, s)
-		}
-	}
-	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному subnet-id.

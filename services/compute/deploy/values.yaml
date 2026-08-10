@@ -39,7 +39,7 @@ auth:
   requireIAM: true
   # trustedForwarderSANs — comma-separated allow-list of client-cert SANs
   # permitted to forward the end-user principal (x-kacho-principal-*). MUST be
-  # non-empty in any production mode (config.go requireTrustedForwarders): empty
+  # non-empty in any production mode (config.Config.Validate): empty
   # ⇒ any mTLS peer is trusted to forward → confused-deputy / tenant crossing
   # (CWE-290/CWE-441). Default: the api-gateway SA SPIFFE id (the only legitimate
   # forwarder). Set empty only when auth.mode=dev.

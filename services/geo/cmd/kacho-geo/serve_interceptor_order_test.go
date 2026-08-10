@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // Guard-тесты load-bearing инварианта порядка интерсепторов (finding sec-hardening-r9b:
@@ -72,7 +74,7 @@ func TestAssembleUnaryChain_order(t *testing.T) {
 		traceUnary("principal-2", &trace),
 	}
 	authz := traceUnary("authz", &trace)
-	chain := assembleUnaryChain(recoveryUnaryInterceptor(quietLogger()), principal, authz)
+	chain := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(quietLogger()), principal, authz)
 	if len(chain) != 4 {
 		t.Fatalf("chain len = %d, want 4 (recovery+2 principal+authz)", len(chain))
 	}
@@ -99,7 +101,7 @@ func TestAssembleUnaryChain_recoveryOutermost(t *testing.T) {
 	var trace []string
 	principal := []grpc.UnaryServerInterceptor{traceUnary("principal", &trace)}
 	// authz==nil → слот authz отсутствует.
-	chain := assembleUnaryChain(recoveryUnaryInterceptor(quietLogger()), principal, nil)
+	chain := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(quietLogger()), principal, nil)
 	if len(chain) != 2 {
 		t.Fatalf("chain len = %d, want 2 (recovery+principal, no authz)", len(chain))
 	}
@@ -124,7 +126,7 @@ func TestAssembleStreamChain_order_and_recoveryOutermost(t *testing.T) {
 	var trace []string
 	principal := []grpc.StreamServerInterceptor{traceStream("principal", &trace)}
 	authz := traceStream("authz", &trace)
-	chain := assembleStreamChain(recoveryStreamInterceptor(quietLogger()), principal, authz)
+	chain := assembleStreamChain(grpcsrv.StreamPanicRecovery(quietLogger()), principal, authz)
 	if len(chain) != 3 {
 		t.Fatalf("chain len = %d, want 3 (recovery+principal+authz)", len(chain))
 	}
@@ -140,7 +142,7 @@ func TestAssembleStreamChain_order_and_recoveryOutermost(t *testing.T) {
 	}
 
 	trace = nil
-	chain = assembleStreamChain(recoveryStreamInterceptor(quietLogger()), principal, nil)
+	chain = assembleStreamChain(grpcsrv.StreamPanicRecovery(quietLogger()), principal, nil)
 	perr := runStreamChain(chain, fakeServerStream{}, func(any, grpc.ServerStream) error {
 		panic("stream-boom")
 	})
@@ -151,3 +153,10 @@ func TestAssembleStreamChain_order_and_recoveryOutermost(t *testing.T) {
 		t.Fatalf("stream panic value leaked: %v", perr)
 	}
 }
+
+// fakeServerStream — минимальный ServerStream для прогона stream-цепочки.
+// Переехал сюда вместе со снятием локальной реализации звена восстановления
+// паники: сам он к ней не относится, а нужен именно этой пробе порядка.
+type fakeServerStream struct{ grpc.ServerStream }
+
+func (fakeServerStream) Context() context.Context { return context.Background() }

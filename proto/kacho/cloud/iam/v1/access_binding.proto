@@ -158,9 +158,11 @@ message AccessBinding {
 
   // Tenant-facing метки самого ресурса AccessBinding. Единая модель видимости
   // IAM-ресурсов: AccessBinding — label-selectable, как account/project;
-  // ARM_LABELS-грант на iam.accessBinding материализует v_list по совпадению
-  // `labels @> matchLabels` (iam-direct same-DB), а List фильтрует через
-  // `viewer ∪ v_list`. Mutable через Update (`labels` в update_mask).
+  // ARM_LABELS-грант на iam.accessBinding материализует глаголы своей роли на
+  // объектах, чьи `labels` покрывают `matchLabels` (iam-direct same-DB), а
+  // страница List сужается тем же отношением, которым каталог гейтит одиночное
+  // чтение — `v_get`; строка попадает в выдачу ровно тогда, когда вызывающий
+  // вправе прочитать её по id. Mutable через Update (`labels` в update_mask).
   map<string, string> labels = 21;
 
   // Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,

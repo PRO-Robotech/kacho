@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
@@ -160,17 +161,29 @@ func projectExistsErr(projectID string, err error) error {
 	return mapRepoErr(err)
 }
 
-// regionExistsErr — маппинг cross-domain region-precheck (geo, peer-validate lane) в
-// gRPC-status (REG-1 F4, by-lane api-conventions.md):
+// regionExistsErr — маппинг cross-domain region-precheck (geo, peer-validate lane)
+// в gRPC-status (REG-1 F4, by-lane api-conventions.md):
 //
 //	region отсутствует у владельца → FailedPrecondition (PEER_RESOURCE_MISSING, REG-1-12)
 //	geo недоступен                 → Unavailable (PEER_UNAVAILABLE, fail-closed, REG-1-13)
+//
+// Токены в скобках выше — не пояснение к коду, а то, что реально уезжает в
+// details: полоса собирается закрытым типом фундамента, поэтому имя полосы и её
+// код не могут разойтись. Прежде эти токены назывались только здесь, в тексте, и
+// клиент, ключевавшийся на них, не сработал бы ни разу.
 func regionExistsErr(regionID string, err error) error {
 	switch {
 	case errors.Is(err, regerrors.ErrFailedPrecondition):
-		return failFailedPrecondition("region %s not found", regionID)
+		return kerrors.ReasonPeerResourceMissing.Errf(
+			kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+			"region %s not found", regionID)
 	case errors.Is(err, regerrors.ErrUnavailable):
-		return failUnavailable("region existence check unavailable")
+		return kerrors.ReasonPeerUnavailable.Errf(
+			kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+			"region existence check unavailable")
 	}
 	return mapRepoErr(err)
 }
+
+// serviceDomain — источник отказа в ErrorInfo.domain. Назван один раз на сервис.
+const serviceDomain = "registry"

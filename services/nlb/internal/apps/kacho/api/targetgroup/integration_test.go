@@ -27,6 +27,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	// dto/type2pb init регистрирует TargetGroup transfer.
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
@@ -79,7 +80,7 @@ func mkHandler(t *testing.T, repo *kachopg.Repository, opsRepo operations.Repo) 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	// nil peer-clients — Create/AddTargets/Move skip peer-validate (acceptable
 	// для integration сценариев DB happy-paths).
-	return targetgroup.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil, nil, nil, allowAllExt(), logger)
+	return targetgroup.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil, nil, nil, narrowtest.AllowingAll(), logger)
 }
 
 // ---- Integration tests -----------------------------------------------------

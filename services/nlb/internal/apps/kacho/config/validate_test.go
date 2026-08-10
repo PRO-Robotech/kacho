@@ -42,9 +42,16 @@ func TestParseMode(t *testing.T) {
 }
 
 // minimalValidConfig — самая базовая корректная Config (для модификации в тестах).
+//
+// Опт-ин круга отправителей выставлен явно: стража круга срабатывает на ЛЮБОМ
+// non-breakglass старте, и это ровно тот случай, ради которого опт-ин заведён —
+// in-process фикстура без сертификатов и без шлюза. Собственная проба стражи
+// (TestValidate_UnnarrowedCircle_*) опт-ин НЕ ставит, поэтому фикстура не делает
+// стражу невидимой.
 func minimalValidConfig() Config {
 	return Config{
 		ModeRaw: "dev",
+		Authz:   AuthzConfig{TrustAnyForwarder: true},
 		Logger:  LoggerConfig{Level: "INFO"},
 		APIServer: APIServerConfig{
 			Endpoint:         "tcp://0.0.0.0:9090",
@@ -644,5 +651,46 @@ func TestValidate_Production_MTLSRejectsBlankOnlyTrustedForwarderSANs(t *testing
 	if err == nil || !strings.Contains(err.Error(), "trusted-forwarder-sans") {
 		t.Fatalf("a list of blank entries passed the guard: corelib drops empty strings, so the "+
 			"allow-list is empty and any mTLS-verified peer may forward an end-user principal; got %v", err)
+	}
+}
+
+// TestValidate_UnnarrowedCircleRefusesWithoutTheOptIn — стража круга отправителей
+// срабатывает на ЛЮБОМ non-breakglass старте, а не только в боевом режиме.
+//
+// Опт-ин здесь НЕ ставится намеренно: это единственное место пакета, где его нет,
+// и потому единственное, где стража видна. Рядом — положительный контроль, иначе
+// отрицание зеленело бы и на «отказывать всегда».
+func TestValidate_UnnarrowedCircleRefusesWithoutTheOptIn(t *testing.T) {
+	cfg := minimalValidConfig()
+	cfg.Authz.TrustAnyForwarder = false
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "authz.trusted-forwarder-sans") ||
+		!strings.Contains(err.Error(), "authz.trust-any-forwarder") {
+		t.Fatalf("отказ обязан назвать обе ручки, оператору иначе нечего выставить: %v", err)
+	}
+}
+
+// TestValidate_UnnarrowedCircleIsAcceptedWithTheOptIn — положительный контроль.
+func TestValidate_UnnarrowedCircleIsAcceptedWithTheOptIn(t *testing.T) {
+	cfg := minimalValidConfig()
+	cfg.Authz.TrustAnyForwarder = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру: %v", err)
+	}
+}
+
+// TestValidate_ProductionIgnoresTheDevOptIn — опт-ин не действует в боевом
+// режиме: иначе он был бы ручкой, снимающей защиту на развёрнутом стенде.
+func TestValidate_ProductionIgnoresTheDevOptIn(t *testing.T) {
+	cfg := minimalValidConfig()
+	cfg.ModeRaw = "production"
+	cfg.Authz.TrustAnyForwarder = true
+	if err := cfg.Validate(); err == nil ||
+		!strings.Contains(err.Error(), "authz.trusted-forwarder-sans") {
+		t.Fatalf("боевой режим обязан отказать на несуженном круге даже с опт-ином: %v", err)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // Config — корневая структура конфигурации kacho-vpc.
@@ -65,7 +67,7 @@ type IAMConfig struct {
 
 // AuthZConfig — секция authz. Если IAMEndpoint пуст и Breakglass=false —
 // interceptor НЕ навешивается (graceful start без kacho-iam в dev).
-// См. internal/apps/kacho/check/factory.go.
+// См. internal/check/factory.go.
 type AuthZConfig struct {
 	// IAMEndpoint — gRPC адрес kacho-iam internal-port'а (обычно
 	// `kacho-iam.kacho.svc.cluster.local:9091`). Пустая строка → interceptor
@@ -107,7 +109,6 @@ type AuthZConfig struct {
 	//     инициатора (services/compute/internal/clients/vpc_{nic,subnet}_client.go);
 	//   - nlb         — резолв подсети/адреса/группы безопасности/интерфейса
 	//     (services/nlb/internal/clients/vpc/*.go);
-	//   - vpc-operator — SEC-G sync-poll read.
 	// Канонические значения — в values.prod.
 	//
 	// Пусто допустимо ТОЛЬКО в dev (in-process фикстуры): contract corelib сужает
@@ -117,6 +118,18 @@ type AuthZConfig struct {
 	//
 	// ENV `KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS` (через запятую).
 	TrustedForwarderSANs []string `mapstructure:"trusted-forwarder-sans"`
+
+	// TrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО вне
+	// боевого режима. Нужен для локальных in-process фикстур, где ни сертификатов,
+	// ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) = отказ
+	// старта на пустом круге. В боевом режиме НЕ действует — иначе это была бы
+	// ручка, снимающая защиту на развёрнутом стенде.
+	TrustAnyForwarder bool `mapstructure:"trust-any-forwarder"`
 }
 
 // TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
@@ -124,27 +137,15 @@ type AuthZConfig struct {
 //
 // Единственный источник этого значения на процесс: его читает и проводка
 // (cmd/vpc/main.go), и стража старта (Validate), и самоотчёт о посадке
-// (cmd/vpc/bootposture.go). Поэтому «стража пропустила» ⟺ «круг реально сужен» —
-// по построению, а не по совпадению.
+// (cmd/vpc/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его предикат,
+// поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению, а не по
+// совпадению трёх одинаково написанных тел.
 //
-// Отбрасывает пустые записи, потому что их отбрасывает и corelib
-// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
-// (`SANS=","`) вырождается там в пустое множество, то есть снова «доверяем любому».
-// Стража, считающая длину сырого среза, такое значение пропустила бы.
-//
-// Пробелы по краям срезаются — осознанное расхождение с corelib: тот сравнивает
-// личность сертификата побайтово, поэтому запись " spiffe://…" не совпала бы ни с
-// одним сертификатом, и оператор, написавший список через «запятая-пробел», получил
-// бы не отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
-// от этого не расширяется: в него попадают ровно перечисленные строки.
-func (c Config) TrustedForwarders() []string {
-	out := make([]string, 0, len(c.AuthZ.TrustedForwarderSANs))
-	for _, s := range c.AuthZ.TrustedForwarderSANs {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZ.TrustedForwarderSANs...)
 }
 
 // ListFilterAuthorizeEndpoint — адрес, по которому РЕАЛЬНО поднимается соединение
@@ -221,6 +222,20 @@ type ListFilterConfig struct {
 	// FailOpen — если true, FGA-error возвращает unfiltered list.
 	// Default false (fail-closed). WARN-log + Critical-alert при включении.
 	FailOpen bool `mapstructure:"fail-open"`
+
+	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
+	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
+	// НЕсуженными вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`): иначе аварийный режим становится тихим
+	// штатным, и «им пользуются» неотличимо от «им не пользуются».
+	//
+	// В production запрещён тем же стражем, что запрещает выключенный фильтр.
+	Breakglass bool `mapstructure:"breakglass"`
 }
 
 // LoggerConfig — секция logger.

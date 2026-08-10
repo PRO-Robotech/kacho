@@ -69,8 +69,10 @@ type InternalNetworkInterfaceServiceClient interface {
 	// Authorized AT THE LEVEL OF THE DATA, by kacho-vpc: the caller names the
 	// instances and the answer is a set of interfaces with different owners, so no
 	// single object can be checked in advance. nicinternal narrows the page
-	// per-interface (`viewer ∪ v_list` on `vpc_network_interface:<id>`, in batches),
-	// and the production boot-guard refuses to start with that filter disabled.
+	// per-interface, in batches, on the same relation the permission catalog gates a
+	// single-object read on — `v_get` on `vpc_network_interface:<id>` — and the
+	// production boot-guard refuses to start with that filter disabled. The page can
+	// never be wider than the read: it is the same question, asked per row.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
 	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
@@ -160,8 +162,10 @@ type InternalNetworkInterfaceServiceServer interface {
 	// Authorized AT THE LEVEL OF THE DATA, by kacho-vpc: the caller names the
 	// instances and the answer is a set of interfaces with different owners, so no
 	// single object can be checked in advance. nicinternal narrows the page
-	// per-interface (`viewer ∪ v_list` on `vpc_network_interface:<id>`, in batches),
-	// and the production boot-guard refuses to start with that filter disabled.
+	// per-interface, in batches, on the same relation the permission catalog gates a
+	// single-object read on — `v_get` on `vpc_network_interface:<id>` — and the
+	// production boot-guard refuses to start with that filter disabled. The page can
+	// never be wider than the read: it is the same question, asked per row.
 	//
 	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
 	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster

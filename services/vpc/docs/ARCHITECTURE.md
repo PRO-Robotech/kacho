@@ -510,7 +510,7 @@ Immutable-поля по ресурсам:
 | `production-strict` | То же + дополнительные проверки cross-service TLS и DB sslmode |
 
 **Объектная авторизация в handler-ах не живёт** — она выражена в permission-модели
-(`internal/apps/kacho/check.PermissionMap`) и энфорсится per-RPC
+(`internal/check.PermissionMap`) и энфорсится per-RPC
 authz-интерсептором (`InternalIAMService.Check` → OpenFGA) на обоих листенерах,
 fail-closed для не описанных в карте RPC.
 
@@ -1038,7 +1038,7 @@ umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + 
 | Транспорт (cross-service) | TLS на gRPC к kacho-iam (`KACHO_VPC_IAM_TLS`) |
 | Транспорт (cross-service DB) | sslmode для pgx DSN |
 | AuthN | Сейчас не реализован — IAM scaffolding через metadata headers, future — JWT |
-| AuthZ (object-scope) | per-RPC FGA-Check из `internal/apps/kacho/check.PermissionMap` на обоих листенерах (fail-closed для RPC вне карты) |
+| AuthZ (object-scope) | per-RPC FGA-Check из `internal/check.PermissionMap` на обоих листенерах (fail-closed для RPC вне карты) |
 | AuthZ (admin operations) | `requireAdmin=true` interceptor на :9091 |
 | Сетевая защита :9091 | k8s NetworkPolicy (allowlist namespaces) |
 | Info-leak guard | `mapRepoErr`/`internalMapErr` не передают raw err.Error в gRPC-text |
@@ -1229,7 +1229,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 2. Handler — thin transport: parse req → call service → format resp.
 3. Get/Update/Delete делают `repo.Get` (через service) ради existence-контракта
    (`NOT_FOUND`); объектную авторизацию делает per-RPC authz-интерсептор по
-   `internal/apps/kacho/check.PermissionMap`, а не handler.
+   `internal/check.PermissionMap`, а не handler.
 4. В `internal/handler/authn_interceptor.go` — unary и stream interceptors,
    требующие предъявленного принципала в production-mode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над

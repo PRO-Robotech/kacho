@@ -84,6 +84,13 @@ var switchNames = map[string]bool{
 	"FailOpen":           true,
 	"ListFilterFailOpen": true,
 	"AuthZFailOpen":      true,
+	// Имена общего сужателя. `SoftPassOnPeerFailure` — прежний FailOpen под своим
+	// предметом; `Breakglass` — вторая ветка, которая тоже ОТДАЁТ страницу, только по
+	// другой причине (модели нет вовсе, а не сосед не ответил). Она подпадает под тот
+	// же запрет: проход без прибора превращает аварийный режим в тихий штатный, и
+	// «им пользуются» становится неотличимо от «им не пользуются».
+	"SoftPassOnPeerFailure": true,
+	"Breakglass":            true,
 }
 
 // logCalls / counterCalls are the executable shapes that make a pass observable.

@@ -1324,12 +1324,14 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xd8\x14\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x8c\x15\n" +
 	"\x0eNetworkService\x12\xaf\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetNetworkRequest\x1a\x1b.kacho.cloud.vpc.v1.Network\"d\x8a\xb5\x18\x10vpc.networks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/networks/{network_id}\x12\x7f\n" +
-	"\x04List\x12'.kacho.cloud.vpc.v1.ListNetworksRequest\x1a(.kacho.cloud.vpc.v1.ListNetworksResponse\"$\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/networks\x12\xd4\x01\n" +
+	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/networks/{network_id}\x12\xb2\x01\n" +
+	"\x04List\x12'.kacho.cloud.vpc.v1.ListNetworksRequest\x1a(.kacho.cloud.vpc.v1.ListNetworksResponse\"W\x8a\xb5\x18\x13vpc.networkses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/networks\x12\xd4\x01\n" +
 	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateNetworkRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13vpc.networks.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +

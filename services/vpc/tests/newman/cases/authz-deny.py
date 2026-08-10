@@ -125,7 +125,7 @@ def list_allow_asserts(case_id, list_key):
     на веру. Все семь top-level `/List` этой суиты (networks / subnets / addresses /
     routeTables / securityGroups / gateways / networkInterfaces) гейтятся отношением
     `viewer` на `project:<projectId>` — и на краю (permission_catalog), и в сервисе
-    (`internal/apps/kacho/check/permission_map.go`, где это записано как паритет всех
+    (`internal/check/permission_map.go`, где это записано как паритет всех
     семи). В модели `project.viewer` выводится из `editor`, `editor` из `admin`, `admin`
     из `super_admin`, а `project.super_admin` — из `admin from account`. Значит каждый
     ALLOW-субъект матрицы отношение `viewer` держит: PA1 и INV — прямым

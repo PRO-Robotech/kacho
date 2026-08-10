@@ -15,7 +15,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -50,20 +56,48 @@ func dialLoopback(t *testing.T) *grpc.ClientConn {
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-func TestBuildListFilter_Disabled_ReturnsNil(t *testing.T) {
+// Выключенный фильтр БОЛЬШЕ НЕ ЗНАЧИТ сквозной проход: сужатель собирается всегда и
+// отказывает, пока ему не с кем говорить. Прежняя редакция возвращала здесь nil, и
+// use-case'ы трактовали его как «сужение выключено, страницу отдать» — то есть
+// посадка без модели показывала каждому участнику проекта каждую его строку.
+func TestBuildListFilter_Disabled_StillNarrowsByRefusing(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthZ.ListFilter.Enabled = false
 	f := buildListFilter(cfg, dialLoopback(t), discardLogger())
-	require.Nil(t, f, "list-filter disabled → nil (passthrough)")
+	require.NotNil(t, f, "сужатель собирается всегда — отсутствие модели не отменяет вопроса")
+
+	_, err := listnarrow.IDs(narrowtest.Caller(), f, "vpc_subnet", "vpc.subnets.list", []string{"sub_a"})
+	require.Error(t, err, "спросить негде — значит отказ, а не «да»")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.False(t, f.Narrows(), "и это состояние обязано быть ЧИТАЕМЫМ снаружи")
 }
 
-func TestBuildListFilter_EnabledNilConn_ReturnsNil(t *testing.T) {
-	// enabled, но нет authorize conn → деградация в passthrough (nil), а НЕ жесткая
-	// ошибка старта.
+func TestBuildListFilter_EnabledNilConn_StillNarrowsByRefusing(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthZ.ListFilter.Enabled = true
 	f := buildListFilter(cfg, nil, discardLogger())
-	require.Nil(t, f, "enabled but nil conn → nil (passthrough + warn)")
+	require.NotNil(t, f)
+
+	_, err := listnarrow.IDs(narrowtest.Caller(), f, "vpc_subnet", "vpc.subnets.list", []string{"sub_a"})
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+// Аварийный режим — единственный способ получить проход, и он ОБЪЯВЛЯЕТСЯ. Каждое
+// срабатывание считается: «им пользуются» обязано быть отличимо от «им не
+// пользуются».
+func TestBuildListFilter_BreakglassPassesAndIsCounted(t *testing.T) {
+	var cfg config.Config
+	cfg.AuthZ.ListFilter.Enabled = false
+	cfg.AuthZ.ListFilter.Breakglass = true
+	f := buildListFilter(cfg, nil, discardLogger())
+	require.NotNil(t, f)
+	require.Zero(t, f.Counts().Breakglass, "прочитанный ноль отличает «не было» от «счётчика нет»")
+
+	got, err := listnarrow.IDs(narrowtest.Caller(), f, "vpc_subnet", "vpc.subnets.list", []string{"sub_a"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sub_a"}, got)
+	assert.Equal(t, uint64(1), f.Counts().Breakglass)
 }
 
 func TestBuildListFilter_EnabledWithConn_ReturnsFilter(t *testing.T) {

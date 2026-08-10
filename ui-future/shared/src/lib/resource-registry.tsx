@@ -33,136 +33,14 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import type { ResourceColumn, ResourceSpec } from "./resource-spec";
 
-export interface ResourceColumn {
-  header: string;
-  // Путь в плоском объекте: "name", "status", "zone_id"
-  path: string;
-  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references";
-  className?: string;
-  render?: (row: Record<string, unknown>) => ReactNode;
-}
+// Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
+// сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
+// нет тела, поэтому разойтись с источником он не может. Собственное ОБЪЯВЛЕНИЕ формы
+// здесь запрещено (KAC #132) — его ловит scripts/check-resource-spec-single-source.mjs.
 
-/** Фильтр списка, отправляемый в query-параметре (server-side, см. `listFilters`). */
-export type ListFilter =
-  | { kind: "toggle"; param: string; label: string; description?: string }
-  | { kind: "ref"; param: string; label: string; refSpecId: string; allLabel: string };
-
-export interface ResourceSpec {
-  id: string;
-  // route path в SPA (без leading slash)
-  route: string;
-  // Полный URL-path для REST: /<domain>/v1/<plural>
-  // Verbatim из proto google.api.http annotations.
-  apiPath: string;
-  // ключ массива в List response: "networks", "projects"
-  payloadKey: string;
-  // singular label для UI
-  singular: string;
-  // plural label
-  plural: string;
-  // родительный падеж ед.ч. («Обзор шлюзА», «Операции сетИ») — заголовок
-  // мастер-ресурса в зоне-3 (обзор/операции/json). Fallback: plural.
-  genitive?: string;
-  description?: string;
-  /** Service-domain заголовок (отображается в breadcrumb перед именем категории).
-   *  Примеры: "Virtual Private Cloud", "IAM", "Администрирование". */
-  serviceTitle?: string;
-  // global = cluster-scoped, project = в выбранном Project, account = в выбранном Account
-  scope: "global" | "project" | "account";
-  // поддерживаемые операции
-  ops: {
-    create: boolean;
-    update: boolean;
-    delete: boolean;
-    restart?: boolean;
-    start?: boolean;
-    stop?: boolean;
-  };
-  // колонки для list-таблицы
-  columns: ResourceColumn[];
-  // schema полей формы (если undefined — fallback к JSON-editor)
-  fields?: FormField[];
-  // Path-template для drill-down link при клике на строку (плейсхолдер `:id`).
-  // Если задан — кнопка в строке ведёт сюда вместо DetailPage. Используется
-  // для иерархического drill-flow Account → Projects → VPC.
-  childRoute?: string;
-  // skeleton-объект для Create-формы.
-  // projectId — выбранный Project (VPC/Compute scope).
-  // accountId — выбранный Account (kacho.cloud.iam.v1.Project.account_id).
-  template: (ctx: { projectId?: string; accountId?: string }) => unknown;
-  // Опциональная нормализация payload перед отправкой на API.
-  // Используется для конвертации form-internal представления (wrapper-объекты, toggle-поля)
-  // в wire format (plain arrays, oneof etc.).
-  sanitize?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  /** Обратная sanitize: wire → form. Вызывается InlineResourceEditForm перед
-   *  установкой initial form-state. Используется когда у формы есть array-of-ref
-   *  или array-of-string поля, для которых wire-format = массив строк, а
-   *  form-format = массив объектов `{value: "..."}` (см. NIC v4/v6_address_ids
-   *  / security_group_ids; Subnet v4/v6_cidr_blocks). Без hydrate-адаптера
-   *  RefSelect получает массив строк вместо объектов и не отображает
-   *  выбранные значения в edit-режиме. */
-  hydrate?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  /** Клиентская pre-submit валидация формы (form-values → сообщение об ошибке |
-   *  null). Возвращает первый нарушенный инвариант (напр. IAM-1: Role.rules[]
-   *  non-empty, definitionTier XOR); null = ок. Дополняет per-field required —
-   *  для кросс-полевых/структурных гейтов, как в compute/storage remote. */
-  validate?: (obj: Record<string, unknown>) => string | null;
-  /** Path-template для internal/infra-проекции ресурса (плейсхолдер `{id}`).
-   *  Если задан — на DetailPage появляется tab "jsonint", который делает
-   *  GET <internalGetPath с подставленным {id}> и pretty-print'ит JSON-ответ.
-   *  Пример: "/vpc/v1/networks/{id}:internal" — форма ГЛАГОЛЬНАЯ, через
-   *  двоеточие: так объявлена единственная :internal-аннотация vpc
-   *  (`InternalNetworkService.GetNetwork`). Прежний пример показывал слэшевую
-   *  форму `/{id}/internal`, которой на поверхности нет, — и по образцу такое
-   *  поле завели ещё раз.
-   *  Поле ставится ТОЛЬКО когда у Internal*-сервиса есть http-аннотация:
-   *  `InternalNetworkInterfaceService` её не имеет вовсе (pure gRPC
-   *  service→service), поэтому вкладки internal у NIC быть не может.
-   *  Большинство ресурсов поля не имеют. */
-  internalGetPath?: string;
-  /** Admin-плоскость ресурса (`Internal*`-сервис на cluster-internal listener).
-   *  `apiPath` остаётся поверхностью ЧТЕНИЯ; когда задан `admin`, Create/Update/
-   *  Delete уходят на `admin.basePath`. Нужно там, где публичный путь мутации
-   *  вообще не смаршрутизирован — geo Region/Zone читаются на /geo/v1/{regions,
-   *  zones}, а меняются на /geo/v1/internal/…; POST на публичный путь не
-   *  обслуживается никем.
-   *
-   *  `readForEdit` — читать начальное состояние формы редактирования с
-   *  `admin.basePath/{id}` (GetInternal): у двухпроекционного ресурса мутируемые
-   *  поля (`status`, `infra°`) на публичной проекции отсутствуют, и форма,
-   *  заполненная публичным чтением, показала бы оператору пустое поле там, где
-   *  на самом деле есть значение. */
-  admin?: { basePath: string; readForEdit?: boolean };
-  /** Мутации ресурса отвечают `operation.Operation` (ban #9). Тогда ответ без
-   *  operation-id — нарушение контракта, а не синхронный успех, и страница
-   *  говорит об этом вместо того, чтобы отрапортовать «готово». Существенно
-   *  потому, что internal-листенер не эмитит нулевые значения: Operation с
-   *  `done=false` приходит вообще без ключа `done`. Ресурсы, чей admin-RPC
-   *  честно отвечает самим ресурсом (vpc AddressPool), флаг не ставят. */
-  mutationsReturnOperation?: boolean;
-  /** Фильтры списка, уезжающие в query — то есть применяемые НА СЕРВЕРЕ, ко
-   *  всему списку, а не к загруженной странице. Клиентский фильтр поверх
-   *  курсорной страницы отфильтровал бы то, что успело приехать, и выдал бы
-   *  результат за полный. */
-  listFilters?: ListFilter[];
-  /** KAC-233: связанные дочерние ресурсы — отдельные табы со встроенными
-   *  таблицами в ResourceShell. childId — ключ ребёнка в REGISTRY; filterField —
-   *  поле(я) ребёнка, ссылающееся на этот ресурс (client-side фильтр; массив =
-   *  OR по нескольким полям, напр. subnet→addresses v4∪v6). label —
-   *  переопределение заголовка таба (по умолчанию childSpec.plural). */
-  related?: {
-    childId: string;
-    filterField: string | string[];
-    label?: string;
-  }[];
-  /** KAC-233: ссылки на документацию по типу ресурса (блок «Документация» в
-   *  aside DetailShell). Kachō-style. */
-  docs?: { label: string; href: string }[];
-  /** KAC-233: welcome-копирайт для пустой таблицы этого ресурса (когда он
-   *  показан как ребёнок и список пуст). Kachō-style. */
-  emptyState?: { title: string; body: string; docs?: string[] };
-}
+export type { ResourceColumn, ResourceSpec };
 
 // ── Geography (Region / Zone) — общие куски их спеков ────────────────────────
 

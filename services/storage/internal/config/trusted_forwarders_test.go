@@ -17,9 +17,9 @@ package config_test
 //
 // Поэтому в боевом режиме пустой список обязан ОТКАЗЫВАТЬ В СТАРТЕ — ровно так же,
 // как отказывают plaintext-соединение с БД, снятый mTLS и отсутствующий адрес
-// проверки прав. Зеркалит geo (validateSecurityConfig) / compute
-// (requireTrustedForwarders) / nlb (Validate) — storage был единственным сервисом,
-// у которого не было ни ручки, ни стражи.
+// проверки прав. Стража общая на все семь сервисов — Config.Validate зовёт
+// grpcsrv.TrustedForwarders.Require, — поэтому исход и текст отказа у них
+// одинаковы, различаются только имена ручек.
 //
 // Тесты идут через LoadInto (реальный путь загрузки окружения), а не через литерал
 // структуры: измерение обязано доехать «переменная окружения → конфиг → стража»
@@ -46,13 +46,19 @@ const computeSANEnv = "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
 // измерение — список отправителей.
 func prodEnv(forwarders string) map[string]string {
 	return map[string]string{
-		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
-		"KACHO_STORAGE_AUTH_MODE":                    "production",
-		"KACHO_STORAGE_DB_SSLMODE":                   "require",
-		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kacho-iam-internal:9091",
-		"KACHO_STORAGE_LIST_FILTER_ENABLED":          "true",
-		"KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE":    "true",
-		"KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE":  "true",
+		"KACHO_STORAGE_DB_PASSWORD":                 "secret",
+		"KACHO_STORAGE_AUTH_MODE":                   "production",
+		"KACHO_STORAGE_DB_SSLMODE":                  "require",
+		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":         "kacho-iam-internal:9091",
+		"KACHO_STORAGE_LIST_FILTER_ENABLED":         "true",
+		"KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE":   "true",
+		"KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE": "true",
+		// Транспорт ребра storage→iam: с тех пор как страж требует его в боевом
+		// режиме, окружение без этой ручки боевым не является. Фикстура,
+		// снисходительнее продукта, делает невидимым ровно тот дефект, ради
+		// которого её подставляют, — поэтому измерение выставлено и здесь, а
+		// ослабляется только в своей пробе (peer_transport_test.go).
+		"KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE":       "true",
 		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": forwarders,
 	}
 }
@@ -114,17 +120,38 @@ func TestValidate_Production_AcceptsPinnedForwarderAllowList(t *testing.T) {
 	}
 }
 
-// TestValidate_Dev_ToleratesEmptyForwarderAllowList — dev осознанно терпит
-// insecure-дефолты (in-process фикстуры без mTLS вовсе). Держит правку от поломки
-// локальных тестов; на РАЗВЁРНУТОМ стенде dev запрещён отдельным правилом.
-func TestValidate_Dev_ToleratesEmptyForwarderAllowList(t *testing.T) {
+// devEnvWithEmptyCircle — dev-окружение, в котором insecure всё, включая круг.
+func devEnvWithEmptyCircle() map[string]string {
 	env := prodEnv("")
 	env["KACHO_STORAGE_AUTH_MODE"] = "dev"
 	env["KACHO_STORAGE_DB_SSLMODE"] = "disable"
 	env["KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR"] = ""
 	env["KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE"] = "false"
 	env["KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE"] = "false"
+	return env
+}
+
+// TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn — стража круга
+// срабатывает на ЛЮБОМ старте, а не только в боевом режиме: контроль, чья ветка
+// на локальном стенде не исполняется ни разу, находит «забыл выставить круг»
+// только на боевом профиле, где цена ошибки максимальна.
+func TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn(t *testing.T) {
+	err := loadEnv(t, devEnvWithEmptyCircle()).Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER") {
+		t.Fatalf("отказ обязан назвать ручку опт-ина, иначе стенд не поднять: %v", err)
+	}
+}
+
+// TestValidate_Dev_ToleratesAnUnnarrowedCircleWithTheExplicitOptIn —
+// положительный контроль: без него отрицание выше зеленело бы и на «отказывать
+// всегда».
+func TestValidate_Dev_ToleratesAnUnnarrowedCircleWithTheExplicitOptIn(t *testing.T) {
+	env := devEnvWithEmptyCircle()
+	env["KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER"] = "true"
 	if err := loadEnv(t, env).Validate(); err != nil {
-		t.Fatalf("dev must tolerate an empty allow-list (in-process fixtures), got: %v", err)
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру: %v", err)
 	}
 }

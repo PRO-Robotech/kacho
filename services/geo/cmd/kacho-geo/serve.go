@@ -48,6 +48,11 @@ func runServe(cfg config.Config) error {
 	// Secure-by-default: per-RPC authz Check и mTLS на ОБОИХ листенерах
 	// обязательны. Единственный способ запустить операции без авторизации и mTLS —
 	// аварийный KACHO_GEO_AUTHZ_BREAKGLASS=true.
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся отдельно и до разбора режима.
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
@@ -125,15 +130,16 @@ func runServe(cfg config.Config) error {
 		IAMConn:    authzIAMConn(authzConn),
 		Breakglass: cfg.AuthZBreakglass,
 		Logger:     logger,
+		CacheTTL:   cfg.AuthZCacheTTL,
 	})
 
 	// ── цепочки интерсепторов ──────────────────────────────────────────────
-	// WithTrustedForwarders ограничивает форвард end-user principal'а allow-list'ом
-	// SAN'ов (api-gateway SA): verified-но-не-форвардер peer (внутренний сервис со
-	// своим валидным client-cert'ом) НЕ может выдать себя за пользователя. Пустой
-	// allow-list (default) сохраняет прежнее «любой verified peer доверен» (dev
-	// back-compat) — enforce задаётся конфигом в production.
-	forwarders := cfg.AuthZTrustedForwarderSANs
+	// Круг отправителей ограничивает передачу личности конечного пользователя
+	// перечнем личностей клиентского сертификата (SAN шлюза): пир, проверенный, но
+	// не входящий в круг, за другого говорить не может. Несуженный круг означает
+	// «любой проверенный пир доверен» — поэтому на нём отказывает старт
+	// (config.Config.Validate), а не только боевой профиль.
+	forwarders := cfg.TrustedForwarders()
 	// Оба листенера получают ОДНУ И ТУ ЖЕ trust-aware principal-цепочку
 	// (cert-identity → trusted-principal с allow-list форвардеров) — единый source
 	// wiring'а через newPrincipalInterceptors, чтобы public и internal не могли
@@ -179,10 +185,10 @@ func runServe(cfg config.Config) error {
 	// под guard-тестом serve_interceptor_order_test.go) вместо императивного
 	// append/prepend по четырём срезам: recovery ПЕРВЫМ (outermost), затем
 	// principal-extract, затем authz. Оба листенера строятся идентично.
-	publicUnary := assembleUnaryChain(recoveryUnaryInterceptor(logger), publicPrincipalUnary, authzUnary)
-	publicStream := assembleStreamChain(recoveryStreamInterceptor(logger), publicPrincipalStream, authzStream)
-	internalUnary := assembleUnaryChain(recoveryUnaryInterceptor(logger), internalPrincipalUnary, authzUnary)
-	internalStream := assembleStreamChain(recoveryStreamInterceptor(logger), internalPrincipalStream, authzStream)
+	publicUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), publicPrincipalUnary, authzUnary)
+	publicStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), publicPrincipalStream, authzStream)
+	internalUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), internalPrincipalUnary, authzUnary)
+	internalStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), internalPrincipalStream, authzStream)
 
 	// ── server-creds (mTLS обязателен на обоих листенерах, кроме breakglass —
 	// это проверено validateSecurityConfig выше) ──
@@ -386,53 +392,13 @@ func validateSecurityConfig(cfg config.Config) error {
 	// grpcclient.TLSClientTransportCreds на Enable=false возвращает insecure-creds
 	// БЕЗ ошибки — процесс поднимется, отчитается «authz interceptor enabled», и
 	// каждый Check уйдёт по открытому каналу. Требование стоит на ЛЮБОМ
-	// non-breakglass старте (как и allow-list форвардеров выше): развёрнутый
-	// стенд обязан работать в production-posture независимо от того, dev он
-	// называется или нет. Паритет с vpc/compute, где эта стража уже есть.
+	// non-breakglass старте — как и круг отправителей, чья стража переехала в
+	// config.Config.Validate: развёрнутый стенд обязан работать в
+	// production-posture независимо от того, dev он называется или нет.
 	if !cfg.IAMAuthzMTLS.Enable {
 		return errors.New("verified transport required on the geo→iam authz Check edge: set KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA). Without it the per-RPC authorization Check and the forwarded end-user principal travel over cleartext gRPC — the client credentials silently degrade to insecure, so the process starts and reports authz as enabled (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass authz entirely, emergency-only)")
 	}
-	// Secure-by-default: непустой allow-list доверенных форвардеров ОБЯЗАТЕЛЕН на
-	// ЛЮБОМ non-breakglass старте (не только production). Пустой список означает
-	// «доверять ЛЮБОМУ mTLS-verified peer'у как форвардеру principal'а» (см.
-	// corelib grpcsrv.WithTrustedForwarders): любой внутренний под с валидным
-	// client-cert'ом мог бы выставить произвольный x-kacho-principal-* header и
-	// авторизоваться как чужой subject — principal-spoofing / confused-deputy до
-	// admin-CRUD Region/Zone (:9091) или viewer-spoof на :9090. Раньше пустой
-	// список молча разрешался в dev (config-default) — insecure-by-default gap:
-	// оператор, забывший выставить production, отгружал spoofing-путь.
-	//
-	// Теперь trust-any — ЯВНЫЙ opt-in, не дефолт. Пустая строка в списке — НЕ
-	// форвардер (WithTrustedForwarders отбрасывает "" → trust-any), поэтому
-	// считаем только непустые.
-	if countNonEmpty(cfg.AuthZTrustedForwarderSANs) == 0 {
-		switch cfg.AuthMode {
-		case "production", "production-strict":
-			// В production trust-any недопустим ни при каких условиях — opt-in
-			// НЕ honored, обязателен реальный SAN api-gateway.
-			return errors.New("production mode: KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS must pin at least one trusted-forwarder SAN (api-gateway SA); an empty allow-list trusts ANY mTLS-verified peer to forward end-user principals (principal-spoofing / confused-deputy to admin Region/Zone CRUD). Set the api-gateway SAN")
-		default:
-			// dev: пустой allow-list разрешён ТОЛЬКО с явным dev-опт-ином. Без него —
-			// fail-closed отказ старта (secure-by-default).
-			if !cfg.AuthZTrustAnyForwarder {
-				return errors.New("secure-by-default: empty KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS trusts ANY mTLS-verified peer to forward end-user principals (principal-spoofing / confused-deputy to admin Region/Zone CRUD). Pin the api-gateway SAN, or set KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER=true to explicitly opt into trust-any for local dev (or KACHO_GEO_AUTHZ_BREAKGLASS=true for emergency full bypass)")
-			}
-		}
-	}
 	return nil
-}
-
-// countNonEmpty возвращает число непустых строк в срезе. Пустые SAN'ы игнорируются
-// corelib WithTrustedForwarders (отбрасывает "" → пустой allow-list → trust-any),
-// поэтому production-гейт учитывает только непустые записи.
-func countNonEmpty(ss []string) int {
-	n := 0
-	for _, s := range ss {
-		if s != "" {
-			n++
-		}
-	}
-	return n
 }
 
 // authzIAMConn нормализует *grpc.ClientConn в grpc.ClientConnInterface без
@@ -455,16 +421,8 @@ func authzIAMConn(conn *grpc.ClientConn) grpc.ClientConnInterface {
 // идентична by construction. forwarders (allow-list SAN'ов доверенных
 // форвардеров) пробрасывается в WithTrustedForwarders — verified-но-не-форвардер
 // peer не может форвардить произвольного principal'а.
-func newPrincipalInterceptors(forwarders []string) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
-	unary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-	}
-	stream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-	}
-	return unary, stream
+func newPrincipalInterceptors(forwarders grpcsrv.TrustedForwarders) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
+	return grpcsrv.PrincipalExtractUnary(forwarders), grpcsrv.PrincipalExtractStream(forwarders)
 }
 
 // assembleUnaryChain строит финальную упорядоченную unary-цепочку ОДНОГО листенера

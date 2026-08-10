@@ -11,7 +11,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // S3 (defense-in-depth): даже если S1-гард обойден регрессией, wiring-слой не

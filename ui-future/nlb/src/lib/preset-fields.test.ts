@@ -9,7 +9,7 @@
 // instead, so the guarantee holds by construction.
 
 import { presetFieldsForSpec } from "./preset-fields";
-import type { FormField } from "./form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 
 const str = (name: string): FormField => ({ name, label: name, type: "string" }) as FormField;
 const fields = [str("name"), str("subnet_id"), str("internal_ipv4_address_spec.subnet_id"), str("_address_kind")];

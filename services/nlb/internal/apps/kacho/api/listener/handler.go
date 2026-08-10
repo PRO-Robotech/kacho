@@ -10,7 +10,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // Handler реализует kacho.cloud.loadbalancer.v1.ListenerServiceServer.
@@ -41,7 +41,7 @@ type Handler struct {
 func NewHandler(
 	repo RepoFactory,
 	opsRepo OperationsRepo,
-	listFilter authzfilter.Filter,
+	listFilter *listnarrow.Narrower,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{

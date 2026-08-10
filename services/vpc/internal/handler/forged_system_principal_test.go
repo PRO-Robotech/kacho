@@ -40,19 +40,9 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
-
-// allowNothingFilter — модель, которая не разрешает видеть НИ ОДИН интерфейс, и
-// считает, спросили ли её вообще. Обход фильтра поэтому виден дважды: по составу
-// ответа и по нулю обращений к модели.
-type allowNothingFilter struct{ calls int }
-
-func (f *allowNothingFilter) FilterVisibleIDs(
-	_ context.Context, _, _, _ string, _ []string,
-) ([]string, error) {
-	f.calls++
-	return nil, nil
-}
 
 func seedVictimNIC(t *testing.T, kr *kachomock.Repository, nicID, instanceID string) {
 	t.Helper()
@@ -75,12 +65,12 @@ func seedVictimNIC(t *testing.T, kr *kachomock.Repository, nicID, instanceID str
 	require.NoError(t, w.Commit())
 }
 
-func victimHandler(t *testing.T) (*handler.InternalNetworkInterfaceHandler, *allowNothingFilter) {
+func victimHandler(t *testing.T) (*handler.InternalNetworkInterfaceHandler, *narrowtest.Peer) {
 	t.Helper()
 	kr := kachomock.NewRepository()
 	seedVictimNIC(t, kr, "nic_victim", "ins_victim")
-	f := &allowNothingFilter{}
-	return handler.NewInternalNetworkInterfaceHandler(nicinternal.NewService(kr).WithListFilter(f)), f
+	f, peer := narrowtest.Recording()
+	return handler.NewInternalNetworkInterfaceHandler(nicinternal.NewService(kr).WithListFilter(f)), peer
 }
 
 // Принципал, чей ТИП вызывающий написал себе сам, не открывает чужие привязки.
@@ -94,18 +84,20 @@ func TestListByInstance_ForgedSystemPrincipalSeesNothing(t *testing.T) {
 		"system с пустым id":     {Type: "system"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h, f := victimHandler(t)
+			h, peer := victimHandler(t)
 			ctx := operations.WithPrincipal(context.Background(), p)
 
 			resp, err := h.ListByInstance(ctx, &vpcv1.ListNetworkInterfacesByInstanceRequest{
 				InstanceIds: []string{"ins_victim"},
 			})
 
-			require.NoError(t, err)
-			assert.Empty(t, resp.GetNetworkInterfaces(),
+			require.Error(t, err,
 				"объявленный вызывающим тип принципала не может открывать привязки "+
 					"интерфейсов чужих инстансов")
-			assert.Zero(t, f.calls,
+			assert.Equal(t, codes.Unauthenticated, status.Code(err),
+				"ответ обязан быть про личность: «пусто» неотличимо от «личность потеряна по дороге»")
+			assert.Empty(t, resp.GetNetworkInterfaces())
+			assert.Zero(t, peer.Calls,
 				"личность не предъявлена — спрашивать модель не о ком; отдавать всё тем более не за что")
 		})
 	}
@@ -115,7 +107,7 @@ func TestListByInstance_ForgedSystemPrincipalSeesNothing(t *testing.T) {
 // модели по-прежнему решает. Без этого случая предыдущий тест зеленел бы и от
 // «сломали RPC целиком».
 func TestListByInstance_RealPrincipalStillAsksTheModel(t *testing.T) {
-	h, f := victimHandler(t)
+	h, peer := victimHandler(t)
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr_alice"})
 
@@ -125,7 +117,7 @@ func TestListByInstance_RealPrincipalStillAsksTheModel(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, resp.GetNetworkInterfaces(), "модель не разрешила — отдавать нечего")
-	assert.Equal(t, 1, f.calls, "у настоящей личности видимость обязана спрашиваться у модели")
+	assert.Equal(t, 1, peer.Calls, "у настоящей личности видимость обязана спрашиваться у модели")
 }
 
 // Тот же вопрос на уровне AuthN-стража: предъявлена ли личность.

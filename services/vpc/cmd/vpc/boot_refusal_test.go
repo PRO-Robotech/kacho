@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // scopeFilteredMethodsExist — есть ли в карте прав хоть один метод, чья

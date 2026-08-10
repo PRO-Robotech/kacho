@@ -51,7 +51,8 @@ func lbMovedPayload(id, srcProject, dstProject string) map[string]any {
 // lbRegisterIntent — FGA-register-intent свежесозданного LB (project-hierarchy).
 //
 // A durable intent carries ONLY proxy-registrable tuples. kacho-iam's
-// least-privilege policy accepts {project, account, parent, owner} and reserves
+// least-privilege policy accepts the ownership/parent relations declared in
+// pkg/authz/proxytuple and reserves
 // privilege relations for the AccessBinding flow, so the creator (`admin`) tuple
 // this used to append was refused on every delivery.
 //

@@ -280,9 +280,11 @@ type AccessBinding struct {
 	DeletionProtection bool `protobuf:"varint,20,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
 	// Tenant-facing метки самого ресурса AccessBinding. Единая модель видимости
 	// IAM-ресурсов: AccessBinding — label-selectable, как account/project;
-	// ARM_LABELS-грант на iam.accessBinding материализует v_list по совпадению
-	// `labels @> matchLabels` (iam-direct same-DB), а List фильтрует через
-	// `viewer ∪ v_list`. Mutable через Update (`labels` в update_mask).
+	// ARM_LABELS-грант на iam.accessBinding материализует глаголы своей роли на
+	// объектах, чьи `labels` покрывают `matchLabels` (iam-direct same-DB), а
+	// страница List сужается тем же отношением, которым каталог гейтит одиночное
+	// чтение — `v_get`; строка попадает в выдачу ровно тогда, когда вызывающий
+	// вправе прочитать её по id. Mutable через Update (`labels` в update_mask).
 	Labels map[string]string `protobuf:"bytes,21,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
 	// least-privilege spine). REQUIRED on Create — the broadest grant (all objects

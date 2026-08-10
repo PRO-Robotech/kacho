@@ -1,7 +1,6 @@
 {
   "__": "Долг линта пакета shared: находки, оставшиеся НЕ ЗАКРЫТЫМИ на момент последнего пересчёта (не «те, что были при включении линта» — часть их с тех пор исправлена, и число уменьшено в том же коммите). Числу запрещено расти; при исправлении — уменьшить в том же коммите. Пустой rules ⇒ удалить этот файл и scripts/check-shared-lint-debt.mjs, заменив вызов на eslint без храповика. Правила гейта — в шапке scripts/check-shared-lint-debt.mjs.",
   "rules": {
-    "@typescript-eslint/no-base-to-string": 3,
     "@typescript-eslint/no-require-imports": 2,
     "@typescript-eslint/no-unsafe-assignment": 1,
     "@typescript-eslint/no-unsafe-return": 4,

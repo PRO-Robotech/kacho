@@ -289,13 +289,11 @@ config:
     #     existence + owning account on their own Create path) and
     #     InternalIAMService.Check / fga-proxy on :9091, all under the end user.
     #   - geo — InternalIAMService.Check on :9091 under the end user.
-    #   - vpc-operator — the SEC-G fan-out read (AccountService.List →
-    #     ProjectService.List) under its own least-privilege module SA.
     #
     # The ns segment is NOT uniform and must not be assumed: it comes from each
     # peer chart's own mtls.spiffe.namespace, which defaults to the release
-    # namespace but is overridden by storage (kacho-storage) and by the operator
-    # (kacho-vpc-operator). An entry copied "by pattern" from a neighbour would not
+    # namespace but is overridden by storage (kacho-storage). An entry copied
+    # "by pattern" from a neighbour would not
     # match the certificate that peer actually presents, and the effect would be a
     # SILENT denial of service on a working path — the peer stays itself, its
     # forwarded identity is scrubbed, and its read answers as if unauthenticated.
@@ -313,7 +311,11 @@ config:
       - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
-      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
+      # Здесь стояла запись оператора сети — компонента с таким именем в дереве нет,
+      # и репозитория под него не существует. Круг доверенных отправителей пинится по
+      # ФАКТИЧЕСКИМ отправителям: запись под несуществующего разрешала бы говорить за
+      # пользователя предъявителю сертификата, которого мы не выпускаем. Появится
+      # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
   extapi:
     openfga:
       # Only the Secret coordinates are consumed (deployment.yaml wires

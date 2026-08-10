@@ -21,7 +21,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // Кто на самом деле решает на :9091.
@@ -98,7 +98,7 @@ func chainOutcome(
 	inner := authzIntr.Unary()
 	authnIntr := AuthNUnaryInterceptor(productionMode)
 	trustIntr := grpcsrv.UnaryTrustedPrincipalExtract(
-		grpcsrv.WithTrustedForwarders(testForwarderSAN))
+		grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(testForwarderSAN)))
 
 	_, err = trustIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
 		return authnIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {

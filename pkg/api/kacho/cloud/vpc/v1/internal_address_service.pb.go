@@ -718,17 +718,34 @@ const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\vreferrer_id\x18\x03 \x01(\tR\n" +
 	"referrerId\x12#\n" +
 	"\rreferrer_name\x18\x04 \x01(\tR\freferrerName\x12\x14\n" +
-	"\x05owned\x18\x05 \x01(\bR\x05owned2\x99\t\n" +
-	"\x16InternalAddressService\x12y\n" +
-	"\x12AllocateInternalIP\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"\f\x8a\xb5\x18\b<exempt>\x12{\n" +
-	"\x14AllocateInternalIPv6\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"\f\x8a\xb5\x18\b<exempt>\x12y\n" +
-	"\x12AllocateExternalIP\x12-.kacho.cloud.vpc.v1.AllocateExternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"\f\x8a\xb5\x18\b<exempt>\x12{\n" +
-	"\x14AllocateExternalIPv6\x12-.kacho.cloud.vpc.v1.AllocateExternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"\f\x8a\xb5\x18\b<exempt>\x12y\n" +
-	"\x13SetAddressReference\x12..kacho.cloud.vpc.v1.SetAddressReferenceRequest\x1a$.kacho.cloud.vpc.v1.AddressReference\"\f\x8a\xb5\x18\b<exempt>\x12\x8a\x01\n" +
-	"\x15ClearAddressReference\x120.kacho.cloud.vpc.v1.ClearAddressReferenceRequest\x1a1.kacho.cloud.vpc.v1.ClearAddressReferenceResponse\"\f\x8a\xb5\x18\b<exempt>\x12y\n" +
-	"\x13GetAddressReference\x12..kacho.cloud.vpc.v1.GetAddressReferenceRequest\x1a$.kacho.cloud.vpc.v1.AddressReference\"\f\x8a\xb5\x18\b<exempt>\x12\x96\x01\n" +
-	"\x19MarkAddressEphemeralInUse\x124.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest\x1a5.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse\"\f\x8a\xb5\x18\b<exempt>\x12s\n" +
-	"\x12CreateOwnedAddress\x12-.kacho.cloud.vpc.v1.CreateOwnedAddressRequest\x1a .kacho.cloud.operation.Operation\"\f\x8a\xb5\x18\b<exempt>B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\x05owned\x18\x05 \x01(\bR\x05owned2\x82\x0e\n" +
+	"\x16InternalAddressService\x12\xbf\x01\n" +
+	"\x12AllocateInternalIP\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"R\x8a\xb5\x18 vpc.addresses.allocateInternalIp\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xc3\x01\n" +
+	"\x14AllocateInternalIPv6\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"T\x8a\xb5\x18\"vpc.addresses.allocateInternalIpv6\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xbf\x01\n" +
+	"\x12AllocateExternalIP\x12-.kacho.cloud.vpc.v1.AllocateExternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"R\x8a\xb5\x18 vpc.addresses.allocateExternalIp\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xc3\x01\n" +
+	"\x14AllocateExternalIPv6\x12-.kacho.cloud.vpc.v1.AllocateExternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"T\x8a\xb5\x18\"vpc.addresses.allocateExternalIpv6\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xb9\x01\n" +
+	"\x13SetAddressReference\x12..kacho.cloud.vpc.v1.SetAddressReferenceRequest\x1a$.kacho.cloud.vpc.v1.AddressReference\"L\x8a\xb5\x18\x1avpc.addresses.setReference\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xcc\x01\n" +
+	"\x15ClearAddressReference\x120.kacho.cloud.vpc.v1.ClearAddressReferenceRequest\x1a1.kacho.cloud.vpc.v1.ClearAddressReferenceResponse\"N\x8a\xb5\x18\x1cvpc.addresses.clearReference\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xb6\x01\n" +
+	"\x13GetAddressReference\x12..kacho.cloud.vpc.v1.GetAddressReferenceRequest\x1a$.kacho.cloud.vpc.v1.AddressReference\"I\x8a\xb5\x18\x1avpc.addresses.getReference\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xdc\x01\n" +
+	"\x19MarkAddressEphemeralInUse\x124.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest\x1a5.kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse\"R\x8a\xb5\x18 vpc.addresses.markEphemeralInUse\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\vvpc_address\x12\n" +
+	"address_id\xa2\xb5\x18\x011\x12\xb4\x01\n" +
+	"\x12CreateOwnedAddress\x12-.kacho.cloud.vpc.v1.CreateOwnedAddressRequest\x1a .kacho.cloud.operation.Operation\"M\x8a\xb5\x18\x19vpc.addresses.createOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x1d\n" +
+	"\aproject\x12\x12address.project_id\xa2\xb5\x18\x011B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescOnce sync.Once

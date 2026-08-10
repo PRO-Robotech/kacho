@@ -20,6 +20,8 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты RouteTable use-case'ов и handler'а. RT-mock — `kachomock.NewRepository()`
@@ -49,7 +51,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateRouteTableUseCase(kr, or)
 	deleteUC := NewDeleteRouteTableUseCase(kr, or)
 	get := NewGetRouteTableUseCase(kr)
-	list := NewListRouteTablesUseCase(kr, nil)
+	list := NewListRouteTablesUseCase(kr, narrowtest.AllowingAll())
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)
 }
@@ -82,7 +84,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListRouteTablesRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListRouteTablesRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.RouteTables)
 }
@@ -229,14 +231,14 @@ func TestUpdateUseCase_StaticRoutes(t *testing.T) {
 	createUC := NewCreateRouteTableUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	updateUC := NewUpdateRouteTableUseCase(kr, or)
 	getUC := NewGetRouteTableUseCase(kr)
-	listUC := NewListRouteTablesUseCase(kr, nil)
+	listUC := NewListRouteTablesUseCase(kr, narrowtest.AllowingAll())
 
 	createOp, _ := createUC.Execute(context.Background(), domain.RouteTable{
 		ProjectID: "f1", NetworkID: net.ID, Name: domain.RcNameVPC("rt1"),
 	})
 	repomock.AwaitOpDone(t, or, createOp.ID)
 
-	rts, _, _ := listUC.Execute(context.Background(), "", RouteTableFilter{ProjectID: "f1"}, Pagination{})
+	rts, _, _ := listUC.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, rts, 1)
 	rtID := rts[0].ID
 
@@ -289,7 +291,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListRouteTablesUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", RouteTableFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -307,7 +309,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListRouteTablesRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListRouteTablesRequest{ProjectId: "f1"})
 	require.Len(t, resp.RouteTables, 1)
 	rtID := resp.RouteTables[0].Id
 

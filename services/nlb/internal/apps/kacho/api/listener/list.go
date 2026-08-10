@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // ListUseCase — sync list listeners фильтрованный по `load_balancer_id`
@@ -27,11 +29,11 @@ import (
 //     unknown-поле / unquoted / malformed → InvalidArgument.
 type ListUseCase struct {
 	repo  RepoFactory
-	authz authzfilter.Filter
+	authz *listnarrow.Narrower
 }
 
 // NewListUseCase — конструктор. authz может быть nil (list-filter disabled / dev).
-func NewListUseCase(repo RepoFactory, authz authzfilter.Filter) *ListUseCase {
+func NewListUseCase(repo RepoFactory, authz *listnarrow.Narrower) *ListUseCase {
 	return &ListUseCase{repo: repo, authz: authz}
 }
 
@@ -65,6 +67,14 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 		return nil, err
 	}
 
+	// Предусловие сужения — ДО чтения страницы из БД: и «никого не назвали», и
+	// «спросить негде» решаются одной функцией общего фундамента, поэтому ответ
+	// совпадает у всех списков по построению, а не по внимательности. Проверка
+	// формата остаётся ПЕРВОЙ и выше — ответ на некорректный ввод не должен
+	// зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.authz); err != nil {
+		return nil, err
+	}
 	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
 	page, nextToken, err := u.readPage(ctx, filter, kachorepo.Pagination{
 		PageSize:  req.GetPageSize(),
@@ -76,7 +86,7 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 
 	// RBAC: per-object FGA filter — страница из БД ПЕРВОЙ, права на её id
 	// (см. loadbalancer/list.go и package-doc internal/authzfilter).
-	page, err = authzfilter.FilterVisiblePage(ctx, u.authz,
+	page, err = listnarrow.Page(ctx, u.authz,
 		authzfilter.ResourceTypeListener, authzfilter.ActionListenerList,
 		page, func(rec *kachorepo.ListenerRecord) string { return string(rec.ID) })
 	if err != nil {

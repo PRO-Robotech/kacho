@@ -99,7 +99,7 @@ sequenceDiagram
     S->>DB: UPDATE operation error=NotFound "Project <X> not found"
   else project OK
     S->>ZR: zone existence (zones table)
-    Note over ZR: unknown zone → InvalidArgument (по конвенции by-lane split чужой id — peer-validate lane, FailedPrecondition; код ещё не выровнен)
+    Note over ZR: unknown zone → FailedPrecondition + PEER_RESOURCE_MISSING (полоса peer-validate по by-lane split)
     S->>DTR: type_id existence (default network-ssd if empty) → unknown → NotFound "Disk type <X> not found"
     alt source = image_id
       S->>DB: SELECT images WHERE id=$image_id → NotFound if absent;<br/>size >= image.min_disk_size else InvalidArgument

@@ -38,18 +38,6 @@ func bootPosture(cfg *config.Config, authzCheckWired bool) observability.BootPos
 		PublicMTLS:        cfg.MTLS.Server.Enable,
 		InternalMTLS:      cfg.MTLS.Server.Enable,
 		AuthZCheck:        authzCheckWired,
-		TrustedForwarders: hasNonEmptyForwarder(cfg.Authz.TrustedForwarderSANs),
+		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 	}
-}
-
-// hasNonEmptyForwarder — есть ли в срезе хотя бы одна непустая запись. Зеркалит
-// фильтр corelib grpcsrv.WithTrustedForwarders (принимает только s != ""), поэтому
-// отчёт о посадке совпадает с тем, что реально попало в allow-list.
-func hasNonEmptyForwarder(ss []string) bool {
-	for _, s := range ss {
-		if s != "" {
-			return true
-		}
-	}
-	return false
 }

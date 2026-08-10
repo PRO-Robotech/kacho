@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc"
@@ -99,6 +98,18 @@ type Config struct {
 	// validateSecurityConfig отказывает в старте (fail-closed, зеркалит
 	// geo/compute/nlb/storage).
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS"`
+
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
 
 	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
 	// (только dev / break-glass).
@@ -249,35 +260,20 @@ type Config struct {
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
 }
 
-// TrustedForwarders — список личностей сертификата, который РЕАЛЬНО уезжает в
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
 // grpcsrv.WithTrustedForwarders на обоих листенерах.
 //
 // Единственный источник этого значения на процесс: его читает и проводка
-// (cmd/kacho-registry/serve.go), и стража старта (validateSecurityConfig), и
-// самоотчёт о посадке (cmd/kacho-registry/bootposture.go). Поэтому «стража
-// пропустила» ⟺ «круг отправителей реально сужен» — по построению, а не по
-// совпадению.
+// (cmd/kacho-registry/serve.go), и стража старта (Validate), и самоотчёт о
+// посадке (cmd/kacho-registry/bootposture.go). Все трое спрашивают ОДИН объект и
+// ОДИН его предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по
+// построению, а не по совпадению трёх одинаково написанных тел.
 //
-// Отбрасывает пустые записи, потому что их отбрасывает и corelib
-// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
-// (`SANS=","`) там вырождается в пустое множество, то есть снова «доверяем
-// любому». Считать такую строку заполненной значило бы пропустить дыру через гейт.
-//
-// Пробелы по краям срезаются — и это НЕ зеркало corelib, а осознанное расхождение:
-// corelib сравнивает личность сертификата побайтово (CertIdentity отдаёт SAN как
-// есть), поэтому запись " spiffe://…" не совпала бы там ни с одним сертификатом.
-// Без среза оператор, написавший список через «запятая-пробел», получил бы не
-// отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
-// доверенных от этого не расширяется: в него попадают ровно те строки, которые
-// оператор перечислил, — срезаются только окружающие пробелы.
-func (c Config) TrustedForwarders() []string {
-	out := make([]string, 0, len(c.AuthZTrustedForwarderSANs))
-	for _, s := range c.AuthZTrustedForwarderSANs {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).

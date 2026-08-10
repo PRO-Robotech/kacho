@@ -47,16 +47,16 @@ func TestAuthzCache_ConfiguredTTLBoundsRevokeWindow(t *testing.T) {
 	clk := base
 	c.SetNowFunc(func() time.Time { return clk })
 
-	c.SetAllowed(testSubject, relVGet, objectTypeRegistry, testRegistry)
+	c.SetAllowed(testSubject, "v_get", "registry_registry", testRegistry)
 
 	// В пределах TTL — запись жива (positive кешируется, hit).
 	clk = base.Add(ttl - time.Millisecond)
-	_, hit := c.Get(testSubject, relVGet, objectTypeRegistry, testRegistry)
+	_, hit := c.Get(testSubject, "v_get", "registry_registry", testRegistry)
 	require.True(t, hit, "positive entry must be cached within configured TTL")
 
 	// За пределами TTL — запись истекла (revoke отразится не позднее TTL).
 	clk = base.Add(ttl + time.Millisecond)
-	_, hit = c.Get(testSubject, relVGet, objectTypeRegistry, testRegistry)
+	_, hit = c.Get(testSubject, "v_get", "registry_registry", testRegistry)
 	require.False(t, hit, "positive entry must expire within configured TTL (revoke window bounded)")
 }
 
@@ -72,11 +72,11 @@ func TestAuthzCache_ZeroTTLDisablesPositiveCaching(t *testing.T) {
 	clk := base
 	c.SetNowFunc(func() time.Time { return clk })
 
-	c.SetAllowed(testSubject, relVGet, objectTypeRegistry, testRegistry)
+	c.SetAllowed(testSubject, "v_get", "registry_registry", testRegistry)
 
 	// Любой положительный дельта-сдвиг (реальный межзапросный интервал) → miss.
 	clk = base.Add(time.Millisecond)
-	_, hit := c.Get(testSubject, relVGet, objectTypeRegistry, testRegistry)
+	_, hit := c.Get(testSubject, "v_get", "registry_registry", testRegistry)
 	require.False(t, hit, "ttl<=0 disables positive caching → every request is a live Check")
 }
 
@@ -110,7 +110,7 @@ func (a *revokableAuthz) Check(_ context.Context, _, relation, _ string) (bool, 
 	if a.revoked {
 		return false, authz.ErrHideExistence
 	}
-	if relation == relVGet {
+	if relation == "v_get" {
 		return true, nil
 	}
 	return false, authz.ErrHideExistence

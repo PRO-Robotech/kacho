@@ -89,6 +89,13 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся здесь, до разбора режима, а не
+	// внутри его боевых веток.
+	if verr := cfg.Validate(); verr != nil {
+		return verr
+	}
+
 	productionMode, err := validateAuthMode(cfg, logger)
 	if err != nil {
 		return err
@@ -222,22 +229,30 @@ func runServe(cfg config.Config) error {
 	// Прежняя grpcsrv.UnaryPrincipalExtract доверяла x-kacho-principal-* metadata
 	// любого peer'а безусловно (spoof: peer без cert'а форжил чужого principal'а).
 	//
-	// boot-gate: guardCreateUnary FIRST on the public chain — a
+	// panic-recovery — ПЕРВЫМ (outermost) в цепочках ОБОИХ листенеров. grpc-go
+	// панику обработчика не восстанавливает: она уходит из серверной горутины и
+	// завершает процесс вместе с исполнителем операций и дренажом регистраций,
+	// то есть дефект в обработке одного запроса прекращает обслуживание всех.
+	// Звено стоит НАД boot-gate, принципалом и authz — фильтр паникует так же,
+	// как обработчик. Наблюдающего звена в этой цепочке нет, поэтому «под
+	// наблюдением» здесь совпадает с «снаружи всего».
+	//
+	// boot-gate: guardCreateUnary — первый из ГЕЙТОВ public-цепочки: a
 	// mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
 	// armed and the register-drainer is not IAM-connected, so no resource is created
 	// without a deliverable owner-tuple intent. Read RPCs are untouched.
-	forwarders := cfg.AuthZTrustedForwarderSANs
+	forwarders := cfg.TrustedForwarders()
 	publicUnary := []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(logger),
 		fgaboot.GuardCreateUnary(bootGate),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantUnaryInterceptor(false, productionMode),
 	}
+	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	publicUnary = append(publicUnary, handler.TenantUnaryInterceptor(false, productionMode))
 	publicStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantStreamInterceptor(false, productionMode),
+		grpcsrv.StreamPanicRecovery(logger),
 	}
+	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	publicStream = append(publicStream, handler.TenantStreamInterceptor(false, productionMode))
 
 	// Internal listener (:9091) — тот же authN+authZ, что и public (security-инвариант:
 	// «authN+authZ на обоих listener'ах»; internal-периметр НЕ доверенный). Та же
@@ -252,15 +267,15 @@ func runServe(cfg config.Config) error {
 	// corelib нет, незамапленный RPC (unary или stream) fail-closed'ится
 	// PermissionDenied.
 	internalUnary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantUnaryInterceptor(true, productionMode),
+		grpcsrv.UnaryPanicRecovery(logger),
 	}
+	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	internalUnary = append(internalUnary, handler.TenantUnaryInterceptor(true, productionMode))
 	internalStream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantStreamInterceptor(true, productionMode),
+		grpcsrv.StreamPanicRecovery(logger),
 	}
+	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	internalStream = append(internalStream, handler.TenantStreamInterceptor(true, productionMode))
 
 	var authzConn *grpc.ClientConn
 	if cfg.AuthZIAMGRPCAddr != "" {
@@ -292,6 +307,7 @@ func runServe(cfg config.Config) error {
 		IAMConn:     authzConn,
 		Breakglass:  cfg.AuthZBreakglass,
 		Logger:      logger,
+		CacheTTL:    cfg.AuthZCacheTTL,
 	})
 	// Fail-closed (defense-in-depth): в production отсутствие authz-interceptor'а —
 	// фатально (без per-RPC FGA Check подделанная x-kacho-* metadata даёт эскалацию,
@@ -369,7 +385,7 @@ func runServe(cfg config.Config) error {
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
 	registerPublicServices(grpcSrv, svcs, opsRepo, listFilter)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, watchVisibility(listFilter))
+	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -522,15 +538,17 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 		// api-gateway, форжит x-kacho-principal-id: usr_<victim> и проходит FGA-Check
 		// как жертва (CWE-290 subject spoofing → tenant crossing). Поэтому production
 		// ОТКАЗЫВАЕТСЯ стартовать с plaintext-листенерами (раньше это гейтилось только
-		// в production-strict). Peer-рёбра (iam/geo/authz) остаются послаблением plain
-		// production (mesh-encrypted) — их строгий mTLS требует production-strict.
+		// в production-strict). Прочие peer-рёбра (project/geo/vpc/storage/register)
+		// остаются послаблением plain production (mesh-encrypted) — их строгий mTLS
+		// требует production-strict. Ребро проверки прав из этого послабления
+		// ВЫВЕДЕНО, см. requireAuthzEdgeTransport ниже.
 		if terr := insecureListenersInProduction(cfg); terr != nil {
 			return false, terr
 		}
-		if terr := requireDBSSLMode(cfg); terr != nil {
+		if terr := requireAuthzEdgeTransport(cfg); terr != nil {
 			return false, terr
 		}
-		if terr := requireTrustedForwarders(cfg); terr != nil {
+		if terr := requireDBSSLMode(cfg); terr != nil {
 			return false, terr
 		}
 		if terr := requireListFilter(cfg); terr != nil {
@@ -547,9 +565,6 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			return false, terr
 		}
 		if terr := requireDBSSLMode(cfg); terr != nil {
-			return false, terr
-		}
-		if terr := requireTrustedForwarders(cfg); terr != nil {
 			return false, terr
 		}
 		if terr := requireListFilter(cfg); terr != nil {
@@ -571,6 +586,37 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 	return productionMode, nil
 }
 
+// requireAuthzEdgeTransport — транспорт ребра, несущего РЕШЕНИЕ о доступе, обязан
+// быть verified в ЛЮБОМ боевом режиме, а не только в строгом.
+//
+// Ребро compute→iam (per-RPC InternalIAMService.Check) несёт и вердикт о доступе,
+// и переданную личность вызывающего. Невзведённая ручка не даёт ошибки сама по
+// себе: grpcclient.TLSClientTransportCreds на Enable=false возвращает
+// insecure-creds БЕЗ ошибки — процесс поднимается, отчитывается «authz enabled», и
+// каждый Check уходит по открытому каналу.
+//
+// Прежде требование стояло только в production-strict, и это было записанным
+// послаблением. Оно снято: обычный production не является более слабой посадкой —
+// это та же посадка, а страж, не срабатывающий в ней, есть контроль, чья ветка не
+// исполнялась ни разу за свою жизнь.
+//
+// Страж читает ТЕ ЖЕ предикаты, что и проводка: соединение поднимается ровно
+// когда задан адрес (main.go: `if cfg.AuthZIAMGRPCAddr != ""`), а аварийный режим
+// снимает проверку целиком. Поэтому «страж увидел ребро» ⟺ «ребро дилится» — по
+// построению, а не по совпадению двух одинаково написанных условий.
+func requireAuthzEdgeTransport(cfg config.Config) error {
+	if cfg.AuthZIAMGRPCAddr == "" || cfg.AuthZBreakglass {
+		return nil
+	}
+	if cfg.IAMAuthzMTLS.Enable {
+		return nil
+	}
+	return fmt.Errorf("production mode: verified transport required on the compute→iam authz Check edge " +
+		"— set KACHO_COMPUTE_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA). Without it the per-RPC " +
+		"authorization Check and the forwarded end-user principal travel over cleartext gRPC: the client " +
+		"credentials silently degrade to insecure, so the process starts and reports authz as enabled")
+}
+
 // requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS
 // (require|verify-ca|verify-full). sslmode=disable гонит KACHO_COMPUTE_DB_PASSWORD
 // и все данные строк открытым текстом по сети (CWE-319) — допустимо только в dev.
@@ -581,29 +627,6 @@ func requireDBSSLMode(cfg config.Config) error {
 	default:
 		return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
 	}
-}
-
-// requireTrustedForwarders — в любом production-режиме allow-list доверенных
-// forwarder-SAN'ов (обычно единственный — api-gateway SA) обязан быть непустым.
-// Пустой список → principalIsTrusted (corelib grpcsrv) доверяет forwarded
-// x-kacho-principal-* ЛЮБОМУ mTLS-verified peer'у: любой sibling с валидным
-// mesh-cert'ом форжит end-user principal и проходит FGA-Check как жертва
-// (confused deputy → tenant crossing, CWE-441/CWE-290). Fail-closed зеркалит
-// insecureListenersInProduction / requireDBSSLMode. В dev допустимо пусто
-// (принимаем любой principal — back-compat локальных фикстур).
-//
-// Считаем НЕПУСТЫЕ записи, а не длину среза: WithTrustedForwarders принимает
-// только s != "", поэтому список из одних пустых строк (`SANS=","`) вырождается
-// там в пустое множество — то есть снова «доверяем любому». Проверка по длине
-// пропускала такое значение, и сервис стартовал, доверяя всем. Тот же предикат
-// применяет самоотчёт о посадке (hasNonEmpty), поэтому «стража пропустила» и
-// «отчёт говорит: круг сужен» не могут разъехаться.
-func requireTrustedForwarders(cfg config.Config) error {
-	if !hasNonEmpty(cfg.AuthZTrustedForwarderSANs) {
-		return fmt.Errorf("production mode requires a non-empty KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS allow-list " +
-			"(empty → any mTLS peer is trusted to forward the end-user principal → subject spoofing / tenant crossing)")
-	}
-	return nil
 }
 
 // requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть
@@ -628,7 +651,7 @@ func requireTrustedForwarders(cfg config.Config) error {
 // Instance проекта (блочное хранение ушло из compute миграцией 0021 — Disk/Image/
 // Snapshot тут больше не значатся), включая объекты без per-object гранта
 // (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
-// requireTrustedForwarders (project-rule security.md → make audit-list-filter).
+// requireDBSSLMode (project-rule security.md → make audit-list-filter).
 //
 // Ручка отказа — часть предмета стражи, а не соседняя настройка. Стража, знающая
 // только про наличие фильтра, охраняет его присутствие и не охраняет его
@@ -939,52 +962,52 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 // FGA-фильтрация на List отключена (dev/breakglass). Catalog (DiskType) — public
 // read, FGA bypass not needed (handler skips). Region/Zone serving снят —
 // Geography принадлежит kacho-geo.
-func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter authzfilter.Filter) {
+func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter *authzfilter.Narrower) {
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
-// buildListFilter возвращает authzfilter.Filter (per-object видимость страницы
-// через iam AuthorizeService.BatchCheck), готовый к подвешиванию в public
-// List handlers. Если KACHO_COMPUTE_LIST_FILTER_ENABLED=false
-// либо authzConn=nil (dev без iam) — возвращает nil, что означает «handler
-// делает bypass FGA filter и возвращает всё подряд». Production-strict
-// валидация — выше (validateAuthMode).
-func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) authzfilter.Filter {
-	if !cfg.ListFilterEnabled {
-		logger.Info("list filter disabled (KACHO_COMPUTE_LIST_FILTER_ENABLED=false)")
-		return nil
+// buildListFilter собирает сужатель страницы (пообъектная видимость через iam
+// `AuthorizeService.BatchCheck`) для публичных List и для потока журнала изменений.
+//
+// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход: сужатель собирается всегда
+// и ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только объявленным
+// аварийным режимом, и каждое его срабатывание считается и называется.
+func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.Narrower {
+	breakglass := !cfg.ListFilterEnabled || authzConn == nil
+	var conn grpc.ClientConnInterface
+	if !breakglass {
+		conn = authzConn
+	} else {
+		logger.Warn("list filter has no rights model to ask — every list REFUSES and the change "+
+			"stream refuses to start, unless the emergency bypass is armed",
+			"enabled", cfg.ListFilterEnabled, "authz_conn", authzConn != nil,
+			"breakglass", cfg.ListFilterBreakglass)
 	}
-	if authzConn == nil {
-		logger.Warn("list filter requested but KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR is unset — disabled")
-		return nil
-	}
-	cli := authzfilter.NewIAMAuthorizeClient(authzConn)
 	cacheMax := cfg.ListFilterCacheMaxEntries
 	if cacheMax <= 0 {
 		cacheMax = 10000
 	}
-	fcfg := authzfilter.Config{
-		Enabled:         true,
-		Timeout:         time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
-		CacheTTL:        time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
-		CacheMaxEntries: cacheMax,
-		FailOpen:        cfg.ListFilterFailOpen,
-	}
-	f := authzfilter.NewFGAFilter(cli, fcfg).WithLogger(logger)
-	logger.Info("list filter enabled",
+	f := authzfilter.New(conn, authzfilter.Config{
+		Timeout:               time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
+		CacheTTL:              time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
+		CacheMaxEntries:       cacheMax,
+		SoftPassOnPeerFailure: cfg.ListFilterFailOpen,
+		Breakglass:            breakglass && cfg.ListFilterBreakglass,
+	}).WithLogger(logger)
+	logger.Info("list filter wired",
 		// per_call_timeout_ms gates ONE BatchCheck; operation_budget caps the whole
-		// page filter (derived from per-call and batch_parallelism). All three are
-		// logged: otherwise the config alone does not reveal which number actually
-		// bounds a request.
+		// page filter (derived from per-call and the fan-out). All three are logged:
+		// otherwise the config alone does not reveal which number actually bounds a
+		// request.
 		"per_call_timeout_ms", cfg.ListFilterTimeoutMs,
-		"batch_parallelism", f.Parallelism(),
 		"operation_budget", f.Budget(),
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl_ms", cfg.ListFilterCacheTTLMs,
 		"cache_max_entries", cacheMax,
-		"fail_open", cfg.ListFilterFailOpen,
+		"soft_pass_on_peer_failure", cfg.ListFilterFailOpen,
+		"narrows", f.Narrows(),
 	)
 	return f
 }
@@ -1132,24 +1155,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis handler.EventVisibility) {
+func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
-}
-
-// watchVisibility адаптирует построенный per-object фильтр под порт потока журнала.
-//
-// Ветка нужна из-за НЕСОВПАДЕНИЯ ТИПОВ, а не из-за паники: `authzfilter.Filter` несёт
-// только FilterVisibleIDs, а порт потока требует ещё и Narrows(), поэтому значение
-// приходится сузить до конкретного типа. Проверка `f == nil` рядом отсекает
-// типизированный nil: интерфейс, несущий nil-указатель, сам НЕ равен nil, и handler
-// принял бы его за работающий фильтр. Panic'и на таком значении не было бы —
-// `FGAFilter.Narrows()` начинается с `f != nil` и корректно отвечает «не сужаю»
-// (см. её godoc, первый подслучай); опасность именно в том, что это тихо, а не громко.
-func watchVisibility(listFilter authzfilter.Filter) handler.EventVisibility {
-	f, ok := listFilter.(*authzfilter.FGAFilter)
-	if !ok || f == nil {
-		return nil
-	}
-	return f
 }

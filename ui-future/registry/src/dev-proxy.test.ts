@@ -1,51 +1,85 @@
-// Dev-прокси обязан покрывать каждый домен, к которому приложение обращается.
+// Приложение не может дозвониться до домена, которого нет в его dev-прокси.
 //
-// Приложение — отдельный remote со своим dev-сервером: запрос к домену, для
-// которого в `vite.config.ts` нет записи прокси, до края не доходит вовсе. Отказ
-// при этом МОЛЧАЛИВЫЙ на уровне замысла: реестр честно объявляет apiPath, форма
-// честно рисует список, и только сам список всегда пуст — что неотличимо от
-// «у тенанта нет таких ресурсов».
+// В dev браузер стучится по относительному пути (`/geo/v1/zones`), и до
+// api-gateway его доводит `server.proxy` этого приложения. Домен, которого в
+// прокси нет, отдаёт index.html вместо JSON: запрос формально успешен, а список
+// пуст — отказ выглядит как «ресурсов нет».
 //
-// Проба declarative: читает ОБЪЯВЛЕНИЯ (реестр ресурсов + конфиг vite), а не
-// поднятый сервер, — поэтому не может пропуститься из-за недоступного стенда.
-// Предпосылка проверяется тут же: если в конфиге вообще не нашлось записей
-// прокси, это находка, а не «ноль расхождений».
+// Требуемый набор ВЫВОДИТСЯ из реестра ресурсов, а не выписывается: реестр —
+// единственное место, где живут apiPath спек, и он же переезжает вслед за proto
+// ствола. Выписанный список разошёлся бы с ним молча.
+//
+// Правила прокси берутся ЗАГРУЗКОЙ `vite.config.ts` и чтением `server.proxy`
+// как значения, а не разбором его текста: текстовый разбор утверждает о
+// символах файла и переживает любую смену формы записи (сокращённая запись,
+// вынесенная константа, вычисляемый ключ) — то есть перестаёт что-либо мерить,
+// не покраснев.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
+import { jest } from "@jest/globals";
 import { REGISTRY } from "./lib/resource-registry";
 
-const VITE_CONFIG = "vite.config.ts";
-
-/** Первый сегмент пути — домен, по которому vite решает, куда проксировать. */
-function domainOf(apiPath: string): string {
-  return "/" + apiPath.replace(/^\//, "").split("/")[0];
+/** Первый сегмент пути — домен, по которому выбирается правило прокси. */
+function domainOf(apiPath: string): string | null {
+  const m = /^\/([a-z][a-z0-9-]*)\//.exec(apiPath);
+  return m ? `/${m[1]}` : null;
 }
 
-function proxiedDomains(): string[] {
-  const raw = readFileSync(join(process.cwd(), VITE_CONFIG), "utf8");
-  const proxy = raw.slice(raw.indexOf("proxy: {"));
-  return [...proxy.matchAll(/"(\/[^"]+)":\s*\{/g)].map((m) => m[1]);
+function registryDomains(): string[] {
+  const out = new Set<string>();
+  for (const spec of Object.values(REGISTRY)) {
+    for (const p of [spec.apiPath, spec.internalGetPath, spec.admin?.basePath]) {
+      const d = p ? domainOf(p) : null;
+      if (d) out.add(d);
+    }
+  }
+  return [...out].sort();
 }
 
-describe("dev-прокси покрывает домены, которые приложение адресует", () => {
-  const proxied = proxiedDomains();
+/** Правило `/iam/v1` покрывает `/iam/...`: сравниваем по префиксу, не по равенству. */
+function isProxied(domain: string, prefixes: string[]): boolean {
+  return prefixes.some((p) => p === domain || p.startsWith(`${domain}/`));
+}
 
-  it("в конфиге вообще есть записи прокси", () => {
-    // Предпосылка гейта: без неё «все домены покрыты» означало бы «я не нашёл
-    // ни конфига, ни доменов» — ноль осмотренного, выданный за ноль находок.
-    expect(proxied.length).toBeGreaterThan(0);
+let prefixes: string[] = [];
+
+beforeAll(async () => {
+  // `defineConfig` — тождество, а плагины к объявлению прокси отношения не
+  // имеют: подменяем их, чтобы не тянуть в jsdom бандлер. Подменён ТРАНСПОРТ
+  // загрузки, а не предмет проверки: `server.proxy` читается из настоящего
+  // vite.config.ts.
+  jest.unstable_mockModule("vite", () => ({ defineConfig: (c: unknown) => c }));
+  jest.unstable_mockModule("@originjs/vite-plugin-federation", () => ({ default: () => ({ name: "federation" }) }));
+  jest.unstable_mockModule("@vitejs/plugin-react", () => ({ default: () => ({ name: "react" }) }));
+  // vite.config.ts написан как CJS-модуль (использует __dirname), а ts-jest
+  // грузит его как ESM. Подставляем каталог приложения — тот же, что видит vite.
+  (globalThis as unknown as { __dirname: string }).__dirname = new URL("..", import.meta.url).pathname;
+  // Спецификатор — переменная намеренно: vite.config.ts принадлежит проекту
+  // tsconfig.node.json, а этот тест компилируется в tsconfig.app.json.
+  // Литеральный импорт затянул бы файл во второй проект (TS6307).
+  const configModule = "../vite.config";
+  const mod = (await import(configModule)) as unknown as {
+    default: { server?: { proxy?: Record<string, unknown> } };
+  };
+  prefixes = Object.keys(mod.default.server?.proxy ?? {});
+});
+
+describe("dev-прокси покрывает домены, к которым приложение обращается", () => {
+  it("предмет проверки непуст — реестр прочитан, правила прокси прочитаны", () => {
+    expect(registryDomains().length).toBeGreaterThan(1);
+    expect(prefixes.length).toBeGreaterThan(1);
   });
 
-  it("реестр ресурсов непуст и называет домены", () => {
-    const domains = new Set(Object.values(REGISTRY).map((s) => domainOf(s.apiPath)));
-    expect(domains.size).toBeGreaterThan(0);
+  it.each(registryDomains().map((d) => [d]))("%s проксируется", (domain) => {
+    expect(isProxied(domain, prefixes)).toBe(true);
   });
 
-  it("каждый домен из реестра ресурсов проксируется", () => {
-    const domains = [...new Set(Object.values(REGISTRY).map((s) => domainOf(s.apiPath)))].sort();
-    const missing = domains.filter((d) => !proxied.some((p) => p === d || p.startsWith(d + "/")));
-    expect(missing).toEqual([]);
+  it("Operation-поллинг проксируется", () => {
+    expect(isProxied("/operations", prefixes)).toBe(true);
+  });
+
+  // Положительный контроль: предикат обязан уметь ответить «нет», иначе
+  // перечисление выше зеленело бы при любом наборе правил.
+  it("домен, которого в прокси нет, проверку НЕ проходит", () => {
+    expect(isProxied("/domain-that-is-not-proxied", prefixes)).toBe(false);
   });
 });

@@ -3,47 +3,21 @@
 // Ground truth: proto/kacho/cloud/registry/v1/registry.proto и
 // registry_service.proto.
 //
-// Два слоя, как и в nlb: типовой (компиляция ts-jest'ом ловит объектный литерал
-// с неизвестным полем и отсутствие обязательного) и текстовый — файл не должен
-// ОБЪЯВЛЯТЬ имён, снятых в стволе. Второй слой нужен потому, что лишнее
-// необязательное поле компиляции не мешает: оно просто обещает то, чего сервер
-// не пришлёт, и первый же читатель принимает обещание за факт.
+// Два слоя, как и в nlb, и оба — КОМПИЛЯТОРНЫЕ:
 //
-// Здесь этот слой ловит не поле реестра, а ЦЕЛЫЕ описания чужих ресурсов:
-// файл нёс формы Disk/Image/Snapshot/Instance/Subnet времён main — блочное
-// хранение с тех пор уехало из compute в storage и переписано (у Image
-// сменились даже номера полей, то есть это другое сообщение, а не эволюция
-// прежнего), а подсеть переименовала диапазоны. Ни одно из этих описаний
-// приложение не импортирует — но пока они лежат рядом с живыми, они читаются
-// как действующий контракт.
+//  1) положительный — присваивание с полным набором полей роняет суиту, если
+//     интерфейс отстал от контракта (отсутствует обязательное) или разошёлся с
+//     ним (лишнее поле в литерале);
+//  2) отрицательный — снятое в стволе имя интерфейс обязан ОТВЕРГАТЬ,
+//     утверждается через `@ts-expect-error`: вернут поле — подавление станет
+//     лишним, и ts-jest уронит суиту.
 //
-// `v4_cidr_blocks`/`v6_cidr_blocks` в список НЕ входят: они остаются живыми
-// именами у vpc SecurityGroup (message CidrBlocks), и запрет по имени вообще
-// отвергал бы законное объявление.
-
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// Прежняя редакция вместо второго слоя читала СВОЙ ЖЕ `types.ts` с диска и
+// искала в нём подстроки. Это утверждение о символах файла, а не о том, что
+// тип принимает: оно переживало любую смену формы записи и не могло покраснеть
+// на изменении поведения.
 
 import type { Registry, Repository, Tag } from "./types";
-
-const TYPES_FILE = "src/api/types.ts";
-
-function declarationsOnly(): string {
-  const raw = readFileSync(join(process.cwd(), TYPES_FILE), "utf8");
-  return raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-}
-
-const RETIRED_DECLARATIONS = [
-  "platform_id",
-  "storage_size",
-  "min_disk_size",
-  "product_ids",
-  "source_disk_id",
-  "disk_size",
-  "pooled",
-  "dhcp_options",
-  "default_visibility?",
-];
 
 describe("типы реестра образов против контракта ствола", () => {
   it("Registry несёт регион, тип размещения и видимость по умолчанию", () => {
@@ -73,18 +47,25 @@ describe("типы реестра образов против контракта
     expect(t.registry_id).toMatch(/^reg-/);
   });
 
-  it("файл типов не объявляет имён, снятых в стволе", () => {
-    const text = declarationsOnly();
-    for (const name of RETIRED_DECLARATIONS) {
-      expect(text).not.toContain(name);
-    }
-  });
+  it("снятое в стволе имя интерфейс отвергает", () => {
+    // Отрицание проверяет КОМПИЛЯТОР и оно парное к присваиваниям выше: без
+    // них оно зеленело бы и на пустом типе.
+    const r: Registry = {
+      id: "reg-000000000000000",
+      project_id: "prj-1",
+      region_id: "ru-central1",
+      status: "REGISTRY_STATUS_ACTIVE",
+      // @ts-expect-error видимость репозитория по умолчанию названа полностью
+      default_visibility: "PRIVATE",
+    };
+    expect(r.region_id).toBe("ru-central1");
 
-  it("файл типов объявляет то, что контракт действительно несёт", () => {
-    // Положительный контроль отрицания выше.
-    const text = declarationsOnly();
-    for (const name of ["region_id", "placement_type", "default_repository_visibility", "lifecycle"]) {
-      expect(text).toContain(name);
-    }
+    const repo: Repository = {
+      name: "team/app",
+      registry_id: "reg-000000000000000",
+      // @ts-expect-error размер хранения — поле снятого дубля блочного хранения
+      storage_size: 1,
+    };
+    expect(repo.name).toBe("team/app");
   });
 });

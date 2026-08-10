@@ -879,7 +879,9 @@ registerDetailExtension("access-bindings", {
     // у SubjectPrivilege это поля 4/5/6 — заполняются на каждом чтении и читаются в
     // таблицах привилегий выше. Совпадение имён, разные референты: запрет касается
     // ровно этого блока, а не файла.
-    // Замок обоих классов — src/access-binding-field-names.test.ts.
+    // Замок обоих классов — src/access-binding-field-names.test.tsx: он
+    // ИСПОЛНЯЕТ это расширение и утверждает отрисованное, а не ищет имена в
+    // тексте этого файла.
     const scopeTypeDotted = String(getByPath<string>(data, "scope_type") ?? getByPath<string>(data, "scopeType") ?? "");
     const scopeIdVal = getByPath<string>(data, "scope_id") ?? getByPath<string>(data, "scopeId") ?? "";
     const anchorType =

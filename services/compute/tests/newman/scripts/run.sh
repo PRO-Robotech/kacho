@@ -44,7 +44,7 @@ cd "$(dirname "$0")/.."
 # MISSING → bad=1. Ретайрнутые стемы, оставленные здесь, делали вердикт compute
 # КРАСНЫМ безусловно, независимо от утверждений (drift-петля ниже только ДОБАВЛЯЕТ
 # стемы, никогда не вычищает).
-COLLECTIONS=(instance-redesign machine-type operation list-filter authz-deny sec-d)
+COLLECTIONS=(instance-redesign machine-type operation list-filter authz-deny sec-d instance-nic-attach)
 
 SERVICE=""
 BAIL=""

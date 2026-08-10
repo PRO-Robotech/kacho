@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для SecurityGroupService: возвращаем ТОЛЬКО
@@ -92,10 +94,10 @@ func TestSecurityGroupListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_aaa", "sg_bbb", "sg_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"sg_aaa", "sg_bbb"}}
+	filter, peer := narrowtest.Recording("sg_aaa", "sg_bbb")
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	sgs, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, sgs, 2)
 	got := map[string]bool{}
@@ -108,10 +110,10 @@ func TestSecurityGroupListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.securityGroups.list,
 	// FGA-тип vpc_security_group) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_security_group", filter.gotResourceType)
-	assert.Equal(t, "vpc.securityGroups.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"sg_aaa", "sg_bbb", "sg_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_security_group", peer.ResourceType)
+	assert.Equal(t, "vpc.securityGroups.list", peer.Action)
+	assert.ElementsMatch(t, []string{"sg_aaa", "sg_bbb", "sg_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -120,10 +122,10 @@ func TestSecurityGroupListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_visible", "sg_secret")
 
-	filter := &fakeListFilter{allowed: []string{"sg_visible"}}
+	filter := narrowtest.Allowing("sg_visible")
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	sgs, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, sgs, 1)
 	assert.Equal(t, "sg_visible", sgs[0].ID)
@@ -134,10 +136,10 @@ func TestSecurityGroupListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	sgs, next, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	sgs, next, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, sgs)
 	assert.Empty(t, next)
@@ -148,10 +150,10 @@ func TestSecurityGroupListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b", "sg_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	sgs, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, sgs, 3)
 }
@@ -161,10 +163,10 @@ func TestSecurityGroupListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -176,10 +178,10 @@ func TestSecurityGroupListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -190,8 +192,8 @@ func TestSecurityGroupListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
-	uc := NewListSecurityGroupsUseCase(kr, nil)
-	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListSecurityGroupsUseCase(kr, narrowtest.AllowingAll())
+	sgs, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, sgs, 2)
 }
@@ -199,9 +201,9 @@ func TestSecurityGroupListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestSecurityGroupListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListSecurityGroupsUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListSecurityGroupsUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -214,10 +216,10 @@ func TestSecurityGroupListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
 
-	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	filter := narrowtest.Allowing("unused_id")
 	uc := NewListSecurityGroupsUseCase(kr, filter)
 
-	sgs, _, err := uc.Execute(context.Background(), "", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
+	sgs, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, sgs, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

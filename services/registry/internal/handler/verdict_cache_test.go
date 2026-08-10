@@ -74,3 +74,11 @@ func TestVerdictCache_Disabled(t *testing.T) {
 	require.Same(t, Authorizer(inner), newCachedAuthorizer(inner, 0))
 	require.Nil(t, newCachedAuthorizer(nil, time.Minute))
 }
+
+// CheckMany — та же дверь, выведенная из Check (см. manyFromOne). Счётчик поэтому
+// считает ВОПРОСЫ, а не запросы: проба про окно вердиктов, а не про цену страницы.
+func (c *countingAuthorizer) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	return manyFromOne{one: c.Check}.checkMany(ctx, subject, relation, objectType, objectIDs)
+}

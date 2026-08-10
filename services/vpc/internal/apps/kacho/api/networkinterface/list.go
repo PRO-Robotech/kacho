@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
@@ -31,18 +32,18 @@ import (
 // это нормально для cursor-пагинации, next_page_token берётся от последней
 // ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListNetworkInterfacesUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo     Repo
+	narrower *listnarrow.Narrower
 }
 
 // NewListNetworkInterfacesUseCase создает ListNetworkInterfacesUseCase. filter==nil OK.
-func NewListNetworkInterfacesUseCase(r Repo, filter ListFilter) *ListNetworkInterfacesUseCase {
-	return &ListNetworkInterfacesUseCase{repo: r, filter: filter}
+func NewListNetworkInterfacesUseCase(r Repo, n *listnarrow.Narrower) *ListNetworkInterfacesUseCase {
+	return &ListNetworkInterfacesUseCase{repo: r, narrower: n}
 }
 
 // Execute — проверяет project_id, читает страницу и фильтрует её per-object.
 // iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
-func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID string, f NetworkInterfaceFilter, p Pagination) ([]*kachorepo.NetworkInterfaceRecord, string, error) {
+func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, f NetworkInterfaceFilter, p Pagination) ([]*kachorepo.NetworkInterfaceRecord, string, error) {
 	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
 	//
 	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
@@ -57,55 +58,37 @@ func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID st
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
+	// Предусловие сужения — ДО чтения страницы из БД.
+	//
+	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением
+	// лежит курсорный запрос к своей базе: безымянный запрос оплачивал бы его, чтобы
+	// получить отказ на прочитанном. Проверка формата остаётся ПЕРВОЙ и выше —
+	// ответ на некорректный ввод не должен зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
 	rd, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}
 	defer func() { _ = rd.Close() }()
 
-	if subjectID == "" && u.filter != nil {
-		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
-		return nil, "", nil
-	}
 	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
 	// проверки как авторитетный backstop служимого пути.
 	out, next, lerr := rd.NetworkInterfaces().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	if u.filter == nil || len(out) == 0 {
+	if len(out) == 0 {
 		return out, next, nil
 	}
-	visible, ferr := filterVisibleNetworkInterfaces(ctx, u.filter, subjectID, out)
+	visible, ferr := listnarrow.Page(ctx, u.narrower,
+		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, out,
+		func(rec *kachorepo.NetworkInterfaceRecord) string { return rec.ID })
 	if ferr != nil {
 		return nil, "", ferr
 	}
 	return visible, next, nil
-}
-
-// filterVisibleNetworkInterfaces оставляет из страницы только видимые subject'у
-// строки, сохраняя порядок курсора.
-func filterVisibleNetworkInterfaces(ctx context.Context, filter ListFilter, subjectID string, nics []*kachorepo.NetworkInterfaceRecord) ([]*kachorepo.NetworkInterfaceRecord, error) {
-	pageIDs := make([]string, 0, len(nics))
-	for _, n := range nics {
-		pageIDs = append(pageIDs, n.ID)
-	}
-	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
-		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kachorepo.NetworkInterfaceRecord, 0, len(visibleIDs))
-	for _, n := range nics {
-		if _, ok := visible[n.ID]; ok {
-			out = append(out, n)
-		}
-	}
-	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному NIC.

@@ -29,6 +29,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 )
 
 // Типы событий колонки event_type таблицы fga_register_outbox; передаются
@@ -57,7 +59,9 @@ const (
 )
 
 // relationProject — hierarchy-relation owner-tuple: `project:<id> #project @<obj>`.
-const relationProject = "project"
+// Named from the receiving side's declaration (pkg/authz/proxytuple), which owns the
+// accepted set: a second spelling of somebody else's closed set drifts silently.
+const relationProject = string(proxytuple.RelationProject)
 
 // Tuple — один owner-hierarchy relationship tuple, сериализуемый payload'ом одной
 // строки fga_register_outbox. Поля 1:1 с запросом InternalIAMService

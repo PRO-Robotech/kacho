@@ -40,7 +40,7 @@ func TestPermissionMap_tiersAndPermissions(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s missing from PermissionMap", a.method)
 		}
-		if e.Relation != relationSystemAdmin {
+		if e.Relation != "system_admin" {
 			t.Errorf("%s relation = %q, want system_admin", a.method, e.Relation)
 		}
 		if e.Permission != a.perm {
@@ -65,7 +65,7 @@ func TestPermissionMap_tiersAndPermissions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s extract err = %v", method, err)
 		}
-		if ot != objectTypeCluster || oid != clusterSingletonObject {
+		if ot != "cluster" || oid != "cluster_kacho_root" {
 			t.Errorf("%s extract = (%s,%s), want (cluster,cluster_kacho_root)", method, ot, oid)
 		}
 	}

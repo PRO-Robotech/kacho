@@ -117,9 +117,20 @@ func (u *UpdateTargetGroupUseCase) Execute(
 	if err := validateTargetGroupID(id); err != nil {
 		return nil, err
 	}
+	// Список целей отвергается ПО ТЕЛУ, а не только по маске. Прикрытие одной
+	// маской было ЧАСТИЧНЫМ и потому обманчивым: при пустой маске (full-object
+	// PATCH по api-conventions) и при маске, не называющей `targets`, тот же
+	// список принимался и молча выбрасывался — вызывающий получал успех, а
+	// состав группы не менялся. Контракт поля при этом прямо говорит «rejected
+	// on this RPC». Текст отказа — прежний фиксированный: он часть контракта и
+	// называет настоящий канал правки.
+	if len(req.GetTargets()) > 0 {
+		return nil, status.Error(codes.InvalidArgument,
+			"targets must be modified via AddTargets / RemoveTargets")
+	}
 	mask := req.GetUpdateMask().GetPaths()
 	for _, p := range mask {
-		// targets via mask запрещён — отдельный фиксированный текст.
+		// targets via mask запрещён — тот же фиксированный текст.
 		if p == "targets" {
 			return nil, status.Error(codes.InvalidArgument,
 				"targets must be modified via AddTargets / RemoveTargets")

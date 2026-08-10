@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для SubnetService: возвращаем ТОЛЬКО
@@ -85,10 +87,10 @@ func TestSubnetListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_aaa", "e9b_bbb", "e9b_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"e9b_aaa", "e9b_bbb"}}
+	filter, peer := narrowtest.Recording("e9b_aaa", "e9b_bbb")
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	subs, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, subs, 2)
 	got := map[string]bool{}
@@ -101,10 +103,10 @@ func TestSubnetListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.subnets.list,
 	// FGA-тип vpc_subnet) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_subnet", filter.gotResourceType)
-	assert.Equal(t, "vpc.subnets.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"e9b_aaa", "e9b_bbb", "e9b_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_subnet", peer.ResourceType)
+	assert.Equal(t, "vpc.subnets.list", peer.Action)
+	assert.ElementsMatch(t, []string{"e9b_aaa", "e9b_bbb", "e9b_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -113,10 +115,10 @@ func TestSubnetListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_visible", "e9b_secret")
 
-	filter := &fakeListFilter{allowed: []string{"e9b_visible"}}
+	filter := narrowtest.Allowing("e9b_visible")
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	subs, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, subs, 1)
 	assert.Equal(t, "e9b_visible", subs[0].ID)
@@ -127,10 +129,10 @@ func TestSubnetListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	subs, next, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	subs, next, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, subs)
 	assert.Empty(t, next)
@@ -141,10 +143,10 @@ func TestSubnetListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b", "e9b_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	subs, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, subs, 3)
 }
@@ -154,10 +156,10 @@ func TestSubnetListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -169,10 +171,10 @@ func TestSubnetListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -183,8 +185,8 @@ func TestSubnetListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
-	uc := NewListSubnetsUseCase(kr, nil)
-	subs, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListSubnetsUseCase(kr, narrowtest.AllowingAll())
+	subs, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, subs, 2)
 }
@@ -192,9 +194,9 @@ func TestSubnetListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestSubnetListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListSubnetsUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListSubnetsUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", SubnetFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -207,10 +209,10 @@ func TestSubnetListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedSubnetsLabeled(t, kr, "prj_1", "enp_net1", "e9b_a", "e9b_b")
 
-	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	filter := narrowtest.Allowing("unused_id")
 	uc := NewListSubnetsUseCase(kr, filter)
 
-	subs, _, err := uc.Execute(context.Background(), "", SubnetFilter{ProjectID: "prj_1"}, Pagination{})
+	subs, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, subs, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

@@ -4,9 +4,17 @@
 package main
 
 // Interceptor-цепочки обоих листенеров kacho-storage. Порядок (outermost→innermost):
-// recovery → logging → principal-extract (cert-identity → trusted-principal) → authz.
+// logging → panic-recovery → principal-extract (cert-identity → trusted-principal) → authz.
 // Оба листенера (public :9090 и internal :9091) строятся ОДИНАКОВО (AuthN+AuthZ
 // везде — internal НЕ освобождён, security.md).
+//
+// Журнал доступа стоит СНАРУЖИ звена восстановления паники, а не внутри. Он
+// пишет строку ПОСЛЕ возврата обработчика (не через defer), поэтому раскрутка
+// стека его просто пропускает: пока звено стояло снаружи, паниковавший запрос не
+// оставлял в журнале доступа ни одной строки — самый тяжёлый исход оказывался
+// единственным ненаблюдаемым. Снаружи журнал видит обычный возврат
+// codes.Internal и записывает его. Обратная граница тоже обязательна: звено
+// остаётся НАД принципалом и authz, потому что паникует и фильтр.
 //
 // authz — реальный per-RPC InternalIAMService.Check (corelib check.NewInterceptor):
 // composition root (serve.go) строит его из cfg.AuthZIAMGRPCAddr и передаёт сюда
@@ -17,45 +25,13 @@ package main
 import (
 	"context"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
-
-// recoveryUnaryInterceptor восстанавливает панику unary-handler'а → фиксированный
-// INTERNAL (без leak'а значения паники; ставится ПЕРВЫМ, оборачивает всё ниже — DoS-
-// backstop, grpc-go по умолчанию НЕ восстанавливает панику handler-goroutine).
-func recoveryUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("recovered panic in unary handler",
-					"method", info.FullMethod, "panic", r, "stack", string(debug.Stack()))
-				err = status.Error(codes.Internal, "internal error")
-			}
-		}()
-		return handler(ctx, req)
-	}
-}
-
-// recoveryStreamInterceptor — stream-аналог recoveryUnaryInterceptor.
-func recoveryStreamInterceptor(logger *slog.Logger) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("recovered panic in stream handler",
-					"method", info.FullMethod, "panic", r, "stack", string(debug.Stack()))
-				err = status.Error(codes.Internal, "internal error")
-			}
-		}()
-		return handler(srv, ss)
-	}
-}
 
 // loggingUnaryInterceptor логирует метод, gRPC-код и длительность через slog
 // (структурно, без PII — коррелируем по не-PII полям).
@@ -72,19 +48,18 @@ func loggingUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 }
 
 // unaryChain собирает упорядоченную unary-цепочку ОДНОГО листенера:
-// recovery (outermost) → logging → principal-extract (cert-identity → trusted-
-// principal) → authz. forwarders — allow-list SAN'ов доверенных форвардеров
+// logging (outermost) → panic-recovery → principal-extract (cert-identity →
+// trusted-principal) → authz. forwarders — allow-list SAN'ов доверенных форвардеров
 // end-user principal'а (api-gateway SA). authz — реальный InternalIAMService.Check-
 // интерсептор (corelib authz), собранный composition root'ом из конфига; nil, если
 // authz не сконфигурирован (dev-старт без kacho-iam) → per-RPC Check пропускается,
 // AuthN (mTLS+principal) сохраняется. Одинаков на ОБОИХ листенерах (security.md).
-func unaryChain(logger *slog.Logger, forwarders []string, authz grpc.UnaryServerInterceptor) []grpc.UnaryServerInterceptor {
+func unaryChain(logger *slog.Logger, forwarders grpcsrv.TrustedForwarders, authz grpc.UnaryServerInterceptor) []grpc.UnaryServerInterceptor {
 	chain := []grpc.UnaryServerInterceptor{
-		recoveryUnaryInterceptor(logger),
 		loggingUnaryInterceptor(logger),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
+		grpcsrv.UnaryPanicRecovery(logger),
 	}
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(forwarders)...)
 	if authz != nil {
 		chain = append(chain, authz)
 	}
@@ -92,12 +67,11 @@ func unaryChain(logger *slog.Logger, forwarders []string, authz grpc.UnaryServer
 }
 
 // streamChain — stream-аналог unaryChain (тот же инвариант порядка).
-func streamChain(logger *slog.Logger, forwarders []string, authz grpc.StreamServerInterceptor) []grpc.StreamServerInterceptor {
+func streamChain(logger *slog.Logger, forwarders grpcsrv.TrustedForwarders, authz grpc.StreamServerInterceptor) []grpc.StreamServerInterceptor {
 	chain := []grpc.StreamServerInterceptor{
-		recoveryStreamInterceptor(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
+		grpcsrv.StreamPanicRecovery(logger),
 	}
+	chain = append(chain, grpcsrv.PrincipalExtractStream(forwarders)...)
 	if authz != nil {
 		chain = append(chain, authz)
 	}

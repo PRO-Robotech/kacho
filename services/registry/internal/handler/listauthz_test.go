@@ -641,3 +641,10 @@ func (m *memOpsH) MarkError(_ context.Context, id string, s *rpcstatus.Status) e
 	return nil
 }
 func (m *memOpsH) Cancel(context.Context, string) error { return nil }
+
+// CheckMany — та же дверь, выведенная из Check (см. manyFromOne).
+func (r *recordingAuthorizer) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	return manyFromOne{one: r.Check}.checkMany(ctx, subject, relation, objectType, objectIDs)
+}

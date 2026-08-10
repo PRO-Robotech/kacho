@@ -10,11 +10,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // ListByInstance answers "which interfaces are bound to these instances" for the
@@ -111,11 +115,10 @@ func TestListByInstance_ReturnsOnlyInterfacesTheSubjectMaySee(t *testing.T) {
 	seedAttachedNIC(t, kr, "prj_mine", "e9b_sub1", "nic_mine", "ins_mine")
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	filter := &fakeNICFilter{allowed: []string{"nic_mine"}}
+	filter, peer := narrowtest.Recording("nic_mine")
 	svc := NewService(kr).WithListFilter(filter)
 
-	att, err := svc.ListByInstance(context.Background(), "user:usr_alice",
-		[]string{"ins_mine", "ins_theirs"})
+	att, err := svc.ListByInstance(narrowtest.Caller(), []string{"ins_mine", "ins_theirs"})
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"nic_mine"}, nicIDsOf(att),
@@ -123,10 +126,10 @@ func TestListByInstance_ReturnsOnlyInterfacesTheSubjectMaySee(t *testing.T) {
 			"caller named the instance it is bound to")
 
 	// The model is asked about the ids of the page, never about the whole population.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, authzfilter.ResourceTypeNetworkInterface, filter.gotResourceType)
-	assert.Equal(t, authzfilter.ActionNetworkInterfaceList, filter.gotAction)
-	assert.ElementsMatch(t, []string{"nic_mine", "nic_theirs"}, filter.gotIDs)
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, authzfilter.ResourceTypeNetworkInterface, peer.ResourceType)
+	assert.Equal(t, authzfilter.ActionNetworkInterfaceList, peer.Action)
+	assert.ElementsMatch(t, []string{"nic_mine", "nic_theirs"}, peer.IDs)
 }
 
 // No grant at all → nothing comes back, and nothing leaks through the shape of the
@@ -135,27 +138,29 @@ func TestListByInstance_NoGrantReturnsNothing(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	filter := &fakeNICFilter{}
+	filter := narrowtest.DenyingAll()
 	svc := NewService(kr).WithListFilter(filter)
 
-	att, err := svc.ListByInstance(context.Background(), "user:usr_stranger", []string{"ins_theirs"})
+	att, err := svc.ListByInstance(narrowtest.Caller(), []string{"ins_theirs"})
 	require.NoError(t, err)
 	assert.Empty(t, att)
 }
 
-// An unextracted identity is "I do not know who you are", not "trusted caller". It
-// must not be served the unfiltered page.
-func TestListByInstance_EmptySubjectFailsClosed(t *testing.T) {
+// Безымянный вызывающий — «не знаю, кто ты», а не «доверенный». Полярность теперь
+// ОТКАЗ, а не пустая страница: «пусто» неотличимо от «личность потеряна по дороге».
+// Сужатель здесь разрешает всё — значит отказ приходит именно с линии личности.
+func TestListByInstance_UnnamedCallerIsRefused(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	filter := &fakeNICFilter{allowAll: true}
+	filter, peer := narrowtest.Recording()
 	svc := NewService(kr).WithListFilter(filter)
 
-	att, err := svc.ListByInstance(context.Background(), "", []string{"ins_theirs"})
-	require.NoError(t, err)
-	assert.Empty(t, att, "empty subject must fail closed, never pass through unfiltered")
-	assert.Zero(t, filter.calls, "no identity means there is nothing to ask the model about")
+	att, err := svc.ListByInstance(context.Background(), []string{"ins_theirs"})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.Empty(t, att, "безымянный запрос не получает нефильтрованной страницы")
+	assert.Zero(t, peer.Calls, "спрашивать не о ком — модель не тревожат")
 }
 
 // There is no subject value that skips the filter any more, and that is the point:
@@ -171,29 +176,29 @@ func TestListByInstance_FilterErrorFailsClosed(t *testing.T) {
 	seedAttachedNIC(t, kr, "prj_a", "e9b_sub1", "nic_a", "ins_a")
 
 	sentinel := errors.New("iam unavailable")
-	filter := &fakeNICFilter{err: sentinel}
+	filter := narrowtest.Failing(sentinel)
 	svc := NewService(kr).WithListFilter(filter)
 
-	att, err := svc.ListByInstance(context.Background(), "user:usr_alice", []string{"ins_a"})
+	att, err := svc.ListByInstance(narrowtest.Caller(), []string{"ins_a"})
 	require.Error(t, err, "a visibility answer we could not obtain is not an answer of yes")
 	assert.Empty(t, att)
 }
 
-// Незаданный фильтр не должен превращаться в «покажи всё кому угодно».
+// Оба отказа сохраняют СВОЮ линию, даже когда сходятся в одном запросе.
 //
-// Per-RPC Check за этот RPC не задаётся (ScopeFiltered), поэтому вызывающий без
-// извлечённой identity доходит сюда — и обязан не получить ничего. Привязка
-// fail-closed к наличию фильтра оставила бы конфигурацию, в которой RPC отдаёт
-// привязки всего кластера кому угодно.
-func TestListByInstance_EmptySubjectFailsClosedEvenWithoutFilter(t *testing.T) {
+// Безымянный вызывающий при неподключённом сужателе получает ответ ПРО ЛИЧНОСТЬ:
+// личность проверяется первой, и это порядок, а не вкус. Пока отсечка стояла за
+// веткой посадки, посадка без модели отдавала всё кому угодно; схлопни их обратно —
+// и фикс одного спрячет регрессию другого.
+func TestListByInstance_UnnamedCallerWithoutModelIsRefusedByIdentity(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAttachedNIC(t, kr, "prj_theirs", "e9b_sub2", "nic_theirs", "ins_theirs")
 
-	svc := NewService(kr) // фильтр не подключён
+	svc := NewService(kr) // сужатель не подключён
 
-	att, err := svc.ListByInstance(context.Background(), "", []string{"ins_theirs"})
-	require.NoError(t, err)
-	assert.Empty(t, att,
-		"без identity ответ пуст независимо от того, подключён ли фильтр — "+
-			"единственный гейт этого RPC живёт здесь")
+	att, err := svc.ListByInstance(context.Background(), []string{"ins_theirs"})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err),
+		"личность проверяется ПЕРВОЙ — ответ не зависит от того, что прописал оператор")
+	assert.Empty(t, att)
 }

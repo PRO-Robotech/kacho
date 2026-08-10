@@ -194,9 +194,9 @@ const file_kacho_cloud_compute_v1_internal_watch_service_proto_rawDesc = "" +
 	"event_type\x18\x04 \x01(\tR\teventType\x121\n" +
 	"\apayload\x18\x05 \x01(\v2\x17.google.protobuf.StructR\apayload\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2t\n" +
-	"\x14InternalWatchService\x12\\\n" +
-	"\x05Watch\x12$.kacho.cloud.compute.v1.WatchRequest\x1a\x1d.kacho.cloud.compute.v1.Event\"\f\x8a\xb5\x18\b<exempt>0\x01BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\x8c\x01\n" +
+	"\x14InternalWatchService\x12t\n" +
+	"\x05Watch\x12$.kacho.cloud.compute.v1.WatchRequest\x1a\x1d.kacho.cloud.compute.v1.Event\"$\x8a\xb5\x18\x17compute.instances.watch\xa2\xb5\x18\x011\xb0\xb5\x18\x010\x01BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (
 	file_kacho_cloud_compute_v1_internal_watch_service_proto_rawDescOnce sync.Once

@@ -81,10 +81,11 @@ func (u *CreateAddressPoolUseCase) Execute(ctx context.Context, req CreatePoolRe
 	}
 	// zone_id existence — Geography (Region/Zone) — leaf-домен kacho-geo;
 	// валидируется вызовом geo.v1.ZoneService.Get через ZoneRegistry-порт.
+	// Промах — полоса peer-validate (общая на все geo-точки сервиса).
 	if req.ZoneID != "" && u.zoneReg != nil {
 		if _, err := u.zoneReg.Get(ctx, req.ZoneID); err != nil {
 			if errors.Is(err, ErrNotFound) {
-				return nil, status.Errorf(codes.FailedPrecondition, "unknown zone id '%s'", req.ZoneID)
+				return nil, serviceerr.UnknownZone(req.ZoneID)
 			}
 			return nil, serviceerr.MapRepoErr(err)
 		}

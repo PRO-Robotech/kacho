@@ -1175,7 +1175,11 @@ type ContainerSpec struct {
 	Ports []*ContainerPort `protobuf:"bytes,5,rep,name=ports,proto3" json:"ports,omitempty"`
 	// Restart policy (default NEVER).
 	RestartPolicy RestartPolicy `protobuf:"varint,6,opt,name=restart_policy,json=restartPolicy,proto3,enum=kacho.cloud.compute.v1.RestartPolicy" json:"restart_policy,omitempty"`
-	// Output-only exit code (set on a terminal SUCCEEDED/FAILED job; empty until then).
+	// Output-only exit code (set on a terminal SUCCEEDED/FAILED job; empty until
+	// then). NOT ACCEPTED ON INPUT: `ContainerSpec` also stands in
+	// CreateInstanceRequest, and a set value there is refused synchronously with
+	// INVALID_ARGUMENT naming `container_spec.exit_code` (accepted-and-ignored is
+	// not a lawful outcome).
 	ExitCode      int32 `protobuf:"varint,7,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

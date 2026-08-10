@@ -86,7 +86,7 @@ type peerClients struct {
 	SecurityGroup vpcclient.SecurityGroupClient
 	// ListFilter — per-object filtered List (RBAC; iam
 	// AuthorizeService.BatchCheck). nil → use-case'ы делают unfiltered passthrough.
-	ListFilter authzfilter.Filter
+	ListFilter *authzfilter.Narrower
 }
 
 func main() {
@@ -294,7 +294,7 @@ func runServe(configPath string) error {
 	// armed and the register-drainer is not IAM-connected, so no resource is created
 	// without a deliverable owner-tuple intent. Read RPCs are untouched.
 	publicUnary, publicStream, internalUnary, internalStream := buildInterceptorChains(
-		bootGate, authzIntr, cfg.Authz.TrustedForwarderSANs)
+		logger, bootGate, authzIntr, cfg.TrustedForwarders())
 	publicSrv := grpcsrv.NewServer(
 		serverCreds,
 		grpc.ChainUnaryInterceptor(publicUnary...),
@@ -746,32 +746,35 @@ func closeAll(conns []clients.Conn, logger *slog.Logger) {
 // ServerName не может быть корректен для обоих), поэтому назвать не то поле в
 // godoc или в загрузочном логе значит отправить оператора крутить ручку, которая
 // на это соединение не влияет.
-func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logger) authzfilter.Filter {
+func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logger) *authzfilter.Narrower {
 	lf := cfg.Authz.ListFilter
-	if !lf.Enabled || iamConn == nil {
-		logger.Info("list_filter_disabled",
-			"enabled", lf.Enabled, "iam_conn", iamConn != nil)
-		return nil
+	// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход: сужатель собирается
+	// всегда и ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только
+	// объявленным аварийным режимом, и каждое его срабатывание считается.
+	breakglass := !lf.Enabled || iamConn == nil
+	if breakglass {
+		logger.Warn("list_filter_has_no_model",
+			"enabled", lf.Enabled, "iam_conn", iamConn != nil, "breakglass", lf.Breakglass)
+		iamConn = nil
 	}
-	fcfg := authzfilter.Config{
-		Enabled:         true,
-		Timeout:         lf.Timeout,
-		CacheTTL:        lf.CacheTTL,
-		CacheMaxEntries: lf.CacheMaxEntries,
-		FailOpen:        lf.FailOpen,
-	}
-	f := authzfilter.NewFGAFilter(authzfilter.NewIAMAuthorizeClient(iamConn), fcfg).WithLogger(logger)
-	logger.Info("list_filter_enabled",
+	f := authzfilter.New(iamConn, authzfilter.Config{
+		Timeout:               lf.Timeout,
+		CacheTTL:              lf.CacheTTL,
+		CacheMaxEntries:       lf.CacheMaxEntries,
+		SoftPassOnPeerFailure: lf.FailOpen,
+		Breakglass:            breakglass && lf.Breakglass,
+	}).WithLogger(logger)
+	logger.Info("list_filter_wired",
 		// per_call_timeout гейтит ОДИН BatchCheck; operation_budget — потолок всей
-		// фильтрации страницы (выводится из per-call и batch_parallelism).
-		// Логируем все три: иначе по конфигу не видно, какое число реально
-		// ограничивает запрос.
+		// фильтрации страницы (выводится из per-call и веера). Логируем все три:
+		// иначе по конфигу не видно, какое число реально ограничивает запрос.
 		"per_call_timeout", lf.Timeout,
-		"batch_parallelism", f.Parallelism(),
 		"operation_budget", f.Budget(),
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl", lf.CacheTTL,
-		"cache_max_entries", lf.CacheMaxEntries, "fail_open", lf.FailOpen,
+		"cache_max_entries", lf.CacheMaxEntries,
+		"soft_pass_on_peer_failure", lf.FailOpen,
+		"narrows", f.Narrows(),
 		// mtls.iam-register — ручка, которая реально закрывает ЭТО соединение
 		// (iamInternalConn). mtls.iam-project управляет другим, публичным ребром.
 		"iam_authz_mtls", cfg.MTLS.IAMRegister.Enable)

@@ -76,10 +76,11 @@ model
 #   - cluster super-admin relations (system_admin/system_viewer/...) — both the
 #     D-9 Go short-circuit anchor and, now, the root of the cascade above;
 #   - STRUCTURAL parent-pointer relations (`account: [account]`,
-#     `project: [project]`, `cluster: [cluster]`, `parent: [...]`,
-#     `load_balancer: [...]`) — needed for list-by-account, owner-binding
-#     lifecycle and the cluster-singleton write-enforcement. Only `super_admin`
-#     derives over them; no tenant access cascade reads them;
+#     `project: [project]`, `cluster: [cluster]`, `parent: [...]`) — needed for
+#     list-by-account, owner-binding lifecycle and the cluster-singleton
+#     write-enforcement. Only `super_admin` derives over them; no tenant access
+#     cascade reads them. Each one on a consumer-owned type must have a producer
+#     in the tree or an explicit `# kacho:latent` marker;
 #   - CEL conditions (unchanged).
 #
 # `v_create` IS NOT PART OF THE OBJECT VERB-SET, AND THAT IS THE WHOLE POINT.
@@ -212,9 +213,17 @@ type account
     define admin: [user, service_account, group#member] or owner or super_admin
     define editor: [user, service_account, group#member] or admin
     # Contract-A (flat): the SEC-L `or system_viewer from cluster` read-cascade is
-    # REMOVED — account.viewer is no longer derived from a cluster relation. The
-    # kacho-vpc-operator's account-list visibility is now materialized per-object
-    # by the iam reconciler (direct viewer tuples on each account).
+    # REMOVED — account.viewer is no longer derived from a cluster relation.
+    # Visibility is materialized per-object by the iam reconciler (direct viewer
+    # tuples on each account).
+    #
+    # This note used to name the network operator as the consumer of that
+    # materialization, in the present tense. It outlived its subject: the
+    # component never existed in the tree, its service account and grants were
+    # retired by migration 0081, and its trusted-forwarder pins were removed the
+    # same day. A comment that keeps naming a retired consumer sends the next
+    # reader looking for a caller that cannot be found — and the model is the one
+    # place where that search costs the most.
     # Contract-B: the `... from organization` disjuncts and the `organization`
     # parent-pointer are REMOVED — B2B Organization is fully gone (D-12).
     define viewer: [user, service_account, group#member] or editor
@@ -467,9 +476,13 @@ type vpc_network_interface
 
 type vpc_address_pool
   relations
+    # kacho:latent — cluster-anchored admin resource; its RPCs gate on
+    # cluster:cluster_kacho_root#system_admin directly, so no module registers an
+    # address pool and nothing writes this pointer today. Declared ahead of that
+    # producer deliberately: the type is admin-curated and the anchor is what the
+    # super-admin cascade below derives over. The marker expires by itself — the
+    # moment a producer appears, the gate demands it be removed.
     define cluster: [cluster]
-    # Cluster-anchored admin resource. Latent: nothing writes a tuple on this type
-    # today (its RPCs gate on cluster:cluster_kacho_root#system_admin directly).
     define super_admin: any_admin from cluster
     define admin: [user, service_account] or super_admin
     define viewer: [user, service_account] or admin
@@ -584,11 +597,21 @@ type nlb_target_group
     define v_removetargets: [user, service_account, group#member] or v_update
 
 # KAC-178 §4: nlb_listener — first-class FGA object для Listener (design §3.3).
-# Contract-A (flat model): listener no longer INHERITS permissions from its
-# parent load balancer via a `from load_balancer` access cascade — access is
-# materialized per-object (reconciler). The `load_balancer` relation below is
-# kept ONLY as a structural parent-pointer (list-by-LB / lifecycle), not as an
-# access cascade. api-gateway permission_catalog.json keyed на этот type для
+# Contract-A (flat model): listener does not INHERIT permissions from its parent
+# load balancer — access is materialized per-object (reconciler).
+#
+# A `load_balancer: [nlb_network_load_balancer]` parent-pointer stood here and is
+# gone. It was the residue of a closed incident: nlb used to emit it, the proxy
+# rule refuses it (a module writes ownership links, and this was not one), so it
+# was refused on every delivery and nlb stopped emitting it. What remained was a
+# declaration NOBODY WROTE, while the comment above it described it as a live
+# structural pointer — and nothing derived over it either. A relation no producer
+# writes still reads as a working link to the next author. Held by
+# TestConsumerOwnedStructuralRelationsHaveProducers: it reddens with the
+# coordinate of any structural relation on a consumer-owned type that has no
+# producer and no explicit latency marker.
+#
+# api-gateway permission_catalog.json keyed на этот type для
 # Listener Get/Update/Delete/ListOperations (PR PRO-Robotech/kacho-api-gateway#37).
 type nlb_listener
   relations
@@ -597,7 +620,6 @@ type nlb_listener
     # rejected the tuple → drainer dead-lettered it → listener hierarchy never
     # materialized → listener authz broke. Contract-A direct project link.
     define project: [project]
-    define load_balancer: [nlb_network_load_balancer]
     define super_admin: super_admin from project
     define admin: [user, service_account, group#member] or super_admin
     define editor: [user, service_account, group#member] or admin

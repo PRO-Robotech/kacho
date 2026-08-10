@@ -32,11 +32,10 @@
 // умеющий только литералы, молчал бы на них, отчитываясь «ноль находок».
 // Поэтому неразрешённый `apiPath` — находка, а не пропуск.
 
-import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { hasOperationsSubroute } from "@shared/lib/operations-subroute";
+import { OPERATIONS_LIST_PATHS, hasOperationsSubroute } from "@shared/lib/operations-subroute";
 
 import {
   appOf,
@@ -159,7 +158,12 @@ describe("класс: путь вкладки берётся у общего п�
     // как раз и не была бы к ней причастна, и такой отбор ничего не искал бы.
     const tables = walk(UI_ROOT, /operations-subroute\.ts$/).map((f) => f.slice(UI_ROOT.length + 1));
     expect(tables).toEqual(["shared/src/lib/operations-subroute.ts"]);
-    expect(readFileSync(join(UI_ROOT, tables[0]), "utf8")).toContain("OPERATIONS_LIST_PATHS");
+    // Единственность найдена обходом; НАПОЛНЕННОСТЬ утверждается по значению,
+    // которое модуль отдаёт. Прежняя редакция читала его исходник и искала имя
+    // константы: такое утверждение выживает при пустой таблице, потому что имя
+    // остаётся на месте.
+    expect(OPERATIONS_LIST_PATHS.length).toBeGreaterThan(15);
+    expect(OPERATIONS_LIST_PATHS.every((p) => p.endsWith("/operations"))).toBe(true);
   });
 });
 

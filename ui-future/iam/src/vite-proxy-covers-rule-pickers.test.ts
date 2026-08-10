@@ -1,62 +1,51 @@
 // Dev-прокси iam обязан покрывать домены, в которые iam-консоль реально ходит.
 //
-// Редактор правил роли (RulesEditor) рендерит picker реальных инстансов и для
-// НЕ-iam типов: перечень `(модуль, ресурс) → REGISTRY-spec` живёт в
-// shared/src/lib/resourceInstanceFetchers.ts и включает vpc-, compute- и
-// nlb-ресурсы. Их List идёт по apiPath спеки, то есть по чужому префиксу.
+// Редактор правил роли рендерит picker реальных инстансов и для НЕ-iam типов:
+// каталог `(модуль, ресурс) → спека реестра` включает vpc-, compute- и
+// nlb-ресурсы, и их List идёт по apiPath спеки, то есть по чужому префиксу.
 //
 // Почему это тест, а не «мелочь конфигурации». Промах прокси в dev выглядит НЕ
-// как ошибка: запрос ловится `catch {}` в RulesEditor и деградирует до свободного
-// ввода id — picker просто пуст. Отказ, который ничего не печатает и ни на что не
-// влияет визуально, живёт годами; а автор правила молча теряет подсказку и
-// вводит идентификаторы руками.
+// как ошибка: запрос гасится обработчиком отказа в редакторе и деградирует до
+// свободного ввода id — picker просто пуст. Отказ, который ничего не печатает и
+// ни на что не влияет визуально, живёт годами; а автор правила молча теряет
+// подсказку и вводит идентификаторы руками.
 //
-// Ground truth здесь двусторонний: перечень токенов и apiPath берутся из общего
-// реестра (не выписываются), список прокси — из самого vite.config.ts.
+// Обе стороны берутся ЗНАЧЕНИЯМИ: каталог токенов — экспорт модуля, правила
+// прокси — `server.proxy` загруженного `vite.config.ts`. Прежняя редакция
+// разбирала оба файла как ТЕКСТ и потому утверждала о форме записи: смена
+// литерала на константу, перенос ключа, сокращённая запись — и разбор молча
+// возвращал пустой набор, а «все домены покрыты» становилось истинным даром.
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { instanceFetcherFor } from "@shared/lib/resourceInstanceFetchers";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const iamRoot = path.resolve(here, "..");
-const uiRoot = path.resolve(iamRoot, "..");
-
-const fetchersSource = readFileSync(path.join(uiRoot, "shared/src/lib/resourceInstanceFetchers.ts"), "utf8");
-const viteSource = readFileSync(path.join(iamRoot, "vite.config.ts"), "utf8");
-
-/** Токены каталога, для которых picker вообще может отрисоваться. */
-function tokens(): { module: string; resource: string }[] {
-  const start = fetchersSource.indexOf("const TOKEN_TO_REGISTRY_ID");
-  const end = fetchersSource.indexOf("\n};", start);
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return [...fetchersSource.slice(start, end).matchAll(/^\s*"([a-zA-Z]+)\.([a-zA-Z]+)":/gm)].map((m) => ({
-    module: m[1],
-    resource: m[2],
-  }));
-}
-
-/** Ключи `server.proxy` из vite.config.ts (только API-префиксы). */
-function proxyPrefixes(): string[] {
-  const start = viteSource.indexOf("proxy: {");
-  const end = viteSource.indexOf("\n    },", start);
-  expect(start).toBeGreaterThan(-1);
-  return [...viteSource.slice(start, end).matchAll(/^\s{6}"(\/[^"]+)":/gm)].map((m) => m[1]);
-}
+import { jest } from "@jest/globals";
+import { TOKEN_TO_REGISTRY_ID, instanceFetcherFor } from "@shared/lib/resourceInstanceFetchers";
 
 const covered = (apiPath: string, prefixes: string[]) => prefixes.some((p) => apiPath.startsWith(p));
 
+let prefixes: string[] = [];
+
+beforeAll(async () => {
+  jest.unstable_mockModule("vite", () => ({ defineConfig: (c: unknown) => c }));
+  jest.unstable_mockModule("@originjs/vite-plugin-federation", () => ({ default: () => ({ name: "federation" }) }));
+  jest.unstable_mockModule("@vitejs/plugin-react", () => ({ default: () => ({ name: "react" }) }));
+  (globalThis as unknown as { __dirname: string }).__dirname = new URL("..", import.meta.url).pathname;
+  const configModule = "../vite.config";
+  const mod = (await import(configModule)) as unknown as {
+    default: { server?: { proxy?: Record<string, unknown> } };
+  };
+  prefixes = Object.keys(mod.default.server?.proxy ?? {});
+});
+
 describe("iam dev-прокси против путей, по которым ходит консоль", () => {
-  const list = tokens();
-  const prefixes = proxyPrefixes();
-  const apiPaths = [...new Set(list.map((t) => instanceFetcherFor(t.module, t.resource)?.spec.apiPath ?? ""))].filter(
-    Boolean,
-  );
+  const tokens = Object.keys(TOKEN_TO_REGISTRY_ID).map((t) => {
+    const [module, resource] = t.split(".");
+    return { module, resource };
+  });
+  const apiPaths = [
+    ...new Set(tokens.map((t) => instanceFetcherFor(t.module, t.resource)?.spec.apiPath ?? "")),
+  ].filter(Boolean);
 
   it("объём осмотренного назван: сколько токенов, путей и прокси прочитано", () => {
-    expect(list.length).toBeGreaterThanOrEqual(15);
+    expect(tokens.length).toBeGreaterThanOrEqual(15);
     expect(apiPaths.length).toBeGreaterThanOrEqual(15);
     expect(prefixes.length).toBeGreaterThanOrEqual(2);
     // Перечень обязан выходить за пределы своего домена — иначе утверждение ниже

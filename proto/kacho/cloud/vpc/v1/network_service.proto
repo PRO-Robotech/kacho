@@ -37,15 +37,40 @@ service NetworkService {
   // Retrieves the list of Network resources in the specified folder.
   rpc List (ListNetworksRequest) returns (ListNetworksResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks" };
-    // Network.List is default-deny via a SCOPE-FILTER, not a
-    // PermissionDenied. The kacho-vpc handler resolves the
-    // FGA-allowed Network id set via ListObjects and returns 200 with only
-    // those Networks (EMPTY list — no DB query — when the caller has no grant
-    // in the requested project). A single per-RPC FGA Check at the gateway
-    // would instead reject the whole call with `no path` 403 BEFORE the
-    // scope-filter runs, so the gateway middleware exempts this RPC. `<exempt>`
-    // skips authz, NOT authentication — a valid JWT is still required.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Network.List narrows THE PAGE per row: the kacho-vpc handler reads the page
+    // from its own database by cursor and then asks the authorization model about
+    // the ids OF THAT PAGE, in batches, using the same relation a single-object
+    // read is gated on — `v_get`. Rows the caller may not read by id drop out; the
+    // response is 200 with what remains, empty when nothing does.
+    //
+    // The narrowing sits ON TOP of a project-scope Check, and the Check is what
+    // this row declares. The two are not two opinions on one question: the Check
+    // answers "may this caller read THIS PROJECT's networks at all", the narrowing
+    // answers "which of them". Drop the Check and a caller holding a per-object
+    // grant anywhere may name any project and receive its page — narrowing cannot
+    // refuse that, because narrowing is not a refusal.
+    //
+    // This row read `<exempt>` until 2026-08-09, with a sentence describing an edge
+    // that does not check — while kacho-vpc checked `viewer` on the project all
+    // along. The service was right and the catalog was silent about it, so the
+    // requirement a grant actually has to satisfy was written in no artefact an
+    // operator reads. It is written here now, and it matches the seven sibling
+    // top-level Lists of this domain instead of standing alone.
+    //
+    // The opposite order used to stand here — enumerate the ids the caller is
+    // allowed, then constrain the query by them. That shape is gone: the
+    // enumeration carries a hard server-side cap and has no continuation, so a
+    // tenant's own resources past the cap became permanently invisible while
+    // their grants were live. There is likewise no pre-resolved allow-set to
+    // short-circuit on before touching the database — the page is read first
+    // and the question is asked about it.
+    option (kacho.iam.authz.v1.permission)        = "vpc.networkses.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a network in the specified folder using the data specified in the request.

@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
@@ -33,12 +35,12 @@ import (
 type InstanceHandler struct {
 	computev1.UnimplementedInstanceServiceServer
 	svc        *instance.InstanceService
-	listFilter authzfilter.Filter
+	listFilter *listnarrow.Narrower
 }
 
 // NewInstanceHandler создаёт InstanceHandler. listFilter может быть nil — тогда
 // FGA-фильтрация на List отключена (dev/breakglass).
-func NewInstanceHandler(s *instance.InstanceService, listFilter authzfilter.Filter) *InstanceHandler {
+func NewInstanceHandler(s *instance.InstanceService, listFilter *listnarrow.Narrower) *InstanceHandler {
 	return &InstanceHandler{svc: s, listFilter: listFilter}
 }
 
@@ -74,7 +76,7 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	if err != nil {
 		return nil, err
 	}
-	visible, err := filterVisible(ctx, h.listFilter,
+	visible, err := listnarrow.Page(ctx, h.listFilter,
 		authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead, ins,
 		func(in *domain.Instance) string { return in.ID })
 	if err != nil {
@@ -200,6 +202,16 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	// то есть страж отпускал ровно тот случай, ради которого заведён.
 	if len(req.GetSshPublicKeys()) > 0 {
 		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+	}
+	// containerSpec.exitCode — восьмое поле того же класса, найденное обходом
+	// полей внутри `oneof` (прежде обход их не раскрывал). Код возврата —
+	// величина ВЫХОДНАЯ: её выставляет терминальное состояние задания, и сервис
+	// заполняет её на пути ответа. `ContainerSpec` стоит и в теле создания, а
+	// `containerSpecFromProto` этого поля не переносит, — то есть присланное
+	// значение принималось и молча выбрасывалось.
+	if req.GetContainerSpec().GetExitCode() != 0 {
+		add("container_spec.exit_code",
+			"containerSpec.exitCode is output-only: it is set by the job's terminal state")
 	}
 	if n == 0 {
 		return nil

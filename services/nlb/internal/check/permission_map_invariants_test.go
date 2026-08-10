@@ -41,7 +41,13 @@ func TestInvariant_TopProjectList_ScopeFiltered(t *testing.T) {
 		assert.Truef(t, e.ScopeFiltered,
 			"%s: top-level project List must be ScopeFiltered (handler filters the page per-object); "+
 				"otherwise a viewer without an explicit v_list tuple is rejected before the filter runs", rpc)
-		assert.Equalf(t, "viewer", e.Relation, "%s: top-List stays tier viewer (visibility via the per-object viewer ∪ v_list union)", rpc)
+		// Отношение на этой полосе НЕ утверждается: интерсептор до него не
+		// доходит. Прежняя строка закрепляла `viewer`, оставаясь зелёной при
+		// любом другом значении, — вакуумное утверждение о поле, которое не
+		// читается.
+		assert.Emptyf(t, e.Relation,
+			"%s: на полосе сужения отношение не читается — заполненное было бы вторым "+
+				"объявлением о том же вызове", rpc)
 	}
 }
 

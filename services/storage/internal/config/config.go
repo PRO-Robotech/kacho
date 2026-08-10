@@ -8,8 +8,9 @@
 package config
 
 import (
+	"time"
+
 	"fmt"
-	"strings"
 
 	"google.golang.org/grpc"
 
@@ -90,6 +91,33 @@ type Config struct {
 	// Validate() отказывает в старте (fail-closed, зеркалит geo/compute/nlb).
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
+
+	// AuthZCacheTTL — окно кеша положительных вердиктов авторизации, оно же ОКНО
+	// ОТЗЫВА: столько субъект, у которого право уже отобрали, продолжает
+	// проходить. Отрицательные вердикты не кешируются никогда, поэтому свежая
+	// выдача видна сразу, а ждёт один лишь отзыв.
+	//
+	// Ручка заведена не ради нового поведения: значение то же, что было
+	// умолчанием платформы. Изменилось то, что число стало ВЫБРАННЫМ — параметр
+	// безопасности, которого никто не выбирал, нельзя ни обсудить, ни отозвать,
+	// ни сузить на конкретной посадке. Потолок объявлен политикой
+	// (pkg/authz.RevocationPolicy.Ceiling), перепись — там же; смена значения без
+	// правки политики роняет гейт и называет оба числа.
+	//
+	// Ноль означает «беру объявленную политику», а не «кеша нет».
+	AuthZCacheTTL time.Duration `envconfig:"KACHO_STORAGE_AUTHZ_CACHE_TTL" default:"5s"`
+
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
 	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
 	// UnregisterResource по ребру storage→iam (AuthZIAMGRPCAddr, mTLS). Default true;
@@ -137,6 +165,17 @@ type Config struct {
 	// (fail-closed = secure); true — только break-glass.
 	ListFilterFailOpen bool `envconfig:"KACHO_STORAGE_LIST_FILTER_FAIL_OPEN" default:"false"`
 
+	// ListFilterBreakglass — аварийный режим: когда модели прав на этой посадке нет
+	// вовсе (фильтр выключен либо эндпоинт не задан), списки и гейт объекта отдают
+	// проход вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`).
+	ListFilterBreakglass bool `envconfig:"KACHO_STORAGE_LIST_FILTER_BREAKGLASS" default:"false"`
+
 	// ===== per-edge mTLS =====
 
 	// GeoClientMTLS — client-creds ребра storage→geo (:9090).
@@ -149,34 +188,20 @@ type Config struct {
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
 }
 
-// TrustedForwarders — список личностей сертификата, который РЕАЛЬНО уезжает в
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
 // grpcsrv.WithTrustedForwarders на обоих листенерах.
 //
 // Единственный источник этого значения на процесс: его читает и проводка
 // (cmd/storage/serve.go), и стража старта (Validate), и самоотчёт о посадке
-// (cmd/storage/bootposture.go). Поэтому «стража пропустила» ⟺ «круг отправителей
-// реально сужен» — по построению, а не по совпадению; разъехаться им нечем.
+// (cmd/storage/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его
+// предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению,
+// а не по совпадению трёх одинаково написанных тел.
 //
-// Отбрасывает пустые записи, потому что их отбрасывает и corelib
-// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
-// (`SANS=","`) там вырождается в пустое множество, то есть снова «доверяем любому».
-// Считать такую строку заполненной значило бы пропустить дыру через гейт.
-//
-// Пробелы по краям срезаются — и это НЕ зеркало corelib, а осознанное расхождение:
-// corelib сравнивает личность сертификата побайтово (CertIdentity отдаёт SAN как
-// есть), поэтому запись " spiffe://…" не совпала бы там ни с одним сертификатом.
-// Без среза оператор, написавший список через «запятая-пробел», получил бы не
-// отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
-// доверенных от этого не расширяется: в него попадают ровно те строки, которые
-// оператор перечислил, — срезаются только окружающие пробелы.
-func (c Config) TrustedForwarders() []string {
-	out := make([]string, 0, len(c.AuthZTrustedForwarderSANs))
-	for _, s := range c.AuthZTrustedForwarderSANs {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).

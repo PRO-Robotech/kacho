@@ -44,6 +44,7 @@
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import pathlib
 import re
@@ -61,6 +62,20 @@ COLLECTION_GLOBS = (
     "services/*/tests/newman/collections/*.postman_collection.json",
     "gateway/tests/newman/collections/*.postman_collection.json",
 )
+
+
+def _transports_module():
+    """Тот же вывод спроса, что исполняет прогонщик, — не вторая его реализация.
+
+    Гейт и прогонщик обязаны отвечать на «кто набирает этот транспорт» ОДНИМ
+    предикатом. Две реализации разошлись бы молча и разошлись бы именно там, где
+    расхождение не видно: обе отвечают «да» на очевидном входе.
+    """
+    path = HERE / "e2e-optional-transports.py"
+    spec = importlib.util.spec_from_file_location("e2e_optional_transports", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def tracked_collections(root: pathlib.Path) -> dict[str, list[str]]:
@@ -249,7 +264,58 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
             findings.append(f"компонент '{g}' переключаемый, но домена ban #6 за ним "
                             f"не закреплено — включивший его шард не проверит его изоляцию")
 
+    # 9. ТРАНСПОРТ К КОМПОНЕНТУ — ТОЛЬКО НА ШАРДАХ, ЭТОТ КОМПОНЕНТ ПОДНИМАЮЩИХ.
+    #
+    # Часть адресов прогона ведёт не к ядру, а к переключаемому компоненту
+    # (`optional_transports`). Суита, чья коллекция такой адрес НАБИРАЕТ, обязана
+    # исполняться только там, где адресат поднят. Без этой пары дефект принимает
+    # форму, которую ни один из прежних восьми пунктов не видел: коллекция на месте,
+    # суита назначена ровно одному шарду, счёт коллекций сходится — и всё равно
+    # полоса проверяется транспортом, которого на стенде нет.
+    #
+    # Наблюдалось: полоса docker жила в наборе iam, а `registry` шард iam снимает.
+    # Проброс к отсутствующему сервису не встал, прогонщик объявил прогон
+    # недействительным, и ЧЕТЫРЕ шарда из пяти не запустили ни одной суиты
+    # (31344367968) — включая три, ни одна коллекция которых этот адрес не набирает.
+    #
+    # Предикат берётся ИЗ ТОГО ЖЕ модуля, что исполняет прогонщик (см. выше).
+    transports = manifest.get("optional_transports", {})
+    tmod = _transports_module()
+    suite_owner = {s: sh["id"] for sh in shards for s in sh["suites"]}
+    shard_components = {sh["id"]: set(sh["components"]) for sh in shards}
+    transport_dialers: dict[str, list[str]] = {}
+    for var, spec in sorted(transports.items()):
+        comp = spec.get("component")
+        if comp not in gates:
+            findings.append(
+                f"транспорт '{var}' объявлен опциональным, но его компонент "
+                f"'{comp}' не переключаемый (нет в gates) — тогда он есть на каждом "
+                f"стенде, и условность транспорта скрывает, что условия нет")
+        dialers = sorted(s for s in tree_suites
+                         if tmod.transports_dialled_by(s, [var])[0])
+        transport_dialers[var] = dialers
+        # САМОИСТЕЧЕНИЕ: объявленный транспорт, которого никто не набирает, —
+        # находка, а не запас. Иначе объявление переживёт свой предмет и следующий
+        # читатель примет его за действующее требование к стенду.
+        if not dialers:
+            findings.append(
+                f"транспорт '{var}' объявлен, но его не набирает НИ ОДНА коллекция "
+                f"дерева — объявлению нечего обслуживать; снять его либо назвать "
+                f"кейс, ради которого он держится")
+        for suite in dialers:
+            owner = suite_owner.get(suite)
+            if owner is None:
+                continue  # покрыто п.1 — суита вообще никем не взята
+            if comp not in shard_components[owner]:
+                findings.append(
+                    f"суита '{suite}' набирает '{var}' (адресат — компонент "
+                    f"'{comp}'), но шард '{owner}', который её гоняет, этот "
+                    f"компонент НЕ поднимает: полоса проверялась бы транспортом, "
+                    f"которого на стенде нет")
+
     stats = {
+        "transports_declared": len(transports),
+        "transport_dialers": transport_dialers,
         "ban6_domains_needed": len(want_b6),
         "ban6_domains_covered": len(union_b6 & want_b6),
         "suites_tree": len(tree_suites),
@@ -270,6 +336,9 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
     print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_needed']}, "
           f"покрыто шардами {st['ban6_domains_covered']}")
+    print(f"транспортов к компонентам объявлено {st['transports_declared']}:")
+    for var, dialers in sorted(st["transport_dialers"].items()):
+        print(f"   {var} ← набирают: {', '.join(dialers) if dialers else '—'}")
     print(f"назначено: суит {st['suites_assigned']}, коллекций {st['collections_assigned']}")
     for s, n in st["per_suite"].items():
         owner = next((sh["id"] for sh in json.loads(manifest_path.read_text())["shards"]
@@ -294,7 +363,16 @@ def _self_test() -> int:
     base = json.loads(MANIFEST.read_text(encoding="utf-8"))
     ok = True
 
-    def run(m: dict, label: str, want_red: bool) -> None:
+    def run(m: dict, label: str, want_red: bool, expect: str | None = None) -> None:
+        """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
+
+        Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
+        а не то, что покраснел ИМЕННО проверяемый пункт. Здесь это не теория:
+        первая редакция инъекции (з) снимала компонент у шарда и краснела —
+        но на пункте про ban #6, потому что снятый компонент уносил с собой и охват
+        домена. Пункт 9 при этом мог бы вообще отсутствовать, а самопроверка
+        осталась бы зелёной.
+        """
         nonlocal ok
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
             json.dump(m, fh)
@@ -305,11 +383,17 @@ def _self_test() -> int:
             p.unlink(missing_ok=True)
         red = bool(findings)
         good = red == want_red
+        matched = None
+        if good and expect is not None:
+            matched = next((f for f in findings if expect in f), None)
+            good = matched is not None
         ok = ok and good
         state = "КРАСНЫЙ" if red else "зелёный"
         want = "красного" if want_red else "зелёного"
-        print(f"  [{'ok ' if good else 'FAIL'}] {label}: {state} (ждали {want})"
-              + (f" — {findings[0]}" if red else ""))
+        why = matched or (findings[0] if red else "")
+        note = "" if (expect is None or matched) else f" [ЖДАЛИ находку про: {expect}]"
+        print(f"  [{'ok ' if good else 'FAIL'}] {label}: {state} (ждали {want}){note}"
+              + (f" — {why}" if why else ""))
 
     print("=== самопроверка гейта (инъекция в обе стороны) ===")
     run(base, "законный близнец: дерево как есть", want_red=False)
@@ -350,6 +434,43 @@ def _self_test() -> int:
     m = copy.deepcopy(base)
     m["core_ban6_domains"] = m["core_ban6_domains"] + ["operation"]
     run(m, "(ж) заявлен домен без Internal*-контракта", want_red=True)
+
+    # (з) ТОТ САМЫЙ ДЕФЕКТ, воспроизведённый: шард гоняет суиту, которая набирает
+    # транспорт к компоненту, а компонент не поднимает. Именно в этой форме четыре
+    # шарда из пяти не запустили ни одной суиты (31344367968).
+    # Суита-потребитель ПЕРЕЕЗЖАЕТ на шард без компонента, а составы компонентов
+    # остаются нетронутыми: тогда ни охват ban #6, ни счёт коллекций не меняются, и
+    # покраснеть может ТОЛЬКО пункт 9.
+    m = copy.deepcopy(base)
+    for sh in m["shards"]:
+        if sh["id"] == "edge":
+            sh["suites"] = [x for x in sh["suites"] if x != "registry"]
+        if sh["id"] == "vpc":
+            sh["suites"] = sh["suites"] + ["registry"]
+    run(m, "(з) суита набирает транспорт, компонента на её шарде нет", want_red=True,
+        expect="этот компонент НЕ поднимает")
+
+    # (и) САМОИСТЕЧЕНИЕ: объявленный транспорт, которого не набирает никто.
+    # Послабление, которому больше нечего обслуживать, обязано быть находкой —
+    # иначе объявление переживёт свой предмет.
+    m = copy.deepcopy(base)
+    m["optional_transports"] = dict(m["optional_transports"])
+    m["optional_transports"]["nobodyDialsThisBaseUrl"] = {
+        "component": "registry", "service": "registry", "target_port": 8080,
+        "port_env": "NOBODY_PORT", "default_port": 18581, "scheme": "http",
+        "why": "инъекция самопроверки",
+    }
+    run(m, "(и) объявлен транспорт, которого никто не набирает", want_red=True,
+        expect="объявлению нечего обслуживать")
+
+    # (к) ЗАКОННЫЙ БЛИЗНЕЦ той же формы: транспорт, чей компонент поднимают ВСЕ
+    # шарды, гоняющие его потребителей. Без этого пункта (з)/(и) доказывали бы лишь
+    # чувствительность к правке манифеста, а не то, что предикат различает существо.
+    m = copy.deepcopy(base)
+    for sh in m["shards"]:
+        if "registry" not in sh["components"]:
+            sh["components"] = sh["components"] + ["registry", "pg-registry"]
+    run(m, "(к) близнец: компонент поднят ВЕЗДЕ, где его набирают", want_red=False)
 
     print("самопроверка:", "OK" if ok else "FAIL")
     return 0 if ok else 1

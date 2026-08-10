@@ -33,12 +33,23 @@ service ListenerService {
   rpc List(ListListenersRequest) returns (ListListenersResponse) {
     option (google.api.http) = {get: "/nlb/v1/listeners"};
     // Project-scoped, scope-filtered List: listeners carry a denormalized
-    // project_id; load_balancer_id is an optional filter. The handler filters
-    // the result through iam ListObjects (viewer ∪ v_list), so the gateway
-    // exempts the RPC from a per-RPC Check (<exempt>) — a single project-scope
-    // Check would reject a viewer without an explicit v_list tuple before the
-    // filter runs. authn (JWT) still required.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // project_id; load_balancer_id is an optional filter. The handler reads the
+    // page from its own database by cursor and narrows it per row, in batches, on
+    // the same relation the permission catalog gates a single-object read on —
+    // `v_get` on `nlb_listener:<id>`. The page can never be wider than the read:
+    // it is the same question, asked per row. The catalog therefore declares the
+    // scope-filtered lane (`scope_filtered`) — a single project-scope Check would
+    // reject the caller with `no path` 403 before the narrowing runs. What is removed
+    // is the Check, NOT the authentication: the lane requires a named principal,
+    // because a per-row filter has nobody to filter for without one.
+    //
+    // The reverse order used to be named here — enumerate the objects iam allows
+    // and filter by them. That enumeration is gone: it carries a hard server-side
+    // cap and has no continuation, so resources past the cap became invisible to
+    // their own owner while the grants were live.
+    option (kacho.iam.authz.v1.permission) = "loadbalancer.listeners.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Creates a listener under the specified load balancer. VIP allocation

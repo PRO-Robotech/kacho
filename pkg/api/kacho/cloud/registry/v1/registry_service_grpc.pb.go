@@ -51,8 +51,16 @@ const (
 type RegistryServiceClient interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
 	Get(ctx context.Context, in *GetRegistryRequest, opts ...grpc.CallOption) (*Registry, error)
-	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
-	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+	// List — sync-список реестров project'а. Scope-filtered: handler читает страницу
+	// из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
+	// Check с ограниченной конкурентностью, отношение `v_list` на
+	// `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
+	// страница не отдаётся никогда. → каталог объявляет полосу `scope_filtered`:
+	// край не спрашивает модель, но принципала требует.
+	//
+	// Прежде здесь назывались перечисление разрешённых объектов у iam и союз
+	// отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
+	// продолжения), союза тоже: спрашивается одно отношение.
 	List(ctx context.Context, in *ListRegistriesRequest, opts ...grpc.CallOption) (*ListRegistriesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
@@ -81,7 +89,7 @@ type RegistryServiceClient interface {
 	GetRepository(ctx context.Context, in *GetRepositoryRequest, opts ...grpc.CallOption) (*Repository, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-	// → gateway <exempt>, authz полностью в handler'е.
+	// → полоса `scope_filtered`: authz целиком в handler'е, принципал обязателен.
 	//
 	// ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
 	// `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
@@ -110,13 +118,13 @@ type RegistryServiceClient interface {
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	DeleteRepository(ctx context.Context, in *DeleteRepositoryRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// ListTags — sync-проекция тегов repo из zot. Per-repo Check v_list на
-	// registry_repository в handler'е → gateway <exempt>. Sub-resource `…/tags` —
+	// registry_repository в handler'е → полоса `scope_filtered`. Sub-resource `…/tags` —
 	// объявлен ПОСЛЕ GetRepository catch-all'а → пробуется РАНЬШЕ, не затеняется
 	// (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
 	ListTags(ctx context.Context, in *ListTagsRequest, opts ...grpc.CallOption) (*ListTagsResponse, error)
 	// DeleteTag — async, единственный destructive-путь для образов (data-plane
 	// DELETE отвергается 405). Per-repo v_delete Check синхронно в handler'е ДО
-	// создания Operation → gateway <exempt>. Sub-resource `…/tags/{tag}` — объявлен
+	// создания Operation → полоса `scope_filtered`. Sub-resource `…/tags/{tag}` — объявлен
 	// ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
 	DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
@@ -305,8 +313,16 @@ func (c *registryServiceClient) ListReferrers(ctx context.Context, in *ListRefer
 type RegistryServiceServer interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
 	Get(context.Context, *GetRegistryRequest) (*Registry, error)
-	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
-	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+	// List — sync-список реестров project'а. Scope-filtered: handler читает страницу
+	// из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
+	// Check с ограниченной конкурентностью, отношение `v_list` на
+	// `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
+	// страница не отдаётся никогда. → каталог объявляет полосу `scope_filtered`:
+	// край не спрашивает модель, но принципала требует.
+	//
+	// Прежде здесь назывались перечисление разрешённых объектов у iam и союз
+	// отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
+	// продолжения), союза тоже: спрашивается одно отношение.
 	List(context.Context, *ListRegistriesRequest) (*ListRegistriesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
@@ -335,7 +351,7 @@ type RegistryServiceServer interface {
 	GetRepository(context.Context, *GetRepositoryRequest) (*Repository, error)
 	// ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
 	// = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-	// → gateway <exempt>, authz полностью в handler'е.
+	// → полоса `scope_filtered`: authz целиком в handler'е, принципал обязателен.
 	//
 	// ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
 	// `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
@@ -364,13 +380,13 @@ type RegistryServiceServer interface {
 	// Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
 	DeleteRepository(context.Context, *DeleteRepositoryRequest) (*operation.Operation, error)
 	// ListTags — sync-проекция тегов repo из zot. Per-repo Check v_list на
-	// registry_repository в handler'е → gateway <exempt>. Sub-resource `…/tags` —
+	// registry_repository в handler'е → полоса `scope_filtered`. Sub-resource `…/tags` —
 	// объявлен ПОСЛЕ GetRepository catch-all'а → пробуется РАНЬШЕ, не затеняется
 	// (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
 	ListTags(context.Context, *ListTagsRequest) (*ListTagsResponse, error)
 	// DeleteTag — async, единственный destructive-путь для образов (data-plane
 	// DELETE отвергается 405). Per-repo v_delete Check синхронно в handler'е ДО
-	// создания Operation → gateway <exempt>. Sub-resource `…/tags/{tag}` — объявлен
+	// создания Operation → полоса `scope_filtered`. Sub-resource `…/tags/{tag}` — объявлен
 	// ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
 	DeleteTag(context.Context, *DeleteTagRequest) (*operation.Operation, error)
 	// RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;

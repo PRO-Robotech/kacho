@@ -4,6 +4,8 @@
 package config
 
 import (
+	"time"
+
 	"fmt"
 
 	"google.golang.org/grpc"
@@ -104,19 +106,46 @@ type Config struct {
 	// Dev / break-glass only.
 	AuthZBreakglass bool `envconfig:"KACHO_COMPUTE_AUTHZ_BREAKGLASS" default:"false"`
 
+	// AuthZCacheTTL — окно кеша положительных вердиктов авторизации, оно же ОКНО
+	// ОТЗЫВА: столько субъект, у которого право уже отобрали, продолжает
+	// проходить. Отрицательные вердикты не кешируются никогда, поэтому свежая
+	// выдача видна сразу, а ждёт один лишь отзыв.
+	//
+	// Ручка заведена не ради нового поведения: значение то же, что было
+	// умолчанием платформы. Изменилось то, что число стало ВЫБРАННЫМ — параметр
+	// безопасности, которого никто не выбирал, нельзя ни обсудить, ни отозвать,
+	// ни сузить на конкретной посадке. Потолок объявлен политикой
+	// (pkg/authz.RevocationPolicy.Ceiling), перепись — там же; смена значения без
+	// правки политики роняет гейт и называет оба числа.
+	//
+	// Ноль означает «беру объявленную политику», а не «кеша нет».
+	AuthZCacheTTL time.Duration `envconfig:"KACHO_COMPUTE_AUTHZ_CACHE_TTL" default:"5s"`
+
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно
 	// единственный — api-gateway SA, SAN spiffe://kacho.cloud/ns/<ns>/sa/kacho-api-gateway).
 	// Принимает comma-separated список. Пусто (default) → любой mTLS-verified peer
 	// доверен как форвардер (паритет с insecure dev back-compat и kacho-iam) — допустимо
 	// ТОЛЬКО в dev: validateAuthMode() fail-closed отвергает пустой список в любом
-	// production-режиме (requireTrustedForwarders). Задаётся
+	// production-режиме (Config.Validate). Задаётся
 	// в production для defense-in-depth против confused-deputy: внутренний сервис со
 	// своим валидным client-cert'ом не сможет выдать себя за пользователя. На обоих
 	// листенерах principal trust-gated через grpcsrv.UnaryCertIdentityExtract +
 	// UnaryTrustedPrincipalExtract(WithTrustedForwarders(...)) — без verified cert'а
 	// (или вне allow-list) forwarded principal снимается.
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS"`
+
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_COMPUTE_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
 
 	// ===== per-object filtered List =====
 	//
@@ -160,6 +189,17 @@ type Config struct {
 	// страницу НЕотфильтрованной (+ audit-WARN); false → Unavailable. **Default
 	// false** (fail-closed = secure). Set to true только в break-glass.
 	ListFilterFailOpen bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN" default:"false"`
+
+	// ListFilterBreakglass — аварийный режим: когда модели прав на этой посадке нет
+	// вовсе (фильтр выключен либо эндпоинт не задан), списки отдаются НЕсуженными, а
+	// поток журнала изменений стартует, вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`).
+	ListFilterBreakglass bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_BREAKGLASS" default:"false"`
 
 	// ===== register-drainer (FGA owner-tuple через kacho-iam) =====
 	//
@@ -349,4 +389,21 @@ func Load() (Config, error) {
 	var c Config
 	err := corecfg.LoadPrefixed(EnvPrefix, &c)
 	return c, err
+}
+
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/compute/main.go), и стража старта (Validate), и самоотчёт о посадке
+// (cmd/compute/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его
+// предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению,
+// а не по совпадению трёх одинаково написанных тел. До ввода типа их было
+// именно три, и каждое считало по-своему.
+//
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }

@@ -374,7 +374,10 @@ type UpdateTargetGroupRequest struct {
 	Labels        map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Targets list replacement is rejected on this RPC — use AddTargets /
 	// RemoveTargets so each target mutation goes through its own Operation
-	// history and idempotency keys (design §3.4).
+	// history and idempotency keys (design §3.4). The refusal is driven by the
+	// BODY, not by update_mask: a non-empty list is refused whatever the mask says
+	// (including the empty full-object PATCH mask), because accepted-and-ignored
+	// is not a lawful outcome.
 	Targets     []*Target    `protobuf:"bytes,6,rep,name=targets,proto3" json:"targets,omitempty"`
 	HealthCheck *HealthCheck `protobuf:"bytes,7,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
 	// NLB-1c (B8): Duration, bounds [0s, 3600s]. Replaces int32
@@ -1119,11 +1122,11 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x97\x13\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb6\x13\n" +
 	"\x12TargetGroupService\x12\xea\x01\n" +
 	"\x03Get\x122.kacho.cloud.loadbalancer.v1.GetTargetGroupRequest\x1a(.kacho.cloud.loadbalancer.v1.TargetGroup\"\x84\x01\x8a\xb5\x18\x1dloadbalancer.targetGroups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18#\n" +
-	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/nlb/v1/targetGroups/{target_group_id}\x12\x9d\x01\n" +
-	"\x04List\x124.kacho.cloud.loadbalancer.v1.ListTargetGroupsRequest\x1a5.kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse\"(\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x16\x12\x14/nlb/v1/targetGroups\x12\xfb\x01\n" +
+	"\x10nlb_target_group\x12\x0ftarget_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/nlb/v1/targetGroups/{target_group_id}\x12\xbc\x01\n" +
+	"\x04List\x124.kacho.cloud.loadbalancer.v1.ListTargetGroupsRequest\x1a5.kacho.cloud.loadbalancer.v1.ListTargetGroupsResponse\"G\x8a\xb5\x18\x1eloadbalancer.targetGroups.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x16\x12\x14/nlb/v1/targetGroups\x12\xfb\x01\n" +
 	"\x06Create\x125.kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest\x1a .kacho.cloud.operation.Operation\"\x97\x01\x8a\xb5\x18 loadbalancer.targetGroups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*(\n" +

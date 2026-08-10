@@ -30,7 +30,7 @@ GitHub Security Advisories репозитория (`Security` → `Report a vuln
 ### Tenant isolation — permission-модель, не handler-код
 
 Каждый public RPC, читающий/мутирующий конкретный ресурс, авторизуется **per-RPC
-FGA-Check'ом** из `internal/apps/kacho/check.PermissionMap` (`v_get`/`v_list`/
+FGA-Check'ом** из `internal/check.PermissionMap` (`v_get`/`v_list`/
 `v_update`/`v_delete` per-object; `viewer`/`editor` на `project:<project_id>` для
 top-level List/Create), на **обоих** листенерах, fail-closed для RPC вне карты.
 Handler'ы (address/network/subnet/route_table/security_group/gateway) собственной
@@ -122,10 +122,10 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
   пути и отверг бы даже поллинг владельцем; anti-anon в production-режиме сохраняется.
 - ~~**Per-RPC FGA-gate на IPAM**~~ — **ЗАКРЫТО.** `InternalAddressService.*`
   (`AllocateInternalIP`/`AllocateExternalIP`/референс-tracking) присутствуют в
-  `internal/apps/kacho/check/permission_map.go` и гейтятся **object-scoped** на самом
+  `internal/check/permission_map.go` и гейтятся **object-scoped** на самом
   `vpc_address:<address_id>` (мутации → `v_update`, чтение референта → `v_get`). Наличие в
   карте снимает их с прежнего `methodIsInternal`-обхода; закрытие залочено регрессией
-  (`internal/apps/kacho/check/interceptor_test.go`).
+  (`internal/check/interceptor_test.go`).
 - ~~**Production boot fail-fast по authz**~~ — **ЗАКРЫТО.** `Config.Validate()` в
   production-режиме ОТКАЗЫВАЕТ в старте без `authz.iam-endpoint`
   (`errAuthzEndpointRequired`), а не логирует предупреждение и запускается в degraded

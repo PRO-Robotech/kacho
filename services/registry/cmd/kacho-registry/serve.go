@@ -58,6 +58,11 @@ func runServe(cfg config.Config) error {
 	// Secure-by-default: per-RPC authz Check и mTLS на ОБОИХ листенерах
 	// обязательны. Единственный способ запустить без авторизации и mTLS —
 	// аварийный KACHO_REGISTRY_AUTHZ_BREAKGLASS=true.
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся отдельно и до разбора режима.
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
@@ -305,10 +310,21 @@ func runServe(cfg config.Config) error {
 	})
 
 	// ── цепочки интерсепторов ──
-	// ОБА листенера: cert-identity → trusted-principal (anti-spoof) → authz Check.
+	// ОБА листенера: panic-recovery → cert-identity → trusted-principal
+	// (anti-spoof) → authz Check.
 	// Public (:9090) не освобождён от доверенной пары так же, как internal (:9091)
 	// не освобождён от per-RPC authz: публичный листенер — обычный Service внутри
 	// пространства имён, и дозвониться до него может любой под (см. identityUnary).
+	//
+	// panic-recovery монтируется ОТДЕЛЬНОЙ опцией у самого листенера (ниже, в
+	// grpcsrv.NewServer), а не подмешивается в эти переменные. Причина не
+	// косметическая: переменные цепочек обязаны оставаться ровно тем, что вернул
+	// боевой сборщик личности, иначе переприсваивание литералом вернуло бы дыру
+	// анти-спуфинга, оставив остальные проверки зелёными — это стережёт
+	// TestServe_ChainVariablesAreNeverReassignedToALiteral, и ослаблять его ради
+	// удобства проводки нельзя. grpc.ChainUnaryInterceptor накапливает, поэтому
+	// опция, объявленная раньше, оказывается outermost — то есть звено всё равно
+	// стоит НАД принципалом и authz.
 	publicUnary := identityUnary(cfg)
 	publicStream := identityStream(cfg)
 	internalUnary := identityUnary(cfg)
@@ -346,13 +362,21 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
+	// Звено восстановления паники объявлено ПЕРВОЙ опцией цепочки, поэтому оно
+	// outermost и охватывает принципала, authz и обработчик: grpc-go панику не
+	// восстанавливает, а её последствие — завершение процесса, который держит и
+	// оба этих листенера, и data-plane docker pull/push.
 	grpcSrv := grpcsrv.NewServer(
 		publicCreds,
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
 		grpc.ChainUnaryInterceptor(publicUnary...),
 		grpc.ChainStreamInterceptor(publicStream...),
 	)
 	internalSrv := grpcsrv.NewServer(
 		internalCreds,
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
 		grpc.ChainUnaryInterceptor(internalUnary...),
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
@@ -697,40 +721,56 @@ func validateSecurityConfig(cfg config.Config) error {
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return errors.New("mTLS required on both listeners: set KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
 	}
-	return requireTrustedForwarders(cfg)
+	return requirePeerTransport(cfg)
 }
 
-// requireTrustedForwarders — в любом боевом режиме круг отправителей чужой
-// личности обязан быть сужен.
+// requirePeerTransport — в любом боевом режиме транспорт КАЖДОГО поднимаемого
+// исходящего ребра обязан быть проверяемым.
 //
-// Оба листенера строят цепочку CertIdentityExtract →
-// TrustedPrincipalExtract(WithTrustedForwarders(cfg.TrustedForwarders())).
-// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом
-// списке; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему проверку
-// сертификата, и переданная в метаданных личность становится субъектом проверки
-// прав (pkg/authz subject_extract). То есть на пустом списке сосед со своим
-// законным сертификатом (compute, nlb, vpc, storage, оператор) читает, меняет и
-// удаляет чужие реестры и репозитории от имени жертвы, а на внутреннем листенере
-// ещё и дёргает административные RPC. Внутренний периметр у нас объявлен
-// НЕдоверенным, сетевой политики на поды registry нет, и слой TLS имена не сверяет
-// — сужает только этот список.
+// Почему это отдельное измерение, а не следствие проверки листенеров. Проверка
+// выше говорит о том, КАК с нами говорят; здесь — как говорим мы. Невзведённая
+// ручка клиента не даёт ошибки сама по себе: grpcclient.TLSClientTransportCreds
+// на Enable=false возвращает insecure-creds БЕЗ ошибки, поэтому процесс
+// поднимается, честно печатает «registry→iam edges wired» с authz_mtls=false — и
+// per-RPC Check уходит по открытому каналу. Контроль, от которого зависит
+// решение о доступе, при этом присутствует и не отказывает ни разу за свою жизнь.
 //
-// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
-// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","` не
-// может пройти гейт и вернуть дыру.
+// Предикат активности — ТОТ ЖЕ, что читает проводка: composition root поднимает
+// соединение ровно при непустом адресе (`if cfg.<Addr> != ""` в runServe).
+// Поэтому «страж увидел ребро» ⟺ «ребро дилится»: незаданный адрес не порождает
+// требования к транспорту, а заданный — порождает всегда. Связь стража с
+// проводкой заперта peer_transport_wiring_test.go.
 //
-// dev осознанно терпит пусто (in-process фикстуры) — но только там: на РАЗВЁРНУТОМ
-// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
-func requireTrustedForwarders(cfg config.Config) error {
+// Что покрыто: authz (:9091 — Check + fga-proxy регистрация владельца), project
+// (:9090 — существование проекта и поиск аккаунта, вход в резолв области), geo
+// (:9090 — регион реестра). Ребро JWKS сюда НЕ входит: оно ходит по HTTPS
+// односторонним TLS и держится своей стражей (requireSecureJWKSURL).
+//
+// dev осознанно терпит невзведённый транспорт — только локальные фикстуры; на
+// РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным правилом (production-mode
+// ВЕЗДЕ), поэтому послабление не расширяет поверхность стенда.
+func requirePeerTransport(cfg config.Config) error {
 	switch cfg.AuthMode {
 	case "production", "production-strict":
 	default:
 		return nil
 	}
-	if len(cfg.TrustedForwarders()) == 0 {
-		return errors.New("trusted-forwarder allow-list required: set KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS " +
-			"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring " +
-			"service can act as any tenant; pin the api-gateway SAN)")
+	if cfg.AuthZIAMGRPCAddr != "" && !cfg.IAMAuthzMTLS.Enable {
+		return errors.New("verified transport required on the registry→iam authz edge: set " +
+			"KACHO_REGISTRY_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA) — the per-RPC authorization Check " +
+			"and the owner-tuple registration travel over this connection, and unarmed client credentials " +
+			"degrade to cleartext silently, so the process starts and reports authorization as enabled")
+	}
+	if cfg.IAMProjectGRPCAddr != "" && !cfg.IAMProjectMTLS.Enable {
+		return errors.New("verified transport required on the registry→iam project edge: set " +
+			"KACHO_REGISTRY_IAM_PROJECT_MTLS_ENABLE=true (with cert/key/CA) — project existence and the " +
+			"account lookup that scopes a registry are decided on this connection, and unarmed client " +
+			"credentials degrade to cleartext silently")
+	}
+	if cfg.GeoGRPCAddr != "" && !cfg.GeoMTLS.Enable {
+		return errors.New("verified transport required on the registry→geo edge: set " +
+			"KACHO_REGISTRY_GEO_MTLS_ENABLE=true (with cert/key/CA) — region existence for registry " +
+			"placement is decided on this connection, and unarmed client credentials degrade to cleartext silently")
 	}
 	return nil
 }
@@ -760,15 +800,9 @@ func requireTrustedForwarders(cfg config.Config) error {
 // (KACHO_API_GATEWAY_REGISTRY_GRPC :9090 и ..._REGISTRY_INTERNAL_GRPC :9091),
 // поэтому список общий: внутренний периметр не освобождён.
 func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
-	return []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractUnary(cfg.TrustedForwarders())
 }
 
 func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
-	return []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractStream(cfg.TrustedForwarders())
 }

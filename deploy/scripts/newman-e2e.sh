@@ -36,6 +36,13 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :808
 # about which routes the LISTENER serves, not about the name used to find it.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
+# Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают
+# сами слушатели — иначе «проверка подписи идёт через фасад» останется утверждением
+# о конфигурации, а не о поведении.
+IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
+IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+# Порт data plane реестра здесь не объявляется: адресат — компонент, и порт вместе
+# с портовой ручкой живёт в deploy/e2e-shards.json (`optional_transports`).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Монорепа: deploy/scripts → корень репо на два уровня выше. Раскладка — services/<svc>,
@@ -84,6 +91,31 @@ PF_PIDS+=($!)
 # with no ingress route here. Unused in dev; required in production.
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
 PF_PIDS+=($!)
+# Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
+kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
+PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
+PF_PIDS+=($!)
+
+# ПРОБРОС К КОМПОНЕНТУ — ПО СПРОСУ, ТЕМ ЖЕ ПРЕДИКАТОМ, ЧТО У newman-parallel.sh.
+#
+# Все пробросы выше ведут к ЯДРУ и есть на любом стенде. Адресат такого проброса —
+# переключаемый компонент, которого на стенде может не быть; `kubectl port-forward
+# svc/<нет такого>` не встаёт и ЗАВЕРШАЕТСЯ. У этого скрипта проверки живости
+# пробросов нет вовсе, поэтому здесь это давало не «прогон недействителен», а
+# мёртвый порт и отказ на сотню строк ниже — про чужой предмет.
+#
+# Спрос выводится ИЗ ДЕРЕВА для ТОЙ суиты, которую этот запуск и гоняет, и тем же
+# модулем, что у прогонщика шардов: два предиката об одном разошлись бы молча.
+OPT_ENV_ARGS=()
+while IFS='|' read -r _ovar _osvc _otport _oportenv _odport _oscheme _owhy; do
+  [ -n "${_ovar:-}" ] || continue
+  _oport="${!_oportenv:-$_odport}"
+  kubectl -n "$NS" port-forward "svc/$_osvc" "$_oport:$_otport" >"/tmp/e2e-pf-opt-$_ovar.log" 2>&1 &
+  PF_PIDS+=($!)
+  OPT_ENV_ARGS+=(--env-var "$_ovar=$_oscheme://localhost:$_oport")
+  echo "[e2e] транспорт компонента: $_ovar → svc/$_osvc :$_otport на localhost:$_oport ($_owhy)"
+done < <(python3 "$(dirname "${BASH_SOURCE[0]}")/e2e-optional-transports.py" --suites "$SVC" --census)
 sleep 4
 
 # mTLS для grpcurl → kacho-iam-internal:9091.
@@ -156,6 +188,10 @@ if [ -n "$COLLECTION" ]; then
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+    --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
 else
   # run.sh НЕ читает BASE_URL/INTERNAL_BASE_URL из окружения — значения он берёт только
@@ -167,7 +203,11 @@ else
   ./scripts/run.sh --service "" --delay 15 \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
-    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT"
+    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+    --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?
   set -e
 

@@ -68,8 +68,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetRouteTableRequest) (*vp
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListRouteTablesRequest) (*vpcv1.ListRouteTablesResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	rts, nextToken, err := h.list.Execute(ctx, subject, RouteTableFilter{
+	rts, nextToken, err := h.list.Execute(ctx, RouteTableFilter{
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 	}, Pagination{
@@ -100,18 +99,11 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateRouteTableRequest
 		Description: domain.RcDescription(req.Description),
 		Labels:      domain.LabelsFromMap(req.Labels),
 	}
-	for _, sr := range req.StaticRoutes {
-		route := domain.StaticRoute{
-			Labels: sr.Labels,
-		}
-		if sr.GetDestinationPrefix() != "" {
-			route.DestinationPrefix = sr.GetDestinationPrefix()
-		}
-		if sr.GetNextHopAddress() != "" {
-			route.NextHopAddress = sr.GetNextHopAddress()
-		}
-		rt.StaticRoutes = append(rt.StaticRoutes, route)
+	routes, err := staticRoutesFromProto(req.StaticRoutes)
+	if err != nil {
+		return nil, err
 	}
+	rt.StaticRoutes = routes
 	op, err := h.create.Execute(ctx, rt)
 	if err != nil {
 		return nil, err
@@ -125,8 +117,14 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateRouteTableRequest
 	if req.RouteTableId == "" {
 		return nil, status.Error(codes.InvalidArgument, "route_table_id required")
 	}
-	if _, err := h.get.Execute(ctx, req.RouteTableId); err != nil {
+	// Непринимаемая ветка следующего перехода — до чтения из репозитория:
+	// отказ по форме запроса не должен зависеть от того, существует ли ресурс.
+	routes, err := staticRoutesFromProto(req.StaticRoutes)
+	if err != nil {
 		return nil, err
+	}
+	if _, gerr := h.get.Execute(ctx, req.RouteTableId); gerr != nil {
+		return nil, gerr
 	}
 	var mask []string
 	if req.UpdateMask != nil {
@@ -141,18 +139,7 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateRouteTableRequest
 		},
 		UpdateMask: mask,
 	}
-	for _, sr := range req.StaticRoutes {
-		route := domain.StaticRoute{
-			Labels: sr.Labels,
-		}
-		if sr.GetDestinationPrefix() != "" {
-			route.DestinationPrefix = sr.GetDestinationPrefix()
-		}
-		if sr.GetNextHopAddress() != "" {
-			route.NextHopAddress = sr.GetNextHopAddress()
-		}
-		in.RouteTable.StaticRoutes = append(in.RouteTable.StaticRoutes, route)
-	}
+	in.RouteTable.StaticRoutes = routes
 	op, err := h.update.Execute(ctx, in)
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 func testLogger() *slog.Logger {
@@ -63,14 +65,19 @@ func TestGateway_F2_RequestIDGeneratedWhenMissing(t *testing.T) {
 	}
 }
 
-// TestGateway_F3_PanicRecoveryReturnsInternal проверяет сценарий F3.
+// TestGateway_F3_PanicRecoveryReturnsInternal проверяет сценарий F3 на ОБЩЕМ
+// звене (pkg/grpcsrv): собственного gRPC-звена у края больше нет.
+//
+// Утверждается СООБЩЕНИЕ, а не только код. Прежняя редакция проверяла один лишь
+// codes.Internal и осталась бы зелёной, начни значение паники течь клиенту, —
+// то есть ровно на том дефекте, ради которого звено и написано.
 func TestGateway_F3_PanicRecoveryReturnsInternal(t *testing.T) {
 	logger := testLogger()
 	panicHandler := func(ctx context.Context, req any) (any, error) {
-		panic("test panic")
+		panic("test panic with secret-marker")
 	}
 
-	interceptor := middleware.UnaryRecovery(logger)
+	interceptor := grpcsrv.UnaryPanicRecovery(logger)
 	_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{}, panicHandler)
 	if err == nil {
 		t.Fatal("ожидали ошибку после panic")
@@ -78,6 +85,25 @@ func TestGateway_F3_PanicRecoveryReturnsInternal(t *testing.T) {
 	st, ok := status.FromError(err)
 	if !ok || st.Code() != codes.Internal {
 		t.Errorf("ожидали INTERNAL, получили %v", err)
+	}
+	if st.Message() != "internal error" {
+		t.Errorf("сообщение клиенту %q — контракт требует фиксированного %q",
+			st.Message(), "internal error")
+	}
+	if strings.Contains(err.Error(), "secret-marker") {
+		t.Errorf("значение паники утекло клиенту: %v", err)
+	}
+}
+
+// TestGateway_PanicRecoveryToleratesNilServerInfo — звено обязано пережить
+// отсутствующее описание вызова, иначе восстановление паники само становится
+// вторым падением.
+func TestGateway_PanicRecoveryToleratesNilServerInfo(t *testing.T) {
+	interceptor := grpcsrv.UnaryPanicRecovery(testLogger())
+	_, err := interceptor(context.Background(), nil, nil,
+		func(context.Context, any) (any, error) { panic("boom") })
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("без описания вызова звено дало %v, ожидался INTERNAL", err)
 	}
 }
 

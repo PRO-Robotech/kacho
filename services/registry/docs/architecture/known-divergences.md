@@ -357,9 +357,17 @@ with no page-size bound or early cutoff.
 
 **Why accepted.**
 - **Admin-only, authz-gated Internal surface.** `GetRegistryStats` is on the cluster-internal
-  :9091 listener only, and per-RPC `Check` gates it at the viewer tier (`v_get` on
-  `registry_registry`, `permission_map.go`) — internal is *not* exempt (security.md). It is not
+  :9091 listener only, and per-RPC `Check` gates it at the CLUSTER operator tier
+  (`system_viewer` on the cluster singleton) — internal is *not* exempt (security.md). It is not
   reachable by tenants or from the public endpoint.
+
+  > The relation named here was `v_get` on `registry_registry` until 2026-08-09, and it was the
+  > relation the service asked while the catalog asked `system_viewer`. Unified onto the catalog,
+  > deliberately: `v_get` on a registry is held by its OWNER — the model derives the verb set from
+  > `owner`, and an `owner` tuple is written for every registry at creation — so the per-object
+  > relation admits the tenant to an infra projection of their own namespace. The cluster tier does
+  > not. "More precise object" and "narrower subject" pull in opposite directions here, and on an
+  > infra read the subject decides.
 - **Instantaneous downstream load is already bounded.** Manifest fetches run under an
   `errgroup` capped at `blobScopeConcurrency` (8) — at most 8 concurrent zot round-trips at any
   moment (`blobScopeConcurrency` in the zot client), so a large namespace makes Stats *slow*, not a
@@ -375,56 +383,22 @@ paginated/streamed) rather than a live full-namespace walk; that removes the O(t
 without changing the exact-count contract. A materialisation component is a follow-up, not a
 frozen-contract hardening change.
 
-## 11. `PermissionMap` ScopeFiltered entries retain `Relation`/`Extract` as permission-catalog documentation
+## 11. ~~`PermissionMap` ScopeFiltered entries retain `Relation`/`Extract`~~ — CLOSED 2026-08-09
 
-**Rule.** CWE-561: no dead code — a field the runtime never reads should not be carried.
+**The divergence has no subject left.** The per-service permission map is no longer written by
+hand: it is derived from the same proto annotations the gateway catalog is generated from
+(`pkg/authz/catalogderive`), and a `scope_filtered` row carries neither a relation nor a scope
+extractor — the annotation is rejected by the generator if it names either. So the fields that
+were "carried but never read" are now absent, and the dead-field class (CWE-561) is closed by
+construction rather than by review.
 
-**Divergence.** The `ScopeFiltered` entries in `internal/check/permission_map.go` carry
-`Relation` + `Extract` + `Permission` like every interceptor-gated entry, yet for a
-`ScopeFiltered` entry the authz interceptor (`pkg/authz`, absorbed into this monorepo — the
-former `kacho-corelib`) returns `DecisionInternal` **before** it ever calls `entry.Extract` — so
-those two fields are never read at runtime on these entries. Real per-repo enforcement for these
-RPCs lives in `internal/handler/listauthz.go`, bounded at `repoAuthzConcurrency`.
-
-> **Count re-checked 2026-08-01: ten, not four.** This section was written when the residual
-> covered `List` / `ListRepositories` / `ListTags` / `DeleteTag`. The six repository-overlay
-> entries added later (`GetRepository`, `CreateRepository`, `UpdateRepository`,
-> `DeleteRepository`, `RenameRepository`, `ListReferrers`) carry the same residual, each with
-> its own inline comment restating it. `repositoryObject()` is likewise no longer used «only by
-> `ListTags`/`DeleteTag`» — seven entries reference it. The class did not change; its extent
-> did, which is exactly what a divergence list is supposed to keep honest.
-
-> **What `ScopeFiltered` does *not* skip: identifying the caller.** The interceptor extracts the
-> subject **before** the `ScopeFiltered` branch and fail-closes on a missing principal, pinned by
-> its own test. `ScopeFiltered` redirects the *object* decision to the handler; it never makes an
-> RPC anonymous. Reading this section as «these RPCs bypass authorization» would be wrong in the
-> dangerous direction.
-
-**Why accepted.**
-- **Intentional, tested catalog documentation, not an accident.** The code comment states the
-  retention explicitly («Relation/Extract сохранены как catalog-doc»), and
-  `permission_map_test.go` (`TestPermissionMap_List_CatalogRetained`) *asserts* `List` keeps
-  `Relation=v_list`. Every entry carrying a uniform `{Permission, Relation, object-extractor}`
-  descriptor makes the map a single readable catalog of «which verb/object each RPC conceptually
-  governs», with `ScopeFiltered:true` the one flag that redirects enforcement to the handler.
-- **Extractor uniformity is load-bearing for the live entries.** `registryObject()` /
-  `projectObject()` *are* executed for the interceptor-gated RPCs (`Get`/`Create`/`Update`/
-  `Delete`/`ListOperations`/GC/Stats); dropping `Extract` from only the ScopeFiltered entries
-  would leave an inconsistent map (some entries with an extractor, some without) for no
-  behavioural, wire, or security change.
-- **No enforcement risk.** Removing the fields changes neither the interceptor path (which
-  ignores them for ScopeFiltered) nor the handler gate (`listauthz.go`), so the residual is
-  documentation-shaped; the misleading-reader concern is already mitigated by the extensive
-  inline comments pointing at `handler/listauthz.go` as the enforcement site.
-
-**What would revisit this.** A decision to make the map carry *only* the fields the runtime reads
-(drop `Relation`/`Extract` on all ten ScopeFiltered entries; `repositoryObject()` itself stays —
-seven entries reference it), paired
-with updating `TestPermissionMap_List_CatalogRetained` and adding a one-line comment per entry
-pointing at `handler/listauthz.go`. A pure catalog-shape change, deferred so the tested uniform
-descriptor is not reversed mid-hardening.
-
----
+The ten entries are unchanged in what they DO: per-repo enforcement still lives in
+`internal/handler/listauthz.go`, now asked as ONE batched question per page (the bounded
+fan-out of per-object checks, and the constant that capped it, are gone). What changed is that the
+catalog now says so — those ten rows read `<exempt>` before, which stated only "the edge does not
+check" and promised nothing about anyone else checking. `scope_filtered` is the positive form of
+the same fact, and it additionally requires an authenticated principal at the edge, which
+`<exempt>` did not on the internal listener.
 
 ## 12. Rename: снятие тегов под старым именем — шаг ПОСЛЕ закрепления имени, и его неудача не отменяет перенос
 
@@ -457,3 +431,53 @@ descriptor is not reversed mid-hardening.
 (компенсирующий шаг инициатора, как `data-integrity.md` §B12 предписывает для саг): тогда
 снятие уезжает в неё и остатка не остаётся вовсе. Отдельная работа — здесь она не нужна
 для корректности, только для гигиены хранилища.
+
+## Предикат страницы каталога шире отношения чтения — намеренно
+
+**Что расходится.** Страница каталога (`ListRepositories`, `ListRegistries`,
+`ListOperations`) сужается по `v_list`, тогда как чтение репозитория — манифест, блоб,
+конфигурация — гейтится `v_get`. Общий сужатель списков (`pkg/listnarrow`) берёт
+предикат из тотальной карты сервиса; здесь он передаётся **явно на каждом вызове**
+(`check.IAMCheckClient.CheckMany`), и это единственное место в дереве, где так.
+
+**Почему это не дефект.** У соседних сервисов расхождение «страница по одному
+отношению, чтение по другому» раскрывает СОДЕРЖИМОЕ: их `List` возвращает то же
+сообщение, что и `Get`. Страница каталога возвращает **голые имена**, поэтому «видно
+в перечне без содержимого» здесь реализуемо, в отличие от них. Раскрытие имени
+ограничено субъектами, которым `v_list` на этот репозиторий выдан явно, а курсор
+`last=` намеренно опакован, чтобы окно не называло чужих имён.
+
+**Чем держится.** Записью в реестре исключений гейта паритета
+(`internal/repohygiene/listreadrelationparity_test.go`, запись про
+`services/registry/internal/dataplane`) — она самоистекает: пакет, переставший
+фильтровать страницу, делает запись находкой.
+
+**Что подлежит пересмотру.** Если каталог когда-нибудь начнёт отдавать что-то помимо
+имени, отступление теряет основание вместе с предикатом.
+
+## Страница каталога спрашивается ПАРТИЯМИ, а не поштучно (2026-08-09)
+
+Прежде row-filter каталога задавал `InternalIAMService.Check` **по одному объекту**
+с ограничением одновременности восемь: контрактная страница стоила до тысячи
+обращений, то есть 125 последовательных волн против двух у сервисов, которые ту же
+страницу спрашивают партиями по сто.
+
+Порт прав (`handler.Authorizer`) получил вторую дверь — `CheckMany`, — и она
+**обязательная**, а не «возможность по желанию»: реализация без неё оставила бы
+поштучный опрос, и утверждение «переведено на пакетный вопрос» осталось бы без
+предмета. Механика — общий сужатель (`pkg/listnarrow`): партии ≤100, ограниченный
+веер, бюджет операции, окно **положительных** вердиктов, fail-closed на первой
+ошибке. Соединение то же: `AuthorizeService` зарегистрирован и на внутреннем
+листенере kacho-iam, поэтому второго дозвона не заводится.
+
+Личность вызывающего по-прежнему устанавливается **своими** правилами сервиса
+(`callerSubject`, первым делом в каждом гейте), и его код отказа безымянному
+остаётся собственным: он совпадает с тем, что даёт интерсептор на всех прочих RPC,
+иначе сам код ответа сообщал бы неаутентифицированному пробующему, какие RPC
+авторизуются на уровне данных, а какие интерсептором.
+
+Держится пробой стоимости `TestRepoAuthz_REG06_FilterRegistries_AsksInBatchesNotOneByOne`:
+она считает **запросы и вопросы раздельно** и требует, чтобы страница уходила одним
+обращением. Прежняя проба утверждала одновременность поштучных вопросов — механизм,
+которого в коде больше нет; она заменена, а не удалена, потому что без неё
+возвращение поштучного опроса прошло бы молча.

@@ -35,15 +35,18 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// batchCheckStub — minimal authzfilter.AuthorizeClient answering each per-object
+// batchCheckStub — minimal listnarrow.AuthorizeClient answering each per-object
 // check from a fixed grant set keyed by subject (so subject-source mismatches stay
 // observable: a "" subject never reaches here, and an unexpected subject is denied
 // everything). Order-preserving, as the BatchCheck contract requires.
@@ -73,7 +76,7 @@ func (s *batchCheckStub) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeC
 // newInstanceHandlerOnRealRepo — InstanceService over a real (testcontainers) repo
 // + real FGAFilter (mock AuthorizeClient). Returns the handler, the repo (for
 // deterministic seeding) and the pool (for cleanup).
-func newInstanceHandlerOnRealRepo(t *testing.T, cli authzfilter.AuthorizeClient) (*handler.InstanceHandler, *repo.InstanceRepo, *pgxpool.Pool) {
+func newInstanceHandlerOnRealRepo(t *testing.T, cli listnarrow.AuthorizeClient) (*handler.InstanceHandler, *repo.InstanceRepo, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
 	dsn := setupTestDB(t)
@@ -91,9 +94,9 @@ func newInstanceHandlerOnRealRepo(t *testing.T, cli authzfilter.AuthorizeClient)
 		portmock.NewStorageClient(),
 		portmock.NewOpsRepo(),
 	)
-	cfg := authzfilter.DefaultConfig()
+	cfg := listnarrow.Config{Relations: authzfilter.PageRelations}
 	cfg.Timeout = 500 * time.Millisecond
-	filter := authzfilter.NewFGAFilter(cli, cfg)
+	filter := listnarrow.New(cli, cfg)
 	return handler.NewInstanceHandler(svc, filter), instanceRepo, pool
 }
 
@@ -138,17 +141,23 @@ func TestIntegration_InstanceHandler_NoPrincipal_FailClosed_NoLeak(t *testing.T)
 	ids := seedInstances(t, r, "proj-a", "a", "b", "c")
 	require.Len(t, ids, 3)
 
-	// No principal in ctx → SystemPrincipal → subject="" → fail-closed.
+	// Принципала в ctx нет → вызывающий не назван → ОТКАЗ.
+	//
+	// Полярность сменилась: прежде здесь была пустая страница. «Пусто» неотличимо от
+	// «личность потеряна по дороге», и именно этим неразличением класс живёт годами.
 	resp, err := h.List(context.Background(), &computev1.ListInstancesRequest{ProjectId: "proj-a"})
-	require.NoError(t, err, "no-principal List must be fail-closed empty, not 5xx")
-	require.Len(t, resp.Instances, 0, "LEAK: no-principal List must NOT return any instance")
+	require.Error(t, err, "no-principal List must be refused")
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.Len(t, resp.GetInstances(), 0, "LEAK: no-principal List must NOT return any instance")
 	require.Equal(t, 0, stub.calls, "fail-closed: filter must not be consulted for empty subject")
 
-	// Explicit SystemPrincipal → same fail-closed behaviour.
+	// Явный служебный принципал → тот же отказ: служебный тип объявляет отправитель
+	// заголовков, поэтому личностью он не является.
 	sysCtx := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
 	resp, err = h.List(sysCtx, &computev1.ListInstancesRequest{ProjectId: "proj-a"})
-	require.NoError(t, err)
-	require.Len(t, resp.Instances, 0, "LEAK: system principal List must NOT return any instance")
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.Len(t, resp.GetInstances(), 0, "LEAK: system principal List must NOT return any instance")
 }
 
 // CLL-01 (integration): the real (unfiltered, project-scoped) SQL page is narrowed

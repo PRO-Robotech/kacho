@@ -4,7 +4,7 @@
 package config
 
 import (
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // scopeFilteredRPCs — методы карты прав, с которых снят per-RPC Check: их

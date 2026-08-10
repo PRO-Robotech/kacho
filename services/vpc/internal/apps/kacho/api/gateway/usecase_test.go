@@ -20,6 +20,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты Gateway use-case'ов и handler'а. Работают через kachomock.Repository
@@ -37,7 +39,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateGatewayUseCase(kr, or)
 	deleteUC := NewDeleteGatewayUseCase(kr, or)
 	get := NewGetGatewayUseCase(kr)
-	list := NewListGatewaysUseCase(kr, nil)
+	list := NewListGatewaysUseCase(kr, narrowtest.AllowingAll())
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)
 }
@@ -70,7 +72,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Gateways)
 }
@@ -190,7 +192,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListGatewaysUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", GatewayFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -231,7 +233,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
 	require.Len(t, resp.Gateways, 1)
 
 	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteGatewayRequest{GatewayId: resp.Gateways[0].Id})
@@ -255,7 +257,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListGatewaysRequest{ProjectId: "f1"})
 	require.NotEmpty(t, resp.Gateways)
 	gwID := resp.Gateways[0].Id
 

@@ -62,11 +62,3 @@ type AddressRepo interface {
 type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
 }
-
-// ListFilter — port per-page фильтра видимости. Реализация —
-// `authzfilter.AsPort(*authzfilter.FGAFilter)`. nil → unfiltered passthrough.
-// Возвращает подмножество переданных id, видимое subject'у (порядок сохраняется);
-// err → fail-closed (use-case пробрасывает, страницу не отдает).
-type ListFilter interface {
-	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
-}

@@ -26,10 +26,33 @@ spec:
         scenario: stress
     spec:
       restartPolicy: Never
+      # Хардening пода (trivy KSV-0118): непривилегированный запуск + seccomp.
+      # uid 65532 — тот же, под которым работает апстримный образ ghz
+      # (`ghcr.io/bojand/ghz`, Config.User=65532); локальная сборка `ghz:dev`
+      # (см. README рядом) обязана оставить бинарь исполняемым для этого uid.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: ghz
           image: ghz:dev
           imagePullPolicy: IfNotPresent
+          # Хардening контейнера (trivy KSV-0014/KSV-0118): корень только на чтение,
+          # без повышения привилегий, все capabilities сняты. Тома под запись НЕ
+          # нужны: без `-O/-o` ghz пишет отчёт только в stdout. Проверено прогоном,
+          # а не выведено из чтения: ghz под `--read-only` и uid 65532 отработал
+          # 200 gRPC-вызовов через reflection и вышел кодом 0.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           args:
             - "--insecure"
             - "--call"

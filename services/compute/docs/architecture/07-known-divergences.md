@@ -600,7 +600,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   `production`), `KACHO_COMPUTE_DB_SSLMODE` (default `require`), `KACHO_COMPUTE_REQUIRE_IAM`
   (default `true`) и `KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS` (default = api-gateway
   SPIFFE-id) + `mtls.enable=true` по умолчанию — чтобы fail-closed гейты бинаря
-  (`validateAuthMode`/`requireDBSSLMode`/`requireTrustedForwarders`/`RequireIAM`)
+  (`validateAuthMode`/`requireDBSSLMode`/`config.Config.Validate`/`RequireIAM`)
   реально взводились. `DB_SSLMODE` прокинут и в migrate-initContainer. Dev-стенд
   переключается явным `--set auth.mode=dev --set mtls.enable=false --set db.sslMode=disable`.
   `helm template`/`helm lint` зелёные. **Propagation:** umbrella (`kacho-deploy`)
@@ -681,7 +681,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   вернёт nil → handler'ы bypass'ят фильтр). Раньше бинарь стартовал healthy с
   выключенным фильтром, и principal с project-tier `viewer` видел ВСЕ ресурсы проекта,
   которые сервис тогда обслуживал (over-show / BOLA-lite, CWE-862). Fail-closed зеркалит
-  `requireDBSSLMode`/`requireTrustedForwarders`. Тесты: `authmode_gate_test.go`
+  `requireDBSSLMode`/`config.Config.Validate`. Тесты: `authmode_gate_test.go`
   (`*_RequiresListFilter`, prod + strict).
 - **Админ-CRUD справочника типов дисков покрыт testcontainers-тестом.** Раньше write-путь
   гонялся только через portmock; реальный SQLSTATE→sentinel (PK 23505 → AlreadyExists;

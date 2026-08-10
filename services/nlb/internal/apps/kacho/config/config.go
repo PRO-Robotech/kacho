@@ -229,6 +229,18 @@ type AuthzConfig struct {
 	// своим валидным cert'ом не может выдать себя за пользователя). ENV
 	// `KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS` (comma-separated).
 	TrustedForwarderSANs []string `mapstructure:"trusted-forwarder-sans"`
+
+	// TrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО вне
+	// боевого режима. Нужен для локальных in-process фикстур, где ни сертификатов,
+	// ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) = отказ
+	// старта на пустом круге. В боевом режиме НЕ действует — иначе это была бы
+	// ручка, снимающая защиту на развёрнутом стенде.
+	TrustAnyForwarder bool `mapstructure:"trust-any-forwarder"`
 }
 
 // AuthzListFilterConfig — per-object filtered List (RBAC).
@@ -254,6 +266,17 @@ type AuthzListFilterConfig struct {
 	// FailOpen — на FGA error: false (default) → Unavailable (fail-closed,
 	// security.md); true → bypass + audit-warn (dev escape-hatch).
 	FailOpen bool `mapstructure:"fail-open"`
+
+	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
+	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
+	// НЕсуженными вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`).
+	Breakglass bool `mapstructure:"breakglass"`
 }
 
 // AuthzIAMConfig — параметры ВЫЗОВА per-RPC Check. Адрес здесь НЕ живёт:
@@ -397,4 +420,21 @@ type InternalLifecycleConfig struct {
 	// поэтому слот ≈ +1 conn'у к Postgres. Default 32 (см. RegisterDefaults).
 	// Должен быть > 0.
 	MaxStreams int `mapstructure:"max-streams"`
+}
+
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/kacho-loadbalancer/wiring.go), и стража старта (Validate), и самоотчёт о
+// посадке (cmd/kacho-loadbalancer/bootposture.go). Все трое спрашивают ОДИН
+// объект и ОДИН его предикат, поэтому «стража пропустила» ⟺ «круг реально
+// сужен» — по построению. До ввода типа у nlb таких предикатов было ДВА: свой у
+// стражи (пакет config) и свой у самоотчёта (пакет main).
+//
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c *Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.Authz.TrustedForwarderSANs...)
 }

@@ -10,20 +10,21 @@ package address
 // Инвариант (data-integrity.md §Placement-coherence): «Существование zone_id —
 // валидировать peer-вызовом geo.v1.ZoneService.Get, fail-closed. Пропуск (напр.
 // непроверенная зона внешнего адреса) — баг». Зеркалит subnet.validateZoneID
-// (internal/apps/kacho/api/subnet/helpers.go:185-200,
-// InvalidArgument "unknown zone id '%s'"). Отличие: для external Address пустой
-// zone_id ВАЛИДЕН (anycast из global-пула) — проверка условная.
+// (internal/apps/kacho/api/subnet/helpers.go, полоса peer-validate:
+// FailedPrecondition "unknown zone id '%s'" + машинный признак
+// PEER_RESOURCE_MISSING). Отличие: для external Address пустой zone_id ВАЛИДЕН
+// (anycast из global-пула) — проверка условная.
 //
 // RED-состояние (до фикса): CreateAddressUseCase не валидирует
 // ExternalSpec.ZoneID / ExternalIpv6Spec.ZoneID через geo — external Address с
 // несуществующей зоной создаётся. Execute возвращает (op, nil) вместо sync
-// InvalidArgument → ZC-VPC-ADDR-ZONE-01/02 падают по feature-absent.
+// отказа → ZC-VPC-ADDR-ZONE-01/02 падают по feature-absent.
 //
 // GREEN-step (rpc-implementer, тот же PR, план Stage 2):
 //   1. добавить локальный порт address.ZoneRegistry { Get(ctx, id) (*domain.Zone, error) }
 //      (как subnet/iface.go) + wiring в cmd/ (impl clients.GeoZoneClient);
 //   2. в Execute — условная geo-validation ExternalSpec.ZoneID/ExternalIpv6Spec.ZoneID
-//      (непустой → Get → ErrNotFound → InvalidArgument "unknown zone id '<X>'";
+//      (непустой → Get → ErrNotFound → полоса peer-validate "unknown zone id '<X>'";
 //      пустой → skip), fail-closed Unavailable;
 //   3. заменить ТЕЛО хелпера newCreateUCWithZones ниже на инъекцию zr в use-case —
 //      единственная точка правки, после чего ZC-VPC-ADDR-ZONE-01/02 → GREEN.
@@ -41,11 +42,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // fakeZoneRegistry — двойник geo ZoneRegistry (geo.v1.ZoneService.Get) для
 // existence-валидации external Address.zone_id. Известные зоны → *domain.Zone;
-// прочее → repo.ErrNotFound (use-case транслирует в InvalidArgument
+// прочее → repo.ErrNotFound (use-case транслирует в полосу peer-validate
 // "unknown zone id '<X>'", зеркало subnet.validateZoneID).
 type fakeZoneRegistry struct {
 	known map[string]bool
@@ -82,8 +85,8 @@ func newCreateUCWithZones(
 // ---- GAP-3 RED — external zone existence ------------------------------------
 
 // TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected — ZC-VPC-ADDR-ZONE-01:
-// external IPv4 Address с несуществующей zone_id → sync INVALID_ARGUMENT
-// "unknown zone id 'zzz-nonexistent-9'". RED: external zone не валидируется в geo.
+// external IPv4 Address с несуществующей zone_id → sync FAILED_PRECONDITION
+// "unknown zone id 'zzz-nonexistent-9'" на полосе peer-validate.
 func TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected(t *testing.T) {
 	kr := kachomock.NewRepository()
 	sr := repomock.NewSubnetRepo()
@@ -95,13 +98,13 @@ func TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected(t *testing
 		ProjectID:    "f1",
 		ExternalSpec: &ExternalAddrSpec{ZoneID: "zzz-nonexistent-9"},
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err),
+	require.Equal(t, codes.FailedPrecondition, status.Code(err),
 		"external v4 with nonexistent zone must be rejected synchronously")
 	require.Equal(t, "unknown zone id 'zzz-nonexistent-9'", status.Convert(err).Message())
 
 	// Operation не создаётся; строка не появляется.
-	listUC := NewListAddressesUseCase(kr, nil)
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Empty(t, addrs, "no Address row for a rejected create")
 }
 
@@ -119,7 +122,7 @@ func TestCreateUseCase_ZCVPCADDRZONE02_ExternalV6UnknownZone_Rejected(t *testing
 		ProjectID:        "f1",
 		ExternalIpv6Spec: &ExternalAddrSpec{ZoneID: "zzz-nonexistent-9"},
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err),
+	require.Equal(t, codes.FailedPrecondition, status.Code(err),
 		"external v6 with nonexistent zone must be rejected synchronously")
 	require.Equal(t, "unknown zone id 'zzz-nonexistent-9'", status.Convert(err).Message())
 }
@@ -135,7 +138,7 @@ func TestCreateUseCase_ZCVPCADDRZONE03_ExternalKnownZone_OK(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	zr := newFakeZoneRegistry("region-1-a") // зона существует
 	uc := newCreateUCWithZones(kr, sr, &repomock.ProjectClient{OK: true}, or, zr)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -145,7 +148,7 @@ func TestCreateUseCase_ZCVPCADDRZONE03_ExternalKnownZone_OK(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.Equal(t, "region-1-a", addrs[0].ExternalIpv4.ZoneID)
 }
@@ -160,7 +163,7 @@ func TestCreateUseCase_ZCVPCADDRZONE04_AnycastEmptyZone_OK(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	zr := newFakeZoneRegistry() // пустая зона не должна дёргать lookup
 	uc := newCreateUCWithZones(kr, sr, &repomock.ProjectClient{OK: true}, or, zr)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -170,7 +173,7 @@ func TestCreateUseCase_ZCVPCADDRZONE04_AnycastEmptyZone_OK(t *testing.T) {
 	require.NoError(t, err, "empty external zone (anycast) must NOT be rejected")
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.Equal(t, "", addrs[0].ExternalIpv4.ZoneID)
 }
@@ -191,7 +194,7 @@ func TestCreateUseCase_ZCVPCADDRZONE05_InternalInheritsSubnet_OK(t *testing.T) {
 	}
 	_, _ = sr.Insert(context.Background(), sub)
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -200,7 +203,7 @@ func TestCreateUseCase_ZCVPCADDRZONE05_InternalInheritsSubnet_OK(t *testing.T) {
 	require.NoError(t, err, "internal Address must not undergo external-zone geo-validation")
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.Equal(t, domain.AddressTypeInternal, addrs[0].Type)
 }

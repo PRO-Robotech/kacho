@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"go.uber.org/multierr"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // ModeEnum — общий режим работы сервиса (bool → enum).
@@ -64,6 +66,30 @@ var validLogLevels = map[string]struct{}{
 // `viper.Unmarshal` в `Load`.
 func (c Config) Validate() error {
 	var errs error
+
+	// Круг отправителей чужой личности обязан быть сужен на ЛЮБОМ non-breakglass
+	// старте — не только в боевом режиме, и не только когда включён server-mTLS.
+	//
+	// Прежде страж стоял внутри боевой ветки И был обусловлен ЧУЖИМ полем
+	// (mtls.server.enable). Обусловленность читалась как «без mTLS сужать нечего»,
+	// но круг и mTLS — разные измерения: сертификат доказывает, ЧЕЙ это пир, и
+	// ничего не говорит о праве представляться другим. Страж, молчащий вне боевого
+	// режима, к тому же ни разу не исполняется на локальном стенде, поэтому «забыл
+	// выставить круг» находится только на боевом профиле, где цена ошибки
+	// максимальна.
+	//
+	// Стража общая на все семь сервисов (grpcsrv.TrustedForwarders.Require):
+	// одинаковый исход и одинаковый текст отказа, различаются только имена ручек.
+	// Аварийный режим освобождает: он и так снимает per-RPC проверку целиком, а в
+	// боевом режиме отвергается отдельно.
+	if !c.Authz.Breakglass {
+		errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
+			Production:   c.Mode() == ModeProduction,
+			DevTrustAny:  c.Authz.TrustAnyForwarder,
+			SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
+			TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
+		}))
+	}
 
 	// Mode
 	mode, err := ParseMode(c.ModeRaw)
@@ -218,26 +244,6 @@ func (c Config) Validate() error {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"production mode: authz.list-filter.fail-open forbidden (fail-closed only; fail-open returns unfiltered results during IAM outage)"))
 		}
-		// Trusted-forwarder allow-list (anti-impersonation). Пустой allow-list в
-		// grpcsrv.WithTrustedForwarders означает «доверять форвардинг
-		// x-kacho-principal-* ЛЮБОМУ mTLS-verified peer'у» (back-compat trust-all).
-		// В общем mTLS-mesh (все воркеры под одним internal-CA) это confused-deputy:
-		// любой сервис с валидным клиентским cert'ом форжит произвольного principal'а,
-		// и FGA Check оценивает подделанный subject. В проде mtls.server.enable
-		// обязателен (проверено выше — единственная реальная server-transport-security),
-		// поэтому allow-list обязан быть непустым (перечисляет SAN доверенного
-		// форвардера — api-gateway). Guard оставлен gated на mtls.server.Enable: если он
-		// off, ошибка insecure-server-transport уже поднята выше — не дублируем.
-		// Считаем НЕПУСТЫЕ записи, а не длину среза: WithTrustedForwarders
-		// принимает только s != "", поэтому список из одних пустых строк
-		// (`trusted-forwarder-sans: ["",""]`) вырождается там в пустое множество —
-		// то есть снова «доверяем любому mTLS-verified пиру». Проверка по длине
-		// пропускала такое значение, и сервис стартовал, доверяя всем.
-		if c.MTLS.Server.Enable && !hasNonEmptyForwarderSAN(c.Authz.TrustedForwarderSANs) {
-			errs = multierr.Append(errs, fmt.Errorf(
-				"production mode: authz.trusted-forwarder-sans must be non-empty when mtls.server.enable=true "+
-					"(empty allow-list trusts any mTLS-verified peer to forward the end-user principal — impersonation vector)"))
-		}
 		// Postgres transport fail-closed (security.md «mTLS/TLS ВЕЗДЕ», CWE-319).
 		// Peer-рёбра проверяются выше; DB-соединение — тот же
 		// периметр: `sslmode=disable`/`allow`/`prefer` (или отсутствие sslmode,
@@ -378,18 +384,4 @@ func validateEndpoint(field, raw string) error {
 		return fmt.Errorf("%s: %q missing :port", field, raw)
 	}
 	return nil
-}
-
-// hasNonEmptyForwarderSAN — есть ли в списке хотя бы одна запись, которую примет
-// corelib. grpcsrv.WithTrustedForwarders пропускает только s != "", поэтому список
-// из одних пустых строк даёт там пустой allow-list, а пустой allow-list означает
-// «доверять форвардинг x-kacho-principal-* ЛЮБОМУ mTLS-verified пиру». Считать
-// такой список заполненным значило бы пропустить дыру через стражу старта.
-func hasNonEmptyForwarderSAN(sans []string) bool {
-	for _, s := range sans {
-		if s != "" {
-			return true
-		}
-	}
-	return false
 }

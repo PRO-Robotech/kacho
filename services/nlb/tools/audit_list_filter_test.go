@@ -119,7 +119,7 @@ func patch(t *testing.T, root, rel, old, replacement string) {
 }
 
 // filterCall is the per-object narrowing the load balancer List performs.
-const filterCall = "recs, err = authzfilter.FilterVisiblePage(ctx, u.authz,"
+const filterCall = "recs, err = listnarrow.Page(ctx, u.authz,"
 
 // dropPerObjectFilter removes the per-object visibility filter from the load
 // balancer List and leaves behind a comment that names it — the ordinary shape of a
@@ -128,8 +128,8 @@ const filterCall = "recs, err = authzfilter.FilterVisiblePage(ctx, u.authz,"
 func dropPerObjectFilter(t *testing.T, root, listFile string) {
 	t.Helper()
 	patch(t, root, listFile, filterCall,
-		"// RBAC: страницу сужает authzfilter.FilterVisiblePage(ctx, u.authz, …).\n\t"+
-			"recs, err = authzfilter.UnfilteredPage(ctx, u.authz,")
+		"// RBAC: страницу сужает listnarrow.Page(ctx, u.authz, …).\n\t"+
+			"recs, err = listnarrow.UnfilteredPage(ctx, u.authz,")
 }
 
 // moveListFile applies a legitimate refactor: the List use-case moves from list.go

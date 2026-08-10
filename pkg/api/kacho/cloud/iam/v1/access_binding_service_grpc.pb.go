@@ -71,9 +71,11 @@ type AccessBindingServiceClient interface {
 	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
 	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
 	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
-	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
-	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
-	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// INVALID_ARGUMENT regardless of grant state. The result is the set of bindings
+	// on `iam_access_binding` the caller may read by id — the page predicate is the
+	// relation the permission catalog gates a single-object read on, `v_get`, so the
+	// page can never be wider than the read (anonymous → empty; an authorization
+	// error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
 	List(ctx context.Context, in *ListAccessBindingsRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +
@@ -385,9 +387,11 @@ type AccessBindingServiceServer interface {
 	// (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
 	// key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
 	// BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
-	// INVALID_ARGUMENT regardless of grant state. The result is the caller's
-	// `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
-	// FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+	// INVALID_ARGUMENT regardless of grant state. The result is the set of bindings
+	// on `iam_access_binding` the caller may read by id — the page predicate is the
+	// relation the permission catalog gates a single-object read on, `v_get`, so the
+	// page can never be wider than the read (anonymous → empty; an authorization
+	// error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
 	// (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
 	List(context.Context, *ListAccessBindingsRequest) (*ListAccessBindingsResponse, error)
 	// DEPRECATED — use `List` with `filter=scope="iam.<tier>"` +

@@ -119,21 +119,22 @@ type CatalogEntry struct {
 	// A scope-filtered row carries neither `RequiredRelation` nor `ScopeExtractor`:
 	// naming a relation the edge does not check is the defect the lane removes.
 	//
-	// Two guards hold this axis, and it is worth knowing which answers what,
-	// because the sentence here used to name a single unconditional one and there
-	// was no such thing:
+	// What holds this axis, since 2026-08-09: nothing compares two declarations,
+	// because there is only one. The owning service's per-RPC map is DERIVED from
+	// these same annotations (`pkg/authz/catalogderive`), so "the service narrows
+	// something else" is no longer expressible — the lane it enforces is this row.
 	//
-	//   - `pkg/authz/catalogparity.Compare` reports a contradiction when the
-	//     owning service's own per-RPC map DECLARES this method and disagrees
-	//     about who narrows the call. Every service map is compelled to run that
-	//     comparison by internal/repohygiene/catalogparity_test.go, which also
-	//     pins the surviving disagreements repo-wide.
-	//   - Compare walks the SERVICE MAP, so a row the owning service declares
-	//     nowhere — including a service that keeps no map at all — is the one
-	//     disagreement it cannot see, and it is the strongest: the edge stops
-	//     checking on a promise nobody made. That case is measured and pinned
-	//     separately by TestScopeFilteredCatalogRowsAreBackedByAServiceMap in the
-	//     same file.
+	// What can still go wrong, and what watches it:
+	//
+	//   - the committed catalog drifting from the annotations it was generated
+	//     from (a proto edit without regeneration) — internal/repohygiene
+	//     TestCatalogMatchesTheAnnotationsItWasGeneratedFrom, in both directions;
+	//   - a service re-introducing a hand-written map beside the derived one —
+	//     TestNoServiceDeclaresItsPermissionsASecondTime;
+	//   - this lane declared in a domain whose derived map is not wired into any
+	//     interceptor chain, so the promise has no executor —
+	//     TestScopeFilteredRowsBelongToADomainThatEnforcesThem, whose one recorded
+	//     exception is iam and carries its reason.
 	ScopeFiltered bool `json:"scope_filtered"`
 }
 

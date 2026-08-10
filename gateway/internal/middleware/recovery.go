@@ -3,49 +3,21 @@
 
 package middleware
 
+// gRPC-звенья восстановления паники здесь больше не живут: они сведены в
+// pkg/grpcsrv.UnaryPanicRecovery / StreamPanicRecovery — одно звено на
+// платформу. Здешняя редакция отдавала клиенту «internal server error», тогда
+// как четыре сервисных отдавали «internal error»: два разных ответа на одно и
+// то же условие. Общим стал «internal error».
+//
+// HTTP-звено остаётся здесь: у него другая поверхность (REST-мультиплексор
+// края) и нет общего двойника, поэтому перенос его в grpcsrv был бы неверным
+// адресом, а не унификацией.
+
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
-
-// UnaryRecovery — unary gRPC interceptor: перехватывает panic, логирует stack trace,
-// возвращает клиенту INTERNAL.
-func UnaryRecovery(logger *slog.Logger) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("recovered from panic",
-					"panic", r,
-					"stack", string(debug.Stack()),
-				)
-				err = status.Errorf(codes.Internal, "internal server error")
-			}
-		}()
-		return handler(ctx, req)
-	}
-}
-
-// StreamRecovery — streaming gRPC interceptor: перехватывает panic.
-func StreamRecovery(logger *slog.Logger) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("recovered from panic",
-					"panic", r,
-					"stack", string(debug.Stack()),
-				)
-				err = status.Errorf(codes.Internal, "internal server error")
-			}
-		}()
-		return handler(srv, ss)
-	}
-}
 
 // HTTPRecovery — HTTP middleware: перехватывает panic, возвращает 500.
 func HTTPRecovery(logger *slog.Logger) func(http.Handler) http.Handler {

@@ -306,3 +306,17 @@ InternalRegistryService GC/Stats deep internals (integration-tested, mTLS-only).
 | `REPO-AZ-CREATE-STRANGER-HIDDEN` | CreateRepository as stranger in regIdAz → denied (namespace call-gate, X04); never 200 |
 | `REG-AZ-HIDE-EXISTENCE-BYTE-IDENTITY` | Registry deny-404 format byte-identical to absent-miss 404 (security.md #6; gated on stranger→404) |
 | `REG-AZ-CLEANUP-FIXTURE` | cleanup: delete regIdAz as editor → 404 (cascade drops overlay repo) |
+
+## Полоса docker единого фасада — `cases/registry-docker-facade-lane.py` (present)
+
+Одна полоса правила «iam — единственный фасад к провайдеру подписи»
+(`security.md` §«Production-mode обязателен ВЕЗДЕ» п.4). Живёт здесь, а не рядом
+с остальными полосами IBT в наборе iam, потому что набирает **data plane
+реестра** — компонент, который по `deploy/e2e-shards.json` поднимает только шард
+`edge`. Номер кейса сохранён: он назван в приёмке
+`docs/specs/sub-phase-IAM-BOOTSTRAP-TOKEN-acceptance.md` и в issue #59, и
+переименование при переезде порвало бы прослеживаемость.
+
+| Case id | Scenario |
+|---|---|
+| `IBT-14-DOCKER-CHALLENGE-NAMES-THE-FACADE-HANDLE` | Приглашение 401 у data plane реестра называет ручку фасада `/iam/token` (никогда `/oauth2/` провайдера), сама ручка — живой гейт: анонима отвергает 401, негодные учётные данные не разменивает на токен, а посторонний путь того же слушателя отвечает 404 (контроль: 401 выше — ответ РУЧКИ, а не слушателя, отказывающего всему) |

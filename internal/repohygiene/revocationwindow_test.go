@@ -42,6 +42,7 @@ var revocationScanRoots = []string{
 	"services/registry/internal/apps/kacho/config",
 	"services/compute/internal/config",
 	"services/storage/internal/config",
+	"services/geo/internal/apps/kacho/config",
 	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
 	// перепись: все корни обхода начинались с services/, так что процесс, через
 	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из
@@ -231,10 +232,15 @@ func TestInheritedWindowsAreDeclared(t *testing.T) {
 	if filesRead == 0 {
 		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одной композиционной площадки")
 	}
-	if len(found) == 0 {
-		t.Fatalf("предпосылка гейта нарушена: прочитано %d площадок, но ни одна не строит кеш "+
-			"с ttl≤0; конструктор переименован либо кеши переехали", filesRead)
-	}
+	// «Ни одной унаследованной площадки» — законное состояние дерева, а не
+	// сломанный обход: сегодня все площадки завели собственные ручки. Предпосылка
+	// проверяется одна — что композиционные площадки ПРОЧИТАНЫ (выше); требовать
+	// сверх этого «найди хотя бы одну» значило бы держать проверку, которую можно
+	// починить только заведением нового дефекта.
+	//
+	// Двусторонность от этого не теряется: площадка без записи роняет гейт выше,
+	// запись без площадки — ниже, и обе ветки исполняются, как только восьмой
+	// сервис возьмёт окно умолчанием.
 
 	// Обратная сторона: запись Inherited, под которой в дереве больше нет
 	// площадки, — находка, а не безобидный остаток.
@@ -302,7 +308,7 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 
 	filesRead := 0
 	building := map[string]bool{}
-	for name, dir := range processes {
+	for name, dir := range processes { //nolint:dupl // перепись процессов, см. verdictCacheProcesses
 		err := filepath.WalkDir(dir,
 			func(p string, d os.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
@@ -678,4 +684,132 @@ func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
 			"(opts.Cache = authz.NewCache(…)) в той же функции.",
 			s.File, s.Line, s.Service)
 	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Окно у каждого, кто кеширует, — ВЫБРАННОЕ, а не унаследованное
+// ────────────────────────────────────────────────────────────────────────────
+
+// TestEveryVerdictCacheProcessDeclaresItsOwnKnob — процесс, держащий кеш
+// вердиктов, обязан иметь СВОЮ ручку окна, а не брать умолчание платформы.
+//
+// Чем это отличается от TestEveryVerdictCacheServiceIsDeclared выше. Там вопрос
+// «записан ли процесс в политике вообще», и ответ «да» даёт как Windows, так и
+// Inherited. Разница между ними — не оформление: у площадки из Inherited окно
+// отзыва принадлежит ПЛАТФОРМЕ. Оператор не может сузить его на конкретной
+// посадке, а обсуждать нечего — в конфигурации сервиса искать нечего вовсе.
+// Такое число невозможно ни отозвать, ни заметить при смене.
+//
+// Поэтому здесь требование строже и совпадает с каноном: у каждого, кто
+// кеширует, окно объявлено ручкой. Три площадки (compute, geo, storage) до сих
+// пор брали умолчание; значения при заведении ручек не менялись — изменилось то,
+// что число стало выбранным.
+//
+// Гейт самоистекающий в обе стороны: он краснеет и когда процесс кеширует без
+// своей ручки, и когда запись Windows потеряла процесс. Восьмой сервис, который
+// решит взять умолчание, упрётся в красное и обязан будет либо завести ручку,
+// либо записать исключение осознанно — то есть решением, а не умолчанием.
+func TestEveryVerdictCacheProcessDeclaresItsOwnKnob(t *testing.T) {
+	building, filesRead := verdictCacheProcesses(t)
+
+	withOwnKnob := map[string]bool{}
+	for key := range authz.RevocationPolicy.Windows {
+		withOwnKnob[strings.SplitN(key, " ", 2)[0]] = true
+	}
+
+	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
+		"процессов со своей ручкой=%d, площадок в Inherited=%d",
+		filesRead, len(building), len(withOwnKnob), len(authz.RevocationPolicy.Inherited))
+
+	if filesRead == 0 {
+		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла процессов")
+	}
+	if len(building) == 0 {
+		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни один процесс не строит "+
+			"кеш вердиктов; конструктор переименован либо кеши переехали", filesRead)
+	}
+
+	var inherited []string
+	for svc := range building {
+		if !withOwnKnob[svc] {
+			inherited = append(inherited, svc)
+		}
+	}
+	sort.Strings(inherited)
+	for _, svc := range inherited {
+		t.Errorf("процесс держит кеш вердиктов, но своей ручки окна у него нет: «%s».\n"+
+			"Окно отзыва этого процесса принадлежит платформе: оператор не может сузить его "+
+			"на конкретной посадке, и в конфигурации сервиса о нём нет ни строки. Заведи ручку "+
+			"KACHO_<SVC>_AUTHZ_CACHE_TTL и запись в pkg/authz.RevocationPolicy.Windows.", svc)
+	}
+
+	// Обратная сторона: запись Windows, под которой в дереве нет процесса,
+	// строящего кеш вердиктов, — находка. Иначе перепись переживёт свой предмет.
+	var stale []string
+	for svc := range withOwnKnob {
+		if !building[svc] {
+			stale = append(stale, svc)
+		}
+	}
+	sort.Strings(stale)
+	for _, svc := range stale {
+		t.Errorf("запись Windows без процесса: «%s» объявлен, но такого процесса, строящего кеш "+
+			"вердиктов, в дереве нет. Кеш убран или процесс переименован — сними запись.", svc)
+	}
+}
+
+// verdictCacheProcesses — процессы дерева, строящие кеш вердиктов, и число
+// прочитанных файлов. Единица — ПРОЦЕСС, а не каталог под services/: край живёт
+// вне services/, и обход, начинавшийся с одного этого каталога, не мог его
+// увидеть в принципе.
+func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
+	t.Helper()
+	root := repoRoot(t)
+
+	processes := map[string]string{}
+	servicesDir := filepath.Join(root, "services")
+	svcEntries, err := os.ReadDir(servicesDir)
+	if err != nil {
+		t.Fatalf("предпосылка гейта нарушена: каталог services/ не читается: %v", err)
+	}
+	for _, svc := range svcEntries {
+		if svc.IsDir() {
+			processes[svc.Name()] = filepath.Join(servicesDir, svc.Name())
+		}
+	}
+	gatewayDir := filepath.Join(root, "gateway")
+	if _, serr := os.Stat(gatewayDir); serr != nil {
+		t.Fatalf("предпосылка гейта нарушена: дерево края gateway/ не читается: %v", serr)
+	}
+	processes[gatewayProcess] = gatewayDir
+
+	filesRead := 0
+	building := map[string]bool{}
+	for name, dir := range processes {
+		werr := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err //nolint:wrapcheck // walk error propagates as-is
+			}
+			if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+				return nil
+			}
+			src, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return rerr //nolint:wrapcheck // read error propagates as-is
+			}
+			filesRead++
+			found, perr := revocationwindowgate.ScanConstructors(p, string(src))
+			if perr != nil {
+				return perr //nolint:wrapcheck // parse error propagates as-is
+			}
+			if found {
+				building[name] = true
+			}
+			return nil
+		})
+		if werr != nil {
+			t.Fatalf("обход %s: %v", dir, werr)
+		}
+	}
+	return building, filesRead
 }

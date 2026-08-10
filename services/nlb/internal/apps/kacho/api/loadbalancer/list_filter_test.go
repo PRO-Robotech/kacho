@@ -16,7 +16,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // RBAC  per-object filtered List — kacho-nlb consumer.
@@ -29,43 +29,6 @@ import (
 
 // fakeListFilter — in-memory authzfilter.Filter для unit-тестов.
 //
-//   - bypass=true → страница отдаётся как есть (list-filter disabled / wildcard).
-//   - err!=nil    → возвращается как есть (fail-closed Unavailable у use-case).
-//   - allowed     → per (resourceType) explicit allow-list; nil-map → ничего не видно.
-type fakeListFilter struct {
-	bypass  bool
-	err     error
-	allowed map[string][]string // resourceType → ids
-	gotSubj string
-	gotType string
-	gotAct  string
-	gotIDs  []string
-}
-
-// Compile-time guard: the fake must implement the real port — a drift in the
-// filter's signature must break here, not silently skip the authz layer.
-var _ authzfilter.Filter = (*fakeListFilter)(nil)
-
-func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
-	f.gotSubj, f.gotType, f.gotAct, f.gotIDs = subject, resourceType, action, ids
-	if f.err != nil {
-		return nil, f.err
-	}
-	if f.bypass {
-		return ids, nil
-	}
-	allowed := make(map[string]struct{}, len(f.allowed[resourceType]))
-	for _, id := range f.allowed[resourceType] {
-		allowed[id] = struct{}{}
-	}
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := allowed[id]; ok {
-			out = append(out, id)
-		}
-	}
-	return out, nil
-}
 
 // ctxWithUser возвращает ctx с user-principal (FGA subject "user:<id>").
 func ctxWithUser(id string) context.Context {
@@ -80,9 +43,7 @@ func TestListLoadBalancersFilter_OnlyAccessible(t *testing.T) {
 	b := seedLB(t, repo, "prj-a", "lb-a2")
 	_ = seedLB(t, repo, "prj-a", "lb-a3") // НЕ в гранте → не должен попасть в List
 
-	flt := &fakeListFilter{allowed: map[string][]string{
-		"nlb_network_load_balancer": {a, b},
-	}}
+	flt, peer := narrowtest.Recording(a, b)
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	resp, err := uc.Execute(ctxWithUser("usr_alice"),
@@ -97,9 +58,9 @@ func TestListLoadBalancersFilter_OnlyAccessible(t *testing.T) {
 	assert.True(t, got[b])
 
 	// read==enforce: фильтр спрошен с relation viewer-action на правильном типе.
-	assert.Equal(t, "user:usr_alice", flt.gotSubj)
-	assert.Equal(t, "nlb_network_load_balancer", flt.gotType)
-	assert.Equal(t, "loadbalancer.networkLoadBalancers.list", flt.gotAct)
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "nlb_network_load_balancer", peer.ResourceType)
+	assert.Equal(t, "loadbalancer.networkLoadBalancers.list", peer.Action)
 }
 
 // no-leak: пустой грант → пустой List (НЕ ошибка, НЕ leak).
@@ -107,7 +68,7 @@ func TestListLoadBalancersFilter_EmptyGrantEmptyList(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "lb-secret")
 
-	flt := &fakeListFilter{allowed: map[string][]string{}} // нет грантов
+	flt := narrowtest.Allowing()
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	resp, err := uc.Execute(ctxWithUser("usr_bob"),
@@ -122,7 +83,7 @@ func TestListLoadBalancersFilter_FailClosed(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "lb-a1")
 
-	flt := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	flt := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	_, err := uc.Execute(ctxWithUser("usr_alice"),
@@ -137,7 +98,7 @@ func TestListLoadBalancersFilter_BypassReturnsAll(t *testing.T) {
 	seedLB(t, repo, "prj-a", "lb-a1")
 	seedLB(t, repo, "prj-a", "lb-a2")
 
-	flt := &fakeListFilter{bypass: true}
+	flt := narrowtest.AllowingAll()
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	resp, err := uc.Execute(ctxWithUser("usr_admin"),
@@ -179,7 +140,7 @@ func TestListLoadBalancersFilter_SystemSubjectNoLeak(t *testing.T) {
 
 	// Фильтр НАМЕРЕННО отдал бы страницу, если бы его спросили — так проверяется,
 	// что отказ не зависит от его сговорчивости.
-	flt := &fakeListFilter{allowed: map[string][]string{"user:": {"*"}}}
+	flt, peer := narrowtest.Recording()
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	// ctx без принципала → никого не названо → отказ ДО обращения к фильтру.
@@ -191,7 +152,7 @@ func TestListLoadBalancersFilter_SystemSubjectNoLeak(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Empty(t, resp.GetNetworkLoadBalancers(),
 		"principal-less caller must not enumerate the project's load balancers")
-	assert.Empty(t, flt.gotSubj,
+	assert.Empty(t, peer.Subject,
 		"the refusal must not depend on the filter being consulted at all")
 }
 
@@ -200,7 +161,7 @@ func TestListLoadBalancersFilter_GenericErrIsUnavailable(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "lb-a1")
 
-	flt := &fakeListFilter{err: errors.New("boom")}
+	flt := narrowtest.Failing(errors.New("boom"))
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
 	_, err := uc.Execute(ctxWithUser("usr_alice"),

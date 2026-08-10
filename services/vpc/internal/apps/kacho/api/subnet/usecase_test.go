@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -20,6 +21,8 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты Subnet use-case'ов и handler'а. Subnet работает поверх CQRS-Repository;
@@ -44,7 +47,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateSubnetUseCase(kr, or)
 	deleteUC := NewDeleteSubnetUseCase(kr, nil, or)
 	get := NewGetSubnetUseCase(kr)
-	list := NewListSubnetsUseCase(kr, nil)
+	list := NewListSubnetsUseCase(kr, narrowtest.AllowingAll())
 	addCidr := NewAddCidrBlocksUseCase(kr, or)
 	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)
 	listUsedAddrs := NewListUsedAddressesUseCase(kr, nil)
@@ -110,14 +113,14 @@ func TestHandler_Get_InvalidIDFormat(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Subnets)
 }
 
 func TestHandler_List_RequiresProject(t *testing.T) {
 	h, _, _, _ := minimalHandler(t, true)
-	_, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: ""})
+	_, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: ""})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -194,13 +197,14 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	st, _ = status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 
-	// unknown zone под ZONAL.
+	// unknown zone под ZONAL — полоса peer-validate, а не синтаксис входа:
+	// зона названа корректно, но у владельца Geography не резолвится.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: netID, ZoneID: "zone-z",
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
 
 	// host-bits != 0 → InvalidArgument.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
@@ -421,7 +425,8 @@ func TestCreateUseCase_Regional_OK(t *testing.T) {
 }
 
 // TestCreateUseCase_RegionalUnknownRegion_Rejected — несуществующий region_id
-// (geo NotFound) → InvalidArgument.
+// (geo NotFound) → полоса peer-validate: FailedPrecondition + машинный признак.
+// Текст прежний — он часть контракта и от смены полосы не зависит.
 func TestCreateUseCase_RegionalUnknownRegion_Rejected(t *testing.T) {
 	h, _, _, netID := minimalHandler(t, true)
 	_, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
@@ -431,8 +436,23 @@ func TestCreateUseCase_RegionalUnknownRegion_Rejected(t *testing.T) {
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
 	assert.Contains(t, st.Message(), "unknown region id")
+	assert.Equal(t, "PEER_RESOURCE_MISSING", reasonTokenOf(t, err),
+		"клиент отличает полосу машинно, а не разбором прозы")
+}
+
+// reasonTokenOf — машинный признак полосы из деталей отказа; пустая строка,
+// если детали нет. Отсутствие токена значимо (XC-1 D2) и обязано быть отличимо
+// от «токен не тот», поэтому промах здесь не маскируется под пустое совпадение.
+func reasonTokenOf(t *testing.T, err error) string {
+	t.Helper()
+	for _, d := range status.Convert(err).Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			return info.GetReason()
+		}
+	}
+	return ""
 }
 
 // ---- use-case-level (Update) ----
@@ -482,7 +502,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListSubnetsUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", SubnetFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -550,7 +570,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
 	// List
-	resp, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Subnets)
 	subID := resp.Subnets[0].Id
@@ -616,7 +636,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.Len(t, resp.Subnets, 1)
 
 	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteSubnetRequest{SubnetId: resp.Subnets[0].Id})

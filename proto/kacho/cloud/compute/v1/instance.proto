@@ -253,7 +253,11 @@ message ContainerSpec {
   repeated ContainerPort ports = 5;
   // Restart policy (default NEVER).
   RestartPolicy restart_policy = 6;
-  // Output-only exit code (set on a terminal SUCCEEDED/FAILED job; empty until then).
+  // Output-only exit code (set on a terminal SUCCEEDED/FAILED job; empty until
+  // then). NOT ACCEPTED ON INPUT: `ContainerSpec` also stands in
+  // CreateInstanceRequest, and a set value there is refused synchronously with
+  // INVALID_ARGUMENT naming `container_spec.exit_code` (accepted-and-ignored is
+  // not a lawful outcome).
   int32 exit_code = 7;
 }
 

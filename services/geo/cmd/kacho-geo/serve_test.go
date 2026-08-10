@@ -157,7 +157,7 @@ func TestValidateSecurityConfig(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateSecurityConfig(tc.cfg)
+			err := bootGuards(tc.cfg)
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("wantErr=%v, got err=%v", tc.wantErr, err)
 			}
@@ -227,12 +227,26 @@ func TestValidateSecurityConfig_AuthzEdgeTransport(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateSecurityConfig(tc.cfg)
+			err := bootGuards(tc.cfg)
 			if tc.wantErr != (err != nil) {
 				t.Fatalf("wantErr=%v, got err=%v", tc.wantErr, err)
 			}
 		})
 	}
+}
+
+// bootGuards — ОБЕ стражи старта в том порядке, в каком их зовёт композиционный
+// корень: сначала та, что живёт рядом с конфигурацией (круг отправителей —
+// срабатывает на любом non-breakglass старте), затем режимная.
+//
+// Таблица выше спрашивает про исход СТАРТА, а не про одну функцию: после переезда
+// круга в config.Config.Validate вызов только второй стражи отвечал бы «поднялся»
+// там, где процесс на самом деле не поднимется.
+func bootGuards(cfg config.Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	return validateSecurityConfig(cfg)
 }
 
 // Отказ обязан называть ручку и последствие: иначе стенд не поднять, а причина

@@ -11,7 +11,7 @@
 // authz-интерсептор для Check'а.
 //
 // **Авторизация здесь не живёт — ни в каком виде.** Решение о доступе принимает
-// модель прав (`internal/apps/kacho/check.PermissionMap` → `InternalIAMService.Check`),
+// модель прав (`internal/check.PermissionMap` → `InternalIAMService.Check`),
 // одинаково на обоих листенерах, fail-closed. Этот интерсептор отвечает ровно на один
 // вопрос: «предъявлен ли принципал» — и в production-mode отвергает вызов, если нет.
 //

@@ -101,16 +101,20 @@ service AccessBindingService {
   // (`subject="…"` | `role="…"` | `scope="iam.…"` | `scopeId="…"`; an unknown filter
   // key → INVALID_ARGUMENT). Page format (`page_token`/`page_size`) is validated
   // BEFORE the listauthz row-filter, so a garbage token / `page_size>1000` is
-  // INVALID_ARGUMENT regardless of grant state. The result is the caller's
-  // `viewer ∪ v_list` visible set on `iam_access_binding` (anonymous → empty;
-  // FGA error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
+  // INVALID_ARGUMENT regardless of grant state. The result is the set of bindings
+  // on `iam_access_binding` the caller may read by id — the page predicate is the
+  // relation the permission catalog gates a single-object read on, `v_get`, so the
+  // page can never be wider than the read (anonymous → empty; an authorization
+  // error → UNAVAILABLE, never an unfiltered leak). Introspection-merge
   // (ListSubjectPrivileges/ExpandAccess) stays separate (IAM-4).
   rpc List (ListAccessBindingsRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings" };
     // Authorized at the level of the data: kacho-iam reads the page by cursor and
-    // then narrows it per row (`viewer ∪ v_list` on `iam_access_binding:<id>`, in
-    // batches). There is no single object for the edge to check — the answer is a
-    // page of bindings attached to different scopes.
+    // then narrows it per row, in batches, on `v_get` on `iam_access_binding:<id>`
+    // — the same relation that gates the single-object read, so a row is on the
+    // page exactly when its holder may read it by id. There is no single object
+    // for the edge to check — the answer is a page of bindings attached to
+    // different scopes.
     //
     // It used to declare `viewer` on the cluster singleton and call that a
     // "cluster-scoped catalog gate". `viewer` on the cluster is the relation of the

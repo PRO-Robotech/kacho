@@ -29,6 +29,8 @@ import (
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // Pagination — вход для List: cursor-пагинация + project-scope + filter=name
@@ -89,7 +91,7 @@ type UseCase struct {
 	// listFilter — per-object фильтр видимости страницы List (kacho-iam
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
-	listFilter authzfilter.Filter
+	listFilter *listnarrow.Narrower
 }
 
 // New собирает UseCase для Snapshot.
@@ -110,7 +112,7 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 }
 
 // WithListFilter подключает per-object фильтр видимости публичного List.
-func (u *UseCase) WithListFilter(f authzfilter.Filter) *UseCase {
+func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 	u.listFilter = f
 	return u
 }
@@ -181,7 +183,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Snapshot, s
 	// «перечисли всё разрешённое» (тот приём усекается пределом ListObjects).
 	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo), поэтому
 	// мусорный маркер даёт InvalidArgument независимо от grant-state.
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visible, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotList, snaps,
 		func(s *domain.Snapshot) string { return s.ID })
 	if ferr != nil {

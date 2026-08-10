@@ -38,7 +38,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/grpcmw"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/handler/jwksproxyhttp"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/registrytokenwire"
@@ -313,8 +312,10 @@ func runServe(cfg config.Config) error {
 	// Check (INV-FLOOR-5), secret-authed OnRecoveryCompleted + hot-path IsRevoked
 	// (INV-FLOOR-6), and all mutations (fga_writer / system_admin / gateway-only;
 	// INV-FLOOR-8). Chained AFTER internalCallerPolicy, mirroring its prod-mode
-	// gating. The legitimate reader SAs (api-gateway/vpc/compute) are seeded
-	// system_viewer@cluster by migration 0014 (vpc-operator already by SEC-L 0010).
+	// gating. The legitimate reader SAs — api-gateway, vpc and compute, and those
+	// three only — are seeded system_viewer@cluster by migration 0014. The network
+	// operator held one too, from SEC-L 0010; migration 0081 revoked it together
+	// with the identity, so exactly three subjects can pass this floor.
 	internalSystemViewerFloor := authzguard.NewSystemViewerFloor(openfgaClient, authzguard.ReadFloorRPCs()).
 		WithProductionMode(productionMode)
 
@@ -376,7 +377,7 @@ func runServe(cfg config.Config) error {
 		// interceptor or handler becomes a logged codes.Internal for that ONE
 		// request instead of crashing the whole PDP process (metrics still
 		// records the Internal code because recovery is inner of it).
-		grpcmw.UnaryRecovery(logger),
+		grpcsrv.UnaryPanicRecovery(logger),
 		// Outermost of the authz interceptors so it sees the refusal produced by
 		// ANY of them and by the handler: attaches the machine-readable reason a
 		// client keys on. It matters most where iam decides authorization itself
@@ -390,7 +391,7 @@ func runServe(cfg config.Config) error {
 		authzguard.AntiAnonymousUnary(logger),
 	)
 	publicStream := append([]grpc.StreamServerInterceptor{
-		grpcmw.StreamRecovery(logger),
+		grpcsrv.StreamPanicRecovery(logger),
 	}, identityStream(cfg)...)
 	publicStream = append(publicStream,
 		publicCallerPolicy.Stream(),
@@ -448,7 +449,7 @@ func runServe(cfg config.Config) error {
 		// public chain: a handler/interceptor panic on the PDP hot path must
 		// not crash the process (fail-closed cluster-wide); it degrades to a
 		// logged codes.Internal for that one request.
-		grpcmw.UnaryRecovery(logger),
+		grpcsrv.UnaryPanicRecovery(logger),
 		// Same reason as on the public chain, and on the same terms: a refusal
 		// this listener produces carries the machine-readable reason too, so a
 		// client does not have to know which listener (or which layer) said no.
@@ -462,7 +463,7 @@ func runServe(cfg config.Config) error {
 		internalACRFloor.Unary(),
 	)
 	internalStream := append([]grpc.StreamServerInterceptor{
-		grpcmw.StreamRecovery(logger),
+		grpcsrv.StreamPanicRecovery(logger),
 	}, identityStream(cfg)...)
 	internalStream = append(internalStream,
 		internalCallerPolicy.Stream(),
@@ -1148,19 +1149,11 @@ func runServe(cfg config.Config) error {
 // решают пер-RPC политики вызывающего (authzguard.PublicCallerPolicy на :9090,
 // authzguard.CallerPolicy на :9091) — это ортогональный, второй слой.
 func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
-	return []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(
-			grpcsrv.WithTrustedForwarders(cfg.AuthN.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractUnary(cfg.AuthN.TrustedForwarders())
 }
 
 func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
-	return []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(
-			grpcsrv.WithTrustedForwarders(cfg.AuthN.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractStream(cfg.AuthN.TrustedForwarders())
 }
 
 // requireRegistryTokenTLS — слушатель docker-token (`/iam/token`, :9096) в

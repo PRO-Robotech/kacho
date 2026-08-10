@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 )
 
@@ -60,12 +61,38 @@ func (c Config) Validate() error {
 	if err != nil {
 		return fmt.Errorf("KACHO_STORAGE_AUTH_MODE: %w", err)
 	}
+	// ── круг отправителей чужой личности обязан быть сужен ──────────────────
+	// Считается ДО раннего возврата для dev: стража срабатывает на ЛЮБОМ старте,
+	// а не только в боевом режиме. Контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, находит «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Вне боевого режима пустой круг
+	// остаётся возможным, но как ЯВНЫЙ опт-ин.
+	//
+	// Аварийного режима у storage нет вовсе (осознанно — он уже строже
+	// остальных), поэтому освобождать здесь нечего.
+	//
+	// Стража общая на все семь сервисов: grpcsrv.TrustedForwarders.Require —
+	// один исход, один текст отказа, различаются только имена ручек.
+	forwardersErr := c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
+		Production:   mode.IsProduction(),
+		DevTrustAny:  c.AuthZTrustAnyForwarder,
+		SANsKnob:     "KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS",
+		TrustAnyKnob: "KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER",
+	})
+
 	if !mode.IsProduction() {
-		// dev — insecure-дефолты допустимы (WARN в serve.go, не fatal).
-		return nil
+		// dev — прочие insecure-дефолты допустимы (WARN в serve.go, не fatal);
+		// круг отправителей остаётся единственным измерением, которое гейтится и
+		// здесь.
+		return forwardersErr
 	}
 
 	var problems []string
+	// В боевом режиме отказ не возвращается сразу: оператор обязан увидеть ВЕСЬ
+	// список проблем за один прогон, а не чинить их по одной.
+	if forwardersErr != nil {
+		problems = append(problems, forwardersErr.Error())
+	}
 
 	// ── DB-транспорт: plaintext до БД в проде запрещён ──────────────────────
 	switch mode {
@@ -148,30 +175,43 @@ func (c Config) Validate() error {
 		}
 	}
 
-	// ── круг отправителей чужой личности обязан быть сужен ──────────────────
-	// Оба листенера строят цепочку CertIdentityExtract →
-	// TrustedPrincipalExtract(WithTrustedForwarders(cfg.TrustedForwarders())).
-	// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на
-	// непустом списке; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему
-	// проверку сертификата, и переданная в метаданных личность становится субъектом
-	// проверки прав (pkg/authz subject_extract). То есть на пустом списке сосед со
-	// своим законным сертификатом (compute, nlb, vpc, registry, оператор) читает,
-	// меняет и удаляет чужие тома, снимки и образы от имени жертвы, а на внутреннем
-	// листенере ещё и привязывает/отвязывает их. Внутренний периметр у нас объявлен
-	// НЕдоверенным, и слой TLS имена не сверяет — сужает только этот список.
+	// ── транспорт ИСХОДЯЩИХ рёбер ───────────────────────────────────────────
+	// Выше проверены листенеры — то, КАК с нами говорят. Здесь — то, как говорим
+	// мы: клиентская сторона рёбер storage→iam и storage→geo.
 	//
-	// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
-	// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","`
-	// не может пройти гейт и вернуть дыру (у compute и nlb этот кейс считается
-	// len() и проходит).
+	// Почему это отдельное измерение, а не следствие проверки листенеров.
+	// Невзведённая ручка клиента не даёт ошибки сама по себе:
+	// grpcclient.TLSClientCreds на Enable=false возвращает insecure-creds БЕЗ
+	// ошибки, поэтому процесс поднимается, печатает «peer edge configured» и
+	// «authz interceptor enabled», а каждый Check уходит по открытому каналу.
+	// Контроль, от которого зависит решение о доступе, при этом присутствует и
+	// не отказывает ни разу за свою жизнь.
 	//
-	// dev осознанно терпит пусто — но только в in-process фикстурах: на РАЗВЁРНУТОМ
-	// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
-	if len(c.TrustedForwarders()) == 0 {
+	// Предикат активности — ТОТ ЖЕ, что читает проводка: composition root зовёт
+	// dialPeer(addr, creds, …), и dialPeer поднимает соединение ровно при
+	// непустом адресе (cmd/storage/serve.go). Поэтому «страж увидел ребро» ⟺
+	// «ребро дилится»: незаданный адрес не порождает требования к транспорту, а
+	// заданный — порождает всегда. Связь стража с проводкой заперта
+	// cmd/storage/peer_transport_wiring_test.go.
+	//
+	// Ручка на все три ребра к iam одна (IAMClientMTLS) — это записанное
+	// отступление storage от соседей, см. docs/architecture/known-divergences.md
+	// §1. Страж от него не зависит: он требует того же предиката, который читает
+	// проводка, каким бы ни было число ручек.
+	if c.AuthZIAMGRPCAddr != "" || c.IAMGRPCAddr != "" {
+		if !c.IAMClientMTLS.Enable {
+			problems = append(problems,
+				"verified transport required on the storage→iam edges: set KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE=true "+
+					"(with cert/key/CA) — the per-RPC authorization Check, the per-object List filter, the owner-tuple "+
+					"registration and the project existence lookup all travel over this connection, and unarmed client "+
+					"credentials degrade to cleartext silently, so the process starts and reports authorization as enabled")
+		}
+	}
+	if c.GeoGRPCAddr != "" && !c.GeoClientMTLS.Enable {
 		problems = append(problems,
-			"trusted-forwarder allow-list required: set KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS "+
-				"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring "+
-				"service can act as any tenant; pin the api-gateway SAN and the compute SAN)")
+			"verified transport required on the storage→geo edge: set KACHO_STORAGE_GEO_CLIENT_MTLS_ENABLE=true "+
+				"(with cert/key/CA) — zone existence and the volume/image placement coherence check are decided on "+
+				"this connection, and unarmed client credentials degrade to cleartext silently")
 	}
 
 	if len(problems) > 0 {

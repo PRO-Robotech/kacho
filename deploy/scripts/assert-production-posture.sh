@@ -145,7 +145,8 @@ POSTURE_SKIP="${POSTURE_SKIP:-}"
 #
 # registry добавлен: у него появилась ручка
 # (KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS), стража старта
-# (requireTrustedForwarders — боевой режим не стартует на пустом списке) и
+# (Config.Validate → grpcsrv.TrustedForwarders.Require — старт не проходит на
+# несуженном круге) и
 # доверенная пара на ОБОИХ листенерах. До этого публичный листенер вообще читал
 # заголовки личности без проверки транспорта.
 #

@@ -17,6 +17,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // checkTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib
@@ -35,11 +36,24 @@ const checkTimeout = 2 * time.Second
 // IAMCheckClient адаптирует kacho-iam.InternalIAMService.Check под authz.CheckClient.
 type IAMCheckClient struct {
 	cli iamv1.InternalIAMServiceClient
+	// narrower — общий сужатель списков поверх ТОГО ЖЕ соединения: `AuthorizeService`
+	// зарегистрирован и на внутреннем листенере kacho-iam, поэтому второго дозвона не
+	// заводится.
+	narrower *listnarrow.Narrower
 }
 
 // NewIAMCheckClient строит адаптер поверх conn к internal-листенеру kacho-iam (:9091).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
-	return &IAMCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)}
+	return &IAMCheckClient{
+		cli: iamv1.NewInternalIAMServiceClient(conn),
+		narrower: listnarrow.New(listnarrow.NewAuthorizeClient(conn), listnarrow.Config{
+			// Предикат страницы registry задаётся ЯВНО на каждом вызове (см.
+			// CheckMany), поэтому карта здесь несёт лишь умолчание — но несёт, иначе
+			// сборка сужателя отвергла бы посадку без предиката.
+			Relations: map[string][]string{"": {"v_list"}},
+			Timeout:   checkTimeout,
+		}),
+	}
 }
 
 // Check вызывает InternalIAMService.Check с собственным per-call deadline
@@ -62,3 +76,33 @@ func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object 
 }
 
 var _ authz.CheckClient = (*IAMCheckClient)(nil)
+
+// CheckMany — тот же вопрос про МНОГО объектов одного типа, партиями ≤
+// listnarrow.MaxBatchSize через `AuthorizeService.BatchCheck`, ограниченным веером.
+//
+// Дверь другая, чем у Check: `InternalIAMService.Check` спрашивает про ОДИН объект и
+// пакетной формы не имеет. Прежде страница каталога опрашивалась ею поштучно — до
+// тысячи запросов на страницу при веере восемь, то есть 125 последовательных волн
+// против двух у соседних сервисов, которые ту же страницу спрашивают партиями.
+//
+// Механика — общий сужатель списков (`pkg/listnarrow`): партии, ограниченный веер,
+// бюджет от бюджета операции, окно ПОЛОЖИТЕЛЬНЫХ вердиктов и fail-closed. Своей
+// копии здесь не заводится — именно четыре таких копии и сводились в один дом.
+//
+// Личность вызывающего к этому моменту уже установлена гейтом (`callerSubject`), и
+// его собственный код отказа остаётся за ним: субъект передаётся сюда ЗНАЧЕНИЕМ.
+func (c *IAMCheckClient) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	if len(objectIDs) == 0 {
+		return nil, nil
+	}
+	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	return c.narrower.Visible(auth.PropagateOutgoing(cctx), subject, objectType,
+		catalogPageAction, relation, objectIDs)
+}
+
+// catalogPageAction — аудит-строка вопроса о СТРАНИЦЕ каталога. Она едет в каждый
+// вопрос для аудита и трассировки; решение принимает явное отношение, а не она.
+const catalogPageAction = "registry.repositories.list"

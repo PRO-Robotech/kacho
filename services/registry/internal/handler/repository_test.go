@@ -143,3 +143,10 @@ func TestRepositoryHandler_RG1B10B11_RegistryDefaultVisibilityAdminGate(t *testi
 	require.NoError(t, aerr, "admin проходит gate (B11)")
 	require.NotNil(t, op)
 }
+
+// CheckMany — та же дверь, выведенная из Check (см. manyFromOne).
+func (a relAuthz) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	return manyFromOne{one: a.Check}.checkMany(ctx, subject, relation, objectType, objectIDs)
+}

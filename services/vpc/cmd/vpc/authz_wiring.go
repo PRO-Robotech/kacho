@@ -9,7 +9,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // fatalAuthzInterceptorAbsent — frozen-текст fail-fast'а S3: production-инстанс

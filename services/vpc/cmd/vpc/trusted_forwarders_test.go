@@ -40,7 +40,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
 )
 
@@ -91,7 +91,7 @@ func victimHeaders() metadata.MD {
 // chainOutcome прогоняет РЕАЛЬНУЮ пару извлечения + AuthN-страж + интерсептор
 // авторизации и сообщает наблюдаемое: дошёл ли вызов до handler'а, с какой ошибкой
 // и КОГО модель увидела субъектом.
-func chainOutcome(t *testing.T, ctx context.Context, forwarders []string) (
+func chainOutcome(t *testing.T, ctx context.Context, forwarders grpcsrv.TrustedForwarders) (
 	reached bool, err error, askedSubjects []string,
 ) {
 	t.Helper()
@@ -119,7 +119,7 @@ func chainOutcome(t *testing.T, ctx context.Context, forwarders []string) (
 
 	// Порядок ровно тот, что собирает composition root: пара извлечения → AuthN →
 	// authz. Сворачиваем справа налево, чтобы первым исполнялось первое звено.
-	chain := append(principalExtractUnary(forwarders),
+	chain := append(grpcsrv.PrincipalExtractUnary(forwarders),
 		handler.AuthNUnaryInterceptor(true))
 	next := func(ctx context.Context, req any) (any, error) {
 		return authzIntr.Unary()(ctx, req, info, final)
@@ -144,7 +144,7 @@ func TestPrincipalChain_NeighbourWithValidCertCannotSpeakForAUser(t *testing.T) 
 	ctx := metadata.NewIncomingContext(context.Background(), victimHeaders())
 	ctx = certPeerCtx(t, ctx, sanNeighbour)
 
-	reached, err, asked := chainOutcome(t, ctx, []string{sanGateway})
+	reached, err, asked := chainOutcome(t, ctx, grpcsrv.NewTrustedForwarders(sanGateway))
 
 	require.Error(t, err, "пир вне круга отправителей не вправе говорить за пользователя")
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
@@ -159,7 +159,7 @@ func TestPrincipalChain_ListedForwarderSpeaksForTheUser(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), victimHeaders())
 	ctx = certPeerCtx(t, ctx, sanGateway)
 
-	reached, err, asked := chainOutcome(t, ctx, []string{sanGateway})
+	reached, err, asked := chainOutcome(t, ctx, grpcsrv.NewTrustedForwarders(sanGateway))
 
 	require.NoError(t, err)
 	assert.True(t, reached, "законный отправитель обязан доносить личность до модели")
@@ -169,21 +169,22 @@ func TestPrincipalChain_ListedForwarderSpeaksForTheUser(t *testing.T) {
 // Круг сужается ПО ФАКТИЧЕСКИМ отправителям, а не по догадке «наверное только
 // шлюз»: у vpc личность конечного пользователя законно передают ещё compute
 // (привязка интерфейса, резолв подсети), nlb (резолв подсети/адреса/группы) и
-// оператор (SEC-G read). Сузив список до одного шлюза, мы бы сломали их — и это
-// проверяется исходом, а не чтением values.
+// Сузив список до одного шлюза, мы бы сломали их — и это проверяется исходом, а не
+// чтением values. Здесь стоял ещё один отправитель — компонент, которого в дереве
+// нет и репозитория под который не существует; снят решением владельца 2026-08-09,
+// потому что круг пинится по ФАКТИЧЕСКИМ отправителям.
 func TestPrincipalChain_EveryListedSenderIsAccepted(t *testing.T) {
 	senders := []string{
 		sanGateway,
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-compute",
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb",
-		"spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator",
 	}
 	for _, san := range senders {
 		t.Run(san, func(t *testing.T) {
 			ctx := metadata.NewIncomingContext(context.Background(), victimHeaders())
 			ctx = certPeerCtx(t, ctx, san)
 
-			reached, err, asked := chainOutcome(t, ctx, senders)
+			reached, err, asked := chainOutcome(t, ctx, grpcsrv.NewTrustedForwarders(senders...))
 			require.NoError(t, err)
 			assert.True(t, reached)
 			assert.Contains(t, asked, "user:usr_victim")
@@ -199,7 +200,7 @@ func TestPrincipalChain_EmptyListNarrowsNothing(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), victimHeaders())
 	ctx = certPeerCtx(t, ctx, sanNeighbour)
 
-	reached, err, asked := chainOutcome(t, ctx, nil)
+	reached, err, asked := chainOutcome(t, ctx, grpcsrv.TrustedForwarders{})
 
 	require.NoError(t, err, "пустой список принимает личность от любого проверенного пира")
 	assert.True(t, reached)
@@ -214,7 +215,7 @@ func TestPrincipalChain_TLSPeerWithoutVerifiedCertIsNotTrusted(t *testing.T) {
 		AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{}},
 	})
 
-	reached, err, asked := chainOutcome(t, ctx, []string{sanGateway})
+	reached, err, asked := chainOutcome(t, ctx, grpcsrv.NewTrustedForwarders(sanGateway))
 
 	require.Error(t, err)
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))

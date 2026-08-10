@@ -59,3 +59,38 @@ func validateStaticRoutes(routes []domain.StaticRoute) error {
 	}
 	return nil
 }
+
+// staticRoutesFromProto — proto-маршруты в domain, с ЯВНЫМ отказом по ветке
+// следующего перехода, которой у сервиса нет.
+//
+// `StaticRoute.next_hop` — oneof из двух ветвей: адрес и `gateway_id`. Реализован
+// адрес. Пока разбор читал только его, выбранный вызывающим `gateway_id` не читал
+// НИКТО (api-conventions.md, «Принято-и-проигнорировано — ЗАПРЕЩЕНО»): маршрут
+// доезжал до валидации с пустым следующим переходом и получал отказ по имени
+// СОСЕДНЕЙ ветки, которую вызывающий не посылал. Теперь ветка отвергается своим
+// именем и синхронно — исход №2 правила.
+//
+// Поле оставлено на контракте намеренно: край REST молча выбрасывает неизвестные
+// ключи тела, поэтому его удаление вернуло бы именованный отказ обратно в
+// невнятный «next_hop_address is required». Тот же довод записан у compute над
+// `CreateInstanceRequest.ssh_public_keys`.
+func staticRoutesFromProto(in []*vpcv1.StaticRoute) ([]domain.StaticRoute, error) {
+	if len(in) == 0 {
+		return nil, nil
+	}
+	out := make([]domain.StaticRoute, 0, len(in))
+	for i, sr := range in {
+		if _, ok := sr.GetNextHop().(*vpcv1.StaticRoute_GatewayId); ok {
+			field := fmt.Sprintf("static_routes[%d].gateway_id", i)
+			return nil, serviceerr.InvalidArg(field,
+				field+" is not supported: route the next hop by IP address "+
+					"(static_routes[].next_hop_address)")
+		}
+		out = append(out, domain.StaticRoute{
+			Labels:            sr.Labels,
+			DestinationPrefix: sr.GetDestinationPrefix(),
+			NextHopAddress:    sr.GetNextHopAddress(),
+		})
+	}
+	return out, nil
+}

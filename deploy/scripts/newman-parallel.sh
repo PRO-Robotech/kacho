@@ -79,6 +79,15 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
+# Адреса ПОЛОСЫ ФАСАДА (#59). Это не api-gateway: кейсы IBT-* обязаны спросить сами
+# слушатели, иначе «токен проверяется через фасад» останется утверждением о конфиге,
+# а не о поведении. Оба адресата — ЯДРО (iam), то есть есть на каждом стенде.
+IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
+IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+# Адрес data plane реестра здесь БОЛЬШЕ НЕ ОБЪЯВЛЯЕТСЯ: его адресат — компонент,
+# а не ядро, и порт вместе с портовой ручкой живёт в deploy/e2e-shards.json
+# (`optional_transports`), откуда его читает цикл ниже. Объявлять его и здесь
+# значило бы завести два места об одном предмете с разными умолчаниями.
 # Transports of WAVE 4 (the ceremony). The wave turns itself on from a fact about the
 # tree — the ceremony seed exists — and the seed dials the identity provider and the
 # token issuer directly, because neither is routed through the gateway. Those dials had
@@ -158,11 +167,51 @@ kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444"
 kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!); PF_WHAT+=("$KRATOS_PUBLIC_PORT|kratos public (:80)|/tmp/e2e-pp-kratos-pub.log")
 kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!); PF_WHAT+=("$KRATOS_ADMIN_PORT|kratos admin (:80)|/tmp/e2e-pp-kratos-adm.log")
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
+# Полоса фасада (#59). Каждый проброс попадает в PF_WHAT, поэтому не вставший
+# проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
+kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
+kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
+
+# ─── ПРОБРОСЫ К КОМПОНЕНТАМ — ОТКРЫВАЮТСЯ ПО СПРОСУ, А НЕ ВСЕГДА ─────────────
+#
+# Все пробросы выше ведут к ЯДРУ: api-gateway, iam, провайдер подписи, церемония —
+# это есть на каждом стенде. Проброс к КОМПОНЕНТУ (реестр, и далее по списку
+# `optional_transports` манифеста) вести себя так не может: шард поднимает не все
+# компоненты, а `kubectl port-forward svc/<нет такого>` не встаёт и ЗАВЕРШАЕТСЯ —
+# после чего блок ниже совершенно правильно объявляет прогон недействительным.
+#
+# ИМЕННО ТАК ЧЕТЫРЕ ШАРДА ИЗ ПЯТИ НЕ ЗАПУСТИЛИ НИ ОДНОЙ СУИТЫ (прогон 31344367968,
+# по 0 из 16 коллекций у каждого): проброс к data plane реестра открывался
+# безусловно, а реестра на тех стендах нет и быть не должно. Ни одна коллекция тех
+# суит его при этом не набирала — то есть прогон погиб об адрес, который никому из
+# исполняемого не был нужен.
+#
+# ПОЧЕМУ ЭТО НЕ ПОСЛАБЛЕНИЕ. Спрос ВЫВОДИТСЯ ИЗ ДЕРЕВА (кто из коллекций и
+# case-файлов запускаемых суит упоминает переменную), а не выписывается; и если
+# спрос есть — проброс ОБЯЗАТЕЛЕН на прежних условиях: не встал ⇒ прогон
+# недействителен тем же блоком ниже. Полоса, которую никто не набирает, не имеет
+# предмета; полоса, которую набирают, обязана стоять. Парность «набирает ⇒
+# компонент поднят» держит assert-shard-coverage.py (п.9), поэтому суита не может
+# уехать на стенд без своего адресата молча.
+#
+# Перепись печатается всегда: «опциональных транспортов не нужно» обязано быть
+# отличимо от «ни одного файла не прочитано».
+OPT_ENV_ARR=()     # --env-var ... для запуска суиты (массив)
+OPT_ENV_ARGS=""    # то же строкой — для волн, принимающих EXTRA_NEWMAN_ARGS
+while IFS='|' read -r _ovar _osvc _otport _oportenv _odport _oscheme _owhy; do
+  [ -n "${_ovar:-}" ] || continue
+  _oport="${!_oportenv:-$_odport}"
+  kubectl -n "$NS" port-forward "svc/$_osvc" "$_oport:$_otport" >"/tmp/e2e-pp-opt-$_ovar.log" 2>&1 &
+  PF_PIDS+=($!); PF_WHAT+=("$_oport|$_owhy|/tmp/e2e-pp-opt-$_ovar.log")
+  OPT_ENV_ARR+=(--env-var "$_ovar=$_oscheme://localhost:$_oport")
+  OPT_ENV_ARGS="$OPT_ENV_ARGS --env-var $_ovar=$_oscheme://localhost:$_oport"
+  echo "[parallel] транспорт компонента: $_ovar → svc/$_osvc :$_otport на localhost:$_oport ($_owhy)"
+done < <(python3 "$SCRIPT_DIR/e2e-optional-transports.py" --suites "$SERVICES" --census)
 sleep 4
 
 # ПРОБРОС, КОТОРЫЙ НЕ ВСТАЛ, ОСТАНАВЛИВАЕТ ПРОГОН ЗДЕСЬ.
 #
-# Восемь пробросов открывались, и НИ ОДИН не проверялся. `kubectl port-forward` на
+# Пробросы открывались, и НИ ОДИН не проверялся. `kubectl port-forward` на
 # занятом порту печатает отказ в свой лог-файл, который никто не читает, и ВЫХОДИТ;
 # скрипт спал четыре секунды и шёл дальше. Дальше — два исхода, и худший из них тихий:
 #
@@ -204,6 +253,7 @@ if [ "${#pf_dead[@]}" -gt 0 ]; then
   echo "Чаще всего порт занят другим прогоном или забытой сессией (\`ss -ltnp\`)."
   echo "Порты переносятся ручками: GW_PORT / GW_INTERNAL_PORT / GW_TLS_PORT /"
   echo "IAM_INTERNAL_PORT / HYDRA_PUBLIC_PORT / KRATOS_PUBLIC_PORT / KRATOS_ADMIN_PORT /"
+  echo "IAM_JWKS_PORT / IAM_REGTOKEN_PORT / REGISTRY_DATAPLANE_PORT /"
   echo "HYDRA_ADMIN_PORT — набираемые адреса следуют за ними (см. передачу в посев ниже)."
   exit 2
 fi
@@ -386,8 +436,8 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     # раннерам обычно даёт шарду одну-две суиты, и восстановить конкуренцию должно
     # быть решением с числом, а не правкой кода.
     #
-    # СЧИТАЮТСЯ ТОЛЬКО СУИТЫ, И ЭТО НЕ ПРИДИРКА. У этого скрипта в фоне ВОСЕМЬ
-    # пробросов портов, которые не завершаются никогда — они живут ровно столько,
+    # СЧИТАЮТСЯ ТОЛЬКО СУИТЫ, И ЭТО НЕ ПРИДИРКА. У этого скрипта в фоне живут
+    # пробросы портов, которые не завершаются никогда — они живут ровно столько,
     # сколько прогон. Поэтому ни `jobs -rp | wc -l` (считает и их), ни голый
     # `wait`/`wait -n` (ждёт и их) здесь не годятся: первая же итерация ограничителя
     # встала бы навсегда, и прогон умер бы по таймауту шага, не отчитавшись ни одной
@@ -411,11 +461,15 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+        --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+        --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
+        --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+        "${OPT_ENV_ARR[@]}" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!
     WAVE_RUNNING+=("$!")
   done
-  # Дождаться ТОЛЬКО суит. Голый `wait` ждал бы ещё и восемь вечных пробросов
+  # Дождаться ТОЛЬКО суит. Голый `wait` ждал бы ещё и вечные пробросы
   # портов — то есть не вернулся бы никогда (см. пояснение у ограничителя выше).
   _wave_wait_below 1
   for svc in "$@"; do
@@ -475,7 +529,7 @@ if [ "$FAILCLOSED_WAVE" = "true" ] && [[ " $SERVICES " == *" iam "* ]] && [ -f "
   # оставляет out/authz-failclosed.json, по которому вердикт вынесет гейт.
   if ( cd "$REPO_ROOT/services/iam/tests/newman" \
         && env SETUP_NS="$NS" DELAY="$DELAY" \
-           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OPT_ENV_ARGS" \
            bash "$FAILCLOSED_SH" ); then
     echo "===== [failclosed] GREEN ====="
   else
@@ -551,7 +605,7 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
              HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
              HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
              IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
-             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT$OPT_ENV_ARGS" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
     else

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 )
 
 // FGA-register-intent  — pure-Go domain value-types for the
@@ -37,19 +39,16 @@ const (
 
 // FGA relation strings of the kacho-nlb authorization model.
 //
-// ONLY "project" is emitted in a register-intent. kacho-iam's FGA-proxy accepts
-// exactly the ownership/parent relations {project, account, parent, owner}
-// (authzguard.allowedProxyRelations) and reserves privilege relations for the
-// AccessBinding flow — so "admin" (formerly emitted as a creator tuple) and
-// "load_balancer" (formerly emitted as a parent-link) were refused on every
-// delivery and are no longer emitted at all. They remain named here because they
-// are real relations of the model: "admin" is written by the AccessBinding flow,
-// and "load_balancer" is a structural parent-pointer (fga_model.fga documents it
-// as NOT an access cascade — access is materialized per-object by the reconciler).
+// ONLY `project` is emitted in a register-intent, and it is NAMED FROM THE
+// RECEIVING SIDE'S DECLARATION (pkg/authz/proxytuple) rather than spelled again
+// here: the accepted set belongs to kacho-iam, and a second spelling of somebody
+// else's closed set is a copy that drifts silently. Privilege relations are
+// reserved for the AccessBinding flow — "admin" (formerly emitted as a creator
+// tuple) was refused on every delivery and is no longer emitted at all. It stays
+// named here because it is a real relation of the model, written by that flow.
 const (
-	FGARelationAdmin        = "admin"
-	FGARelationProject      = "project"
-	FGARelationLoadBalancer = "load_balancer"
+	FGARelationAdmin   = "admin"
+	FGARelationProject = string(proxytuple.RelationProject)
 	// FGARelationEditor — write-relation checked on a project for the
 	// destination-project authorization of cross-project Move (the caller must
 	// hold editor on the destination project, not just on the source resource).

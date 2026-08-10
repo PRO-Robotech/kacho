@@ -40,6 +40,6 @@ func bootPosture(cfg config.Config, mtlsCfg config.MTLSConfig) observability.Boo
 		PublicMTLS:        mtlsCfg.PublicServerMTLS.Enable,
 		InternalMTLS:      mtlsCfg.InternalServerMTLS.Enable,
 		AuthZCheck:        cfg.AuthZ.IAMEndpoint != "",
-		TrustedForwarders: len(cfg.TrustedForwarders()) > 0,
+		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 	}
 }

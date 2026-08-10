@@ -20,14 +20,21 @@
      обращение к полю `x.Foo`, где ТИП `x` — именно это сообщение. Тип резолвится
      `go/types`; индекс строит `tools/unreadfieldaudit/cmd/proto-field-readers`,
      этот предикат его запускает сам. Совпадение имён здесь не закрывает ничего
-     by construction.
+     by construction. Сюда же входят ДВЕ формы чтения члена `oneof`, у которых
+     получателем выступает тип-обёртка `<Родитель>_<Поле>`: обращение к её
+     единственному полю (`v.Tcp`) и РАЗЛИЧЕНИЕ ветки по типу
+     (`switch x.(type)` / `x.(*T)`) — для члена с пустой полезной нагрузкой
+     (`message X {}`) второе есть единственно возможное чтение. Конструирование
+     ветки (`&pb.M_Foo{…}` на пути ответа) чтением НЕ считается.
   2. ИМЯ ПОЛЯ СТРОКОЙ (слабая). `"<snake>"` в прод-коде: known-set маски
      обновления, whitelist фильтра, `from_request_field` каталога прав — край
      читает поле РЕФЛЕКСИЕЙ ПО ИМЕНИ, и это настоящий читатель. Но у строки нет
      получателя, поэтому приписать её конкретному сообщению нечем: если такое имя
      объявлено не в одном сообщении домена, читатель мог принадлежать другому.
      Поля, закрытые ТОЛЬКО этой формой, печатаются поимённо, а не прячутся в
-     «закрыто».
+     «закрыто». Сюда же попадает явный отказ по имени (`AddFieldViolation`):
+     он такой же именной, значит и слабость у него та же — отдельной корзины у
+     него нет намеренно, она была бы пуста всегда by construction.
 
 ПОЧЕМУ ОСНОВА СМЕНИЛАСЬ (issue kacho#110). Прежде все формы искали ИМЯ, и имя
 между сообщениями одного домена не уникально (`filter`, `name`, `labels`,
@@ -35,8 +42,19 @@
 именем-омонимом — девять десятых вердикта держались на совпадении имён, то есть
 «полей без читателя: 0» опиралось на атрибуцию, которая могла указывать на другое
 сообщение. Так предикат пропускал `NetworkInterfaceSpec.nic_id` и `.index` (оба
-найдены глазами, оба оказались дефектами). После смены основы слабой атрибуцией
-закрыто 8 полей — и они названы поимённо.
+найдены глазами, оба оказались дефектами).
+
+ПОЧЕМУ СОСТАВ ОСМАТРИВАЕМОГО ВЫРОС (тот же issue, вторая половина). Сменить
+атрибуцию мало: корзина, куда поле не попадает ВООБЩЕ, порогом не сторожится.
+Слепых зон было три, все закрыты, замер на `982b0849` — 826 → 905 полей и 2 → 0
+сообщений без сгенерированного кода:
+
+  * поля внутри `oneof` не осматривались вовсе (разборщик вырезал блок наравне с
+    любым `{…}`) — 62 таких поля в дереве;
+  * вложенное сообщение ключевалось коротким именем и потому не сходилось ни с
+    индексом чтений, ни с геттерами (Go-имя — `Parent_Nested`);
+  * `message X {}` объявлялось «нет .pb.go» по отсутствию геттеров, которых у
+    пустого сообщения нет by construction.
 
 ПРЕДПОСЫЛКИ, БЕЗ КОТОРЫХ ПРЕДИКАТ НЕ УТВЕРЖДАЕТ НИЧЕГО (проверяются, а не
 предполагаются; при невыполнении — выход с кодом 2, не «чисто»):
@@ -50,17 +68,9 @@
   * Go-имя поля берётся из `pkg/api/**/*.pb.go`, а не выводится самодельной
     камелизацией; сообщение без сгенерированного кода НЕ осмотрено и называется
     отдельной строкой переписи;
-  * ПОЛЯ ВНУТРИ `oneof` НЕ ОСМАТРИВАЮТСЯ ВОВСЕ — слепая зона, унаследованная от
-    разборщика: `_own_level` вырезает любой `{…}`-блок, поэтому члены `oneof`
-    не попадают в поля объемлющего сообщения. Замер на `e5bbd92f` (предикат:
-    для каждого `oneof … {` в `proto/kacho/cloud/*/v1/*.proto` посчитаны
-    объявления полей внутри блока, владелец — самое узкое объемлющее
-    `message`): таких полей 62, из них 37 — в сообщениях, которые предикат
-    раскрывает как публичный запрос (`CreateInstanceRequest.spec`,
-    `Target.identity`, `VipSource.source`, `HealthCheck.options` и др.). Это
-    ЗНАЧИТ, что «осмотрено полей: N» — про поля вне `oneof`, и закрытие этой
-    зоны — отдельная работа, а не побочный эффект правки основы (issue #110
-    менял АТРИБУЦИЮ читателя, а не состав осматриваемых полей);
+  * сообщения ключуются Go-ИМЕНЕМ ТИПА (вложенное — `Parent_Nested`), тем же,
+    каким их называют индекс чтений и сгенерированные геттеры. Пока ключом было
+    короткое имя, вложенное сообщение не сходилось ни с тем, ни с другим;
   * у домена найдено хоть одно дерево прод-кода (имя proto-домена не равно имени
     каталога сервиса — см. DOMAIN_SERVICE_DIR).
 
@@ -71,9 +81,14 @@
     `Unimplemented`. Внутри такого запроса поля не «приняты и выброшены» — они не
     приняты вовсе. Сообщение извиняется только если его НЕ достаёт ни один
     реализованный RPC (см. `excused_sets`).
-  * `ПРЕДОК-ОТВЕРГАЕТСЯ` / `ОТВЕРГАЕТСЯ-ПО-ИМЕНИ` — сервис отвергает поле явно, с
-    именем поля, синхронно (это исход №2 правила). Всё, что достижимо ТОЛЬКО через
-    отвергнутое поле, недостижимо по построению.
+  * `ПРЕДОК-ОТВЕРГАЕТСЯ` — сервис отвергает поле-родителя явно, с именем поля,
+    синхронно (это исход №2 правила). Всё, что достижимо ТОЛЬКО через отвергнутое
+    поле, недостижимо по построению.
+
+Обе причины вычисляются по ДЕРЕВУ и от атрибуции по имени не зависят, поэтому
+проверяются РАНЬШЕ слабой корзины: иначе поле нереализованного RPC, чьё имя
+где-то встречается строкой, объявлялось бы «закрытым слабой атрибуцией» — то есть
+слабость мерки выписывалась бы там, где мерка не применялась.
 
 Остаётся «полей БЕЗ читателя» — вот это вердикт, и он требует одного из трёх
 исходов правила по каждому полю.
@@ -90,7 +105,8 @@
 
 Без аргументов — все домены `proto/kacho/cloud/*/v1`. Флаг
 `--reader-index=<файл>` берёт готовый индекс вместо построения (отладка; в CI не
-нужен — предикат строит индекс сам).
+нужен — предикат строит индекс сам). Флаг `--self-test` — инъекция в обе стороны
+на разборщике и на атрибуции чтения (см. `self_test`).
 """
 import glob
 import json
@@ -134,6 +150,10 @@ RE_MESSAGE = re.compile(r"^(\s*)message\s+(\w+)\s*\{", re.M)
 RE_FIELD = re.compile(
     r"^\s*(?:(repeated|optional)\s+)?([\w.]+)\s+(\w+)\s*=\s*(\d+)\s*[;\[]", re.M)
 RE_GETTER = re.compile(r"^func \(x \*(\w+)\) Get(\w+)\(\)", re.M)
+# Заголовок `oneof <имя>` непосредственно перед `{` — см. _own_level.
+RE_ONEOF_HEAD = re.compile(r"\boneof\s+\w+\s*$")
+# Объявление Go-структуры в сгенерированном коде — см. load_getters.
+RE_STRUCT = re.compile(r"^type (\w+) struct \{", re.M)
 RE_MAP = re.compile(r"^\s*map<[^>]*>\s+(\w+)\s*=", re.M)
 
 SCALARS = {
@@ -148,12 +168,22 @@ def strip_comments(s):
 
 
 def parse_proto(path):
-    """Вернуть (services, messages) одного .proto.
+    """Вернуть (services, messages, scopes) одного .proto.
 
     services: {ServiceName: [(rpc, request_type)]}
-    messages: {ShortName: [(field_name, type_name, repeated)]}  (вложенные — по
-              короткому имени: этого достаточно, потому что Go-имена всё равно
-              берутся из сгенерированного кода по короткому имени message'а).
+    messages: {GoИмя: [(field_name, сырой_тип, repeated)]}
+    scopes:   {GoИмя: [GoИмя, родитель, …, ""]} — цепочка областей видимости
+              proto, от самой узкой к глобальной; по ней резолвятся типы полей.
+
+    КЛЮЧ — Go-ИМЯ ТИПА, А НЕ КОРОТКОЕ ИМЯ message'а, и это не косметика.
+    Вложенный `message Nested` внутри `message Parent` порождает Go-тип
+    `Parent_Nested`; индекс чтений (`protofieldreaders`) ключуется именно
+    Go-типом, и сгенерированные геттеры объявлены на нём же. Пока ключом было
+    короткое имя, вложенное сообщение не сходилось ни с индексом, ни с
+    геттерами — оно объявлялось «нет .pb.go» и его поля НЕ ОСМАТРИВАЛИСЬ вовсе
+    (замер на 982b0849: 6 таких сообщений домена loadbalancer, достижимых через
+    `oneof`). Теперь ключ строится по вложенности и совпадает с Go-именем
+    побайтово, поэтому сходиться ему больше не с чем расходиться.
     """
     body = strip_comments(open(path, encoding="utf-8").read())
     services = {}
@@ -161,25 +191,68 @@ def parse_proto(path):
         name = m.group(1)
         block = _balanced(body, m.end() - 1)
         services[name] = [(r.group(1), r.group(2)) for r in RE_RPC.finditer(block)]
-    messages = {}
+
+    spans = []
     for m in RE_MESSAGE.finditer(body):
-        name = m.group(2)
-        block = _balanced(body, m.end() - 1)
-        own = _own_level(block)
+        o = m.end() - 1
+        spans.append((m.group(2), o, _closing(body, o)))
+    spans.sort(key=lambda s: s[1])
+
+    messages, scopes = {}, {}
+    stack = []  # [(GoИмя, индекс закрывающей скобки)]
+    for name, o, c in spans:
+        while stack and o > stack[-1][1]:
+            stack.pop()
+        qual = f"{stack[-1][0]}_{name}" if stack else name
+        scopes[qual] = [q for q, _c in reversed(stack)] + [""]
+        scopes[qual].insert(0, qual)
+        stack.append((qual, c))
+        own = _own_level(body[o + 1:c])
         fields = []
         for f in RE_FIELD.finditer(own):
             label, typ, fname, _num = f.group(1), f.group(2), f.group(3), f.group(4)
             if fname in ("reserved", "option", "returns"):
                 continue
-            fields.append((fname, typ.split(".")[-1], label == "repeated"))
+            fields.append((fname, typ, label == "repeated"))
         for f in RE_MAP.finditer(own):
             fields.append((f.group(1), "", False))
-        messages[name] = fields
-    return services, messages
+        messages[qual] = fields
+    return services, messages, scopes
 
 
-def _balanced(body, open_brace_idx):
-    """Текст от открывающей `{` до её пары."""
+def resolve_types(messages, scopes):
+    """Заменить сырые имена типов полей на ключи `messages` (Go-имена).
+
+    Правило разрешения — proto: имя ищется от самой узкой области видимости к
+    глобальной, а точки в имени соответствуют вложенности. Не наш message
+    (скаляр, `google.protobuf.*`, тип чужого домена) остаётся как есть и просто
+    не найдётся в `messages` — обход достижимости туда не пойдёт, как и раньше.
+    """
+    out = {}
+    for qual, fields in messages.items():
+        chain = scopes.get(qual, [qual, ""])
+        resolved = []
+        for fname, typ, rep in fields:
+            resolved.append((fname, _resolve_type(typ, chain, messages), rep))
+        out[qual] = resolved
+    return out
+
+
+def _resolve_type(typ, chain, messages):
+    if not typ or typ in SCALARS:
+        return typ
+    parts = typ.split(".")
+    for start in range(len(parts)):
+        cand_tail = "_".join(parts[start:])
+        for scope in chain:
+            cand = f"{scope}_{cand_tail}" if scope else cand_tail
+            if cand in messages:
+                return cand
+    return parts[-1]
+
+
+def _closing(body, open_brace_idx):
+    """Индекс `}`, парной к `{` по указанному индексу."""
     depth, i, n = 0, open_brace_idx, len(body)
     while i < n:
         if body[i] == "{":
@@ -187,37 +260,74 @@ def _balanced(body, open_brace_idx):
         elif body[i] == "}":
             depth -= 1
             if depth == 0:
-                return body[open_brace_idx + 1:i]
+                return i
         i += 1
-    return body[open_brace_idx + 1:]
+    return n
+
+
+def _balanced(body, open_brace_idx):
+    """Текст от открывающей `{` до её пары."""
+    return body[open_brace_idx + 1:_closing(body, open_brace_idx)]
 
 
 def _own_level(block):
     """Убрать вложенные `{…}`-блоки (их поля разбираются своим RE_MESSAGE-проходом),
     но СОХРАНИТЬ `[...]`-опции полей: поле объявляется `... = 7 [(validate)…];`, и
     вырезание квадратных скобок ничего не ломает, а вот вырезание фигурных —
-    обязательно, иначе поля вложенного message'а достанутся объемлющему."""
-    out, depth = [], 0
-    for ch in block:
+    обязательно, иначе поля вложенного message'а достанутся объемлющему.
+
+    `oneof <имя> { … }` — ИСКЛЮЧЕНИЕ, И ЭТО НЕ ПОСЛАБЛЕНИЕ, А ФОРМА ДЕРЕВА. Он не
+    отдельное сообщение, а группировка полей ОДНОГО сообщения: в сгенерированном
+    Go геттер каждого члена стоит на РОДИТЕЛЕ (`func (x *Target) GetNicId()`), и
+    клиент присылает член в теле родителя. Прежняя редакция резала его наравне с
+    вложенным `message`, поэтому члены `oneof` не попадали В СОСТАВ полей вовсе —
+    ни в находки, ни в корзины «не находка», ни в перепись: они исчезали до
+    вердикта, а «осмотрено полей: N» читалось как полный обход (issue kacho#110,
+    замер на 982b0849 — 62 таких поля в дереве, из них в раскрытой публичной
+    поверхности 38).
+
+    Прозрачность НЕ наследуется внутрь непрозрачного: `oneof` внутри вложенного
+    `message` остаётся у вложенного (его разберёт свой RE_MESSAGE-проход), иначе
+    поля снова достались бы объемлющему — тот самый дефект зеркально.
+    """
+    out = []
+    # Для каждой открытой `{` — своя ли она этому уровню. `all([])` — True, то
+    # есть текст вне блоков берётся как прежде.
+    stack = []
+    for i, ch in enumerate(block):
         if ch == "{":
-            depth += 1
+            head = block[max(0, i - 128):i].rstrip()
+            stack.append(bool(RE_ONEOF_HEAD.search(head)) and all(stack))
             continue
         if ch == "}":
-            depth = max(0, depth - 1)
+            if stack:
+                stack.pop()
             continue
-        if depth == 0:
+        if all(stack):
             out.append(ch)
     return "".join(out)
 
 
 def load_getters(domain):
-    """{MessageName: {GoFieldName, …}} из сгенерированного кода домена."""
-    out = {}
+    """({GoТип: {GoПоле, …}}, {объявленные GoТипы}) из сгенерированного кода домена.
+
+    ДВА РАЗНЫХ ФАКТА, И ИХ НЕЛЬЗЯ СХЛОПЫВАТЬ. «Геттеров нет» и «типа нет» —
+    разные состояния: `message X {}` порождает Go-структуру БЕЗ единого геттера,
+    и по одному лишь отсутствию геттеров такое сообщение объявлялось «нет
+    .pb.go», то есть попадало в слепую зону, где ему нечего делать: осматривать в
+    нём нечего by construction. Три пустых сообщения дерева (`WhoAmIRequest`,
+    `ListPermissionCatalogRequest`, `AccessTargetAllInScope`, плюс `PublicVip`,
+    `SharedEgressGatewaySpec`) держали порог слепой зоны непустым, и порог
+    сторожил не то, что называл.
+    """
+    getters, declared = {}, set()
     for path in sorted(glob.glob(os.path.join(GEN_ROOT, domain, "v1", "*.pb.go"))):
         body = open(path, encoding="utf-8").read()
         for m in RE_GETTER.finditer(body):
-            out.setdefault(m.group(1), set()).add(m.group(2))
-    return out
+            getters.setdefault(m.group(1), set()).add(m.group(2))
+        for m in RE_STRUCT.finditer(body):
+            declared.add(m.group(1))
+    return getters, declared
 
 
 def build_reader_index(path=None):
@@ -266,7 +376,21 @@ def prod_sources(index, domain):
 
 
 def typed_readers(index, domain):
-    """{(Сообщение, ПолеGo)} — прочитано у ЭТОГО сообщения в деревьях домена."""
+    """{(GoТип, GoПоле)} — прочитано у ЭТОГО сообщения в деревьях домена.
+
+    ЧЛЕН `oneof` ЧИТАЮТ ЧЕРЕЗ ТИП-ОБЁРТКУ, и это ЕГО чтение, а не чужое.
+    protoc-gen-go порождает на каждый член `oneof` отдельный тип `M_Foo` с
+    единственным полем `Foo`, и канонический разбор в дереве — переключатель по
+    типу с последующим `v.Foo` (`services/nlb/.../targetgroup/helpers.go`).
+    Получателем такого чтения `go/types` называет обёртку, поэтому без этого
+    правила настоящий и единственный читатель члена `oneof` не засчитывался
+    сильной основой и поле уезжало в слабую корзину — «имя строкой», где
+    приписать читателя нечем.
+
+    Правило точное, а не эвристическое: пара засчитывается родителю ТОЛЬКО когда
+    имя типа посимвольно равно `<родитель>_<Поле>` — форма, которую генератор
+    производит ровно для члена `oneof`.
+    """
     stub = f"{MODULE}/{GEN_ROOT}/{domain}/v1|"
     prefixes = prod_pkg_prefixes(domain)
     out = set()
@@ -278,6 +402,26 @@ def typed_readers(index, domain):
             continue
         msg, _sep, field = key[len(stub):].partition("|")
         out.add((msg, field))
+        wrapper_tail = "_" + field
+        if msg.endswith(wrapper_tail) and len(msg) > len(wrapper_tail):
+            out.add((msg[:-len(wrapper_tail)], field))
+    # ВТОРАЯ ФОРМА ЧТЕНИЯ ЧЛЕНА `oneof` — РАЗЛИЧЕНИЕ ВЕТКИ БЕЗ ОБРАЩЕНИЯ К ПОЛЮ.
+    # У члена с пустой полезной нагрузкой (`message X {}`) читать внутри нечего:
+    # вся информация — факт выбранной ветки, и прод-код берёт её переключателем по
+    # типу либо тип-ассершеном. Индекс различает это от конструирования ветки на
+    # пути ответа (см. `protofieldreaders.Index.Discriminated`).
+    for key, readers in (index.get("discriminated") or {}).items():
+        if not key.startswith(stub):
+            continue
+        if not any(r == pref or r.startswith(pref + "/")
+                   for r in readers for pref in prefixes):
+            continue
+        typ = key[len(stub):]
+        parent, _sep, field = typ.rpartition("_")
+        # Go-имя поля подчёркиваний не содержит, поэтому правый сегмент — поле, а
+        # всё левое — родитель (в т.ч. вложенный: `A_B_Foo` → родитель `A_B`).
+        if parent and field:
+            out.add((parent, field))
     return out
 
 
@@ -420,8 +564,167 @@ def homonym_names(messages):
     return dup
 
 
+def self_test():
+    """Инъекция в ОБЕ стороны на РАЗБОРЩИКЕ .proto — том месте, где состав
+    осматриваемых полей и определяется.
+
+    Зачем именно здесь. Вердикт предиката — про поля, которые он РАЗЛОЖИЛ по
+    сообщениям; поле, не дошедшее до разложения, не попадает ни в находки, ни в
+    корзины «не находка», ни в перепись — оно исчезает молча, и «осмотрено полей:
+    N» читается как полный обход. Ровно это и случилось с членами `oneof`: они
+    вырезались вместе с любым `{…}`-блоком.
+
+    Проверяются обе стороны, иначе гейт ловил бы форму, а не существо:
+      * КРАСНОЕ — член `oneof` обязан быть полем ОБЪЕМЛЮЩЕГО сообщения (так же,
+        как его видит сгенерированный Go: геттер стоит на родителе);
+      * МОЛЧАНИЕ — поле ВЛОЖЕННОГО `message` объемлющему НЕ достаётся, значение
+        `enum` полем не становится, а член `oneof` вложенного сообщения остаётся
+        у вложенного. Ради этого разделения вырезание блоков и заводилось.
+    """
+    import tempfile
+
+    rc = 0
+    checks = 0
+
+    def check(name, ok, detail=""):
+        nonlocal rc, checks
+        checks += 1
+        print(f"  {'ОК ' if ok else 'ПРОВАЛ'} {name}{'' if ok else ' — ' + detail}")
+        if not ok:
+            rc = 1
+
+    def parse(src):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "fixture.proto")
+            open(p, "w", encoding="utf-8").write(src)
+            _svcs, msgs, scopes = parse_proto(p)
+            return msgs, scopes
+
+    def resolve(msgs, scopes):
+        return resolve_types(msgs, scopes)
+
+    print("=== поле публичного запроса: инъекции в разборщик ===")
+
+    # Форма — живая: `Target` домена loadbalancer (4-way identity oneof) рядом с
+    # плоскими полями, вложенным сообщением, перечислением и вторым `oneof`
+    # внутри вложенного сообщения (так записан `SecurityGroupRule` домена vpc).
+    src = """
+syntax = "proto3";
+package kacho.cloud.fixture.v1;
+
+message InCloudIP {
+  string global_only = 1;
+}
+
+message Target {
+  string target_group_id = 1;
+
+  message InCloudIP {
+    string subnet_id = 1;
+    oneof scope {
+      string zone_id = 2;
+    }
+  }
+
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_ACTIVE = 1;
+  }
+  Mode mode = 2;
+
+  oneof identity {
+    string instance_id = 3;
+    string nic_id = 4;
+    InCloudIP ip_ref = 5;
+  }
+  map<string, string> labels = 6;
+}
+"""
+    msgs = resolve(*parse(src))
+    top = {f for f, _t, _r in msgs.get("Target", [])}
+    nested = {f for f, _t, _r in msgs.get("Target_InCloudIP", [])}
+    glob_msg = {f for f, _t, _r in msgs.get("InCloudIP", [])}
+
+    # (1) КРАСНОЕ до фикса: члены oneof — поля объемлющего сообщения.
+    check("члены oneof разложены в объемлющее сообщение",
+          {"instance_id", "nic_id", "ip_ref"} <= top,
+          f"поля Target: {sorted(top)}")
+
+    # (2) КРАСНОЕ до фикса: вложенное сообщение ключуется Go-именем `Parent_Nested`
+    #     — тем же, каким его называют индекс чтений и сгенерированный геттер.
+    check("вложенное сообщение ключуется Go-именем родитель_вложенное",
+          "Target_InCloudIP" in msgs and "subnet_id" in nested,
+          f"ключи: {sorted(msgs)}")
+
+    # (3) КРАСНОЕ до фикса: тип поля резолвится ОТ САМОЙ УЗКОЙ области — `InCloudIP`
+    #     внутри `Target` есть `Target_InCloudIP`, а не одноимённое глобальное.
+    #     Без этого обход достижимости уходил бы в чужое сообщение.
+    check("тип поля резолвится от узкой области видимости к глобальной",
+          ("ip_ref", "Target_InCloudIP", False) in msgs.get("Target", []) and
+          glob_msg == {"global_only"},
+          f"поля Target: {msgs.get('Target')}")
+
+    # (4) МОЛЧАНИЕ: имя самого oneof полем НЕ становится — в proto его нет.
+    check("имя oneof полем не становится",
+          "identity" not in top and "scope" not in top and "scope" not in nested,
+          f"Target: {sorted(top)}; Target_InCloudIP: {sorted(nested)}")
+
+    # (5) МОЛЧАНИЕ, законный близнец той же формы: поле ВЛОЖЕННОГО сообщения
+    #     объемлющему не достаётся. Ради этого блоки и вырезаются.
+    check("поле вложенного message объемлющему не достаётся",
+          "subnet_id" not in top and "subnet_id" in nested,
+          f"Target: {sorted(top)}; Target_InCloudIP: {sorted(nested)}")
+
+    # (6) МОЛЧАНИЕ: член oneof ВЛОЖЕННОГО сообщения остаётся у вложенного.
+    check("член oneof вложенного сообщения остаётся у вложенного",
+          "zone_id" in nested and "zone_id" not in top,
+          f"Target: {sorted(top)}; Target_InCloudIP: {sorted(nested)}")
+
+    # (7) МОЛЧАНИЕ: значение enum полем не становится.
+    check("значение enum полем не становится",
+          "MODE_UNSPECIFIED" not in top and "MODE_ACTIVE" not in top,
+          f"Target: {sorted(top)}")
+
+    # (8) МОЛЧАНИЕ: плоские поля и map читаются как прежде.
+    check("плоские поля и map читаются как прежде",
+          {"target_group_id", "labels", "mode"} <= top,
+          f"Target: {sorted(top)}")
+
+    # ── ЧИТАТЕЛЬ ЧЛЕНА oneof ПРИХОДИТ ЧЕРЕЗ ТИП-ОБЁРТКУ ──────────────────────
+    #
+    # Канонический разбор в дереве — переключатель по типу и `v.Foo`, поэтому
+    # получателем чтения `go/types` называет `M_Foo`, а не `M`. Без правила
+    # засчитывания настоящий читатель не виден сильной основой.
+    pkg = f"{MODULE}/{GEN_ROOT}/loadbalancer/v1"
+    reader = f"{MODULE}/services/nlb/internal/apps/kacho/api/targetgroup"
+    idx = {"packages": [], "reads": {
+        f"{pkg}|HealthCheck_Tcp|Tcp": [reader],
+        f"{pkg}|HealthCheck_TcpOptions|Port": [reader],
+    }}
+    got = typed_readers(idx, "loadbalancer")
+    # (9) КРАСНОЕ до фикса: чтение через обёртку засчитано ЧЛЕНУ родителя.
+    check("чтение члена oneof через тип-обёртку засчитано родителю",
+          ("HealthCheck", "Tcp") in got, f"пары: {sorted(got)}")
+    # (10) МОЛЧАНИЕ: обычное чтение у вложенного сообщения родителю НЕ засчитано
+    #      — иначе правило закрывало бы поля чужим читателем, то есть возвращало
+    #      бы ровно ту слабость, ради снятия которой основу и меняли.
+    check("чтение у вложенного сообщения родителю не засчитано",
+          ("HealthCheck_TcpOptions", "Port") in got and
+          ("HealthCheck", "Port") not in got, f"пары: {sorted(got)}")
+
+    print(f"проверок исполнено: {checks}; разобрано фикстур: 1; "
+          f"сообщений в фикстуре: {len(msgs)}; ключей индекса-фикстуры: "
+          f"{len(idx['reads'])}")
+    if rc:
+        print("ПРОВАЛ: состав осматриваемых полей либо атрибуция читателя не "
+              "совпадают с тем, как их видит сгенерированный Go.", file=sys.stderr)
+    return rc
+
+
 def main():
     args = sys.argv[1:]
+    if "--self-test" in sys.argv:
+        return self_test()
     index_path = None
     for a in args:
         if a.startswith("--reader-index="):
@@ -453,8 +756,7 @@ def main():
     without_gen = []
     premise_failures = []
     findings = []
-    buckets = {"RPC-НЕ-РЕАЛИЗОВАН": [], "ПРЕДОК-ОТВЕРГАЕТСЯ": [],
-               "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ": []}
+    buckets = {"RPC-НЕ-РЕАЛИЗОВАН": [], "ПРЕДОК-ОТВЕРГАЕТСЯ": []}
     by_name_only = []
     unimpl_rpcs = {}
 
@@ -462,12 +764,17 @@ def main():
         proto_paths = sorted(glob.glob(os.path.join(PROTO_ROOT, domain, "v1", "*.proto")))
         if not proto_paths:
             continue
-        services, messages = {}, {}
+        services, raw_messages, scopes = {}, {}, {}
         for p in proto_paths:
             protos_read += 1
-            s, m = parse_proto(p)
+            s, m, sc = parse_proto(p)
             services.update(s)
-            messages.update(m)
+            raw_messages.update(m)
+            scopes.update(sc)
+        # Резолв типов — ПОСЛЕ слияния всех файлов домена: поле одного файла
+        # ссылается на сообщение другого, и по одному файлу такая ссылка не
+        # резолвится (обход достижимости остановился бы на границе файла).
+        messages = resolve_types(raw_messages, scopes)
 
         # Публичная поверхность: типы запросов НЕ-Internal сервисов, транзитивно
         # по message-полям.
@@ -491,7 +798,7 @@ def main():
         if not reach:
             continue
 
-        getters = load_getters(domain)
+        getters, declared = load_getters(domain)
         sources = prod_sources(index, domain)
         if not sources:
             # ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: дерево прод-кода этого домена не найдено, а
@@ -513,8 +820,14 @@ def main():
         for name in sorted(reach):
             gos = getters.get(name)
             if gos is None:
-                without_gen.append(f"{domain}:{name}")
-                continue
+                if name not in declared:
+                    without_gen.append(f"{domain}:{name}")
+                    continue
+                # Сообщение сгенерировано, но геттеров у него нет — значит полей
+                # нет вовсе (`message X {}`). Осматривать нечего, и это НЕ слепая
+                # зона: раскрытым его считать надо, иначе порог непрочитанного
+                # держится тем, в чём читать нечего.
+                gos = set()
             msgs_expanded += 1
             for fname, _typ, _rep in messages[name]:
                 go = _match_go(fname, gos)
@@ -529,20 +842,34 @@ def main():
                     # резолвлен. Омонимия ничего здесь не закрывает.
                     closed_typed += 1
                     continue
+                # СТРУКТУРНЫЕ ОСВОБОЖДЕНИЯ — ПЕРЕД слабой основой, и порядок здесь
+                # содержателен. Оба вычислены по ДЕРЕВУ (есть ли обработчик у типа
+                # запроса; достижимо ли сообщение иначе как через отвергнутое поле)
+                # и от атрибуции читателя по имени не зависят ВООБЩЕ. Пока они
+                # стояли после слабой корзины, поле нереализованного RPC, чьё имя
+                # где-то встречается строкой, объявлялось «закрытым слабой
+                # атрибуцией» — то есть слабость мерки выписывалась там, где мерка
+                # не применялась: читать такой запрос НЕКОМУ и незачем.
+                if name in by_unimpl:
+                    buckets["RPC-НЕ-РЕАЛИЗОВАН"].append((domain, name, fname, go))
+                    continue
+                if name in by_refusal:
+                    buckets["ПРЕДОК-ОТВЕРГАЕТСЯ"].append((domain, name, fname, go))
+                    continue
                 if _has_string_reader(fname, sources):
                     # Слабая основа: рефлексивный читатель по имени. Приписать его
                     # сообщению нечем — поле называется поимённо, а не прячется.
+                    #
+                    # Сюда же попадает и явный отказ по имени (`AddFieldViolation`),
+                    # и это НЕ потеря: он такой же именной, значит и слабость у него
+                    # та же. Отдельной корзины у него нет намеренно — она была бы
+                    # пуста всегда by construction (литерал отказа содержит имя поля,
+                    # поэтому строковый читатель находит его первым), а корзина,
+                    # куда ничто не может попасть, и есть предмет issue #110.
                     by_name_only.append(
                         (domain, name, fname, go, fname in homonyms))
                     continue
-                if name in by_unimpl:
-                    buckets["RPC-НЕ-РЕАЛИЗОВАН"].append((domain, name, fname, go))
-                elif name in by_refusal:
-                    buckets["ПРЕДОК-ОТВЕРГАЕТСЯ"].append((domain, name, fname, go))
-                elif fname in refused:
-                    buckets["ОТВЕРГАЕТСЯ-ПО-ИМЕНИ"].append((domain, name, fname, go))
-                else:
-                    findings.append((domain, name, fname, go))
+                findings.append((domain, name, fname, go))
 
     if protos_read == 0:
         print("НИЧЕГО НЕ ПРОЧИТАНО — предикат ничего не утверждает", file=sys.stderr)
@@ -567,7 +894,7 @@ def main():
               f"сервиса в DOMAIN_SERVICE_DIR)")
     print(f"закрыто ЧТЕНИЕМ У ЭТОГО СООБЩЕНИЯ (тип получателя резолвлен): "
           f"{closed_typed} из {fields_seen}")
-    for label in ("RPC-НЕ-РЕАЛИЗОВАН", "ПРЕДОК-ОТВЕРГАЕТСЯ", "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ"):
+    for label in ("RPC-НЕ-РЕАЛИЗОВАН", "ПРЕДОК-ОТВЕРГАЕТСЯ"):
         rows = buckets[label]
         print(f"НЕ находка ({label}): {len(rows)}")
         for domain, msg, fname, go in rows:

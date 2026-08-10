@@ -13,7 +13,8 @@ VPC-specific правила, error mapping, уроки из истории фи�
   - `Labels` ≤ 64 пар, key regex.
   - `ZoneId` — required-only в `kacho-corelib/validate`.
     Existence-проверка `zone_id` — sync, в `SubnetService.validateZoneID` через
-    порт `ZoneRegistry` (вызов `geo.v1.ZoneService.Get` в `kacho-geo`); неизвестная зона → `InvalidArgument`.
+    порт `ZoneRegistry` (вызов `geo.v1.ZoneService.Get` в `kacho-geo`); неизвестная зона →
+    `FailedPrecondition` + машинный признак `PEER_RESOURCE_MISSING` (полоса peer-validate).
 - CIDR: `validateCIDRPrefix` — host-bits=0 (`netip.Prefix.Masked == prefix`).
 - DhcpOptions: `domain_name` RFC 1123, `domain_name_servers[]`/`ntp_servers[]` IP.
 - UpdateMask: known-set + immutable check.

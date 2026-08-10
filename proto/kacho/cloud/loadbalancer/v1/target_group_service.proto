@@ -31,11 +31,21 @@ service TargetGroupService {
 
   rpc List(ListTargetGroupsRequest) returns (ListTargetGroupsResponse) {
     option (google.api.http) = {get: "/nlb/v1/targetGroups"};
-    // Scope-filtered List: handler фильтрует результат через iam ListObjects
-    // (viewer ∪ v_list, per-object), поэтому gateway освобождает RPC от per-RPC
-    // Check (<exempt>) — единый project-scope Check отклонил бы viewer'а без
-    // отдельного v_list-tuple `no path` 403 ещё до фильтра. authn остаётся (JWT).
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Scope-filtered List: handler читает страницу курсором из своей БД и сужает
+    // её пообъектно, батчами, тем же отношением, которым каталог гейтит одиночное
+    // чтение — `v_get` на `nlb_target_group:<id>`. Страница не может быть шире
+    // чтения: это один и тот же вопрос, заданный по строке. Поэтому каталог
+    // объявляет полосу `scope_filtered` — единый project-scope Check отклонил бы
+    // вызывающего `no path` 403 ещё до сужения. Снят именно Check, а НЕ аутентификация:
+    // полоса требует названного принципала, иначе сужать не для кого.
+    //
+    // Прежде здесь назывался обратный порядок — перечислить у iam разрешённые
+    // объекты и отфильтровать ими. Перечисление снято: у него жёсткий серверный
+    // предел и нет продолжения, поэтому ресурсы сверх предела становились владельцу
+    // невидимы при живых правах.
+    option (kacho.iam.authz.v1.permission) = "loadbalancer.targetGroups.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreateTargetGroupRequest) returns (operation.Operation) {
@@ -258,7 +268,10 @@ message UpdateTargetGroupRequest {
 
   // Targets list replacement is rejected on this RPC — use AddTargets /
   // RemoveTargets so each target mutation goes through its own Operation
-  // history and idempotency keys (design §3.4).
+  // history and idempotency keys (design §3.4). The refusal is driven by the
+  // BODY, not by update_mask: a non-empty list is refused whatever the mask says
+  // (including the empty full-object PATCH mask), because accepted-and-ignored
+  // is not a lawful outcome.
   repeated Target targets = 6;
 
   HealthCheck health_check = 7;

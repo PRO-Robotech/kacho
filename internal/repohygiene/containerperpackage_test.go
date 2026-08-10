@@ -108,6 +108,12 @@ var sanctionedProviders = map[string]string{
 		"TestRowsDoNotCrossBetweenDatabases",
 	"services/iam/internal/testsupport/fgatest": "services/iam/internal/testsupport/fgatest/" +
 		"fgatest_test.go: TestOneServerManyStores",
+	// Инструмент сравнительного замера форм модели прав: тот же приём, что у двух
+	// соседей выше — стек под `sync.Once`, СВОЙ store на кейс, — и та же половинчатая
+	// проверка: «сервер один» И «области разные», обе в одном тесте. Пакет не выдаёт
+	// область чужим, он единственный свой потребитель; в списке он потому, что предмет
+	// санкции — устройство старта, а не число потребителей.
+	"tools/authzformbench": "tools/authzformbench/isolation_test.go: TestOneStackManyStores",
 }
 
 // containerStartAPIs — вызовы, стартующие контейнер, по ПУТИ ИМПОРТА и имени.
@@ -211,6 +217,20 @@ func TestNoPackageStartsAContainerPerTest(t *testing.T) {
 
 	counts := map[string]int{}
 	for dir, tests := range sc.testsReaching {
+		// Санкция действует и на СОБСТВЕННЫЙ старт пакета, а не только на вызовы к
+		// нему извне.
+		//
+		// Предмет санкции — устройство старта («один на процесс, области разные»), а
+		// не то, из какого пакета он виден. Прежняя редакция снимала её лишь при
+		// разборе вызовов, квалифицированных именем провайдера, поэтому пакет,
+		// поднимающий свой стек тем же приёмом и доказавший обе половины, всё равно
+		// объявлялся нарушителем — и единственным исходом для него был перечень
+		// «нужен контейнер на тест», то есть запись с ЗАВЕДОМО НЕВЕРНОЙ причиной.
+		// Исключение, лгущее о своей причине, хуже отсутствующего: следующий читатель
+		// чинит по нему не то.
+		if _, sanctioned := sanctionedProviders[dir]; sanctioned {
+			continue
+		}
 		counts[dir] = len(tests)
 	}
 	for _, f := range judgePerTestContainers(counts, perTestContainerExceptions) {

@@ -509,8 +509,8 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 		if !anyOf(called, p.Filters) {
 			findings = append(findings, fmt.Sprintf(
 				"%s — declared RowFilter, but hands back its page without a per-object visibility "+
-					"filter: nothing along the calls it makes reaches %s (kacho-iam BatchCheck, relation "+
-					"viewer ∪ v_list)\n  declared: %s",
+					"filter: nothing along the calls it makes reaches %s (kacho-iam BatchCheck; предикат "+
+					"страницы объявляет сам сервис — PageRelations)\n  declared: %s",
 				key, orList(p.Filters), a.pos))
 		}
 
@@ -878,7 +878,15 @@ func (u *unit) walk(fn *ast.FuncDecl, names map[string]bool, seen map[*ast.FuncD
 			case *ast.Ident:
 				if recvVar != "" && x.Name == recvVar {
 					u.walk(u.methods[recvType+"."+f.Sel.Name], names, seen)
+					break
 				}
+				// Не приёмник — значит квалификатор пакета либо локальная
+				// переменная. Записываем и КВАЛИФИЦИРОВАННОЕ имя
+				// («listnarrow.Page»), потому что голый хвост селектора слишком
+				// широк: профиль, назвавший сужателем `Page`, был бы удовлетворён
+				// любым чужим методом с этим именем — то есть проверял бы
+				// написание, а не предмет.
+				names[x.Name+"."+f.Sel.Name] = true
 			case *ast.SelectorExpr:
 				inner, ok := x.X.(*ast.Ident)
 				if !ok || recvVar == "" || inner.Name != recvVar {

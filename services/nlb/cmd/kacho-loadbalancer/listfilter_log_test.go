@@ -62,7 +62,7 @@ func TestBuildListFilter_LogNamesTheKnobThatGuardsTheConnection(t *testing.T) {
 
 	var rec map[string]any
 	require.NoError(t, json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &rec))
-	require.Equal(t, "list_filter_enabled", rec["msg"])
+	require.Equal(t, "list_filter_wired", rec["msg"])
 	require.Equal(t, true, rec["iam_authz_mtls"],
 		"the log must report mtls.iam-register (the internal edge the filter uses), not mtls.iam-project")
 }

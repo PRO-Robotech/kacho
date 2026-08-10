@@ -123,3 +123,10 @@ func TestHandler_ListRepositories_NamedPrincipal_StillServed(t *testing.T) {
 	require.Len(t, resp.GetRepositories(), 1)
 	require.Contains(t, az.seen(), "user:usr-carol")
 }
+
+// CheckMany — та же дверь, выведенная из Check (см. manyFromOne).
+func (s *subjectRecorder) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	return manyFromOne{one: s.Check}.checkMany(ctx, subject, relation, objectType, objectIDs)
+}

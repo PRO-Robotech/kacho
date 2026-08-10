@@ -325,13 +325,13 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-NEG-REGION-UNKNOWN",
-    title="Create Image c unknown regionId → sync 400 INVALID_ARGUMENT 'unknown region id '<X>'' (peer geo.RegionService.Get, request-path fail-closed)",
+    title="Create Image c unknown regionId → sync 400 FAILED_PRECONDITION 'unknown region id '<X>'' (peer geo.RegionService.Get, request-path fail-closed)",
     classes=["NEG", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-20
     # # requires peer-validation enabled (geo peer reachable)
     steps=[Step(name="cr-bad-region", method="POST", path=IMG,
                 body=_img_body("breg", regionId="region-9-none", sourceVolumeId="{{garbageStorageId}}"),
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                              *_assert_msg("unknown region id 'region-9-none'")])],
 ))
 

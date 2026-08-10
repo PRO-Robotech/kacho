@@ -174,17 +174,51 @@ func TestValidateAuthMode_ProductionStrict_DBSSLModeStillEnforced(t *testing.T) 
 func TestValidateAuthMode_Production_RequiresTrustedForwarders(t *testing.T) {
 	cfg := securedProduction()
 	cfg.AuthZTrustedForwarderSANs = nil
-	_, err := validateAuthMode(cfg, discardLogger())
+	err := cfg.Validate()
 	if err == nil {
-		t.Fatalf("production must reject empty AuthZTrustedForwarderSANs (any mTLS peer trusted as forwarder → subject spoofing)")
+		t.Fatalf("production must reject an unnarrowed circle (any mTLS peer trusted as forwarder → subject spoofing)")
 	}
 	if !strings.Contains(err.Error(), "AUTHZ_TRUSTED_FORWARDER_SANS") {
 		t.Errorf("gate error must name the empty forwarder allow-list; got: %v", err)
 	}
-	// с непустым allow-list — стартует.
+	// с непустым кругом — стартует.
 	cfg.AuthZTrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"}
-	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
-		t.Fatalf("production with a non-empty forwarder allow-list must pass; got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("production with a narrowed circle must pass; got: %v", err)
+	}
+}
+
+// Вне боевого режима круг тоже гейтится — но пустой круг остаётся возможным как
+// ЯВНЫЙ опт-ин. Стража, молчащая вне боевого режима, ни разу не исполняется на
+// локальном стенде, и «забыл выставить круг» находится только на боевом профиле.
+func TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthMode = "dev"
+	cfg.AuthZTrustedForwarderSANs = nil
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "AUTHZ_TRUST_ANY_FORWARDER") {
+		t.Errorf("отказ обязан назвать ручку опт-ина, иначе стенд не поднять; got: %v", err)
+	}
+
+	// Положительный контроль: без него отрицание зеленело бы и на «отказывать всегда».
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру; got: %v", err)
+	}
+}
+
+// Опт-ин НЕ действует в боевом режиме: иначе он был бы ручкой, снимающей защиту
+// на развёрнутом стенде.
+func TestValidate_Production_IgnoresTheDevOptIn(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthZTrustedForwarderSANs = nil
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("боевой режим обязан отказать на несуженном круге даже с опт-ином")
 	}
 }
 
@@ -192,9 +226,9 @@ func TestValidateAuthMode_Production_RequiresTrustedForwarders(t *testing.T) {
 func TestValidateAuthMode_ProductionStrict_RequiresTrustedForwarders(t *testing.T) {
 	cfg := allEdgesSecured()
 	cfg.AuthZTrustedForwarderSANs = nil
-	_, err := validateAuthMode(cfg, discardLogger())
+	err := cfg.Validate()
 	if err == nil {
-		t.Fatalf("production-strict must reject empty AuthZTrustedForwarderSANs")
+		t.Fatalf("production-strict must reject an unnarrowed circle")
 	}
 	if !strings.Contains(err.Error(), "AUTHZ_TRUSTED_FORWARDER_SANS") {
 		t.Errorf("gate error must name the empty forwarder allow-list; got: %v", err)
@@ -207,7 +241,7 @@ func TestValidateAuthMode_ProductionStrict_RequiresTrustedForwarders(t *testing.
 // Без фильтра principal с project-tier viewer видит ВСЕ Disk/Image/Snapshot/
 // Instance проекта, включая объекты без per-object v_get (over-show / BOLA-lite,
 // CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
-// requireTrustedForwarders.
+// Config.Validate → grpcsrv.TrustedForwarders.Require.
 func TestValidateAuthMode_Production_RequiresListFilter(t *testing.T) {
 	// master-switch off → отказ.
 	cfg := securedProduction()
@@ -276,6 +310,12 @@ func securedProduction() config.Config {
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
 		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc.cluster.local:9091",
+		// Транспорт ребра проверки прав: с тех пор как страж требует его в ОБОИХ
+		// боевых режимах, окружение без этой ручки боевым не является. Фикстура,
+		// снисходительнее продукта, делает невидимым ровно тот дефект, ради
+		// которого её подставляют, — поэтому измерение выставлено и здесь, а
+		// ослабляется только в своей пробе.
+		IAMAuthzMTLS: grpcclient.TLSClient{Enable: true},
 	}
 }
 
@@ -431,7 +471,7 @@ func TestValidateAuthMode_Production_RejectsBlankOnlyTrustedForwarders(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.cfg()
 			cfg.AuthZTrustedForwarderSANs = []string{"", ""}
-			_, err := validateAuthMode(cfg, discardLogger())
+			err := cfg.Validate()
 			if err == nil {
 				t.Fatal("a list of blank entries passed the guard: corelib drops empty strings, " +
 					"so the resulting allow-list is empty and every certificate-verified peer " +
@@ -571,5 +611,54 @@ func TestRunServe_SkipPeerValidationInProduction_RefusesToStart(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatalf("runServe did not refuse to start — the process came up with every cross-service check disabled")
+	}
+}
+
+// ── транспорт ребра, несущего решение о доступе ──
+
+// Ребро compute→iam несёт РЕШЕНИЕ о доступе (per-RPC Check) и переданную личность
+// вызывающего. Невзведённая ручка не даёт ошибки сама по себе: клиентские creds
+// вырождаются в insecure БЕЗ ошибки, процесс поднимается, отчитывается «authz
+// enabled», и каждый Check уходит по открытому каналу.
+//
+// Требование действует в ОБОИХ боевых режимах. Прежде оно стояло только в
+// строгом, и это было записанным послаблением: обычный production не является
+// более слабой посадкой — это та же посадка, а страж, не срабатывающий в ней,
+// есть контроль, чья ветка не исполнялась ни разу.
+//
+// Проверяется в обе стороны: невзведённое ребро → отказ с именем ручки;
+// взведённое → молчание (страж не запрещает законное).
+func TestValidateAuthMode_Production_RequiresAuthzEdgeTransport(t *testing.T) {
+	cfg := securedProduction()
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: false}
+
+	_, err := validateAuthMode(cfg, discardLogger())
+	if err == nil {
+		t.Fatal("plain production must refuse an unarmed transport on the authz Check edge")
+	}
+	if !strings.Contains(err.Error(), "IAM_AUTHZ_MTLS_ENABLE") {
+		t.Fatalf("the refusal must name the knob the operator has to set; got: %v", err)
+	}
+
+	// Законный близнец той же формы: ребро взведено — страж молчит.
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: true}
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
+		t.Fatalf("an armed authz edge must boot; got: %v", err)
+	}
+}
+
+// Ребро, которого НЕТ, требовать не за что: без адреса composition root его не
+// поднимает вовсе. Страж обязан читать тот же предикат, что и проводка, — иначе
+// он либо запрещает законное, либо пропускает открытый канал.
+func TestValidateAuthMode_Production_AuthzEdgeNotDialled_NoRequirement(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthZIAMGRPCAddr = ""
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: false}
+	// Фильтр видимости требует того же адреса, поэтому изолируем измерение.
+	cfg.ListFilterEnabled = false
+
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil &&
+		strings.Contains(err.Error(), "IAM_AUTHZ_MTLS_ENABLE") {
+		t.Fatalf("страж требует транспорт ребра, которое не поднимается: %v", err)
 	}
 }

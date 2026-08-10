@@ -3,8 +3,8 @@
 Каталог тест-кейсов по ресурсам. Источник истины — `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`. Здесь — обзорный перечень + уникальные паттерны.
 
-Всего (по `gen.py`): **117 кейсов** — instance-redesign 49, authz-deny 42,
-machine-type 12, operation 8, list-filter 4, sec-d 2. Здесь стояло «111 — 43» — число
+Всего (по `gen.py`): **122 кейса** — instance-redesign 49, authz-deny 42,
+machine-type 12, operation 8, instance-nic-attach 5, list-filter 4, sec-d 2. Здесь стояло «111 — 43» — число
 дрейфует само, потому что переписано рукой; сверяется одной командой
 (`python3 scripts/gen.py` печатает счётчик по каждой коллекции, стенд не нужен), и
 расхождение с этой строкой — находка, а не опечатка.
@@ -61,6 +61,26 @@ coordinate even inside the sentence that says it is gone.
 GET-CRUD-OK (done op + response + metadata.epd), GET-CRUD-FAILED-OP (error code 5),
 GET-NEG-NOTFOUND-VALID-PREFIX, GET-CONF-NF-TEXT, GET-NEG-UNKNOWN-PREFIX (→400 "prefix"),
 CANCEL-NEG-ALREADY-DONE (→FailedPrec/idempotent), CANCEL-NEG-NOTFOUND, CANCEL-NEG-UNKNOWN-PREFIX.
+
+## Привязка сетевого интерфейса (5 кейсов) — `cases/instance-nic-attach.py`
+
+Ребро compute→vpc `InternalNetworkInterfaceService` (:9091), приёмка
+`sub-phase-compute-storage-volume-attach-acceptance.md` §S4.
+
+| Кейс | Что утверждает | Доходит до соседа |
+|---|---|---|
+| INST-NIC-DET-CRUD-IDEMPOTENT-OK | снятие привязки по nicId → операция успешна, повтор — тот же исход, интерфейс у vpc цел и не привязан | **да** |
+| INST-NIC-DET-NEG-ABSENT-NIC | несуществующий (но well-formed) nicId → операция несёт отказ ВЛАДЕЛЬЦА (код 5 + его текст), а не транспортную недоступность | **да** |
+| INST-NIC-ATT-VAL-MALFORMED-NICID | явно-не-идентификатор → синхронно 400 с дословным текстом | нет (формат проверяется до вызова) |
+| INST-NIC-DET-VAL-ONEOF-MISSING | пустой oneof → синхронно 400 | нет |
+| INST-NIC-ATT-NEG-STATE-GATE | привязка к машине сразу после Create → отказ по состоянию (машина покоится в PROVISIONING) | нет (гейт состояния стоит до вызова) |
+
+Два первых кейса — единственное в дереве, что проверяет ребро **исходом**, а не
+объявлением: прогон с подменённым на заглушку ребром роняет ровно их (2 и 3
+утверждения соответственно), остальные три остаются зелёными. Счастливый путь S4-01
+(привязать интерфейс к машине в STOPPED) сегодня **не конструируется** — перехода
+из PROVISIONING не существует до саги запуска COMP-2; это открытый долг, а не
+пропуск покрытия.
 
 ## `# probe-needed:` маркеры (точный Kachō-контракт ещё не verified на стенде)
 

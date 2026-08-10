@@ -208,7 +208,11 @@ vpc:
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
-      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
+      # Здесь стояла запись оператора сети — компонента с таким именем в дереве нет,
+      # и репозитория под него не существует. Круг доверенных отправителей пинится по
+      # ФАКТИЧЕСКИМ отправителям: запись под несуществующего разрешала бы говорить за
+      # пользователя предъявителю сертификата, которого мы не выпускаем. Появится
+      # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
 compute:
   image: docker.io/prorobotech/kacho-compute:main-b622b388
   # Same forwarder-trust as vpc — pin the allow-list to the api-gateway SA SPIFFE

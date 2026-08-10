@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 )
 
@@ -70,7 +70,7 @@ type instanceNamingRPCProbe func(t *testing.T)
 var probes = map[string]instanceNamingRPCProbe{
 	"/kacho.cloud.storage.v1.InternalVolumeService/Attach": func(t *testing.T) {
 		w := newCountingWriter()
-		uc := newAttachUC(w, &fakeInstanceGate{}) // ни одного разрешённого отношения
+		uc := newAttachUC(w, narrowtest.DenyingAll()) // ни одного разрешённого отношения
 		_, err := uc.Attach(aliceCtx(), attachSpec(gateForeignIns))
 		if status.Code(err) != codes.PermissionDenied {
 			t.Fatalf("Attach: err = %v, want PermissionDenied", err)
@@ -81,7 +81,7 @@ var probes = map[string]instanceNamingRPCProbe{
 	},
 	"/kacho.cloud.storage.v1.InternalVolumeService/Detach": func(t *testing.T) {
 		w := newCountingWriter()
-		uc := newAttachUC(w, &fakeInstanceGate{})
+		uc := newAttachUC(w, narrowtest.DenyingAll())
 		_, err := uc.Detach(aliceCtx(), gateVolumeID, gateForeignIns)
 		if status.Code(err) != codes.PermissionDenied {
 			t.Fatalf("Detach: err = %v, want PermissionDenied", err)
@@ -94,7 +94,7 @@ var probes = map[string]instanceNamingRPCProbe{
 		reader := newCountingReader([]*domain.VolumeAttachment{
 			{VolumeID: gateVolumeID, InstanceID: gateForeignIns, ProjectID: "prj-theirs", DeviceName: "vda"},
 		})
-		uc := newListUC(reader, &fakeListFilter{}) // ни одного видимого инстанса
+		uc := newListUC(reader, narrowtest.DenyingAll()) // ни одного видимого инстанса
 		got, err := uc.ListAttachments(aliceCtx(), []string{gateForeignIns})
 		if err != nil {
 			t.Fatalf("ListAttachments: %v", err)
@@ -233,4 +233,3 @@ func containsInstance(name string) bool {
 
 // Компиляционная привязка к порту: проба-таблица опирается на fakeInstanceGate,
 // который обязан оставаться реализацией ObjectGate.
-var _ authzfilter.ObjectGate = (*fakeInstanceGate)(nil)

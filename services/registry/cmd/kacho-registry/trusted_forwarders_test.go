@@ -39,6 +39,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
@@ -65,11 +66,18 @@ const (
 // список отправителей.
 func prodCfg(forwarders ...string) config.Config {
 	return config.Config{
-		AuthMode:                  "production",
-		DBSSLMode:                 "require",
-		AuthZIAMGRPCAddr:          "kacho-iam-internal.kacho.svc.cluster.local:9091",
-		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
-		InternalServerMTLS:        grpcsrv.TLSServer{Enable: true},
+		AuthMode:           "production",
+		DBSSLMode:          "require",
+		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc.cluster.local:9091",
+		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
+		InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
+		// Транспорт поднимаемого ребра registry→iam: с тех пор как страж требует
+		// его в боевом режиме, конфигурация без этой ручки боевой не является.
+		// Фикстура, снисходительнее продукта, делает невидимым ровно тот дефект,
+		// ради которого её подставляют; измерение ослабляется только в своей
+		// пробе (peer_transport_test.go). Рёбра project/geo здесь не подняты
+		// (адреса пусты) — по тому же предикату, что читает проводка.
+		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: forwarders,
 	}
 }
@@ -86,7 +94,7 @@ func TestValidateSecurityConfig_ProductionRefusesEmptyForwarderAllowList(t *test
 		t.Run(mode, func(t *testing.T) {
 			cfg := prodCfg()
 			cfg.AuthMode = mode
-			err := validateSecurityConfig(cfg)
+			err := cfg.Validate()
 			if err == nil {
 				t.Fatalf("%s mode started with an EMPTY trusted-forwarder allow-list: corelib "+
 					"narrows the circle only when the list is non-empty, so an empty list lets ANY "+
@@ -105,7 +113,7 @@ func TestValidateSecurityConfig_ProductionRefusesEmptyForwarderAllowList(t *test
 // Стража обязана считать так же, иначе `SANS=","` проходит гейт и молча
 // возвращает дыру.
 func TestValidateSecurityConfig_ProductionRefusesBlankOnlyForwarderAllowList(t *testing.T) {
-	if err := validateSecurityConfig(prodCfg("", " ")); err == nil {
+	if err := prodCfg("", " ").Validate(); err == nil {
 		t.Fatal("a list of blank entries passed the guard: corelib drops empty strings, " +
 			"so the resulting allow-list is empty and trusts any verified peer")
 	}
@@ -120,15 +128,41 @@ func TestValidateSecurityConfig_ProductionAcceptsPinnedForwarderAllowList(t *tes
 	}
 }
 
-// TestValidateSecurityConfig_DevToleratesEmptyForwarderAllowList — dev осознанно
-// терпит insecure-дефолты (in-process фикстуры). Держит правку от поломки
-// локальных тестов; на РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным
-// правилом (production-mode ВЕЗДЕ).
-func TestValidateSecurityConfig_DevToleratesEmptyForwarderAllowList(t *testing.T) {
+// TestValidate_DevRefusesAnUnnarrowedCircleWithoutTheOptIn — стража круга
+// срабатывает на ЛЮБОМ non-breakglass старте, а не только в боевом режиме:
+// контроль, чья ветка на локальном стенде не исполняется ни разу, находит «забыл
+// выставить круг» только на боевом профиле, где цена ошибки максимальна.
+func TestValidate_DevRefusesAnUnnarrowedCircleWithoutTheOptIn(t *testing.T) {
 	cfg := prodCfg()
 	cfg.AuthMode = "dev"
-	if err := validateSecurityConfig(cfg); err != nil {
-		t.Fatalf("dev must tolerate an empty allow-list (in-process fixtures), got: %v", err)
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER") {
+		t.Fatalf("отказ обязан назвать ручку опт-ина, иначе стенд не поднять: %v", err)
+	}
+}
+
+// TestValidate_DevToleratesAnUnnarrowedCircleWithTheExplicitOptIn —
+// положительный контроль: без него отрицание выше зеленело бы и на «отказывать
+// всегда».
+func TestValidate_DevToleratesAnUnnarrowedCircleWithTheExplicitOptIn(t *testing.T) {
+	cfg := prodCfg()
+	cfg.AuthMode = "dev"
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру: %v", err)
+	}
+}
+
+// TestValidate_ProductionIgnoresTheDevOptIn — опт-ин не действует в боевом
+// режиме: иначе он был бы ручкой, снимающей защиту на развёрнутом стенде.
+func TestValidate_ProductionIgnoresTheDevOptIn(t *testing.T) {
+	cfg := prodCfg()
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("боевой режим обязан отказать на несуженном круге даже с опт-ином")
 	}
 }
 

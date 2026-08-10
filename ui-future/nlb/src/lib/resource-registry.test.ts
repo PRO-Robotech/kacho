@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import type { IntField } from "./form-schema";
+import type { IntField } from "@shared/lib/form-schema";
 
 // resource-registry ↔ RefNameLink / RefSelect — циклический import (оба резолвят
 // REGISTRY/resourceProjectPath/getResource; NlbVipSourceField тянет RefSelect →

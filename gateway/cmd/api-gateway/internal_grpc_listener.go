@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // startInternalGRPCListener builds the internal-only gRPC server, listens on
@@ -87,8 +88,21 @@ func startInternalGRPCListener(
 			PermitWithoutStream: true,
 		}),
 	}
+	// Звено восстановления паники — БЕЗУСЛОВНО, до и независимо от посадки mTLS.
+	// Оно намеренно НЕ живёт в sec.serverOptions: та возвращает пустой набор на
+	// insecure-посадке, и звено уехало бы вместе с ней — то есть пропадало бы
+	// ровно там, где на листенере не остаётся вообще ни одного интерсептора.
+	// Доступность от посадки транспорта не зависит: паника обработчика ЭТОГО
+	// листенера завершает процесс ВСЕГО края (вместе с внешним :443 и
+	// REST-мультиплексором), а не только internal-порт.
+	opts = append(opts,
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
+	)
 	// mTLS transport creds + SPIFFE allow-list authN/authZ interceptors (empty
-	// when the listener is the dev/local insecure opt-in).
+	// when the listener is the dev/local insecure opt-in). ChainUnaryInterceptor
+	// накапливает, а не замещает, поэтому звено выше остаётся outermost и
+	// охватывает SPIFFE-фильтр — фильтр паникует так же, как обработчик.
 	opts = append(opts, sec.serverOptions(logger)...)
 
 	srv := grpc.NewServer(opts...)
@@ -105,9 +119,11 @@ func startInternalGRPCListener(
 	// safety argument. With mTLS on, every RPC here — reflection included, via
 	// the STREAM interceptor — must present a verified client cert whose SPIFFE
 	// SAN is on the caller allow-list. With mTLS off (the dev/local opt-in) the
-	// listener mounts no interceptors at all, so registering reflection there
-	// would put schema enumeration in front of an unauthenticated port; not
-	// registering it is the only refusal available in that posture.
+	// listener mounts NO authN/authZ interceptor (the panic-recovery link above
+	// is unconditional, but it decides nothing about access), so registering
+	// reflection there would put schema enumeration in front of an
+	// unauthenticated port; not registering it is the only refusal available in
+	// that posture.
 	if sec.mtlsEnabled {
 		reflection.Register(srv)
 	}
