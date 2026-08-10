@@ -21,7 +21,7 @@ package handler
 // ListAttachments — исключение: он авторизуется НА УРОВНЕ ДАННЫХ, в use-case. Единого
 // per-RPC вопроса для него не существует — инстансы называет вызывающий, а ответ
 // касается томов, у каждого из которых свой владелец (см. volume.UseCase.ListAttachments
-// и запись ScopeFiltered в check.PermissionMap). Хендлер по-прежнему остаётся тонким:
+// и полосу `scope_filtered` в каталоге прав). Хендлер по-прежнему остаётся тонким:
 // решение принимает use-case, здесь только parse → вызов → формат.
 //
 // Attach/Detach/ListAttachments + admin CRUD реализованы; GetInternal (infra-проекция)

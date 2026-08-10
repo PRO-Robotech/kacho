@@ -4,9 +4,9 @@
 package authzfilter
 
 // FGA object types storage-домена (передаются в AuthorizeService.BatchCheck как
-// `resource.type`). Обязаны совпадать с closed-table object-типами
-// internal/check/permission_map.go и permission-catalog api-gateway — иначе фильтр
-// спрашивал бы про объект, которого в модели нет, и отказывал бы ВСЕМ.
+// `resource.type`). Обязаны совпадать с closed-table object-типами аннотаций
+// методов в `proto/` (из них выводится карта прав) и permission-catalog api-gateway —
+// иначе фильтр спрашивал бы про объект, которого в модели нет, и отказывал бы ВСЕМ.
 const (
 	ResourceTypeVolume   = "storage_volume"
 	ResourceTypeSnapshot = "storage_snapshot"

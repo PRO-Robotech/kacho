@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 )
 
 // Degraded-mode ручка фильтра видимости (KACHO_STORAGE_LIST_FILTER_FAIL_OPEN) на
@@ -59,18 +59,19 @@ func TestValidate_productionRefusesListFilterFailOpen(t *testing.T) {
 // ЧТО именно осталось без защиты, а не только в конфиг-тестах, где связь с картой
 // не видна.
 //
-// Зеркалит check.TestScopeFilteredRPCs_AreBackedByTheProductionBootGuard, но для
-// второй ручки: включённый фильтр, который на ошибке iam отдаёт страницу целиком,
-// защищает не больше выключенного.
+// Зеркалит cmd/storage TestScopeFilteredRPCsAreBackedByTheProductionBootGuard, но
+// для второй ручки: включённый фильтр, который на ошибке iam отдаёт страницу
+// целиком, защищает не больше выключенного.
+//
+// Список берётся ТЕМ ЖЕ предикатом, который читает стража (config.ScopeFilteredRPCs
+// через export_test.go), а не собственным обходом карты: две одинаково написанные
+// выборки расходятся молча, и проба зеленела бы, перечисляя не те методы.
 func TestValidate_failOpenGuardIsArmedByTheScopeFilteredMarks(t *testing.T) {
-	var scopeFiltered []string
-	for fullMethod, e := range check.PermissionMap() {
-		if e.ScopeFiltered {
-			scopeFiltered = append(scopeFiltered, fullMethod)
-		}
-	}
+	scopeFiltered := config.ScopeFilteredRPCs()
 	if len(scopeFiltered) == 0 {
-		t.Skip("карта не несёт ScopeFiltered RPC — стража здесь по построению no-op")
+		t.Fatal("карта прав не несёт НИ ОДНОЙ записи scope_filtered: либо полоса ушла из каталога " +
+			"(тогда снимите и стражу fail-open, и эту пробу), либо карта не вывелась вовсе — и тогда " +
+			"стража молчит не потому, что защищать нечего, а потому, что ей нечего прочитать")
 	}
 
 	c := secureProd()

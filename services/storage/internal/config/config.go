@@ -12,8 +12,6 @@ import (
 
 	"fmt"
 
-	"google.golang.org/grpc"
-
 	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -118,6 +116,49 @@ type Config struct {
 	// Ноль означает «беру объявленную политику», а не «кеша нет».
 	AuthZCacheTTL time.Duration `envconfig:"KACHO_STORAGE_AUTHZ_CACHE_TTL" default:"5s"`
 
+	// AuthZCheckTimeout — срок ОДНОГО вопроса о правах владельцу модели.
+	//
+	// Ручка заведена не ради нового поведения: значение то же, что было
+	// умолчанием платформы (прежняя фабрика звена срок не прокидывала вовсе, и
+	// его выбирала библиотека). Изменилось то, что оно стало ВЫБРАННЫМ.
+	// Неотвечающий сосед без срока вешает горутину навсегда, и звено не доходит
+	// до своей ветки fail-closed — горутины копятся до исчерпания процесса.
+	AuthZCheckTimeout time.Duration `envconfig:"KACHO_STORAGE_AUTHZ_CHECK_TIMEOUT" default:"2s"`
+
+	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
+	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
+	// пути», недоступность модели. По исчерпании звено отвечает
+	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм с
+	// него.
+	//
+	// Величина 100 не выдумана: это то же число, которое платформа уже выбрала
+	// для того же механизма (литерал композиционного корня nlb, умолчание ручки
+	// vpc, умолчание ручки geo). Умолчания у самого механизма НЕТ (неположительное
+	// значение он читает как «ограничения нет»), поэтому число обязано быть
+	// названо здесь.
+	//
+	// Изъятия («ронять некого») у storage быть не может: решение о доступе он
+	// принимает не у себя, а вопросом к kacho-iam — сетевой сосед, которого шторм
+	// отказов уронит, у него ЕСТЬ, и на том же соединении живут пообъектный фильтр
+	// видимости и регистрация владельца.
+	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_STORAGE_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
+
+	// HandlingBudget — верхняя граница обработки ОДНОГО вызова (серверный срок).
+	// Более строгий срок вызывающего уважается; окно не расширяется никогда.
+	//
+	// 30s — то же число, что платформа выбрала для той же величины у vpc и geo.
+	// Это ПОТОЛОК, а не цель: он обязан с запасом накрывать вопрос о правах
+	// (KACHO_STORAGE_AUTHZ_CHECK_TIMEOUT, 2s), пообъектную фильтрацию страницы
+	// (KACHO_STORAGE_LIST_FILTER_TIMEOUT_MS × волны) и запрос к своей БД. Предмет
+	// его — не задержка, а вызов БЕЗ срока: он держит соединение из ограниченного
+	// пула столько, сколько выполняется его запрос, и MaxConns таких вызовов
+	// отказывают весь сервис (CWE-770).
+	//
+	// «Не применимо» у величины нет и быть не может — сказать «границы не надо»
+	// значит сказать «мой процесс вправе держать чужой ресурс сколько угодно».
+	// Неположительное значение отвергает конструктор дескриптора.
+	HandlingBudget time.Duration `envconfig:"KACHO_STORAGE_HANDLING_BUDGET" default:"30s"`
+
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
 	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
 	// UnregisterResource по ребру storage→iam (AuthZIAMGRPCAddr, mTLS). Default true;
@@ -204,15 +245,11 @@ func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
 	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }
 
-// PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).
-func (c Config) PublicServerCreds() (grpc.ServerOption, error) {
-	return grpcsrv.TLSServerCreds(c.PublicServerMTLS)
-}
-
-// InternalServerCreds возвращает grpc.ServerOption для internal-листенера (:9091).
-func (c Config) InternalServerCreds() (grpc.ServerOption, error) {
-	return grpcsrv.TLSServerCreds(c.InternalServerMTLS)
-}
+// Обёрток «creds как опция сервера» здесь БОЛЬШЕ НЕТ: композиционный корень несёт
+// в дескриптор сами КРЕДЕНШЕЛЫ, а не опцию. Опция непрозрачна, а
+// `TransportCredentials.Info()` — нет, и отказ старта читает именно её: на
+// невзведённой ручке сборщик отдаёт незашифрованные креды БЕЗ ошибки, поэтому
+// вопрос «что транспорт о себе говорит» — единственный, который стоит задавать.
 
 // schemaOptionsParam — URL-encoded libpq options=-c search_path=kacho_storage,public.
 // Каждое соединение (pgxpool + goose database/sql) видит схему без отдельного SET.

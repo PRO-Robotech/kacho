@@ -46,7 +46,7 @@ make docker          # образ (контекст — родительский
 ## Структура (Clean Architecture)
 
 ```
-cmd/storage/       composition root (serve.go) + interceptors + main
+cmd/storage/       composition root (serve.go: дескриптор + регистрация) + main
 cmd/migrator/      отдельный бинарь goose-миграций
 internal/domain/   чистые сущности (stdlib), self-validating
 internal/apps/kacho/api/<res>/     use-cases + их port-интерфейсы

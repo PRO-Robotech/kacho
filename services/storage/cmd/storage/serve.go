@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -17,12 +16,15 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -34,7 +36,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
@@ -47,10 +48,32 @@ import (
 // (не оставляем async-мутацию done=false навсегда — клиент завис бы в polling).
 const lroDrainTimeout = 30 * time.Second
 
-// runServe — composition root: ЕДИНСТВЕННОЕ место wiring (без глобальных синглтонов
-// вне cmd). Поднимает pgxpool, LRO-worker, peer-клиентов, два gRPC-листенера
-// (public :9090 + internal :9091) с идентичными interceptor-цепочками, health и
-// diagnostic HTTP, затем graceful shutdown.
+// listAttachmentsMethod — единственный метод storage, чья авторизация переехала на
+// уровень ДАННЫХ (`scope_filtered` в каталоге прав): инстансы называет вызывающий,
+// а ответ касается томов с разными владельцами, поэтому единичного объекта, про
+// который можно спросить заранее, у него нет by construction.
+//
+// Имя стоит здесь ОДИН раз и уезжает проводкой сужателя в дескриптор. Перечня
+// сужаемых методов дескриптор не объявляет: его даёт каталог, и носитель сверяет
+// проводку с ним в обе стороны (О3/О4) — потерянная проводка и лишняя одинаково
+// роняют старт.
+const listAttachmentsMethod servicecontract.MethodFQN = "/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments"
+
+// runServe — composition root.
+//
+// # Что этот корень БОЛЬШЕ НЕ делает
+//
+// Он не собирает серверы, не выстраивает цепочку звеньев, не строит карту прав и
+// не пишет собственных стражей старта на то, что знает носитель. Всё это переехало
+// в `pkg/servicehost`, и переехало не ради красоты: пока сборка жила здесь, каждый
+// из семи сервисов держал СВОЮ, и порядок звеньев совпадал ровно настолько,
+// насколько авторы написали одинаковое. У storage расхождение было наблюдаемым:
+// журнал доступа стоял только на unary-цепочке, поэтому стрим-вызов не оставлял в
+// нём ни строки. Носитель ведёт журнал на обеих полосах.
+//
+// Здесь остаётся то, что действительно принадлежит домену: пул, слой доступа к
+// данным, use-cases, соседи, сужатель видимости, дренаж регистраций, разрешитель
+// осиротевших операций, диагностический слушатель и ОБЪЯВЛЕНИЕ о себе — дескриптор.
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -58,18 +81,78 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
-	// ── secure-by-default boot-guard (#56) ────────────────────────────────
-	// В production/production-strict refuse-to-start при insecure-конфиге: без
-	// mTLS на обоих листенерах, без per-RPC authz Check (пустой AuthZIAMGRPCAddr)
-	// или с plaintext-DB (sslmode=disable). Ранее AuthMode был dead-code →
-	// storage единственным boot'ился insecure с одним WARN. Fail-closed ДО listen
-	// (security.md «AuthN+AuthZ ВЕЗДЕ + любой деплой — production-mode»).
+	// ── остаток собственного стража: измерения, которых носитель не знает ──
+	// Транспорт исходящих рёбер к geo и iam, включённость сужателя и его
+	// degraded-ручка. Всё прочее (режим, круг отправителей, sslmode, транспорт
+	// обоих слушателей, ребро решения о доступе) судит конструктор дескриптора.
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("insecure configuration refused: %w", err)
 	}
-	// Самоотчёт о security-posture (эталон контракта; добавлено поле `service`,
-	// чтобы все восемь сервисов были идентичны по форме — см.
-	// observability.BootPosture).
+
+	// ── peer-клиенты (runtime cross-domain edges) ─────────────────────────
+	// Поднимаются ДО дескриптора: `grpc.NewClient` не блокирует до первого RPC,
+	// поэтому это лишь сборка креденшелов, а сужатель, который уезжает в
+	// дескриптор проводкой, обязан быть ТЕМ ЖЕ объектом, что провязан в use-cases.
+	geoConn, err := dialPeer(cfg.GeoGRPCAddr, cfg.GeoClientMTLS, logger, "geo")
+	if err != nil {
+		return err
+	}
+	if geoConn != nil {
+		defer geoConn.Close()
+	}
+	iamConn, err := dialPeer(cfg.IAMGRPCAddr, cfg.IAMClientMTLS, logger, "iam")
+	if err != nil {
+		return err
+	}
+	if iamConn != nil {
+		defer iamConn.Close()
+	}
+	// ── соединение с моделью прав ─────────────────────────────────────────
+	// Одно на три предмета: вопрос о правах (его задаёт носитель по ребру,
+	// объявленному дескриптором), пообъектное сужение видимости и регистрация
+	// владельца ресурса. Дескриптор получает СВОЙ транспорт того же адреса —
+	// собирается он в describe(), где его и судит конструктор.
+	authzConn, err := dialPeer(cfg.AuthZIAMGRPCAddr, cfg.IAMClientMTLS, logger, "iam-authz")
+	if err != nil {
+		return err
+	}
+	if authzConn != nil {
+		defer authzConn.Close()
+	}
+
+	// ── пообъектный сужатель публичного List (анти-over-show) ─────────────
+	// Per-RPC Check гейтит List на project-tier `viewer` — «вправе ли листать ЭТОТ
+	// проект». Сужение страницы до объектов, на которые есть грант (пообъектный
+	// `viewer` батчем по прочитанной странице — то же отношение, что энфорсит Get),
+	// делает ТОЛЬКО этот сужатель. Без него любой член проекта видел КАЖДЫЙ
+	// том/снимок/образ проекта.
+	//
+	// Тот же сужатель отвечает и на ВТОРОЙ вопрос запросов Attach/Detach — про
+	// ИНСТАНС, в чей набор привязок пишется строка (`v_update` / `v_update ∪
+	// v_delete` на `compute_instance`, см. volume.requireInstanceControl). Это не
+	// «фильтр списка», а гейт мутации, поэтому порт отдельный
+	// (authzfilter.ObjectGate) и мягкий проход к нему не применяется; вопрос идёт в
+	// ту же модель, вызова в compute не происходит, ацикличность держится.
+	//
+	// Нулевой указатель раскладывается в НУЛЕВЫЕ интерфейсы намеренно: typed-nil в
+	// интерфейсе не равен nil, и проверки вида `filter == nil` у потребителей молча
+	// перестали бы срабатывать.
+	narrower := buildListFilter(cfg, authzConn, logger)
+
+	// ── объявление о себе ─────────────────────────────────────────────────
+	// Дескриптор собирается ЗДЕСЬ, а не в конце: его отказ обязан прийти до того,
+	// как процесс открыл пул к БД и запустил фоновые проходы. Проводка сужателя
+	// уезжает в него ТЕМ ЖЕ объектом, что провязан в use-cases ниже, — иначе
+	// носитель сверял бы с каталогом не то, что реально сужает страницу.
+	desc, err := describe(cfg, logger, narrower)
+	if err != nil {
+		return err
+	}
+
+	// Самоотчёт о посадке — ПОСЛЕ приёма дескриптора и ДО подъёма слушателей.
+	// Гейт посадки обязан утверждать на этом наблюдаемом факте, а не на хранимом
+	// конфиге: правка настроек без переката пода оставляет процесс с прежним
+	// окружением, и «под Ready» доказательством посадки не является.
 	observability.LogBootPosture(logger, bootPosture(cfg))
 	if cfg.AuthMode == "dev" && (cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable") {
 		logger.Warn("KACHO_STORAGE_DB_SSLMODE=disable — DB plaintext (dev only; never on a deployed stand)")
@@ -93,24 +176,6 @@ func runServe(cfg config.Config) error {
 	}
 	operations.Start()
 
-	// ── peer-клиенты (runtime cross-domain edges) ─────────────────────────
-	geoConn, err := dialPeer(cfg.GeoGRPCAddr, cfg.GeoClientMTLS, logger, "geo")
-	if err != nil {
-		return err
-	}
-	if geoConn != nil {
-		defer geoConn.Close()
-	}
-	iamConn, err := dialPeer(cfg.IAMGRPCAddr, cfg.IAMClientMTLS, logger, "iam")
-	if err != nil {
-		return err
-	}
-	if iamConn != nil {
-		defer iamConn.Close()
-	}
-	geoClient := clients.NewGeoClient(geoConn)
-	iamClient := clients.NewIAMClient(iamConn)
-
 	// Приватный prometheus-реестр. Скрейпится ТОЛЬКО с cluster-internal
 	// diagnostic-порта; ServiceMonitor чарта нацелен именно на него.
 	svcMetrics := metrics.New()
@@ -122,72 +187,22 @@ func runServe(cfg config.Config) error {
 	snapshotRepo := pg.NewSnapshotRepo(pool)
 	imageRepo := pg.NewImageRepo(pool)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
+	geoClient := clients.NewGeoClient(geoConn)
+	iamClient := clients.NewIAMClient(iamConn)
 	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
 	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	diskTypeUC := disktype.New(diskTypeRepo)
 
-	// ── authz: per-RPC InternalIAMService.Check на ОБОИХ листенерах (AuthN+AuthZ
-	// везде — internal :9091 НЕ освобождён, security.md). Ребро storage→iam Check
-	// дозванивается в kacho-iam internal (:9091, mTLS). Пустой AuthZIAMGRPCAddr →
-	// authz-интерсептор не подключается (грациозный dev-старт без kacho-iam);
-	// production ОБЯЗАН задать адрес (security-долг иначе). ──
-	authzConn, err := dialPeer(cfg.AuthZIAMGRPCAddr, cfg.IAMClientMTLS, logger, "iam-authz")
-	if err != nil {
-		return err
-	}
-	if authzConn != nil {
-		defer authzConn.Close()
-	}
-	var authzUnary grpc.UnaryServerInterceptor
-	var authzStream grpc.StreamServerInterceptor
-	if authzConn != nil {
-		authzIntr, aerr := check.NewInterceptor(check.Options{
-			ServiceName: "kacho-storage",
-			IAMConn:     authzConn,
-			Logger:      logger,
-			CacheTTL:    cfg.AuthZCacheTTL,
-		})
-		if aerr != nil {
-			return fmt.Errorf("build authz interceptor: %w", aerr)
-		}
-		authzUnary = authzIntr.Unary()
-		authzStream = authzIntr.Stream()
-		logger.Info("authz interceptor enabled", "iam_authz_endpoint", cfg.AuthZIAMGRPCAddr, "listeners", "public+internal")
-	} else {
-		logger.Warn("authz Check NOT configured (KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR empty) — dev only; production MUST enable per-RPC Check")
-	}
-
-	// ── per-object list-filter публичного List (анти-over-show) ───────────────
-	// Per-RPC Check выше гейтит List на project-tier `viewer` — «вправе ли листать
-	// ЭТОТ проект». Сужение страницы до объектов, на которые есть грант
-	// (per-object `viewer` батчем по прочитанной странице — то же отношение, что
-	// энфорсит Get), делает ТОЛЬКО этот фильтр.
-	// Без него любой член проекта видел КАЖДЫЙ том/снимок/образ проекта. Тот же
-	// authzConn (kacho-iam internal :9091, mTLS) — там живёт AuthorizeService.
-	// Production boot-guard (config.Validate) не пускает старт с выключенным
-	// фильтром, поэтому nil здесь возможен только в dev.
-	//
-	// Тот же клиент модели прав отвечает и на ВТОРОЙ вопрос запросов Attach/Detach —
-	// про ИНСТАНС, в чей набор привязок пишется строка (`v_update` / `v_update ∪
-	// v_delete` на `compute_instance`, см. volume.requireInstanceControl). Это не
-	// «фильтр списка», а гейт мутации, поэтому порт отдельный (authzfilter.ObjectGate)
-	// и fail-open к нему не применяется; вопрос идёт в ту же модель, вызова в compute
-	// не происходит, ацикличность держится.
-	//
-	// Нулевой указатель раскладывается в НУЛЕВЫЕ интерфейсы намеренно: typed-nil в
-	// интерфейсе не равен nil, и проверки вида `filter == nil` у потребителей
-	// молча перестали бы срабатывать.
-	narrower := buildListFilter(cfg, authzConn, logger)
 	volumeUC.WithListFilter(narrower).WithInstanceGate(narrower)
 	snapshotUC.WithListFilter(narrower)
 	imageUC.WithListFilter(narrower)
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
-	// Volume/Snapshot Create/Delete эмитят register/unregister-intent в
+	// Volume/Snapshot/Image Create/Delete эмитят register/unregister-intent в
 	// kacho_storage.fga_register_outbox (writer-TX). register-drainer применяет их
 	// через kacho-iam RegisterResource/UnregisterResource (тот же :9091 mTLS-conn,
-	// что и authz-Check — RegisterResource Internal-only, ban #6). sync-registrar
+	// что и вопрос о правах — RegisterResource Internal-only, ban #6). sync-registrar
 	// регистрирует owner-tuple сразу после Create-commit (immediate анти-BOLA-резолв,
 	// без гонки с async drainer'ом; drainer — at-least-once backstop). authzConn nil
 	// (dev/no-iam) или drainer выключен → путь пропускается, intents durable.
@@ -222,10 +237,8 @@ func runServe(cfg config.Config) error {
 	// подстраховка. Без него строка операции, пережившая смерть процесса (перекат,
 	// OOM, исчерпание бюджета терминальной записи) или так и не дождавшаяся места в
 	// очереди исполнителя, остаётся «в процессе» НАВСЕГДА, и клиент не узнаёт исхода
-	// ни разу. Частичный индекс под запрос этого прохода схема несла с самого начала
-	// (миграция 0002) — разрешитель был заявлен раньше, чем провязан. См. recovery.go.
-	//
-	// Не зависит ни от kacho-iam, ни от дренажа регистраций: это сверка со СВОЕЙ БД.
+	// ни разу. Не зависит ни от kacho-iam, ни от дренажа регистраций: это сверка со
+	// СВОЕЙ БД. См. recovery.go.
 	lroReconciler := startLRORecovery(ctx, pool, operationresolver.Readers{
 		Volume:   volumeRepo,
 		Snapshot: snapshotRepo,
@@ -233,70 +246,13 @@ func runServe(cfg config.Config) error {
 	}, logger)
 	go lroReconciler.Run(ctx)
 
-	// ── interceptor-цепочки обоих листенеров (recovery→logging→principal→authz).
-	//
-	// forwarders — круг отправителей, которым разрешено ПЕРЕДАВАТЬ личность
-	// конечного пользователя (x-kacho-principal-*). Значение приходит из
-	// конфигурации и НИКОГДА не задаётся здесь литералом: пустой список для corelib
-	// означает не «никому», а «кому угодно, у кого есть валидный клиентский
-	// сертификат» (pkg/grpcsrv principalIsTrusted сужает круг только на непустом
-	// списке), и переданная личность становится субъектом проверки прав. Боевой
-	// режим на пустом списке не стартует (config.Validate).
-	//
-	// Законных отправителей два, оба пинятся в values.prod: api-gateway (публичный
-	// :9090) и compute (внутренний :9091 — привязка тома идёт под личностью того,
-	// кто её инициировал). Список общий для обоих листенеров: внутренний периметр
-	// не освобождён.
-	forwarders := cfg.TrustedForwarders()
-	publicCreds, err := cfg.PublicServerCreds()
-	if err != nil {
-		return fmt.Errorf("public listener tls creds: %w", err)
-	}
-	internalCreds, err := cfg.InternalServerCreds()
-	if err != nil {
-		return fmt.Errorf("internal listener tls creds: %w", err)
-	}
-
-	grpcSrv := grpcsrv.NewServer(
-		publicCreds,
-		grpc.ChainUnaryInterceptor(unaryChain(logger, forwarders, authzUnary)...),
-		grpc.ChainStreamInterceptor(streamChain(logger, forwarders, authzStream)...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		internalCreds,
-		grpc.ChainUnaryInterceptor(unaryChain(logger, forwarders, authzUnary)...),
-		grpc.ChainStreamInterceptor(streamChain(logger, forwarders, authzStream)...),
-	)
-
-	// ── регистрация сервисов по листенерам ─────────────────────────────────
-	// health (grpc.health.v1.Health, SERVING) + reflection уже регистрируются
-	// внутри grpcsrv.NewServer для КАЖДОГО сервера (pkg/grpcsrv/server.go) — как у
-	// vpc/compute/nlb/registry. Повторная RegisterHealthServer здесь роняла процесс
-	// на старте: "duplicate service registration for grpc.health.v1.Health".
-	opHandler := handler.NewOperationHandler(opsRepo)
-	registerServices(grpcSrv, internalSrv, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
-
-	// ── listeners ──────────────────────────────────────────────────────────
-	listener, err := net.Listen("tcp", ":"+cfg.GrpcPort)
-	if err != nil {
-		return err
-	}
-	internalListener, err := net.Listen("tcp", ":"+cfg.InternalGrpcPort)
-	if err != nil {
-		_ = listener.Close()
-		return err
-	}
-	logger.Info("kacho-storage listening",
-		"public_mtls", cfg.PublicServerMTLS.Enable,
-		"internal_mtls", cfg.InternalServerMTLS.Enable,
-		"public_port", cfg.GrpcPort,
-		"internal_port", cfg.InternalGrpcPort)
-
 	// ── cluster-internal diagnostic HTTP (/healthz, /metrics). Пустой addr отключает. ──
+	//
+	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
+	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
+	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
 	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, svcMetrics, logger)
 	if err != nil {
-		_ = listener.Close()
-		_ = internalListener.Close()
 		return fmt.Errorf("diagnostic listener: %w", err)
 	}
 	if diagTask != nil {
@@ -306,58 +262,204 @@ func runServe(cfg config.Config) error {
 			}
 		}()
 	}
+	defer func() { diagShutdown(context.Background()) }()
 
-	// ── graceful shutdown: gRPC GracefulStop обоих листенеров + drain LRO ──
-	shutdownDone := make(chan struct{})
-	go func() {
-		defer close(shutdownDone)
-		<-ctx.Done()
-		diagShutdown(context.Background())
-		internalSrv.GracefulStop()
-		grpcSrv.GracefulStop()
-		drainCtx, cancelDrain := context.WithTimeout(context.Background(), lroDrainTimeout)
-		defer cancelDrain()
-		if werr := operations.Wait(drainCtx); werr != nil {
-			logger.Warn("LRO workers did not finish before shutdown timeout",
-				"err", werr, "active", operations.Active())
-		}
-	}()
+	opHandler := handler.NewOperationHandler(opsRepo)
+	serveErr := servicehost.Serve(ctx, desc,
+		func(reg grpc.ServiceRegistrar) {
+			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+		},
+		func(reg grpc.ServiceRegistrar) {
+			registerInternal(reg, volumeUC, imageUC, diskTypeUC, opHandler)
+		},
+	)
 
-	// internal-листенер на фоновой goroutine; фатальный крах :9091 сносит процесс
-	// (cancel root-ctx) и учитывается в exit-коде наравне с public.
-	internalErrCh := make(chan error, 1)
-	go func() {
-		internalErrCh <- runInternalListener(internalSrv, internalListener, cancel, logger)
-	}()
-
-	serveErr := grpcSrv.Serve(listener)
-	cancel()
-	<-shutdownDone
-	return serveResult(serveErr, <-internalErrCh)
+	// Дренаж in-flight LRO — ПОСЛЕ того, как оба слушателя погашены: новые мутации
+	// уже не принимаются, а начатые обязаны дописать свой исход. Без него строка
+	// операции остаётся done=false навсегда, и клиент, поллящий её, не узнаёт
+	// исхода ни разу.
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), lroDrainTimeout)
+	defer cancelDrain()
+	if werr := operations.Wait(drainCtx); werr != nil {
+		logger.Warn("LRO workers did not finish before shutdown timeout",
+			"err", werr, "active", operations.Active())
+	}
+	return serveErr
 }
 
-// registerServices раскладывает сервисы по листенерам: public (Volume/Snapshot/
-// Image/DiskType) — на :9090; Internal* (InternalVolume/InternalImage/
-// InternalDiskType) — ТОЛЬКО на cluster-internal :9091 (ban #6); OperationService
-// (LRO poll) — на обоих. Каждый зарегистрированный здесь RPC ОБЯЗАН иметь запись в
-// check.PermissionMap (иначе authz-интерсептор fail-closed'ит его «rpc not mapped»).
-func registerServices(
-	publicSrv, internalSrv grpc.ServiceRegistrar,
+// describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.
+//
+// Стражей старта здесь нет ни одного — они живут в конструкторе дескриптора и в
+// носителе. Остаток собственного стража storage (`config.Validate`) судит только
+// то, чего носитель не знает: транспорт исходящих рёбер к geo и iam, включённость
+// сужателя и его degraded-ручку.
+//
+// Сужатель передаётся АРГУМЕНТОМ, а не собирается здесь заново: проводка,
+// объявленная дескриптором, обязана быть тем же объектом, что сужает страницу в
+// use-cases. Собери её здесь второй раз — носитель сверил бы с каталогом
+// экземпляр, которого на пути запроса нет, и «проводка есть» перестало бы
+// означать «страница сужается».
+func describe(
+	cfg config.Config,
+	logger *slog.Logger,
+	narrower servicecontract.ListNarrower,
+) (servicecontract.Descriptor, error) {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_STORAGE_AUTH_MODE: %w", err)
+	}
+	// Транспорт ребра решения о доступе строится ЗДЕСЬ, а проверяется конструктором
+	// дескриптора — по ответу самого транспорта, а не по ручке. Сборщик на
+	// невзведённой ручке отдаёт незашифрованные креды БЕЗ ошибки, поэтому «ручка
+	// выглядит как угодно» этой проверке безразлично.
+	checkCreds, err := grpcclient.TLSClientTransportCreds(cfg.IAMClientMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("storage→iam Check mTLS creds: %w", err)
+	}
+	publicCreds, err := grpcsrv.TLSServerTransportCreds(cfg.PublicServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("public listener tls creds: %w", err)
+	}
+	internalCreds, err := grpcsrv.TLSServerTransportCreds(cfg.InternalServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
+	}
+
+	return servicecontract.New(servicecontract.Spec{
+		Service: "kacho-storage",
+		Mode:    mode,
+		Logger:  logger,
+
+		Forwarders: cfg.TrustedForwarders(),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS",
+			TrustAny: "KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER",
+			OptIn:    cfg.AuthZTrustAnyForwarder,
+		},
+
+		Authz:        servicecontract.AuthzViaIAM,
+		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		CacheWindow:  cfg.AuthZCacheTTL,
+		ClientBudget: cfg.AuthZCheckTimeout,
+
+		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
+		// срока держит соединение из ограниченного пула столько, сколько
+		// выполняется его запрос, и MaxConns таких вызовов отказывают весь сервис.
+		// Величина и её обоснование — у ручки конфигурации.
+		HandlingBudget: cfg.HandlingBudget,
+
+		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
+		// storage принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// сосед, которого шторм отказов может уронить, у него ЕСТЬ, и на том же
+		// соединении живут пообъектный сужатель и регистрация владельца. Изъятие
+		// («ронять некого») законно только у владельца модели, решающего в своём
+		// процессе. Число и почему штатное чтение его не тратит — у ручки
+		// конфигурации.
+		DenyBudget: servicecontract.Value(cfg.AuthZDenyBudgetPerSec),
+
+		DBSSLMode:     cfg.DBSSLMode,
+		PublicAddr:    ":" + cfg.GrpcPort,
+		InternalAddr:  ":" + cfg.InternalGrpcPort,
+		PublicCreds:   publicCreds,
+		InternalCreds: internalCreds,
+
+		// ── оси ──────────────────────────────────────────────────────────────
+		//
+		// Эмиссия: одно отношение иерархии владения — `project:<id> #project
+		// @storage_<res>:<id>`. Имя берётся у ПРИНИМАЮЩЕЙ стороны
+		// (`pkg/authz/proxytuple`), которая владеет закрытым набором принимаемых
+		// отношений: второе написание чужого закрытого набора расходится молча, и
+		// расходится там, где это не видно — отказ в правах дренаж читает как
+		// временный, и очередь встаёт головой партиции навсегда.
+		Emits: servicecontract.Value([]proxytuple.Relation{proxytuple.RelationProject}),
+
+		// Регистрируемые типы — три ресурса storage, у каждого свой пообъектный
+		// тип в модели прав. `volume_attachments` своего типа не заводит: право
+		// видеть привязку вытекает из права на ИНСТАНС и на ТОМ, а не из
+		// собственного объекта.
+		Registers: servicecontract.Value([]servicecontract.ObjectType{
+			"storage_volume", "storage_snapshot", "storage_image",
+		}),
+
+		// Проводка сужателя — ровно на тот метод, который каталог объявляет
+		// сужаемым. Перечень сужаемых методов здесь НЕ объявляется: его даёт
+		// каталог, и носитель сверяет проводку с ним в обе стороны.
+		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
+			listAttachmentsMethod: narrower,
+		}),
+
+		// Скрытия существования у storage нет: ни одна строка каталога его домена
+		// не несёт этой полосы, поэтому «есть-но-не твой» отвечает обычным отказом
+		// в доступе, а не голосом владельца. Заявление СУДИТСЯ каталогом на каждом
+		// старте (О5): появится первая такая строка — оно станет находкой, и
+		// вспоминать о нём никому не придётся.
+		HideExistence: servicecontract.NotApplicable[map[servicecontract.ObjectType]servicecontract.NotFoundFormat](
+			"ни один RPC storage не объявлен скрывающим существование: каталог прав не называет " +
+				"ни одного типа storage в этой полосе, и отказ на чужом объекте приходит отказом в " +
+				"доступе, а не промахом владельца"),
+
+		// Происхождение доставки — writer-транзакция: намерение регистрации
+		// пишется строкой fga_register_outbox в ТОЙ ЖЕ транзакции, что вставляет
+		// ресурс (один commit, без dual-write). Самая узкая семантика из
+		// существующих: происхождение доказано записью, а не выведено из часов в
+		// момент доставки.
+		Delivery: servicecontract.Value(servicecontract.DeliveryWriterTransaction),
+
+		// Загрузочный гейт мутаций — изъятие, и предикат его снятия ВНЕШНИЙ:
+		// гейта (`pkg/outbox/bootgate`) в дереве storage нет ни одного вызова.
+		// Заявление истекает пробой TestStorageBringsNoBootGateYet, которая
+		// спрашивает дерево, а не память автора: появится провязка — проба
+		// покраснеет и потребует принести гейт сюда.
+		//
+		// Почему это не «дыра, которую прикрыли словом»: доставка у storage
+		// доказана записью (см. Delivery), поэтому окно «ресурс создан, а
+		// намерение не доставлено» ограничено дренажом и подстраховано
+		// redrive-проходом, а не разомкнуто. Гейт сузил бы это окно до нуля ценой
+		// отказа в создании — решение отдельной фазы, и принимать его молча, по
+		// ходу переезда контура, нельзя.
+		BootGate: servicecontract.NotApplicable[servicecontract.BootGate](
+			"загрузочного гейта мутаций у storage нет: очередь регистраций поднимается дренажом и " +
+				"redrive-подстраховкой, а отвергать создание до её подъёма — отдельное продуктовое " +
+				"решение, не принятое. Принести гейт, не приняв решения, значило бы отвергать создание " +
+				"по причине, которой никто не выбирал"),
+	})
+}
+
+// registerPublic — публичный слушатель :9090: тенантские Volume/Snapshot/Image/
+// DiskType плюс опрос операций.
+func registerPublic(
+	reg grpc.ServiceRegistrar,
 	volumeUC *volume.UseCase,
 	snapshotUC *snapshot.UseCase,
 	imageUC *image.UseCase,
 	diskTypeUC *disktype.UseCase,
 	opHandler operationpb.OperationServiceServer,
 ) {
-	storagev1.RegisterVolumeServiceServer(publicSrv, handler.NewVolumeHandler(volumeUC))
-	storagev1.RegisterSnapshotServiceServer(publicSrv, handler.NewSnapshotHandler(snapshotUC))
-	storagev1.RegisterImageServiceServer(publicSrv, handler.NewImageHandler(imageUC))
-	storagev1.RegisterDiskTypeServiceServer(publicSrv, handler.NewDiskTypeHandler(diskTypeUC))
-	storagev1.RegisterInternalVolumeServiceServer(internalSrv, handler.NewInternalVolumeHandler(volumeUC))
-	storagev1.RegisterInternalImageServiceServer(internalSrv, handler.NewInternalImageHandler(imageUC))
-	storagev1.RegisterInternalDiskTypeServiceServer(internalSrv, handler.NewInternalDiskTypeHandler(diskTypeUC))
-	operationpb.RegisterOperationServiceServer(publicSrv, opHandler)
-	operationpb.RegisterOperationServiceServer(internalSrv, opHandler)
+	storagev1.RegisterVolumeServiceServer(reg, handler.NewVolumeHandler(volumeUC))
+	storagev1.RegisterSnapshotServiceServer(reg, handler.NewSnapshotHandler(snapshotUC))
+	storagev1.RegisterImageServiceServer(reg, handler.NewImageHandler(imageUC))
+	storagev1.RegisterDiskTypeServiceServer(reg, handler.NewDiskTypeHandler(diskTypeUC))
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
+}
+
+// registerInternal — cluster-internal слушатель :9091: координация привязки томов,
+// инфра-проекция образа, admin-CRUD типов дисков плюс тот же опрос операций.
+//
+// `Internal*` регистрируется ТОЛЬКО здесь: на внешнем endpoint эти службы не
+// публикуются (ban #6). Разделение проверяется через `grpc.Server.GetServiceInfo` —
+// регрессия «Internal* уехал на public» ловится пробой, а не остаётся на совести
+// обзора.
+func registerInternal(
+	reg grpc.ServiceRegistrar,
+	volumeUC *volume.UseCase,
+	imageUC *image.UseCase,
+	diskTypeUC *disktype.UseCase,
+	opHandler operationpb.OperationServiceServer,
+) {
+	storagev1.RegisterInternalVolumeServiceServer(reg, handler.NewInternalVolumeHandler(volumeUC))
+	storagev1.RegisterInternalImageServiceServer(reg, handler.NewInternalImageHandler(imageUC))
+	storagev1.RegisterInternalDiskTypeServiceServer(reg, handler.NewInternalDiskTypeHandler(diskTypeUC))
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 
 // dialPeer лениво создаёт *grpc.ClientConn к peer-сервису (per-edge mTLS). Пустой
@@ -417,50 +519,20 @@ func startDiagnosticListener(addr string, m *metrics.Metrics, logger *slog.Logge
 	return task, shutdown, nil
 }
 
-// runInternalListener обслуживает internal :9091 и зеркалит lifecycle public-
-// листенера: фатальная (не graceful) ошибка Serve сносит процесс через cancel()
-// И возвращается вызывающему, чтобы её крах дал non-zero exit (serveResult).
-func runInternalListener(srv gracefulServer, lis net.Listener, cancel context.CancelFunc, logger *slog.Logger) error {
-	if serr := srv.Serve(lis); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-		logger.Error("internal grpc server stopped; tearing down process", "err", serr)
-		cancel()
-		return serr
-	}
-	return nil
-}
-
-// gracefulServer — минимальный контракт grpc-сервера, нужный runInternalListener.
-type gracefulServer interface {
-	Serve(net.Listener) error
-}
-
-// serveResult сводит exit-ошибку процесса: ошибка public-листенера приоритетна;
-// иначе наверх идёт фатальная ошибка internal-листенера (её крах тоже даёт
-// non-zero exit — симметрия public/internal).
-func serveResult(publicErr, internalErr error) error {
-	if publicErr != nil {
-		return publicErr
-	}
-	return internalErr
-}
-
-// buildListFilter собирает per-object фильтр видимости публичного List
-// (kacho-iam AuthorizeService.BatchCheck по id ПРОЧИТАННОЙ страницы).
+// buildListFilter собирает пообъектный сужатель видимости (kacho-iam
+// AuthorizeService.BatchCheck по id ПРОЧИТАННОЙ страницы).
 //
-// nil (⇒ use-case делает passthrough) возможен только в dev: production boot-guard
-// (config.Validate) требует и ListFilterEnabled=true, и непустой AuthZIAMGRPCAddr,
-// поэтому «тихо выключить фильтр на развёрнутом стенде» нельзя.
-//
-// Логируются ВСЕ три числа таймингов: per-call дедлайн гейтит ОДИН BatchCheck,
-// operation_budget — фильтрацию всей страницы (выводится из per-call и
-// параллелизма), worst_case_depth — сколько волн он покрывает. По одному конфигу не
-// видно, какое из них реально ограничивает запрос.
 // Возвращается КОНКРЕТНЫЙ тип: один и тот же сужатель обслуживает обе двери
 // механизма — видимость страницы и гейт мутации по названному объекту.
 //
-// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход: сужатель собирается всегда
-// и ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только объявленным
+// Выключенный сужатель НЕ ОЗНАЧАЕТ сквозной проход: он собирается всегда и
+// ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только объявленным
 // аварийным режимом, и каждое его срабатывание считается и называется.
+//
+// Логируются ВСЕ три числа таймингов: per-call дедлайн гейтит ОДИН BatchCheck,
+// operation_budget — сужение всей страницы (выводится из per-call и параллелизма),
+// worst_case_depth — сколько волн он покрывает. По одному конфигу не видно, какое
+// из них реально ограничивает запрос.
 func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.Narrower {
 	breakglass := !cfg.ListFilterEnabled || authzConn == nil
 	var conn grpc.ClientConnInterface

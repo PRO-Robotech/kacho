@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -416,11 +417,31 @@ func protoPackageOfFQN(fqn string) string {
 }
 
 // wiredMapPackages — proto-пакеты, чью выведенную карту сервис действительно
-// вручает интерсептору.
+// вручает звену решения о доступе.
 //
 // Признак — не «в дереве есть файл с картой», а «карта попадает в
 // authz.InterceptorOptions». Первое переживает снятие проводки и осталось бы
 // зелёным ровно там, где защита выключена; второе — нет.
+//
+// # Две законные формы, и обе читаются
+//
+// (а) СОБСТВЕННАЯ фабрика звена: пакет объявляет `protoPackages`, выводит по ним
+// карту и вручает её `authz.InterceptorOptions{Map: …}` в том же каталоге.
+//
+// (б) НОСИТЕЛЬ контура (`pkg/servicehost`): композиционный корень отдаёт ему оба
+// регистратора, а карту носитель выводит САМ — из имён служб, снятых у серверов
+// после регистрации, — и сам же вручает её звену. Собственного объявления
+// `protoPackages` у такого сервиса нет и быть не должно: второй источник домена
+// как раз и убирался. Признать эту форму обязательно — иначе гейт объявил бы
+// необеспеченной полосу сервиса, у которого сужение вдобавок ПРОВЕРЯЕТСЯ отказом
+// старта (О3: каталог объявил метод сужаемым, а проводки сужателя в дескрипторе
+// нет ⇒ процесс не поднимается), то есть держится строже, чем в форме (а).
+//
+// Домены формы (б) выводятся из ЗАРЕГИСТРИРОВАННЫХ служб (`…Register<X>Server`), а
+// не из импортов: импорт стабов бывает и у клиента соседа (storage импортирует
+// стабы iam, чтобы его СПРАШИВАТЬ), и по импортам домен iam оказался бы «провязан»
+// чужим сервисом — то есть исключение, у которого предмет есть, объявилось бы
+// истёкшим.
 func wiredMapPackages(t *testing.T, root string) map[string]bool {
 	t.Helper()
 
@@ -435,6 +456,10 @@ func wiredMapPackages(t *testing.T, root string) map[string]bool {
 	// Пакет каталога (директория) → объявленные им proto-пакеты.
 	declared := map[string][]string{}
 	wiredDirs := map[string]bool{}
+	// Форма (б): каталог → домены зарегистрированных им служб, и признак того,
+	// что этот каталог отдаёт регистраторы носителю.
+	registered := map[string][]string{}
+	carrierDirs := map[string]bool{}
 
 	for _, rel := range rels {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") ||
@@ -452,6 +477,12 @@ func wiredMapPackages(t *testing.T, root string) map[string]bool {
 		if mapHandedToInterceptor(f) {
 			wiredDirs[dir] = true
 		}
+		if handsRegistrarsToTheCarrier(f) {
+			carrierDirs[dir] = true
+		}
+		if pkgs := registeredProtoPackages(f); len(pkgs) > 0 {
+			registered[dir] = append(registered[dir], pkgs...)
+		}
 	}
 
 	out := map[string]bool{}
@@ -463,6 +494,80 @@ func wiredMapPackages(t *testing.T, root string) map[string]bool {
 			out[p] = true
 		}
 	}
+	for dir, pkgs := range registered {
+		if !carrierDirs[dir] {
+			continue
+		}
+		for _, p := range pkgs {
+			out[p] = true
+		}
+	}
+	return out
+}
+
+// handsRegistrarsToTheCarrier — файл отдаёт слушатели носителю контура.
+func handsRegistrarsToTheCarrier(f *ast.File) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel == nil || sel.Sel.Name != "Serve" {
+			return true
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "servicehost" {
+			found = true
+		}
+		return true
+	})
+	return found
+}
+
+// apiStubImportPrefix — путь сгенерённых стабов. Домен восстанавливается из
+// хвоста пути заменой разделителя: `kacho/cloud/storage/v1` → `kacho.cloud.storage.v1`.
+const apiStubImportPrefix = "github.com/PRO-Robotech/kacho/pkg/api/"
+
+// registeredProtoPackages — домены служб, которые файл РЕГИСТРИРУЕТ на сервере.
+//
+// Единица — вызов `<стабы>.Register…Server(...)`: служить RPC и не
+// зарегистрировать его невозможно, это одна операция. Импорт стабов таким
+// признаком не является — его делает и клиент соседа.
+func registeredProtoPackages(f *ast.File) []string {
+	local := map[string]string{} // локальное имя пакета → proto-пакет
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || !strings.HasPrefix(path, apiStubImportPrefix) {
+			continue
+		}
+		name := filepath.Base(path)
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		local[name] = strings.ReplaceAll(strings.TrimPrefix(path, apiStubImportPrefix), "/", ".")
+	}
+	if len(local) == 0 {
+		return nil
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel == nil ||
+			!strings.HasPrefix(sel.Sel.Name, "Register") || !strings.HasSuffix(sel.Sel.Name, "Server") {
+			return true
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok {
+			if proto, known := local[pkg.Name]; known {
+				out = append(out, proto)
+			}
+		}
+		return true
+	})
 	return out
 }
 

@@ -3,87 +3,83 @@
 
 package main
 
-// trusted_forwarders_wiring_test.go — страж РАЗМЕЩЕНИЯ: список доверенных
-// отправителей обязан приходить из конфигурации, а не из литерала в коде.
+// trusted_forwarders_wiring_test.go — страж РАЗМЕЩЕНИЯ: круг доверенных
+// отправителей обязан приходить из конфигурации и доезжать до того значения, по
+// которому носитель строит цепочку.
 //
 // Поведенческие замки (кто именно принимается, а кто отвергается) живут в
 // trusted_forwarders_test.go. Этот файл закрывает другой класс: поведенческий тест
-// можно прогнать с любым списком и получить зелёное, а живой процесс при этом будет
+// можно прогнать с любым кругом и получить зелёное, а живой процесс при этом будет
 // подниматься с зашитым пустым. Разрыв между «проверено» и «развёрнуто» — ровно та
-// «форма без содержания», из-за которой дыра и прожила до сих пор: цепочка
-// интерсепторов была написана правильно и получала пустой аргумент.
+// «форма без содержания», из-за которой дыра и прожила до сих пор: цепочка звеньев
+// была написана правильно и получала пустой аргумент.
+//
+// # Почему страж больше НЕ читает исходник, и почему это усиление
+//
+// Прежняя редакция искала в тексте `serve.go` присваивание переменной `forwarders`
+// и считала, сколько раз она уезжает в сборщик цепочки. Оба предмета исчезли
+// вместе с собственной сборкой: цепочку строит носитель, а круг едет ему полем
+// дескриптора. Текстовый страж на такое дерево не переносится — он либо падал бы
+// на верном коде, либо (после «починки» регулярного выражения) утверждал бы про
+// строку, а не про значение.
+//
+// Здесь утверждается ЗНАЧЕНИЕ: круг, который несёт ПРИНЯТЫЙ дескриптор, совпадает
+// с тем, что дала конфигурация, и меняется вместе с ней. Литерал в коде такую
+// проверку пройти не может — он не зависит от входа.
+//
+// «Оба слушателя получают один и тот же круг» здесь больше не считается по числу
+// вызовов: у носителя цепочка строится ОДИН раз и подаётся обоим серверам, то есть
+// свойство стало свойством построения. Наблюдаемую его половину держит
+// `pkg/servicehost.TestBothListenersRefuseIdenticallyOnTheWire`.
 
 import (
-	"os"
-	"regexp"
-	"strings"
+	"io"
+	"log/slog"
 	"testing"
 )
 
-// forwardersAssign — ЛЮБОЕ присваивание переменной, уезжающей в
-// WithTrustedForwarders. Ищем все вхождения, а не первое: `forwarders :=
-// cfg.TrustedForwarders()` с последующим `forwarders = nil` прошёл бы проверку
-// первого совпадения и вернул бы дыру.
-var forwardersAssign = regexp.MustCompile(`(?m)^\s*forwarders\s*:?=\s*(.+?)\s*$`)
-
-// chainCall — вызов боевой цепочки со списком отправителей. Пробелы внутри списка
-// аргументов не фиксируем: перенос строки при форматировании не должен превращать
-// стража в ложное падение.
-var chainCall = regexp.MustCompile(`(?s)(unary|stream)Chain\(\s*logger\s*,\s*forwarders\s*,`)
-
-func readServeSrc(t *testing.T) string {
+// circleOfDescriptor — круг, который несёт принятый дескриптор storage.
+func circleOfDescriptor(t *testing.T, cfg configForCircle) []string {
 	t.Helper()
-	b, err := os.ReadFile("serve.go")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := prodCfg(cfg.sans...)
+	c.AuthMode = "dev" // предмет — круг, а не боевая строгость транспорта
+	desc, err := describe(c, logger, buildListFilter(c, nil, logger))
 	if err != nil {
-		t.Fatalf("read composition root: %v", err)
+		t.Fatalf("дескриптор не принят на круге %v: %v", cfg.sans, err)
 	}
-	return string(b)
+	return desc.Spec().Forwarders.SANs()
 }
 
-// TestServe_ForwarderAllowListComesFromConfig — список обязан выводиться из cfg.
+type configForCircle struct{ sans []string }
+
+// TestDescriptorCarriesTheConfiguredCircle — круг доезжает до дескриптора ИЗ
+// конфигурации, и разный вход даёт разный круг.
 //
-// RED до правки: `forwarders := []string{}` — литерал, поля в конфиге нет вовсе,
-// поэтому ни один способ настройки не может сузить круг отправителей.
-func TestServe_ForwarderAllowListComesFromConfig(t *testing.T) {
-	src := readServeSrc(t)
-
-	all := forwardersAssign.FindAllStringSubmatch(src, -1)
-	if len(all) == 0 {
-		t.Fatal("serve.go: не найдено присваивание `forwarders` — " +
-			"страж потерял цель, обнови его вместе с проводкой")
+// Второй случай обязателен: утверждение «круг равен ожидаемому» на ОДНОМ входе
+// зеленело бы и на литерале, случайно совпавшем с ожиданием.
+func TestDescriptorCarriesTheConfiguredCircle(t *testing.T) {
+	both := circleOfDescriptor(t, configForCircle{sans: []string{gatewaySAN, computeSAN}})
+	if len(both) != 2 || both[0] != gatewaySAN || both[1] != computeSAN {
+		t.Fatalf("дескриптор несёт круг %v, конфигурация давала [%s %s]", both, gatewaySAN, computeSAN)
 	}
-	// КАЖДОЕ присваивание обязано приходить из конфигурации: достаточно одного
-	// переприсваивания литералом ниже по функции, чтобы круг снова не сужался.
-	for _, m := range all {
-		rhs := strings.TrimSpace(m[1])
-		if !strings.Contains(rhs, "cfg.") {
-			t.Fatalf("serve.go: список доверенных отправителей присваивается как `%s` — "+
-				"литералом, а не конфигурацией. Пустой литерал означает «принимаем переданную "+
-				"личность от ЛЮБОГО пира с сертификатом» (pkg/grpcsrv principalIsTrusted сужает "+
-				"круг только на непустом списке) — и настроить это невозможно ни одним способом", rhs)
-		}
+
+	one := circleOfDescriptor(t, configForCircle{sans: []string{gatewaySAN}})
+	if len(one) != 1 || one[0] != gatewaySAN {
+		t.Fatalf("на сужённой конфигурации дескриптор несёт %v — значение не зависит от входа, "+
+			"то есть в дескриптор уезжает не конфигурация", one)
 	}
 }
 
-// TestServe_BothListenersGetTheSameAllowList — измерение нельзя закрыть на одном
-// листенере: внутренний (:9091) несёт привязку/отвязку тома, публичный (:9090) —
-// чтение и изменение. Оба обязаны получать один и тот же список.
-func TestServe_BothListenersGetTheSameAllowList(t *testing.T) {
-	src := readServeSrc(t)
-
-	var unary, stream int
-	for _, m := range chainCall.FindAllStringSubmatch(src, -1) {
-		if m[1] == "unary" {
-			unary++
-		} else {
-			stream++
-		}
-	}
-	if unary != 2 {
-		t.Fatalf("unaryChain с общим списком отправителей встречается %d раз(а), ожидается 2 "+
-			"(публичный :9090 и внутренний :9091)", unary)
-	}
-	if stream != 2 {
-		t.Fatalf("streamChain с общим списком отправителей встречается %d раз(а), ожидается 2", stream)
+// TestDescriptorCircleIsFilteredLikeTheTransportFilters — значение, уезжающее в
+// дескриптор, отфильтровано так же, как фильтрует общий фундамент (пустые записи
+// отбрасываются).
+//
+// Иначе страж считал бы круг заполненным там, где транспорт видит пустой: список из
+// одних пустых записей проходил бы как сужение и возвращал «доверяем любому».
+func TestDescriptorCircleIsFilteredLikeTheTransportFilters(t *testing.T) {
+	got := circleOfDescriptor(t, configForCircle{sans: []string{" ", gatewaySAN + " ", ""}})
+	if len(got) != 1 || got[0] != gatewaySAN {
+		t.Fatalf("круг дескриптора = %#v, ожидался ровно [%q]", got, gatewaySAN)
 	}
 }
