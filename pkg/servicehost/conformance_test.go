@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -37,40 +38,63 @@ import (
 
 func chainSpec() servicecontract.Spec {
 	return servicecontract.Spec{
-		Service:    "kacho-demo",
-		Logger:     slog.Default(),
-		Forwarders: grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		Service:        "kacho-demo",
+		Logger:         slog.Default(),
+		Forwarders:     grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		HandlingBudget: 30 * time.Second,
 	}
 }
 
-// TestPanicRecoveryIsOutermostAndDecisionIsLast — порядок звеньев.
+// TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast — порядок звеньев.
 //
-// Восстановление паники обязано быть ПЕРВЫМ: оно оборачивает всё нижележащее,
-// включая сами звенья. Иначе паника В ЗВЕНЕ уронит процесс, и дефект на пути
-// запроса одного тенанта прекратит обслуживание всех.
+// Журнал доступа обязан быть ПЕРВЫМ (самым внешним): он записывает исход любого
+// вызова, включая паниковавший. Стоя внутри восстановления паники, он пропускал
+// бы ровно тот исход, который тяжелее всех.
 //
-// Решение о доступе обязано быть ПОСЛЕДНИМ из четырёх: оно читает уже
-// извлечённого субъекта, а решение по ещё не извлечённой личности решением не
-// является.
-func TestPanicRecoveryIsOutermostAndDecisionIsLast(t *testing.T) {
+// Восстановление паники — ВТОРЫМ: оно оборачивает всё нижележащее, включая сами
+// звенья. Иначе паника В ЗВЕНЕ уронит процесс, и дефект на пути запроса одного
+// тенанта прекратит обслуживание всех.
+//
+// Решение о доступе обязано быть ПОСЛЕДНИМ: оно читает уже извлечённого
+// субъекта, а решение по ещё не извлечённой личности решением не является.
+func TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast(t *testing.T) {
 	var slot decisionSlot
 	unary := unaryChain(chainSpec(), &slot)
 	stream := streamChain(chainSpec(), &slot)
 
-	if len(unary) != 4 || len(stream) != 4 {
+	// Дескриптор пробы гейта мутаций не несёт (ось не объявлена), поэтому его
+	// звена в цепочке нет — отсюда шесть, а не семь. Длина утверждается вместе с
+	// причиной: правка длины обязана быть правкой контура, а не побочным
+	// следствием чужого изменения.
+	if len(unary) != 6 || len(stream) != 6 {
 		t.Fatalf("цепочка изменила длину: unary %d, stream %d. Это не косметика — "+
 			"позиции звеньев несут причину каждая, и правка длины обязана быть правкой контура",
 			len(unary), len(stream))
 	}
-	// Восстановление паники распознаётся ПО СУЩЕСТВУ (это то же значение, что
-	// отдаёт общее звено), а не по имени переменной.
+	// Звенья распознаются ПО СУЩЕСТВУ (то же значение, что отдаёт конструктор),
+	// а не по имени переменной.
+	if got, want := funcID(unary[0]), funcID(accessLogUnary(chainSpec().Logger)); got != want {
+		t.Fatalf("первым unary-звеном стоит %s, а обязан — журнал доступа (%s): "+
+			"внутри восстановления паники он не увидел бы паниковавший вызов", got, want)
+	}
+	if got, want := funcID(stream[0]), funcID(accessLogStream(chainSpec().Logger)); got != want {
+		t.Fatalf("первым stream-звеном стоит %s, а обязан — журнал доступа (%s)", got, want)
+	}
 	wantUnary := funcID(grpcsrv.UnaryPanicRecovery(chainSpec().Logger))
-	if got := funcID(unary[0]); got != wantUnary {
-		t.Fatalf("первым unary-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantUnary)
+	if got := funcID(unary[1]); got != wantUnary {
+		t.Fatalf("вторым unary-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantUnary)
 	}
 	wantStream := funcID(grpcsrv.StreamPanicRecovery(chainSpec().Logger))
-	if got := funcID(stream[0]); got != wantStream {
-		t.Fatalf("первым stream-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantStream)
+	if got := funcID(stream[1]); got != wantStream {
+		t.Fatalf("вторым stream-звеном стоит %s, а обязано — восстановление паники (%s)", got, wantStream)
+	}
+	// Верхняя граница обработки — сразу за восстановлением: срок обязан накрывать
+	// и вопрос о доступе, и запросы к своей БД.
+	if got, want := funcID(unary[2]), funcID(handlingBudgetUnary(time.Second)); got != want {
+		t.Fatalf("третьим unary-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
+	}
+	if got, want := funcID(stream[2]), funcID(handlingBudgetStream(time.Second)); got != want {
+		t.Fatalf("третьим stream-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
 	}
 	// Последним — слот решения о доступе. Проверяем ПОВЕДЕНИЕМ, а не именем:
 	// пустой слот отказывает, и это его единственная наблюдаемая примета.
@@ -82,36 +106,51 @@ func TestPanicRecoveryIsOutermostAndDecisionIsLast(t *testing.T) {
 	}
 }
 
-// TestBothListenersGetTheSameChain — оба слушателя получают ОДНУ И ТУ ЖЕ
-// цепочку.
+// TestChainBuilderIsDeterministic — строитель цепочки на одном дескрипторе даёт
+// одно и то же.
 //
-// «Internal = доверенный» — запрещённое допущение, и внутренний слушатель от
-// звеньев не освобождён. До носителя это держалось тем, что автор написал два
-// одинаковых литерала; здесь — тем, что литерал один и другого нет.
-func TestBothListenersGetTheSameChain(t *testing.T) {
+// # Чего эта проба НЕ утверждает, и почему это сказано в заголовке
+//
+// Прежняя её редакция называлась «оба слушателя получают одну и ту же цепочку», а
+// в теле сравнивала `unaryChain(spec,&slot)` с ним же. Это детерминизм строителя,
+// и только он: правка `Serve`, освобождающая внутренний слушатель от звена,
+// оставляла пробу зелёной, потому что тела `Serve` она не касалась вовсе.
+// Заголовок был шире тела — и ровно на ту величину, ради которой проба писалась.
+//
+// Свойство «обоим слушателям подаётся одно» теперь держится ДВУМЯ вещами, и обе
+// вне этой пробы: построением (`serverPair` строит цепочку один раз и передаёт её
+// обоим) и наблюдаемой проверкой `TestBothListenersRefuseIdenticallyOnTheWire`,
+// которая поднимает оба сервера и сверяет то, что видит вызывающий.
+//
+// Детерминизм при этом остаётся нужным сам по себе: без него сравнение чего бы то
+// ни было со строителем ничего не значит.
+func TestChainBuilderIsDeterministic(t *testing.T) {
 	var slot decisionSlot
 	spec := chainSpec()
-	pub, intl := unaryChain(spec, &slot), unaryChain(spec, &slot)
-	if len(pub) != len(intl) {
-		t.Fatalf("цепочки слушателей разной длины: %d против %d", len(pub), len(intl))
+	first, second := unaryChain(spec, &slot), unaryChain(spec, &slot)
+	if len(first) != len(second) {
+		t.Fatalf("строитель дал цепочки разной длины: %d против %d", len(first), len(second))
 	}
-	for i := range pub {
-		if funcID(pub[i]) != funcID(intl[i]) {
-			t.Fatalf("звено %d различается: публичный %s, внутренний %s",
-				i, funcID(pub[i]), funcID(intl[i]))
+	for i := range first {
+		if funcID(first[i]) != funcID(second[i]) {
+			t.Fatalf("звено %d различается между двумя сборками одного дескриптора: %s против %s",
+				i, funcID(first[i]), funcID(second[i]))
 		}
 	}
 }
 
-// TestForwarderCircleReachesBothChains — круг отправителей ДОЕЗЖАЕТ до звена
-// обоих слушателей.
+// TestForwarderCircleReachesTheChain — круг отправителей ДОЕЗЖАЕТ до звена
+// цепочки, которую строит носитель.
 //
 // Проба нужна потому, что круг легко «объявить и не провязать»: дескриптор его
 // несёт, отказ старта его проверяет, а до транспорта он не доходит — и тогда
 // переданную личность принимает любой проверенный пир. Здесь фиксируется, что
-// значение действительно уезжает в пару звеньев извлечения личности, причём то
-// же самое на обоих слушателях.
-func TestForwarderCircleReachesBothChains(t *testing.T) {
+// значение действительно уезжает в пару звеньев извлечения личности.
+//
+// Про ОБА слушателя проба не утверждает ничего, и прежний её заголовок это
+// обещал напрасно: тело строит одну цепочку. Что цепочка у слушателей общая —
+// предмет `serverPair` и `TestBothListenersRefuseIdenticallyOnTheWire`.
+func TestForwarderCircleReachesTheChain(t *testing.T) {
 	spec := chainSpec()
 	pair := grpcsrv.PrincipalExtractUnary(spec.Forwarders)
 	if len(pair) != 2 {
@@ -119,9 +158,13 @@ func TestForwarderCircleReachesBothChains(t *testing.T) {
 	}
 	var slot decisionSlot
 	chain := unaryChain(spec, &slot)
+	// Пара извлечения личности стоит НЕПОСРЕДСТВЕННО перед решением о доступе —
+	// её позиция отсчитывается от хвоста, а не от головы: иначе проба ломалась бы
+	// при появлении любого звена выше и краснела бы на исправном контуре.
+	at := len(chain) - 1 - len(pair)
 	for i, want := range pair {
-		if funcID(chain[i+1]) != funcID(want) {
-			t.Fatalf("звено %d цепочки не совпадает со звеном пары извлечения личности", i+1)
+		if funcID(chain[at+i]) != funcID(want) {
+			t.Fatalf("звено %d цепочки не совпадает со звеном пары извлечения личности", at+i)
 		}
 	}
 }

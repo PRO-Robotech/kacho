@@ -1,0 +1,180 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// describe_test.go — дескриптор процесса собирается ЗДЕСЬ, и здесь же он обязан
+// проходить конструктор.
+//
+// # Предмет, и он найден дорогой ценой
+//
+// Носитель сделал три поля дескриптора обязательными, а этот композиционный
+// корень их не объявил. Сборка молчала (отказ рантаймовый), прогон носителя
+// молчал (корень сервиса не входил в его область), прогон самого geo молчал
+// тоже — `describe()` не звал НИ ОДИН тест. Итог: ветка ломала подъём
+// единственного сервиса, уже стоящего на носителе, и ни одна проверка не могла
+// об этом сказать.
+//
+// Отсюда правило, которое эти пробы исполняют: у дескриптора обязан быть
+// потребитель в прогоне — тот же конструктор, который решает его судьбу на
+// старте, и на том же конфиге, с каким процесс поднимается. Свойство «каждый
+// композиционный корень проходит конструктор» держится не этим файлом, а
+// гейтом по дереву (`internal/repohygiene`, TestEveryDescriptorHasAProbe): один
+// файл закрывает один сервис, гейт — тех, кого ещё не написали.
+
+import (
+	"log/slog"
+	"strings"
+	"testing"
+
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+
+	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
+	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
+	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
+)
+
+// bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
+// (`config.Load` из переменных окружения).
+//
+// Литерал `config.Config{…}` здесь был бы ДРУГОЙ величиной: он обошёл бы
+// умолчания, а половина полей дескриптора приезжает именно из них — и проба
+// утверждала бы про конфигурацию, которой не бывает ни на одной посадке.
+func bootConfig(t *testing.T, env map[string]string) config.Config {
+	t.Helper()
+	base := map[string]string{
+		"KACHO_GEO_DB_PASSWORD":                  "secret",
+		"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR":          "kacho-iam-internal:9091",
+		"KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS": "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
+		"KACHO_GEO_AUTH_MODE":                    "dev",
+	}
+	for k, v := range env {
+		base[k] = v
+	}
+	for k, v := range base {
+		t.Setenv(k, v)
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatalf("конфигурация не загрузилась: %v", err)
+	}
+	return c
+}
+
+// TestDescribeIsAcceptedByTheConstructor — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первым:
+// пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже
+// зеленеет по чужой причине.
+func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	if err != nil {
+		t.Fatalf("дескриптор geo отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
+	}
+	if !desc.Accepted() {
+		t.Fatal("дескриптор собран литералом в обход конструктора: носитель откажется по нему поднимать процесс")
+	}
+	// Перепись: три оси, ставшие обязательными последними, объявлены ЯВНО, а не
+	// проскочили нулевым значением. Утверждается не «принят», а «принят по
+	// названным причинам» — иначе проба зеленела бы и на дескрипторе, у которого
+	// эти оси отвалились вместе с их отказами.
+	s := desc.Spec()
+	if s.HandlingBudget <= 0 {
+		t.Fatalf("верхняя граница обработки не объявлена (%v)", s.HandlingBudget)
+	}
+	if budget, ok := s.DenyBudget.Get(); !ok || budget <= 0 {
+		t.Fatalf("бюджет отказов объявлен изъятием либо нулём (%v, ok=%v), а решение о доступе geo "+
+			"принимает вопросом к соседу — шторм отказов есть кому ронять", budget, ok)
+	}
+	if !s.BootGate.Declared() {
+		t.Fatal("ось загрузочного гейта не объявлена вовсе")
+	}
+	t.Logf("дескриптор принят: граница обработки %v, бюджет отказов объявлен, гейт мутаций объявлен", s.HandlingBudget)
+}
+
+// TestDescribeProbeCanFail — контроль того, что проба выше СПОСОБНА упасть.
+//
+// Без него «дескриптор принят» неотличимо от «конструктор ничего не проверяет»:
+// положительное утверждение, у которого нет отрицательного близнеца, зеленеет
+// одинаково на исправном и на выключенном.
+func TestDescribeProbeCanFail(t *testing.T) {
+	// Ребро решения о доступе не названо — отказ О6.
+	cfg := bootConfig(t, map[string]string{"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR": ""})
+	_, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	if err == nil {
+		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
+			"и положительная проба выше вакуумна")
+	}
+	if !strings.Contains(err.Error(), "CheckEdge") {
+		t.Fatalf("отказ не называет предмета — чинить по нему нечего:\n%v", err)
+	}
+}
+
+// TestGeoServesNoGatedMutation — САМОИСТЕЧЕНИЕ изъятия по загрузочному гейту.
+//
+// Дескриптор объявляет гейт мутаций неприменимым, и вторая половина причины —
+// «отвергать нечего»: все мутации geo живут на `Internal*`-службах, которые под
+// гейт не подпадают. Утверждение проверяемое, и проверяется оно ТЕМ ЖЕ
+// предикатом, которым гейт исполняется (`servicehost.IsGatedMutation`), а не его
+// копией: копия разошлась бы с оригиналом молча и ровно там, где расхождение
+// незаметно.
+//
+// Появится у geo тенантское `Create` — проба покраснеет и назовёт метод. Это и
+// есть предикат снятия изъятия, и он внешний: состояние дерева, а не память
+// автора.
+func TestGeoServesNoGatedMutation(t *testing.T) {
+	regionUC := region.New(nil, nil, nil, nil)
+	zoneUC := zone.New(nil, nil, nil, nil)
+	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_geo"))
+
+	var served []string
+	for _, reg := range []func(grpc.ServiceRegistrar){
+		func(r grpc.ServiceRegistrar) { registerPublic(r, regionUC, zoneUC, opHandler) },
+		func(r grpc.ServiceRegistrar) { registerInternal(r, regionUC, zoneUC, opHandler) },
+	} {
+		srv := grpc.NewServer()
+		reg(srv)
+		for name, info := range srv.GetServiceInfo() {
+			for _, m := range info.Methods {
+				served = append(served, "/"+name+"/"+m.Name)
+			}
+		}
+	}
+	if len(served) == 0 {
+		t.Fatal("ни один метод не зарегистрирован — «гейтируемых мутаций нет» было бы верно " +
+			"и на пустом наборе, то есть проба не отличала бы исправное от сломанного")
+	}
+	var gated []string
+	for _, m := range served {
+		if servicehost.IsGatedMutation(m) {
+			gated = append(gated, m)
+		}
+	}
+	if len(gated) != 0 {
+		t.Fatalf("geo служит гейтируемую мутацию: %v.\nИзъятие BootGate в describe() пережило свой "+
+			"предмет: оно обосновано тем, что отвергать нечего. Принесите гейт либо перепишите причину",
+			gated)
+	}
+	t.Logf("осмотрено служимых методов: %d, гейтируемых мутаций среди них: 0", len(served))
+}
+
+// TestBootPostureStillReportsWhatTheDescriptorCarries — самоотчёт о посадке
+// печатается ПОСЛЕ приёма дескриптора, поэтому обе половины обязаны сходиться на
+// одном конфиге. Проба тонкая намеренно: посадку судит `bootposture_test.go`,
+// здесь утверждается лишь то, что обе читают одно и то же и не расходятся.
+func TestBootPostureStillReportsWhatTheDescriptorCarries(t *testing.T) {
+	cfg := bootConfig(t, nil)
+	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	posture := bootPosture(cfg)
+	if got, want := posture.AuthMode, desc.Spec().Mode.String(); got != want {
+		t.Fatalf("самоотчёт называет режим %q, дескриптор — %q: два места об одном предмете, "+
+			"и гейт посадки читал бы не то, по чему процесс поднялся", got, want)
+	}
+	var _ = observability.LogBootPosture
+}
