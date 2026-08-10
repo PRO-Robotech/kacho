@@ -41,7 +41,8 @@ IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 # о конфигурации, а не о поведении.
 IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
 IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
-REGISTRY_DATAPLANE_PORT="${REGISTRY_DATAPLANE_PORT:-18580}"
+# Порт data plane реестра здесь не объявляется: адресат — компонент, и порт вместе
+# с портовой ручкой живёт в deploy/e2e-shards.json (`optional_transports`).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Монорепа: deploy/scripts → корень репо на два уровня выше. Раскладка — services/<svc>,
@@ -95,8 +96,26 @@ kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
 PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/registry "$REGISTRY_DATAPLANE_PORT:8080" >/tmp/e2e-pf-registry-dp.log 2>&1 &
-PF_PIDS+=($!)
+
+# ПРОБРОС К КОМПОНЕНТУ — ПО СПРОСУ, ТЕМ ЖЕ ПРЕДИКАТОМ, ЧТО У newman-parallel.sh.
+#
+# Все пробросы выше ведут к ЯДРУ и есть на любом стенде. Адресат такого проброса —
+# переключаемый компонент, которого на стенде может не быть; `kubectl port-forward
+# svc/<нет такого>` не встаёт и ЗАВЕРШАЕТСЯ. У этого скрипта проверки живости
+# пробросов нет вовсе, поэтому здесь это давало не «прогон недействителен», а
+# мёртвый порт и отказ на сотню строк ниже — про чужой предмет.
+#
+# Спрос выводится ИЗ ДЕРЕВА для ТОЙ суиты, которую этот запуск и гоняет, и тем же
+# модулем, что у прогонщика шардов: два предиката об одном разошлись бы молча.
+OPT_ENV_ARGS=()
+while IFS='|' read -r _ovar _osvc _otport _oportenv _odport _oscheme _owhy; do
+  [ -n "${_ovar:-}" ] || continue
+  _oport="${!_oportenv:-$_odport}"
+  kubectl -n "$NS" port-forward "svc/$_osvc" "$_oport:$_otport" >"/tmp/e2e-pf-opt-$_ovar.log" 2>&1 &
+  PF_PIDS+=($!)
+  OPT_ENV_ARGS+=(--env-var "$_ovar=$_oscheme://localhost:$_oport")
+  echo "[e2e] транспорт компонента: $_ovar → svc/$_osvc :$_otport на localhost:$_oport ($_owhy)"
+done < <(python3 "$(dirname "${BASH_SOURCE[0]}")/e2e-optional-transports.py" --suites "$SVC" --census)
 sleep 4
 
 # mTLS для grpcurl → kacho-iam-internal:9091.
@@ -172,7 +191,7 @@ if [ -n "$COLLECTION" ]; then
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
-    --env-var "registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT" \
+    "${OPT_ENV_ARGS[@]}" \
     --delay-request 15 --reporters cli
 else
   # run.sh НЕ читает BASE_URL/INTERNAL_BASE_URL из окружения — значения он берёт только
@@ -188,7 +207,7 @@ else
     --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
     --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
     --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
-    --env-var "registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT"
+    "${OPT_ENV_ARGS[@]}"
   RAW_RC=$?
   set -e
 

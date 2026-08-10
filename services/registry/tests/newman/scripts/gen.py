@@ -70,6 +70,11 @@ class Step:
     #   "anonymous"       — strip Authorization header before request
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (resolved from env)
     auth: Optional[str] = None
+    # Слушатель на внутреннем CA (iam :9096 — server-TLS листовым сертификатом
+    # внутреннего центра). Предмет пробы — ЧТО он отдаёт, а не чья цепочка доверия
+    # у туннеля, поэтому проверка цепочки для такого шага снимается ЯВНО и только
+    # там, где это записано кейсом.
+    insecure_tls: bool = False
 
 
 @dataclass
@@ -185,6 +190,75 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
         "  const j = pm.response.json();",
         f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
         "});",
+    ]
+
+
+def assert_answered(label: str) -> List[str]:
+    """Утверждать, что ответ ВООБЩЕ ПРИШЁЛ, прежде чем утверждать о нём хоть что-то.
+
+    Запрос, умерший до завершения HTTP-обмена (DNS, отказ соединения, TLS,
+    таймаут), всё равно доводит newman до test-скрипта — с ПУСТЫМ ответом, где
+    `pm.response.code` равен `undefined`. Проба, начинающаяся с «если кода нет —
+    выходим», записывает в этом случае ПРОЙДЕННОЕ утверждение для проверки,
+    которой не было: «я не смог дозвониться» и «мне отказали» — разные находки, и
+    доказательством служит только вторая.
+
+    Поэтому первое, что утверждает проба, — что ей ответили. Не ответили ⇒
+    красное, с именем шага; и все последующие утверждения тоже красные, потому
+    что `undefined` не равен ожидаемому статусу. Это и есть замысел: проверка,
+    которая не состоялась, не вправе отчитаться успехом.
+
+    Канон и полный разбор класса — `services/iam/tests/newman/scripts/gen.py`
+    (там же перепись восьми негативов ban #6, проживших так неизвестно сколько).
+    """
+    return [
+        f"pm.test('{label}: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {{",
+        "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса')"
+        ".to.not.be.undefined;",
+        "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+        "});",
+    ]
+
+
+def require_env_url(var: str, path: str, why: str = "") -> List[str]:
+    """Pre-request: направить запрос на `{{<var>}}` + path и УПАСТЬ, если var не задана.
+
+    Две одинаковые с виду стражи — разные по существу:
+
+      * страж ОПЕРАЦИИ (`if (!opId) skipRequest()`) — законный пропуск: мутацию
+        отвергли намеренно, опрашивать нечего, ничего не потеряно;
+      * страж ОКРУЖЕНИЯ (`if (!someBaseUrl) skipRequest()`) — СЛОМАННЫЙ ХАРНЕСС:
+        проверка по-прежнему осмысленна и по-прежнему ожидается, просто прогонщик
+        не передал адрес (`--env-var`).
+
+    newman не оставляет от пропущенного запроса НИЧЕГО — ни утверждения, ни
+    отказа, ни записи об исполнении, — поэтому второй род проходил тем, что
+    никогда не выполнялся. Значит отсутствие переменной здесь УТВЕРЖДАЕТСЯ: суита
+    краснеет с именем переменной вместо того, чтобы молча сжаться. Запрос после
+    этого всё равно пропускается — отправлять его не на тот слушатель значило бы
+    насыпать каскад путающих 404 поверх уже названного отказа.
+
+    Путь резолвится ЯВНО (`pm.variables.replaceIn`) до присваивания: присваивание
+    `pm.request.url` заменяет разобранный Url построенной здесь строкой, и
+    полагаться на то, что newman подставит `{{…}}` внутрь только что
+    перезаписанного адреса, значило бы полагаться на порядок, который здесь никем
+    не закреплён. На пути без шаблонов это тождественная функция.
+    """
+    reason = f" — {why}" if why else ""
+    return [
+        f"// HARNESS-CONFIG GUARD — {var} передаёт прогонщик (--env-var).",
+        "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
+        f"const __cfgUrl = pm.environment.get('{var}') || pm.variables.get('{var}') || '';",
+        "if (__cfgUrl) {",
+        f"  pm.request.url = __cfgUrl + pm.variables.replaceIn('{path}');",
+        "} else {",
+        f"  pm.test('harness config: {var} задана{reason}', () => {{",
+        f"    pm.expect.fail('{var} не задана — прогонщик "
+        "(deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, "
+        "а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
+        "  });",
+        "  pm.execution.skipRequest();",
+        "}",
     ]
 
 
@@ -987,6 +1061,8 @@ def step_to_postman(step: Step) -> Dict:
             },
         },
     }
+    if step.insecure_tls:
+        item["protocolProfileBehavior"] = {"strictSSL": False}
     if step.body is not None:
         item["request"]["body"] = {
             "mode": "raw",
@@ -1167,6 +1243,8 @@ def load_cases_module(path: Path):
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
     mod.assert_field_violation = assert_field_violation
+    mod.assert_answered = assert_answered
+    mod.require_env_url = require_env_url
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.save_operation_id = save_operation_id
