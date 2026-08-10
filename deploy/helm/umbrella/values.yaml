@@ -168,7 +168,7 @@ openfga-bootstrap:
     # auto-creates the DB from auth.username / auth.database.
     initDatabase: false
     dbAdmin:
-      image: postgres:16-alpine
+      image: postgres:18-alpine
       host: kacho-umbrella-pg-openfga
       port: "5432"
       user: postgres
