@@ -1,0 +1,377 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// describe_test.go — что kacho-compute ОБЪЯВЛЯЕТ о себе носителю контура.
+//
+// Здесь спрашивается КОНСТРУКТОР дескриптора: он судит поля по себе — объявлена
+// ли ось, положительна ли величина, сходится ли форма отказа с производителем,
+// объявлено ли ребро решения о доступе. Половина отказов носителя так не
+// проверяется — они существуют только там, где есть СЛУЖИМЫЙ НАБОР, снятый у
+// самих серверов после регистрации. Их закрывает соседний `carrier_start_test.go`,
+// и без него дескриптор мог бы нести ЛОЖНОЕ заявление (ровно так у storage и nlb
+// прошло изъятие «скрывать нечего» на сервисе, который скрывает).
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"strings"
+	"testing"
+	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
+)
+
+// describeCfg — конфигурация, на которой дескриптор ОБЯЗАН приниматься.
+//
+// Посадка dev, и это не поблажка, а разделение предметов. Ручки транспорта
+// слушателей здесь НЕ взводятся намеренно: взведённая ручка без файлов
+// сертификата роняет сборку креденшелов, и всякая проба падала бы на предмете,
+// которого не проверяет. Боевую строгость транспорта судит отдельная проба
+// ниже — отказом конструктора, а не молчаливым пропуском.
+//
+// Величины (окно отзыва, срок вопроса о правах, бюджет отказов, обе границы
+// времени) названы здесь литералами: предмет этого файла — что объявлено, а не
+// откуда взяты умолчания; их читает `internal/config`.
+//
+// Порты нулевые: пробы, доходящие до подъёма, обязаны быть детерминированными, а
+// фиксированный номер сделал бы их заложницами занятости машины прогона.
+func describeCfg() config.Config {
+	return config.Config{
+		AuthMode:                  "dev",
+		DBSSLMode:                 "require",
+		GrpcPort:                  "0",
+		InternalGrpcPort:          "0",
+		AuthZIAMGRPCAddr:          "kacho-iam-internal.kacho.svc.cluster.local:9091",
+		AuthZTrustedForwarderSANs: []string{gatewaySAN},
+		ListFilterEnabled:         true,
+		FGARegisterDrainerEnabled: true,
+		AuthZCacheTTL:             5 * time.Second,
+		AuthZCheckTimeout:         2 * time.Second,
+		AuthZDenyBudgetPerSec:     100,
+		HandlingBudget:            30 * time.Second,
+		WatchStreamBudget:         time.Hour,
+	}
+}
+
+// describeWith собирает дескриптор на заданной конфигурации.
+//
+// Сужатель строится ТЕМ ЖЕ `buildListFilter`, что и в композиционном корне:
+// вторая сборка здесь разошлась бы с первой молча — обе продолжали бы возвращать
+// непустой указатель.
+func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, error) {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	gate := bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"})
+	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{})
+}
+
+// probeExistence — порт сверки существования для проб композиционного корня.
+//
+// Отвечает «объекта нет» на всё: предмет этих проб — отказы старта, которые
+// носитель считает ДО первого соединения, и до вопроса к базе дело не доходит.
+// Настоящая проба живёт на пуле (`internal/repo`), и подменять её здесь
+// поведением было бы подменой предмета: конструктор требует ПРИНЕСЁННЫЙ порт, а
+// не работающий.
+type probeExistence struct{}
+
+func (probeExistence) ObjectExists(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
+// TestDescriptorIsAcceptedForCompute — дескриптор проходит ВСЕ отказы, которые
+// являются его собственными свойствами, и несёт объявленные оси.
+//
+// Проба положительная и обязательна: без неё каждое отрицание ниже зеленело бы на
+// дескрипторе, который не принимается вовсе.
+func TestDescriptorIsAcceptedForCompute(t *testing.T) {
+	desc, err := describeWith(t, describeCfg())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
+	}
+	spec := desc.Spec()
+
+	if spec.Service != "kacho-compute" {
+		t.Errorf("имя процесса %q — отказ, не называющий сервиса, на стенде из семи процессов бесполезен", spec.Service)
+	}
+	if spec.Mode != servicecontract.ModeDev {
+		t.Errorf("посадка %v не соответствует конфигурации (dev) — режим в дескриптор не доехал", spec.Mode)
+	}
+	if budget, ok := spec.DenyBudget.Get(); !ok || budget != 100 {
+		t.Errorf("бюджет отказов %v (объявлен=%v): величина обязана доехать из конфигурации, "+
+			"иначе отсечка шторма молча выключается, а её счётчик становится навсегда нулевым", budget, ok)
+	}
+	if spec.HandlingBudget != 30*time.Second {
+		t.Errorf("граница обработки вызова %v — величина не доехала из конфигурации", spec.HandlingBudget)
+	}
+	if gate, ok := spec.BootGate.Get(); !ok || gate == nil {
+		t.Error("загрузочный гейт мутаций не объявлен величиной: в окне, пока путь доставки " +
+			"намерений не поднят, машина создавалась бы без владельца")
+	}
+	if spec.Existence == nil {
+		t.Error("порт сверки существования не провязан, хотя скрытие объявлено")
+	}
+}
+
+// TestDescriptorNarrowsExactlyTheChangeStream — проводка сужателя объявлена на
+// том методе, который каталог называет сужаемым, и это ЕДИНСТВЕННЫЙ метод.
+//
+// Обе половины проверяет носитель по каталогу (О3/О4) — здесь закрепляется то,
+// что объявляет сам сервис, чтобы промах был назван в прогоне, а не на старте
+// процесса при развёртывании.
+func TestDescriptorNarrowsExactlyTheChangeStream(t *testing.T) {
+	desc, err := describeWith(t, describeCfg())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	wired, ok := desc.Spec().Narrowers.Get()
+	if !ok {
+		t.Fatal("ось проводки сужателя объявлена НЕ величиной: у compute есть сужаемый метод, " +
+			"и изъятие было бы ложным заявлением")
+	}
+	if len(wired) != 1 {
+		t.Fatalf("проводок сужателя %d, ожидалась одна (поток журнала изменений): %v", len(wired), wired)
+	}
+	n, present := wired[watchMethod]
+	if !present || n == nil {
+		t.Fatalf("проводка сужателя на %s отсутствует: за этим методом пообъектной проверки на "+
+			"крае нет вовсе, поэтому отсутствующий сужатель означает не «строже», а «без рубежа»",
+			watchMethod)
+	}
+}
+
+// TestHideExistenceFormsComeFromTheProducer — объявленная форма отказа совпадает
+// с той, которой РЕАЛЬНО отвечает звено решения о доступе.
+//
+// Отвечает всегда таблица промахов владельцев, поэтому выписанная копия разошлась
+// бы с действительностью и не покраснела бы нигде: объявление говорило бы одно, а
+// вызывающий видел бы другое. Носитель эту сверку делает сам (О5); проба
+// переносит её в прогон.
+func TestHideExistenceFormsComeFromTheProducer(t *testing.T) {
+	desc, err := describeWith(t, describeCfg())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	forms, ok := desc.Spec().HideExistence.Get()
+	if !ok || len(forms) == 0 {
+		t.Fatal("ось скрытия существования объявлена изъятием либо пуста, а рантайм compute " +
+			"скрывает ПО ФОРМЕ (чтение объекта глаголом v_get у типа с голосом владельца) — " +
+			"заявление было бы ложным ровно так же, как оно было ложным у storage и nlb")
+	}
+	form, present := forms[servicecontract.ObjectType(authzfilter.ResourceTypeInstance)]
+	if !present {
+		t.Fatalf("форма отказа для %q не объявлена: ресурс ответил бы своей, отличимой формой — "+
+			"то есть оракулом существования", authzfilter.ResourceTypeInstance)
+	}
+	owner, known := authz.OwnerNotFoundFormat(authzfilter.ResourceTypeInstance)
+	if !known {
+		t.Fatalf("у типа %q нет голоса владельца — предпосылка объявления исчезла", authzfilter.ResourceTypeInstance)
+	}
+	if string(form) != owner {
+		t.Fatalf("объявленная форма %q расходится с той, которой ответит звено (%q): скрытие "+
+			"работает ровно настолько, насколько текст отказа неотличим от промаха владельца", form, owner)
+	}
+}
+
+// TestStreamBudgetOutlivesTheHandlingBudget — ось срока жизни подписки судится в
+// ОБЕ стороны на СВОЁМ дескрипторе.
+//
+// Первая сторона: величина объявлена (у compute есть служимый серверный стрим —
+// поток журнала изменений). Вторая: она ЗАМЕТНО превосходит границу обработки
+// одиночного вызова — иначе подписка обрывалась бы не позже, чем истекает потолок
+// ОДНОГО запроса, то есть возвращался бы ровно тот разрыв, ради устранения
+// которого ось и заведена, только теперь с виду осознанно.
+func TestStreamBudgetOutlivesTheHandlingBudget(t *testing.T) {
+	desc, err := describeWith(t, describeCfg())
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	spec := desc.Spec()
+	budget, ok := spec.StreamBudget.Get()
+	if !ok {
+		t.Fatal("срок жизни подписки объявлен изъятием, а compute служит серверный стрим " +
+			"InternalWatchService/Watch — заявление ложно, и носитель уронил бы старт (О11)")
+	}
+	if budget <= spec.HandlingBudget {
+		t.Fatalf("срок жизни подписки %v не превосходит границы обработки вызова %v", budget, spec.HandlingBudget)
+	}
+
+	// Конструктор судит ту же пару — проверяем ЕГО отказом, а не своим прочтением:
+	// иначе проба утверждала бы про число, а не про то, что число кем-то судится.
+	cfg := describeCfg()
+	cfg.WatchStreamBudget = cfg.HandlingBudget
+	if _, err := describeWith(t, cfg); err == nil {
+		t.Fatal("дескриптор ПРИНЯТ со сроком подписки, равным границе обработки вызова: " +
+			"отличие двух величин и есть предмет оси, и оно перестало судиться")
+	}
+}
+
+// TestComputeServesExactlyOneServerStream — предмет объявленной величины: он есть,
+// и он один.
+//
+// Величина у процесса БЕЗ служимых стримов — проводка без предмета (носитель
+// считает это находкой, О11). Проба читает СОСТАВ ЗАРЕГИСТРИРОВАННОГО, а не
+// память автора: появится второй стрим — она назовёт его, и решение про его срок
+// придётся принять явно.
+func TestComputeServesExactlyOneServerStream(t *testing.T) {
+	methods, streams := 0, []string{}
+	for _, reg := range registrarsOfBothListeners() {
+		srv := grpc.NewServer()
+		reg(srv)
+		for name, info := range srv.GetServiceInfo() {
+			for _, m := range info.Methods {
+				methods++
+				if m.IsServerStream {
+					streams = append(streams, "/"+name+"/"+m.Name)
+				}
+			}
+		}
+	}
+	if methods == 0 {
+		t.Fatal("ни один метод не зарегистрирован — «стрим ровно один» было бы утверждением " +
+			"на пустом наборе")
+	}
+	if len(streams) != 1 || streams[0] != string(watchMethod) {
+		t.Fatalf("служимые серверные стримы: %v, ожидался ровно один — %s.\nСрок жизни подписки "+
+			"объявлен ОДНОЙ величиной; появившийся второй стрим наследует её молча, и решение "+
+			"про его срок никто не принимал", streams, watchMethod)
+	}
+	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: %d", methods, len(streams))
+}
+
+// TestDescriptorRefusesInsecureListenersInProduction — боевая посадка судится
+// ОТВЕТОМ САМОГО ТРАНСПОРТА, а не ручкой конфигурации.
+//
+// Предмет назван у самого конструктора: сборщик креденшелов на невзведённой ручке
+// отдаёт незашифрованные креды БЕЗ ошибки, поэтому процесс поднимался бы,
+// отчитывался «проверка прав включена», и переданная личность пользователя ходила
+// бы по открытому каналу. Ручка при этом могла выглядеть как угодно.
+//
+// Проба обязана называть ОБА слушателя: «internal = доверенный» — запрещённое
+// допущение, и освобождение внутреннего было бы ровно им.
+func TestDescriptorRefusesInsecureListenersInProduction(t *testing.T) {
+	cfg := describeCfg()
+	cfg.AuthMode = "production"
+
+	_, err := describeWith(t, cfg)
+	if err == nil {
+		t.Fatal("дескриптор ПРИНЯТ в боевой посадке с незашифрованным транспортом обоих слушателей")
+	}
+	for _, field := range []string{"PublicCreds", "InternalCreds"} {
+		if !strings.Contains(err.Error(), field) {
+			t.Errorf("отказ не называет %s:\n%v", field, err)
+		}
+	}
+}
+
+// TestDescriptorRefusesWithoutTheDecisionEdge — отказ старта, когда ребро решения
+// о доступе не задано.
+//
+// Это ЗАМЕНА прежнего `authzWiringDecision` и она СТРОГО СИЛЬНЕЕ. Прежняя ветка
+// различала режимы: в боевом отсутствие звена было фатальным, вне боевого —
+// процесс поднимался и обслуживал запросы БЕЗ единой проверки прав, о чём
+// сообщал одним предупреждением. У носителя такой ветки не существует вовсе:
+// «цепочка без звена решения» им не выражается, а ребро обязано быть объявлено
+// ЯВНО, поэтому пустой адрес — отказ в ЛЮБОМ режиме, включая dev.
+func TestDescriptorRefusesWithoutTheDecisionEdge(t *testing.T) {
+	for _, mode := range []string{"dev", "production", "production-strict"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := describeCfg()
+			cfg.AuthMode = mode
+			cfg.AuthZTrustAnyForwarder = mode == "dev"
+			cfg.AuthZIAMGRPCAddr = ""
+
+			_, err := describeWith(t, cfg)
+			if err == nil {
+				t.Fatal("дескриптор ПРИНЯТ без ребра решения о доступе: процесс поднялся бы и " +
+					"обслуживал запросы, не спрашивая ни о чьих правах")
+			}
+			if !strings.Contains(err.Error(), "CheckEdge") {
+				t.Fatalf("отказ не называет незаполненного поля:\n%v", err)
+			}
+		})
+	}
+}
+
+// TestDescriptorCarriesTheConfiguredCircle — круг доверенных отправителей доезжает
+// до дескриптора ИЗ конфигурации, и разный вход даёт разный круг.
+//
+// Это ЗАМЕНА прежнего текстового стража, искавшего в `main.go` четыре вызова
+// конструктора пары извлечения личности. Оба его предмета исчезли вместе с
+// собственной сборкой цепочки: пару строит носитель, и строит её ОДИН раз на оба
+// слушателя. Текстовый страж на такое дерево не переносится — он либо падал бы на
+// верном коде, либо (после «починки» строки) утверждал бы про текст, а не про
+// значение.
+//
+// Здесь утверждается ЗНАЧЕНИЕ, и второй случай обязателен: утверждение «круг
+// равен ожидаемому» на ОДНОМ входе зеленело бы и на литерале, случайно совпавшем
+// с ожиданием.
+func TestDescriptorCarriesTheConfiguredCircle(t *testing.T) {
+	circle := func(t *testing.T, sans ...string) []string {
+		t.Helper()
+		cfg := describeCfg()
+		cfg.AuthZTrustedForwarderSANs = sans
+		desc, err := describeWith(t, cfg)
+		if err != nil {
+			t.Fatalf("дескриптор не принят на круге %v: %v", sans, err)
+		}
+		return desc.Spec().Forwarders.SANs()
+	}
+
+	const otherSAN = "spiffe://kacho.cloud/ns/kacho-system/sa/kacho-nlb"
+
+	both := circle(t, gatewaySAN, otherSAN)
+	if len(both) != 2 || both[0] != gatewaySAN || both[1] != otherSAN {
+		t.Fatalf("дескриптор несёт круг %v, конфигурация давала [%s %s]", both, gatewaySAN, otherSAN)
+	}
+	one := circle(t, gatewaySAN)
+	if len(one) != 1 || one[0] != gatewaySAN {
+		t.Fatalf("на сужённой конфигурации дескриптор несёт %v — значение не зависит от входа, "+
+			"то есть в дескриптор уезжает не конфигурация", one)
+	}
+	// Значение отфильтровано так же, как фильтрует общий фундамент: иначе список из
+	// одних пустых записей считался бы сужением, а транспорт видел бы пустой круг —
+	// то есть «доверяем любому предъявившему сертификат».
+	filtered := circle(t, " ", gatewaySAN+" ", "")
+	if len(filtered) != 1 || filtered[0] != gatewaySAN {
+		t.Fatalf("круг дескриптора = %#v, ожидался ровно [%q]", filtered, gatewaySAN)
+	}
+}
+
+// registrarsOfBothListeners — регистраторы ОБОИХ слушателей, собранные так же,
+// как их собирает `runServe`, включая рубеж слушателя.
+//
+// Use-cases собираются с нулевыми портами: ни один обработчик здесь не
+// вызывается, предмет — только СОСТАВ зарегистрированного. Место одно на весь
+// пакет намеренно: копия этой сборки в соседней пробе разошлась бы с первой
+// молча — обе продолжали бы возвращать непустой набор.
+func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
+	svcs := &services{
+		machineType: machinetype.NewMachineTypeService(nil, nil),
+		instance:    instance.NewInstanceService(nil, nil, nil, nil, nil, nil, nil, nil),
+	}
+	opsRepo := operations.NewRepo(nil, "public")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	return []func(grpc.ServiceRegistrar){
+		func(r grpc.ServiceRegistrar) {
+			registerPublicServices(handler.PublicRegistrar(r, false), svcs, opsRepo, nil)
+		},
+		func(r grpc.ServiceRegistrar) {
+			registerInternalServices(handler.InternalRegistrar(r, false), svcs, nil, "", logger, 1, nil)
+		},
+	}
+}

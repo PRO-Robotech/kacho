@@ -32,9 +32,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaboot"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 )
 
@@ -91,56 +91,54 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 }
 
 // Test_1_4_31_FailClosedBootGate_RefusesCreate — 1.4-31: require-iam armed +
-// register-drainer not connected → guardCreateUnary refuses a mutating Create
-// (UNAVAILABLE), the resource is not created; read RPCs pass; Internal-admin
-// Creates (DiskType/Region/Zone) are not gated; connect → Create allowed.
+// register-drainer not connected → a mutating Create of THIS service is refused
+// (UNAVAILABLE); read RPCs pass; Internal-admin Creates are not gated; connect →
+// Create allowed.
+//
+// Since kacho-compute moved onto the shared carrier (`pkg/servicehost`), the
+// interceptor that composes these two halves is the carrier's — and the carrier
+// pins its own behaviour on the executing code
+// (`TestBootGateRefusesCreateWhileTheDeliveryPathIsDown`,
+// `TestBootGateIsSilentOnEverythingButTenantCreate`,
+// `TestChainWithoutTheGateAcceptsCreateWhileTheDeliveryPathIsDown`). What is left
+// here is the part that is OURS and that no carrier test can make: that the
+// predicate classifies THIS service's own method names the way we expect. It is
+// asked of `servicehost.IsGatedMutation` — the very predicate the gate executes —
+// and not of a local copy, because a copy would diverge silently and exactly
+// where the divergence is invisible.
 func Test_1_4_31_FailClosedBootGate_RefusesCreate(t *testing.T) {
+	const (
+		createMethod = "/kacho.cloud.compute.v1.InstanceService/Create"
+		getMethod    = "/kacho.cloud.compute.v1.InstanceService/Get"
+		adminMethod  = "/kacho.cloud.compute.v1.InternalMachineTypeService/Create"
+	)
+	require.True(t, servicehost.IsGatedMutation(createMethod),
+		"tenant Create of this service must fall under the gate — otherwise a machine is created "+
+			"while its owner-registration intent has nowhere to go")
+	require.False(t, servicehost.IsGatedMutation(getMethod),
+		"a read must NOT be gated: refusing reads while the delivery path is down would take the "+
+			"service down for everyone over a write-path dependency")
+	require.False(t, servicehost.IsGatedMutation(adminMethod),
+		"an Internal-admin Create records no owner-tuple intent, so gating it would close the admin "+
+			"path over a reason that does not apply to it")
+
 	gate := bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-compute"})
 	assert.False(t, gate.Ready(), "require-iam + not connected → NotReady")
-	guard := fgaboot.GuardCreateUnary(gate)
 
-	createInvoked := false
-	createHandler := func(_ context.Context, _ any) (any, error) { createInvoked = true; return "ok", nil }
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InstanceService/Create"}, createHandler)
+	err := gate.GuardMutation()
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err), "Create refused fail-closed (UNAVAILABLE)")
-	assert.False(t, createInvoked, "resource not created — handler never reached")
-
-	getInvoked := false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InstanceService/Get"},
-		func(_ context.Context, _ any) (any, error) { getInvoked = true; return "inst", nil })
-	require.NoError(t, err)
-	assert.True(t, getInvoked, "read RPC works on a not-yet-ready instance")
-
-	adminInvoked := false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalZoneService/Create"},
-		func(_ context.Context, _ any) (any, error) { adminInvoked = true; return "zone", nil })
-	require.NoError(t, err)
-	assert.True(t, adminInvoked, "Internal-admin Create not gated (no owner-tuple)")
 
 	gate.SetConnected(true)
 	assert.True(t, gate.Ready(), "connected → Ready")
-	createInvoked = false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InstanceService/Create"}, createHandler)
-	require.NoError(t, err)
-	assert.True(t, createInvoked, "Create allowed once IAM-register path connected")
+	require.NoError(t, gate.GuardMutation(), "Create allowed once the IAM-register path connected")
 }
 
 // Test_1_4_31_RequireIAMOff_NoOp — contrast: require-iam=false (dev) → no-op gate.
 func Test_1_4_31_RequireIAMOff_NoOp(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{RequireIAM: false, Service: "kacho-compute"})
 	assert.True(t, gate.Ready(), "require-iam off → always Ready (dev)")
-	guard := fgaboot.GuardCreateUnary(gate)
-	invoked := false
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InstanceService/Create"},
-		func(_ context.Context, _ any) (any, error) { invoked = true; return "ok", nil })
-	require.NoError(t, err)
-	assert.True(t, invoked, "Create allowed in dev back-compat mode")
+	require.NoError(t, gate.GuardMutation(), "Create allowed in dev back-compat mode")
 }
 
 // controllableIAM — a fake IAM register client whose outage is flipped by the
