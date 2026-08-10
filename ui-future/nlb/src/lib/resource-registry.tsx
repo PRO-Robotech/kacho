@@ -5,7 +5,7 @@
 // справочник для ref-полей region_id (cross-service ref → geo.Region).
 
 import type { ReactNode } from "react";
-import type { FormField } from "./form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 import { setByPath } from "./path";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
@@ -19,6 +19,7 @@ import {
   lbTypeFromPlacement,
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
+import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 
 /**
  * Ячейка логического поля контракта — словом, а не литералом `false`.
@@ -40,68 +41,12 @@ export function boolCell(v: unknown): ReactNode {
   return v ? <span>Да</span> : <span style={{ opacity: 0.45 }}>Нет</span>;
 }
 
-export interface ResourceColumn {
-  header: string;
-  // Путь в плоском объекте: "name", "status", "region_id"
-  path: string;
-  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references";
-  className?: string;
-  render?: (row: Record<string, unknown>) => ReactNode;
-}
+// Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
+// сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
+// нет тела, поэтому разойтись с источником он не может. Собственное ОБЪЯВЛЕНИЕ формы
+// здесь запрещено (KAC #132) — его ловит scripts/check-resource-spec-single-source.mjs.
 
-export interface ResourceSpec {
-  id: string;
-  // route path в SPA (без leading slash)
-  route: string;
-  // Полный URL-path для REST: /<domain>/v1/<plural>
-  apiPath: string;
-  // ключ массива в List response
-  payloadKey: string;
-  // singular label для UI
-  singular: string;
-  // plural label
-  plural: string;
-  // родительный падеж ед.ч. — заголовок мастер-ресурса в зоне обзора. Fallback: plural.
-  genitive?: string;
-  description?: string;
-  /** Service-domain заголовок (в breadcrumb перед именем категории). */
-  serviceTitle?: string;
-  // global = cluster-scoped, project = в выбранном Project, account = в Account
-  scope: "global" | "project" | "account";
-  // поддерживаемые операции (кнопки действий рендерятся по этим флагам)
-  ops: {
-    create: boolean;
-    update: boolean;
-    delete: boolean;
-    restart?: boolean;
-    start?: boolean;
-    stop?: boolean;
-  };
-  // колонки для list-таблицы
-  columns: ResourceColumn[];
-  // schema полей формы (если undefined — fallback к JSON-editor)
-  fields?: FormField[];
-  // Path-template для drill-down link при клике на строку (плейсхолдер `:id`).
-  childRoute?: string;
-  // skeleton-объект для Create-формы.
-  template: (ctx: { projectId?: string; accountId?: string }) => unknown;
-  // Нормализация payload перед отправкой на API (form-internal → wire).
-  sanitize?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  // Обратная sanitize: wire → form (edit-режим).
-  hydrate?: (obj: Record<string, unknown>) => Record<string, unknown>;
-  // Клиентская валидация ДО submit (Create). Возвращает текст ошибки или null.
-  // Используется для инвариантов, которые backend отверг бы асинхронно через
-  // 1-2с (напр. LB: хотя бы одно семейство VIP включено).
-  validate?: (obj: Record<string, unknown>) => string | null;
-  /** Path-template для internal/infra-проекции ресурса (плейсхолдер `{id}`). */
-  internalGetPath?: string;
-  /** Связанные дочерние ресурсы — отдельные табы во ResourceShell. */
-  related?: { childId: string; filterField: string | string[]; label?: string }[];
-  /** Ссылки на документацию (блок «Документация» в aside DetailShell). */
-  docs?: { label: string; href: string }[];
-  /** Welcome-копирайт для пустой таблицы этого ресурса. */
-  emptyState?: { title: string; body: string; docs?: string[] };
-}
+export type { ResourceColumn, ResourceSpec };
 
 // ── Общие FormField-константы ──
 

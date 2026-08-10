@@ -10,7 +10,7 @@
 // So a preset may only name a field the form actually has. Anything else is a UI
 // concern that happened to be in the query string.
 
-import type { FormField } from "@/lib/form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 
 export function presetFieldsForSpec(
   fields: FormField[] | undefined,

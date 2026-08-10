@@ -11,7 +11,7 @@ import { FormFooter } from "@/components/organisms/form/FormFooter";
 import { ImmutableField } from "@/components/organisms/form/ImmutableField";
 import { getByPath } from "@/lib/path";
 import type { ResourceSpec } from "@/lib/resource-registry";
-import type { FormField } from "@/lib/form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 
 export interface ResourceFormBodyProps {
   spec: ResourceSpec;

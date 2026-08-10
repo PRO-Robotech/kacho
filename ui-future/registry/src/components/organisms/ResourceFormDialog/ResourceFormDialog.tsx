@@ -16,7 +16,7 @@ import { applyFieldDefaults } from "@/lib/resource-registry";
 import { getByPath, setByPath } from "@/lib/path";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
-import type { FormField } from "@/lib/form-schema";
+import type { FormField } from "@shared/lib/form-schema";
 
 type Mode = "create" | "edit";
 

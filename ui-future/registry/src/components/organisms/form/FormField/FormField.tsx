@@ -5,7 +5,7 @@ import { Label } from "@/components/atoms/ui/Input";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { LabelsEditor } from "@/components/organisms/form/LabelsEditor";
 import { getByPath, setByPath, deleteByPath } from "@/lib/path";
-import type { FormField as FF, ArrayField } from "@/lib/form-schema";
+import type { FormField as FF, ArrayField } from "@shared/lib/form-schema";
 
 interface Props {
   field: FF;
