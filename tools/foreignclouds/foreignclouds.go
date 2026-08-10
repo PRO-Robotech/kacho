@@ -668,7 +668,6 @@ var debtFiles = map[string]string{
 	"services/storage/tests/newman/scripts/gen.py":             "prose comment in the suite generator; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.js": "prose comment in the suite runner; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/run-incremental.sh": "prose comment in the suite runner; file is owned by concurrent newman work",
-	"services/iam/tests/newman/cases/README.md":                "stale path reference in suite docs; directory is owned by concurrent newman work",
 	"services/iam/internal/apps/kacho/shared/doc.go":           "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/apps/kacho/shared/errors.go":        "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/domain/project.go":                  "prose comment; services/iam/internal is owned by concurrent work",
