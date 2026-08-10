@@ -112,9 +112,41 @@ extend google.protobuf.MethodOptions {
 // catalog (regions, zones, disk types) is readable by every tenant, so such an
 // entry means "authenticated", not "authorized".
 //
-// The owning service MUST mark the same method in its own per-RPC map
-// (`authz.RPCEntry.ScopeFiltered`); `pkg/authz/catalogparity` fails the build when
-// the two disagree on this axis.
+// The owning service's per-RPC map carries the same axis
+// (`authz.RPCEntry.ScopeFiltered`). It is no longer a second declaration that
+// could disagree: the map is DERIVED from these annotations
+// (`pkg/authz/catalogderive`), so the two cannot drift by construction. The gate
+// that compared them lives in `internal/repohygiene` (catalogparity_test.go); the
+// package this sentence used to name, `pkg/authz/catalogparity`, was deleted when
+// derivation removed its subject.
+//
+// ONE MARKER, TWO READINGS — do not collapse them (recorded 2026-08-10)
+// ---------------------------------------------------------------------
+// The paragraphs above describe the marker as a CONSUMER of the model reads it:
+// "there is no single object, so narrow the page you return". That is the right
+// reading for vpc / compute / storage / nlb / registry, whose scope-filtered
+// methods return a page of their own rows and narrow it per element.
+//
+// At the MODEL OWNER (iam) the same marker means something else. It still says
+// "the edge cannot name the object" — but the reason is that the object's TYPE is
+// itself a request field (`ResourceRef.type`), or that the request names no
+// resource at all (`ListObjects` enumerates what a subject can reach). What
+// follows is not narrowing: iam takes the WHOLE authorization decision in the
+// handler — self-query ∨ cluster-admin ∨ `admin` on the resource actually named.
+//
+// The distinction is measurable, not stylistic (measured on this tree): of iam's
+// nine scope-filtered methods, three carry no pagination at all — `Check`,
+// `ExpandRelations`, `ExpandAccess` — so on those there is no page for anyone to
+// narrow. And iam has NO per-RPC map to mark, because it does not re-check the
+// end user on its own listeners: it IS the decision point. So "mark the same
+// method in your own map" has no subject there, and reading the marker as "a page
+// gets narrowed" would attribute to iam a mechanism it does not run.
+//
+// Why this is written down rather than left to be re-derived: one flag carrying
+// two meanings is exactly the kind of overload that outlives the people who knew
+// the difference. A reviewer who reads only the consumer meaning will "fix" an
+// iam row by demanding a narrower that cannot exist, or will accept a consumer
+// row that decides nothing because they think the owner decides it downstream.
 extend google.protobuf.MethodOptions {
   bool scope_filtered = 50006;
 }
