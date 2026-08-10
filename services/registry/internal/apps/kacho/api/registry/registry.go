@@ -99,7 +99,7 @@ type RegistryReader interface {
 type RegistryWriter interface {
 	// Insert создаёт реестр + register-intent в registry_outbox одной tx. partial
 	// UNIQUE(project_id,name) WHERE status<>'DELETING' → 23505 → ErrAlreadyExists.
-	Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error)
+	Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error)
 	// Update применяет mutable-поля (по Apply*-флагам) одним UPDATE ... RETURNING;
 	// mirror register-intent строится callback'ом ИЗ обновлённой строки (нужны
 	// её project_id + новые labels) и эмитится в ТОЙ ЖЕ tx (без Get/TOCTOU).

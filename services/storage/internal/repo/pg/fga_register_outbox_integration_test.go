@@ -107,7 +107,7 @@ func TestSnapshotInsert_EmitsFGARegisterIntent(t *testing.T) {
 	ctx := context.Background()
 
 	v := mkVolume(t, vr, "prj-1", "vol-src", 10<<30)
-	s, err := sr.Insert(ctx, &domain.Snapshot{
+	s, _, err := sr.Insert(ctx, &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      "prj-1",
 		Name:           "snap-fga",
@@ -137,7 +137,7 @@ func TestSnapshotDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	ctx := context.Background()
 
 	v := mkVolume(t, vr, "prj-1", "vol-src2", 10<<30)
-	s, err := sr.Insert(ctx, &domain.Snapshot{
+	s, _, err := sr.Insert(ctx, &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      "prj-1",
 		Name:           "snap-del",
@@ -161,7 +161,7 @@ func TestVolumeInsert_FailedFK_NoFGAIntent(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	_, err := r.Insert(context.Background(), &domain.Volume{
+	_, _, err := r.Insert(context.Background(), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  "prj-1",
 		Name:       "vol-orphan",

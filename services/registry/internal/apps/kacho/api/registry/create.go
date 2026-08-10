@@ -105,7 +105,7 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	// AlreadyExists клиенту, а не async-Operation с error. При ошибке INSERT
 	// уже созданный pending-Operation финализируется как failed (не оставляем
 	// подвисший done=false envelope, который клиент поллил бы вечно).
-	created, err := u.writer.Insert(ctx, reg, intent)
+	created, stampedIntent, err := u.writer.Insert(ctx, reg, intent)
 	if err != nil {
 		syncErr := mapRepoErr(err)
 		if errors.Is(err, regerrors.ErrAlreadyExists) {
@@ -123,7 +123,7 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 	// Строка реестра + register-intent (project+owner tuple) durable в writer-tx (outbox);
 	// СИНХРОННО регистрируем тот же intent для immediate authz-list-visibility свежего
 	// реестра (best-effort non-fatal — register-drainer применит at-least-once, ban #9 async).
-	u.syncRegisterOwnerTuples(ctx, intent)
+	u.syncRegisterOwnerTuples(ctx, stampedIntent)
 
 	operations.Run(ctx, u.ops, op.ID, func(_ context.Context) (*anypb.Any, error) {
 		// Строка реестра + owner-tuple intent уже записаны СИНХРОННО (writer.Insert

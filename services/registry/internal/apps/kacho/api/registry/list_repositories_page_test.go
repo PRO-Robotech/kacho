@@ -164,16 +164,16 @@ func (c *orderedCfg) GetConfig(_ context.Context, _, name string) (*domain.Repos
 	return nil, regerrors.ErrNotFound
 }
 
-func (c *orderedCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, regerrors.ErrUnavailable
+func (c *orderedCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, regerrors.ErrUnavailable
 }
 
 func (c *orderedCfg) UpdateConfig(context.Context, registry.RepositoryConfigUpdate, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	return nil, regerrors.ErrUnavailable
 }
 
-func (c *orderedCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, regerrors.ErrUnavailable
+func (c *orderedCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, regerrors.ErrUnavailable
 }
 
 func (c *orderedCfg) DeleteConfig(context.Context, string, string, ...registry.OutboxIntent) error {

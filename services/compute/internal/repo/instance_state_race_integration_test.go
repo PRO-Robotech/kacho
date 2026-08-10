@@ -47,7 +47,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentStopOnStopped(t *testing.T) 
 		Status:             domain.InstanceStatusStopped, // <-- начальный state: STOPPED
 		FQDN:               inID + ".auto.internal",
 	}
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	const N = 5
@@ -119,7 +119,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentRestartOnRunning(t *testing.
 		Status:             domain.InstanceStatusRunning, // <-- начальный state: RUNNING
 		FQDN:               inID + ".auto.internal",
 	}
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	const N = 5
@@ -195,7 +195,7 @@ func TestIntegration_InstanceSetStatusCAS_StopRestartRace(t *testing.T) {
 		Status:             domain.InstanceStatusRunning,
 		FQDN:               inID + ".auto.internal",
 	}
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	var (

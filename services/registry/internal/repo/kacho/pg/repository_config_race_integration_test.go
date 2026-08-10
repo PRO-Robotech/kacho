@@ -42,7 +42,7 @@ func TestRepoConfig_RG1A04_ConcurrentCreate_PKRace(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, err := repo.InsertConfig(ctx, newCfg(regID, "svc/x", domain.VisibilityPrivate, nil))
+			_, _, err := repo.InsertConfig(ctx, newCfg(regID, "svc/x", domain.VisibilityPrivate, nil))
 			errs[i] = err
 			if err == nil {
 				atomic.AddInt64(&succeeded, 1)
@@ -77,9 +77,9 @@ func TestRepoConfig_RG1A18_ConcurrentRename_PKRace(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-a18")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
-	_, err = repo.InsertConfig(ctx, newCfg(regID, "src/c", domain.VisibilityPrivate, nil))
+	_, _, err = repo.InsertConfig(ctx, newCfg(regID, "src/c", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
 	sources := []string{"src/a", "src/c"}
@@ -93,7 +93,7 @@ func TestRepoConfig_RG1A18_ConcurrentRename_PKRace(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, e := repo.RekeyConfig(ctx, regID, sources[i], "dst/z")
+			_, _, e := repo.RekeyConfig(ctx, regID, sources[i], "dst/z")
 			errs[i] = e
 			if e == nil {
 				atomic.AddInt64(&succeeded, 1)
@@ -136,7 +136,7 @@ func TestRepoConfig_RG1B09_ConcurrentVisibilityFlip_CAS(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-b09")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "race/img", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "race/img", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
 	targets := []domain.Visibility{domain.VisibilityPublic, domain.VisibilityPrivate}

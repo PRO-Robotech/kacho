@@ -55,8 +55,16 @@ func TestFGARegisterOutbox_IntraTxOrder_VersionsAreStrictlyIncreasing(t *testing
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
 		_, err := w.LoadBalancers().Insert(ctx, lb)
 		require.NoError(t, err)
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unreg))
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, reg))
+		// Штампы ДВУХ намерений одной writer-транзакции обязаны РАЗЛИЧАТЬСЯ:
+		// иначе снятие и постановка на одном объекте неотличимы по версии, и
+		// принимающая сторона применила бы их в произвольном порядке.
+		unregStamp, uerr := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unreg)
+		require.NoError(t, uerr)
+		regStamp, rerr := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, reg)
+		require.NoError(t, rerr)
+		require.True(t, regStamp.After(unregStamp),
+			"второе намерение той же транзакции обязано быть строго новее первого: %s не позже %s",
+			regStamp, unregStamp)
 	})
 
 	rows := queryRegisterRows(t, ctx, tc)

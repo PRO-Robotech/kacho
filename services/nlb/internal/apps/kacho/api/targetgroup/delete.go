@@ -160,7 +160,7 @@ func (u *DeleteTargetGroupUseCase) doDelete(ctx context.Context, id, projectID s
 		return nil, mapDomainErr(err)
 	}
 	// FGA-unregister-intent (project-hierarchy) in the SAME tx as Delete.
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
+	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		tgUnregisterIntent(id, projectID)); err != nil {
 		return nil, mapDomainErr(err)
 	}

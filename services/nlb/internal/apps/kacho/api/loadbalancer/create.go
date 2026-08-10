@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -96,11 +97,11 @@ func (u *CreateLoadBalancerUseCase) WithSecurityGroupClient(c SecurityGroupClien
 // Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
 // register-drainer — at-least-once backstop; Operation.done НЕ гейтится на
 // видимость owner-tuple (ban #9 — иначе phantom-ресурс). nil registrar → no-op.
-func (u *CreateLoadBalancerUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *CreateLoadBalancerUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		u.logger.Warn("LoadBalancer.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
 			"err", err, "load_balancer_id", intent.ResourceID)
 	}
@@ -455,7 +456,7 @@ func (u *CreateLoadBalancerUseCase) doCreate(
 		}
 	}
 
-	created, err := u.finalizeCreate(ctx, lb, principal)
+	created, intent, intentVersion, err := u.finalizeCreate(ctx, lb, principal)
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
@@ -466,7 +467,7 @@ func (u *CreateLoadBalancerUseCase) doCreate(
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится на видимость
 	// owner-tuple (ban #9).
-	u.syncRegister(ctx, lbRegisterIntent(created))
+	u.syncRegister(ctx, intent, intentVersion)
 
 	pb, err := lbRecordToProto(created)
 	if err != nil {
@@ -643,10 +644,10 @@ func (u *CreateLoadBalancerUseCase) persistVIP(
 // FGA-register-intent (project-hierarchy + creator) в одной writer-TX.
 func (u *CreateLoadBalancerUseCase) finalizeCreate(
 	ctx context.Context, lb domain.LoadBalancer, principal operations.Principal,
-) (*kachorepo.LoadBalancerRecord, error) {
+) (*kachorepo.LoadBalancerRecord, domain.FGARegisterIntent, time.Time, error) {
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
-		return nil, err
+		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}
 	committed := false
 	defer func() {
@@ -657,23 +658,27 @@ func (u *CreateLoadBalancerUseCase) finalizeCreate(
 	created, err := w.LoadBalancers().SetStatusCAS(ctx, string(lb.ID),
 		domain.LBStatusCreating, domain.LBStatusInactive)
 	if err != nil {
-		return nil, err
+		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(created.ID), string(created.ProjectID),
 		kachorepo.OutboxActionCreated, lbOutboxPayload(created),
 	); err != nil {
-		return nil, err
+		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		lbRegisterIntent(created)); err != nil {
-		return nil, err
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки; штамп writer-транзакции возвращается вместе с ним,
+	// потому что синхронная доставка обязана нести ИМЕННО ЕГО.
+	intent := lbRegisterIntent(created)
+	intentVersion, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+	if err != nil {
+		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}
 	if err := w.Commit(); err != nil {
-		return nil, err
+		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}
 	committed = true
-	return created, nil
+	return created, intent, intentVersion, nil
 }
 
 // compensateCreate — best-effort откат до finalize: освобождает каждый

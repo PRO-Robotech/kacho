@@ -13,6 +13,7 @@ package ports
 
 import (
 	"context"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
@@ -40,14 +41,18 @@ type InstanceFilter struct {
 
 // OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
 // (`InternalIAMService.RegisterResource`), зеркалящая тот же register-intent, что
-// эмитится транзакционно в `compute_fga_register_outbox`. Делает owner-tuple
+// эмитится транзакционно в `compute_fga_register_outbox` — и НЕСЁТ ТУ ЖЕ ВЕРСИЮ,
+// которой БД проштамповала эту строку внутри writer-транзакции (её возвращает
+// repo.Insert/Update). Форма порта общая для всех сервисов
+// ([ownerregister.Registration]): своей у compute не было — была копия,
+// разошедшаяся с соседями. Делает owner-tuple
 // эффективным раньше (до того как async register-drainer опросит outbox), сужая
 // eventual-consistency-окно — чистая window-оптимизация. Best-effort: ошибка
 // логируется, Create НЕ проваливается — durable outbox-intent + register-drainer
 // остаются at-least-once backstop'ом. nil = не сконфигурирован (dev / нет
 // iam-ребра) → полагаемся на drainer.
 type OwnerRegistrar interface {
-	Register(ctx context.Context, kind, resourceID, projectID string, labels map[string]string) error
+	Register(ctx context.Context, regs []ownerregister.Registration) error
 }
 
 // InstanceRepo — port-интерфейс репозитория ВМ.
@@ -59,7 +64,7 @@ type InstanceRepo interface {
 	// cutover): том↔Instance-привязка живёт в kacho-storage, boot_volume/
 	// secondary_volumes — read-only зеркало, пересчитываемое на чтении. Возвращает
 	// созданную ВМ (без attached-строк — их нет).
-	Insert(ctx context.Context, in *domain.Instance) (*domain.Instance, error)
+	Insert(ctx context.Context, in *domain.Instance) (*domain.Instance, []ownerregister.Registration, error)
 	// Update обновляет mutable descriptive/resource поля (status НЕ трогает —
 	// им владеет SetStatusCAS). emitLabelsRegister: true когда "labels" присутствует
 	// в update-mask (или full-object PATCH применяет labels) → repo эмитит свежий FGA
@@ -70,7 +75,7 @@ type InstanceRepo interface {
 	// (column-scoped UPDATE). Без scoping конкурентный Update по другому полю
 	// затирается значением из устаревшего Get-снимка (lost update) — read-modify-write
 	// вне одной TX. Пустой changed → no-op reload (behaviour-preserving).
-	Update(ctx context.Context, in *domain.Instance, emitLabelsRegister bool, changed []string) (*domain.Instance, error)
+	Update(ctx context.Context, in *domain.Instance, emitLabelsRegister bool, changed []string) (*domain.Instance, []ownerregister.Registration, error)
 	// SetStatusCAS атомарно переводит instance из expected-status в next-status
 	// (CAS на DB-уровне: conditional UPDATE WHERE id=$1 AND status=$expected).
 	// Если row не существует → ErrNotFound; если status не совпадает с

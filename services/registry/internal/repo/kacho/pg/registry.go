@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -156,18 +157,18 @@ func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domai
 
 // Insert создаёт реестр + register-intent в registry_outbox ОДНОЙ writer-tx.
 // partial UNIQUE(project_id,name)WHERE status<>'DELETING' → 23505 → ErrAlreadyExists.
-func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error) {
+func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error) {
 	if err := r.ready(); err != nil {
-		return nil, err
+		return nil, domain.RegisterIntent{}, err
 	}
 	labels, err := marshalLabels(reg.Labels)
 	if err != nil {
-		return nil, regerrors.ErrInternal
+		return nil, domain.RegisterIntent{}, regerrors.ErrInternal
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, domain.RegisterIntent{}, wrapPgErr(err, "Registry", reg.ID)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -179,16 +180,17 @@ func (r *RegistryRepo) Insert(ctx context.Context, reg *domain.Registry, intent 
 		reg.ID, reg.ProjectID, reg.Name, reg.Description, labels, statusString(reg.Status),
 		reg.RegionID, placementTypeString(reg.PlacementType)))
 	if err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, domain.RegisterIntent{}, wrapPgErr(err, "Registry", reg.ID)
 	}
 
-	if err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, intent); err != nil {
-		return nil, err
+	stamped, err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, intent)
+	if err != nil {
+		return nil, domain.RegisterIntent{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Registry", reg.ID)
+		return nil, domain.RegisterIntent{}, wrapPgErr(err, "Registry", reg.ID)
 	}
-	return created, nil
+	return created, stamped, nil
 }
 
 // Update применяет mutable-поля по Apply*-флагам одним UPDATE ... RETURNING;
@@ -260,7 +262,7 @@ func (r *RegistryRepo) Update(ctx context.Context, spec registry.UpdateSpec, mir
 		return nil, wrapPgErr(err, "Registry", spec.RegistryID)
 	}
 
-	if err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, mirror(updated)); err != nil {
+	if _, err := emitFGAIntent(ctx, tx, domain.FGAEventRegister, mirror(updated)); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -325,11 +327,11 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 		return wrapPgErr(err, "Registry", id)
 	}
 
-	if err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister, intent); err != nil {
+	if _, err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister, intent); err != nil {
 		return err
 	}
 	for _, child := range children {
-		if err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister,
+		if _, err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister,
 			domain.UnregisterIntentForRepo(id, child)); err != nil {
 			return err
 		}
@@ -415,7 +417,7 @@ func (r *RegistryRepo) emitRepoIntent(ctx context.Context, eventType string, int
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, intent.ResourceID); err != nil {
 		return wrapPgErr(err, "registry_outbox", intent.ResourceID)
 	}
-	if err := emitFGAIntent(ctx, tx, eventType, intent); err != nil {
+	if _, err := emitFGAIntent(ctx, tx, eventType, intent); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -489,21 +491,35 @@ func childRepoRegistrations(ctx context.Context, tx pgx.Tx, registryID string) (
 	return out, nil
 }
 
-func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent domain.RegisterIntent) error {
+// ВОЗВРАЩАЕТСЯ НАМЕРЕНИЕ СО ШТАМПОМ, который ПОСТАВИЛ ТРИГГЕР внутри этой
+// writer-транзакции (`clock_timestamp()`, миграция 0011), прочитанным через
+// RETURNING.
+//
+// Зачем он вызывающему. Каждая регистрация доезжает до владельца прав ДВАЖДЫ —
+// синхронной доставкой и дренажом этой же строки, — и он гасит повторную строгим
+// монотонным сравнением версий. Синхронный путь registry версию НЕ СЛАЛ ВОВСЕ и
+// поэтому не гейтился НИКОГДА: сервис платил за обе доставки на каждом создании.
+// Заменявший её водяной знак (часы момента доставки, поднимаемые на последнем
+// tuple'е объекта) снят — знак был обходом отсутствия настоящего маркера, а не
+// решением.
+func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent domain.RegisterIntent) (domain.RegisterIntent, error) {
 	if len(intent.Tuples) == 0 {
-		return nil
+		return intent, nil
 	}
 	payload, err := intent.Marshal()
 	if err != nil {
-		return regerrors.ErrInternal
+		return intent, regerrors.ErrInternal
 	}
 	q := fmt.Sprintf(`
 		INSERT INTO %s.registry_outbox (event_type, payload, resource_kind, resource_id)
-		VALUES ($1, $2::jsonb, $3, $4)`, schema)
-	if _, err := tx.Exec(ctx, q, eventType, string(payload), intent.Kind, intent.ResourceID); err != nil {
-		return wrapPgErr(err, "registry_outbox", intent.ResourceID)
+		VALUES ($1, $2::jsonb, $3, $4)
+		RETURNING (payload->>'source_version')::timestamptz`, schema)
+	var stamped time.Time
+	if err := tx.QueryRow(ctx, q, eventType, string(payload), intent.Kind, intent.ResourceID).Scan(&stamped); err != nil {
+		return intent, wrapPgErr(err, "registry_outbox", intent.ResourceID)
 	}
-	return applyRepoRegistration(ctx, tx, eventType, intent)
+	intent.SourceVersion = domain.SourceVersion{Time: stamped}
+	return intent, applyRepoRegistration(ctx, tx, eventType, intent)
 }
 
 // applyRepoRegistration поддерживает durable-признак существования репозитория

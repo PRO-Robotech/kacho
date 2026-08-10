@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 )
 
@@ -25,26 +27,54 @@ import (
 //
 // После INSERT срабатывает trigger pg_notify('kacho_storage_fga_register_outbox',
 // NEW.id) — будит register-drainer.
-func emitFGARegister(ctx context.Context, tx pgx.Tx, eventType string, item fgaregister.Item) error {
+//
+// ВОЗВРАЩАЕТСЯ ГОТОВАЯ СТРОКА ДОСТАВКИ со ШТАМПОМ, ПРОЧИТАННЫМ ЧЕРЕЗ RETURNING,
+// а не вычисленным на стороне приложения. Две причины, обе про уже случившееся:
+//
+//   - ШТАМП. Синхронная доставка обязана нести ИМЕННО ЭТО значение. Обе доставки
+//     одной регистрации (эта и дренаж той же строки) приходят к владельцу прав, и
+//     он гасит повторную строгим монотонным сравнением версий: при одном значении
+//     гашение срабатывает, КАКАЯ БЫ ни пришла первой. Часы момента доставки —
+//     что здесь и стояло — делают синхронный вызов строго новее, и когда дренаж
+//     успевает первым, тот заставляет пересчитывать материализацию заново, на
+//     самом горячем пути создания ресурса;
+//   - СОДЕРЖИМОЕ. Прежде use-case собирал строку ЗАНОВО
+//     (`fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels)`) — два места об
+//     одном предмете, которые разошлись бы молча: durable-намерение и синхронная
+//     доставка описывали бы разные tuple'ы, и заметить это можно было бы только
+//     по последствиям.
+func emitFGARegister(ctx context.Context, tx pgx.Tx, eventType string, item fgaregister.Item) (ownerregister.Registration, error) {
 	payload, err := fgaregister.Encode(fgaregister.Payload{
 		Tuple:           item.Tuple,
 		Labels:          item.Labels,
 		ParentProjectID: item.ParentProjectID,
 	})
 	if err != nil {
-		return fmt.Errorf("fga register intent marshal: %w", err)
+		return ownerregister.Registration{}, fmt.Errorf("fga register intent marshal: %w", err)
 	}
 	kind, id := splitFGAObject(item.Tuple.Object)
-	if _, err := tx.Exec(ctx,
+	var stamped time.Time
+	if err := tx.QueryRow(ctx,
 		`INSERT INTO kacho_storage.fga_register_outbox
 		   (event_type, resource_kind, resource_id, payload, created_at)
 		 VALUES ($1, $2, $3,
 		         jsonb_set($4::jsonb, '{source_version}', to_jsonb(now())),
-		         now())`,
-		eventType, kind, id, payload); err != nil {
-		return fmt.Errorf("fga register intent insert: %w", err)
+		         now())
+		 RETURNING (payload->>'source_version')::timestamptz`,
+		eventType, kind, id, payload).Scan(&stamped); err != nil {
+		return ownerregister.Registration{}, fmt.Errorf("fga register intent insert: %w", err)
 	}
-	return nil
+	return ownerregister.Registration{
+		Tuple: ownerregister.Tuple{
+			SubjectID: item.Tuple.SubjectID,
+			Relation:  item.Tuple.Relation,
+			Object:    item.Tuple.Object,
+		},
+		TraceID:         id,
+		Labels:          item.Labels,
+		ParentProjectID: item.ParentProjectID,
+		SourceVersion:   stamped,
+	}, nil
 }
 
 // reEmitLabelMirror переэмитит register-intent ПОСЛЕ смены меток, в той же
@@ -66,20 +96,23 @@ func emitFGARegister(ctx context.Context, tx pgx.Tx, eventType string, item fgar
 // Полное снятие меток — UPSERT С ПУСТЫМИ метками, НИКОГДА не unregister: ресурс
 // существует и сохраняет свой owner-tuple, он лишь перестаёт матчиться
 // селектором. Unregister здесь снял бы доступ у самого владельца.
+// Нулевая возвращённая строка означает «строки не было» (метки не менялись): её
+// SourceVersion нулевой, и доставлять нечего. Отличать это состояние обязан
+// вызывающий — общий регистратор нулевую версию ОТВЕРГАЕТ, а не додумывает.
 func reEmitLabelMirror(
 	ctx context.Context,
 	tx pgx.Tx,
 	labelsChanged bool,
 	labelsAfterJSON []byte,
 	item func(labels map[string]string) fgaregister.Item,
-) error {
+) (ownerregister.Registration, error) {
 	if !labelsChanged {
-		return nil
+		return ownerregister.Registration{}, nil
 	}
 	labels := map[string]string{}
 	if len(labelsAfterJSON) > 0 {
 		if err := json.Unmarshal(labelsAfterJSON, &labels); err != nil {
-			return fmt.Errorf("fga register intent: decode labels after update: %w", err)
+			return ownerregister.Registration{}, fmt.Errorf("fga register intent: decode labels after update: %w", err)
 		}
 	}
 	return emitFGARegister(ctx, tx, fgaregister.EventRegister, item(labels))

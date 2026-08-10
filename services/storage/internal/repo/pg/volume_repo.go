@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -310,14 +311,15 @@ const volumeInsertCoherentSQL = `
 // «предлагается везде»): не предлагается → FailedPrecondition "DiskType %s is not
 // offered in zone %s"; строки типа нет вовсе → прежний "DiskType %s not found"
 // (FK-текст, который теперь выдаёт сам стейтмент — до FK он не доходит).
-func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error) {
+func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	blockSize := v.BlockSize
 	if blockSize == 0 {
 		blockSize = defaultBlockSize
 	}
 	labels, err := json.Marshal(nonNilLabels(v.Labels))
 	if err != nil {
-		return nil, storageerr.ErrInternal
+		return nil, nil, storageerr.ErrInternal
 	}
 	var srcSnap *string
 	if v.SourceSnapshot != "" {
@@ -390,17 +392,22 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		}
 		created.CreatedAt, created.UpdatedAt = *createdAt, *updatedAt
 		// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_volume.
-		return emitFGARegister(ctx, tx, fgaregister.EventRegister,
+		reg, eerr := emitFGARegister(ctx, tx, fgaregister.EventRegister,
 			fgaregister.VolumeItem(v.ProjectID, v.ID, v.Labels))
+		if eerr != nil {
+			return eerr
+		}
+		regs = []ownerregister.Registration{reg}
+		return nil
 	})
 	if txErr != nil {
-		return nil, mapVolumeErr(txErr, volErrCtx{
+		return nil, nil, mapVolumeErr(txErr, volErrCtx{
 			volumeID: v.ID, volumeName: v.Name, diskTypeID: v.DiskTypeID,
 			snapshotID: v.SourceSnapshot, imageID: v.SourceImage,
 		})
 	}
 	created.Status = domain.DeriveStatus("READY", false) // just created → AVAILABLE
-	return &created, nil
+	return &created, regs, nil
 }
 
 // volumeSourceUnavailable разбирает 0-row исход project-coherent CAS: заданный источник
@@ -425,12 +432,13 @@ func volumeSourceUnavailable(snapshotID, imageID string) error {
 // UPDATE-стейтмент, БЕЗ предварительного Get (нет TOCTOU). 0 rows →
 // disambiguation: строка есть → size-CAS не прошёл (InvalidArgument "Volume size
 // can only be increased"); строки нет → NotFound.
-func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error) {
+func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	var labelsArg any
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, storageerr.ErrInternal
+			return nil, nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -452,10 +460,17 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 			RETURNING id, project_id, labels`,
 			id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
-			return reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
+			reg, eerr := reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
 				func(labels map[string]string) fgaregister.Item {
 					return fgaregister.VolumeItem(projectID, rowID, labels)
 				})
+			if eerr != nil {
+				return eerr
+			}
+			if !reg.SourceVersion.IsZero() {
+				regs = []ownerregister.Registration{reg}
+			}
+			return nil
 		}
 		if !errors.Is(serr, pgx.ErrNoRows) {
 			return serr
@@ -471,9 +486,10 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 		return fmt.Errorf("%w: Volume size can only be increased", storageerr.ErrInvalidArg)
 	})
 	if txErr != nil {
-		return nil, mapVolumeErr(txErr, volErrCtx{volumeID: id, volumeName: derefStr(u.Name)})
+		return nil, nil, mapVolumeErr(txErr, volErrCtx{volumeID: id, volumeName: derefStr(u.Name)})
 	}
-	return r.Get(ctx, id)
+	updated, gerr := r.Get(ctx, id)
+	return updated, regs, gerr
 }
 
 // Delete реализует volume.Writer: DELETE строки тома + fga_register unregister-intent в
@@ -492,8 +508,9 @@ func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
 			return err
 		}
 		// owner-tuple unregister-intent в той же writer-TX (SEC-D).
-		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,
+		_, uerr := emitFGARegister(ctx, tx, fgaregister.EventUnregister,
 			fgaregister.Item{Tuple: fgaregister.StorageVolume(projectID, id)})
+		return uerr
 	})
 	if txErr != nil {
 		return mapVolumeErr(txErr, volErrCtx{volumeID: id})

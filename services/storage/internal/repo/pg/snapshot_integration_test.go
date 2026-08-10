@@ -25,7 +25,7 @@ import (
 // возвращает его.
 func mkSnapshot(t *testing.T, r *pg.SnapshotRepo, project, name, srcVolume string) *domain.Snapshot {
 	t.Helper()
-	s, err := r.Insert(context.Background(), &domain.Snapshot{
+	s, _, err := r.Insert(context.Background(), &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      project,
 		Name:           name,
@@ -63,7 +63,7 @@ func TestSnapshotCreateFromReadyVolume(t *testing.T) {
 // "Volume <id> not found" (existence same-DB; Operation error).
 func TestSnapshotCreateSourceMissing(t *testing.T) {
 	sr := pg.NewSnapshotRepo(newTestPool(t))
-	_, err := sr.Insert(context.Background(), &domain.Snapshot{
+	_, _, err := sr.Insert(context.Background(), &domain.Snapshot{
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-x",
 		SourceVolumeID: "vol00000000000000000",
 	})
@@ -83,7 +83,7 @@ func TestSnapshotCreateSourceNotReady(t *testing.T) {
 	_, err := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, vol.ID)
 	require.NoError(t, err)
 
-	_, err = sr.Insert(ctx, &domain.Snapshot{
+	_, _, err = sr.Insert(ctx, &domain.Snapshot{
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-y", SourceVolumeID: vol.ID,
 	})
 	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
@@ -115,7 +115,7 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := sr.Insert(context.Background(), &domain.Snapshot{
+			_, _, err := sr.Insert(context.Background(), &domain.Snapshot{
 				ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "dup-snap", SourceVolumeID: vol.ID,
 			})
 			switch {
@@ -144,12 +144,12 @@ func TestSnapshotUpdateMutable(t *testing.T) {
 	snap := mkSnapshot(t, sr, "prj-1", "snap-old", vol.ID)
 
 	name, desc := "snap-new", "patched-desc"
-	up, err := sr.Update(ctx, snap.ID, snapshot.SnapshotUpdate{Name: &name, Description: &desc})
+	up, _, err := sr.Update(ctx, snap.ID, snapshot.SnapshotUpdate{Name: &name, Description: &desc})
 	require.NoError(t, err)
 	require.Equal(t, "snap-new", up.Name)
 	require.Equal(t, "patched-desc", up.Description)
 
-	_, err = sr.Update(ctx, "snp00000000000000000", snapshot.SnapshotUpdate{Name: &name})
+	_, _, err = sr.Update(ctx, "snp00000000000000000", snapshot.SnapshotUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "update missing → NotFound, got %v", err)
 }
 
@@ -166,7 +166,7 @@ func TestSnapshotDeleteFKSetNull(t *testing.T) {
 	// snp-1 создан из vol-src; vol-2 создан из snp-1.
 	src := mkVolume(t, vr, "prj-1", "vol-src", 3<<30)
 	snap := mkSnapshot(t, sr, "prj-1", "snp-shared", src.ID)
-	fromSnap, err := vr.Insert(ctx, &domain.Volume{
+	fromSnap, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-2",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 3 << 30, SourceSnapshot: snap.ID,
 	}, "")

@@ -68,7 +68,7 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 			defer wg.Done()
 			in := comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, contestName)
 			<-startBarrier // все стартуют одновременно
-			_, ierr := instRepo.Insert(ctx, in)
+			_, _, ierr := instRepo.Insert(ctx, in)
 			switch {
 			case ierr == nil:
 				successCnt.Add(1)
@@ -87,13 +87,13 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 	require.Equal(t, int32(0), otherErr.Load(), "никаких неожиданных ошибок")
 
 	// другой проект с тем же name → OK (UNIQUE scoped проектом).
-	_, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-other", contestName))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-other", contestName))
 	require.NoError(t, err)
 
 	// пустой name дважды в одном проекте → оба OK (partial-UNIQUE не ловит name='').
-	_, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
 	require.NoError(t, err)
-	_, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
 	require.NoError(t, err, "пустой name — id-only escape-hatch, partial-UNIQUE не применяется")
 }
 
@@ -114,11 +114,11 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 	const project, name = "prj-recycle", "trainer-node-01"
 
 	id1 := ids.NewHyphenID(ids.PrefixInstanceHyphen)
-	_, err = instRepo.Insert(ctx, comp1Instance(id1, project, name))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(id1, project, name))
 	require.NoError(t, err)
 
 	// дубль до удаления → AlreadyExists (слот занят).
-	_, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, name))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, name))
 	require.ErrorIs(t, err, serviceerr.ErrAlreadyExists)
 
 	// hard-delete → строка снята, слот освобождён.
@@ -128,6 +128,6 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 
 	// name-recycle: тот же непустой name снова Create-able.
 	id2 := ids.NewHyphenID(ids.PrefixInstanceHyphen)
-	_, err = instRepo.Insert(ctx, comp1Instance(id2, project, name))
+	_, _, err = instRepo.Insert(ctx, comp1Instance(id2, project, name))
 	require.NoError(t, err, "непустой name освобождён hard-delete'ом (partial-UNIQUE slot released)")
 }

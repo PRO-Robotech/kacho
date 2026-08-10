@@ -104,7 +104,7 @@ func TestIntegration_InstanceMetadata_WithinBudgetStillWorks(t *testing.T) {
 // seedMetadataInstance вставляет минимальную строку машины для проб метаданных.
 func seedMetadataInstance(t *testing.T, ctx context.Context, r *repo.InstanceRepo, id string) *domain.Instance {
 	t.Helper()
-	in, err := r.Insert(ctx, &domain.Instance{
+	in, _, err := r.Insert(ctx, &domain.Instance{
 		ID:            id,
 		ProjectID:     "prj-md",
 		ZoneID:        "ru-central1-a",

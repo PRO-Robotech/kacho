@@ -109,7 +109,7 @@ func TestIntegration_DropNICDNSColumns_GoneAtHeadAndRepoStillWorks(t *testing.T)
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
 	}
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err, "Insert обязан работать после снятия колонок")
 	require.Equal(t, inID, created.ID)
 

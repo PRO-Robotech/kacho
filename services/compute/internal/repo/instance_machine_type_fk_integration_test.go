@@ -55,7 +55,7 @@ func TestIntegration_MachineType_Delete_InUse_Restricted(t *testing.T) {
 
 	in := comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-mt-fk", "node-01")
 	in.MachineTypeID = inUse.ID
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	// Занятый тип удалить нельзя — FK RESTRICT.
@@ -117,7 +117,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 			in := comp1Instance(instID, "prj-mt-race", "")
 			in.MachineTypeID = mt.ID
 			<-barrier
-			if _, ierr := instRepo.Insert(ctx, in); ierr == nil {
+			if _, _, ierr := instRepo.Insert(ctx, in); ierr == nil {
 				insertOK.Store(true)
 			} else if !errors.Is(ierr, serviceerr.ErrFailedPrecondition) {
 				unexpectedIn.Add(1)

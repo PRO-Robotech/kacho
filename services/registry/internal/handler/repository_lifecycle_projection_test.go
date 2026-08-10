@@ -68,16 +68,16 @@ func (c *overlayCfg) ConfigsByNames(_ context.Context, _ string, names []string)
 	return out, nil
 }
 
-func (c *overlayCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, regerrors.ErrUnavailable
+func (c *overlayCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, regerrors.ErrUnavailable
 }
 
 func (c *overlayCfg) UpdateConfig(context.Context, registry.RepositoryConfigUpdate, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	return nil, regerrors.ErrUnavailable
 }
 
-func (c *overlayCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, regerrors.ErrUnavailable
+func (c *overlayCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, regerrors.ErrUnavailable
 }
 
 func (c *overlayCfg) DeleteConfig(context.Context, string, string, ...registry.OutboxIntent) error {

@@ -58,7 +58,7 @@ func TestVolumeUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.
 	v := mkVolume(t, r, "prj-relabel-v", "vol-relabel", 10<<30)
 
 	newLabels := map[string]string{"team": "storage"}
-	_, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{LabelsSet: true, Labels: newLabels})
+	_, _, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{LabelsSet: true, Labels: newLabels})
 	require.NoError(t, err)
 
 	rows := registerRowsFor(t, selectFGARows(t, pool), "storage_volume", v.ID)
@@ -82,12 +82,12 @@ func TestVolumeUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 
 	v := mkVolume(t, r, "prj-relabel-c", "vol-clear", 10<<30)
-	_, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{
+	_, _, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{
 		LabelsSet: true, Labels: map[string]string{"team": "storage"},
 	})
 	require.NoError(t, err)
 
-	_, err = r.Update(t.Context(), v.ID, volume.VolumeUpdate{LabelsSet: true, Labels: map[string]string{}})
+	_, _, err = r.Update(t.Context(), v.ID, volume.VolumeUpdate{LabelsSet: true, Labels: map[string]string{}})
 	require.NoError(t, err)
 
 	all := selectFGARows(t, pool)
@@ -115,7 +115,7 @@ func TestVolumeUpdate_WithoutLabels_EmitsNothing(t *testing.T) {
 	before := len(selectFGARows(t, pool))
 
 	newName := "vol-noop-renamed"
-	_, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{Name: &newName})
+	_, _, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{Name: &newName})
 	require.NoError(t, err)
 
 	require.Len(t, selectFGARows(t, pool), before,
@@ -133,7 +133,7 @@ func TestSnapshotUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testin
 	s := mkSnapshot(t, sr, "prj-relabel-s", "snap-relabel", v.ID)
 
 	newLabels := map[string]string{"tier": "cold"}
-	_, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{LabelsSet: true, Labels: newLabels})
+	_, _, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{LabelsSet: true, Labels: newLabels})
 	require.NoError(t, err)
 
 	rows := registerRowsFor(t, selectFGARows(t, pool), "storage_snapshot", s.ID)
@@ -153,7 +153,7 @@ func TestImageUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T
 	img := mkImageFromSnapshot(t, ir, "prj-relabel-i", "img-relabel", "reg-1", snapID)
 
 	newLabels := map[string]string{"os": "linux"}
-	_, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: newLabels})
+	_, _, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: newLabels})
 	require.NoError(t, err)
 
 	rows := registerRowsFor(t, selectFGARows(t, pool), "storage_image", img.ID)
@@ -182,12 +182,12 @@ func TestSnapshotUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	v := mkVolume(t, vr, "prj-relabel-sc", "vol-for-snap-clear", 10<<30)
 	s := mkSnapshot(t, sr, "prj-relabel-sc", "snap-clear", v.ID)
 
-	_, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{
+	_, _, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{
 		LabelsSet: true, Labels: map[string]string{"tier": "treska"},
 	})
 	require.NoError(t, err)
 
-	_, err = sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{LabelsSet: true, Labels: map[string]string{}})
+	_, _, err = sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{LabelsSet: true, Labels: map[string]string{}})
 	require.NoError(t, err)
 
 	all := selectFGARows(t, pool)
@@ -211,12 +211,12 @@ func TestImageUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-relabel-ic", "snap-for-img-clear", 10<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-relabel-ic", "img-clear", "reg-1", snapID)
 
-	_, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{
+	_, _, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{
 		LabelsSet: true, Labels: map[string]string{"tier": "treska"},
 	})
 	require.NoError(t, err)
 
-	_, err = ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: map[string]string{}})
+	_, _, err = ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: map[string]string{}})
 	require.NoError(t, err)
 
 	all := selectFGARows(t, pool)

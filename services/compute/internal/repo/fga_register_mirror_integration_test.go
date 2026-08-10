@@ -59,7 +59,7 @@ func Test_Beta01_CreateInstance_IntentCarriesLabelsAndParent(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-aaaaaaaaaaaaaaaaa"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev", "team": "core"})
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	rows := queryFGARegisterRows(ctx, t, pool, inID)
@@ -90,7 +90,7 @@ func Test_Beta02_CreateInstance_NoLabels_IntentEmptyLabels(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-bbbbbbbbbbbbbbbbb"
 	in := newMirrorInstance(inID, projectID, nil)
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	rows := queryFGARegisterRows(ctx, t, pool, inID)
@@ -117,12 +117,12 @@ func Test_Beta04_UpdateLabels_EmitsNewIntent(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-ccccccccccccccccc"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	// dev → prod, "labels" in mask → emitLabelsRegister = true.
 	created.Labels = map[string]string{"env": "prod", "team": "core"}
-	_, err = instRepo.Update(ctx, created, true, []string{"labels"})
+	_, _, err = instRepo.Update(ctx, created, true, []string{"labels"})
 	require.NoError(t, err)
 
 	rows := queryFGARegisterRows(ctx, t, pool, inID)
@@ -161,11 +161,11 @@ func Test_BetaHardening_RegisterIntentStampsMonotonicSourceVersion(t *testing.T)
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-eeeeeeeeeeeeeeeee"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	created.Labels = map[string]string{"env": "prod"}
-	_, err = instRepo.Update(ctx, created, true, []string{"labels"})
+	_, _, err = instRepo.Update(ctx, created, true, []string{"labels"})
 	require.NoError(t, err)
 
 	var regs []fgaRegisterRow
@@ -202,7 +202,7 @@ func Test_BetaHardening_UnregisterIntentStampsTombstoneVersion(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-fffffffffffffffff"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 	require.NoError(t, instRepo.Delete(ctx, inID))
 
@@ -240,12 +240,12 @@ func Test_Beta04b_UpdateNonLabels_NoNewIntent(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-ddddddddddddddddd"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	// name-only update → emitLabelsRegister = false.
 	created.Name = "vm-renamed"
-	_, err = instRepo.Update(ctx, created, false, []string{"name"})
+	_, _, err = instRepo.Update(ctx, created, false, []string{"name"})
 	require.NoError(t, err)
 
 	rows := queryFGARegisterRows(ctx, t, pool, inID)
@@ -274,7 +274,7 @@ func Test_Beta07_DeleteInstance_UnregisterIntent(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-eeeeeeeeeeeeeeeee"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	require.NoError(t, instRepo.Delete(ctx, inID))
@@ -310,7 +310,7 @@ func Test_Beta05_ConcurrentUpdateLabels_OutboxConsistent(t *testing.T) {
 	inID := ids.NewID(ids.PrefixInstance)
 	projectID := "proj-fffffffffffffffff"
 	in := newMirrorInstance(inID, projectID, map[string]string{"env": "dev"})
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	const goroutines = 8
@@ -321,7 +321,7 @@ func Test_Beta05_ConcurrentUpdateLabels_OutboxConsistent(t *testing.T) {
 			defer wg.Done()
 			cp := *created
 			cp.Labels = map[string]string{"env": []string{"dev", "prod"}[n%2]}
-			_, uerr := instRepo.Update(ctx, &cp, true, []string{"labels"})
+			_, _, uerr := instRepo.Update(ctx, &cp, true, []string{"labels"})
 			assert.NoError(t, uerr)
 		}(i)
 	}

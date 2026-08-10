@@ -57,7 +57,7 @@ func TestVolumeFromSnapshotForeignZoneRejected(t *testing.T) {
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-zone-b", srcVolID)
 
 	newID := ids.NewID(domain.PrefixVolume)
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: newID, ProjectID: "prj-1", Name: "vol-restored-into-zone-a",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceSnapshot: snapID,
@@ -79,7 +79,7 @@ func TestVolumeFromSnapshotSameZoneSeeded(t *testing.T) {
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-from-same-zone", srcVolID)
 
 	newID := ids.NewID(domain.PrefixVolume)
-	got, err := vr.Insert(ctx, &domain.Volume{
+	got, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: newID, ProjectID: "prj-1", Name: "vol-restored-same-zone",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceSnapshot: snapID,
@@ -101,7 +101,7 @@ func TestVolumeFromSnapshotWithoutLineageUnaffected(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-orphan-for-volume", 20<<30)
 
 	newID := ids.NewID(domain.PrefixVolume)
-	got, err := vr.Insert(ctx, &domain.Volume{
+	got, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: newID, ProjectID: "prj-1", Name: "vol-from-orphan-snap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceSnapshot: snapID,
@@ -122,14 +122,14 @@ func TestVolumeFromSnapshotForeignProjectStaysHidden(t *testing.T) {
 	victimVolID := mkVolumeRowInZone(t, pool, "prj-victim-zone", "vol-victim-zone-b", "region-1-b")
 	foreignSnap := mkSnapshotOfVolume(t, pool, "prj-victim-zone", "snap-victim-zone-b", victimVolID)
 
-	_, foreignErr := vr.Insert(ctx, &domain.Volume{
+	_, _, foreignErr := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-attacker-zone", Name: "vol-steal-foreign-snap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceSnapshot: foreignSnap,
 	}, "region-1")
 
 	absentSnap := ids.NewID(domain.PrefixSnapshot)
-	_, missErr := vr.Insert(ctx, &domain.Volume{
+	_, _, missErr := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-attacker-zone", Name: "vol-absent-snap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceSnapshot: absentSnap,

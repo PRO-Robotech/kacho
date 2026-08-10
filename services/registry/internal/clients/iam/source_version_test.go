@@ -23,8 +23,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -124,107 +122,96 @@ func Test_DecodeRegisterIntent_LegacyNumericSourceVersion(t *testing.T) {
 // registration: the sync call happens AFTER the writer-tx commits, the queue stamp was
 // taken INSIDE it. That ordering is what makes the drainer's replay the redelivery that
 // loses the comparison and gets gated, rather than the sync call.
-func Test_SyncRegistrar_StampsSourceVersion(t *testing.T) {
-	queueStamp := time.Now().UTC() // stands in for the DB stamp taken inside the writer-tx
-	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
-
-	fake := &scriptedRegisterClient{}
-	require.NoError(t, NewSyncRegistrar(fake).Register(context.Background(), []domain.RegisterIntent{intent}))
-	after := time.Now().UTC()
-
-	require.Len(t, fake.registerReqs, 2)
-	// Знак несёт вызов, закрывающий набор объекта (см.
-	// Test_SyncRegistrar_VersionOnlyOnLastTupleOfObject).
-	mark := fake.registerReqs[1].GetSourceVersion()
-	require.NotNil(t, mark, "sync registrar must stamp source_version")
-	assert.False(t, mark.AsTime().Before(queueStamp),
-		"sync stamp %s must not precede the queue stamp %s taken before the commit", mark.AsTime(), queueStamp)
-	assert.False(t, mark.AsTime().After(after.Add(time.Millisecond)), "sync stamp must be wall-clock now, not a future value")
-}
-
-// Test_SyncRegistrar_VersionOnlyOnLastTupleOfObject — синхронный путь поднимает
-// «водяной знак» объекта РОВНО ОДИН раз, на ПОСЛЕДНЕМ его tuple'е; предыдущие идут
-// БЕЗ версии.
+// ── синхронный путь: версия ИЗ WRITER-ТРАНЗАКЦИИ, а не водяной знак ────────
 //
-// Gate редоставки ключуется на строке зеркала, а она — ПО ОБЪЕКТУ, не по tuple'у.
-// Create реестра шлёт на один объект два tuple'а (project-hierarchy, затем
-// creator-owner). Если версию несёт КАЖДЫЙ, то любая её постановка сразу двигает
-// watermark — и при обрыве набора посередине (iam моргнул между двумя вызовами;
-// registrar обрывается на первой ошибке и НЕ ретраит — он fire-once best-effort)
-// зеркало остаётся поднятым, а последующая редоставка drainer'ом гейтится ЦЕЛИКОМ:
-// owner-tuple теряется навсегда и молча. Отдавая версию только на последнем tuple'е
-// объекта, мы поднимаем watermark лишь когда весь его набор доставлен: оборванный
-// набор оставляет зеркало низким, и at-least-once backstop нормально доводит дело.
-// Неверсионированные вызовы gate не глотает — он открывается в сторону работы.
-func Test_SyncRegistrar_VersionOnlyOnLastTupleOfObject(t *testing.T) {
-	// Create-intent: project-tuple + owner-tuple — ОБА на registry_registry:reg-1.
-	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
-	require.Len(t, intent.Tuples, 2)
-	require.Equal(t, intent.Tuples[0].Object, intent.Tuples[1].Object, "both tuples target one object")
+// Шесть проб этого места закрепляли ВОДЯНОЙ ЗНАК: часы момента доставки,
+// проставляемые один раз на объект, на последнем его tuple'е. Знак был обходом
+// того, что настоящей версии на синхронном пути не было вовсе. Версия появилась
+// (эмиттер возвращает штамп триггера из writer-транзакции), обход снят, и пробы
+// переписаны под новый контракт — а не удалены вместе с ним.
 
-	fake := &scriptedRegisterClient{}
-	require.NoError(t, NewSyncRegistrar(fake).Register(context.Background(), []domain.RegisterIntent{intent}))
-
-	require.Len(t, fake.registerReqs, 2)
-	assert.Nil(t, fake.registerReqs[0].GetSourceVersion(),
-		"tuple[0] must stay unversioned: it is not the last of its object, so it must not raise the watermark")
-	require.NotNil(t, fake.registerReqs[1].GetSourceVersion(),
-		"tuple[1] closes the object's set and carries the watermark")
-}
-
-// Test_SyncRegistrar_AbortedSetLeavesWatermarkDown — прямая проверка того, ради чего
-// нужно правило выше: набор, оборвавшийся НЕ дойдя до своего последнего tuple'а, не
-// поднимает watermark вообще — поэтому редоставка из очереди НЕ будет загейчена и
-// довезёт весь набор.
+// Test_SyncRegistrar_CarriesWriterTxVersionOfEachTuple — синхронная доставка
+// несёт версию writer-транзакции, шагнутую по tuple'ам.
 //
-// Знак и «набор доставлен» совпадают by construction: знак несёт РОВНО тот вызов,
-// который закрывает объект, поэтому зеркало поднимается тогда и только тогда, когда
-// этот вызов реально применён. Даже потерянный ответ на него безопасен: если сервер
-// успел применить — знак поднят и терять нечего; если не успел — знак не поднят и
-// повтор из очереди доводит набор.
-func Test_SyncRegistrar_AbortedSetLeavesWatermarkDown(t *testing.T) {
-	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
-	require.Len(t, intent.Tuples, 2)
+// Утверждается РАВЕНСТВО конкретным значениям, а не «версия не пуста»:
+// «не пуста» зеленело бы и на часах момента доставки — ровно на том, что здесь
+// стояло.
+func Test_SyncRegistrar_CarriesWriterTxVersionOfEachTuple(t *testing.T) {
+	fake := &deadlineCapturingRegisterClient{}
+	reg, err := NewSyncRegistrar(fake)
+	require.NoError(t, err)
 
-	// Первый же tuple падает transient'ом — registrar обрывает набор, закрывающий
-	// вызов не отправляется вовсе.
-	fake := &scriptedRegisterClient{registerErrs: []error{status.Error(codes.Unavailable, "iam blip")}}
-	err := NewSyncRegistrar(fake).Register(context.Background(), []domain.RegisterIntent{intent})
-	require.Error(t, err)
+	base := time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
+	intent := domain.RegisterIntent{
+		Kind:            domain.RegisterIntentKindRegistry,
+		ResourceID:      "reg-1",
+		Tuples:          []domain.FGATuple{{SubjectID: "project:prj-1", Relation: "project", Object: "registry_registry:reg-1"}, {SubjectID: "user:usr-1", Relation: "owner", Object: "registry_registry:reg-1"}},
+		ParentProjectID: "prj-1",
+		SourceVersion:   domain.SourceVersion{Time: base},
+	}
+	require.NoError(t, reg.Register(context.Background(), []domain.RegisterIntent{intent}))
 
-	require.Len(t, fake.registerReqs, 1, "aborted on the first tuple; the closing call was never sent")
-	assert.Nil(t, fake.registerReqs[0].GetSourceVersion(),
-		"an aborted set must raise no watermark, so the drainer replay is NOT gated")
+	require.Len(t, fake.reqs, 2)
+	assert.True(t, fake.reqs[0].GetSourceVersion().AsTime().Equal(base),
+		"первый tuple обязан нести штамп writer-транзакции как есть")
+	assert.True(t, fake.reqs[1].GetSourceVersion().AsTime().Equal(base.Add(sourceVersionStep)),
+		"второй tuple ТОГО ЖЕ объекта обязан быть строго новее первого, иначе он неотличим от редоставки и будет проглочен")
 }
 
-// Test_SyncRegistrar_WatermarkPerObject — водяной знак ставится ПО ОБЪЕКТУ, а не один
-// на всю доставку: доставка из нескольких intent'ов (repo-push + public-grant) несёт
-// РАЗНЫЕ объекты, и каждый обязан получить свой watermark на своём последнем tuple'е —
-// иначе объекты, кроме последнего, никогда не гейтятся и экономии на них нет.
-func Test_SyncRegistrar_WatermarkPerObject(t *testing.T) {
-	push := domain.RegisterIntentForRepoPush("reg-1", "team/app", "prj-1", "service_account:sva-x")
-	grant := domain.RegisterIntentForRepoPublicGrant("reg-2", "team/other")
-	require.Len(t, push.Tuples, 2, "parent-tuple + owner-tuple on one object")
-	require.Len(t, grant.Tuples, 1)
+// Test_SyncRegistrar_AgreesWithDrainPathTupleByTuple — ГЛАВНАЯ проба: версии,
+// которые синхронный путь ставит каждому tuple'у, СОВПАДАЮТ с теми, что тому же
+// намерению поставит дренаж.
+//
+// Ради этого совпадения всё и делалось. Пока версии расходились, гашение
+// повторной доставки зависело от того, кто выиграл гонку: приди дренаж первым —
+// синхронный вызов выглядел новее состоянием и заставлял пересчитывать
+// материализацию заново, на самом горячем пути создания.
+//
+// Проба сверяет ДВА ПРОИЗВОДИТЕЛЯ между собой, а не каждый со своей ожидаемой
+// константой: константа зафиксировала бы сегодняшнее значение и промолчала бы,
+// разойдись пути завтра.
+func Test_SyncRegistrar_AgreesWithDrainPathTupleByTuple(t *testing.T) {
+	base := time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
+	intent := domain.RegisterIntent{
+		Kind:            domain.RegisterIntentKindRegistry,
+		ResourceID:      "reg-1",
+		Tuples:          []domain.FGATuple{{SubjectID: "project:prj-1", Relation: "project", Object: "registry_registry:reg-1"}, {SubjectID: "user:usr-1", Relation: "owner", Object: "registry_registry:reg-1"}},
+		ParentProjectID: "prj-1",
+		SourceVersion:   domain.SourceVersion{Time: base},
+	}
 
-	fake := &scriptedRegisterClient{}
-	require.NoError(t, NewSyncRegistrar(fake).Register(context.Background(),
-		[]domain.RegisterIntent{push, grant}))
+	fake := &deadlineCapturingRegisterClient{}
+	reg, err := NewSyncRegistrar(fake)
+	require.NoError(t, err)
+	require.NoError(t, reg.Register(context.Background(), []domain.RegisterIntent{intent}))
+	require.Len(t, fake.reqs, len(intent.Tuples))
 
-	require.Len(t, fake.registerReqs, 3)
-	assert.Nil(t, fake.registerReqs[0].GetSourceVersion(), "push tuple[0]: not the last of its object")
-	require.NotNil(t, fake.registerReqs[1].GetSourceVersion(), "push tuple[1]: closes its object")
-	require.NotNil(t, fake.registerReqs[2].GetSourceVersion(), "grant: sole tuple of its own object")
+	for seq := range intent.Tuples {
+		fromDrain := stepSourceVersion(base, seq)
+		fromSync := fake.reqs[seq].GetSourceVersion()
+		require.NotNil(t, fromDrain)
+		assert.True(t, fromDrain.AsTime().Equal(fromSync.AsTime()),
+			"tuple %d: дренаж поставит %s, синхронная доставка — %s; расхождение возвращает "+
+				"зависимость гашения от гонки", seq, fromDrain.AsTime(), fromSync.AsTime())
+	}
 }
 
-// Test_RegisterApplier_VersionStrictlyIncreasesWithinRow — то же для пути очереди:
-// одна outbox-строка несёт ВЕСЬ набор tuple'ов с ОДНИМ маркером, поэтому applier обязан
-// шагать так же. Иначе редоставка, пришедшая ПЕРВОЙ (sync-путь упал / iam моргнул),
-// поставит только первый tuple объекта, а at-least-once backstop потеряет owner-tuple
-// навсегда.
+// Test_SyncRegistrar_UnversionedIntentIsNotDelivered — намерение без версии
+// (строка, поставленная в очередь до появления маркера) синхронно НЕ
+// доставляется: общая форма доставки регистрацию без маркера отвергает, а
+// дренаж такую строку доведёт сам.
+func Test_SyncRegistrar_UnversionedIntentIsNotDelivered(t *testing.T) {
+	fake := &deadlineCapturingRegisterClient{}
+	reg, err := NewSyncRegistrar(fake)
+	require.NoError(t, err)
+	require.NoError(t, reg.Register(context.Background(), []domain.RegisterIntent{{
+		Kind:       domain.RegisterIntentKindRegistry,
+		ResourceID: "reg-legacy",
+		Tuples:     []domain.FGATuple{{SubjectID: "project:prj-1", Relation: "project", Object: "registry_registry:reg-legacy"}},
+	}}))
+	assert.Empty(t, fake.reqs, "намерение без версии ушло на провод")
+}
+
 func Test_RegisterApplier_VersionStrictlyIncreasesWithinRow(t *testing.T) {
 	stamped := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 	intent := domain.RegisterIntentForCreate(
@@ -248,20 +235,3 @@ func Test_RegisterApplier_VersionStrictlyIncreasesWithinRow(t *testing.T) {
 // Test_SyncRegistrar_VersionAdvancesPerRegistration — grant → revoke → grant must not
 // collapse: each registration carries a strictly newer version than the last, so the
 // gate can never mistake a genuine re-registration for a redelivery.
-func Test_SyncRegistrar_VersionAdvancesPerRegistration(t *testing.T) {
-	intent := domain.RegisterIntentForCreate(
-		&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
-
-	fake := &scriptedRegisterClient{}
-	sr := NewSyncRegistrar(fake)
-	require.NoError(t, sr.Register(context.Background(), []domain.RegisterIntent{intent}))
-	time.Sleep(2 * time.Millisecond)
-	require.NoError(t, sr.Register(context.Background(), []domain.RegisterIntent{intent}))
-
-	require.Len(t, fake.registerReqs, 4)
-	// Знак каждой доставки — на её закрывающем вызове (индексы 1 и 3).
-	firstGrant := fake.registerReqs[1].GetSourceVersion().AsTime()
-	reGrant := fake.registerReqs[3].GetSourceVersion().AsTime()
-	assert.True(t, reGrant.After(firstGrant),
-		"a re-registration must carry a strictly newer version (%s must be after %s)", reGrant, firstGrant)
-}

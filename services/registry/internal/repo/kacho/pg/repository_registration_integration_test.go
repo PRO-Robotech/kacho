@@ -132,7 +132,7 @@ func TestRepoRegistration_ControlPlaneDeleteDropsRegistration(t *testing.T) {
 	require.NoError(t, regRepo.RegisterRepository(ctx,
 		domain.RegisterIntentForRepoPush(regID, "app", "prj-P", "service_account:sva-ci")))
 	// ...и затем принят control-plane'ом (наложение поверх проекции — путь adopt).
-	_, err := cfgRepo.InsertConfig(ctx, newCfg(regID, "app", domain.VisibilityPrivate, nil))
+	_, _, err := cfgRepo.InsertConfig(ctx, newCfg(regID, "app", domain.VisibilityPrivate, nil))
 	require.NoError(t, err, "принятие уже запушенного репозитория остаётся рабочим")
 	require.Equal(t, 1, countRegistration(t, pool, regID, "app"))
 
@@ -163,7 +163,7 @@ func TestRepoRegistration_OverlayAloneMakesResourceExist(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-overlay-only")
 
-	_, err := cfgRepo.InsertConfig(ctx, newCfg(regID, "declared/app", domain.VisibilityPrivate, nil))
+	_, _, err := cfgRepo.InsertConfig(ctx, newCfg(regID, "declared/app", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 	require.Equal(t, 0, countRegistration(t, pool, regID, "declared/app"),
 		"строки регистрации нет — репозиторий заявлен, но ни разу не запушен")

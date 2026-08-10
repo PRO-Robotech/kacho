@@ -30,6 +30,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -75,8 +76,8 @@ type Writer interface {
 	// Insert — zoneRegionID: регион ЗОНЫ тома, разрешённый владельцем Geography.
 	// Участвует в атомарной image-полосе CAS (ZONAL-том обязан лежать в регионе
 	// REGIONAL-образа). Пусто → образ-полоса не матчится (fail-closed).
-	Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, error)
-	Update(ctx context.Context, id string, u VolumeUpdate) (*domain.Volume, error)
+	Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, []ownerregister.Registration, error)
+	Update(ctx context.Context, id string, u VolumeUpdate) (*domain.Volume, []ownerregister.Registration, error)
 	Delete(ctx context.Context, id string) error
 	Attach(ctx context.Context, a *domain.VolumeAttachment) error
 	Detach(ctx context.Context, volumeID, instanceID string) error
@@ -176,13 +177,13 @@ func (u *UseCase) WithInstanceGate(g *listnarrow.Narrower) *UseCase {
 // Ошибка НЕ пробрасывается: durable outbox-intent уже записан в writer-TX, а
 // register-drainer применит его at-least-once (idempotent). Логируем WARN, чтобы
 // потерянная sync-регистрация была видна (async backstop подхватит).
-func (u *UseCase) registerOwnerTuple(ctx context.Context, item fgaregister.Item) {
-	if u.registrar == nil {
+func (u *UseCase) registerOwnerTuple(ctx context.Context, regs []ownerregister.Registration) {
+	if u.registrar == nil || len(regs) == 0 {
 		return
 	}
-	if err := u.registrar.Register(ctx, []fgaregister.Item{item}); err != nil {
+	if err := u.registrar.Register(ctx, regs); err != nil {
 		slog.WarnContext(ctx, "sync owner-tuple register failed; async drainer will apply",
-			"object", item.Tuple.Object, "err", err)
+			"object", regs[0].Tuple.Object, "err", err)
 	}
 }
 
@@ -317,14 +318,14 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	}
 	created := *v
 	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-		res, derr := u.writer.Insert(ctx, &created, zoneRegionID)
+		res, regs, derr := u.writer.Insert(ctx, &created, zoneRegionID)
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}
 		// owner-tuple: durable register-intent уже в writer-TX (repo); синхронно
 		// регистрируем для immediate анти-BOLA-резолва (best-effort, post-commit;
 		// backstop — async register-drainer at-least-once).
-		u.registerOwnerTuple(ctx, fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels))
+		u.registerOwnerTuple(ctx, regs)
 		return marshalVolume(res)
 	})
 	return &op, nil
@@ -365,7 +366,7 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 		return nil, err
 	}
 	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-		res, derr := u.writer.Update(ctx, id, upd)
+		res, regs, derr := u.writer.Update(ctx, id, upd)
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}
@@ -377,7 +378,7 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 		// 188–365 с при клиентском бюджете чтения-своих-записей 15 с).
 		// Update без меток в маске проекции не меняет — регистрации нет.
 		if upd.LabelsSet {
-			u.registerOwnerTuple(ctx, fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels))
+			u.registerOwnerTuple(ctx, regs)
 		}
 		return marshalVolume(res)
 	})

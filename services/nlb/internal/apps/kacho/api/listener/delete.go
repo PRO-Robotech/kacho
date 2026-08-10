@@ -181,7 +181,7 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	// FGA-unregister-intent (project-hierarchy) in the SAME tx as the Delete —
 	// register-drainer retracts the tuple AND the resource_mirror row via
 	// IAM.UnregisterResource, so no grant is re-materialised onto a dead listener.
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
+	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		listenerUnregisterIntent(listenerID, projectID)); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: fga unregister-intent emit: %v", domain.ErrInternal, err))
 	}

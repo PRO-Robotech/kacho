@@ -59,7 +59,7 @@ func TestIntegration_InstanceUpdate_DoesNotClobberLifecycleStatus(t *testing.T) 
 	instRepo := repo.NewInstanceRepo(pool)
 
 	inID := ids.NewID(ids.PrefixInstance)
-	_, err = instRepo.Insert(ctx, newRunningInstance(inID))
+	_, _, err = instRepo.Insert(ctx, newRunningInstance(inID))
 	require.NoError(t, err)
 
 	// (1) Update use-case reads the instance up-front — captures status=RUNNING.
@@ -75,7 +75,7 @@ func TestIntegration_InstanceUpdate_DoesNotClobberLifecycleStatus(t *testing.T) 
 	// (3) The Update runs on the now-stale snapshot (still RUNNING in memory),
 	// mutating only a descriptive field.
 	snapshot.Name = "renamed-after-stop"
-	updated, err := instRepo.Update(ctx, snapshot, false, []string{"name"})
+	updated, _, err := instRepo.Update(ctx, snapshot, false, []string{"name"})
 	require.NoError(t, err)
 	assert.Equal(t, "renamed-after-stop", updated.Name, "descriptive field must be persisted")
 
@@ -106,7 +106,7 @@ func TestIntegration_InstanceUpdate_ConcurrentWithStop_ExactlyOneStatusOutcome(t
 	instRepo := repo.NewInstanceRepo(pool)
 
 	inID := ids.NewID(ids.PrefixInstance)
-	_, err = instRepo.Insert(ctx, newRunningInstance(inID))
+	_, _, err = instRepo.Insert(ctx, newRunningInstance(inID))
 	require.NoError(t, err)
 
 	// Every Updater starts from the SAME stale RUNNING snapshot (as the real
@@ -136,7 +136,7 @@ func TestIntegration_InstanceUpdate_ConcurrentWithStop_ExactlyOneStatusOutcome(t
 			<-startBarrier
 			cp := *staleSnapshot
 			cp.Name = "u"
-			if _, err := instRepo.Update(ctx, &cp, false, []string{"name"}); err != nil {
+			if _, _, err := instRepo.Update(ctx, &cp, false, []string{"name"}); err != nil {
 				updateErrs.Add(1)
 			}
 		}(i)

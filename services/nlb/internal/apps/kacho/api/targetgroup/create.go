@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -195,8 +196,13 @@ func (u *CreateTargetGroupUseCase) doCreate(
 		return nil, mapDomainErr(err)
 	}
 	// FGA-register-intent (project-hierarchy) in the SAME tx.
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		tgRegisterIntent(created)); err != nil {
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки. Прежде его собирали дважды: очередь получала
+	// одно значение, синхронный вызов — второе, построенное заново, и
+	// разойтись они могли бы молча.
+	intent := tgRegisterIntent(created)
+	intentVersion, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+	if err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Commit(); err != nil {
@@ -207,7 +213,7 @@ func (u *CreateTargetGroupUseCase) doCreate(
 	// fga_register_outbox-intent'а): grant создателя виден сразу, закрывая
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
-	u.syncRegister(ctx, tgRegisterIntent(created))
+	u.syncRegister(ctx, intent, intentVersion)
 
 	// 4. Marshal response.
 	return marshalTargetGroup(created)
@@ -217,11 +223,11 @@ func (u *CreateTargetGroupUseCase) doCreate(
 // Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
 // register-drainer — at-least-once backstop; Operation.done НЕ гейтится (ban #9).
 // nil registrar → no-op.
-func (u *CreateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *CreateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		u.logger.Warn("TargetGroup.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
 			"err", err, "target_group_id", intent.ResourceID)
 	}

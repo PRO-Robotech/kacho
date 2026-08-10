@@ -24,7 +24,7 @@ func TestRepoConfig_REG_1_21_InsertDefaultDurable(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-lc21")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 	got, err := repo.GetConfig(ctx, regID, "backend/api")
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestRepoConfig_REG_1_22_InsertEphemeral(t *testing.T) {
 
 	cfg := newCfg(regID, "scratch/tmp", domain.VisibilityPrivate, nil)
 	cfg.Lifecycle = domain.LifecycleEphemeral
-	_, err := repo.InsertConfig(ctx, cfg)
+	_, _, err := repo.InsertConfig(ctx, cfg)
 	require.NoError(t, err)
 	got, err := repo.GetConfig(ctx, regID, "scratch/tmp")
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestRepoConfig_REG_1_23_UpdateAutoPromote(t *testing.T) {
 
 	cfg := newCfg(regID, "pushed/img", domain.VisibilityPrivate, nil)
 	cfg.Lifecycle = domain.LifecycleEphemeral
-	_, err := repo.InsertConfig(ctx, cfg)
+	_, _, err := repo.InsertConfig(ctx, cfg)
 	require.NoError(t, err)
 
 	updated, err := repo.UpdateConfig(ctx, registryUpdateDesc(regID, "pushed/img", "configured"))
@@ -79,7 +79,7 @@ func TestRepoConfig_REG_1_25_ConcurrentPromote_LifecycleCAS(t *testing.T) {
 
 	cfg := newCfg(regID, "pushed/img", domain.VisibilityPrivate, nil)
 	cfg.Lifecycle = domain.LifecycleEphemeral
-	_, err := repo.InsertConfig(ctx, cfg)
+	_, _, err := repo.InsertConfig(ctx, cfg)
 	require.NoError(t, err)
 
 	const n = 8

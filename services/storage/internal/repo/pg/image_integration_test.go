@@ -36,7 +36,7 @@ func mkSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name string, size 
 // mkImageFromSnapshot создаёт Image из снапшота через ImageRepo (state READY).
 func mkImageFromSnapshot(t *testing.T, r *pg.ImageRepo, project, name, region, snapID string) *domain.Image {
 	t.Helper()
-	i, err := r.Insert(context.Background(), &domain.Image{
+	i, _, err := r.Insert(context.Background(), &domain.Image{
 		ID:             ids.NewID(domain.PrefixImage),
 		ProjectID:      project,
 		Name:           name,
@@ -83,7 +83,7 @@ func TestImageCreateFromVolume(t *testing.T) {
 	ctx := context.Background()
 
 	v := mkVolume(t, vr, "prj-1", "src-vol", 32<<30)
-	img, err := ir.Insert(ctx, &domain.Image{
+	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "from-vol",
 		RegionID: "ru-central1", SourceVolume: v.ID,
 	}, fixtureRegionZones)
@@ -118,7 +118,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := r.Insert(context.Background(), &domain.Image{
+			_, _, err := r.Insert(context.Background(), &domain.Image{
 				ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "dup-img",
 				RegionID: "ru-central1", SourceSnapshot: snapID,
 			}, fixtureRegionZones)
@@ -140,7 +140,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 
 	// то же имя в другом проекте → OK (UNIQUE scoped проектом).
 	snap2 := mkSnapshotRow(t, pool, "prj-2", "snap-beta", 1<<30)
-	_, err := r.Insert(context.Background(), &domain.Image{
+	_, _, err := r.Insert(context.Background(), &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-2", Name: "dup-img",
 		RegionID: "ru-central1", SourceSnapshot: snap2,
 	}, fixtureRegionZones)
@@ -154,14 +154,14 @@ func TestImageSourceFKNotFound(t *testing.T) {
 	r := pg.NewImageRepo(pool)
 	ctx := context.Background()
 
-	_, err := r.Insert(ctx, &domain.Image{
+	_, _, err := r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-snap-src",
 		RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
 	}, fixtureRegionZones)
 	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("failed precondition: "):])
 
-	_, err = r.Insert(ctx, &domain.Image{
+	_, _, err = r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-vol-src",
 		RegionID: "ru-central1", SourceVolume: "vol00000000000000000",
 	}, fixtureRegionZones)
@@ -244,11 +244,11 @@ func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 	ib := mkImageFromSnapshot(t, r, "prj-1", "beta", "ru-central1", snap)
 
 	name := "alpha"
-	_, err := r.Update(ctx, ib.ID, image.ImageUpdate{Name: &name})
+	_, _, err := r.Update(ctx, ib.ID, image.ImageUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "got %v", err)
 
 	desc := "patched-desc"
-	_, err = r.Update(ctx, ib.ID, image.ImageUpdate{Description: &desc})
+	_, _, err = r.Update(ctx, ib.ID, image.ImageUpdate{Description: &desc})
 	require.NoError(t, err)
 	got, err := r.Get(ctx, ib.ID)
 	require.NoError(t, err)

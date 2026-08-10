@@ -106,7 +106,7 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	// reject (sync-семантика REG-04 parity). Осиротевший pending-Operation финализируется
 	// как failed. Intents эмитятся ТОЛЬКО при успешном INSERT (та же tx).
 	intents := createRepoIntents(spec.RegistryID, spec.Repository, reg.ProjectID, principal, visibility)
-	created, ierr := u.cfg.InsertConfig(ctx, cfg, intents...)
+	created, stampedIntents, ierr := u.cfg.InsertConfig(ctx, cfg, intents...)
 	if ierr != nil {
 		syncErr := mapRepoErr(ierr)
 		if errors.Is(ierr, regerrors.ErrAlreadyExists) {
@@ -121,7 +121,7 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	// owner/parent (+public-grant) tuple уже durable в writer-TX (outbox); СИНХРОННО
 	// регистрируем register-type intents для immediate pull/authz-резолва свежего repo
 	// (best-effort non-fatal — register-drainer применит at-least-once, ban #9 async).
-	u.syncRegisterOwnerTuples(ctx, registerIntents(intents)...)
+	u.syncRegisterOwnerTuples(ctx, registerIntents(stampedIntents)...)
 
 	operations.Run(ctx, u.ops, op.ID, func(workerCtx context.Context) (*anypb.Any, error) {
 		wctx := operations.WithPrincipal(workerCtx, principal)

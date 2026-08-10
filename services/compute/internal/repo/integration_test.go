@@ -85,7 +85,7 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
 	}
-	created, err := instRepo.Insert(ctx, in)
+	created, _, err := instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 	require.Empty(t, created.AttachedDisks)
 
@@ -177,7 +177,7 @@ func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testi
 
 	// Полоса «есть, но состояние не то» — тот же счёт.
 	inID := ids.NewID(ids.PrefixInstance)
-	_, err = instRepo.Insert(ctx, &domain.Instance{
+	_, _, err = instRepo.Insert(ctx, &domain.Instance{
 		ID: inID, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		Name: "vm-lane", ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning,
 		FQDN: inID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
@@ -197,7 +197,7 @@ func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testi
 	// Положительная полоса — тоже один стейтмент (контроль: правка не превратила
 	// счётчик в «чем меньше, тем лучше» за счёт потери проверки состояния).
 	okID := ids.NewID(ids.PrefixInstance)
-	_, err = instRepo.Insert(ctx, &domain.Instance{
+	_, _, err = instRepo.Insert(ctx, &domain.Instance{
 		ID: okID, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		Name: "vm-lane-ok", ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning,
 		FQDN: okID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",

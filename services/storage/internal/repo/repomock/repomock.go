@@ -11,6 +11,7 @@ package repomock
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,12 +19,14 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 )
 
 // VolumeReader — мок volume.Reader на функциях-полях.
@@ -58,11 +61,22 @@ type VolumeWriter struct {
 
 // Insert — zoneRegionID (регион зоны тома) энфорсится в SQL-CAS реального repo;
 // мок его не моделирует и передаёт вызов дальше без него.
-func (m *VolumeWriter) Insert(ctx context.Context, v *domain.Volume, _ string) (*domain.Volume, error) {
-	return m.InsertFunc(ctx, v)
+func (m *VolumeWriter) Insert(ctx context.Context, v *domain.Volume, _ string) (*domain.Volume, []ownerregister.Registration, error) {
+	res, err := m.InsertFunc(ctx, v)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, mockRegistrations(fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels)), nil
 }
-func (m *VolumeWriter) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error) {
-	return m.UpdateFunc(ctx, id, u)
+func (m *VolumeWriter) Update(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, []ownerregister.Registration, error) {
+	res, err := m.UpdateFunc(ctx, id, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !u.LabelsSet {
+		return res, nil, nil
+	}
+	return res, mockRegistrations(fgaregister.VolumeItem(res.ProjectID, res.ID, res.Labels)), nil
 }
 func (m *VolumeWriter) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 func (m *VolumeWriter) Attach(ctx context.Context, a *domain.VolumeAttachment) error {
@@ -138,11 +152,22 @@ type ImageWriter struct {
 	DeleteFunc func(ctx context.Context, id string) error
 }
 
-func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
-	return m.InsertFunc(ctx, i, regionZones)
+func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error) {
+	res, err := m.InsertFunc(ctx, i, regionZones)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, mockRegistrations(fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels)), nil
 }
-func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error) {
-	return m.UpdateFunc(ctx, id, u)
+func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, []ownerregister.Registration, error) {
+	res, err := m.UpdateFunc(ctx, id, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !u.LabelsSet {
+		return res, nil, nil
+	}
+	return res, mockRegistrations(fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels)), nil
 }
 func (m *ImageWriter) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 
@@ -161,11 +186,22 @@ func (m *SnapshotRepo) Get(ctx context.Context, id string) (*domain.Snapshot, er
 func (m *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 	return m.ListFunc(ctx, p)
 }
-func (m *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
-	return m.InsertFunc(ctx, s)
+func (m *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, []ownerregister.Registration, error) {
+	res, err := m.InsertFunc(ctx, s)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, mockRegistrations(fgaregister.SnapshotItem(res.ProjectID, res.ID, res.Labels)), nil
 }
-func (m *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
-	return m.UpdateFunc(ctx, id, u)
+func (m *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.SnapshotUpdate) (*domain.Snapshot, []ownerregister.Registration, error) {
+	res, err := m.UpdateFunc(ctx, id, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !u.LabelsSet {
+		return res, nil, nil
+	}
+	return res, mockRegistrations(fgaregister.SnapshotItem(res.ProjectID, res.ID, res.Labels)), nil
 }
 func (m *SnapshotRepo) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 
@@ -387,3 +423,55 @@ var (
 	_ disktype.Repo      = (*DiskTypeRepo)(nil)
 	_ operations.Repo    = (*OpsRepo)(nil)
 )
+
+// ── строки доставки, которые мок отдаёт вместо БД ──────────────────────────
+
+// fgaMockStampBase / fgaStampSeq — детерминированный монотонный штамп вместо
+// часов БД. In-memory-часов writer-транзакции у мока нет, поэтому штамп идёт
+// шагом от фиксированной точки.
+//
+// ПОЧЕМУ МОК ОБЯЗАН ШТАМПОВАТЬ, А НЕ ОТДАВАТЬ НУЛЬ. Дублёр, снисходительнее
+// настоящего, делает невидимым именно тот дефект, ради которого его
+// подставляют: общий регистратор ОТВЕРГАЕТ регистрацию без версии, и мок,
+// отдающий ноль, молча превратил бы каждую пробу доставки в «ничего не
+// доставлено» — то есть в зелёное отрицание на полностью мёртвом пути.
+// Значение при этом намеренно НЕ похоже на «сейчас»: подставное, отличимое от
+// настоящего, не даёт спутать проброс с выдумыванием на месте.
+var (
+	fgaMockStampBase = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	fgaStampMu       sync.Mutex
+	fgaStampSeq      int64
+)
+
+func nextFGAStamp() time.Time {
+	fgaStampMu.Lock()
+	defer fgaStampMu.Unlock()
+	fgaStampSeq++
+	return fgaMockStampBase.Add(time.Duration(fgaStampSeq) * time.Millisecond)
+}
+
+// mockRegistrations — строка доставки, которую реальный repo вернул бы из
+// writer-транзакции для того же item'а. Содержимое берётся из ТОГО ЖЕ
+// конструктора item'а, что и в проде: разойтись они не могут.
+func mockRegistrations(item fgaregister.Item) []ownerregister.Registration {
+	object := item.Tuple.Object
+	id := object
+	if i := strings.IndexByte(object, ':'); i >= 0 {
+		id = object[i+1:]
+	}
+	return []ownerregister.Registration{{
+		// Все три поля берутся у уже собранного кортежа: это ПЕРЕСБОРКА, а не
+		// решение о тройке — решает её конструктор домена, который дублёр и
+		// зовёт. Тем же признаком её отличает гейт сверки намерения с приёмной
+		// стороной, поэтому объект тоже берётся селектором, а не через local.
+		Tuple: ownerregister.Tuple{
+			SubjectID: item.Tuple.SubjectID,
+			Relation:  item.Tuple.Relation,
+			Object:    item.Tuple.Object,
+		},
+		TraceID:         id,
+		Labels:          item.Labels,
+		ParentProjectID: item.ParentProjectID,
+		SourceVersion:   nextFGAStamp(),
+	}}
+}

@@ -40,7 +40,7 @@ func TestRepo_REG40_ConcurrentUpdateVsDelete_ContestedRow(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	const n = 8 // чётное: половина Update, половина Delete

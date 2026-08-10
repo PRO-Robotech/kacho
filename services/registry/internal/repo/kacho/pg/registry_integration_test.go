@@ -90,7 +90,7 @@ func TestRepo_REG01_InsertGetRoundTrip_OutboxInTx(t *testing.T) {
 
 	reg := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
 	intent := domain.RegisterIntentForCreate(reg, "user", "usr-alice")
-	created, err := repo.Insert(ctx, reg, intent)
+	created, _, err := repo.Insert(ctx, reg, intent)
 	require.NoError(t, err)
 	require.Equal(t, reg.ID, created.ID)
 	require.Equal(t, domain.RegistryStatusActive, created.Status)
@@ -115,17 +115,17 @@ func TestRepo_REG04_DuplicateName_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 
 	r1 := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	r2 := newReg("prj-P", "team-images", nil)
-	_, err = repo.Insert(ctx, r2, domain.RegisterIntentForCreate(r2, "user", "usr-alice"))
+	_, _, err = repo.Insert(ctx, r2, domain.RegisterIntentForCreate(r2, "user", "usr-alice"))
 	require.ErrorIs(t, err, regerrors.ErrAlreadyExists)
 	require.Equal(t, 0, countOutbox(t, pool, r2.ID, domain.FGAEventRegister), "dup rollback: no outbox row")
 
 	// Разные project'ы с тем же именем — не конфликтуют.
 	r3 := newReg("prj-Q", "team-images", nil)
-	_, err = repo.Insert(ctx, r3, domain.RegisterIntentForCreate(r3, "user", "usr-alice"))
+	_, _, err = repo.Insert(ctx, r3, domain.RegisterIntentForCreate(r3, "user", "usr-alice"))
 	require.NoError(t, err)
 }
 
@@ -137,12 +137,12 @@ func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 	ctx := context.Background()
 
 	r1 := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r1, domain.RegisterIntentForCreate(r1, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	// Пока ACTIVE — дубль запрещён.
 	dup := newReg("prj-P", "team-images", nil)
-	_, err = repo.Insert(ctx, dup, domain.RegisterIntentForCreate(dup, "user", "usr-alice"))
+	_, _, err = repo.Insert(ctx, dup, domain.RegisterIntentForCreate(dup, "user", "usr-alice"))
 	require.ErrorIs(t, err, regerrors.ErrAlreadyExists)
 
 	// Перевод в DELETING освобождает имя.
@@ -150,7 +150,7 @@ func TestRepo_REG04_ReCreateNameOverDeleting(t *testing.T) {
 	require.NoError(t, err)
 
 	r2 := newReg("prj-P", "team-images", nil)
-	_, err = repo.Insert(ctx, r2, domain.RegisterIntentForCreate(r2, "user", "usr-alice"))
+	_, _, err = repo.Insert(ctx, r2, domain.RegisterIntentForCreate(r2, "user", "usr-alice"))
 	require.NoError(t, err, "name freed by DELETING → re-Create allowed")
 }
 
@@ -166,7 +166,7 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 	// падает на random-ULID tiebreak и позиционный assert флапает).
 	for i, name := range []string{"alpha", "bravo", "charlie"} {
 		r := newReg("prj-P", name, nil)
-		_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+		_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 		require.NoError(t, err)
 		_, err = pool.Exec(ctx,
 			`UPDATE kacho_registry.registries SET created_at = $2 WHERE id = $1`,
@@ -175,7 +175,7 @@ func TestRepo_REG06_ListPaginationFilter(t *testing.T) {
 	}
 	// Чужой project не течёт.
 	other := newReg("prj-Q", "delta", nil)
-	_, err := repo.Insert(ctx, other, domain.RegisterIntentForCreate(other, "user", "usr-bob"))
+	_, _, err := repo.Insert(ctx, other, domain.RegisterIntentForCreate(other, "user", "usr-bob"))
 	require.NoError(t, err)
 
 	// Первая страница (size 2) → next-token.
@@ -213,7 +213,7 @@ func TestRepo_REG07_DeleteLifecycle_ForwardOnly(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	marked, err := repo.MarkDeleting(ctx, r.ID)
@@ -255,7 +255,7 @@ func TestRepo_REG31_ConcurrentInsert_UniqueRace(t *testing.T) {
 			defer wg.Done()
 			r := newReg("prj-P", "team-images", nil) // distinct id, SAME (project,name)
 			<-start
-			_, results[i] = repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+			_, _, results[i] = repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 		}(i)
 	}
 	close(start)
@@ -285,7 +285,7 @@ func TestRepo_REG09_ConcurrentDelete_ExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	const n = 8
@@ -325,7 +325,7 @@ func TestRepo_REG36_UpdateMutable_LabelClear(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	// Смена labels + description.

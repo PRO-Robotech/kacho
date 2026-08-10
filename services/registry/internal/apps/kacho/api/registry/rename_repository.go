@@ -111,18 +111,19 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 	intents := renameIntents(registryID, repository, newName, reg.ProjectID, principal, visibility)
 
 	var (
-		written *domain.RepositoryConfig
-		werr    error
+		written        *domain.RepositoryConfig
+		stampedIntents []OutboxIntent
+		werr           error
 	)
 	if durable {
-		written, werr = u.cfg.RekeyConfig(ctx, registryID, repository, newName, intents...)
+		written, stampedIntents, werr = u.cfg.RekeyConfig(ctx, registryID, repository, newName, intents...)
 	} else {
 		promoted := &domain.RepositoryConfig{
 			RegistryID: registryID,
 			Name:       newName,
 			Visibility: visibility,
 		}
-		written, werr = u.cfg.InsertConfig(ctx, promoted, intents...)
+		written, stampedIntents, werr = u.cfg.InsertConfig(ctx, promoted, intents...)
 	}
 	if werr != nil {
 		if errors.Is(werr, regerrors.ErrAlreadyExists) {
@@ -134,7 +135,7 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 	// re-register нового repo (parent+owner (+public-grant)) durable в той же tx (outbox);
 	// СИНХРОННО регистрируем register-type intents для immediate pull/authz-резолва под
 	// новым именем (best-effort non-fatal — drainer at-least-once; unregister old — async).
-	u.syncRegisterOwnerTuples(ctx, registerIntents(intents)...)
+	u.syncRegisterOwnerTuples(ctx, registerIntents(stampedIntents)...)
 
 	// ФАЗА 2 — снятие тегов под СТАРЫМ именем (разрушающая), и только теперь: имя и
 	// права уже закреплены выше, поэтому сбой на этом шаге не делает содержимое

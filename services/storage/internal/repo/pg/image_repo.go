@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -198,10 +199,11 @@ const imageInsertCoherentSQL = `
 // fga_register_outbox (owner-tuple storage_image). Прежняя редакция называла рядом с ним
 // доменный outbox — таблица дропнута миграцией 0011, и вставки в неё в этой транзакции
 // нет; упоминание описывало запись, которой не происходит.
-func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
+func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
 	if err != nil {
-		return nil, storageerr.ErrInternal
+		return nil, nil, storageerr.ErrInternal
 	}
 	var srcSnap, srcVol *string
 	if i.SourceSnapshot != "" {
@@ -230,18 +232,23 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []s
 			return serr
 		}
 		// owner-tuple register-intent в той же writer-TX (F13/STOR-1-27): анти-BOLA.
-		return emitFGARegister(ctx, tx, fgaregister.EventRegister,
+		reg, eerr := emitFGARegister(ctx, tx, fgaregister.EventRegister,
 			fgaregister.ImageItem(i.ProjectID, i.ID, i.Labels))
+		if eerr != nil {
+			return eerr
+		}
+		regs = []ownerregister.Registration{reg}
+		return nil
 	})
 	if txErr != nil {
-		return nil, mapImageErr(txErr, imgErrCtx{
+		return nil, nil, mapImageErr(txErr, imgErrCtx{
 			imageID: i.ID, imageName: i.Name, snapshotID: i.SourceSnapshot, volumeID: i.SourceVolume,
 		})
 	}
 	created.Format = domain.ImageFormatStandard
 	created.Placement = domain.ImagePlacementRegional
 	created.Status = domain.ImageStatusFromState("READY")
-	return &created, nil
+	return &created, regs, nil
 }
 
 // imageSourceUnavailable разбирает 0-row исход project-coherent CAS: заданный источник
@@ -263,12 +270,13 @@ func imageSourceUnavailable(snapshotID, volumeID string) error {
 
 // Update реализует image.Writer: mutable name/description/labels (COALESCE, nil →
 // без изменения). Один UPDATE, БЕЗ Get (нет TOCTOU). 0 rows → NotFound.
-func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error) {
+func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	var labelsArg any
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, storageerr.ErrInternal
+			return nil, nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -287,10 +295,17 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 			RETURNING id, project_id, labels`,
 			id, u.Name, u.Description, labelsArg).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
-			return reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
+			reg, eerr := reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
 				func(labels map[string]string) fgaregister.Item {
 					return fgaregister.ImageItem(projectID, rowID, labels)
 				})
+			if eerr != nil {
+				return eerr
+			}
+			if !reg.SourceVersion.IsZero() {
+				regs = []ownerregister.Registration{reg}
+			}
+			return nil
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, id)
@@ -298,9 +313,10 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 		return serr
 	})
 	if txErr != nil {
-		return nil, mapImageErr(txErr, imgErrCtx{imageID: id, imageName: derefStr(u.Name)})
+		return nil, nil, mapImageErr(txErr, imgErrCtx{imageID: id, imageName: derefStr(u.Name)})
 	}
-	return r.Get(ctx, id)
+	updated, gerr := r.Get(ctx, id)
+	return updated, regs, gerr
 }
 
 // Delete реализует image.Writer: DELETE строки образа + fga unregister-intent
@@ -317,8 +333,9 @@ func (r *ImageRepo) Delete(ctx context.Context, id string) error {
 			}
 			return err
 		}
-		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,
+		_, uerr := emitFGARegister(ctx, tx, fgaregister.EventUnregister,
 			fgaregister.Item{Tuple: fgaregister.StorageImage(projectID, id)})
+		return uerr
 	})
 	if txErr != nil {
 		return mapImageErr(txErr, imgErrCtx{imageID: id})

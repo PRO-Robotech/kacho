@@ -76,7 +76,7 @@ func TestImageSourceVolumeForeignRegionRejected(t *testing.T) {
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-foreign-region", "region-2-a")
 
-	_, err := ir.Insert(ctx, &domain.Image{
+	_, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "img-from-foreign-vol",
 		RegionID: "region-1", SourceVolume: volID,
 	}, fixtureRegionZones)
@@ -94,7 +94,7 @@ func TestImageSourceVolumeSameRegionSeeded(t *testing.T) {
 
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-same-region", "region-1-b")
 
-	img, err := ir.Insert(ctx, &domain.Image{
+	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "img-from-same-vol",
 		RegionID: "region-1", SourceVolume: volID,
 	}, fixtureRegionZones)
@@ -114,7 +114,7 @@ func TestImageSourceSnapshotFollowsLineageRegion(t *testing.T) {
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-lineage-foreign", "region-2-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-lineage-foreign", volID)
 
-	_, err := ir.Insert(ctx, &domain.Image{
+	_, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "img-from-foreign-snap",
 		RegionID: "region-1", SourceSnapshot: snapID,
 	}, fixtureRegionZones)
@@ -132,7 +132,7 @@ func TestImageSourceSnapshotSameRegionSeeded(t *testing.T) {
 	volID := mkVolumeRowInZone(t, pool, "prj-1", "vol-lineage-same", "region-1-a")
 	snapID := mkSnapshotOfVolume(t, pool, "prj-1", "snap-lineage-same", volID)
 
-	img, err := ir.Insert(ctx, &domain.Image{
+	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "img-from-same-snap",
 		RegionID: "region-1", SourceSnapshot: snapID,
 	}, fixtureRegionZones)
@@ -151,7 +151,7 @@ func TestImageSourceSnapshotWithoutLineageUnaffected(t *testing.T) {
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-no-lineage", 20<<30)
 
-	img, err := ir.Insert(ctx, &domain.Image{
+	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "img-from-orphan-snap",
 		RegionID: "region-1", SourceSnapshot: snapID,
 	}, fixtureRegionZones)

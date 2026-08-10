@@ -37,7 +37,7 @@ func TestIntegration_OutboxEmit_OnInstanceCreate(t *testing.T) {
 
 	r := repo.NewInstanceRepo(pool)
 	d := outboxFixtureInstance("i-outbox")
-	_, err = r.Insert(ctx, d)
+	_, _, err = r.Insert(ctx, d)
 	require.NoError(t, err)
 
 	var kind, id, eventType string
@@ -75,7 +75,7 @@ func TestIntegration_OutboxListenNotify(t *testing.T) {
 
 	// триггер события через Insert ВМ.
 	r := repo.NewInstanceRepo(pool)
-	_, err = r.Insert(ctx, outboxFixtureInstance("i-notify"))
+	_, _, err = r.Insert(ctx, outboxFixtureInstance("i-notify"))
 	require.NoError(t, err)
 
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

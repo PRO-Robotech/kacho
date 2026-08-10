@@ -39,7 +39,7 @@ import (
 // reports the volume id it tried to use together with the refusal (if any).
 func bootFromImage(ctx context.Context, vr *pg.VolumeRepo, project, name, zone, zoneRegion, imageID string) (string, error) {
 	id := ids.NewID(domain.PrefixVolume)
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: id, ProjectID: project, Name: name,
 		ZoneID: zone, DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: imageID,
@@ -127,7 +127,7 @@ func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-same-region", 20<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-1", "img-same-region", "region-1", snapID)
 
-	boot, err := vr.Insert(ctx, &domain.Volume{
+	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-same-region",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,
@@ -143,7 +143,7 @@ func TestVolumeWithoutSourceUnaffectedByRegion(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v, err := vr.Insert(ctx, &domain.Volume{
+	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "plain-vol-region",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 	}, "")

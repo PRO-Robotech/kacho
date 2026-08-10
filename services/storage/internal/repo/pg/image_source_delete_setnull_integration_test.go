@@ -66,7 +66,7 @@ func TestImageSourceVolumeDeleteSetNull(t *testing.T) {
 	ctx := context.Background()
 
 	srcVol := mkVolume(t, vr, "prj-1", "golden-src-vol", 32<<30)
-	img, err := ir.Insert(ctx, &domain.Image{
+	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "prov-from-vol",
 		RegionID: "ru-central1", SourceVolume: srcVol.ID,
 	}, fixtureRegionZones)

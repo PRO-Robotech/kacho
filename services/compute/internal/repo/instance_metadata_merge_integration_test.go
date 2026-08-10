@@ -24,7 +24,7 @@ import (
 func seedInstanceForMetadata(t *testing.T, ctx context.Context, instRepo *repo.InstanceRepo, md map[string]string) string {
 	t.Helper()
 	inID := ids.NewID(ids.PrefixInstance)
-	_, err := instRepo.Insert(ctx, &domain.Instance{
+	_, _, err := instRepo.Insert(ctx, &domain.Instance{
 		ID: inID, ProjectID: "f-md", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal",
 		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",

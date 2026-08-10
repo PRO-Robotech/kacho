@@ -5,75 +5,67 @@ package clients
 
 import (
 	"context"
-	"fmt"
 	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 )
 
-// SyncRegistrar — синхронный owner-tuple registrar: реализует
-// fgaregister.Registrar поверх InternalIAMService.RegisterResource. Create-flow
-// после durable commit ресурса синхронно регистрирует те же Item'ы, что эмитятся
-// в outbox-intent, — owner-grant доступен сразу, без гонки с async drainer'ом.
+// SyncRegistrar — перевод намерения vpc в общую форму доставки
+// ([ownerregister.Registrar]) и ничего больше.
 //
-// Каждый Item → один RegisterResource (idempotent: повтор того же tuple → OK).
-// Любая ошибка пробрасывается наверх → create-Operation fail-closed; durable
-// outbox-intent + register-drainer остаются at-least-once backstop'ом (та же
-// идемпотентная регистрация повторно безопасна). Использует тот же mTLS-conn к
-// kacho-iam :9091, что и drainer (identity — из client-cert).
+// ПОЧЕМУ ЗДЕСЬ БОЛЬШЕ НЕТ НИ ЦИКЛА, НИ СРОКА, НИ СБОРКИ ЗАПРОСА. Всё это стояло
+// копией у пяти сервисов и разошлось по пяти осям сразу — включая ту, ради
+// которой доставка вообще несёт версию. Общая форма и её обоснования живут в
+// godoc пакета ownerregister; здесь остаётся только то, что у vpc своё:
+// раскладка Item'ов в строки доставки.
+//
+// Версия — параметр, а не часы: её проштамповала БД внутри writer-транзакции
+// (`FGARegisterEmitter.EmitRegister` возвращает `now()` через RETURNING). vpc был
+// ЕДИНСТВЕННЫМ из пяти, кто её протаскивал; остальные четыре читали часы в момент
+// доставки, отчего гашение повторной доставки у принимающей стороны срабатывало
+// только в одном порядке. Свойство держит гейт
+// `internal/repohygiene.TestOwnerRegistrationCarriesWriterTxVersion`.
 type SyncRegistrar struct {
-	cli     IAMRegisterRPC
-	timeout time.Duration
+	delivery *ownerregister.Registrar
 }
 
 // NewSyncRegistrar собирает registrar поверх IAMRegisterRPC (InternalIAMServiceClient
-// или его узкое подмножество). timeout по умолчанию 5s на один RegisterResource —
-// create-worker идет на background-ctx без дедлайна, поэтому ограничиваем здесь.
-func NewSyncRegistrar(cli IAMRegisterRPC) *SyncRegistrar {
-	return &SyncRegistrar{cli: cli, timeout: 5 * time.Second}
+// или его узкое подмножество). Нулевой клиент — отказ, а не пустая операция
+// (см. [ownerregister.ErrNoClient]).
+func NewSyncRegistrar(cli IAMRegisterRPC) (*SyncRegistrar, error) {
+	d, err := ownerregister.New(cli)
+	if err != nil {
+		return nil, err
+	}
+	return &SyncRegistrar{delivery: d}, nil
 }
 
-// Register синхронно регистрирует owner-tuple для каждого Item, неся ТУ ЖЕ
-// монотонную версию, которой БД проштамповала durable-intent внутри writer-TX
-// (`sourceVersion`, возвращён FGARegisterEmitter.EmitRegister).
+// Register доставляет каждый Item набора, неся ТУ ЖЕ версию, которой БД
+// проштамповала durable-намерение внутри writer-транзакции.
 //
-// Почему не свежие часы. Каждая регистрация доезжает до iam ДВАЖДЫ — этим
-// вызовом и дренажом того же intent'а, — и приёмная сторона гасит повторную
-// доставку строгим монотонным сравнением версий. При одинаковой версии вторая
-// доставка не меняет зеркала, КАКАЯ БЫ ни пришла первой, и повторная
-// материализация не запускается. Штамп `time.Now()` после коммита был строго
-// новее db-штампа, поэтому гашение работало только в одном порядке: когда дренаж
-// успевал первым, синхронный вызов выглядел новее состоянием и заставлял iam
-// пересчитывать материализацию заново — на самом горячем пути создания ресурса.
-//
-// Первая ошибка прекращает регистрацию и возвращается (fail-closed).
+// Одна версия на все Item'ы здесь безвредна: Item'ы одного вызова vpc адресуют
+// РАЗНЫЕ объекты (сеть, её системная группа безопасности, её таблица
+// маршрутизации), а гейт редоставки у принимающей стороны ключуется на строке
+// зеркала — то есть на объекте. Совпадение версий у разных объектов ничего не
+// схлопывает. Сервису, который шлёт на ОДИН объект несколько отношений, версию
+// обязана нести каждая строка отдельно — см. godoc
+// [ownerregister.Registration].
 func (s *SyncRegistrar) Register(ctx context.Context, items []fgaregister.Item, sourceVersion time.Time) error {
-	sv := timestamppb.New(sourceVersion)
+	regs := make([]ownerregister.Registration, 0, len(items))
 	for _, it := range items {
-		cctx := ctx
-		var cancel context.CancelFunc
-		if s.timeout > 0 {
-			cctx, cancel = context.WithTimeout(ctx, s.timeout)
-		}
-		_, err := s.cli.RegisterResource(cctx, &iamv1.RegisterResourceRequest{
-			SubjectId:       it.Tuple.SubjectID,
-			Relation:        it.Tuple.Relation,
-			Object:          it.Tuple.Object,
+		regs = append(regs, ownerregister.Registration{
+			Tuple: ownerregister.Tuple{
+				SubjectID: it.Tuple.SubjectID,
+				Relation:  it.Tuple.Relation,
+				Object:    it.Tuple.Object,
+			},
 			Labels:          it.Labels,
-			ParentProjectId: it.ParentProjectID,
-			SourceVersion:   sv,
+			ParentProjectID: it.ParentProjectID,
+			SourceVersion:   sourceVersion,
 		})
-		if cancel != nil {
-			cancel()
-		}
-		if err != nil {
-			return fmt.Errorf("sync register owner-tuple %s: %w", it.Tuple.Object, err)
-		}
 	}
-	return nil
+	return s.delivery.Register(ctx, regs)
 }
 
 // Compile-time check.

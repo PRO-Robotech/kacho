@@ -22,6 +22,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -201,7 +202,13 @@ func runServe(cfg config.Config) error {
 		if derr := startRedriveBackstop(ctx, pool, logger); derr != nil {
 			return fmt.Errorf("start redrive backstop: %w", derr)
 		}
-		syncRegistrar := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(authzConn))
+		// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): у storage больше
+		// нет своего регистратора, потому что своего в нём ничего и не было —
+		// только копия, разошедшаяся с соседями по маркеру версии.
+		syncRegistrar, rerr := ownerregister.New(iamv1.NewInternalIAMServiceClient(authzConn))
+		if rerr != nil {
+			return fmt.Errorf("собрать синхронный registrar: %w", rerr)
+		}
 		volumeUC.WithRegistrar(syncRegistrar)
 		snapshotUC.WithRegistrar(syncRegistrar)
 		imageUC.WithRegistrar(syncRegistrar)

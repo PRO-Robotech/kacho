@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 )
 
 // Типы событий колонки event_type таблицы fga_register_outbox; передаются
@@ -98,7 +99,7 @@ type Item struct {
 // InternalIAMService.RegisterResource (idempotent); drainer остаётся at-least-once
 // backstop'ом. nil-registrar (dev/no-iam) → sync-путь пропускается, только async.
 type Registrar interface {
-	Register(ctx context.Context, items []Item) error
+	Register(ctx context.Context, regs []ownerregister.Registration) error
 }
 
 // Payload — JSONB-форма одной строки fga_register_outbox: tuple, развёрнутый на

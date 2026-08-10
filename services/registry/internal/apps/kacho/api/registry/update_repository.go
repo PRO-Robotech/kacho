@@ -142,7 +142,7 @@ func (u *UseCase) applyRepoUpdate(ctx context.Context, spec RepositoryConfigUpda
 		promoteIntents = append(promoteIntents,
 			OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(spec.RegistryID, spec.Name)})
 	}
-	inserted, ierr := u.cfg.InsertConfig(ctx, promoted, promoteIntents...)
+	inserted, _, ierr := u.cfg.InsertConfig(ctx, promoted, promoteIntents...)
 	if ierr == nil {
 		return inserted, nil
 	}

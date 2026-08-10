@@ -24,7 +24,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -90,33 +92,72 @@ func (r *InstanceRepo) List(_ context.Context, f ports.InstanceFilter, _ ports.P
 }
 
 // Insert вставляет строку ВМ (без привязок — storage-split).
-func (r *InstanceRepo) Insert(_ context.Context, in *domain.Instance) (*domain.Instance, error) {
+func (r *InstanceRepo) Insert(_ context.Context, in *domain.Instance) (*domain.Instance, []ownerregister.Registration, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if in.Name != "" {
 		for _, x := range r.data {
 			if x.ProjectID == in.ProjectID && x.Name == in.Name {
-				return nil, ports.ErrAlreadyExists
+				return nil, nil, ports.ErrAlreadyExists
 			}
 		}
 	}
 	r.data[in.ID] = in
-	return in, nil
+	return in, mockRegistrations(in), nil
 }
 
 // Update обновляет ВМ. Записывает emitLabelsRegister в LastUpdateEmitLabels
 // (epic RSAB β, D-β6) для проверки use-case-тестом.
-func (r *InstanceRepo) Update(_ context.Context, in *domain.Instance, emitLabelsRegister bool, _ []string) (*domain.Instance, error) {
+func (r *InstanceRepo) Update(_ context.Context, in *domain.Instance, emitLabelsRegister bool, _ []string) (*domain.Instance, []ownerregister.Registration, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	flag := emitLabelsRegister
 	r.LastUpdateEmitLabels = &flag
 	if _, ok := r.data[in.ID]; !ok {
-		return nil, ports.ErrNotFound
+		return nil, nil, ports.ErrNotFound
 	}
 	r.data[in.ID] = in
-	return in, nil
+	if !emitLabelsRegister {
+		return in, nil, nil
+	}
+	return in, mockRegistrations(in), nil
 }
+
+// mockRegistrations — строка доставки, которую реальный repo вернул бы из
+// writer-транзакции.
+//
+// ПОЧЕМУ ДУБЛЁР ОБЯЗАН ШТАМПОВАТЬ ВЕРСИЮ. Общий регистратор регистрацию без
+// версии ОТВЕРГАЕТ. Дублёр, отдающий ноль, молча превратил бы каждую пробу
+// доставки в «ничего не доставлено» — зелёное отрицание на мёртвом пути, то
+// есть ровно тот дефект, ради которого дублёра и подставляют. Значение
+// намеренно НЕ похоже на «сейчас»: подставное, отличимое от настоящего, не даёт
+// спутать проброс с выдумыванием на месте.
+func mockRegistrations(in *domain.Instance) []ownerregister.Registration {
+	tuple, ok := fgaintent.ProjectHierarchyTuple("Instance", in.ID, in.ProjectID)
+	if !ok {
+		return nil
+	}
+	fgaStampMu.Lock()
+	fgaStampSeq++
+	seq := fgaStampSeq
+	fgaStampMu.Unlock()
+	return []ownerregister.Registration{{
+		Tuple: ownerregister.Tuple{
+			SubjectID: tuple.SubjectID,
+			Relation:  tuple.Relation,
+			Object:    tuple.Object,
+		},
+		TraceID:         in.ID,
+		Labels:          in.Labels,
+		ParentProjectID: in.ProjectID,
+		SourceVersion:   time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(seq) * time.Millisecond),
+	}}
+}
+
+var (
+	fgaStampMu  sync.Mutex
+	fgaStampSeq int64
+)
 
 // SetStatusCAS — in-memory CAS: атомарно переводит status из expected в next.
 // Если row не существует → ErrNotFound; если текущий status != expected →

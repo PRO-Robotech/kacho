@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -143,10 +144,11 @@ const snapshotInsertCAS = `
 // Insert реализует snapshot.Repo: from-READY-volume CAS + fga_register-intent в
 // той же tx. Никакого Get→check→INSERT (том мог смениться) — только атомарный
 // INSERT…SELECT. Existence + state-инвариант — на DB (ban #10).
-func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
+func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	labels, err := json.Marshal(nonNilLabels(s.Labels))
 	if err != nil {
-		return nil, storageerr.ErrInternal
+		return nil, nil, storageerr.ErrInternal
 	}
 	created := *s
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
@@ -155,8 +157,13 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 			Scan(&created.CreatedAt, &created.SizeBytes)
 		if serr == nil {
 			// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_snapshot.
-			return emitFGARegister(ctx, tx, fgaregister.EventRegister,
+			reg, eerr := emitFGARegister(ctx, tx, fgaregister.EventRegister,
 				fgaregister.SnapshotItem(s.ProjectID, s.ID, s.Labels))
+			if eerr != nil {
+				return eerr
+			}
+			regs = []ownerregister.Registration{reg}
+			return nil
 		}
 		if !errors.Is(serr, pgx.ErrNoRows) {
 			return serr // 23505 name-collision / 23514 CHECK → mapSnapshotErr снаружи
@@ -164,12 +171,12 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 		return disambiguateSnapshotSource(ctx, tx, s.ProjectID, s.SourceVolumeID) // 0 rows → sentinel
 	})
 	if txErr != nil {
-		return nil, mapSnapshotErr(txErr, snapErrCtx{
+		return nil, nil, mapSnapshotErr(txErr, snapErrCtx{
 			snapshotID: s.ID, snapshotName: s.Name, sourceVolumeID: s.SourceVolumeID,
 		})
 	}
 	created.Status = domain.SnapshotStatusFromState("READY")
-	return &created, nil
+	return &created, regs, nil
 }
 
 // disambiguateSnapshotSource разбирает 0-row исход from-READY-CAS (в той же tx). Резолв
@@ -199,12 +206,13 @@ func disambiguateSnapshotSource(ctx context.Context, tx pgx.Tx, projectID, srcVo
 // Update реализует snapshot.Repo: mutable name/description/labels (COALESCE, nil →
 // без изменения). 0 rows → NotFound. partial
 // UNIQUE(name) collision → 23505 → AlreadyExists.
-func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
+func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.SnapshotUpdate) (*domain.Snapshot, []ownerregister.Registration, error) {
+	var regs []ownerregister.Registration
 	var labelsArg any
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, storageerr.ErrInternal
+			return nil, nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -223,10 +231,17 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 			RETURNING id, project_id, labels`,
 			id, u.Name, u.Description, labelsArg).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
-			return reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
+			reg, eerr := reEmitLabelMirror(ctx, tx, u.LabelsSet, labelsAfter,
 				func(labels map[string]string) fgaregister.Item {
 					return fgaregister.SnapshotItem(projectID, rowID, labels)
 				})
+			if eerr != nil {
+				return eerr
+			}
+			if !reg.SourceVersion.IsZero() {
+				regs = []ownerregister.Registration{reg}
+			}
+			return nil
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, id)
@@ -234,9 +249,10 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 		return serr
 	})
 	if txErr != nil {
-		return nil, mapSnapshotErr(txErr, snapErrCtx{snapshotID: id, snapshotName: derefStr(u.Name)})
+		return nil, nil, mapSnapshotErr(txErr, snapErrCtx{snapshotID: id, snapshotName: derefStr(u.Name)})
 	}
-	return r.Get(ctx, id)
+	updated, gerr := r.Get(ctx, id)
+	return updated, regs, gerr
 }
 
 // Delete реализует snapshot.Repo: DELETE строки + fga_register unregister-intent в
@@ -255,8 +271,9 @@ func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
 			return err
 		}
 		// owner-tuple unregister-intent в той же writer-TX (SEC-D).
-		return emitFGARegister(ctx, tx, fgaregister.EventUnregister,
+		_, uerr := emitFGARegister(ctx, tx, fgaregister.EventUnregister,
 			fgaregister.Item{Tuple: fgaregister.StorageSnapshot(projectID, id)})
+		return uerr
 	})
 	if txErr != nil {
 		return mapSnapshotErr(txErr, snapErrCtx{snapshotID: id})

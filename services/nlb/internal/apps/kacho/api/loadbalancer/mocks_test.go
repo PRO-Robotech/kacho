@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
@@ -828,13 +829,24 @@ func (f *fakeAddressReader) Get(ctx context.Context, addressID string) (*vpcclie
 // pending buffer (flushed to fakeRepo.fga on Commit, dropped on Abort).
 type fakeFGARegisterOutbox struct{ w *fakeWriter }
 
-func (o *fakeFGARegisterOutbox) Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) error {
+// Emit — дублёр эмиттера writer-транзакции. ШТАМПУЕТ версию, потому что
+// настоящий эмиттер её штампует: дублёр, отдающий ноль, превратил бы каждую
+// пробу синхронной доставки в «ничего не доставлено» (общая форма доставки
+// регистрацию без версии ОТВЕРГАЕТ) — то есть в зелёное отрицание на мёртвом
+// пути. Значение намеренно НЕ похоже на «сейчас».
+func (o *fakeFGARegisterOutbox) Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) (time.Time, error) {
 	if o.w.r.failOnOutbox != nil {
-		return o.w.r.failOnOutbox
+		return time.Time{}, o.w.r.failOnOutbox
 	}
 	o.w.pendingFGA = append(o.w.pendingFGA, fgaIntentEvent{EventType: eventType, Intent: intent})
-	return nil
+	fakeFGAStampSeq++
+	return fakeFGAStampBase.Add(time.Duration(fakeFGAStampSeq) * time.Millisecond), nil
 }
+
+var (
+	fakeFGAStampBase = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	fakeFGAStampSeq  int64
+)
 
 // ensure interface conformance (compile-time).
 var (

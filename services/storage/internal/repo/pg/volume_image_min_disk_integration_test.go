@@ -46,7 +46,7 @@ func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 	img := mkImageFromSnapshot(t, ir, "prj-1", "img-min-disk", imageRegionFixture, snapID)
 	require.EqualValues(t, 20<<30, img.MinDiskBytes, "fixture must carry a non-zero minimum")
 
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-too-small",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceImage: img.ID,
@@ -68,7 +68,7 @@ func TestVolumeSourceImageAtMinDiskSeeded(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-at-min", 20<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-1", "img-at-min", imageRegionFixture, snapID)
 
-	boot, err := vr.Insert(ctx, &domain.Volume{
+	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-at-min",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 20 << 30,
 		SourceImage: img.ID,
@@ -89,7 +89,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-victim", "snap-victim-min", 20<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-victim", "img-victim-min", imageRegionFixture, snapID)
 
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-victim-min",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceImage: img.ID,
@@ -107,7 +107,7 @@ func TestVolumeWithoutSourceUnaffectedByMinDisk(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v, err := vr.Insert(ctx, &domain.Volume{
+	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "plain-vol-min-disk",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 20,
 	}, "")
@@ -124,7 +124,7 @@ func TestVolumeSourceSnapshotUnaffectedByMinDisk(t *testing.T) {
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-lane-min", 20<<30)
 
-	v, err := vr.Insert(ctx, &domain.Volume{
+	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-from-snap-min",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: snapID,

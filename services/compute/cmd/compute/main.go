@@ -34,8 +34,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
@@ -1122,7 +1124,7 @@ func startRegisterDrainer(cfg config.Config, pool *pgxpool.Pool, rec metrics.Rec
 // (idle-keepalive: registrar срабатывает лишь на Create-всплесках); возвращает
 // closer. Addr выводится из AuthZIAMGRPCAddr (тот же iam-internal, что для Check),
 // fallback — IAMGRPCAddr. Зеркалит kacho-vpc buildSyncRegistrar.
-func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRegistrar, func(), error) {
+func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.Registrar, func(), error) {
 	addr := cfg.AuthZIAMGRPCAddr
 	if addr == "" {
 		addr = cfg.IAMGRPCAddr
@@ -1136,7 +1138,15 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", cerr)
 	}
 	logger.Info("owner-tuple sync-registrar dialed", "iam_addr", addr, "mtls", cfg.IAMRegisterMTLS.Enable)
-	return clients.NewSyncRegistrar(conn), func() { _ = conn.Close() }, nil
+	// Форма доставки — ОДНА на все сервисы (pkg/ownerregister): своего
+	// регистратора у compute больше нет, потому что своего в нём и не было —
+	// только копия, разошедшаяся с соседями по маркеру версии.
+	reg, rerr := ownerregister.New(iamv1.NewInternalIAMServiceClient(conn))
+	if rerr != nil {
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("собрать синхронный registrar: %w", rerr)
+	}
+	return reg, func() { _ = conn.Close() }, nil
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener (:9091).

@@ -46,7 +46,11 @@ func TestFGARegisterOutbox_T3_CreateIntentCarriesLabelsParentSourceVersion(t *te
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
 		_, err := w.TargetGroups().Insert(ctx, tg)
 		require.NoError(t, err)
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent))
+		// Штамп writer-транзакции обязан быть НЕПУСТЫМ: именно его понесёт
+		// синхронная доставка, и без него она была бы отвергнута общей формой.
+		stamp, eerr := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+		require.NoError(t, eerr)
+		require.False(t, stamp.IsZero(), "эмиттер не вернул штамп writer-транзакции")
 	})
 
 	rows := queryRegisterRows(t, ctx, tc)
@@ -93,7 +97,8 @@ func TestFGARegisterOutbox_T3_UpdateLabelsEmitsRegisterIntent(t *testing.T) {
 		require.NoError(t, gerr)
 		_, err := w.TargetGroups().Update(ctx, tg, cur.Xmin)
 		require.NoError(t, err)
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, updIntent))
+		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, updIntent)
+		require.NoError(t, emitErrctx)
 	})
 
 	rows := queryRegisterRows(t, ctx, tc)

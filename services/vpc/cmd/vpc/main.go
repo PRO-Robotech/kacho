@@ -790,7 +790,12 @@ func buildSyncRegistrar(iamAddr string, mtlsCfg config.MTLSConfig) (*clients.Syn
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial kacho-iam (sync registrar): %w", err)
 	}
-	return clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(conn)), func() { _ = conn.Close() }, nil
+	reg, err := clients.NewSyncRegistrar(iamv1.NewInternalIAMServiceClient(conn))
+	if err != nil {
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("собрать синхронный registrar: %w", err)
+	}
+	return reg, func() { _ = conn.Close() }, nil
 }
 
 // iamAddr — listener iam-internal :9091; RegisterResource Internal-only (ban #6).

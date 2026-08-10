@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/H-BF/corlib/pkg/option"
 	"google.golang.org/grpc/codes"
@@ -302,8 +303,13 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
 	}
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		listenerRegisterIntent(created)); err != nil {
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки. Прежде его собирали дважды: очередь получала
+	// одно значение, синхронный вызов — второе, построенное заново, и
+	// разойтись они могли бы молча.
+	intent := listenerRegisterIntent(created)
+	intentVersion, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+	if err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: fga register-intent emit: %v", domain.ErrInternal, err))
 	}
 	if err := w.Commit(); err != nil {
@@ -315,7 +321,7 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	// fga_register_outbox-intent'а): containment-grant виден сразу, закрывая
 	// async-only окно. BEST-EFFORT — сбой логируется и глотается (durable intent
 	// + register-drainer — backstop); Operation.done НЕ гейтится (ban #9).
-	u.syncRegister(ctx, listenerRegisterIntent(created))
+	u.syncRegister(ctx, intent, intentVersion)
 
 	return marshalListener(created)
 }
@@ -324,11 +330,11 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 // Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent +
 // register-drainer — at-least-once backstop; Operation.done НЕ гейтится (ban #9).
 // nil registrar → no-op.
-func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		loggerOrDiscard(u.logger).Warn("Listener.Create sync owner-tuple registration incomplete; register-drainer will reconcile",
 			"err", err, "listener_id", intent.ResourceID)
 	}
