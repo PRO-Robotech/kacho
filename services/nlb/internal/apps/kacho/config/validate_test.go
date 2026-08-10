@@ -51,12 +51,13 @@ func TestParseMode(t *testing.T) {
 func minimalValidConfig() Config {
 	return Config{
 		ModeRaw: "dev",
-		Authz:   AuthzConfig{TrustAnyForwarder: true},
+		Authz:   AuthzConfig{TrustAnyForwarder: true, DenyBudgetPerSec: 100},
 		Logger:  LoggerConfig{Level: "INFO"},
 		APIServer: APIServerConfig{
 			Endpoint:         "tcp://0.0.0.0:9090",
 			InternalEndpoint: "tcp://0.0.0.0:9091",
 			GracefulShutdown: 10 * time.Second,
+			HandlingBudget:   30 * time.Second,
 		},
 		Repository: RepositoryConfig{
 			Type:     "POSTGRES",
@@ -197,13 +198,42 @@ func TestValidate_Production_FullyWiredConfigPasses(t *testing.T) {
 	}
 }
 
-func TestValidate_ProductionForbidsBreakglass(t *testing.T) {
+// TestValidate_RejectsNonPositiveDenyBudget — бюджет отказов обязан быть строго
+// положительным НА ЛЮБОЙ посадке.
+//
+// Здесь стояла проверка «аварийный режим запрещён в боевом»: ручка снята, потому
+// что аварийного режима решения о доступе у процесса не осталось — звено ставит
+// носитель контура всегда, и поля, которым его можно отменить, в дескрипторе нет.
+// Её место занимает величина, которая пропала ровно тем способом, ради
+// исключения которого страж и пишется: механизм читает неположительное значение
+// как «ограничения нет», поэтому ноль выключил бы отсечку шторма отказов МОЛЧА,
+// а ветка ResourceExhausted стала бы недостижимой.
+func TestValidate_RejectsNonPositiveDenyBudget(t *testing.T) {
+	for _, budget := range []float64{0, -1} {
+		cfg := minimalValidConfig()
+		cfg.Authz.DenyBudgetPerSec = budget
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "deny-budget-per-sec") {
+			t.Fatalf("deny-budget-per-sec=%v: expected refusal naming the knob, got %v", budget, err)
+		}
+	}
+	// Положительный контроль: без него отрицание выше зеленело бы и на конфиге,
+	// который отвергается по любой другой причине.
 	cfg := minimalValidConfig()
-	cfg.ModeRaw = "production"
-	cfg.Authz.Breakglass = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("baseline config must validate, got %v", err)
+	}
+}
+
+// TestValidate_RejectsNonPositiveHandlingBudget — верхняя граница обработки
+// вызова обязана быть задана: вызов без срока держит соединение из ограниченного
+// пула столько, сколько выполняется его запрос.
+func TestValidate_RejectsNonPositiveHandlingBudget(t *testing.T) {
+	cfg := minimalValidConfig()
+	cfg.APIServer.HandlingBudget = 0
 	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "breakglass") {
-		t.Fatalf("expected breakglass-in-prod error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "handling-budget") {
+		t.Fatalf("expected refusal naming api-server.handling-budget, got %v", err)
 	}
 }
 

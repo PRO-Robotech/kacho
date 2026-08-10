@@ -67,8 +67,15 @@ var validLogLevels = map[string]struct{}{
 func (c Config) Validate() error {
 	var errs error
 
-	// Круг отправителей чужой личности обязан быть сужен на ЛЮБОМ non-breakglass
-	// старте — не только в боевом режиме, и не только когда включён server-mTLS.
+	// Круг отправителей чужой личности обязан быть сужен на ЛЮБОМ старте — не
+	// только в боевом режиме, и не только когда включён server-mTLS.
+	//
+	// Освобождения по аварийному режиму здесь БОЛЬШЕ НЕТ, и это не ужесточение
+	// «за компанию»: аварийного режима решения о доступе у процесса не осталось —
+	// носитель контура (`pkg/servicehost`) ставит звено решения ВСЕГДА, и поля,
+	// которым его можно отменить, в дескрипторе не существует. Оставленное
+	// освобождение снимало бы стражу круга по ручке, которая больше ничего не
+	// снимает, — то есть по причине, которой нет.
 	//
 	// Прежде страж стоял внутри боевой ветки И был обусловлен ЧУЖИМ полем
 	// (mtls.server.enable). Обусловленность читалась как «без mTLS сужать нечего»,
@@ -80,16 +87,12 @@ func (c Config) Validate() error {
 	//
 	// Стража общая на все семь сервисов (grpcsrv.TrustedForwarders.Require):
 	// одинаковый исход и одинаковый текст отказа, различаются только имена ручек.
-	// Аварийный режим освобождает: он и так снимает per-RPC проверку целиком, а в
-	// боевом режиме отвергается отдельно.
-	if !c.Authz.Breakglass {
-		errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
-			Production:   c.Mode() == ModeProduction,
-			DevTrustAny:  c.Authz.TrustAnyForwarder,
-			SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
-			TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
-		}))
-	}
+	errs = multierr.Append(errs, c.TrustedForwarders().Require(grpcsrv.ForwarderGate{
+		Production:   c.Mode() == ModeProduction,
+		DevTrustAny:  c.Authz.TrustAnyForwarder,
+		SANsKnob:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
+		TrustAnyKnob: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
+	}))
 
 	// Mode
 	mode, err := ParseMode(c.ModeRaw)
@@ -111,6 +114,16 @@ func (c Config) Validate() error {
 	}
 	if c.APIServer.GracefulShutdown <= 0 {
 		errs = multierr.Append(errs, fmt.Errorf("api-server.graceful-shutdown must be > 0, got %v", c.APIServer.GracefulShutdown))
+	}
+	// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без срока
+	// держит соединение из ограниченного пула столько, сколько выполняется его
+	// запрос, и pool_max_conns таких вызовов отказывают весь сервис. Дескриптор
+	// носителя отвергнет неположительное значение и сам; страж стоит здесь, чтобы
+	// отказ назвал ИМЯ РУЧКИ, которую крутить оператору.
+	if c.APIServer.HandlingBudget <= 0 {
+		errs = multierr.Append(errs, fmt.Errorf(
+			"api-server.handling-budget must be > 0, got %v (a call with no deadline holds a pooled "+
+				"connection for as long as its query runs)", c.APIServer.HandlingBudget))
 	}
 
 	// Repository
@@ -141,9 +154,15 @@ func (c Config) Validate() error {
 		errs = multierr.Append(errs, fmt.Errorf("authn.type %q: want none|tls", c.Authn.Type))
 	}
 
-	// Authz (FGA Check)
-	if c.Authz.Breakglass && mode == ModeProduction {
-		errs = multierr.Append(errs, fmt.Errorf("authz.breakglass: forbidden in production mode (dev-only)"))
+	// Authz (FGA Check). Бюджет отказов — строго положительный НА ЛЮБОЙ посадке:
+	// механизм читает неположительное значение как «ограничения нет», поэтому ноль
+	// выключил бы отсечку МОЛЧА, ветка ResourceExhausted стала бы недостижимой, а
+	// её счётчик — навсегда нулевым. Ровно так эта величина однажды и пропала.
+	if c.Authz.DenyBudgetPerSec <= 0 {
+		errs = multierr.Append(errs, fmt.Errorf(
+			"authz.deny-budget-per-sec must be > 0, got %v (a non-positive value reads as "+
+				"'no limit' to the decision link: the cut-off would switch itself off silently)",
+			c.Authz.DenyBudgetPerSec))
 	}
 
 	// Production transport fail-closed (security.md «AuthN+AuthZ ВЕЗДЕ»): plaintext

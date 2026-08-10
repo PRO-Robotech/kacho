@@ -30,6 +30,11 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("api-server.internal-endpoint", "tcp://0.0.0.0:9091")
 	v.SetDefault("api-server.graceful-shutdown", "10s")
 	v.SetDefault("api-server.grpc-gw-enable", false)
+	// handling-budget — верхняя граница обработки одного вызова (носитель контура
+	// ставит её входящему контексту). Обоснование величины — у поля
+	// APIServerConfig.HandlingBudget; здесь только дефолт, потому что дефолты
+	// живут в одном месте.
+	v.SetDefault("api-server.handling-budget", "30s")
 
 	// Metrics / Healthcheck. metrics.address — cluster-internal diagnostic
 	// HTTP-listener (metrics + /healthz + /readyz); :9101 совпадает с
@@ -72,15 +77,17 @@ func RegisterDefaults(v *viper.Viper) {
 	// согласованное с deploy). BindEnv с явным именем обходит prefix/replacer.
 	_ = v.BindEnv("extapi.geo.addr", "KACHO_NLB_GEO_GRPC_ADDR")
 
-	// Authz (FGA Check + cache + listen-invalidator)
+	// Authz (FGA Check + cache + бюджет отказов)
 	// Адреса здесь НЕТ: соединение, по которому идёт Check, строится из
 	// `extapi.iam.internal-addr` (conn `iam-internal`).
 	v.SetDefault("authz.iam.dial-deadline", "3s")
 	v.SetDefault("authz.iam.request-timeout", "500ms")
 	v.SetDefault("authz.cache.enable", true)
 	v.SetDefault("authz.cache.ttl", "5s") // ≤10s
-	v.SetDefault("authz.listen-invalidator.enable", false)
-	v.SetDefault("authz.listen-invalidator.channel", "kacho_iam_subjects")
+	// deny-budget-per-sec — отсечка шторма непоглощаемых кэшем проверок на
+	// принципала. Обоснование величины — у поля AuthzConfig.DenyBudgetPerSec.
+	// Ноль отвергается `Validate`: механизм читает его как «ограничения нет».
+	v.SetDefault("authz.deny-budget-per-sec", 100.0)
 	// RBAC (issue): per-object filtered List. Default ON
 	// («применяется во всех доменах»); fail-closed (security.md). Endpoint —
 	// iam.AuthorizeService (reuse iam conn; mTLS via mtls.iam-register).
@@ -101,7 +108,6 @@ func RegisterDefaults(v *viper.Viper) {
 	// breakglass — аварийный пропуск при отсутствующей модели прав. Умолчание
 	// false: «модели нет» само по себе разрешением не бывает.
 	v.SetDefault("authz.list-filter.breakglass", false)
-	v.SetDefault("authz.breakglass", false)
 	// trusted-forwarder-sans: круг личностей клиентского сертификата, которым
 	// разрешено передавать личность конечного пользователя (api-gateway).
 	// Умолчание пусто, и это НЕ «доверяем любому»: на пустом круге старт

@@ -1,0 +1,243 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package main
+
+// describe.go — ОБЪЯВЛЕНИЕ kacho-nlb о себе для носителя контура
+// (`pkg/servicehost`).
+//
+// # Что этот файл заменил
+//
+// До перевода композиционный корень собирал оба слушателя сам: две пары цепочек,
+// свой конструктор звена решения о доступе, свой литерал бюджета отказов, своя
+// копия предиката гейтируемой мутации. Порядок звеньев держался тем, что автор
+// написал то же, что сосед, — и уже расходился: журнал доступа у nlb не вёлся
+// вовсе, а верхней границы обработки вызова не было ни на одном листенере.
+//
+// Здесь сервис приносит ЗНАЧЕНИЯ, и ни одного поля интерсепторного типа: цепочку
+// невозможно принести, поэтому её невозможно собрать по-своему.
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"log/slog"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+
+	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+)
+
+// describe собирает дескриптор процесса.
+//
+// Стражей старта здесь нет ни одного — они живут в конструкторе дескриптора и в
+// носителе. Задача этой функции: назвать величины и перевести конфигурацию nlb в
+// общий словарь, ничего не досочиняя.
+// hideExistenceForms — формы отказа для типов nlb, которые скрывает рантайм.
+//
+// Взяты у производителя (`authz.OwnerNotFoundFormat`): носитель сверяет
+// объявленное с тем, чем звено реально отвечает, и расхождение роняет старт.
+// Отсутствие типа в таблице — паника корня, а не пропуск: значит перечень
+// разошёлся с таблицей промахов владельцев, и поднимать процесс с неполной картой
+// скрытия нельзя.
+func hideExistenceForms() map[servicecontract.ObjectType]servicecontract.NotFoundFormat {
+	out := map[servicecontract.ObjectType]servicecontract.NotFoundFormat{}
+	for _, ot := range []string{"nlb_network_load_balancer", "nlb_listener", "nlb_target_group"} {
+		form, ok := authz.OwnerNotFoundFormat(ot)
+		if !ok {
+			panic("nlb: у типа " + ot + " нет голоса владельца в таблице промахов — " +
+				"перечень скрывающих типов разошёлся с pkg/authz")
+		}
+		out[servicecontract.ObjectType(ot)] = servicecontract.NotFoundFormat(form)
+	}
+	return out
+}
+
+func describe(
+	cfg *config.Config,
+	logger *slog.Logger,
+	narrower *authzfilter.Narrower,
+	gate *bootgate.Gate,
+	existence servicecontract.ExistenceProbe,
+) (servicecontract.Descriptor, error) {
+	mode, err := hostMode(cfg)
+	if err != nil {
+		return servicecontract.Descriptor{}, err
+	}
+
+	// Транспорт слушателей и ребра решения о доступе строится ЗДЕСЬ, а судится
+	// конструктором дескриптора — по ответу самого транспорта, а не по ручке:
+	// сборщик креденшелов на невзведённой ручке отдаёт незашифрованные креды БЕЗ
+	// ошибки, поэтому «ручка выглядит как угодно» этой проверке безразлично.
+	//
+	// Слушателей два, а серверный сертификат у nlb ОДИН (`mtls.server`), поэтому
+	// обе половины дескриптора получают один и тот же транспорт — асимметрии здесь
+	// не существует, и объявлять её двумя ручками значило бы завести различие,
+	// которого нет в развёртывании.
+	serverCreds, err := grpcsrv.TLSServerTransportCreds(cfg.MTLS.Server)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("build server TLS creds: %w", err)
+	}
+	// Ребро решения о доступе идёт на ВНУТРЕННИЙ листенер kacho-iam: там живёт
+	// InternalIAMService.Check. Ручка его транспорта — `mtls.iam-register`, та же,
+	// что закрывает соединение дренажа регистраций (это одно соединение). Адрес
+	// резолвится ровно тем же правилом, что в таблице соединений (`peerDialSpecs`,
+	// строка `iam-internal`): иначе дескриптор и проводка объявляли бы разные рёбра.
+	checkCreds, err := grpcclient.TLSClientTransportCreds(cfg.MTLS.IAMRegister)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("build nlb→iam Check mTLS creds: %w", err)
+	}
+	checkAddr := firstNonEmpty(cfg.ExtAPI.IAM.InternalAddr, cfg.ExtAPI.IAM.Addr)
+
+	return servicecontract.New(servicecontract.Spec{
+		Service: "kacho-nlb",
+		Mode:    mode,
+		Logger:  logger,
+
+		Forwarders: cfg.TrustedForwarders(),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "authz.trusted-forwarder-sans (env KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS)",
+			TrustAny: "authz.trust-any-forwarder (env KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER)",
+			OptIn:    cfg.Authz.TrustAnyForwarder,
+		},
+
+		Authz:        servicecontract.AuthzViaIAM,
+		CheckEdge:    servicecontract.NewPeerEdge(checkAddr, checkCreds),
+		CacheWindow:  cfg.Authz.Cache.TTL,
+		ClientBudget: cfg.Authz.IAM.RequestTimeout,
+
+		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
+		// обоснованием у своих ручек конфигурации (`api-server.handling-budget`,
+		// `authz.deny-budget-per-sec`). «Не применимо» здесь незаконно: решение о
+		// доступе nlb принимает не у себя, а вопросом к kacho-iam, — то есть
+		// сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
+		HandlingBudget: cfg.APIServer.HandlingBudget,
+		DenyBudget:     servicecontract.Value(cfg.Authz.DenyBudgetPerSec),
+
+		// Срок жизни подписки — ВЕЛИЧИНА, а не изъятие: nlb служит серверный стрим
+		// (`InternalResourceLifecycleService`, провязан в wiring.go). Изъятие здесь
+		// было бы ложным заявлением, и носитель уронил бы старт, назвав метод.
+		//
+		// Час, а не граница одиночного вызова (30 с): подписка на жизненный цикл
+		// живёт, пока живёт наблюдатель, и оборвать её потолком запроса значило бы
+		// сломать сам предмет — ровно поэтому у оси своя величина. Это ПОТОЛОК на
+		// случай забытого наблюдателя, а не цель: здоровая подписка закрывается
+		// раньше своим контекстом.
+		StreamBudget: servicecontract.Value(time.Hour),
+
+		DBSSLMode:     coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
+		PublicAddr:    hostPort(cfg.APIServer.Endpoint),
+		InternalAddr:  hostPort(cfg.APIServer.InternalEndpoint),
+		PublicCreds:   serverCreds,
+		InternalCreds: serverCreds,
+
+		// ── оси ─────────────────────────────────────────────────────────────────
+
+		// Эмиссия. nlb пишет владельцу прав ровно ОДНО отношение — иерархическую
+		// привязку ресурса к проекту. Перепись, а не память: `domain.FGAProjectTuple`
+		// — единственный строитель кортежа в не-тестовом дереве сервиса
+		// (`git grep -n 'domain\.FGA[A-Za-z]*Tuple(' services/nlb/internal | grep -v _test`
+		// даёт 10 вхождений, все его).
+		Emits: servicecontract.Value([]proxytuple.Relation{proxytuple.RelationProject}),
+
+		// Регистрируемые типы объектов модели прав — три ресурса домена. Тот же
+		// предикат разбивает 10 вхождений на 4 балансировщика, 3 листенера и 3
+		// целевые группы, и других типов среди них нет.
+		Registers: servicecontract.Value([]servicecontract.ObjectType{
+			servicecontract.ObjectType(domain.FGAObjectTypeLoadBalancer),
+			servicecontract.ObjectType(domain.FGAObjectTypeListener),
+			servicecontract.ObjectType(domain.FGAObjectTypeTargetGroup),
+		}),
+
+		// Проводка сужателя списочной выдачи. Перечня сужаемых методов дескриптор
+		// не несёт — его даёт каталог прав, и носитель сверяет проводку с ним в ОБЕ
+		// стороны (О3/О4). Имена собираются из дескрипторов служб, а не выписываются
+		// строкой: переименуют службу — не соберётся, а не разойдётся молча.
+		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
+			listMethod(lbv1.NetworkLoadBalancerService_ServiceDesc.ServiceName): narrower,
+			listMethod(lbv1.ListenerService_ServiceDesc.ServiceName):            narrower,
+			listMethod(lbv1.TargetGroupService_ServiceDesc.ServiceName):         narrower,
+		}),
+
+		// Скрытие существования у nlb не объявлено НИ НА ОДНОМ методе: в каталоге
+		// прав домена `loadbalancer` нет ни одной строки `hide_existence`
+		// (`git grep -n hide_existence proto/kacho/cloud/loadbalancer/v1/` — пусто).
+		// Заявление ИСТЕКАЕТ САМО: появится первая такая строка — носитель откажет
+		// в старте (О5) и назовёт тип, для которого не объявлена форма отказа.
+		// Поэтому же сервис не приносит порта проверки существования: спрашивать
+		// его было бы некому, и это отдельный отказ конструктора.
+		// Скрытие существования у nlb ЕСТЬ, хотя аннотаций в каталоге нет ни одной:
+		// рантайм скрывает и ПО ФОРМЕ — чтение объекта глаголом `v_get` у типа, за
+		// который есть чем говорить. Такими оказываются балансировщик, слушатель и
+		// группа целей.
+		//
+		// Прежняя редакция объявляла ось неприменимой, ссылаясь на отсутствие строк
+		// `hide_existence`. Довод был верен про аннотации и ЛОЖЕН про исполнение —
+		// ровно то же заявление стояло у storage и держалось лишь потому, что судья
+		// читал аннотацию, а не предикат рантайма.
+		//
+		// Формы взяты у производителя, а не выписаны: копия разошлась бы с ним тем
+		// самым способом, который отказ и ловит.
+		HideExistence: servicecontract.Value(hideExistenceForms()),
+
+		// Порт сверки существования обязателен, раз скрытие объявлено: без него
+		// «объекта нет» и «есть, но не твой» пришли бы одной формой.
+		Existence: existence,
+
+		// Происхождение намерений регистрации — записью, а не сверкой: строка
+		// очереди пишется ТОЙ ЖЕ writer-транзакцией, что и сам ресурс
+		// (`repo/kacho/pg.fgaRegisterEmitter.Emit` исполняется на `pgx.Tx` писателя),
+		// поэтому первая доставка доказана записью, а не выведена из часов в момент
+		// доставки.
+		Delivery: servicecontract.Value(servicecontract.DeliveryWriterTransaction),
+
+		// Загрузочный гейт мутаций. Предмет у него есть: nlb эмитит намерения
+		// регистрации (см. Emits) и служит тенантские `Create` на трёх ресурсах,
+		// поэтому в окне, пока путь доставки не поднят, ресурс создавался бы БЕЗ
+		// владельца. Гейт — тот же объект, чью готовность читает проба готовности
+		// пода (`buildReadinessCheckers`), то есть «мутации отвергаются» и «под не
+		// готов» — одно состояние, а не два.
+		BootGate: servicecontract.Value[servicecontract.BootGate](gate),
+	})
+}
+
+// hostMode переводит режим nlb в общий словарь посадки.
+//
+// Перевод, а не второй разбор строки: режим уже разобран и провалидирован
+// `config.Load` → `Validate`, и заводить здесь второй разбор той же строки значило
+// бы завести два места об одном предмете. Ветка `default` остаётся отказом — режим,
+// которого нет в словаре, есть решение о посадке, принятое никем.
+func hostMode(cfg *config.Config) (servicecontract.Mode, error) {
+	switch m := cfg.Mode(); m {
+	case config.ModeDev:
+		return servicecontract.ModeDev, nil
+	case config.ModeProduction:
+		return servicecontract.ModeProduction, nil
+	default:
+		return 0, fmt.Errorf("mode %q: не переводится в посадку носителя (ожидались dev|production)", m)
+	}
+}
+
+// hostPort снимает схему с эндпоинта конфигурации (`tcp://0.0.0.0:9090` →
+// `0.0.0.0:9090`). Схему уже проверил `Validate` (только `tcp`), поэтому здесь
+// именно снятие префикса, а не разбор.
+func hostPort(endpoint string) string {
+	return strings.TrimPrefix(strings.TrimSpace(endpoint), "tcp://")
+}
+
+// listMethod собирает полное имя списочного метода службы в той форме, в какой его
+// передаёт grpc-go и в какой его ключует каталог прав.
+func listMethod(serviceName string) servicecontract.MethodFQN {
+	return servicecontract.MethodFQN("/" + serviceName + "/List")
+}
