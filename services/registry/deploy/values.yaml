@@ -268,7 +268,7 @@ zot:
     # adapter requires). v2.1.18 — supports http.compat + s3 storageDriver + the
     # redirectBlobURL offload (all verified against sha256:34f18f… = ReleaseTag v2.1.18).
     repository: ghcr.io/project-zot/zot-linux-amd64
-    tag: v2.1.18
+    tag: v2.1.20
     digest: ""
     pullPolicy: IfNotPresent
   # OCI blob storage — local PVC by default; S3 remote backend opt-in (storage.s3).
