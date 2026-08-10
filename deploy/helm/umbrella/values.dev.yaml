@@ -1365,7 +1365,7 @@ openfga-bootstrap:
     # перенесён на commit-time — ConfigMap openfga-model-stub несёт оба ключа.
     enabled: true
     # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root.
-    image: alpine/k8s:1.29.2
+    image: alpine/k8s:1.36.2
     cliImage: ""
     storeName: kacho-store
     authorizationModelConfigMap: openfga-model-stub

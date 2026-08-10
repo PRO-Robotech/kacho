@@ -227,8 +227,8 @@ if [ "$ph" != Running ] || [ -z "$POD_IP" ]; then
 fi
 
 OBS="$(kubectl -n "$NS" run sechat-premise-probe --rm -i --restart=Never --quiet \
-  --image=docker.io/alpine/k8s:1.29.2 --image-pull-policy=IfNotPresent \
-  --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"p","image":"docker.io/alpine/k8s:1.29.2","imagePullPolicy":"IfNotPresent","securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},"command":["sh","-c"],"args":["curl -sS -v -k -m 8 -o /dev/null https://'"$POD_IP"':4445/health/ready 2>&1"]}]}}' \
+  --image=docker.io/alpine/k8s:1.36.2 --image-pull-policy=IfNotPresent \
+  --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"p","image":"docker.io/alpine/k8s:1.36.2","imagePullPolicy":"IfNotPresent","securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}},"command":["sh","-c"],"args":["curl -sS -v -k -m 8 -o /dev/null https://'"$POD_IP"':4445/health/ready 2>&1"]}]}}' \
   2>&1)"
 
 VERDICT="$(classify_listener_answer "$OBS")"

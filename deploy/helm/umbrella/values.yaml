@@ -158,7 +158,7 @@ openfga-bootstrap:
     enabled: false
     # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root → bootstrap-скрипту
     # не нужен runtime apk add.
-    image: alpine/k8s:1.29.2
+    image: alpine/k8s:1.36.2
     cliImage: ""
     storeName: kacho-store
     authorizationModelConfigMap: openfga-model-stub

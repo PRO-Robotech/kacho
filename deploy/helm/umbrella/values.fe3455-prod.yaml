@@ -416,6 +416,19 @@ registry:
     # v2.1.18 — carries http.compat + the s3 storageDriver + redirectBlobURL. The
     # fe3455 `:latest` tag already resolves to this sha (sha256:34f18f78…); pin it so a
     # future re-pull can't drift to a build without these config keys.
+    #
+    # DELIBERATELY BEHIND THE SUB-CHART DEFAULT, WHICH NOW READS v2.1.20. This is an
+    # override, not an oversight, and it is recorded here so the divergence is readable
+    # rather than silent. Two reasons, and only the second is a blocker:
+    #   · this file describes what is RUNNING on the fe3455 stand (cutover-fe3455.sh
+    #     records the same sha) — moving the pin here is a deployment, not a dependency
+    #     bump, and it belongs to whoever plans that rollout;
+    #   · of the three properties named above, http.compat and redirectBlobURL were
+    #     re-measured on v2.1.20 (see services/registry/deploy/values.yaml), but the s3
+    #     storageDriver path was NOT re-run against a live bucket — and s3 is exactly
+    #     what this profile uses. Bumping here would carry an unverified claim onto the
+    #     one stand that depends on it.
+    # Lift the pin together with an s3 re-verification, in its own change.
     image:
       tag: v2.1.18
     # docker2s2 → rendered under http.compat (zot rejects a TOP-LEVEL compat key). Lets

@@ -260,15 +260,29 @@ zot:
   # with 415 Unsupported Media Type (it accepts only OCI manifests otherwise), so
   # a plain `docker push <img>` of a Docker-format image fails at the manifest.
   # NB: rendered under `http.compat` (NOT top-level — zot rejects a top-level key).
-  # Requires a zot whose config schema carries it (verified v2.1.18). Empty → omitted.
+  # Requires a zot whose config schema carries it (verified v2.1.18; re-verified on
+  # v2.1.20 — see the image comment below). Empty → omitted.
   compat:
     - docker2s2
   image:
     # Extensions-enabled zot variant (carries the search/GraphQL extension the
-    # adapter requires). v2.1.18 — supports http.compat + s3 storageDriver + the
-    # redirectBlobURL offload (all verified against sha256:34f18f… = ReleaseTag v2.1.18).
+    # adapter requires). v2.1.20 — supports http.compat + s3 storageDriver + the
+    # redirectBlobURL offload.
+    #
+    # WHAT WAS ACTUALLY RE-MEASURED ON v2.1.20 (sha256:95a837a0afacf5b7edc0c92493f04
+    # beee6891989b8d2fd50a00cf65a1e6d4fd5), not carried over from v2.1.18:
+    #   · `Config.User` = "0" (`docker image inspect`) — the root-by-default claim
+    #     the securityContext block below rests on still holds;
+    #   · a config carrying `http.compat: [docker2s2]` + `storage.redirectBlobURL`
+    #     is accepted and the server serves `/v2/` → 200 (schema still carries them);
+    #   · the GraphQL window the adapter sends (`requestedPage{limit,offset,
+    #     sortBy:ALPHABETIC_ASC}`) is accepted, and a bogus enum value is rejected
+    #     with GRAPHQL_VALIDATION_FAILED — both directions, so acceptance means
+    #     support rather than silent tolerance.
+    # The s3 storageDriver path was NOT re-run against a live bucket on v2.1.20;
+    # that claim stays inherited from v2.1.18.
     repository: ghcr.io/project-zot/zot-linux-amd64
-    tag: v2.1.18
+    tag: v2.1.20
     digest: ""
     pullPolicy: IfNotPresent
   # OCI blob storage — local PVC by default; S3 remote backend opt-in (storage.s3).
@@ -307,8 +321,9 @@ zot:
       cpu: "1"
       memory: 512Mi
   # Образ zot по умолчанию запускается ОТ ROOT (`Config.User` = "0" у
-  # ghcr.io/project-zot/zot-linux-amd64:v2.1.18 — замерено `docker image inspect`,
-  # прежний комментарий тут утверждал «image default uid 1000» и был неверен).
+  # ghcr.io/project-zot/zot-linux-amd64:v2.1.20 — замерено `docker image inspect`
+  # на самом v2.1.20, а не перенесено с прежнего тега; прежний комментарий тут
+  # утверждал «image default uid 1000» и был неверен).
   # Поэтому uid задаётся здесь явно, а PVC делается group-writable (fsGroup).
   #
   # readOnlyRootFilesystem ВКЛЮЧЁН. Прежде он стоял выключенным с пояснением

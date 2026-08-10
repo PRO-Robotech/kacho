@@ -363,10 +363,12 @@ func globalSearchQuery(query string) string {
 }
 
 // globalSearchPageQuery — тот же запрос с ОКНОМ на стороне движка (requestedPage:
-// limit/offset + сортировка по имени ASC). Проверено против движка v2.1.18: аргумент
-// и значение перечисления принимаются, а заведомо неверные — отвергаются с
-// GRAPHQL_VALIDATION_FAILED (то есть приём означает поддержку, а не молчаливую
-// терпимость).
+// limit/offset + сортировка по имени ASC). Проверено против движка v2.1.18 и
+// ПЕРЕПРОВЕРЕНО на v2.1.20 при подъёме тега: аргумент и значение перечисления
+// принимаются, а заведомо неверные — отвергаются с GRAPHQL_VALIDATION_FAILED (то
+// есть приём означает поддержку, а не молчаливую терпимость). Обе стороны
+// спрашивались у живого движка, иначе «принимается» было бы неотличимо от
+// «проглатывается».
 func globalSearchPageQuery(query string, offset, limit int) string {
 	return `{GlobalSearch(query:` + strconv.Quote(query) +
 		`, requestedPage:{limit:` + strconv.Itoa(limit) +

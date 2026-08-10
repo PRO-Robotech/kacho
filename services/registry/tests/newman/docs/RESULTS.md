@@ -37,7 +37,7 @@ repo-кейсы), `registry-authz` — 4 + 1, `registry` — 2 (list-repos). З�
   `GetRepository`) — **закрыт** порядком объявления в
   `proto/kacho/cloud/registry/v1/registry_service.proto`: `ListRepositories` объявлен
   ПОСЛЕ `GetRepository`. Проверено не по комментарию, а по механизму:
-  `runtime.ServeMux.Handle` grpc-gateway v2.29.0 делает **prepend**
+  `runtime.ServeMux.Handle` grpc-gateway v2.30.0 делает **prepend**
   (`s.handlers[meth] = append([]handler{…}, s.handlers[meth]...)`), поэтому
   зарегистрированный позже пробуется первым; в сгенерированном
   `pkg/api/kacho/cloud/registry/v1/registry_service.pb.gw.go` регистрация `GetRepository`

@@ -66,7 +66,7 @@ jobs:
     # не было. timeout-backstop, чтобы зависший tsc не держал прогон.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
@@ -104,7 +104,7 @@ jobs:
     # проверяет конфигурации всех одиннадцати пакетов, включая девять приложений.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
@@ -142,7 +142,7 @@ jobs:
       matrix:
         pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
@@ -192,8 +192,8 @@ jobs:
         # ui-future/deploy. compute и storage в polyrepo-матрице отсутствовали.
         project: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: build ${{ matrix.project }}
         uses: docker/build-push-action@v7
         with:
@@ -212,7 +212,7 @@ jobs:
     name: матрица покрывает все remotes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: сверить матрицу с деревом
         run: |
           find . -maxdepth 2 -name Dockerfile -not -path './node_modules/*' \
