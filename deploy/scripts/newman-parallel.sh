@@ -79,6 +79,12 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
+# Три адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Это не api-gateway:
+# кейсы IBT-* обязаны спросить сами слушатели, иначе «токен проверяется через фасад»
+# останется утверждением о конфиге, а не о поведении.
+IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
+IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+REGISTRY_DATAPLANE_PORT="${REGISTRY_DATAPLANE_PORT:-18580}"
 # Transports of WAVE 4 (the ceremony). The wave turns itself on from a fact about the
 # tree — the ceremony seed exists — and the seed dials the identity provider and the
 # token issuer directly, because neither is routed through the gateway. Those dials had
@@ -158,6 +164,11 @@ kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444"
 kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!); PF_WHAT+=("$KRATOS_PUBLIC_PORT|kratos public (:80)|/tmp/e2e-pp-kratos-pub.log")
 kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!); PF_WHAT+=("$KRATOS_ADMIN_PORT|kratos admin (:80)|/tmp/e2e-pp-kratos-adm.log")
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
+# Полоса фасада (#59). Каждый проброс попадает в PF_WHAT, поэтому не вставший
+# проброс останавливает прогон тем же блоком ниже, а не отдаёт «кейс не смог».
+kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pp-iam-jwks.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_JWKS_PORT|iam JWKS-proxy (:9097)|/tmp/e2e-pp-iam-jwks.log")
+kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pp-iam-regtoken.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_REGTOKEN_PORT|iam docker-token handle (:9096)|/tmp/e2e-pp-iam-regtoken.log")
+kubectl -n "$NS" port-forward svc/registry "$REGISTRY_DATAPLANE_PORT:8080" >/tmp/e2e-pp-registry-dp.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$REGISTRY_DATAPLANE_PORT|registry data plane (:8080)|/tmp/e2e-pp-registry-dp.log")
 sleep 4
 
 # ПРОБРОС, КОТОРЫЙ НЕ ВСТАЛ, ОСТАНАВЛИВАЕТ ПРОГОН ЗДЕСЬ.
@@ -204,6 +215,7 @@ if [ "${#pf_dead[@]}" -gt 0 ]; then
   echo "Чаще всего порт занят другим прогоном или забытой сессией (\`ss -ltnp\`)."
   echo "Порты переносятся ручками: GW_PORT / GW_INTERNAL_PORT / GW_TLS_PORT /"
   echo "IAM_INTERNAL_PORT / HYDRA_PUBLIC_PORT / KRATOS_PUBLIC_PORT / KRATOS_ADMIN_PORT /"
+  echo "IAM_JWKS_PORT / IAM_REGTOKEN_PORT / REGISTRY_DATAPLANE_PORT /"
   echo "HYDRA_ADMIN_PORT — набираемые адреса следуют за ними (см. передачу в посев ниже)."
   exit 2
 fi
@@ -411,6 +423,10 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+        --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+        --env-var "providerPublicBaseUrl=http://localhost:$HYDRA_PORT" \
+        --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+        --env-var "registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT" \
         >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!
     WAVE_RUNNING+=("$!")
@@ -475,7 +491,7 @@ if [ "$FAILCLOSED_WAVE" = "true" ] && [[ " $SERVICES " == *" iam "* ]] && [ -f "
   # оставляет out/authz-failclosed.json, по которому вердикт вынесет гейт.
   if ( cd "$REPO_ROOT/services/iam/tests/newman" \
         && env SETUP_NS="$NS" DELAY="$DELAY" \
-           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT --env-var registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT" \
            bash "$FAILCLOSED_SH" ); then
     echo "===== [failclosed] GREEN ====="
   else
@@ -551,7 +567,7 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
              HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
              HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
              IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
-             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT --env-var iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT --env-var providerPublicBaseUrl=http://localhost:$HYDRA_PORT --env-var iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT --env-var registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
     else

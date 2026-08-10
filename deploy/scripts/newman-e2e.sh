@@ -36,6 +36,12 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :808
 # about which routes the LISTENER serves, not about the name used to find it.
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
+# Адреса ПОЛОСЫ ФАСАДА (#59, iam-token-facade-conformance). Кейсы IBT-* спрашивают
+# сами слушатели — иначе «проверка подписи идёт через фасад» останется утверждением
+# о конфигурации, а не о поведении.
+IAM_JWKS_PORT="${IAM_JWKS_PORT:-19097}"         # iam JWKS-proxy :9097 (server-TLS)
+IAM_REGTOKEN_PORT="${IAM_REGTOKEN_PORT:-19096}" # iam docker-token handle :9096 (server-TLS)
+REGISTRY_DATAPLANE_PORT="${REGISTRY_DATAPLANE_PORT:-18580}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Монорепа: deploy/scripts → корень репо на два уровня выше. Раскладка — services/<svc>,
@@ -83,6 +89,13 @@ PF_PIDS+=($!)
 # iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
 # with no ingress route here. Unused in dev; required in production.
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "${HYDRA_PUBLIC_PORT:-14444}:4444" >/tmp/e2e-pf-hydra.log 2>&1 &
+PF_PIDS+=($!)
+# Полоса фасада (#59): JWKS-прокси iam, ручка docker-токена iam и data-plane реестра.
+kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_JWKS_PORT:9097" >/tmp/e2e-pf-iam-jwks.log 2>&1 &
+PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-iam "$IAM_REGTOKEN_PORT:9096" >/tmp/e2e-pf-iam-regtoken.log 2>&1 &
+PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/registry "$REGISTRY_DATAPLANE_PORT:8080" >/tmp/e2e-pf-registry-dp.log 2>&1 &
 PF_PIDS+=($!)
 sleep 4
 
@@ -156,6 +169,10 @@ if [ -n "$COLLECTION" ]; then
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
     --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+    --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    --env-var "registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT" \
     --delay-request 15 --reporters cli
 else
   # run.sh НЕ читает BASE_URL/INTERNAL_BASE_URL из окружения — значения он берёт только
@@ -167,7 +184,11 @@ else
   ./scripts/run.sh --service "" --delay 15 \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
-    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT"
+    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+    --env-var "iamJwksBaseUrl=https://127.0.0.1:$IAM_JWKS_PORT" \
+    --env-var "providerPublicBaseUrl=http://localhost:${HYDRA_PUBLIC_PORT:-14444}" \
+    --env-var "iamRegistryTokenBaseUrl=https://127.0.0.1:$IAM_REGTOKEN_PORT" \
+    --env-var "registryDataPlaneBaseUrl=http://localhost:$REGISTRY_DATAPLANE_PORT"
   RAW_RC=$?
   set -e
 
