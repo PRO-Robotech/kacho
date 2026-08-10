@@ -40,7 +40,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 	regID := seedRegistry(t, pool, "prj-P", "reg-a24")
 
 	// Pre-seed durable overlay (пока реестр ACTIVE) для Update/Rekey/Delete-проверок.
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "keep/svc", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "keep/svc", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
 	markRegistryDeleting(t, pool, regID)
@@ -53,7 +53,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 		require.Equal(t, "registry is being deleted", st.Message(), "A24 контракт-текст")
 	}
 
-	_, ierr := repo.InsertConfig(ctx, newCfg(regID, "new/svc", domain.VisibilityPrivate, nil))
+	_, _, ierr := repo.InsertConfig(ctx, newCfg(regID, "new/svc", domain.VisibilityPrivate, nil))
 	assertBeingDeleted(t, ierr)
 	require.Equal(t, 0, countConfigs(t, pool, regID, "new/svc"), "overlay не создан в DELETING")
 
@@ -62,7 +62,7 @@ func TestRepoConfig_RG1A24_ActiveGuard_Deleting(t *testing.T) {
 	})
 	assertBeingDeleted(t, uerr)
 
-	_, rerr := repo.RekeyConfig(ctx, regID, "keep/svc", "moved/svc")
+	_, _, rerr := repo.RekeyConfig(ctx, regID, "keep/svc", "moved/svc")
 	assertBeingDeleted(t, rerr)
 
 	derr := repo.DeleteConfig(ctx, regID, "keep/svc")
@@ -79,7 +79,7 @@ func TestRepoConfig_RG1_OutboxEmissionInTx(t *testing.T) {
 	regID := seedRegistry(t, pool, "prj-P", "reg-outbox")
 
 	before := countAllOutbox(t, pool)
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "pub/img", domain.VisibilityPublic, nil),
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "pub/img", domain.VisibilityPublic, nil),
 		registry.OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPush(regID, "pub/img", "prj-P", "service_account:sva-x")},
 		registry.OutboxIntent{Event: domain.FGAEventRegister, Intent: domain.RegisterIntentForRepoPublicGrant(regID, "pub/img")},
 	)

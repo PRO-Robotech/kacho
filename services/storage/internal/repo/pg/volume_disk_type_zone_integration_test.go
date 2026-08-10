@@ -45,7 +45,7 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = vr.Insert(ctx, &domain.Volume{
+	_, _, err = vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-wrong-zone",
 		ZoneID: "region-1-b", DiskTypeID: "block-zoned-a", SizeBytes: 1 << 30,
 	}, "")
@@ -69,7 +69,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	v, err := vr.Insert(ctx, &domain.Volume{
+	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-right-zone",
 		ZoneID: "region-1-b", DiskTypeID: "block-zoned-b", SizeBytes: 1 << 30,
 	}, "")
@@ -85,7 +85,7 @@ func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v, err := vr.Insert(ctx, &domain.Volume{
+	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-unscoped-type",
 		ZoneID: "any-zone-at-all", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 	}, "")
@@ -101,7 +101,7 @@ func TestVolumeOnMissingDiskTypeStillReportsMissing(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-no-such-type",
 		ZoneID: "region-1-a", DiskTypeID: "no-such-disk-type", SizeBytes: 1 << 30,
 	}, "")

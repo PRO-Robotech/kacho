@@ -309,14 +309,16 @@ func runServe(configPath string) error {
 	// Регистрация всех per-resource handler'ов на public/internal серверах
 	// (Internal-vs-external инвариант: Internal.* — только на internalSrv). См.
 	// registerGRPCServices (wiring.go) — per-service распределение/doc'и там же.
-	registerGRPCServices(publicSrv, internalSrv, grpcWiring{
+	if err := registerGRPCServices(publicSrv, internalSrv, grpcWiring{
 		repo:    repo,
 		opsRepo: opsRepo,
 		peers:   peers,
 		pool:    pool,
 		cfg:     cfg,
 		logger:  logger,
-	})
+	}); err != nil {
+		return err
+	}
 
 	publicListener, err := listenEndpoint(cfg.APIServer.Endpoint)
 	if err != nil {

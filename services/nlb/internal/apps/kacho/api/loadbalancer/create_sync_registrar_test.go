@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,16 +20,29 @@ import (
 // fakeSyncRegistrar — двойник Registrar-порта: пишет каждый переданный intent,
 // возвращает scripted err (для backstop-теста).
 type fakeSyncRegistrar struct {
-	mu      sync.Mutex
-	intents []domain.FGARegisterIntent
-	err     error
+	mu       sync.Mutex
+	intents  []domain.FGARegisterIntent
+	versions []time.Time
+	err      error
 }
 
-func (f *fakeSyncRegistrar) Register(_ context.Context, intent domain.FGARegisterIntent) error {
+func (f *fakeSyncRegistrar) Register(_ context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.intents = append(f.intents, intent)
+	f.versions = append(f.versions, intentVersion)
 	return f.err
+}
+
+// versionsSeen — версии, доехавшие до доставки. Проба ниже утверждает, что они
+// НЕ нулевые: нулевая версия означала бы, что синхронный путь идёт с часов
+// доставки или вовсе без маркера — то, ради чего форма и сводилась к одной.
+func (f *fakeSyncRegistrar) versionsSeen() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]time.Time, len(f.versions))
+	copy(out, f.versions)
+	return out
 }
 
 func (f *fakeSyncRegistrar) calls() []domain.FGARegisterIntent {

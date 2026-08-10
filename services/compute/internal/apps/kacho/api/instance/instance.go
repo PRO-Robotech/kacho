@@ -382,13 +382,13 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	if err := in.Validate(); err != nil {
 		return nil, serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
-	created, err := s.repo.Insert(ctx, in)
+	created, regs, err := s.repo.Insert(ctx, in)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
 	// Sync-register owner-tuple post-commit (best-effort window-оптимизация); durable
 	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
-	syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", created.ID, created.ProjectID, created.Labels)
+	syncRegisterOwner(ctx, s.ownerRegistrar, regs)
 	return anypb.New(protoconv.Instance(created))
 }
 
@@ -528,7 +528,7 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 				in.StatusReason = nextBootReason
 				changed = append(changed, "status_reason")
 			}
-			updated, err := s.repo.Update(ctx, in, labelsInMask, changed)
+			updated, regs, err := s.repo.Update(ctx, in, labelsInMask, changed)
 			if err != nil {
 				return nil, serviceerr.MapRepoErr(err)
 			}
@@ -539,8 +539,14 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			// (замер соседнего сервиса, 2026-08-05: 188–365 с при клиентском бюджете
 			// чтения-своих-записей 15 с). Update без меток в маске проекции не меняет —
 			// звать владельца прав незачем.
+			// Ветка «метки в маске» остаётся ЯВНОЙ, хотя набор доставки и так
+			// пуст, когда меток в маске нет: перепись гейта
+			// `TestLabelMirrorIsDeliveredNotOnlyQueued` знает площадки каждого
+			// сервиса по этому признаку, и без неё compute выпал бы из переписи
+			// МОЛЧА — а вердикт про «доставку зеркала меток» перестал бы быть
+			// про то дерево, что есть.
 			if labelsInMask {
-				syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", updated.ID, updated.ProjectID, updated.Labels)
+				syncRegisterOwner(ctx, s.ownerRegistrar, regs)
 			}
 			return anypb.New(protoconv.Instance(updated))
 		})

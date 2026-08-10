@@ -81,7 +81,7 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 
 	_, err := dr.Insert(ctx, &domain.DiskType{ID: "block-temp", Name: "temp"})
 	require.NoError(t, err)
-	vol, err := vr.Insert(ctx, &domain.Volume{
+	vol, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-ondtp",
 		ZoneID: "region-1-a", DiskTypeID: "block-temp", SizeBytes: 1 << 30,
 	}, "")
@@ -113,7 +113,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 
 	_, err := dr.Insert(ctx, &domain.DiskType{ID: "block-race", Name: "race"})
 	require.NoError(t, err)
-	_, err = vr.Insert(ctx, &domain.Volume{
+	_, _, err = vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-race-ref",
 		ZoneID: "region-1-a", DiskTypeID: "block-race", SizeBytes: 1 << 30,
 	}, "")

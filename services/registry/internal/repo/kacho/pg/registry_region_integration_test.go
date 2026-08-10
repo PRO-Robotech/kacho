@@ -28,7 +28,7 @@ func TestRepo_REG_1_10_RegionPlacementRoundTrip(t *testing.T) {
 	reg := newReg("prj-P", "payments", nil)
 	reg.RegionID = "eu-north-1"
 	intent := domain.RegisterIntentForCreate(reg, "user", "usr-alice")
-	created, err := repo.Insert(ctx, reg, intent)
+	created, _, err := repo.Insert(ctx, reg, intent)
 	require.NoError(t, err)
 	require.Equal(t, "eu-north-1", created.RegionID)
 	require.Equal(t, domain.PlacementTypeRegional, created.PlacementType)

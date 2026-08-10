@@ -55,15 +55,32 @@ func (m *mockRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Re
 	return nil, "", nil
 }
 
-func (m *mockRepo) Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, error) {
+func (m *mockRepo) Insert(ctx context.Context, r *domain.Registry, intent domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error) {
 	m.mu.Lock()
 	m.insertReg = r
 	m.insertIntent = intent
 	m.mu.Unlock()
 	if m.insertFn != nil {
-		return m.insertFn(ctx, r, intent)
+		got, err := m.insertFn(ctx, r, intent)
+		if err != nil {
+			return nil, domain.RegisterIntent{}, err
+		}
+		return got, stampedFixture(intent), nil
 	}
-	return r, nil
+	return r, stampedFixture(intent), nil
+}
+
+// stampedFixture — намерение, каким его вернул бы настоящий репозиторий: со
+// штампом, который триггер очереди ставит внутри writer-транзакции.
+//
+// ДУБЛЁР ОБЯЗАН ШТАМПОВАТЬ. Общая форма доставки регистрацию без версии
+// пропускает (доставлять нечего), поэтому дублёр, отдающий намерение без
+// штампа, превратил бы КАЖДОЕ утверждение о синхронной доставке в вакуумное:
+// «ничего не доставлено» зеленеет одинаково и на исправном пути, и на мёртвом.
+// Значение намеренно не похоже на «сейчас».
+func stampedFixture(intent domain.RegisterIntent) domain.RegisterIntent {
+	intent.SourceVersion = domain.SourceVersion{Time: time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)}
+	return intent
 }
 
 func (m *mockRepo) Update(ctx context.Context, spec registry.UpdateSpec, mirror func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
@@ -573,22 +590,30 @@ func (m *mockRepoConfig) ListConfigs(ctx context.Context, registryID string) ([]
 	return out, nil
 }
 
-func (m *mockRepoConfig) InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (m *mockRepoConfig) InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, cfgOutboxCall{op: "insert", name: cfg.Name, intents: intents})
 	m.mu.Unlock()
 	if m.insertFn != nil {
-		return m.insertFn(cfg)
+		out, err := m.insertFn(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		return out, stampedIntentsFixture(intents), nil
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.byName[cfg.Name]; ok {
-		return nil, regerrors.ErrAlreadyExists
+		return nil, nil, regerrors.ErrAlreadyExists
 	}
 	cp := *cfg
 	cp.CreatedAt = time.Now()
 	m.byName[cfg.Name] = &cp
-	return &cp, nil
+	// Проштампованные намерения возвращаются и на этой ветке: настоящий
+	// репозиторий штампует ВСЕГДА, а дублёр, отдающий их без версии, молча
+	// отменял бы синхронную доставку — и утверждения о ней зеленели бы на
+	// пустом наборе. Ровно это и поймали две пробы CreateRepository.
+	return &cp, stampedIntentsFixture(intents), nil
 }
 
 func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.RepositoryConfigUpdate, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
@@ -619,27 +644,33 @@ func (m *mockRepoConfig) UpdateConfig(ctx context.Context, spec registry.Reposit
 	return c, nil
 }
 
-func (m *mockRepoConfig) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (m *mockRepoConfig) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, cfgOutboxCall{op: "rekey", name: oldName, newName: newName, intents: intents})
 	m.mu.Unlock()
 	if m.rekeyFn != nil {
-		return m.rekeyFn(registryID, oldName, newName)
+		out, err := m.rekeyFn(registryID, oldName, newName)
+		if err != nil {
+			return nil, nil, err
+		}
+		return out, stampedIntentsFixture(intents), nil
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c, ok := m.byName[oldName]
 	if !ok {
-		return nil, regerrors.ErrNotFound
+		return nil, nil, regerrors.ErrNotFound
 	}
 	if _, taken := m.byName[newName]; taken {
-		return nil, regerrors.ErrAlreadyExists
+		return nil, nil, regerrors.ErrAlreadyExists
 	}
 	cp := *c
 	cp.Name = newName
 	delete(m.byName, oldName)
 	m.byName[newName] = &cp
-	return &cp, nil
+	// Штамп — и здесь: см. InsertConfig о том, почему дублёр без него делает
+	// утверждения о синхронной доставке вакуумными.
+	return &cp, stampedIntentsFixture(intents), nil
 }
 
 func (m *mockRepoConfig) DeleteConfig(ctx context.Context, registryID, name string, intents ...registry.OutboxIntent) error {
@@ -737,4 +768,19 @@ var opsCaller = operations.Principal{Type: "user", ID: "usr-caller", DisplayName
 
 func opsCallerCtx() context.Context {
 	return operations.WithPrincipal(context.Background(), opsCaller)
+}
+
+// stampedIntentsFixture — намерения, какими их вернул бы настоящий репозиторий:
+// со штампами writer-транзакции, шагающими по строкам очереди.
+//
+// См. stampedFixture о том, почему дублёр обязан штамповать: без штампа синхронная
+// доставка не происходит вовсе, и утверждения о ней становятся вакуумными.
+func stampedIntentsFixture(intents []registry.OutboxIntent) []registry.OutboxIntent {
+	base := time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
+	out := make([]registry.OutboxIntent, 0, len(intents))
+	for i, oi := range intents {
+		oi.Intent.SourceVersion = domain.SourceVersion{Time: base.Add(time.Duration(i) * time.Millisecond)}
+		out = append(out, oi)
+	}
+	return out
 }

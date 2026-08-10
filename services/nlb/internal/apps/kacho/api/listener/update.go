@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/H-BF/corlib/pkg/option"
 	"google.golang.org/grpc/codes"
@@ -81,11 +82,11 @@ func (u *UpdateUseCase) WithRegistrar(r Registrar) *UpdateUseCase {
 // syncRegister — BEST-EFFORT sync-доставка mirror-intent'а после durable commit.
 // Отказ ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent + drainer —
 // at-least-once backstop; Operation.done НЕ гейтится на видимость (ban #9).
-func (u *UpdateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *UpdateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		loggerOrDiscard(u.logger).Warn("Listener.Update sync mirror registration incomplete; register-drainer will reconcile",
 			"err", err, "listener_id", intent.ResourceID)
 	}
@@ -355,9 +356,20 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 	// labels in the SAME writer-tx (gated, upsert-not-unregister,
 	// atomic). Label removal → upsert with empty labels, which stales the γ
 	// label selector while keeping the listener registered.
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки. Прежде его собирали дважды: очередь получала одно
+	// значение, синхронный вызов — второе, построенное заново, и разойтись они
+	// могли бы молча. Объявление стоит ВНЕ ветки, потому что доставка идёт после
+	// коммита — то есть за пределами блока, где намерение эмитится.
+	var (
+		intent        domain.FGARegisterIntent
+		intentVersion time.Time
+	)
 	if emitMirror {
-		if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-			listenerMirrorIntent(updated)); err != nil {
+		intent = listenerMirrorIntent(updated)
+		var eerr error
+		intentVersion, eerr = w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+		if eerr != nil {
 			return nil, mapDomainErr(fmt.Errorf("%w: fga register-intent emit: %v", domain.ErrInternal, err))
 		}
 	}
@@ -365,7 +377,7 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 		return nil, mapDomainErr(err)
 	}
 	if emitMirror {
-		u.syncRegister(ctx, listenerMirrorIntent(updated))
+		u.syncRegister(ctx, intent, intentVersion)
 	}
 	committed = true
 	return marshalListener(updated)

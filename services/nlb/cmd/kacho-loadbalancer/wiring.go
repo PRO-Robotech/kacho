@@ -117,7 +117,7 @@ type grpcWiring struct {
 // internal :9091 серверах (Internal-vs-external инвариант: Internal.* — только на
 // internalSrv). Порядок и распределение по listener'ам идентичны прежнему inline-
 // блоку runServe (см. per-service doc-комментарии).
-func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
+func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) error {
 	// OperationService (public, exempt: op-id опакен, owner-scoped Get/Cancel).
 	operationpb.RegisterOperationServiceServer(publicSrv, operation.NewHandler(w.opsRepo))
 
@@ -135,7 +135,14 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	// строим конкретный *SyncRegistrar ТОЛЬКО при наличии peer'а.
 	var syncRegistrar iamclient.Registrar
 	if w.peers.Register != nil {
-		syncRegistrar = iamclient.NewSyncRegistrar(w.peers.Register)
+		// Отказ, а не пустая операция: несобранный регистратор — это
+		// ускоритель, который никогда ничего не ускорит, и заметить это было
+		// бы нечем.
+		reg, rerr := iamclient.NewSyncRegistrar(w.peers.Register)
+		if rerr != nil {
+			return fmt.Errorf("собрать синхронный registrar: %w", rerr)
+		}
+		syncRegistrar = reg
 	}
 
 	// NetworkLoadBalancerService (public only).
@@ -184,6 +191,8 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) {
 	// Инфра-чувствительные данные (BGP/route/VRF/kernel/infra-id) не выходят на external.
 	announceHandler := announceapi.NewHandler(kachopg.NewAnnounceStore(w.pool), w.logger)
 	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(internalSrv, announceHandler)
+
+	return nil
 }
 
 // tgZoneRegion — typed-nil guard: `*geoclient.ZoneRegionClient(nil)` в

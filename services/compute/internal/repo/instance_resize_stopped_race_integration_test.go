@@ -25,7 +25,7 @@ import (
 // fresh STOPPED snapshot.
 func stopInstance(ctx context.Context, t *testing.T, r *repo.InstanceRepo, id string) *domain.Instance {
 	t.Helper()
-	_, err := r.Insert(ctx, newRunningInstance(id))
+	_, _, err := r.Insert(ctx, newRunningInstance(id))
 	require.NoError(t, err)
 	stopped, err := r.SetStatusCAS(ctx, id, domain.InstanceStatusRunning, domain.InstanceStatusStopped)
 	require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 
 	// (2) Resize runs on the now-stale STOPPED snapshot: mt-std2 → mt-highcpu8.
 	stale.MachineTypeID = "mt-highcpu8"
-	_, err = instRepo.Update(ctx, stale, false, []string{"machine_type_id"})
+	_, _, err = instRepo.Update(ctx, stale, false, []string{"machine_type_id"})
 
 	// Must be rejected — the instance is RUNNING, resize requires STOPPED.
 	require.Error(t, err, "resize on a RUNNING instance must be rejected")
@@ -94,7 +94,7 @@ func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	stopped := stopInstance(ctx, t, instRepo, inID)
 
 	stopped.MachineTypeID = "mt-highcpu8"
-	updated, err := instRepo.Update(ctx, stopped, false, []string{"machine_type_id"})
+	updated, _, err := instRepo.Update(ctx, stopped, false, []string{"machine_type_id"})
 	require.NoError(t, err, "resize on a STOPPED instance must succeed")
 	assert.Equal(t, "mt-highcpu8", updated.MachineTypeID)
 
@@ -122,7 +122,7 @@ func TestIntegration_InstanceResize_MissingInstance_NotFound(t *testing.T) {
 	ghost := newRunningInstance(ids.NewID(ids.PrefixInstance)) // never inserted
 	ghost.Status = domain.InstanceStatusStopped
 	ghost.MachineTypeID = "mt-highcpu8"
-	_, err = instRepo.Update(ctx, ghost, false, []string{"machine_type_id"})
+	_, _, err = instRepo.Update(ctx, ghost, false, []string{"machine_type_id"})
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ports.ErrNotFound),
 		"resize of a nonexistent instance must map to NotFound, got: %v", err)
@@ -167,7 +167,7 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 			<-startBarrier
 			cp := *stale // stale STOPPED snapshot
 			cp.MachineTypeID = "mt-highcpu8"
-			_, uerr := instRepo.Update(ctx, &cp, false, []string{"machine_type_id"})
+			_, _, uerr := instRepo.Update(ctx, &cp, false, []string{"machine_type_id"})
 			switch {
 			case uerr == nil:
 				resizeOK.Add(1)

@@ -37,10 +37,10 @@ func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 
 	a := newReg("prj-P", "alpha", nil)
-	_, err := repo.Insert(ctx, a, domain.RegisterIntentForCreate(a, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, a, domain.RegisterIntentForCreate(a, "user", "usr-alice"))
 	require.NoError(t, err)
 	b := newReg("prj-P", "bravo", nil)
-	_, err = repo.Insert(ctx, b, domain.RegisterIntentForCreate(b, "user", "usr-alice"))
+	_, _, err = repo.Insert(ctx, b, domain.RegisterIntentForCreate(b, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	_, err = repo.Update(ctx, renameSpec(b.ID, "alpha"), mirrorUpdate)
@@ -52,7 +52,7 @@ func TestRepo_RenameOntoExistingLiveName_AlreadyExists(t *testing.T) {
 
 	// Разные project'ы — то же имя не конфликтует при rename.
 	c := newReg("prj-Q", "gamma", nil)
-	_, err = repo.Insert(ctx, c, domain.RegisterIntentForCreate(c, "user", "usr-bob"))
+	_, _, err = repo.Insert(ctx, c, domain.RegisterIntentForCreate(c, "user", "usr-bob"))
 	require.NoError(t, err)
 	_, err = repo.Update(ctx, renameSpec(c.ID, "alpha"), mirrorUpdate)
 	require.NoError(t, err, "rename onto same name in a DIFFERENT project is allowed")
@@ -70,7 +70,7 @@ func TestRepo_ConcurrentRenameToSameName_ExactlyOne(t *testing.T) {
 	ids := make([]string, n)
 	for i := 0; i < n; i++ {
 		r := newReg("prj-P", uniqueName(i), nil)
-		_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+		_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 		require.NoError(t, err)
 		ids[i] = r.ID
 	}

@@ -37,7 +37,7 @@ func TestIntegration_InstanceCPUGuarantee_RoundTrip(t *testing.T) {
 
 	in := newRunningInstance(inID)
 	in.CPUGuaranteePercent = 50
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	got, err := instRepo.Get(ctx, inID)
@@ -48,7 +48,7 @@ func TestIntegration_InstanceCPUGuarantee_RoundTrip(t *testing.T) {
 	stopped, err := instRepo.SetStatusCAS(ctx, inID, domain.InstanceStatusRunning, domain.InstanceStatusStopped)
 	require.NoError(t, err)
 	stopped.CPUGuaranteePercent = 20
-	resized, err := instRepo.Update(ctx, stopped, false, []string{"cpu_guarantee_percent"})
+	resized, _, err := instRepo.Update(ctx, stopped, false, []string{"cpu_guarantee_percent"})
 	require.NoError(t, err)
 	assert.Equal(t, int32(20), resized.CPUGuaranteePercent)
 }
@@ -69,6 +69,6 @@ func TestIntegration_InstanceCPUGuarantee_CheckConstraint(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	in := newRunningInstance(ids.NewID(ids.PrefixInstance))
 	in.CPUGuaranteePercent = 101 // violates CHECK (cpu_guarantee_percent BETWEEN 0 AND 100)
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.Error(t, err, "cpu_guarantee_percent=101 must be rejected by the DB CHECK")
 }

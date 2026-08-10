@@ -84,7 +84,7 @@ func TestInstance_SEC_D_04_RegisterIntentInWriterTx(t *testing.T) {
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
 	}
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	rows := queryFGARegisterRows(ctx, t, pool, inID)
@@ -129,7 +129,7 @@ func TestInstance_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
 	}
-	_, err = instRepo.Insert(ctx, in)
+	_, _, err = instRepo.Insert(ctx, in)
 	require.NoError(t, err)
 
 	require.NoError(t, instRepo.Delete(ctx, inID))

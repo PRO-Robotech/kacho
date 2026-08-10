@@ -53,7 +53,7 @@ func TestRegistry_REG04_ConcurrentCreate_UniqueNameRace(t *testing.T) {
 			reg := newReg(project, name, nil)
 			ids[i] = reg.ID
 			<-start // одновременный старт: максимизируем окно гонки
-			_, err := repo.Insert(ctx, reg, domain.RegisterIntentForCreate(reg, "user", "usr-alice"))
+			_, _, err := repo.Insert(ctx, reg, domain.RegisterIntentForCreate(reg, "user", "usr-alice"))
 			errs[i] = err
 			if err == nil {
 				atomic.AddInt64(&succeeded, 1)

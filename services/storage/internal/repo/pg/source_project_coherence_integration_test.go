@@ -122,13 +122,13 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 
 	t.Run("snapshot from foreign volume", func(t *testing.T) {
 		snapID := ids.NewID(domain.PrefixSnapshot)
-		_, foreignErr := sr.Insert(ctx, &domain.Snapshot{
+		_, _, foreignErr := sr.Insert(ctx, &domain.Snapshot{
 			ID: snapID, ProjectID: projAttacker, Name: "steal-snap", SourceVolumeID: victimVol.ID,
 		})
 		require.Equal(t, fmt.Sprintf("Volume %s not found", victimVol.ID), fpText(t, foreignErr))
 
 		missID := ids.NewID(domain.PrefixVolume)
-		_, missErr := sr.Insert(ctx, &domain.Snapshot{
+		_, _, missErr := sr.Insert(ctx, &domain.Snapshot{
 			ID: ids.NewID(domain.PrefixSnapshot), ProjectID: projAttacker, Name: "miss-snap", SourceVolumeID: missID,
 		})
 		requireHideExistence(t, foreignErr, victimVol.ID, missErr, missID)
@@ -144,7 +144,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		_, uerr := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, notReady.ID)
 		require.NoError(t, uerr)
 
-		_, foreignErr := sr.Insert(ctx, &domain.Snapshot{
+		_, _, foreignErr := sr.Insert(ctx, &domain.Snapshot{
 			ID: ids.NewID(domain.PrefixSnapshot), ProjectID: projAttacker, Name: "steal-creating", SourceVolumeID: notReady.ID,
 		})
 		require.Equal(t, fmt.Sprintf("Volume %s not found", notReady.ID), fpText(t, foreignErr),
@@ -157,28 +157,28 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		ownSnap := mkSnapshot(t, sr, projAttacker, "own-snap", ownVol.ID)
 		require.EqualValues(t, 4<<30, ownSnap.SizeBytes, "size snapshotted from own volume")
 
-		ownImgFromSnap, err := ir.Insert(ctx, &domain.Image{
+		ownImgFromSnap, _, err := ir.Insert(ctx, &domain.Image{
 			ID: ids.NewID(domain.PrefixImage), ProjectID: projAttacker, Name: "own-img-snap",
 			RegionID: "ru-central1", SourceSnapshot: ownSnap.ID,
 		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromSnap.SizeBytes, "size derived from own snapshot")
 
-		ownImgFromVol, err := ir.Insert(ctx, &domain.Image{
+		ownImgFromVol, _, err := ir.Insert(ctx, &domain.Image{
 			ID: ids.NewID(domain.PrefixImage), ProjectID: projAttacker, Name: "own-img-vol",
 			RegionID: "ru-central1", SourceVolume: ownVol.ID,
 		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromVol.SizeBytes, "size derived from own volume")
 
-		bootVol, err := vr.Insert(ctx, &domain.Volume{
+		bootVol, _, err := vr.Insert(ctx, &domain.Volume{
 			ID: ids.NewID(domain.PrefixVolume), ProjectID: projAttacker, Name: "own-boot",
 			ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 4 << 30, SourceImage: ownImgFromSnap.ID,
 		}, imageRegionFixture)
 		require.NoError(t, err)
 		require.Equal(t, ownImgFromSnap.ID, bootVol.SourceImage)
 
-		fromSnap, err := vr.Insert(ctx, &domain.Volume{
+		fromSnap, _, err := vr.Insert(ctx, &domain.Volume{
 			ID: ids.NewID(domain.PrefixVolume), ProjectID: projAttacker, Name: "own-from-snap",
 			ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 4 << 30, SourceSnapshot: ownSnap.ID,
 		}, "")
@@ -190,7 +190,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 // insertImage — короткий враппер ImageRepo.Insert (id/project/name + source-поля из
 // шаблона), возвращает только ошибку: тесты матрицы ключуются на observable-ошибке.
 func insertImage(ctx context.Context, r *pg.ImageRepo, id, project, name string, src domain.Image) error {
-	_, err := r.Insert(ctx, &domain.Image{
+	_, _, err := r.Insert(ctx, &domain.Image{
 		ID: id, ProjectID: project, Name: name, RegionID: "ru-central1",
 		SourceSnapshot: src.SourceSnapshot, SourceVolume: src.SourceVolume,
 	}, fixtureRegionZones)
@@ -199,7 +199,7 @@ func insertImage(ctx context.Context, r *pg.ImageRepo, id, project, name string,
 
 // insertVolume — короткий враппер VolumeRepo.Insert (id/project/name + source-поля).
 func insertVolume(ctx context.Context, r *pg.VolumeRepo, id, project, name string, src domain.Volume) error {
-	_, err := r.Insert(ctx, &domain.Volume{
+	_, _, err := r.Insert(ctx, &domain.Volume{
 		ID: id, ProjectID: project, Name: name, ZoneID: "region-1-a",
 		DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: src.SourceSnapshot, SourceImage: src.SourceImage,

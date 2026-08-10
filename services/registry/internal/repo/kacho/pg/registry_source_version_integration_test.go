@@ -64,7 +64,7 @@ func TestRepo_SourceVersion_IsDecodableTimestamp(t *testing.T) {
 
 	before := time.Now().UTC().Add(-time.Minute)
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 	after := time.Now().UTC().Add(time.Minute)
 
@@ -84,7 +84,7 @@ func TestRepo_SourceVersion_MonotonicAcrossUpdates(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 	v0 := decodeLastIntent(t, pool, r.ID)
 
@@ -111,7 +111,7 @@ func TestRepo_SourceVersion_UnregisterTombstoneNotOlderThanRegister(t *testing.T
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", nil)
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 	reg := decodeLastIntent(t, pool, r.ID)
 
@@ -137,7 +137,7 @@ func TestRepo_SourceVersion_MonotonicUnderConcurrentUpdates(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	// Обе транзакции стартуют «одновременно»; порядок их commit'а определяет row-lock.

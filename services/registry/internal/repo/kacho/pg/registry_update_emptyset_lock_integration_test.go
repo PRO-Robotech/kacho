@@ -28,7 +28,7 @@ func TestRepo_UpdateEmptySet_LocksMirroredRow(t *testing.T) {
 	ctx := context.Background()
 
 	r := newReg("prj-P", "team-images", map[string]string{"env": "prod"})
-	_, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
+	_, _, err := repo.Insert(ctx, r, domain.RegisterIntentForCreate(r, "user", "usr-alice"))
 	require.NoError(t, err)
 
 	// Внешняя tx удерживает row-lock реестра (как конкурентный реальный UPDATE).

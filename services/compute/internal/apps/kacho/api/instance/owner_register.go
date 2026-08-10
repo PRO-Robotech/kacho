@@ -6,6 +6,8 @@ package instance
 import (
 	"context"
 	"log/slog"
+
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 )
 
 // syncRegisterOwner синхронно (post-commit, best-effort) регистрирует owner-tuple
@@ -16,12 +18,12 @@ import (
 // (эмитится в writer-tx repo.Insert) + register-drainer остаются at-least-once
 // backstop'ом (та же идемпотентная регистрация повторно безопасна). registrar==nil →
 // no-op (полагаемся на drainer).
-func syncRegisterOwner(ctx context.Context, registrar OwnerRegistrar, kind, resourceID, projectID string, labels map[string]string) {
-	if registrar == nil {
+func syncRegisterOwner(ctx context.Context, registrar OwnerRegistrar, regs []ownerregister.Registration) {
+	if registrar == nil || len(regs) == 0 {
 		return
 	}
-	if err := registrar.Register(ctx, kind, resourceID, projectID, labels); err != nil {
+	if err := registrar.Register(ctx, regs); err != nil {
 		slog.WarnContext(ctx, "owner-tuple sync register failed; register-drainer will backstop at-least-once",
-			"err", err, "kind", kind, "resource", resourceID)
+			"err", err, "resource", regs[0].TraceID)
 	}
 }

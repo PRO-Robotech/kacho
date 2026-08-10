@@ -28,7 +28,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-seed", 20<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-1", "ubuntu-boot", "ru-central1", snapID)
 
-	boot, err := vr.Insert(ctx, &domain.Volume{
+	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-vol",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,
@@ -50,7 +50,7 @@ func TestVolumeSourceImageFKNotFound(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	_, err := vr.Insert(ctx, &domain.Volume{
+	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-badimg",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceImage: "img00000000000000000",
@@ -70,7 +70,7 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-prov", 20<<30)
 	img := mkImageFromSnapshot(t, ir, "prj-1", "prov-img", "ru-central1", snapID)
-	boot, err := vr.Insert(ctx, &domain.Volume{
+	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "prov-boot",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,

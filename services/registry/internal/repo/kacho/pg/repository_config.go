@@ -177,13 +177,13 @@ func scanConfigRows(rows pgx.Rows) ([]*domain.RepositoryConfig, error) {
 // rename auto-promote A23). PRIMARY KEY(registry_id,name)-конфликт → 23505 →
 // ErrAlreadyExists ("repository already exists"). Реестр DELETING → FailedPrecondition
 // (A24); отсутствует → FailedPrecondition "registry not found" (guard-parity с FK 23503).
-func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (r *RepositoryConfigRepo) InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
 	if err := r.ready(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	labels, err := marshalLabels(cfg.Labels)
 	if err != nil {
-		return nil, regerrors.ErrInternal
+		return nil, nil, regerrors.ErrInternal
 	}
 	return runConfigTx(ctx, r.pool, cfg.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
@@ -231,13 +231,15 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 		args = append(args, spec.Visibility.String())
 	}
 
-	return runConfigTx(ctx, r.pool, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	// Синхронной доставки на этом пути нет — проштампованные намерения не нужны.
+	out, _, uerr := runConfigTx(ctx, r.pool, spec.RegistryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		q := fmt.Sprintf(`
 			UPDATE %s.repository_configs SET %s
 			WHERE registry_id = $1 AND name = $2
 			RETURNING %s`, schema, strings.Join(sets, ", "), configColumns)
 		return scanConfig(tx.QueryRow(ctx, q, args...))
 	})
+	return out, uerr
 }
 
 // RekeyConfig — durable rename: одностейтментный перенос name-колонки существующей
@@ -245,9 +247,9 @@ func (r *RepositoryConfigRepo) UpdateConfig(ctx context.Context, spec registry.R
 // 23505 → ErrAlreadyExists (A16/A17/A18); исходной строки нет → 0 rows → ErrNotFound.
 // Ephemeral auto-promote (нет overlay-строки) — НЕ этот путь: он через InsertConfig под
 // new_name (D-5/A23).
-func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
+func (r *RepositoryConfigRepo) RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
 	if err := r.ready(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		// Rename = overlay-set → auto-promote lifecycle='DURABLE' (REG-1-23 parity).
@@ -266,7 +268,7 @@ func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, nam
 	if err := r.ready(); err != nil {
 		return err
 	}
-	_, err := runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
+	_, _, err := runConfigTx(ctx, r.pool, registryID, intents, func(tx pgx.Tx) (*domain.RepositoryConfig, error) {
 		var deleted string
 		q := fmt.Sprintf(`DELETE FROM %s.repository_configs
 			WHERE registry_id = $1 AND name = $2 RETURNING name`, schema)
@@ -284,29 +286,35 @@ func (r *RepositoryConfigRepo) DeleteConfig(ctx context.Context, registryID, nam
 // (single-statement INSERT/UPDATE/DELETE ... RETURNING), эмитит FGA intent'ы в
 // registry_outbox В ТОЙ ЖЕ tx и коммитит. DML/guard/scan-ошибка маппится mapConfigErr;
 // осиротевший rollback — defer. Пустой набор intent'ов → чистый guard+DML.
-func runConfigTx(ctx context.Context, pool *pgxpool.Pool, registryID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, error) {
+func runConfigTx(ctx context.Context, pool *pgxpool.Pool, registryID string, intents []registry.OutboxIntent, dml func(pgx.Tx) (*domain.RepositoryConfig, error)) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return nil, mapConfigErr(err)
+		return nil, nil, mapConfigErr(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if gerr := guardRegistryActive(ctx, tx, registryID); gerr != nil {
-		return nil, gerr
+		return nil, nil, gerr
 	}
 	out, derr := dml(tx)
 	if derr != nil {
-		return nil, mapConfigErr(derr)
+		return nil, nil, mapConfigErr(derr)
 	}
+	// Проштампованные намерения возвращаются вызывающему: синхронная доставка
+	// обязана нести ТУ ЖЕ версию, что легла в очередь, иначе гашение повторной
+	// доставки у владельца прав зависит от того, кто выиграл гонку.
+	stampedIntents := make([]registry.OutboxIntent, 0, len(intents))
 	for _, oi := range intents {
-		if eerr := emitFGAIntent(ctx, tx, oi.Event, oi.Intent); eerr != nil {
-			return nil, eerr
+		stamped, eerr := emitFGAIntent(ctx, tx, oi.Event, oi.Intent)
+		if eerr != nil {
+			return nil, nil, eerr
 		}
+		stampedIntents = append(stampedIntents, registry.OutboxIntent{Event: oi.Event, Intent: stamped})
 	}
 	if cerr := tx.Commit(ctx); cerr != nil {
-		return nil, mapConfigErr(cerr)
+		return nil, nil, mapConfigErr(cerr)
 	}
-	return out, nil
+	return out, stampedIntents, nil
 }
 
 // guardRegistryActive — ACTIVE-guard overlay-мутации (A24): SELECT registries.status FOR

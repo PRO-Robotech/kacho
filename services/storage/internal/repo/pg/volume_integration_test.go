@@ -63,7 +63,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 // mkVolume вставляет том через репо (state=READY) и возвращает его.
 func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
 	t.Helper()
-	v, err := r.Insert(context.Background(), &domain.Volume{
+	v, _, err := r.Insert(context.Background(), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
 		ProjectID:  project,
 		Name:       name,
@@ -135,7 +135,7 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := r.Insert(context.Background(), &domain.Volume{
+			_, _, err := r.Insert(context.Background(), &domain.Volume{
 				ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "dup-name",
 				ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 			}, "")
@@ -166,13 +166,13 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	v := mkVolume(t, r, "prj-1", "vol-resize", 10<<30)
 
 	big := int64(20 << 30)
-	up, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &big})
+	up, _, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &big})
 	require.NoError(t, err)
 	require.EqualValues(t, 20<<30, up.SizeBytes)
 
 	for _, shrink := range []int64{5 << 30, 20 << 30} { // меньше и равно — оба отвергаются
 		s := shrink
-		_, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &s})
+		_, _, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &s})
 		require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "shrink %d: %v", shrink, err)
 		require.Equal(t, "Volume size can only be increased", err.Error()[len("invalid argument: "):])
 	}
@@ -189,7 +189,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 			defer wg.Done()
 			<-start
 			s := int64(40 << 30)
-			_, err := r.Update(context.Background(), v2.ID, volume.VolumeUpdate{SizeBytes: &s})
+			_, _, err := r.Update(context.Background(), v2.ID, volume.VolumeUpdate{SizeBytes: &s})
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -236,14 +236,14 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	_, err := r.Insert(ctx, &domain.Volume{
+	_, _, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badtype",
 		ZoneID: "region-1-a", DiskTypeID: "dtp-nonexistent", SizeBytes: 1 << 30,
 	}, "")
 	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("failed precondition: "):])
 
-	_, err = r.Insert(ctx, &domain.Volume{
+	_, _, err = r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badsnap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: "snp00000000000000000",
@@ -255,7 +255,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 	_, err = pool.Exec(ctx,
 		`INSERT INTO snapshots (id, project_id, name, size_bytes, state) VALUES ($1,'prj-1','snap-a',0,'READY')`, snapID)
 	require.NoError(t, err)
-	fromSnap, err := r.Insert(ctx, &domain.Volume{
+	fromSnap, _, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-fromsnap",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30, SourceSnapshot: snapID,
 	}, "")
@@ -307,15 +307,15 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	vb := mkVolume(t, r, "prj-1", "beta", 1<<30)
 
 	name := "alpha"
-	_, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
+	_, _, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "got %v", err)
 
 	empty := ""
-	_, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &empty})
+	_, _, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &empty})
 	require.NoError(t, err, "clearing name allowed (partial UNIQUE ignores '')")
 
 	desc := "patched"
-	_, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Description: &desc})
+	_, _, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Description: &desc})
 	require.NoError(t, err)
 	got, err := r.Get(ctx, vb.ID)
 	require.NoError(t, err)

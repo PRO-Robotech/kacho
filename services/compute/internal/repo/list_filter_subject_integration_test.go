@@ -120,7 +120,7 @@ func seedInstances(t *testing.T, r *repo.InstanceRepo, projectID string, names .
 			BootSource:         domain.BootSource{Type: "storage.image", ID: "img-9k2m4x7q1n8p:22.04-lts", ImageKind: domain.ImageKindStorageImage},
 			FQDN:               id + ".auto.internal",
 		}
-		created, err := r.Insert(ctx, in)
+		created, _, err := r.Insert(ctx, in)
 		require.NoError(t, err)
 		out = append(out, created.ID)
 	}

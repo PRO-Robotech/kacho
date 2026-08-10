@@ -78,7 +78,7 @@ type RepositoryConfigWriter interface {
 	// существующей проекции — overlay ⟂ projection). PK(registry_id,name)-конфликт →
 	// 23505 → ErrAlreadyExists ("repository already exists"). Тот же INSERT-путь —
 	// ephemeral rename auto-promote (D-5/A23: INSERT под new_name).
-	InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...OutboxIntent) (*domain.RepositoryConfig, error)
+	InsertConfig(ctx context.Context, cfg *domain.RepositoryConfig, intents ...OutboxIntent) (*domain.RepositoryConfig, []OutboxIntent, error)
 	// UpdateConfig применяет mutable-поля (Apply*-флаги) одним UPDATE ... RETURNING;
 	// visibility-flip сериализуется row-lock'ом (детерминированный терминал, B09).
 	// 0 rows (строки нет) → ErrNotFound. intents (public-grant по итоговому visibility)
@@ -89,7 +89,7 @@ type RepositoryConfigWriter interface {
 	// Занятое целевое имя (overlay) → 23505 → ErrAlreadyExists (A16/A17/A18);
 	// исходной строки нет → ErrNotFound. intents (re-register new / unregister old /
 	// public-grant governance) — в той же tx.
-	RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...OutboxIntent) (*domain.RepositoryConfig, error)
+	RekeyConfig(ctx context.Context, registryID, oldName, newName string, intents ...OutboxIntent) (*domain.RepositoryConfig, []OutboxIntent, error)
 	// DeleteConfig снимает overlay-строку (DELETE ... RETURNING). 0 rows → ErrNotFound.
 	// intents (unregister repo-tuples + public-grant) — в той же tx.
 	DeleteConfig(ctx context.Context, registryID, name string, intents ...OutboxIntent) error

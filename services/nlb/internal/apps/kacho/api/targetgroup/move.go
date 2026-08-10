@@ -222,11 +222,11 @@ func (u *MoveTargetGroupUseCase) doMove(ctx context.Context, id, srcProject, dst
 	// unregister). register(dst) must carry full tgMirrorIntent semantics (Labels
 	// from the moved record + ParentProjectID=dst) so the kacho-iam resource_mirror
 	// feeding the γ label/parent selector is re-created intact.
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
+	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		tgUnregisterIntent(id, srcProject)); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
+	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
 		tgMirrorIntent(moved)); err != nil {
 		return nil, mapDomainErr(err)
 	}

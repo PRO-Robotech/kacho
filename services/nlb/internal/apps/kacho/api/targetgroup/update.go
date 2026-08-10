@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -58,11 +59,11 @@ func (u *UpdateTargetGroupUseCase) WithRegistrar(r Registrar) *UpdateTargetGroup
 // syncRegister — BEST-EFFORT sync-доставка mirror-intent'а после durable commit.
 // Отказ ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent + drainer —
 // at-least-once backstop; Operation.done НЕ гейтится на видимость (ban #9).
-func (u *UpdateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *UpdateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		u.logger.Warn("TargetGroup.Update sync mirror registration incomplete; register-drainer will reconcile",
 			"err", err, "target_group_id", intent.ResourceID)
 	}
@@ -232,17 +233,28 @@ func (u *UpdateTargetGroupUseCase) doUpdate(ctx context.Context, tg domain.Targe
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки. Прежде его собирали дважды: очередь получала одно
+	// значение, синхронный вызов — второе, построенное заново, и разойтись они
+	// могли бы молча. Объявление стоит ВНЕ ветки, потому что доставка идёт после
+	// коммита — то есть за пределами блока, где намерение эмитится.
+	var (
+		intent        domain.FGARegisterIntent
+		intentVersion time.Time
+	)
 	if emitMirror {
-		if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-			tgMirrorIntent(updated)); err != nil {
-			return nil, mapDomainErr(err)
+		intent = tgMirrorIntent(updated)
+		var eerr error
+		intentVersion, eerr = w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+		if eerr != nil {
+			return nil, mapDomainErr(eerr)
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if emitMirror {
-		u.syncRegister(ctx, tgMirrorIntent(updated))
+		u.syncRegister(ctx, intent, intentVersion)
 	}
 	return marshalTargetGroup(updated)
 }

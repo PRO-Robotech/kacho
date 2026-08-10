@@ -1,175 +1,94 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// sync_registrar.go — sync-primary owner-tuple registrar over kacho-iam
-// InternalIAMService.RegisterResource. Mirrors the vpc SyncRegistrar
-// (services/vpc/internal/clients/iam_sync_registrar.go) but with BEST-EFFORT
-// (never fail-closed) semantics — see the type doc below.
-//
-// nlb был единственным ресурс-сервисом БЕЗ sync-registrar: Create эмитил только
-// `fga_register_outbox`-intent → async register-drainer → kacho-iam
-// RegisterResource → reconciler. Owner/project-grant создателя становился виден
-// с большим лагом → первый create→immediate-Get/Update своего ресурса ловил
-// transient 403/404 (read-your-writes окно), что раздувало newman
-// `retry_until_authorized`-busy-wait. Этот registrar регистрирует containment/
-// owner-tuple СИНХРОННО сразу после durable commit ресурса, закрывая окно —
-// но durable outbox-intent + register-drainer остаются at-least-once backstop'ом.
+// sync_registrar.go — перевод намерения nlb в ОБЩУЮ форму синхронной доставки
+// регистрации (pkg/ownerregister). Своей формы у nlb больше нет.
 package iam
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/auth"
-
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// Registrar — порт синхронной owner-tuple регистрации, потребляемый create-
-// use-case'ами (loadbalancer/listener/targetgroup). Реализация — *SyncRegistrar
-// поверх InternalIAMService.RegisterResource. Определён здесь (adapter-пакет)
-// в соответствии с конвенцией nlb: port-интерфейсы peer-адаптеров живут в
-// clients/iam и алиасятся в use-case ports.go (ProjectClient/CheckClient — так же).
+// Registrar — порт синхронной регистрации, потребляемый create/update-use-case'ами
+// (loadbalancer/listener/targetgroup). Реализация — [SyncRegistrar] поверх общей
+// формы доставки [ownerregister.Registrar].
 //
-// Семантика вызывающего — BEST-EFFORT: use-case вызывает Register ПОСЛЕ durable
-// commit ресурса и его `fga_register_outbox`-intent'а; ошибку ЛОГИРУЕТ и
-// ГЛОТАЕТ — НЕ пробрасывает, НЕ гейтит Operation.done, НЕ фейлит Operation.
-// Гейт видимости owner-tuple на done = phantom-ресурс (ban #9) — запрещён.
+// `intentVersion` — штамп, который БД поставила durable-намерению ВНУТРИ
+// writer-транзакции (его возвращает FGARegisterEmitter.Emit). Обе доставки одной
+// регистрации обязаны нести ОДНО значение: принимающая сторона гасит повторную
+// строгим монотонным сравнением версий, и на свежих часах гашение зависело бы от
+// того, кто выиграл гонку.
+//
+// Семантика вызывающего — BEST-EFFORT: use-case зовёт Register ПОСЛЕ durable
+// commit'а ресурса и его durable-намерения; отказ ЛОГИРУЕТ и ГЛОТАЕТ — не
+// пробрасывает, не гейтит Operation.done. Гейт видимости на done = phantom-ресурс
+// (ban #9) — запрещён.
 type Registrar interface {
-	// Register синхронно регистрирует owner/containment-tuple'ы intent'а в
-	// kacho-iam. Возвращает НЕ-nil на ЛЮБОМ неуспехе — и временном (iam
-	// недоступен), и терминальном (отказ в правах, malformed tuple), — чтобы
-	// вызывающий залогировал best-effort. Успехом считается только применение
-	// tuple либо его идемпотентный повтор.
-	Register(ctx context.Context, intent domain.FGARegisterIntent) error
+	Register(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) error
 }
 
-// SyncRegistrar реализует Registrar поверх RegisterResourceClient (тот же mTLS-
-// conn к kacho-iam :9091, что и register-drainer). Идемпотентен: повторная
-// регистрация того же tuple (sync + async оба сработали) → OK (iam
-// RegisterResource idempotent, read-delta).
+// SyncRegistrar — перевод намерения nlb в общую форму доставки
+// ([ownerregister.Registrar]) и ничего больше.
+//
+// ЧЕГО ЗДЕСЬ БОЛЬШЕ НЕТ И ПОЧЕМУ. Стояли: собственный цикл по tuple'ам,
+// собственный срок вызова, собственная сборка запроса, собственный
+// классификатор отказа и собственные часы для маркера версии. Всё это было
+// копией, разошедшейся с четырьмя соседями — а комментарий рядом объявлял
+// паритет с vpc, которого не было. Хуже того, тот же комментарий, разбирая
+// первую ложь, вводил вторую: он ссылался на шагающую по tuple'ам версию «в
+// NewRegisterApplier» nlb, тогда как такой функции у nlb нет — она живёт у
+// registry (предикат: `git grep -n stepSourceVersion` даёт один файл, и это не
+// nlb). Ложное заявление о паритете и есть то, из-за чего расхождение прожило
+// незамеченным.
+//
+// Классификатор снят по существу, а не для краткости: его единственная
+// снисходительная ветка считала успехом `AlreadyExists`, а такого кода контракт
+// RegisterResource не производит вовсе — ветка молчала на том, ради чего
+// написана. Отказ теперь сурфейсится целиком (общая форма), и лог остаётся
+// единственным признаком поломки синхронного пути.
 type SyncRegistrar struct {
-	cli     RegisterResourceClient
-	timeout time.Duration
+	delivery *ownerregister.Registrar
 }
 
-// NewSyncRegistrar собирает registrar поверх RegisterResourceClient. timeout по
-// умолчанию 5s на один RegisterResource — create-worker идёт на background-ctx
-// без дедлайна, поэтому ограничиваем per-call здесь (architecture.md per-call
-// deadline). nil cli → Register no-op (dev/no-iam: остаётся только async drainer).
-func NewSyncRegistrar(cli RegisterResourceClient) *SyncRegistrar {
-	return &SyncRegistrar{cli: cli, timeout: 5 * time.Second}
-}
-
-// Register синхронно регистрирует каждый tuple intent'а через kacho-iam
-// RegisterResource с per-call deadline, форвардя mirror-поля (labels/parent) и
-// монотонный source_version (см. ниже). НЕ короткозамыкается: атакует ВСЕ tuple'ы
-// даже при ошибке на предыдущем (containment `project`-tuple — первый в intent'е —
-// всегда попадёт в попытку). Возвращает объединённую ошибку по всем неуспешным
-// tuple'ам (classifySyncRegisterErr — успех только применение либо идемпотентный
-// повтор). nil cli → no-op.
-func (s *SyncRegistrar) Register(ctx context.Context, intent domain.FGARegisterIntent) error {
-	if s.cli == nil {
-		return nil
+// NewSyncRegistrar собирает registrar. Нулевой клиент — ОТКАЗ, а не пустая
+// операция: пустая операция неотличима от исправно работающего ускорителя,
+// который никогда ничего не ускорял (см. [ownerregister.ErrNoClient]).
+func NewSyncRegistrar(cli RegisterResourceClient) (*SyncRegistrar, error) {
+	d, err := ownerregister.New(cli)
+	if err != nil {
+		return nil, err
 	}
-	// PropagateOutgoing: iam-side principal/identity extractor видит реальный
-	// caller-ctx. Идентичность для least-priv fgaproxy-gate — из mTLS client-cert.
-	ctx = auth.PropagateOutgoing(ctx)
+	return &SyncRegistrar{delivery: d}, nil
+}
 
-	// ПРОИСХОЖДЕНИЕ МАРКЕРА ВЕРСИИ — ЧАСЫ ДОСТАВКИ, и это отличается от vpc.
-	//
-	// Здесь стояло «зеркалит vpc SyncRegistrar» — утверждение ложное: vpc несёт ТУ
-	// ЖЕ версию, которой БД проштамповала durable-intent внутри writer-TX, а этот
-	// путь штампует момент доставки. Комментарий, противоречащий коду, опаснее
-	// отсутствующего: следующий читатель чинит код под неверный текст.
-	//
-	// Что из этого следует, и почему это не «привести к vpc одной строкой». Обе
-	// доставки одной регистрации (эта и дренаж того же intent'а) приходят к
-	// приёмной стороне, и она гасит повторную строгим монотонным сравнением
-	// версий. При версии из writer-TX (форма vpc) версии обеих доставок РАВНЫ, и
-	// гашение срабатывает независимо от того, какая пришла первой. При часах
-	// доставки версия синхронного вызова строго новее, поэтому, когда дренаж
-	// успевает первым, синхронный вызов выглядит новее состоянием и заставляет
-	// пересчитывать материализацию заново — на самом горячем пути создания.
-	//
-	// Ось «штамп маркера» — ПАРАМЕТР сервиса, а не общая семантика: у registry
-	// он проставляется триггером `clock_timestamp()`, чтобы не замерзать на
-	// `BEGIN`, а здесь версия дополнительно ШАГАЕТ по tuple'ам intent'а
-	// (stepSourceVersion в NewRegisterApplier) — единственная имеющаяся защита от
-	// «выдача, затем снятие» внутри одной доставки. Приведение этой оси к одной
-	// форме отняло бы обе защиты, поэтому здесь называется РАСХОЖДЕНИЕ, а не
-	// вводится паритет.
-	sv := timestamppb.Now()
-
-	var errs []error
+// Register доставляет каждый tuple намерения, неся штамп writer-транзакции.
+//
+// Одна версия на все tuple'ы намерения здесь безвредна: намерение nlb несёт на
+// объект РОВНО ОДИН tuple (containment `project`), а гейт редоставки у
+// принимающей стороны ключуется на строке зеркала — то есть на объекте.
+// Появится второй tuple на тот же объект — версию обязана нести каждая строка
+// отдельно, см. godoc [ownerregister.Registration].
+func (s *SyncRegistrar) Register(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) error {
+	regs := make([]ownerregister.Registration, 0, len(intent.Tuples))
 	for _, t := range intent.Tuples {
-		cctx, cancel := context.WithTimeout(ctx, s.timeout)
-		_, err := s.cli.RegisterResource(cctx, &iampb.RegisterResourceRequest{
-			SubjectId:       t.SubjectID,
-			Relation:        t.Relation,
-			Object:          t.Object,
-			TraceId:         intent.ResourceID,
+		regs = append(regs, ownerregister.Registration{
+			Tuple: ownerregister.Tuple{
+				SubjectID: t.SubjectID,
+				Relation:  t.Relation,
+				Object:    t.Object,
+			},
+			TraceID:         intent.ResourceID,
 			Labels:          intent.Labels,
-			ParentProjectId: intent.ParentProjectID,
-			ParentAccountId: intent.ParentAccountID,
-			SourceVersion:   sv,
+			ParentProjectID: intent.ParentProjectID,
+			ParentAccountID: intent.ParentAccountID,
+			SourceVersion:   intentVersion,
 		})
-		cancel()
-		if cerr := classifySyncRegisterErr(err); cerr != nil {
-			errs = append(errs, fmt.Errorf("owner-tuple %s: %w", t.Object, cerr))
-		}
 	}
-	return errors.Join(errs...)
-}
-
-// classifySyncRegisterErr классифицирует per-tuple RegisterResource-ответ для
-// BEST-EFFORT sync-пути. Успех — только успех; всё остальное сурфейсится:
-//
-//   - nil / AlreadyExists → nil. Повторная регистрация того же tuple — успех
-//     (RegisterResource идемпотентен, read-delta), а не сбой.
-//   - PermissionDenied / InvalidArgument → raw. Это ТЕРМИНАЛЬНЫЙ отказ: повтор
-//     идентичного запроса не может изменить ни решение о доступе, ни разбор
-//     malformed-tuple. Async register-drainer его не «досводит» — он его POISON'ит
-//     (см. classifyRegisterErr в register_applier.go), поэтому молчание здесь
-//     означало бы, что о нерегистрируемом ресурсе не узнает вообще никто.
-//   - transient (Unavailable/DeadlineExceeded/Internal/…) → raw. iam не обработал
-//     запрос; register-drainer досведёт из durable outbox.
-//
-// Почему НЕ «benign» (историческая правка): раньше отказ в правах считался
-// ожидаемым, потому что nlb клал в intent привилегионное `admin` и структурное
-// `load_balancer`, которых least-priv proxy-policy не принимает — и на каждом
-// create получался предсказуемый отказ, который решили не логировать. Этих
-// отношений в intent'ах БОЛЬШЕ НЕТ (см. domain/fga_intent.go): эмитится только
-// containment `project`, и proxy-policy его принимает. Значит рутинного,
-// ожидаемого отказа не осталось — любой отказ теперь означает, что ресурс не
-// получил проекции, которая ему полагается. Обоснование пережило свой предмет;
-// молчание — нет.
-//
-// Возврат влияет только на то, что попадёт в лог (вызывающий best-effort глотает
-// результат — гейтить Operation.done на видимость tuple запрещено, ban #9). Но
-// этот лог и есть единственный признак поломки sync-пути, и «ноль отказов за всю
-// жизнь контроля» обязано быть отличимо от «отказы есть, но их не показывают».
-func classifySyncRegisterErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		return err // non-status (raw transport) — transient
-	}
-	switch st.Code() {
-	case codes.OK, codes.AlreadyExists:
-		return nil
-	default:
-		return err
-	}
+	return s.delivery.Register(ctx, regs)
 }
 
 // Compile-time check.

@@ -409,8 +409,8 @@ func (stubRepo) Get(context.Context, string) (*domain.Registry, error) {
 func (stubRepo) List(context.Context, registry.ListQuery) ([]*domain.Registry, string, error) {
 	return nil, "", nil
 }
-func (stubRepo) Insert(context.Context, *domain.Registry, domain.RegisterIntent) (*domain.Registry, error) {
-	return nil, nil
+func (stubRepo) Insert(context.Context, *domain.Registry, domain.RegisterIntent) (*domain.Registry, domain.RegisterIntent, error) {
+	return nil, domain.RegisterIntent{}, nil
 }
 func (stubRepo) Update(context.Context, registry.UpdateSpec, func(*domain.Registry) domain.RegisterIntent) (*domain.Registry, error) {
 	return nil, nil
@@ -494,14 +494,14 @@ func (stubCfg) ListConfigsExcludingNames(context.Context, string, []string, int,
 func (stubCfg) ConfigsByNames(context.Context, string, []string) ([]*domain.RepositoryConfig, error) {
 	return nil, nil
 }
-func (stubCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, nil
+func (stubCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, nil
 }
 func (stubCfg) UpdateConfig(context.Context, registry.RepositoryConfigUpdate, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	return nil, regerrors.ErrNotFound
 }
-func (stubCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
-	return nil, regerrors.ErrNotFound
+func (stubCfg) RekeyConfig(context.Context, string, string, string, ...registry.OutboxIntent) (*domain.RepositoryConfig, []registry.OutboxIntent, error) {
+	return nil, nil, regerrors.ErrNotFound
 }
 func (stubCfg) DeleteConfig(context.Context, string, string, ...registry.OutboxIntent) error {
 	return regerrors.ErrNotFound

@@ -17,6 +17,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -135,14 +136,14 @@ func (r *InstanceRepo) List(ctx context.Context, f ports.InstanceFilter, p ports
 // Insert вставляет строку ВМ + outbox CREATED + FGA register-intent в одной
 // writer-tx. Никаких attached_disks / inline-дисков — compute local attach-state
 // упразднён (storage-split).
-func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain.Instance, error) {
+func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain.Instance, []ownerregister.Registration, error) {
 	insertArgs, err := instanceInsertArgs(in)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, nil, ports.ErrInternal
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -150,20 +151,21 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
-		return nil, wrapPgErr(err, "Instance", in.Name)
+		return nil, nil, wrapPgErr(err, "Instance", in.Name)
 	}
 	if err := emitCompute(ctx, tx, "Instance", created.ID, "CREATED", instancePayload(created)); err != nil {
-		return nil, ports.ErrInternal
+		return nil, nil, ports.ErrInternal
 	}
 	// FGA owner-tuple register-intent for the Instance in the SAME writer-tx,
 	// carrying the instance labels + parent-scope to feed IAM resource_mirror.
-	if err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "Instance", created.ID, created.ProjectID, created.Labels); err != nil {
-		return nil, ports.ErrInternal
+	reg, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "Instance", created.ID, created.ProjectID, created.Labels)
+	if err != nil {
+		return nil, nil, ports.ErrInternal
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Instance", in.Name)
+		return nil, nil, wrapPgErr(err, "Instance", in.Name)
 	}
-	return created, nil
+	return created, registrationsOf(reg), nil
 }
 
 // Update обновляет mutable descriptive/resource поля ВМ + outbox UPDATED.
@@ -172,7 +174,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 // emitLabelsRegister: when true a fresh FGA register-intent carrying the updated
 // labels + parent-scope is emitted IN THE SAME writer-tx as the UPDATE (atomic) so
 // the IAM resource_mirror stays in sync.
-func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabelsRegister bool, changed []string) (*domain.Instance, error) {
+func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabelsRegister bool, changed []string) (*domain.Instance, []ownerregister.Registration, error) {
 	ch := changedSet(changed)
 	us := newUpdateSet(in.ID)
 	if _, ok := ch["name"]; ok {
@@ -184,7 +186,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	if _, ok := ch["labels"]; ok {
 		labelsJSON, err := marshalJSONB(in.Labels, "Instance.labels")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		us.add("labels", labelsJSON)
 	}
@@ -199,7 +201,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	if _, ok := ch["vm_spec"]; ok {
 		vmSpecJSON, err := marshalSpecJSONB(in.VMSpec, "Instance.vm_spec")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		us.add("vm_spec", vmSpecJSON)
 	}
@@ -225,7 +227,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, nil, ports.ErrInternal
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -247,27 +249,29 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		if requireStopped && errors.Is(err, pgx.ErrNoRows) {
 			var exists bool
 			if e2 := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM instances WHERE id = $1)`, in.ID).Scan(&exists); e2 != nil {
-				return nil, wrapPgErr(e2, "Instance", in.ID)
+				return nil, nil, wrapPgErr(e2, "Instance", in.ID)
 			}
 			if !exists {
-				return nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, in.ID)
+				return nil, nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, in.ID)
 			}
-			return nil, fmt.Errorf("%w: instance must be STOPPED to change sizing or placement", ports.ErrFailedPrecondition)
+			return nil, nil, fmt.Errorf("%w: instance must be STOPPED to change sizing or placement", ports.ErrFailedPrecondition)
 		}
-		return nil, wrapPgErr(err, "Instance", in.ID)
+		return nil, nil, wrapPgErr(err, "Instance", in.ID)
 	}
 	if err := emitCompute(ctx, tx, "Instance", updated.ID, "UPDATED", instancePayload(updated)); err != nil {
-		return nil, ports.ErrInternal
+		return nil, nil, ports.ErrInternal
 	}
+	var reg ownerregister.Registration
 	if emitLabelsRegister {
-		if err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "Instance", updated.ID, updated.ProjectID, updated.Labels); err != nil {
-			return nil, ports.ErrInternal
+		var eerr error
+		if reg, eerr = emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "Instance", updated.ID, updated.ProjectID, updated.Labels); eerr != nil {
+			return nil, nil, ports.ErrInternal
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Instance", in.ID)
+		return nil, nil, wrapPgErr(err, "Instance", in.ID)
 	}
-	return updated, nil
+	return updated, registrationsOf(reg), nil
 }
 
 // SetStatusCAS атомарно переводит instance из expected-status в next-status
@@ -496,7 +500,7 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	if err := emitCompute(ctx, tx, "Instance", id, "DELETED", map[string]any{"id": id}); err != nil {
 		return ports.ErrInternal
 	}
-	if err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "Instance", id, projectID, nil); err != nil {
+	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "Instance", id, projectID, nil); err != nil {
 		return ports.ErrInternal
 	}
 	if err := tx.Commit(ctx); err != nil {

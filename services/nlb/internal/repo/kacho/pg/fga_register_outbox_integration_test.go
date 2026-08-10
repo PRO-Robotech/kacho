@@ -86,7 +86,8 @@ func TestFGARegisterOutbox_SECD01_CreateIntentInWriterTx(t *testing.T) {
 		require.NoError(t, w.Outbox().Emit(ctx,
 			"nlb_load_balancer", string(lb.ID), projectID, "CREATED", map[string]any{"id": string(lb.ID)}))
 		// FGA-register-intent in the SAME writer-tx.
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent))
+		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+		require.NoError(t, emitErrctx)
 	})
 
 	rows := queryRegisterRows(t, ctx, tc)
@@ -131,7 +132,8 @@ func TestFGARegisterOutbox_SECD02_AbortNoIntent(t *testing.T) {
 	require.NoError(t, err)
 	_, err = w.LoadBalancers().Insert(ctx, lb)
 	require.NoError(t, err)
-	require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent))
+	_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+	require.NoError(t, emitErrctx)
 	// Abort instead of Commit (e.g. inline step failed).
 	w.Abort()
 
@@ -166,7 +168,8 @@ func TestFGARegisterOutbox_SECD03_UnregisterIntentOnDelete(t *testing.T) {
 	}
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
 		require.NoError(t, w.LoadBalancers().Delete(ctx, string(lb.ID)))
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unregIntent))
+		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister, unregIntent)
+		require.NoError(t, emitErrctx)
 	})
 
 	rows := queryRegisterRows(t, ctx, tc)
@@ -188,8 +191,9 @@ func TestFGARegisterOutbox_SECD06_EmptyTupleSetNoRow(t *testing.T) {
 	ctx := context.Background()
 
 	commitWriter(t, tc.Repo, func(w kacho.RepositoryWriter) {
-		require.NoError(t, w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-			domain.FGARegisterIntent{Kind: "X", ResourceID: "y"}))
+		_, emitErrctx := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
+			domain.FGARegisterIntent{Kind: "X", ResourceID: "y"})
+		require.NoError(t, emitErrctx)
 	})
 	require.Empty(t, queryRegisterRows(t, ctx, tc), "empty tuple set → no row")
 }

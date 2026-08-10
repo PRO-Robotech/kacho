@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 )
@@ -63,10 +65,19 @@ func domainToMap(v any) map[string]any {
 // kind simply has no FGA hierarchy to register — fail-safe, never an orphan
 // intent). An INSERT here fires the NOTIFY trigger waking the register-drainer;
 // if the surrounding tx aborts, the intent rolls back atomically.
-func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resourceID, projectID string, labels map[string]string) error {
+//
+// ВОЗВРАЩАЕТ ГОТОВУЮ СТРОКУ ДОСТАВКИ со штампом, ПРОЧИТАННЫМ ЧЕРЕЗ RETURNING.
+// Синхронная доставка обязана нести ИМЕННО ЕГО: обе доставки одной регистрации
+// (синхронная и дренаж этой же строки) приходят к владельцу прав, и он гасит
+// повторную строгим монотонным сравнением версий — при одном значении гашение
+// срабатывает, какая бы ни пришла первой. Здесь стояли часы момента доставки,
+// отчего гашение работало только в одном порядке, а в обратном заставляло
+// пересчитывать материализацию заново на горячем пути создания.
+// Неотображаемый kind / пустой id → нулевая строка (регистрировать нечего).
+func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resourceID, projectID string, labels map[string]string) (ownerregister.Registration, error) {
 	tuple, ok := fgaintent.ProjectHierarchyTuple(kind, resourceID, projectID)
 	if !ok {
-		return nil
+		return ownerregister.Registration{}, nil
 	}
 	b, err := fgaintent.Encode(fgaintent.Payload{
 		Tuples:          []fgaintent.Tuple{tuple},
@@ -74,7 +85,7 @@ func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resource
 		ParentProjectID: projectID,
 	})
 	if err != nil {
-		return fmt.Errorf("encode fga intent: %w", err)
+		return ownerregister.Registration{}, fmt.Errorf("encode fga intent: %w", err)
 	}
 	// Stamp the β-hardening monotonic source_version into the payload from the DB
 	// clock (now()) AT INSERT TIME, inside this writer-tx — the exact instant the
@@ -83,14 +94,37 @@ func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resource
 	// (last-source-state-wins). Compute has no per-row updated_at; the intent-emit
 	// now() is the correct, least-invasive per-object marker and matches the row's
 	// own created_at default (same transaction_timestamp()).
-	_, err = tx.Exec(ctx,
+	var stamped time.Time
+	if err = tx.QueryRow(ctx,
 		fmt.Sprintf(`INSERT INTO %s (event_type, resource_kind, resource_id, payload)
-		             VALUES ($1, $2, $3, jsonb_set($4::jsonb, '{source_version}', to_jsonb(now())))`, fgaRegisterOutboxTable),
-		event, kind, resourceID, b)
-	if err != nil {
-		return fmt.Errorf("emit fga register intent: %w", err)
+		             VALUES ($1, $2, $3, jsonb_set($4::jsonb, '{source_version}', to_jsonb(now())))
+		             RETURNING (payload->>'source_version')::timestamptz`, fgaRegisterOutboxTable),
+		event, kind, resourceID, b).Scan(&stamped); err != nil {
+		return ownerregister.Registration{}, fmt.Errorf("emit fga register intent: %w", err)
 	}
-	return nil
+	return ownerregister.Registration{
+		Tuple: ownerregister.Tuple{
+			SubjectID: tuple.SubjectID,
+			Relation:  tuple.Relation,
+			Object:    tuple.Object,
+		},
+		TraceID:         resourceID,
+		Labels:          labels,
+		ParentProjectID: projectID,
+		SourceVersion:   stamped,
+	}, nil
 }
 
 func instancePayload(in *domain.Instance) map[string]any { return domainToMap(in) }
+
+// registrationsOf — набор доставки из одной строки. Нулевая строка (kind не
+// отображается, метки не менялись) даёт ПУСТОЙ набор, а не набор с пустой
+// строкой: общий регистратор нулевую версию отвергает, и молчаливо подсунуть ему
+// «ничего» под видом «чего-то» значило бы завести отказ там, где доставлять
+// действительно нечего.
+func registrationsOf(reg ownerregister.Registration) []ownerregister.Registration {
+	if reg.SourceVersion.IsZero() {
+		return nil
+	}
+	return []ownerregister.Registration{reg}
+}

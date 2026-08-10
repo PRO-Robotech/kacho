@@ -206,7 +206,11 @@ func runServe(cfg config.Config) error {
 	// + порт, что drainer; register-drainer остаётся at-least-once backstop'ом. nil iamConn
 	// (breakglass/dev-insecure) → sync-путь пропускается (syncReg остаётся nil).
 	if iamConn != nil {
-		registryUC.WithSyncRegistrar(iamclient.NewSyncRegistrar(iamclient.NewRegisterResourceClient(iamConn)))
+		syncReg, rerr := iamclient.NewSyncRegistrar(iamclient.NewRegisterResourceClient(iamConn))
+		if rerr != nil {
+			return fmt.Errorf("собрать синхронный registrar: %w", rerr)
+		}
+		registryUC.WithSyncRegistrar(syncReg)
 	}
 
 	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────

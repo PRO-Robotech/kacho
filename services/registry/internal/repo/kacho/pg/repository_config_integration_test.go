@@ -32,7 +32,7 @@ func seedRegistry(t *testing.T, pool *pgxpool.Pool, project, name string) string
 	t.Helper()
 	repo := kachopg.NewRegistryRepo(pool)
 	reg := newReg(project, name, nil)
-	created, err := repo.Insert(context.Background(), reg,
+	created, _, err := repo.Insert(context.Background(), reg,
 		domain.RegisterIntentForCreate(reg, "user", "usr-seed"))
 	require.NoError(t, err)
 	return created.ID
@@ -64,7 +64,7 @@ func TestRepoConfig_RG1A01_InsertGetRoundTrip(t *testing.T) {
 		Visibility:  domain.VisibilityPrivate,
 	}
 	before := time.Now().Add(-time.Second)
-	got, err := repo.InsertConfig(ctx, cfg)
+	got, _, err := repo.InsertConfig(ctx, cfg)
 	require.NoError(t, err)
 	require.Equal(t, regID, got.RegistryID)
 	require.Equal(t, "backend/api", got.Name)
@@ -91,10 +91,10 @@ func TestRepoConfig_RG1A02_DuplicateInsert_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-a02")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
-	_, err = repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
+	_, _, err = repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
 	require.Error(t, err)
 	require.ErrorIs(t, err, regerrors.ErrAlreadyExists)
 
@@ -113,7 +113,7 @@ func TestRepoConfig_InsertMissingRegistry_FK_FailedPrecondition(t *testing.T) {
 	repo := kachopg.NewRepositoryConfigRepo(pool)
 	ctx := context.Background()
 
-	_, err := repo.InsertConfig(ctx, newCfg("regNONEXISTENT", "backend/api", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg("regNONEXISTENT", "backend/api", domain.VisibilityPrivate, nil))
 	require.Error(t, err)
 	require.ErrorIs(t, err, regerrors.ErrFailedPrecondition, "FK 23503 → FailedPrecondition")
 	// Никакого leak'а сырого pgx-текста.
@@ -131,7 +131,7 @@ func TestRepoConfig_RG1D6_VisibilityCheckDomain(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-vis")
 
-	pub, err := repo.InsertConfig(ctx, newCfg(regID, "public/img", domain.VisibilityPublic, nil))
+	pub, _, err := repo.InsertConfig(ctx, newCfg(regID, "public/img", domain.VisibilityPublic, nil))
 	require.NoError(t, err)
 	require.Equal(t, domain.VisibilityPublic, pub.Visibility)
 	got, err := repo.GetConfig(ctx, regID, "public/img")
@@ -154,11 +154,11 @@ func TestRepoConfig_RG1A16_RenameRekey(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-a16")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "old/name", domain.VisibilityPrivate,
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "old/name", domain.VisibilityPrivate,
 		map[string]string{"k": "v"}))
 	require.NoError(t, err)
 
-	renamed, err := repo.RekeyConfig(ctx, regID, "old/name", "new/name")
+	renamed, _, err := repo.RekeyConfig(ctx, regID, "old/name", "new/name")
 	require.NoError(t, err)
 	require.Equal(t, "new/name", renamed.Name)
 	require.Equal(t, map[string]string{"k": "v"}, renamed.Labels, "config переезжает с именем")
@@ -180,12 +180,12 @@ func TestRepoConfig_RG1A17_RenameCollision_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-a17")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "src/a", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
-	_, err = repo.InsertConfig(ctx, newCfg(regID, "dst/b", domain.VisibilityPrivate, nil))
+	_, _, err = repo.InsertConfig(ctx, newCfg(regID, "dst/b", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
-	_, err = repo.RekeyConfig(ctx, regID, "src/a", "dst/b")
+	_, _, err = repo.RekeyConfig(ctx, regID, "src/a", "dst/b")
 	require.ErrorIs(t, err, regerrors.ErrAlreadyExists)
 	st := status.Convert(serviceerr.ToStatus(err))
 	require.Equal(t, codes.AlreadyExists, st.Code())
@@ -204,7 +204,7 @@ func TestRepoConfig_RenameMissingSource_NotFound(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-rns")
 
-	_, err := repo.RekeyConfig(ctx, regID, "ghost/x", "new/y")
+	_, _, err := repo.RekeyConfig(ctx, regID, "ghost/x", "new/y")
 	require.ErrorIs(t, err, regerrors.ErrNotFound)
 }
 
@@ -216,7 +216,7 @@ func TestRepoConfig_RG1A09_UpdateMaskDriven(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-upd")
 
-	_, err := repo.InsertConfig(ctx, &domain.RepositoryConfig{
+	_, _, err := repo.InsertConfig(ctx, &domain.RepositoryConfig{
 		RegistryID: regID, Name: "backend/api", Description: "v1",
 		Labels: map[string]string{"team": "core"}, Visibility: domain.VisibilityPrivate,
 	})
@@ -257,7 +257,7 @@ func TestRepoConfig_RG1A13_DeleteConfig(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-del")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "backend/api", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
 
 	require.NoError(t, repo.DeleteConfig(ctx, regID, "backend/api"))
@@ -276,9 +276,9 @@ func TestRepoConfig_FKCascadeOnRegistryDelete(t *testing.T) {
 	ctx := context.Background()
 	regID := seedRegistry(t, pool, "prj-P", "reg-cascade")
 
-	_, err := repo.InsertConfig(ctx, newCfg(regID, "a/b", domain.VisibilityPrivate, nil))
+	_, _, err := repo.InsertConfig(ctx, newCfg(regID, "a/b", domain.VisibilityPrivate, nil))
 	require.NoError(t, err)
-	_, err = repo.InsertConfig(ctx, newCfg(regID, "c/d", domain.VisibilityPublic, nil))
+	_, _, err = repo.InsertConfig(ctx, newCfg(regID, "c/d", domain.VisibilityPublic, nil))
 	require.NoError(t, err)
 
 	// Физически удаляем реестр (registry Delete) — overlay-строки должны cascade-исчезнуть.
@@ -298,7 +298,7 @@ func TestRepoConfig_RG1A20_ListConfigs(t *testing.T) {
 	regID := seedRegistry(t, pool, "prj-P", "reg-list")
 
 	for _, n := range []string{"cfg/only", "hidden/svc", "zzz/last"} {
-		_, err := repo.InsertConfig(ctx, newCfg(regID, n, domain.VisibilityPrivate, nil))
+		_, _, err := repo.InsertConfig(ctx, newCfg(regID, n, domain.VisibilityPrivate, nil))
 		require.NoError(t, err)
 	}
 	list, err := repo.ListConfigs(ctx, regID)

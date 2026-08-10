@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,11 +58,11 @@ func (u *UpdateLoadBalancerUseCase) WithRegistrar(r Registrar) *UpdateLoadBalanc
 // syncRegister — BEST-EFFORT sync-доставка mirror-intent'а после durable commit.
 // Отказ ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent + drainer —
 // at-least-once backstop; Operation.done НЕ гейтится на видимость (ban #9).
-func (u *UpdateLoadBalancerUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+func (u *UpdateLoadBalancerUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time) {
 	if u.registrar == nil {
 		return
 	}
-	if err := u.registrar.Register(ctx, intent); err != nil {
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
 		u.logger.Warn("LoadBalancer.Update sync mirror registration incomplete; register-drainer will reconcile",
 			"err", err, "load_balancer_id", intent.ResourceID)
 	}
@@ -247,17 +248,28 @@ func (u *UpdateLoadBalancerUseCase) doUpdate(ctx context.Context, lb domain.Load
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// Намерение строится ОДИН раз и доставляется обеими доставками — этой и
+	// дренажом той же строки. Прежде его собирали дважды: очередь получала одно
+	// значение, синхронный вызов — второе, построенное заново, и разойтись они
+	// могли бы молча. Объявление стоит ВНЕ ветки, потому что доставка идёт после
+	// коммита — то есть за пределами блока, где намерение эмитится.
+	var (
+		intent        domain.FGARegisterIntent
+		intentVersion time.Time
+	)
 	if emitMirror {
-		if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-			lbMirrorIntent(updated)); err != nil {
-			return nil, mapDomainErr(err)
+		intent = lbMirrorIntent(updated)
+		var eerr error
+		intentVersion, eerr = w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, intent)
+		if eerr != nil {
+			return nil, mapDomainErr(eerr)
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if emitMirror {
-		u.syncRegister(ctx, lbMirrorIntent(updated))
+		u.syncRegister(ctx, intent, intentVersion)
 	}
 
 	pb, err := lbRecordToProto(updated)

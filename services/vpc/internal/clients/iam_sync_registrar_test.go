@@ -27,9 +27,12 @@ func item(object string, labels map[string]string, parent string) fgaregister.It
 // корректными полями (subject/relation/object/labels/parent + source_version).
 func TestSyncRegistrar_Register_AllItems(t *testing.T) {
 	fake := &fakeIAMRegisterClient{}
-	reg := NewSyncRegistrar(fake)
+	reg, err := NewSyncRegistrar(fake)
+	if err != nil {
+		t.Fatalf("NewSyncRegistrar: %v", err)
+	}
 
-	err := reg.Register(context.Background(), []fgaregister.Item{
+	err = reg.Register(context.Background(), []fgaregister.Item{
 		item("vpc_network:net1", map[string]string{"team": "core"}, "prj_x"),
 		item("vpc_security_group:sg1", nil, ""),
 	}, time.Now())
@@ -49,9 +52,12 @@ func TestSyncRegistrar_Register_AllItems(t *testing.T) {
 // ошибка прекращает регистрацию) → create-Operation завершится с ошибкой.
 func TestSyncRegistrar_Register_FailClosed(t *testing.T) {
 	fake := &fakeIAMRegisterClient{errSeq: []error{errors.New("iam unavailable")}}
-	reg := NewSyncRegistrar(fake)
+	reg, err := NewSyncRegistrar(fake)
+	if err != nil {
+		t.Fatalf("NewSyncRegistrar: %v", err)
+	}
 
-	err := reg.Register(context.Background(), []fgaregister.Item{item("vpc_network:net1", nil, "")}, time.Now())
+	err = reg.Register(context.Background(), []fgaregister.Item{item("vpc_network:net1", nil, "")}, time.Now())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpc_network:net1")
 }
@@ -59,7 +65,10 @@ func TestSyncRegistrar_Register_FailClosed(t *testing.T) {
 // Пустой список Item'ов → no-op, без ошибок.
 func TestSyncRegistrar_Register_Empty(t *testing.T) {
 	fake := &fakeIAMRegisterClient{}
-	reg := NewSyncRegistrar(fake)
+	reg, err := NewSyncRegistrar(fake)
+	if err != nil {
+		t.Fatalf("NewSyncRegistrar: %v", err)
+	}
 	require.NoError(t, reg.Register(context.Background(), nil, time.Now()))
 	assert.Empty(t, fake.registerCalls)
 }
@@ -79,10 +88,13 @@ func TestSyncRegistrar_Register_Empty(t *testing.T) {
 // `NotNil`, и он остаётся зелёным при любом штампе, то есть свойства не измеряет.
 func TestSyncRegistrar_Register_CarriesIntentSourceVersion(t *testing.T) {
 	fake := &fakeIAMRegisterClient{}
-	reg := NewSyncRegistrar(fake)
+	reg, err := NewSyncRegistrar(fake)
+	if err != nil {
+		t.Fatalf("NewSyncRegistrar: %v", err)
+	}
 	intentVersion := time.Date(2026, 8, 4, 12, 0, 0, 123456000, time.UTC)
 
-	err := reg.Register(context.Background(), []fgaregister.Item{
+	err = reg.Register(context.Background(), []fgaregister.Item{
 		item("vpc_network:net1", nil, "prj_x"),
 		item("vpc_security_group:sg1", nil, "prj_x"),
 	}, intentVersion)

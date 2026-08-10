@@ -5,6 +5,7 @@ package pg
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -31,13 +32,13 @@ type fgaRegisterEmitter struct {
 // creator + parent-link),: весь набор ресурса одной строкой.
 // CHECK на event_type / jsonb_typeof заложены в миграции 0002 — typo в caller'е
 // → SQLSTATE 23514 → ErrInvalidArg в mapPgErr.
-func (e *fgaRegisterEmitter) Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) error {
+func (e *fgaRegisterEmitter) Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) (time.Time, error) {
 	if len(intent.Tuples) == 0 {
-		return nil
+		return time.Time{}, nil
 	}
 	payload, err := intent.Marshal()
 	if err != nil {
-		return mapPgErr(err, "fga_register_outbox", "")
+		return time.Time{}, mapPgErr(err, "fga_register_outbox", "")
 	}
 	// Stamp the monotonic source_version into the payload AT INSERT TIME, inside
 	// this writer-tx — the exact instant the source-state is recorded. jsonb_set
@@ -72,10 +73,12 @@ func (e *fgaRegisterEmitter) Emit(ctx context.Context, eventType string, intent 
 	const q = `INSERT INTO kacho_nlb.fga_register_outbox
         (event_type, payload, resource_kind, resource_id)
         VALUES ($1, jsonb_set($2::jsonb, '{source_version}',
-                to_jsonb(now() + ($5::bigint * interval '1 microsecond'))), $3, $4)`
-	if _, err := e.tx.Exec(ctx, q, eventType, payload, intent.Kind, intent.ResourceID, ordinal); err != nil {
-		return mapPgErr(err, "fga_register_outbox", "")
+                to_jsonb(now() + ($5::bigint * interval '1 microsecond'))), $3, $4)
+        RETURNING (payload->>'source_version')::timestamptz`
+	var stamped time.Time
+	if err := e.tx.QueryRow(ctx, q, eventType, payload, intent.Kind, intent.ResourceID, ordinal).Scan(&stamped); err != nil {
+		return time.Time{}, mapPgErr(err, "fga_register_outbox", "")
 	}
 	*e.seq = ordinal + 1
-	return nil
+	return stamped, nil
 }

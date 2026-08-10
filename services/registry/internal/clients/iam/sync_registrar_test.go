@@ -15,12 +15,18 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
 // deadlineCapturingRegisterClient — fake RegisterResourceClient, записывающий per-call
 // ctx-deadline (проверка per-call 5s timeout sync-registrar'а, architecture.md
 // «per-call deadline на КАЖДОМ внешнем вызове»).
+// fixtureStamp — подставной штамп writer-транзакции. Намеренно НЕ похож на
+// «сейчас»: значение, отличимое от настоящего, не даёт спутать проброс с
+// выдумыванием на месте.
+var fixtureStamp = time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
+
 type deadlineCapturingRegisterClient struct {
 	reqs      []*iamv1.RegisterResourceRequest
 	deadlines []time.Time
@@ -48,12 +54,16 @@ func (f *deadlineCapturingRegisterClient) UnregisterResource(
 // NewRegisterApplier (SubjectId/Relation/Object/TraceId=ResourceID/Labels/ParentProjectId).
 func TestSyncRegistrar_OneCallPerTupleWithMapping(t *testing.T) {
 	fake := &scriptedRegisterClient{}
-	sr := NewSyncRegistrar(fake)
+	sr, cerr := NewSyncRegistrar(fake)
+	require.NoError(t, cerr)
 
 	// Create-registry intent несёт [project-tuple, owner-tuple] + Labels + ParentProjectID.
 	intent := domain.RegisterIntentForCreate(
 		&domain.Registry{ID: "reg-1", ProjectID: "prj-1", Labels: map[string]string{"team": "core"}},
 		"user", "usr-abc")
+	// Версия writer-транзакции обязательна: без неё доставки не происходит вовсе,
+	// и все утверждения ниже стали бы вакуумными.
+	intent.SourceVersion = domain.SourceVersion{Time: fixtureStamp}
 	require.Len(t, intent.Tuples, 2, "project-tuple + owner-tuple")
 
 	err := sr.Register(context.Background(), []domain.RegisterIntent{intent})
@@ -75,44 +85,58 @@ func TestSyncRegistrar_OneCallPerTupleWithMapping(t *testing.T) {
 // (напр. RepoPush + public-grant) регистрирует все tuple всех intent'ов.
 func TestSyncRegistrar_MultipleIntents_AllTuplesRegistered(t *testing.T) {
 	fake := &scriptedRegisterClient{}
-	sr := NewSyncRegistrar(fake)
+	sr, cerr := NewSyncRegistrar(fake)
+	require.NoError(t, cerr)
 
 	push := domain.RegisterIntentForRepoPush("reg-1", "team/app", "prj-1", "service_account:sva-x")
+	push.SourceVersion = domain.SourceVersion{Time: fixtureStamp}
 	pub := domain.RegisterIntentForRepoPublicGrant("reg-1", "team/app")
+	pub.SourceVersion = domain.SourceVersion{Time: fixtureStamp.Add(time.Millisecond)}
 	total := len(push.Tuples) + len(pub.Tuples)
 
 	require.NoError(t, sr.Register(context.Background(), []domain.RegisterIntent{push, pub}))
 	require.Len(t, fake.registerReqs, total, "все tuple обоих intent'ов зарегистрированы")
 }
 
-// TestSyncRegistrar_PropagatesFirstError — ошибка RegisterResource прекращает набор и
-// возвращается (wrapped) наверх; вызывающий логирует WARN (best-effort — не здесь).
-func TestSyncRegistrar_PropagatesFirstError(t *testing.T) {
+// TestSyncRegistrar_SurfacesFailureWithoutAbandoningTheRest — отказ на одном
+// tuple'е возвращается наверх и при этом НЕ обрывает набор.
+//
+// Прежняя редакция утверждала обратное («первая ошибка обрывает остаток») — это
+// была семантика собственного регистратора registry. Общая форма пробует ВСЕ
+// строки: первым в наборе идёт указатель принадлежности объекта, через который
+// администратор аккаунта достаёт ресурс вообще, и терять соседей по набору из-за
+// отказа на одном значит терять этот доступ до дренажа.
+func TestSyncRegistrar_SurfacesFailureWithoutAbandoningTheRest(t *testing.T) {
 	boom := errors.New("iam unavailable")
 	fake := &scriptedRegisterClient{registerErrs: []error{boom}}
-	sr := NewSyncRegistrar(fake)
+	sr, cerr := NewSyncRegistrar(fake)
+	require.NoError(t, cerr)
 
 	intent := domain.RegisterIntentForCreate(&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
+	intent.SourceVersion = domain.SourceVersion{Time: fixtureStamp}
 	err := sr.Register(context.Background(), []domain.RegisterIntent{intent})
 	require.Error(t, err)
-	require.ErrorIs(t, err, boom, "первая ошибка проброшена (wrapped %w)")
-	require.Len(t, fake.registerReqs, 1, "первая ошибка обрывает остаток набора")
+	require.ErrorIs(t, err, boom, "отказ обязан быть виден вызывающему (wrapped %w)")
+	require.Len(t, fake.registerReqs, 2, "отказ на первом tuple'е не отменяет попытки по остальным")
 }
 
-// TestSyncRegistrar_NilClient — nil RegisterResourceClient → error (defensive; в проде
-// serve.go подключает sync-registrar только при непустом iamConn).
-func TestSyncRegistrar_NilClient(t *testing.T) {
-	sr := NewSyncRegistrar(nil)
-	intent := domain.RegisterIntent{Tuples: []domain.FGATuple{
-		{SubjectID: "user:usr-1", Relation: "owner", Object: "registry_registry:reg-1"},
-	}}
-	require.Error(t, sr.Register(context.Background(), []domain.RegisterIntent{intent}))
+// TestSyncRegistrar_NilClientRefusedByConstructor — нулевой клиент отвергается
+// КОНСТРУКТОРОМ, а не проявляется отказом на первой доставке.
+//
+// Разница не косметическая: отказ при сборке роняет старт, а отказ на доставке
+// — всего лишь строка в логе на пути, который объявлен best-effort. Пустая
+// операция здесь неотличима от исправно работающего ускорителя, который никогда
+// ничего не ускорял.
+func TestSyncRegistrar_NilClientRefusedByConstructor(t *testing.T) {
+	_, err := NewSyncRegistrar(nil)
+	require.ErrorIs(t, err, ownerregister.ErrNoClient)
 }
 
 // TestSyncRegistrar_EmptyIntents — пустой набор → без вызовов, nil-error.
 func TestSyncRegistrar_EmptyIntents(t *testing.T) {
 	fake := &scriptedRegisterClient{}
-	sr := NewSyncRegistrar(fake)
+	sr, cerr := NewSyncRegistrar(fake)
+	require.NoError(t, cerr)
 	require.NoError(t, sr.Register(context.Background(), nil))
 	require.Empty(t, fake.registerReqs)
 }
@@ -121,9 +145,11 @@ func TestSyncRegistrar_EmptyIntents(t *testing.T) {
 // per-call deadline (~5s), не сырой request-ctx (неотвечающий iam иначе повис бы).
 func TestSyncRegistrar_PerCallDeadline(t *testing.T) {
 	fake := &deadlineCapturingRegisterClient{}
-	sr := NewSyncRegistrar(fake)
+	sr, cerr := NewSyncRegistrar(fake)
+	require.NoError(t, cerr)
 
 	intent := domain.RegisterIntentForCreate(&domain.Registry{ID: "reg-1", ProjectID: "prj-1"}, "user", "usr-abc")
+	intent.SourceVersion = domain.SourceVersion{Time: fixtureStamp}
 	require.NoError(t, sr.Register(context.Background(), []domain.RegisterIntent{intent}))
 	require.Len(t, fake.hadDL, 2)
 	for i := range fake.hadDL {

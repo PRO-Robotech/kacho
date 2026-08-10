@@ -5,6 +5,7 @@ package kacho
 
 import (
 	"context"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -23,6 +24,14 @@ import (
 // регистрировать (напр. system-initiated Create без creator-tuple, но с
 // project-hierarchy — набор непуст; полностью пустой набор не возникает в
 // нормальном флоу, но guard защищает от записи пустой строки).
+//
+// ВОЗВРАЩАЕТСЯ ШТАМП, КОТОРЫЙ БД ПОСТАВИЛА ЭТОЙ СТРОКЕ внутри writer-транзакции
+// (`now() + <порядковый номер> µs`, см. реализацию). Его обязана нести и
+// СИНХРОННАЯ доставка того же намерения: обе доставки приходят к владельцу прав,
+// и он гасит повторную строгим монотонным сравнением версий — при одном значении
+// гашение срабатывает, какая бы ни пришла первой. Синхронный путь здесь штамповал
+// собственные часы момента доставки, отчего гашение работало только в одном
+// порядке. Пустой набор tuple → нулевое время (строки не было).
 type FGARegisterEmitter interface {
-	Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) error
+	Emit(ctx context.Context, eventType string, intent domain.FGARegisterIntent) (time.Time, error)
 }

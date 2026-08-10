@@ -1,32 +1,37 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// sync_registrar_test.go — unit-тесты SyncRegistrar (adapter поверх
-// InternalIAMService.RegisterResource) БЕЗ Postgres: scripted fake-client.
+// sync_registrar_test.go — пробы ПЕРЕВОДА намерения nlb в общую форму доставки.
 //
-// Проверяет sync-primary owner-tuple контракт:
-//   - per-tuple RegisterResource с forward'ом mirror-полей + монотонного
-//     source_version + per-call deadline;
-//   - NON-short-circuit (все tuple'ы атакуются даже при ошибке на предыдущем);
-//   - терминальный отказ (PermissionDenied/InvalidArgument) — ВСПЛЫВАЕТ: повтор
-//     идентичного запроса его не изменит, а async drainer такой intent poison'ит;
-//   - transient-сбой (Unavailable) — всплывает как error (use-case логирует
-//     best-effort);
-//   - nil client → no-op.
+// # Что здесь проверяется и чего здесь БОЛЬШЕ НЕТ
+//
+// Регистратор nlb перестал быть самостоятельной реализацией: цикл по tuple'ам,
+// срок вызова, сборка запроса, поведение при отказе и проброс личности живут
+// теперь в ОДНОМ месте (pkg/ownerregister) и проверяются его собственными
+// пробами. Здесь остаётся ровно то, что принадлежит nlb, — ПЕРЕВОД: какие поля
+// намерения куда легли и какая версия поехала.
+//
+// Прежние шесть проб этого файла (forward полей, всплытие терминального и
+// временного отказа, отсутствие короткого замыкания, продолжение после
+// временного) переехали в пробы общей формы вместе со своим предметом. Седьмая
+// — «нулевой клиент → пустая операция» — НЕ переехала, а ПЕРЕПИСАНА: общая
+// форма такой клиент ОТВЕРГАЕТ. Прежнее поведение делало ускоритель, который
+// никогда ничего не ускорял, неотличимым от исправного; проба ниже закрепляет
+// новое, и это осознанная смена контракта, а не потеря проверки.
 package iam_test
 
 import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -62,6 +67,16 @@ func (c *scriptedRegisterClient) UnregisterResource(
 	_ context.Context, _ *iampb.UnregisterResourceRequest, _ ...grpc.CallOption,
 ) (*iampb.UnregisterResourceResponse, error) {
 	return &iampb.UnregisterResourceResponse{}, nil
+}
+
+// calls — снятые запросы. Возвращается копия: проба читает их после вызова, а
+// дублёр мог бы дописывать из другой горутины.
+func (c *scriptedRegisterClient) calls() []*iampb.RegisterResourceRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]*iampb.RegisterResourceRequest, len(c.register))
+	copy(out, c.register)
+	return out
 }
 
 func (c *scriptedRegisterClient) relations() []string {
@@ -104,118 +119,49 @@ func lbUserIntent() domain.FGARegisterIntent {
 // RegisterResource вызывается по одному разу на tuple; forward'ит mirror-поля
 // (labels/parent) + монотонный source_version (stamped registrar'ом) + несёт
 // per-call deadline. Возвращает nil.
-func TestSyncRegistrar_RegistersEachTuple_ForwardsMirrorFields(t *testing.T) {
+// TestVersionOfTheWriterTxTravelsVerbatim — версия, которой БД проштамповала
+// durable-намерение, доезжает до владельца прав БЕЗ ИЗМЕНЕНИЙ, и ею помечается
+// КАЖДЫЙ tuple намерения.
+//
+// Это предмет всей унификации. Утверждается РАВЕНСТВО исходному штампу, а не
+// «версия не пуста»: «не пуста» зеленело бы и на часах момента доставки — ровно
+// на том, что здесь и стояло.
+func TestVersionOfTheWriterTxTravelsVerbatim(t *testing.T) {
 	cli := &scriptedRegisterClient{}
-	reg := iam.NewSyncRegistrar(cli)
-
-	err := reg.Register(context.Background(), lbUserIntent())
+	reg, err := iam.NewSyncRegistrar(cli)
 	require.NoError(t, err)
 
-	require.Len(t, cli.register, 2, "one RegisterResource per tuple")
-	// project-tuple первым.
-	got := cli.register[0]
-	assert.Equal(t, domain.FGARelationProject, got.GetRelation())
-	assert.Equal(t, "project:"+testProjID, got.GetSubjectId())
-	assert.Equal(t, "nlb_network_load_balancer:"+testLBID, got.GetObject())
-	assert.Equal(t, map[string]string{"tier": "critical"}, got.GetLabels(), "labels forwarded")
-	assert.Equal(t, testProjID, got.GetParentProjectId(), "parent_project_id forwarded")
-	assert.Equal(t, "acc-aaaaaaaaaaaaaaaa", got.GetParentAccountId(), "parent_account_id forwarded")
-	require.NotNil(t, got.GetSourceVersion(), "source_version stamped by sync-registrar")
-	// per-call deadline на каждом вызове.
-	for i, ok := range cli.hadDeadline {
-		assert.Truef(t, ok, "call[%d] must carry a per-call deadline", i)
+	stamp := time.Date(2026, 8, 10, 11, 22, 33, 456789000, time.UTC)
+	intent := domain.FGARegisterIntent{
+		Kind:            "NetworkLoadBalancer",
+		ResourceID:      "nlb-1",
+		Tuples:          []domain.FGATuple{{SubjectID: "project:prj-1", Relation: "project", Object: "nlb_load_balancer:nlb-1"}},
+		Labels:          map[string]string{"env": "prod"},
+		ParentProjectID: "prj-1",
+		ParentAccountID: "acc-1",
 	}
+	require.NoError(t, reg.Register(context.Background(), intent, stamp))
+
+	got := cli.calls()
+	require.Len(t, got, 1)
+	assert.True(t, got[0].GetSourceVersion().AsTime().Equal(stamp),
+		"версия изменилась в пути: отправлено %s, штамп writer-транзакции %s",
+		got[0].GetSourceVersion().AsTime(), stamp)
+	// Поля зеркала — вместе с версией: недосланное поле не роняет ничего сразу,
+	// оно молча обедняет зеркало, по которому резолвится принадлежность объекта.
+	assert.Equal(t, "nlb-1", got[0].GetTraceId())
+	assert.Equal(t, "prj-1", got[0].GetParentProjectId())
+	assert.Equal(t, "acc-1", got[0].GetParentAccountId())
+	assert.Equal(t, "prod", got[0].GetLabels()["env"])
 }
 
-// TestSyncRegistrar_PermissionDenied_Surfaced — отказ владельца прав СУРФЕЙСИТСЯ.
+// TestNilClientRefusesInsteadOfSilentlyDoingNothing — нулевой клиент есть ОТКАЗ.
 //
-// Повтор идентичного запроса не может изменить решение о доступе, поэтому такой
-// отказ — не «временная помеха» и не «ожидаемая политика»: единственное
-// отношение, которое nlb сегодня эмитит, — containment `project`, и оно обязано
-// приниматься. Отказ по нему означает неверную настройку прав, а не штатный ход
-// событий; проглотить его — оставить владельца ресурса без доступа молча.
-//
-// Возврат влияет только на лог (вызывающий best-effort глотает результат), но
-// именно этот лог и есть единственный признак поломки на sync-пути.
-func TestSyncRegistrar_PermissionDenied_Surfaced(t *testing.T) {
-	cli := &scriptedRegisterClient{
-		errByRelation: map[string]error{
-			domain.FGARelationProject: status.Error(codes.PermissionDenied, "permission denied"),
-		},
-	}
-	reg := iam.NewSyncRegistrar(cli)
-
-	err := reg.Register(context.Background(), lbUserIntent())
-	require.Error(t, err, "a rights refusal on the containment tuple must not be swallowed")
-	require.ErrorContains(t, err, "nlb_network_load_balancer:"+testLBID,
-		"the surfaced error names the object whose registration was refused")
-}
-
-// TestSyncRegistrar_InvalidArgument_Surfaced — malformed tuple тоже сурфейсится:
-// async register-drainer такой intent POISON'ит (терминально), поэтому «drainer
-// досведёт» здесь неверно — досводить нечего, и молчание скрыло бы дефект
-// продюсера.
-func TestSyncRegistrar_InvalidArgument_Surfaced(t *testing.T) {
-	cli := &scriptedRegisterClient{
-		errByRelation: map[string]error{
-			domain.FGARelationProject: status.Error(codes.InvalidArgument, "bad tuple"),
-		},
-	}
-	reg := iam.NewSyncRegistrar(cli)
-	require.Error(t, reg.Register(context.Background(), lbUserIntent()),
-		"a malformed-tuple rejection must not be swallowed")
-}
-
-// TestSyncRegistrar_RefusalDoesNotShortCircuit — отказ на одном tuple не отменяет
-// попытку по остальным (инвариант NON-short-circuit сохраняется и после того, как
-// отказ перестал считаться безобидным).
-func TestSyncRegistrar_RefusalDoesNotShortCircuit(t *testing.T) {
-	cli := &scriptedRegisterClient{
-		errByRelation: map[string]error{
-			domain.FGARelationProject: status.Error(codes.PermissionDenied, "permission denied"),
-		},
-	}
-	reg := iam.NewSyncRegistrar(cli)
-
-	require.Error(t, reg.Register(context.Background(), lbUserIntent()))
-	require.Equal(t, []string{domain.FGARelationProject, domain.FGARelationAdmin}, cli.relations(),
-		"non-short-circuit: every tuple attempted even after a refusal")
-}
-
-// TestSyncRegistrar_TransientError_Surfaced — iam недоступен (Unavailable) на
-// containment-tuple → Register возвращает НЕ-nil (transient), чтобы use-case
-// залогировал best-effort. Async drainer досведёт из durable outbox.
-func TestSyncRegistrar_TransientError_Surfaced(t *testing.T) {
-	cli := &scriptedRegisterClient{
-		errByRelation: map[string]error{
-			domain.FGARelationProject: status.Error(codes.Unavailable, "iam down"),
-		},
-	}
-	reg := iam.NewSyncRegistrar(cli)
-
-	err := reg.Register(context.Background(), lbUserIntent())
-	require.Error(t, err, "transient iam failure surfaced so caller logs best-effort")
-}
-
-// TestSyncRegistrar_ContinuesPastTransient — NON-short-circuit: transient на
-// ПЕРВОМ tuple не мешает атаковать остальные (project-tuple всегда первый, но
-// проверяем инвариант «все tuple'ы attempted»).
-func TestSyncRegistrar_ContinuesPastTransient(t *testing.T) {
-	cli := &scriptedRegisterClient{
-		errByRelation: map[string]error{
-			domain.FGARelationProject: status.Error(codes.Unavailable, "iam down"),
-		},
-	}
-	reg := iam.NewSyncRegistrar(cli)
-
-	err := reg.Register(context.Background(), lbUserIntent())
-	require.Error(t, err)
-	require.Len(t, cli.register, 2, "non-short-circuit: all tuples attempted even after a transient error")
-}
-
-// TestSyncRegistrar_NilClient_NoOp — nil client (dev/no-iam) → Register no-op
-// (nil, без panic). Async register-drainer остаётся единственным путём.
-func TestSyncRegistrar_NilClient_NoOp(t *testing.T) {
-	reg := iam.NewSyncRegistrar(nil)
-	require.NoError(t, reg.Register(context.Background(), lbUserIntent()))
+// Прежняя редакция объявляла его пустой операцией и это проверяла. Пустая
+// операция неотличима от исправно работающего ускорителя, который никогда
+// ничего не ускорял: ни отказа, ни строки в логе, ни одного срабатывания за всю
+// жизнь.
+func TestNilClientRefusesInsteadOfSilentlyDoingNothing(t *testing.T) {
+	_, err := iam.NewSyncRegistrar(nil)
+	require.ErrorIs(t, err, ownerregister.ErrNoClient)
 }

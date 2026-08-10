@@ -39,7 +39,7 @@ func TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 
 	id := ids.NewID(ids.PrefixInstance)
-	_, err = instRepo.Insert(ctx, &domain.Instance{
+	_, _, err = instRepo.Insert(ctx, &domain.Instance{
 		ID: id, ProjectID: "f-lost-upd", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		Name: "old-name", Description: "old-desc",
 		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: id + ".auto.internal",
@@ -58,9 +58,9 @@ func TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
 	require.NoError(t, err)
 	inB.Description = "new-desc"
 
-	_, err = instRepo.Update(ctx, inA, false, []string{"name"})
+	_, _, err = instRepo.Update(ctx, inA, false, []string{"name"})
 	require.NoError(t, err)
-	_, err = instRepo.Update(ctx, inB, false, []string{"description"})
+	_, _, err = instRepo.Update(ctx, inB, false, []string{"description"})
 	require.NoError(t, err)
 
 	final, err := instRepo.Get(ctx, id)

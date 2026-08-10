@@ -186,7 +186,7 @@ func (u *DeleteLoadBalancerUseCase) doDelete(ctx context.Context, id, projectID 
 	}
 	// FGA-unregister-intent (project-hierarchy) in the SAME tx as the
 	// Delete — drainer applies UnregisterResource to remove the owner-tuple.
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
+	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		lbUnregisterIntent(id, projectID)); err != nil {
 		return nil, mapDomainErr(err)
 	}
