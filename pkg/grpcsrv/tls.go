@@ -67,10 +67,32 @@ type TLSServer struct {
 
 // TLSServerCreds returns the grpc.ServerOption carrying the transport credentials
 // for this config. See package doc for the behavior contract.
+//
+// Prefer [TLSServerTransportCreds] where the credentials THEMSELVES are the
+// value being carried — a service descriptor, for one. Wrapping them into a
+// server option too early loses the one question worth asking about them: what
+// the transport says it IS. An option is opaque; `TransportCredentials.Info()`
+// is not, and a start-time refusal reads that rather than trusting a knob.
 func TLSServerCreds(cfg TLSServer) (grpc.ServerOption, error) {
+	creds, err := TLSServerTransportCreds(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return grpc.Creds(creds), nil
+}
+
+// TLSServerTransportCreds returns the transport credentials themselves.
+//
+// Same contract as [TLSServerCreds], one layer lower: `Enable=false` yields
+// INSECURE credentials without an error, exactly as before. That is deliberate,
+// and it is precisely why the value is worth carrying instead of the option: a
+// caller inspecting only its own knob cannot tell a configured-but-degraded edge
+// from a verified one, whereas `creds.Info().SecurityProtocol` answers for the
+// transport itself.
+func TLSServerTransportCreds(cfg TLSServer) (credentials.TransportCredentials, error) {
 	if !cfg.Enable {
 		// insecure server, cert files NOT read.
-		return grpc.Creds(insecure.NewCredentials()), nil
+		return insecure.NewCredentials(), nil
 	}
 
 	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
@@ -93,5 +115,5 @@ func TLSServerCreds(cfg TLSServer) (grpc.ServerOption, error) {
 		ClientCAs:    clientCAs,
 		MinVersion:   tls.VersionTLS12,
 	}
-	return grpc.Creds(credentials.NewTLS(tlsCfg)), nil
+	return credentials.NewTLS(tlsCfg), nil
 }

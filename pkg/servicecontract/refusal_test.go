@@ -164,14 +164,31 @@ func TestO6_CheckEdgeWithoutAddressRefusesStart(t *testing.T) {
 	refuses(t, s, "CheckEdge")
 }
 
-// TestO6_CheckEdgeOnInsecureTransportRefusesStart — вторая половина О6, и она
-// ловит РЕАЛЬНЫЙ класс: транспорт, молча выродившийся в незашифрованный.
-// Предикат читает ответ САМИХ креденшелов, а не ручку конфигурации, поэтому
-// «ручка взведена, а креды insecure» им не пропускается.
-func TestO6_CheckEdgeOnInsecureTransportRefusesStart(t *testing.T) {
+// TestO8_CheckEdgeOnInsecureTransportRefusesProductionStart — транспорт ребра
+// решения о доступе судится ПОСАДКОЙ (О8), а не формой объявления (О6).
+//
+// Разделение не косметическое и проверяется обеими сторонами: «объявлено ли
+// ребро явно» от режима не зависит и остаётся в О6; «проверен ли транспорт» —
+// измерение посадки, и живёт там же, где sslmode и транспорт слушателей. Так у
+// каждого предмета ровно одно правило.
+//
+// Предикат читает ответ САМИХ креденшелов, а не ручку конфигурации: сборщик на
+// невзведённой ручке отдаёт незашифрованные креды БЕЗ ошибки, поэтому «ручка
+// взведена, а креды выродились» им не проходит.
+func TestO8_CheckEdgeOnInsecureTransportRefusesProductionStart(t *testing.T) {
 	s := lawful()
 	s.CheckEdge = servicecontract.NewPeerEdge("kacho-iam-internal:9091", insecure.NewCredentials())
 	refuses(t, s, "CheckEdge")
+
+	// Законный близнец: вне боевой посадки тот же транспорт принимается. Без
+	// этой половины отказ был бы безусловным, и первая же фаза начальной
+	// установки — та, что поднимает стенд с выключенным mTLS раньше, чем
+	// выпущены сертификаты, — упёрлась бы в него навсегда.
+	s.Mode = servicecontract.ModeDev
+	s.DBSSLMode = "disable"
+	if _, err := servicecontract.New(s); err != nil {
+		t.Fatalf("небоевая посадка отвергнута боевым правилом: %v", err)
+	}
 }
 
 // TestO6_SelfAuthzNeedsNoEdge — законный близнец: владелец модели ребра к себе

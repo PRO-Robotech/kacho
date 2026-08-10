@@ -279,20 +279,23 @@ guard-destructive:
 # bootstrap с нуля был сломан. Не всплывало годами: kind-кластер переиспользовался, CRD
 # в нём уже стояли, и фаза 1 «проходила». Проверяется целью `check-mtls-off-complete`.
 MTLS_SUBCHARTS := vpc compute api-gateway kacho-nlb kacho-iam kacho-geo storage registry
-# registry AND geo are fail-closed BY DESIGN: their control-plane refuses to start
-# without server-mTLS on both listeners UNLESS AUTHZ_BREAKGLASS=true (there is no
+# registry is fail-closed BY DESIGN: its control-plane refuses to start without
+# server-mTLS on both listeners UNLESS AUTHZ_BREAKGLASS=true (there is no
 # auth.mode=dev relaxation like compute/storage — control-plane w/o authz+mTLS is
-# forbidden). Phase-1 forces mtls off (Certificate-before-CRD guard), so each would
-# CrashLoop ("mTLS required on both listeners"). Run them breakglass ONLY in phase-1;
+# forbidden). Phase-1 forces mtls off (Certificate-before-CRD guard), so it would
+# CrashLoop ("mTLS required on both listeners"). Run it breakglass ONLY in phase-1;
 # phase-2 (no override) restores breakglass=false + mtls on → real authz.
-# NB: geo's breakglass value key is FLAT `kacho-geo.authzBreakglass` (not nested
-# `authz.breakglass` like registry) — the two charts differ. Omitting geo here is the
-# exact class of bug the check-mtls-off-complete gate guards for mtls.enable: geo was
-# added to MTLS_SUBCHARTS (mtls off) but its breakglass override was forgotten →
-# fresh-cluster bootstrap hangs phase-1 --wait on geo (regression 2026-07-21).
+#
+# geo NO LONGER NEEDS AN OVERRIDE, and the reason is the point rather than a
+# convenience: it went onto the service host, whose start refusals judge the
+# TRANSPORT of the authz edge as part of the deployment POSTURE (production), not
+# as part of "is the edge declared" (always). Phase-1 is not a production posture,
+# so an unverified edge is accepted there and refused in production exactly as
+# before — with no named bypass knob left to reach for. The knob it used to need
+# is gone from the chart along with it, so an override here would set an
+# undefined value and read as if it still did something.
 MTLS_OFF := --set mtls.enabled=false $(foreach s,$(MTLS_SUBCHARTS),--set $(s).mtls.enable=false) \
-            --set registry.authz.breakglass=true \
-            --set kacho-geo.authzBreakglass=true
+            --set registry.authz.breakglass=true
 
 # check-mtls-off-complete — CI-гейт: MTLS_SUBCHARTS не отстаёт от values.dev.yaml.
 # Новый сервис с mtls.enable=true, забытый в MTLS_OFF, снова сломает bootstrap с нуля —

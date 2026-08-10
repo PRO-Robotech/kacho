@@ -49,7 +49,7 @@ Kachō Geo конфигурируется через переменные окр
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kacho-iam для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
-    <tr><td><code>KACHO_GEO_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Аварийный обход: запускает сервис без authz Check и без mTLS — единственный способ работать без них</td></tr>
+    <tr><td><code>KACHO_GEO_AUTHZ_CHECK_TIMEOUT</code></td><td><code>2s</code></td><td>Срок ОДНОГО вопроса о правах владельцу модели. Неотвечающий сосед без срока вешает горутину навсегда</td></tr>
     <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>production</code></td><td>Posture старта: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт — <code>production</code> (secure by default)</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Allow-list SAN&apos;ов, которым разрешено передавать личность конечного пользователя (SA api-gateway). В production обязателен непустой</td></tr>
   </tbody>
@@ -57,21 +57,27 @@ Kachō Geo конфигурируется через переменные окр
 
 ### Secure by default
 
-По умолчанию (`breakglass=false`) операции **без авторизации и mTLS запрещены**: per-RPC
-authz Check (через kacho-iam) и mTLS на **обоих** listener'ах обязательны. Если адрес
-kacho-iam не задан или mTLS не включён — сервис **откажется стартовать**. Это инвариант
-«AuthN + AuthZ везде» (internal `:9091` не освобождён).
+Операции **без авторизации запрещены**: per-RPC authz Check (через kacho-iam) идёт на
+**обоих** listener'ах. Если адрес kacho-iam не задан — сервис **откажется стартовать**.
+Это инвариант «AuthN + AuthZ везде» (internal `:9091` не освобождён).
 
-:::warning Единственный обход — breakglass
-`KACHO_GEO_AUTHZ_BREAKGLASS=true` запускает сервис, **пропуская per-RPC Check и не требуя
-mTLS**. Это аварийный режим: применять только локально / при инциденте, никогда на
-рабочем стенде.
+:::warning Обхода нет — и это построение, а не правило
+Аварийной ручки, снимающей проверку прав, у сервиса **нет**. Цепочка без звена решения о
+доступе носителем не выражается: `Serve` либо собрал контур, либо отказал в старте.
+Источник решения — закрытое перечисление из двух значений, и третьего, означающего «не
+спрашиваю никого», в нём не существует.
 :::
 
 `KACHO_GEO_AUTH_MODE` по умолчанию `production`, и в этой posture стартовать нельзя:
-с plaintext-соединением к БД (`KACHO_GEO_DB_SSLMODE` пуст или `disable`), с включённым
-breakglass и с пустым allow-list'ом доверенных форвардеров. `production-strict`
-дополнительно сужает `KACHO_GEO_DB_SSLMODE` до {`require`, `verify-ca`, `verify-full`}.
+с plaintext-соединением к БД (`KACHO_GEO_DB_SSLMODE` пуст или `disable`), с непроверенным
+транспортом любого из listener'ов или ребра к kacho-iam, и с пустым allow-list'ом
+доверенных форвардеров. `production-strict` дополнительно сужает `KACHO_GEO_DB_SSLMODE`
+до {`require`, `verify-ca`, `verify-full`}.
+
+Вне боевой posture непроверенный транспорт принимается — это нужно первой фазе начальной
+установки, где стенд поднимается раньше, чем выпущены сертификаты. Прежде эту фазу
+вытягивал аварийный обход, снимавший заодно и авторизацию; теперь ей не требуется снимать
+ничего.
 
 Отсюда следствие для запуска «как есть»: дефолтный `KACHO_GEO_DB_SSLMODE=disable`
 несовместим с дефолтным `production` — либо задайте TLS к базе, либо выберите `dev`
@@ -110,7 +116,6 @@ dev). В production оба server-флага должны быть `true`.
 
     KACHO_GEO_AUTH_MODE: production-strict
     KACHO_GEO_AUTHZ_IAM_GRPC_ADDR: kacho-iam.kacho.svc:9091
-    KACHO_GEO_AUTHZ_BREAKGLASS: "false"
 
     # per-edge mTLS (включить в production)
     KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE: "true"

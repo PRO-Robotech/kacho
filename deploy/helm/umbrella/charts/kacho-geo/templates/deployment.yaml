@@ -102,8 +102,6 @@ spec:
             # geo→iam per-RPC authz Check (InternalIAMService.Check on iam :9091).
             - name: KACHO_GEO_AUTHZ_IAM_GRPC_ADDR
               value: "{{ .Values.authzIamGrpcAddr }}"
-            - name: KACHO_GEO_AUTHZ_BREAKGLASS
-              value: "{{ .Values.authzBreakglass }}"
             {{- if .Values.mtls.enable }}
             {{- $srv := printf "%s/server" .Values.mtls.mountPath }}
             {{- $cli := printf "%s/client" .Values.mtls.mountPath }}

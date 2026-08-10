@@ -5,10 +5,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,11 +14,14 @@ import (
 	"google.golang.org/grpc"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 
@@ -28,13 +29,24 @@ import (
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/check"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/pg"
 )
 
-// runServe — composition root: единственное место wiring, без глобальных синглтонов.
+// runServe — composition root.
+//
+// # Что этот корень БОЛЬШЕ НЕ делает
+//
+// Он не собирает серверы, не выстраивает цепочку звеньев, не строит карту прав
+// и не пишет собственных стражей старта. Всё это переехало в носитель
+// (`pkg/servicehost`), и переехало не ради красоты: пока сборка жила здесь,
+// каждый из семи сервисов держал СВОЮ, и порядок звеньев совпадал ровно
+// настолько, насколько авторы написали одинаковое.
+//
+// Здесь остаётся то, что действительно принадлежит домену: пул, слой доступа к
+// данным, use-cases, разрешитель осиротевших операций, диагностический
+// слушатель и ОБЪЯВЛЕНИЕ о себе — дескриптор.
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -42,24 +54,16 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
-	if err := validateAuthMode(cfg, logger); err != nil {
+	desc, err := describe(cfg, logger)
+	if err != nil {
 		return err
 	}
-	// Secure-by-default: per-RPC authz Check и mTLS на ОБОИХ листенерах
-	// обязательны. Единственный способ запустить операции без авторизации и mTLS —
-	// аварийный KACHO_GEO_AUTHZ_BREAKGLASS=true.
-	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
-	// non-breakglass старте — поэтому зовётся отдельно и до разбора режима.
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	if err := validateSecurityConfig(cfg); err != nil {
-		return err
-	}
-	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (validateAuthMode +
-	// validateSecurityConfig — конфиг уже ПРИНЯТ процессом) и ДО подъёма
-	// листенеров. Production-posture гейт обязан утверждать на этом наблюдаемом
-	// факте, а не на хранимом конфиге (см. observability.BootPosture).
+
+	// Самоотчёт о посадке — ПОСЛЕ того, как дескриптор принят (конфиг прошёл все
+	// отказы, которые являются его свойствами), и ДО подъёма слушателей. Гейт
+	// посадки обязан утверждать на этом наблюдаемом факте, а не на хранимом
+	// конфиге: правка настроек без переката пода оставляет процесс с прежним
+	// окружением, и «под Ready» доказательством посадки не является.
 	observability.LogBootPosture(logger, bootPosture(cfg))
 
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
@@ -68,11 +72,11 @@ func runServe(cfg config.Config) error {
 	}
 	defer pool.Close()
 
-	// ── observability: Prometheus-адаптер метрик восстановления осиротевших LRO
-	// (reconciler runs/errors/orphans). Исполнителя длительных операций здесь нет
-	// и не заводится: мутации каталога — конфиг-INSERT, операция завершается
-	// СИНХРОННО (shared/syncop), поэтому диспетчеризовать в worker нечего, а его
-	// ряды вечно стояли бы на нуле и читались как «отказов нет».
+	// ── observability: Prometheus-адаптер метрик разрешителя осиротевших
+	// операций. Исполнителя длительных операций здесь нет и не заводится:
+	// мутации каталога — конфиг-INSERT, операция завершается СИНХРОННО
+	// (shared/syncop), поэтому диспетчеризовать в worker нечего, а его ряды
+	// вечно стояли бы на нуле и читались как «отказов нет».
 	metricsAdapter := metrics.New(buildVersion, buildCommit)
 
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho-geo.
@@ -84,8 +88,8 @@ func runServe(cfg config.Config) error {
 	// CQRS-порты Reader/Writer связываются раздельно (сейчас обе стороны — один
 	// pg-adapter поверх primary-pool; read-side можно позже перецепить на
 	// read-replica pool, не трогая use-case). errStatus — transport-mapper
-	// sentinel→gRPC-status, инжектится из handler-слоя (serviceerr.ToStatus): выбор
-	// кода — transport-concern, use-case его не выбирает.
+	// sentinel→gRPC-status, инжектится из handler-слоя (serviceerr.ToStatus):
+	// выбор кода — transport-concern, use-case его не выбирает.
 	regionRepo := pg.NewRegionRepo(pool)
 	regionUC := region.New(regionRepo, regionRepo, opsRepo, serviceerr.ToStatus)
 	zoneRepo := pg.NewZoneRepo(pool)
@@ -98,149 +102,18 @@ func runServe(cfg config.Config) error {
 	// прогоняется ЗДЕСЬ (до приёма трафика) — такие строки разрешаются в терминал
 	// по committed-реальности ресурса; периодический Run(ctx) ниже — backstop.
 	lroReconciler := startLRORecovery(ctx, pool, regionRepo, zoneRepo, metricsAdapter, logger)
-
-	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
-	// internal :9091 НЕ освобожден). Ребро geo→iam Check дозванивается в
-	// kacho-iam internal (:9091) с client-cert (mTLS). Check обязателен —
-	// validateSecurityConfig выше уже гарантировал, что без breakglass адрес
-	// kacho-iam задан; при breakglass=true интерсептор пропускает все RPC.
-	var authzConn *grpc.ClientConn
-	if cfg.AuthZIAMGRPCAddr != "" {
-		authzCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
-		if cerr != nil {
-			return fmt.Errorf("geo→iam Check mTLS creds: %w", cerr)
-		}
-		authzConn, err = grpc.NewClient(cfg.AuthZIAMGRPCAddr,
-			grpc.WithTransportCredentials(authzCreds),
-			grpcclient.KeepaliveDialOption(true))
-		if err != nil {
-			return fmt.Errorf("dial kacho-iam (authz): %w", err)
-		}
-		defer authzConn.Close()
-	}
-
-	authzIntr, aerr := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-geo",
-		// authzIAMConn(nil) → ИСТИННЫЙ nil интерфейса, а не typed-nil
-		// (*grpc.ClientConn)(nil), обёрнутый в interface (который != nil). Иначе
-		// guard `if opts.IAMConn == nil` в check.NewInterceptor не сработал бы,
-		// ErrIAMConnNotConfigured-ветка ниже стала бы мёртвой, а при ослаблении
-		// upstream-guard'а клиент построился бы поверх nil-conn и паникнул на
-		// первом Check (CWE-476).
-		IAMConn:    authzIAMConn(authzConn),
-		Breakglass: cfg.AuthZBreakglass,
-		Logger:     logger,
-		CacheTTL:   cfg.AuthZCacheTTL,
-	})
-
-	// ── цепочки интерсепторов ──────────────────────────────────────────────
-	// Круг отправителей ограничивает передачу личности конечного пользователя
-	// перечнем личностей клиентского сертификата (SAN шлюза): пир, проверенный, но
-	// не входящий в круг, за другого говорить не может. Несуженный круг означает
-	// «любой проверенный пир доверен» — поэтому на нём отказывает старт
-	// (config.Config.Validate), а не только боевой профиль.
-	forwarders := cfg.TrustedForwarders()
-	// Оба листенера получают ОДНУ И ТУ ЖЕ trust-aware principal-цепочку
-	// (cert-identity → trusted-principal с allow-list форвардеров) — единый source
-	// wiring'а через newPrincipalInterceptors, чтобы public и internal не могли
-	// разъехаться по anti-spoof-гарантии при рефакторинге. WithTrustedForwarders
-	// ограничивает форвард end-user principal'а allow-list'ом SAN'ов (api-gateway):
-	//   - Public (:9090): без этого любой mTLS-verified peer мог выставить
-	//     произвольный x-kacho-principal-* header и авторизоваться как чужой
-	//     viewer-principal (principal-spoofing, CWE-290). Consumer'ы vpc/compute/nlb
-	//     ходят сюда со СВОИМ cert'ом — их principal не форвардится, снимается.
-	//   - Internal (:9091): тот же per-RPC authz, что и на public — internal не
-	//     доверенный (defense-in-depth против lateral movement). Эскалация
-	//     verified-но-не-форвардер peer'а до admin-CRUD Region/Zone (confused-deputy)
-	//     закрыта тем же allow-list'ом. Единственный легитимный форвардер — api-gateway.
-	publicPrincipalUnary, publicPrincipalStream := newPrincipalInterceptors(forwarders)
-	internalPrincipalUnary, internalPrincipalStream := newPrincipalInterceptors(forwarders)
-
-	// authzUnary/authzStream — nil, если authz-интерсептор не сконфигурирован
-	// (недостижимо в non-breakglass posture: validateSecurityConfig гарантирует
-	// адрес kacho-iam; при breakglass authzIntr пропускает все RPC).
-	var authzUnary grpc.UnaryServerInterceptor
-	var authzStream grpc.StreamServerInterceptor
-	switch {
-	case aerr == nil && authzIntr != nil:
-		authzUnary = authzIntr.Unary()
-		authzStream = authzIntr.Stream()
-		if cfg.AuthZBreakglass {
-			logger.Warn("BREAKGLASS active: per-RPC authz Check bypassed on BOTH listeners (emergency mode)")
-		} else {
-			logger.Info("authz interceptor enabled",
-				"iam_endpoint", cfg.AuthZIAMGRPCAddr,
-				"listeners", "public+internal")
-		}
-	case errors.Is(aerr, check.ErrIAMConnNotConfigured):
-		// Недостижимо при штатной конфигурации: validateSecurityConfig уже отказал
-		// бы старту (нет authz и нет breakglass). Defensive fail-closed.
-		return errors.New("authz Check required: set KACHO_GEO_AUTHZ_IAM_GRPC_ADDR (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass)")
-	case aerr != nil:
-		return fmt.Errorf("build authz interceptor: %w", aerr)
-	}
-
-	// ── финальные упорядоченные цепочки обоих листенеров ───────────────────
-	// Порядок собирается в assembleUnaryChain/assembleStreamChain (единая точка,
-	// под guard-тестом serve_interceptor_order_test.go) вместо императивного
-	// append/prepend по четырём срезам: recovery ПЕРВЫМ (outermost), затем
-	// principal-extract, затем authz. Оба листенера строятся идентично.
-	publicUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), publicPrincipalUnary, authzUnary)
-	publicStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), publicPrincipalStream, authzStream)
-	internalUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), internalPrincipalUnary, authzUnary)
-	internalStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), internalPrincipalStream, authzStream)
-
-	// ── server-creds (mTLS обязателен на обоих листенерах, кроме breakglass —
-	// это проверено validateSecurityConfig выше) ──
-	publicCreds, err := cfg.PublicServerCreds()
-	if err != nil {
-		return fmt.Errorf("public listener tls creds: %w", err)
-	}
-	internalCreds, err := cfg.InternalServerCreds()
-	if err != nil {
-		return fmt.Errorf("internal listener tls creds: %w", err)
-	}
-
-	grpcSrv := grpcsrv.NewServer(
-		publicCreds,
-		grpc.ChainUnaryInterceptor(publicUnary...),
-		grpc.ChainStreamInterceptor(publicStream...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		internalCreds,
-		grpc.ChainUnaryInterceptor(internalUnary...),
-		grpc.ChainStreamInterceptor(internalStream...),
-	)
-
-	// Регистрация сервисов: public read-only на :9090, admin-CRUD Internal* ТОЛЬКО
-	// на cluster-internal :9091 (запрет #6 — Internal.* не на внешнем endpoint),
-	// OperationService (LRO poll) на обоих. Выделено в registerServices, чтобы
-	// разделение public/internal было под тестом (см. serve_registration_test.go).
-	opHandler := handler.NewOperationHandler(opsRepo)
-	registerServices(grpcSrv, internalSrv, regionUC, zoneUC, opHandler)
-
-	listener, err := net.Listen("tcp", ":"+cfg.GrpcPort)
-	if err != nil {
-		return err
-	}
-	internalListener, err := net.Listen("tcp", ":"+cfg.InternalGrpcPort)
-	if err != nil {
-		_ = listener.Close()
-		return err
-	}
-	logger.Info("kacho-geo listening",
-		"public_mtls", cfg.PublicServerMTLS.Enable,
-		"internal_mtls", cfg.InternalServerMTLS.Enable,
-		"public_port", cfg.GrpcPort,
-		"internal_port", cfg.InternalGrpcPort)
+	go lroReconciler.Run(ctx)
 
 	// ── cluster-internal diagnostic-listener (/metrics). Пустой MetricsAddr явно
-	// отключает его (back-compat). Ошибка привязки порта видна синхронно здесь; сам
-	// Serve крутится на фоновой goroutine и гасится diagShutdown на ctx.Done().
+	// отключает его (back-compat). Ошибка привязки порта видна синхронно здесь;
+	// сам Serve крутится на фоновой goroutine и гасится diagShutdown на ctx.Done().
+	//
+	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
+	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
+	// дескриптор в свалку. Её берёт отдельный профиль той же функции — работа
+	// отдельной фазы, и до неё поверхность честно остаётся вне контура.
 	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, metricsAdapter, logger)
 	if err != nil {
-		_ = listener.Close()
-		_ = internalListener.Close()
 		return fmt.Errorf("diagnostic listener: %w", err)
 	}
 	if diagTask != nil {
@@ -250,231 +123,110 @@ func runServe(cfg config.Config) error {
 			}
 		}()
 	}
+	defer func() { diagShutdown(context.Background()) }()
 
-	shutdownDone := make(chan struct{})
-	go func() {
-		defer close(shutdownDone)
-		<-ctx.Done()
-		diagShutdown(context.Background())
-		internalSrv.GracefulStop()
-		grpcSrv.GracefulStop()
-		// Дренировать нечего: операция каталога финализуется в том же вызове, что
-		// её создал (shared/syncop), фоновых исполнителей у сервиса нет. Строку,
-		// оставшуюся done=false из-за падения МЕЖДУ двумя стейтментами синхронного
-		// завершения, подбирает reconciler на следующем старте (RecoverAll).
-	}()
-
-	// Периодический backstop-sweep reconciler'а: sweep осиротевших LRO каждые
-	// geoReconcileInterval до отмены ctx (SIGTERM/SIGINT). Останавливается сам по
-	// ctx.Done() — не требует отдельного drain'а.
-	go lroReconciler.Run(ctx)
-
-	// Ошибка internal-листенера захватывается (buffered chan) и учитывается в
-	// exit-коде наравне с public: при фатальном крахе internal-листенера он зовёт
-	// cancel(), shutdown-горутина делает grpcSrv.GracefulStop(), после чего
-	// grpcSrv.Serve() по контракту grpc-go возвращает nil — если бы exit считался
-	// только по public-ошибке, крах :9091 дал бы exit 0 (оркестратор не рестартит,
-	// admin-плоскость тихо недоступна). serveResult ниже сводит обе ошибки.
-	internalErrCh := make(chan error, 1)
-	go func() {
-		internalErrCh <- runInternalListener(internalSrv, internalListener, cancel, logger)
-	}()
-
-	serveErr := grpcSrv.Serve(listener)
-	cancel()
-	<-shutdownDone
-	// internal-горутина разблокируется, когда её Serve вернётся (GracefulStop в
-	// shutdown-горутине выше отработал до close(shutdownDone)).
-	return serveResult(serveErr, <-internalErrCh)
+	opHandler := handler.NewOperationHandler(opsRepo)
+	return servicehost.Serve(ctx, desc,
+		func(reg grpc.ServiceRegistrar) { registerPublic(reg, regionUC, zoneUC, opHandler) },
+		func(reg grpc.ServiceRegistrar) { registerInternal(reg, regionUC, zoneUC, opHandler) },
+	)
 }
 
-// serveResult сводит exit-ошибку процесса из ошибок обоих листенеров: ошибка
-// public-листенера приоритетна (первичный сигнал отказа edge-поверхности);
-// иначе наверх идёт фатальная ошибка internal-листенера — чтобы её крах тоже дал
-// non-zero exit (симметрия: public-путь возвращает свою Serve-ошибку, internal
-// не должен глотаться после того как cancel()→GracefulStop обнулил public-ошибку).
-func serveResult(publicErr, internalErr error) error {
-	if publicErr != nil {
-		return publicErr
-	}
-	return internalErr
-}
-
-// gracefulServer — минимальный контракт grpc-сервера, нужный runInternalListener
-// (только Serve). Позволяет тестировать teardown-семантику без реального listen'а.
-type gracefulServer interface {
-	Serve(net.Listener) error
-}
-
-// runInternalListener обслуживает internal :9091 gRPC-сервер и зеркалит lifecycle
-// public-листенера: фатальная (любая, кроме graceful grpc.ErrServerStopped) ошибка
-// Serve сносит ВЕСЬ процесс через cancel() root-ctx (симметрично public-пути
-// serve→cancel) И ВОЗВРАЩАЕТСЯ вызывающему. Возврат обязателен: после cancel()
-// shutdown-горутина делает grpcSrv.GracefulStop() → public grpcSrv.Serve() отдаёт
-// nil, поэтому без проброса этой ошибки в exit-код (serveResult) крах :9091 дал бы
-// exit 0 — оркестратор не рестартит, admin-плоскость (InternalRegion/ZoneService,
-// весь admin-CRUD) тихо недоступна. graceful-stop (ErrServerStopped, штатный
-// GracefulStop) фатальным НЕ считается → возврат nil.
-func runInternalListener(srv gracefulServer, lis net.Listener, cancel context.CancelFunc, logger *slog.Logger) error {
-	if serr := srv.Serve(lis); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-		logger.Error("internal grpc server stopped; tearing down process", "err", serr)
-		cancel()
-		return serr
-	}
-	return nil
-}
-
-// validateAuthMode разбирает KACHO_GEO_AUTH_MODE (whitelist) и строгость DB-SSL.
-// Режим больше НЕ управляет authz/mTLS — ими управляет breakglass (см.
-// validateSecurityConfig). `production-strict` дополнительно требует SSL до БД.
-func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
-	switch cfg.AuthMode {
-	case "dev":
-		if cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable" {
-			logger.Warn("KACHO_GEO_DB_SSLMODE=disable — DB plaintext (dev only)")
-		}
-		return nil
-	case "production":
-		// В production plaintext-соединение до БД запрещено: sslmode=disable (и
-		// пустой → libpq-дефолт disable) отвергаем. Конкретный TLS-режим
-		// (require|verify-ca|verify-full) — на усмотрение оператора; строгую
-		// проверку сертификата требует production-strict ниже.
-		if cfg.DBSSLMode == "" || cfg.DBSSLMode == "disable" {
-			return fmt.Errorf("production mode: KACHO_GEO_DB_SSLMODE must not be disable (got %q); use require|verify-ca|verify-full", cfg.DBSSLMode)
-		}
-		return nil
-	case "production-strict":
-		switch cfg.DBSSLMode {
-		case "require", "verify-ca", "verify-full":
-		default:
-			return fmt.Errorf("production-strict mode: KACHO_GEO_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
-		}
-		logger.Warn("AuthMode=production-strict: DB SSL strictly validated")
-		return nil
-	default:
-		return fmt.Errorf("unknown KACHO_GEO_AUTH_MODE=%q (allowed: dev, production, production-strict)", cfg.AuthMode)
-	}
-}
-
-// validateSecurityConfig — secure-by-default: операции без авторизации и mTLS
-// запрещены. Per-RPC authz Check (адрес kacho-iam) и mTLS на ОБОИХ листенерах
-// обязательны; единственный способ запустить без них — аварийный
-// KACHO_GEO_AUTHZ_BREAKGLASS=true. Без breakglass недостающий authz/mTLS — отказ старта.
+// describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.
 //
-// ⚠ ВНИМАНИЕ: breakglass=true — ПОЛНЫЙ обход authz+mTLS (emergency-only). На
-// plaintext-листенере forged principal-header дает admin-доступ (mTLS не проверяет
-// клиента, authz Check пропускается). Включать ТОЛЬКО при инциденте.
-func validateSecurityConfig(cfg config.Config) error {
-	if cfg.AuthZBreakglass {
-		// Breakglass — аварийный ПОЛНЫЙ обход per-RPC authz Check + mTLS. В
-		// production posture (production / production-strict) он НЕ honored: иначе
-		// один env-флаг молча снял бы всю аутентификацию/авторизацию на
-		// развёрнутом стенде, а forged x-kacho-principal-header на
-		// plaintext-листенере дал бы admin Region/Zone CRUD (CWE-489
-		// active-debug/emergency mode). Emergency-bypass допустим ТОЛЬКО вне
-		// production (dev / локальный инцидент) — как и dev-anonymous, он под
-		// запретом на любом production-деплое (security.md).
-		switch cfg.AuthMode {
-		case "production", "production-strict":
-			return errors.New("production mode: KACHO_GEO_AUTHZ_BREAKGLASS must not be enabled — it bypasses per-RPC authz Check and mTLS entirely (forged x-kacho-principal headers reach admin Region/Zone CRUD); breakglass is a non-production emergency escape only")
-		}
-		return nil
+// Стражей старта здесь нет ни одного — они все живут в конструкторе дескриптора
+// и в носителе. Это не перенос ради переноса: до него geo нёс два собственных
+// стража (разбор режима и боевая посадка), и оба были написаны заново в каждом
+// из семи сервисов, расходясь тем, что именно каждый считает обязательным.
+func describe(cfg config.Config, logger *slog.Logger) (servicecontract.Descriptor, error) {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_GEO_AUTH_MODE: %w", err)
 	}
-	if cfg.AuthZIAMGRPCAddr == "" {
-		return errors.New("authz Check required on both listeners: set KACHO_GEO_AUTHZ_IAM_GRPC_ADDR (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass)")
+	// Транспорт ребра решения о доступе строится ЗДЕСЬ, а проверяется
+	// конструктором дескриптора — по ответу самого транспорта, а не по ручке.
+	// Сборщик на невзведённой ручке отдаёт незашифрованные креды БЕЗ ошибки,
+	// поэтому «ручка выглядит как угодно» этой проверке безразлично.
+	checkCreds, err := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("geo→iam Check mTLS creds: %w", err)
 	}
-	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
-		return errors.New("mTLS required on both listeners: set KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE and KACHO_GEO_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass)")
+	publicCreds, err := grpcsrv.TLSServerTransportCreds(cfg.PublicServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("public listener tls creds: %w", err)
 	}
-	// Транспорт ИСХОДЯЩЕГО ребра geo→iam. Оно несёт решение о доступе (per-RPC
-	// Check) и переданную личность вызывающего, поэтому обязано быть
-	// verified-транспортом. Невзведённая ручка не даёт ошибки сама по себе:
-	// grpcclient.TLSClientTransportCreds на Enable=false возвращает insecure-creds
-	// БЕЗ ошибки — процесс поднимется, отчитается «authz interceptor enabled», и
-	// каждый Check уйдёт по открытому каналу. Требование стоит на ЛЮБОМ
-	// non-breakglass старте — как и круг отправителей, чья стража переехала в
-	// config.Config.Validate: развёрнутый стенд обязан работать в
-	// production-posture независимо от того, dev он называется или нет.
-	if !cfg.IAMAuthzMTLS.Enable {
-		return errors.New("verified transport required on the geo→iam authz Check edge: set KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA). Without it the per-RPC authorization Check and the forwarded end-user principal travel over cleartext gRPC — the client credentials silently degrade to insecure, so the process starts and reports authz as enabled (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass authz entirely, emergency-only)")
+	internalCreds, err := grpcsrv.TLSServerTransportCreds(cfg.InternalServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
 	}
-	return nil
+
+	return servicecontract.New(servicecontract.Spec{
+		Service: "kacho-geo",
+		Mode:    mode,
+		Logger:  logger,
+
+		Forwarders: cfg.TrustedForwarders(),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS",
+			TrustAny: "KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER",
+			OptIn:    cfg.AuthZTrustAnyForwarder,
+		},
+
+		Authz:        servicecontract.AuthzViaIAM,
+		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		CacheWindow:  cfg.AuthZCacheTTL,
+		ClientBudget: cfg.AuthZCheckTimeout,
+
+		DBSSLMode:     cfg.DBSSLMode,
+		PublicAddr:    ":" + cfg.GrpcPort,
+		InternalAddr:  ":" + cfg.InternalGrpcPort,
+		PublicCreds:   publicCreds,
+		InternalCreds: internalCreds,
+
+		// ── оси: у geo все четыре пусты, и каждая пустота ОБЪЯСНЕНА ──────────
+		//
+		// Объяснения здесь не отговорка: каждое из них СУДИТСЯ каталогом прав
+		// или соседней осью на каждом старте. Как только у домена появится
+		// первая строка нужной полосы, соответствующее заявление станет
+		// находкой, и вспоминать о нём никому не придётся.
+		Emits: servicecontract.NotApplicable[[]proxytuple.Relation](
+			"глобальный справочник оси размещения: Region и Zone — admin-curated каталог " +
+				"кластера, пообъектных грантов у него нет by construction, поэтому кортежей " +
+				"владельцу прав geo не эмитит"),
+		Registers: servicecontract.NotApplicable[[]servicecontract.ObjectType](
+			"своих типов объектов модели прав geo не заводит: его admin-CRUD гейтится " +
+				"кластерным отношением на singleton, а не пообъектным на Region/Zone"),
+		Narrowers: servicecontract.NotApplicable[map[servicecontract.MethodFQN]servicecontract.ListNarrower](
+			"ни один метод geo не сужается по правам: публичные Get/List Region и Zone — " +
+				"глобальный справочник, который обязан читать каждый аутентифицированный тенант"),
+		HideExistence: servicecontract.NotApplicable[map[servicecontract.ObjectType]servicecontract.NotFoundFormat](
+			"скрывать нечего: справочник виден всем аутентифицированным целиком, поэтому " +
+				"«есть-но-не-твой» у geo не бывает состоянием"),
+		Delivery: servicecontract.NotApplicable[servicecontract.DeliveryProvenance](
+			"происхождение доставки объявляет тот, кто доставляет; geo не эмитит намерений " +
+				"регистрации вовсе (см. Emits)"),
+	})
 }
 
-// authzIAMConn нормализует *grpc.ClientConn в grpc.ClientConnInterface без
-// typed-nil-ловушки: при nil-conn возвращает ИСТИННЫЙ nil интерфейса (а не
-// interface, обёртывающий (*grpc.ClientConn)(nil), который сравнением == nil даёт
-// false). Благодаря этому guard `if opts.IAMConn == nil` в check.NewInterceptor
-// корректно отдаёт ErrIAMConnNotConfigured, а не строит IAM-клиент поверх
-// nil-conn (CWE-476: паника на первом Check при ослаблении upstream-guard'а).
-func authzIAMConn(conn *grpc.ClientConn) grpc.ClientConnInterface {
-	if conn == nil {
-		return nil
-	}
-	return conn
+// registerPublic — публичный слушатель :9090: read-only справочник плюс опрос
+// операций.
+func registerPublic(reg grpc.ServiceRegistrar, regionUC *region.UseCase, zoneUC *zone.UseCase,
+	opHandler operationpb.OperationServiceServer) {
+	geov1.RegisterRegionServiceServer(reg, handler.NewRegionHandler(regionUC))
+	geov1.RegisterZoneServiceServer(reg, handler.NewZoneHandler(zoneUC))
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 
-// newPrincipalInterceptors собирает trust-aware principal-цепочку
-// (cert-identity → trusted-principal с allow-list форвардеров) для ОДНОГО
-// листенера. Единый source-of-truth wiring'а: оба листенера (public :9090 и
-// internal :9091) строятся из него, поэтому anti-spoof-гарантия у них
-// идентична by construction. forwarders (allow-list SAN'ов доверенных
-// форвардеров) пробрасывается в WithTrustedForwarders — verified-но-не-форвардер
-// peer не может форвардить произвольного principal'а.
-func newPrincipalInterceptors(forwarders grpcsrv.TrustedForwarders) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
-	return grpcsrv.PrincipalExtractUnary(forwarders), grpcsrv.PrincipalExtractStream(forwarders)
-}
-
-// assembleUnaryChain строит финальную упорядоченную unary-цепочку ОДНОГО листенера
-// и фиксирует load-bearing инвариант порядка в одном месте (под guard-тестом
-// serve_interceptor_order_test.go): recovery ПЕРВЫМ (index 0, outermost — оборачивает
-// все нижележащие интерсепторы и сам handler; иначе паника в интерсепторе/handler'е
-// уронила бы процесс — DoS), затем principal-extract (cert-identity → trusted-
-// principal), затем — если задан — authz Check ПОСЛЕ извлечения principal'а (Check
-// обязан видеть уже извлечённого субъекта). authz==nil → слот отсутствует.
-func assembleUnaryChain(recovery grpc.UnaryServerInterceptor, principal []grpc.UnaryServerInterceptor, authz grpc.UnaryServerInterceptor) []grpc.UnaryServerInterceptor {
-	chain := make([]grpc.UnaryServerInterceptor, 0, len(principal)+2)
-	chain = append(chain, recovery)
-	chain = append(chain, principal...)
-	if authz != nil {
-		chain = append(chain, authz)
-	}
-	return chain
-}
-
-// assembleStreamChain — stream-аналог assembleUnaryChain (тот же инвариант порядка:
-// recovery outermost → principal → authz).
-func assembleStreamChain(recovery grpc.StreamServerInterceptor, principal []grpc.StreamServerInterceptor, authz grpc.StreamServerInterceptor) []grpc.StreamServerInterceptor {
-	chain := make([]grpc.StreamServerInterceptor, 0, len(principal)+2)
-	chain = append(chain, recovery)
-	chain = append(chain, principal...)
-	if authz != nil {
-		chain = append(chain, authz)
-	}
-	return chain
-}
-
-// registerServices раскладывает сервисы по листенерам: public read-only
-// (RegionService/ZoneService) — на publicSrv; admin-CRUD Internal*
-// (InternalRegionService/InternalZoneService) — ТОЛЬКО на internalSrv (запрет #6:
-// Internal.* не публикуется на внешнем endpoint); OperationService (LRO poll) — на
-// обоих (клиент поллит результат admin-мутации через тот же mux, read-poll допустим
-// и на public). Выделено, чтобы разделение public↔internal проверялось тестом через
-// grpc.Server.GetServiceInfo (см. serve_registration_test.go) — регрессия «Internal*
-// уехал на public» ловится, а не only-by-source-review.
-func registerServices(
-	publicSrv, internalSrv grpc.ServiceRegistrar,
-	regionUC *region.UseCase,
-	zoneUC *zone.UseCase,
-	opHandler operationpb.OperationServiceServer,
-) {
-	// Публичные read-only сервисы на :9090.
-	geov1.RegisterRegionServiceServer(publicSrv, handler.NewRegionHandler(regionUC))
-	geov1.RegisterZoneServiceServer(publicSrv, handler.NewZoneHandler(zoneUC))
-	// Admin CRUD сервисы ТОЛЬКО на cluster-internal :9091 (не на внешнем endpoint).
-	geov1.RegisterInternalRegionServiceServer(internalSrv, handler.NewInternalRegionHandler(regionUC))
-	geov1.RegisterInternalZoneServiceServer(internalSrv, handler.NewInternalZoneHandler(zoneUC))
-	// OperationService (LRO poll) на ОБОИХ листенерах.
-	operationpb.RegisterOperationServiceServer(publicSrv, opHandler)
-	operationpb.RegisterOperationServiceServer(internalSrv, opHandler)
+// registerInternal — cluster-internal слушатель :9091: admin-CRUD плюс тот же
+// опрос операций.
+//
+// Admin-CRUD (`InternalRegionService` / `InternalZoneService`) регистрируется
+// ТОЛЬКО здесь: `Internal.*` не публикуется на внешнем endpoint. Разделение
+// проверяется тестом через `grpc.Server.GetServiceInfo` — регрессия «Internal*
+// уехал на public» ловится, а не остаётся на совести обзора.
+func registerInternal(reg grpc.ServiceRegistrar, regionUC *region.UseCase, zoneUC *zone.UseCase,
+	opHandler operationpb.OperationServiceServer) {
+	geov1.RegisterInternalRegionServiceServer(reg, handler.NewInternalRegionHandler(regionUC))
+	geov1.RegisterInternalZoneServiceServer(reg, handler.NewInternalZoneHandler(zoneUC))
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }

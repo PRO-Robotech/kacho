@@ -77,9 +77,25 @@ func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	})
 }
 
-// TestBootPosture_EmittedFromTheLiveBootPath — статический guard размещения:
-// строка обязана эмититься ИЗ composition root'а реальным логгером, ПОСЛЕ
-// secure-by-default boot-guard'а и ДО подъёма листенеров.
+// TestBootPosture_EmittedFromTheLiveBootPath — страж размещения: строка
+// самоотчёта обязана эмититься ИЗ композиционного корня реальным журналом,
+// ПОСЛЕ того как конфигурация принята, и ДО подъёма слушателей.
+//
+// # Почему координаты сменились, а свойство — нет
+//
+// Прежняя редакция целилась в собственные стражи geo и в его собственный вызов
+// конструктора сервера. Ни того, ни другого в этом корне БОЛЬШЕ НЕТ: стражи
+// переехали в конструктор дескриптора, сборка слушателей — в носитель.
+// Оставленная как была, проба искала бы мёртвые координаты и падала бы на
+// верном коде — то есть стала бы утверждением, пережившим свой предмет.
+//
+// Свойство при этом ровно то же, и границы его по существу те же:
+//   - «конфигурация принята» — успешный возврат `describe`, то есть прохождение
+//     ВСЕХ отказов старта, которые являются свойствами дескриптора;
+//   - «до подъёма слушателей» — вызов `servicehost.Serve`, который их и поднимает.
+//
+// Утверждается по-прежнему ПОРЯДОК: посадка, доложенная до того, как её
+// приняли, — отчёт о намерении, а не об исходе.
 func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	src, err := os.ReadFile("serve.go")
 	if err != nil {
@@ -91,12 +107,13 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if call < 0 {
 		t.Fatal("composition root must emit the posture line: observability.LogBootPosture(logger, bootPosture(…))")
 	}
-	guard := strings.Index(root, "validateSecurityConfig(cfg)")
-	if guard < 0 || call < guard {
-		t.Fatal("posture line must be emitted AFTER validateSecurityConfig (a config the process accepted)")
+	accepted := strings.Index(root, "describe(cfg, logger)")
+	if accepted < 0 || call < accepted {
+		t.Fatal("posture line must be emitted AFTER the descriptor was accepted (describe(cfg, logger)) — " +
+			"a posture reported before it was accepted states an intent, not an outcome")
 	}
-	listener := strings.Index(root, "grpcsrv.NewServer(")
+	listener := strings.Index(root, "servicehost.Serve(")
 	if listener < 0 || call > listener {
-		t.Fatal("posture line must be emitted BEFORE the gRPC listeners are built")
+		t.Fatal("posture line must be emitted BEFORE the listeners are raised (servicehost.Serve)")
 	}
 }

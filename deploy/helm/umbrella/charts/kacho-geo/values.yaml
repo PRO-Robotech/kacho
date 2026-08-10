@@ -72,10 +72,17 @@ authMode: production
 
 # AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener for per-RPC Check
 # (geo→iam authz edge; InternalIAMService.Check lives on :9091, NOT :9090).
-# Empty → interceptor not attached (graceful dev start without kacho-iam).
+#
+# Empty is a REFUSAL TO START, not a graceful start without kacho-iam. The edge
+# carrying the access decision is declared explicitly — address and transport
+# together — and "unset" is not a mode. The service descriptor enforces that.
 authzIamGrpcAddr: "kacho-iam-internal.kacho.svc.cluster.local:9091"
-# Emergency pass-all (dev / break-glass only). production forbids it.
-authzBreakglass: false
+#
+# The emergency pass-all knob is GONE, and its removal is the point rather than
+# a side effect: a chain without the decision link is not expressible to the
+# service host — Serve either assembled the contour or refused. Every deployed
+# profile already ran with it off, so nothing that was raised before stops
+# being raisable now.
 
 # ─── SEC-F mTLS — per-edge opt-in (cert-manager internal-CA certs) ─────────
 # enable=false (default) → NO cert-secret, NO KACHO_GEO_*_MTLS_* env → insecure

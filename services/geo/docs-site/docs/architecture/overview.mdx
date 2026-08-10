@@ -113,9 +113,10 @@ flowchart LR
   `permission = "<exempt>"` — с них снята **проверка области по проекту**, и только она.
 - **Internal (`:9091`)** — mTLS + извлечение identity из client-cert → trusted-principal
   (anti-spoof) → authz-Check. Admin-RPC требуют `system_admin`.
-- **Production-режим** (`KACHO_GEO_AUTH_MODE=production`) обязывает mTLS на обоих listener'ах и
-  сконфигурированный адрес kacho-iam — иначе сервис не стартует. Breakglass (пропуск Check) в
-  production запрещён (fail-closed).
+- **Production-режим** (`KACHO_GEO_AUTH_MODE=production`) обязывает проверенный транспорт на
+  обоих listener'ах и на ребре к kacho-iam — иначе сервис не стартует. Ручки, снимающей
+  проверку прав, не существует: цепочка без звена решения о доступе носителем не
+  выражается.
 
 ### Публичные чтения — исключение из проверки области по проекту
 

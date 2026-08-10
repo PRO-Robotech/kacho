@@ -180,7 +180,6 @@ compute:
 # ─── kacho-geo (Region/Zone leaf) ───────────────────────────────────────────
 kacho-geo:
   authMode: production           # anonymous fail-closed on BOTH listeners
-  authzBreakglass: false         # real per-RPC Check (internal :9091 NOT exempt)
   db:
     sslmode: require
   # ВТОРОЙ клиент базы у этого чарта — Job разовой работы переноса географии. Он

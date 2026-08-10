@@ -22,6 +22,9 @@
 package repohygiene
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"sort"
@@ -184,9 +187,15 @@ const gatewayProcess = "api-gateway"
 // checkFactoryFiles — композиционные площадки, где строится кеш вердиктов
 // пообъектной проверки. Сервис, у которого своего числа нет, строит его как
 // NewCache(0) и берёт умолчание политики.
+// geo здесь БОЛЬШЕ НЕТ, и это не пропуск: его площадка исчезла вместе с
+// собственной фабрикой звена — кеш вердиктов ему строит носитель
+// (`pkg/servicehost`) по значению `Spec.CacheWindow`, которое приезжает из
+// СВОЕЙ ручки сервиса. То есть geo не «унаследовал умолчание», а перестал быть
+// площадкой этого вида: своё число у него было и осталось, переехал лишь вызов
+// конструктора. Запись, оставленная здесь, искала бы удалённый файл и роняла
+// гейт на предпосылке — то есть на верном дереве.
 var checkFactoryFiles = map[string]string{
 	"compute": "services/compute/internal/check/factory.go",
-	"geo":     "services/geo/internal/check/factory.go",
 	"storage": "services/storage/internal/check/factory.go",
 }
 
@@ -802,7 +811,7 @@ func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
 			if perr != nil {
 				return perr //nolint:wrapcheck // parse error propagates as-is
 			}
-			if found {
+			if found || declaresCacheWindowToHost(string(src)) {
 				building[name] = true
 			}
 			return nil
@@ -812,4 +821,47 @@ func verdictCacheProcesses(t *testing.T) (map[string]bool, int) {
 		}
 	}
 	return building, filesRead
+}
+
+// declaresCacheWindowToHost — ВТОРАЯ форма владения кешем вердиктов: процесс не
+// зовёт конструктор кеша сам, а отдаёт окно ДЕСКРИПТОРУ, и кеш строит носитель.
+//
+// Почему это засчитывается, а не читается как «кеша нет». Предмет гейта —
+// «процесс, держащий кеш вердиктов, обязан иметь СВОЮ ручку окна отзыва», и он
+// про ВЛАДЕНИЕ ЧИСЛОМ, а не про адрес вызова конструктора. У переведённого на
+// носитель процесса окно по-прежнему его собственное: значение приезжает из его
+// ручки в поле `CacheWindow`, а конструктор кеша просто переехал в одно место на
+// все сервисы. Не засчитывать это значило бы объявить находкой ровно тот
+// переезд, ради которого носитель и заводится, — и заодно потерять требование
+// своей ручки для всех переведённых.
+//
+// Признаком взято ИМЯ ПОЛЯ в литерале: оно принадлежит закрытому набору осей
+// дескриптора, поэтому совпасть случайно ему не с чем.
+func declaresCacheWindowToHost(src string) bool {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", src, parser.SkipObjectResolution)
+	if err != nil {
+		// Разбор здесь не обязан удаваться на любом файле дерева; молчание
+		// безопасно, потому что первая форма (вызов конструктора) уже проверена.
+		return false
+	}
+	declared := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "CacheWindow" {
+				declared = true
+				return false
+			}
+		}
+		return true
+	})
+	return declared
 }

@@ -26,7 +26,7 @@ func TestLoad_defaults_and_dsn(t *testing.T) {
 	// Secure by default: with no KACHO_GEO_AUTH_MODE set, the binary must
 	// resolve to production (fail-closed) — not dev. dev is an explicit opt-in
 	// (local fixtures / deploy dev-profile set it via env); an unset env on a
-	// raw deploy must never silently honor the dev-only breakglass/trust-any
+	// raw deploy must never silently honor the dev-only trust-any
 	// bypasses. Matches security.md ("любой деплой — production-mode") and the
 	// iam/vpc/nlb sibling posture.
 	if c.AuthMode != "production" {

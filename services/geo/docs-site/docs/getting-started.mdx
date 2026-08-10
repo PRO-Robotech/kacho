@@ -78,7 +78,7 @@ admin (`:9091`).
 Команда выше поднимет сервис **не при любых настройках**: mTLS на обоих listener'ах, адрес
 kacho-iam для per-RPC authz и непустой allow-list доверенных форвардеров обязательны при **любом**
 старте — независимо от `KACHO_GEO_AUTH_MODE`; без них сервис откажется стартовать. Единственный
-обход — аварийный `KACHO_GEO_AUTHZ_BREAKGLASS=true`, и в production-posture он не honored.
+обхода нет: цепочка без звена решения о доступе не выражается — `Serve` либо собрал контур, либо отказал в старте.
 
 `KACHO_GEO_AUTH_MODE` по умолчанию `production` (secure by default) и в этой posture дополнительно
 запрещает plaintext-соединение к БД, поэтому дефолтный `KACHO_GEO_DB_SSLMODE=disable` придётся либо

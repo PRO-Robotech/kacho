@@ -50,25 +50,36 @@ type Config struct {
 
 	// AuthMode — fail-closed режим: dev | production | production-strict.
 	// Дефолт — production (secure-by-default): при незаданном env raw-деплой
-	// поднимается в fail-closed-режиме (breakglass/trust-any bypass'ы inert),
+	// поднимается в fail-closed-режиме (dev-опт-ин на несужение круга inert),
 	// как iam/vpc/nlb. dev — явный opt-in: локальные фикстуры и dev-профиль
 	// deploy-стенда выставляют его через env (security.md «любой деплой —
 	// production-mode; KACHO_*_AUTH_MODE=dev на кластере — security-долг»).
 	AuthMode string `envconfig:"KACHO_GEO_AUTH_MODE" default:"production"`
 
 	// AuthZIAMGRPCAddr — internal endpoint kacho-iam для per-RPC Check
-	// (ребро geo→iam authz). Пусто + Breakglass=false → интерсептор НЕ
-	// подключается (грациозный dev-старт без kacho-iam). Обычно iam-internal :9091.
+	// (ребро geo→iam authz), обычно iam-internal :9091.
+	//
+	// Пустое значение — ОТКАЗ СТАРТА, а не грациозный подъём без проверки прав:
+	// ребро решения о доступе задаётся ЯВНО, обеими половинами (адрес и
+	// транспорт), и «не задал» режимом не является. Держит это конструктор
+	// дескриптора, а не собственный страж сервиса.
 	AuthZIAMGRPCAddr string `envconfig:"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR" default:""`
-	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
-	// (только dev / break-glass).
-	AuthZBreakglass bool `envconfig:"KACHO_GEO_AUTHZ_BREAKGLASS" default:"false"`
+
+	// AuthZCheckTimeout — срок ОДНОГО вопроса о правах владельцу модели.
+	//
+	// Ручка заведена не ради нового поведения: значение то же, что было
+	// умолчанием платформы. Изменилось то, что оно стало ВЫБРАННЫМ. Неотвечающий
+	// сосед без срока вешает горутину навсегда, и звено не доходит до своей
+	// ветки fail-closed — горутины копятся до исчерпания процесса. Величина,
+	// которой никто не выбирал, не может быть ни обсуждена, ни сужена на
+	// конкретной посадке.
+	AuthZCheckTimeout time.Duration `envconfig:"KACHO_GEO_AUTHZ_CHECK_TIMEOUT" default:"2s"`
 
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно
 	// единственный — api-gateway SA, SAN spiffe://kacho.cloud/ns/<ns>/sa/kacho-api-gateway).
 	// Принимает comma-separated список. Пустой (default) allow-list — НЕ молчаливый
-	// trust-any: non-breakglass старт fail-closed ОТКАЗЫВАЕТ (validateSecurityConfig),
+	// trust-any: старт fail-closed ОТКАЗЫВАЕТ (конструктор дескриптора, О1),
 	// пока не запинен хотя бы один SAN — либо, только в dev, не выставлен явный
 	// AuthZTrustAnyForwarder opt-in (в production/production-strict trust-any не honored
 	// вовсе — обязателен непустой SAN).
@@ -86,11 +97,12 @@ type Config struct {
 
 	// AuthZTrustAnyForwarder — ЯВНЫЙ dev-опт-ин на «доверять ЛЮБОМУ mTLS-verified
 	// peer'у как форвардеру end-user principal'а» (пустой allow-list). Secure-by-
-	// default: без этого флага (и без запиненного SAN) non-breakglass старт
+	// default: без этого флага (и без запиненного SAN) старт
 	// ОТКАЗЫВАЕТ — пустой allow-list больше НЕ молчаливый дефолт. Нужен только для
 	// локального dev без api-gateway-SAN; в production/production-strict НЕ
 	// honored (там обязателен непустой SAN — trust-any недопустим). Оставленный
-	// незаданным (false) = fail-closed. См. validateSecurityConfig.
+	// незаданным (false) = fail-closed. Решение принимает конструктор
+	// дескриптора — один отказ на все сервисы, а не свой у каждого.
 	AuthZTrustAnyForwarder bool `envconfig:"KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
 
 	// AuthZCacheTTL — окно кеша положительных вердиктов авторизации, оно же ОКНО

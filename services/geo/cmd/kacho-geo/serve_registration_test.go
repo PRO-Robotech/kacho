@@ -37,19 +37,20 @@ const (
 )
 
 // TestRegisterServices_InternalAdminNotOnPublic — фактическая регистрация через
-// registerServices: Internal* admin-CRUD присутствует ТОЛЬКО на internal-сервере;
+// registerPublic/registerInternal: Internal* admin-CRUD присутствует ТОЛЬКО на internal-сервере;
 // public несёт только read-only Region/Zone; OperationService — на обоих.
 func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 	publicSrv := grpc.NewServer()
 	internalSrv := grpc.NewServer()
 
-	// use-case'ы конструируются с nil-портами: registerServices только регистрирует
+	// use-case'ы конструируются с nil-портами: регистраторы только регистрируют
 	// дескрипторы (RPC не вызываются), DB не нужна.
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
 	opHandler := handler.NewOperationHandler(operations.Repo(nil))
 
-	registerServices(publicSrv, internalSrv, regionUC, zoneUC, opHandler)
+	registerPublic(publicSrv, regionUC, zoneUC, opHandler)
+	registerInternal(internalSrv, regionUC, zoneUC, opHandler)
 
 	pub := publicSrv.GetServiceInfo()
 	intr := internalSrv.GetServiceInfo()
@@ -88,10 +89,11 @@ func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 func TestRegisterServices_MethodsPresent(t *testing.T) {
 	publicSrv := grpc.NewServer()
 	internalSrv := grpc.NewServer()
-	registerServices(publicSrv, internalSrv,
-		region.New(nil, nil, nil, nil),
-		zone.New(nil, nil, nil, nil),
-		handler.NewOperationHandler(operations.Repo(nil)))
+	regionUC := region.New(nil, nil, nil, nil)
+	zoneUC := zone.New(nil, nil, nil, nil)
+	opHandler := handler.NewOperationHandler(operations.Repo(nil))
+	registerPublic(publicSrv, regionUC, zoneUC, opHandler)
+	registerInternal(internalSrv, regionUC, zoneUC, opHandler)
 
 	intr := internalSrv.GetServiceInfo()
 	info, ok := intr[svcInternalRegion]

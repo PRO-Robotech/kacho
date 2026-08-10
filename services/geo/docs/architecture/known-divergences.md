@@ -103,23 +103,35 @@ intentional, not a missing feature.
 
 ## 5. Config knobs that are intentionally corelib-default, not geo-tunable
 
-**`check.Options` carries no `CheckTimeout`/`DenyRateLimitPerSec`/`CacheTTL`/
-`AllowSystemPrincipal`.** `internal/check` builds the authz interceptor with only
-`ServiceName`, `IAMConn`, `Breakglass`, `Logger`; the four rate/timeout/cache
-tuning knobs were removed as speculative generality (sec-hardening-r6) — no wiring
-path ever set them, so they were always zero. The corelib `authz.NewInterceptor`
-applies its own defaults (`CheckTimeout`→2s, cache-TTL 0, no deny-rate-limit,
-system-principal not allowed), which is the intended geo posture. If geo ever needs
-operator-tunable authz timing it is a new, wired feature — not a re-exposed dead
-seam.
+**geo no longer builds the authz interceptor itself.** `internal/check` is gone: the
+service host (`pkg/servicehost`) builds the decision link — one construction site for
+all services — from values the descriptor carries. Two of the knobs this section used to
+call "intentionally corelib-default" are now **chosen** rather than inherited, and that
+is the point rather than a rename: the revocation window (`KACHO_GEO_AUTHZ_CACHE_TTL`)
+and the per-question deadline (`KACHO_GEO_AUTHZ_CHECK_TIMEOUT`) are security parameters,
+and a value nobody selected can be neither discussed nor narrowed on a particular
+deployment. The descriptor **refuses to start** when either is left unset.
 
-**Breakglass is dev-only (never honored in a production posture).**
-`validateSecurityConfig` rejects `KACHO_GEO_AUTHZ_BREAKGLASS=true` when
-`AuthMode` is `production`/`production-strict` (sec-hardening-r6). Breakglass is a
-full bypass of per-RPC authz Check **and** mTLS; honoring it in production would
-let a single env flag silently disable all authN/authZ on a deployed stack
-(CWE-489), so it is fail-closed at startup exactly like dev-anonymous. It remains
-usable only under dev `AuthMode` for a local emergency.
+The remaining two (`DenyRateLimitPerSec`, `AllowSystemPrincipal`) stay unset, and that
+stays deliberate: an unset deny-budget means the storm budget is OFF, not "a hundred like
+vpc" — the corelib doc says so explicitly, and describing it otherwise would state a
+protection that is not there.
+
+**Breakglass is gone entirely — there is no emergency bypass knob.**
+The previous edition described `KACHO_GEO_AUTHZ_BREAKGLASS` as a dev-only full bypass of
+per-RPC Check **and** mTLS, refused in a production posture. The knob no longer exists:
+it was removed together with geo's move onto the service host, because a chain without
+the decision link is not expressible there — `Serve` either assembled the contour or
+refused to start. The source of the access decision is a closed two-valued enumeration
+("ask the model owner" / "I am the model owner"); there is no third value meaning "ask
+nobody", and a named knob that removes an authorization check is precisely what must not
+exist in this tree.
+
+What replaced it for the one caller that genuinely needed it: transport verification is
+judged as part of the **deployment posture**, so an unverified edge is refused in
+production and accepted outside it. Bootstrap phase 1 — which raises the stand before
+certificates are issued — used to need the bypass and now needs nothing, and it no longer
+switches authorization off as a side effect of switching mTLS off.
 
 **Audit actor never blank.** `actorFromCtx` returns the sentinel `"unknown"`
 (not `""`) when a principal is explicitly present in ctx but carries an empty ID,

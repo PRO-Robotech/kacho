@@ -379,7 +379,6 @@ compute:
 # Image tag comes from the per-cluster image-tag overlay (placeholder default).
 kacho-geo:
   authMode: production
-  authzBreakglass: false
   # BOOT REQUIREMENT: geo's validateSecurityConfig refuses to start in production
   # with an empty trusted-forwarder allow-list — an empty list means "trust ANY
   # mTLS-verified peer to forward the end-user principal", i.e. principal-spoofing
