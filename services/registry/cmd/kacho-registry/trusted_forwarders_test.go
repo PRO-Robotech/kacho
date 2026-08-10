@@ -168,6 +168,34 @@ func TestValidate_ProductionIgnoresTheDevOptIn(t *testing.T) {
 
 // ── поведение цепочки, которую получают оба листенера ───────────────────────
 
+// hostIdentityChain — пара звеньев извлечения личности В ТОМ ВИДЕ, в каком её
+// ставит носитель контура, с кругом отправителей ИЗ ПРИНЯТОГО ДЕСКРИПТОРА.
+//
+// Прежде эти же пробы звали локальный сборщик композиционного корня
+// (`identityUnary(cfg)`). Сборщика больше нет: цепочку строит носитель, и поля
+// интерсепторного типа в дескрипторе не существует — принести сюда свою цепочку
+// нельзя. Проба стала СТРОЖЕ ровно на один шаг: круг приезжает не из конфигурации
+// напрямую, а через конструктор дескриптора, то есть через отказ старта (О1),
+// который на несуженном круге просто не отдаст дескриптора.
+//
+// Что цепочку получают ОБА слушателя и что она у них одна — свойство ПОСТРОЕНИЯ
+// носителя (`serverPair` строит её один раз на двоих) и предмет его собственных
+// проб (`pkg/servicehost`: TestBothListenersRefuseIdenticallyOnTheWire,
+// TestForwardedIdentityIsHonouredOnlyFromTheCircle). Здесь утверждается то, что
+// принадлежит РЕЕСТРУ: какой круг он объявляет и кого этот круг пускает.
+func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInterceptor {
+	t.Helper()
+	cfg := bootConfig(t, map[string]string{
+		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": strings.Join(forwarders, ","),
+	})
+	desc, err := describe(cfg, probeLogger(), probePorts())
+	if err != nil {
+		t.Fatalf("дескриптор с кругом %v отвергнут конструктором — процесс не поднялся бы:\n%v",
+			forwarders, err)
+	}
+	return grpcsrv.PrincipalExtractUnary(desc.Spec().Forwarders)
+}
+
 // seenIdentity прогоняет запрос через цепочку и возвращает личность, которую
 // увидел бы обработчик, и признак доверия. Это и есть наблюдаемое: субъект
 // проверки прав собирается ровно из неё (pkg/authz subject_extract →
@@ -195,7 +223,7 @@ func seenIdentity(t *testing.T, chain []grpc.UnaryServerInterceptor, ctx context
 // RED до правки: цепочка публичного листенера читает заголовки безусловно —
 // личность жертвы доходит до обработчика и становится субъектом проверки прав.
 func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
-	chain := identityUnary(prodCfg(gatewaySAN))
+	chain := hostIdentityChain(t, gatewaySAN)
 
 	id, trusted, present := seenIdentity(t, chain, forwarded(verifiedPeer(t, neighbourSAN), victimUserID))
 
@@ -219,7 +247,7 @@ func TestListener_NeighbourWithValidCertCannotActAsSomeoneElse(t *testing.T) {
 // запросы к registry — он единственный, кто передаёт сюда чужую личность, и
 // делает это на оба листенера.
 func TestListener_PinnedSenderKeepsWorking(t *testing.T) {
-	chain := identityUnary(prodCfg(gatewaySAN))
+	chain := hostIdentityChain(t, gatewaySAN)
 
 	id, trusted, present := seenIdentity(t, chain, forwarded(verifiedPeer(t, gatewaySAN), "usr-alice"))
 
@@ -237,7 +265,7 @@ func TestListener_PinnedSenderKeepsWorking(t *testing.T) {
 // правка списка не увела внимание от него. Единственный замок на саму дыру —
 // TestListener_NeighbourWithValidCertCannotActAsSomeoneElse выше.
 func TestListener_UnverifiedPeerCannotForward(t *testing.T) {
-	chain := identityUnary(prodCfg(gatewaySAN))
+	chain := hostIdentityChain(t, gatewaySAN)
 
 	id, trusted, _ := seenIdentity(t, chain, forwarded(unverifiedTLSPeer(), victimUserID))
 

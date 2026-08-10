@@ -20,7 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
-// checkTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib
+// CheckTimeout — per-call deadline на один Check-вызов к iam. Зеркалит corelib
 // authz.InterceptorOptions.CheckTimeout default (2s): registry-interceptor
 // (internal/check/factory.go) её не конфигурирует, и, что важнее, эта
 // interceptor-side защита покрывает только Check, инициированный САМИМ
@@ -31,7 +31,7 @@ import (
 // ctx без собственного дедлайна. Зависший iam пинил горутину навсегда
 // (architecture.md "Per-call deadline на КАЖДОМ внешнем вызове"). Таймаут — здесь,
 // ВНУТРИ клиента, чтобы одной правкой покрыть оба call-site'а uniformly.
-const checkTimeout = 2 * time.Second
+const CheckTimeout = 2 * time.Second
 
 // IAMCheckClient адаптирует kacho-iam.InternalIAMService.Check под authz.CheckClient.
 type IAMCheckClient struct {
@@ -51,18 +51,18 @@ func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 			// CheckMany), поэтому карта здесь несёт лишь умолчание — но несёт, иначе
 			// сборка сужателя отвергла бы посадку без предиката.
 			Relations: map[string][]string{"": {"v_list"}},
-			Timeout:   checkTimeout,
+			Timeout:   CheckTimeout,
 		}),
 	}
 }
 
 // Check вызывает InternalIAMService.Check с собственным per-call deadline
-// (checkTimeout) — НЕ полагается на дедлайн вызывающего ctx. Исходящий ctx
+// (CheckTimeout) — НЕ полагается на дедлайн вызывающего ctx. Исходящий ctx
 // оборачивается auth.PropagateOutgoing, чтобы на стороне iam principal-extract
 // видел реального вызывающего. Timeout/iam-error → non-nil error (caller
 // fail-closed'ит: data-plane → 503, listauthz → UNAVAILABLE).
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	cctx, cancel := context.WithTimeout(ctx, CheckTimeout)
 	defer cancel()
 	resp, err := c.cli.Check(auth.PropagateOutgoing(cctx), &iamv1.CheckRequest{
 		SubjectId: subjectID,
@@ -97,7 +97,7 @@ func (c *IAMCheckClient) CheckMany(
 	if len(objectIDs) == 0 {
 		return nil, nil
 	}
-	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	cctx, cancel := context.WithTimeout(ctx, CheckTimeout)
 	defer cancel()
 	return c.narrower.Visible(auth.PropagateOutgoing(cctx), subject, objectType,
 		catalogPageAction, relation, objectIDs)
@@ -106,3 +106,22 @@ func (c *IAMCheckClient) CheckMany(
 // catalogPageAction — аудит-строка вопроса о СТРАНИЦЕ каталога. Она едет в каждый
 // вопрос для аудита и трассировки; решение принимает явное отношение, а не она.
 const catalogPageAction = "registry.repositories.list"
+
+// Narrower отдаёт сужатель, через который этот клиент задаёт ПАКЕТНЫЙ вопрос о
+// странице (`CheckMany` → `listnarrow.Visible`).
+//
+// Существует ради одного читателя — дескриптора процесса
+// (`servicecontract.Spec.Narrowers`): носитель сверяет ПРОВОДКУ сужателя с
+// каталогом прав в обе стороны (О3/О4), и предъявить он может только тот
+// сужатель, который реально исполняется на сужаемых методах. Собрать здесь
+// второй значило бы завести две реализации одного предмета — ровно то, ради
+// устранения чего сужатель и сведён в один дом.
+//
+// nil-клиент отдаёт nil: «сужателя нет» обязано быть отличимо от «сужатель есть
+// и молчит», и носитель читает это как отсутствие проводки (О3).
+func (c *IAMCheckClient) Narrower() *listnarrow.Narrower {
+	if c == nil {
+		return nil
+	}
+	return c.narrower
+}

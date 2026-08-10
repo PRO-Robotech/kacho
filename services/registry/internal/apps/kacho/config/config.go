@@ -14,8 +14,6 @@ import (
 	"net/url"
 	"time"
 
-	"google.golang.org/grpc"
-
 	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -125,6 +123,45 @@ type Config struct {
 	// немедленный revoke). data-plane /v2/ (OCI-proxy) authz НЕ кеширует (прямой
 	// per-request Check), поэтому этот knob влияет только на control-plane gRPC. См. #33.
 	AuthZCacheTTL time.Duration `envconfig:"KACHO_REGISTRY_AUTHZ_CACHE_TTL" default:"2s"`
+
+	// AuthZDenyBudgetPerSec — устойчивый темп (в секунду на принципала) проверок,
+	// чей исход кэш НЕ поглощает: отказ, сокрытие существования, промах «нет
+	// пути», недоступность модели. По исчерпании звено отвечает
+	// `ResourceExhausted`, не обращаясь к kacho-iam, — то есть сбрасывает шторм
+	// отказов с соседа.
+	//
+	// До носителя контура registry этой отсечки НЕ ИМЕЛ вовсе: поле
+	// `DenyRateLimitPerSec` не заполнялось, а механизм читает неположительное
+	// значение как «ограничения нет». Величина 100 не выдумана — это то же число,
+	// которое платформа уже выбрала для того же механизма (литерал в
+	// композиционном корне nlb и умолчание ручки vpc/geo).
+	//
+	// Почему отсечка нужна и реестру: бюджет тратят ТОЛЬКО непоглощаемые кэшем
+	// исходы, поэтому законное чтение своих реестров её не видит вовсе. Платит
+	// ровно тот, кто штурмует отказами чужие идентификаторы, — и платит за него
+	// не kacho-iam.
+	AuthZDenyBudgetPerSec float64 `envconfig:"KACHO_REGISTRY_AUTHZ_DENY_BUDGET_PER_SEC" default:"100"`
+
+	// HandlingBudget — верхняя граница обработки ОДНОГО gRPC-вызова (серверный
+	// срок). Более строгий срок вызывающего уважается; окно не расширяется никогда.
+	//
+	// 30s — то же число, что платформа выбрала для той же величины у vpc и geo.
+	// Это ПОТОЛОК, а не цель: он обязан с запасом накрывать вопрос о правах
+	// (`check.CheckTimeout`, 2s) плюс запрос к своей БД (её собственный backstop —
+	// DBStatementTimeout, тоже 30s), а предмет его — не задержка, а вызов БЕЗ
+	// срока, который держит соединение из ограниченного пула столько, сколько
+	// выполняется его запрос: MaxConns таких вызовов отказывают весь сервис
+	// (CWE-770).
+	//
+	// Величина относится к ДВУМ gRPC-листенерам. Плоскость данных (docker
+	// push/pull) в контур носителя не входит и держит свои сроки: подмешивать
+	// сюда потоковую передачу слоёв значило бы рвать выгрузку большого образа по
+	// границе, выведенной из совсем другой арифметики.
+	//
+	// «Не применимо» у величины нет и быть не может — сказать «границы не надо»
+	// значит сказать «мой процесс вправе держать чужой ресурс сколько угодно».
+	// Неположительное значение отвергает конструктор дескриптора.
+	HandlingBudget time.Duration `envconfig:"KACHO_REGISTRY_HANDLING_BUDGET" default:"30s"`
 
 	// ZotAddr — internal HTTP-endpoint zot-бэкенда (data/registry-API). zot
 	// никогда не публично достижим; клиент ходит на cluster-internal endpoint.
@@ -276,15 +313,12 @@ func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
 	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }
 
-// PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).
-func (c Config) PublicServerCreds() (grpc.ServerOption, error) {
-	return grpcsrv.TLSServerCreds(c.PublicServerMTLS)
-}
-
-// InternalServerCreds возвращает grpc.ServerOption для internal-листенера (:9091).
-func (c Config) InternalServerCreds() (grpc.ServerOption, error) {
-	return grpcsrv.TLSServerCreds(c.InternalServerMTLS)
-}
+// Пары `PublicServerCreds` / `InternalServerCreds`, отдававших `grpc.ServerOption`,
+// здесь больше нет: слушатели поднимает носитель контура, и транспорт он берёт
+// из дескриптора в виде `credentials.TransportCredentials`
+// (`grpcsrv.TLSServerTransportCreds`, см. `cmd/kacho-registry/describe`).
+// Оставленные, они были бы прод-функциями без прод-читателя — тем самым мёртвым
+// кодом, который выглядит работающим.
 
 // searchPathOption — libpq `-c` startup-опция: каждое соединение видит схему
 // kacho_registry без отдельного SET search_path на каждый стейтмент.

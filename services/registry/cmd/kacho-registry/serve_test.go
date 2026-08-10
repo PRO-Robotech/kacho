@@ -6,6 +6,7 @@ package main
 import (
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 
@@ -105,6 +106,77 @@ func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testi
 			}
 		})
 	}
+}
+
+// TestMTLSOnBothListenersIsRefusedInAnyMode — РУБЕЖ, который перевод на носитель
+// не отменяет и отменить не вправе.
+//
+// Носитель судит транспорт слушателей ТОЛЬКО в боевой посадке
+// (`servicecontract` О8). Вне её сборщик креденшелов на невзведённой ручке
+// отдаёт незашифрованные креды БЕЗ ошибки — и оба слушателя поднялись бы
+// открытым текстом, а на незашифрованном слушателе переданная личность
+// принимается ОТ ЛЮБОГО: круг отправителей её не сужает, потому что сертификата
+// нет вовсе. Поэтому `validateSecurityConfig` остаётся в композиционном корне и
+// действует в ЛЮБОМ режиме.
+//
+// Проба утверждает ОБЕ половины сразу, потому что порознь каждая зеленеет на
+// сломанном: исход (dev + выключенный mTLS = отказ, и отказ называет ручку) и
+// РАЗМЕЩЕНИЕ (страж зовётся из корня ДО того, как носитель поднимет слушатели).
+// Без второй половины страж мог бы остаться правильным и никем не вызванным.
+func TestMTLSOnBothListenersIsRefusedInAnyMode(t *testing.T) {
+	t.Run("исход: dev с выключенным mTLS не стартует", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			knob string
+			off  func(*config.Config)
+		}{
+			{"public", "KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE",
+				func(c *config.Config) { c.PublicServerMTLS.Enable = false }},
+			{"internal", "KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE",
+				func(c *config.Config) { c.InternalServerMTLS.Enable = false }},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				cfg := config.Config{
+					AuthMode:           "dev",
+					AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
+					PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
+					InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
+				}
+				tc.off(&cfg)
+				err := validateSecurityConfig(cfg)
+				if err == nil {
+					t.Fatalf("dev с выключенным mTLS на %s слушателе принят: на незашифрованном "+
+						"слушателе переданную личность принимает ЛЮБОЙ пир — круг отправителей её "+
+						"не сужает, потому что сертификата нет вовсе", tc.name)
+				}
+				if !strings.Contains(err.Error(), tc.knob) {
+					t.Fatalf("отказ обязан назвать ручку %s, иначе стенд не поднять: %q", tc.knob, err.Error())
+				}
+			})
+		}
+	})
+
+	t.Run("размещение: страж зовётся из корня ДО подъёма слушателей", func(t *testing.T) {
+		src, err := os.ReadFile(registryServeSrc)
+		if err != nil {
+			t.Fatalf("композиционный корень не читается: %v", err)
+		}
+		root := string(src)
+		guard := strings.Index(root, "validateSecurityConfig(cfg)")
+		if guard < 0 {
+			t.Fatal("композиционный корень больше НЕ ЗОВЁТ validateSecurityConfig: носитель судит " +
+				"транспорт слушателей только в боевой посадке, поэтому без этого вызова dev поднимался " +
+				"бы открытым текстом на обоих слушателях")
+		}
+		host := strings.Index(root, "servicehost.Serve(")
+		if host < 0 {
+			t.Fatal("композиционный корень не поднимает слушатели носителем — предпосылка пробы исчезла")
+		}
+		if guard > host {
+			t.Fatal("страж mTLS зовётся ПОСЛЕ подъёма слушателей: к моменту отказа они уже приняли бы " +
+				"соединения открытым текстом")
+		}
+	})
 }
 
 // TestValidateAuthMode — whitelist режимов + строгость DB-SSL. dev/production —

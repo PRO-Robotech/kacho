@@ -3,138 +3,153 @@
 
 package main
 
-// trusted_forwarders_wiring_test.go — страж РАЗМЕЩЕНИЯ: доверенную пару обязаны
-// получать ОБА листенера, а список отправителей — приходить из конфигурации.
+// trusted_forwarders_wiring_test.go — страж РАЗМЕЩЕНИЯ круга отправителей.
 //
-// Поведенческие замки (кого цепочка принимает, а кого отвергает) живут в
-// trusted_forwarders_test.go и утверждают на ОДНОЙ цепочке. Что эту цепочку
-// получает каждый из двух листенеров, а безусловный извлекатель заголовков не
-// остался нигде — предмет этого файла. Разрыв между «проверено» и «смонтировано»
-// и есть та «форма без содержания», из-за которой дыра прожила до сих пор:
-// внутренний листенер был написан правильно, а публичный рядом читал заголовки
-// личности без единой проверки.
+// # Что здесь проверялось раньше и почему предмет сменился
+//
+// Прежняя редакция считала вхождения локального сборщика цепочки
+// (`identityUnary(cfg)` — ровно два, по одному на слушатель), требовала, чтобы
+// круг приезжал в него из конфигурации, и следила, чтобы переменные цепочек не
+// переприсваивались литералом. Все три утверждения имели один предмет: цепочку
+// СОБИРАЛ САМ РЕЕСТР, и оттого её можно было собрать по-разному для двух
+// слушателей, подменить или обойти.
+//
+// После перевода на носитель контура (`pkg/servicehost`) этого предмета нет:
+// цепочка строится ОДИН раз внутри носителя и подаётся обоим слушателям, а поля
+// интерсепторного типа в дескрипторе не существует — принести свою цепочку
+// нельзя, и это свойство ПОСТРОЕНИЯ, а не соглашение. Считать вхождения стало
+// нечего.
+//
+// Поэтому пробы заменены на строго более сильные, и обе стороны названы:
+//
+//	(а) композиционный корень НЕ ДЕРЖИТ ни цепочки, ни сервера — проверяется по
+//	    исполняемой части, а не по названию файла (ниже). Свойство по всему дереву
+//	    держит гейт `internal/repohygiene`
+//	    TestCompositionRootsCarryNoServerConstructionOfTheirOwn, который читает
+//	    КАЖДЫЙ композиционный корень, включая ещё не написанные;
+//	(б) круг доезжает до цепочки НЕ «потому что рядом вызвано», а через ПРИНЯТЫЙ
+//	    дескриптор: несуженный круг конструктор отвергает (О1), и цепочки не
+//	    возникает вовсе. Утверждается ИСХОД, а не текст аргумента.
+//
+// Поведенческие замки (кого цепочка принимает, а кого отвергает) остаются в
+// trusted_forwarders_test.go и теперь прогоняют круг из дескриптора.
 
 import (
-	"os"
-	"regexp"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"sort"
 	"strings"
 	"testing"
 )
 
-// unconditionalExtract — безусловный извлекатель заголовков личности. Его godoc
-// прямо запрещает монтировать его туда, куда дозванивается неконтролируемый пир;
-// у registry дозванивается любой под пространства имён.
-var unconditionalExtract = regexp.MustCompile(`grpcsrv\.(Unary|Stream)PrincipalExtract\(`)
-
-// chainCall — вызов боевого сборщика цепочки. Пробелы не фиксируем: перенос
-// строки при форматировании не должен превращать стража в ложное падение.
-var chainCall = regexp.MustCompile(`(?s)\bidentity(Unary|Stream)\(\s*cfg\s*\)`)
-
-// forwardersArg — то, ЧТО уезжает в общий конструктор пары как круг отправителей.
-// Ищем все вхождения, а не первое: одного вызова с литералом достаточно, чтобы
-// круг снова не сужался. Аргумент сам содержит скобки
-// (`cfg.TrustedForwarders()`), поэтому класс «что угодно, кроме скобки» здесь не
-// годится — берём нежадное совпадение до закрывающей скобки строки.
-var forwardersArg = regexp.MustCompile(`(?m)grpcsrv\.PrincipalExtract(?:Unary|Stream)\(\s*(.*?)\s*\)\s*$`)
-
-// chainAssign — ЛЮБОЕ присваивание переменной, которая уезжает в листенер.
-// Считать одни только вызовы сборщика недостаточно: переприсваивание литералом
-// ниже по функции оставило бы вызов на месте, а в листенер уехала бы другая
-// цепочка.
-var chainAssign = regexp.MustCompile(`(?m)^\s*(publicUnary|publicStream|internalUnary|internalStream)\s*:?=\s*(.+?)\s*$`)
-
-func readServeSrc(t *testing.T) string {
-	t.Helper()
-	b, err := os.ReadFile("serve.go")
-	if err != nil {
-		t.Fatalf("read composition root: %v", err)
-	}
-	return string(b)
-}
-
-// TestServe_NoUnconditionalPrincipalExtract — дыра в чистом виде: публичный
-// листенер монтировал grpcsrv.UnaryPrincipalExtract / StreamPrincipalExtract,
-// которые читают x-kacho-principal-* без всякой проверки транспорта.
+// rootChainSymbols — имена, присутствие которых в композиционном корне означает,
+// что контур собирается на стороне сервиса.
 //
-// RED до правки: оба вхождения на месте.
-func TestServe_NoUnconditionalPrincipalExtract(t *testing.T) {
-	if hits := unconditionalExtract.FindAllString(readServeSrc(t), -1); len(hits) > 0 {
-		t.Fatalf("serve.go всё ещё монтирует безусловный извлекатель личности: %v. "+
-			"Он читает x-kacho-principal-* не глядя ни на транспорт, ни на личность сертификата "+
-			"пира — любой под кластера присылает заголовки жертвы, и решение о правах принимается "+
-			"от её имени. Нужна доверенная пара CertIdentityExtract → "+
-			"TrustedPrincipalExtract(WithTrustedForwarders(...))", hits)
+// Читается ИСПОЛНЯЕМАЯ часть (разбор AST), а не текст файла: то же имя в
+// комментарии этого файла или в строковом литерале соседней пробы находкой не
+// является, иначе первая же объясняющая строка сломала бы стража.
+var rootChainSymbols = map[string]string{
+	"PrincipalExtractUnary":   "пара извлечения личности собирается в корне — значит два слушателя могут получить разные",
+	"PrincipalExtractStream":  "пара извлечения личности собирается в корне — значит два слушателя могут получить разные",
+	"UnaryPrincipalExtract":   "безусловный извлекатель заголовков личности: читает x-kacho-principal-* не глядя ни на транспорт, ни на личность сертификата пира",
+	"StreamPrincipalExtract":  "безусловный извлекатель заголовков личности: читает x-kacho-principal-* не глядя ни на транспорт, ни на личность сертификата пира",
+	"NewServer":               "слушатель собирается в корне — значит порядок звеньев остаётся его собственным делом",
+	"ChainUnaryInterceptor":   "цепочка звеньев собирается в корне — вторая поверхность правки контура",
+	"ChainStreamInterceptor":  "цепочка звеньев собирается в корне — вторая поверхность правки контура",
+	"UnaryServerInterceptor":  "значение интерсепторного типа в корне — цепочка собирается на стороне сервиса",
+	"StreamServerInterceptor": "значение интерсепторного типа в корне — цепочка собирается на стороне сервиса",
+}
+
+// TestCompositionRootCarriesNoChainOfItsOwn — (а).
+//
+// Предпосылка проверяется: ноль разобранных узлов — находка, а не «всё чисто».
+// Объём осмотренного печатается, чтобы «ноль нарушений» было отличимо от «ноль
+// прочитанного».
+func TestCompositionRootCarriesNoChainOfItsOwn(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, registryServeSrc, nil, 0)
+	if err != nil {
+		t.Fatalf("композиционный корень %s не разбирается: %v", registryServeSrc, err)
+	}
+
+	var nodes int
+	var findings []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		nodes++
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if why, bad := rootChainSymbols[sel.Sel.Name]; bad {
+			findings = append(findings, fset.Position(sel.Pos()).String()+": "+sel.Sel.Name+" — "+why)
+		}
+		return true
+	})
+	if nodes == 0 {
+		t.Fatalf("в %s не осмотрено ни одного узла — «нарушений нет» здесь означало бы "+
+			"«ничего не прочитано»", registryServeSrc)
+	}
+	sort.Strings(findings)
+	t.Logf("осмотрено узлов композиционного корня: %d, запрещённых имён в словаре: %d",
+		nodes, len(rootChainSymbols))
+	if len(findings) > 0 {
+		t.Fatalf("композиционный корень собирает контур сам (%d):\n  %s",
+			len(findings), strings.Join(findings, "\n  "))
 	}
 }
 
-// TestServe_BothListenersGetTheTrustAwareChain — измерение нельзя закрыть на
-// одном листенере: публичный (:9090) несёт пользовательский CRUD реестров и
-// репозиториев, внутренний (:9091) — административные RPC. Оба обязаны собирать
-// цепочку одним и тем же боевым сборщиком.
-func TestServe_BothListenersGetTheTrustAwareChain(t *testing.T) {
-	src := readServeSrc(t)
-
-	var unary, stream int
-	for _, m := range chainCall.FindAllStringSubmatch(src, -1) {
-		if m[1] == "Unary" {
-			unary++
-		} else {
-			stream++
+// TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor — (б).
+//
+// Три направления, и каждое утверждает ИСХОД:
+//
+//	(1) круг из конфигурации доезжает до дескриптора СУЖЕННЫМ и содержит ровно то,
+//	    что задано, — литерал такого дать не может;
+//	(2) несуженный круг вне боевого режима и без явного опт-ина дескриптора не даёт
+//	    вовсе: цепочки, доверяющей любому проверенному пиру, не возникает;
+//	(3) тот же несуженный круг с явным опт-ином принимается — иначе (2) зеленел бы
+//	    на «отказывать всегда», то есть на полностью сломанной посадке.
+func TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor(t *testing.T) {
+	t.Run("круг из конфигурации доезжает сужённым", func(t *testing.T) {
+		desc, err := describe(bootConfig(t, nil), probeLogger(), probePorts())
+		if err != nil {
+			t.Fatalf("дескриптор отвергнут: %v", err)
 		}
-	}
-	if unary != 2 {
-		t.Fatalf("identityUnary(cfg) встречается %d раз(а), ожидается 2 "+
-			"(публичный :9090 и внутренний :9091)", unary)
-	}
-	if stream != 2 {
-		t.Fatalf("identityStream(cfg) встречается %d раз(а), ожидается 2", stream)
-	}
-}
-
-// TestServe_ForwarderAllowListComesFromConfig — список обязан выводиться из
-// конфигурации. Пустой литерал означает «принимаем переданную личность от ЛЮБОГО
-// пира с сертификатом» (corelib сужает круг только на непустом списке) — и
-// настроить это было бы невозможно ни одним способом.
-func TestServe_ForwarderAllowListComesFromConfig(t *testing.T) {
-	src := readServeSrc(t)
-
-	all := forwardersArg.FindAllStringSubmatch(src, -1)
-	if len(all) == 0 {
-		t.Fatal("serve.go: пара извлечения личности не собирается общим конструктором " +
-			"grpcsrv.PrincipalExtract* — круг отправителей чужой личности ничем не сужается " +
-			"(либо страж перестал читать проводку и его надо обновить вместе с ней)")
-	}
-	for _, m := range all {
-		arg := strings.TrimSpace(m[1])
-		if !strings.Contains(arg, "cfg.") {
-			t.Fatalf("serve.go: allow-list передаётся как `%s` — литералом, а не конфигурацией", arg)
+		circle := desc.Spec().Forwarders
+		if !circle.IsNarrowed() {
+			t.Fatal("круг отправителей в дескрипторе НЕ сужен: по контракту общей библиотеки это " +
+				"означает не «никому», а «любому пиру с проверенным сертификатом» — то есть " +
+				"переданную личность принимает любой сосед")
 		}
-	}
-}
-
-// TestServe_ChainVariablesAreNeverReassignedToALiteral — КАЖДОЕ присваивание
-// переменной листенера обязано быть либо вызовом боевого сборщика, либо
-// дополнением её же (append — так в цепочку добавляется authz-звено). Иначе
-// переприсваивание литералом ниже по функции вернуло бы дыру, оставив все
-// остальные проверки зелёными: вызовы сборщика на месте, а в листенер уехало
-// другое.
-func TestServe_ChainVariablesAreNeverReassignedToALiteral(t *testing.T) {
-	src := readServeSrc(t)
-
-	all := chainAssign.FindAllStringSubmatch(src, -1)
-	if len(all) == 0 {
-		t.Fatal("serve.go: не найдено ни одного присваивания цепочек листенеров — " +
-			"страж потерял цель, обнови его вместе с проводкой")
-	}
-	for _, m := range all {
-		name, rhs := m[1], strings.TrimSpace(m[2])
-		switch {
-		case strings.HasPrefix(rhs, "identityUnary(cfg)"), strings.HasPrefix(rhs, "identityStream(cfg)"):
-		case strings.HasPrefix(rhs, "append("+name+","):
-		default:
-			t.Fatalf("serve.go: %s присваивается как `%s` — это не боевой сборщик цепочки и не "+
-				"дополнение её же. Переданная личность принимается тем, что реально попало в "+
-				"листенер, а не тем, что рядом вызвано", name, rhs)
+		sans := circle.SANs()
+		if len(sans) != 1 || sans[0] != gatewaySAN {
+			t.Fatalf("круг несёт %v, а конфигурация называла ровно одного законного отправителя (%s): "+
+				"либо сужение задано не тем значением — и пользовательские запросы к реестру встали бы, "+
+				"— либо в круг попал кто-то, кого конфигурация не называла", sans, gatewaySAN)
 		}
-	}
+	})
+
+	t.Run("несуженный круг дескриптора не даёт", func(t *testing.T) {
+		_, err := describe(bootConfig(t, map[string]string{
+			"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": "",
+		}), probeLogger(), probePorts())
+		if err == nil {
+			t.Fatal("дескриптор с пустым кругом принят — цепочка приняла бы переданную личность " +
+				"от любого пира с проверенным сертификатом")
+		}
+		if !strings.Contains(err.Error(), "KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS") {
+			t.Fatalf("отказ обязан назвать ручку, которую выставляет оператор: %v", err)
+		}
+	})
+
+	t.Run("тот же круг с явным опт-ином принимается", func(t *testing.T) {
+		_, err := describe(bootConfig(t, map[string]string{
+			"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": "",
+			"KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER":    "true",
+		}), probeLogger(), probePorts())
+		if err != nil {
+			t.Fatalf("явный опт-ин вне боевого режима обязан пропускать локальную фикстуру, "+
+				"иначе отрицание выше зеленеет на «отказывать всегда»: %v", err)
+		}
+	})
 }

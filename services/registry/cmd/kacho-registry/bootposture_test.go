@@ -97,8 +97,15 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if guard < 0 || call < guard {
 		t.Fatal("posture line must be emitted AFTER validateSecurityConfig (a config the process accepted)")
 	}
-	listener := strings.Index(root, "grpcsrv.NewServer(")
-	if listener < 0 || call > listener {
+	// Слушатели поднимает носитель контура, поэтому якорь «до подъёма» — его
+	// вызов, а не конструктор сервера: конструктора в корне больше нет вовсе
+	// (см. trusted_forwarders_wiring_test.go), и якорь на нём означал бы «до
+	// того, чего тут не бывает» — то есть утверждение без предмета.
+	listener := strings.Index(root, "servicehost.Serve(")
+	if listener < 0 {
+		t.Fatal("composition root must raise its listeners through the contour host: servicehost.Serve(…)")
+	}
+	if call > listener {
 		t.Fatal("posture line must be emitted BEFORE the gRPC listeners are built")
 	}
 }
