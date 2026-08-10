@@ -108,11 +108,24 @@ vpc_mode="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 vpc_ssl="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres."ssl-mode"' -)"
 case "$vpc_mode" in production|production-strict) ;; *) violation "kacho-vpc authn.mode=$vpc_mode (want production*, NOT dev)";; esac
 [ "$vpc_ssl" != "disable" ] && [ -n "$vpc_ssl" ] || violation "kacho-vpc ssl-mode=$vpc_ssl (must NOT be disable)"
-# fail-closed authz: list-filter must not fail-open, breakglass must be off.
+# fail-closed authz: list-filter must not fail-open.
 vpc_lf_fo="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz."list-filter"."fail-open"' -)"
-vpc_bg="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -)"
 [ "$vpc_lf_fo" = "false" ] || violation "kacho-vpc authz.list-filter.fail-open=$vpc_lf_fo (must be false — fail-closed)"
-[ "$vpc_bg" = "false" ] || violation "kacho-vpc authz.breakglass=$vpc_bg (must be false in production)"
+
+# authz.breakglass: the knob is GONE, and its absence is the assertion.
+#
+# It used to be checked as "must be false". The knob was retired with the move to
+# the shared carrier: the state it enabled is no longer representable — the field
+# exists neither in the config nor in the descriptor, and the decision edge is now
+# required in EVERY posture, not just production. Asserting "false" against a
+# retired knob turns null into a violation on a CORRECT tree, i.e. the gate goes
+# red on the very state it was written to demand.
+#
+# Inverted rather than deleted: a knob that once bypassed every Check must not
+# come back quietly. `null` is the only accepted value, so re-adding it — with any
+# value, including false — fails here first.
+vpc_bg="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -)"
+[ "$vpc_bg" = "null" ] || violation "kacho-vpc authz.breakglass=$vpc_bg — the knob is retired; its reappearance (with ANY value) means the Check-bypass path came back"
 # Who may FORWARD an end-user identity to vpc. An empty list does not mean
 # "nobody": corelib narrows the circle only when the list is non-empty, so empty
 # means any peer holding an internal-CA certificate may act as any tenant — and

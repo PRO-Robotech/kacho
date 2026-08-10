@@ -258,10 +258,14 @@ func TestValidatePeerTransport_Production_RegisterDisabled_NoRequirement(t *test
 }
 
 // vpc9b-C-08: register-drainer включён, но authz.iam-endpoint пуст → register edge
-// не дилится (нет iam-internal endpoint) → нет требования. (breakglass, чтобы S1 не
-// требовал endpoint.)
+// не дилится (нет iam-internal endpoint) → нет требования.
+//
+// Прежняя редакция поясняла пустой адрес аварийным обходом («breakglass, чтобы S1
+// не требовал endpoint»). Механизма нет — он снят вместе с переходом на носитель,
+// и проба зелена по другой причине: требование адреса живёт теперь в конструкторе
+// дескриптора, а этот страж судит ТРАНСПОРТ уже объявленных рёбер.
 func TestValidatePeerTransport_Production_RegisterEnabled_NoEndpoint_NoRequirement(t *testing.T) {
-	c := prodCfg(ModeProduction, "") // breakglass, endpoint пуст
+	c := prodCfg(ModeProduction, "") // endpoint пуст: ребро не объявлено, судить транспорт нечему
 	c.IAM.RegisterDrainerEnabled = true
 	var m MTLSConfig
 	require.NoError(t, c.ValidatePeerTransport(m))
