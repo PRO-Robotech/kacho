@@ -30,7 +30,7 @@ func (blockingIAMClient) Check(ctx context.Context, _ *iamv1.CheckRequest, _ ...
 // internal/handler/listauthz.go:152) — IAMCheckClient.Check раньше форвардил сырой
 // inbound ctx в iam.Check без per-call deadline: зависший iam пинил горутину
 // навсегда (data-plane per-request Check / control-plane ScopeFiltered fan-out до
-// 1000 Check на ListRepositories). Фикс — context.WithTimeout(ctx, checkTimeout)
+// 1000 Check на ListRepositories). Фикс — context.WithTimeout(ctx, CheckTimeout)
 // ВНУТРИ IAMCheckClient.Check, единая точка для ОБОИХ call-site'ов.
 func TestIAMCheckClient_Check_BoundsPerCallDeadline(t *testing.T) {
 	c := &IAMCheckClient{cli: blockingIAMClient{}}
@@ -44,7 +44,7 @@ func TestIAMCheckClient_Check_BoundsPerCallDeadline(t *testing.T) {
 
 	require.False(t, allowed, "fail-closed: timeout не должен разрешать доступ")
 	require.Error(t, err)
-	require.Less(t, elapsed, 3*time.Second, "Check обязан вернуться около checkTimeout (2s), не висеть")
-	require.GreaterOrEqual(t, elapsed, checkTimeout-100*time.Millisecond,
-		"Check не должен возвращаться раньше configured checkTimeout")
+	require.Less(t, elapsed, 3*time.Second, "Check обязан вернуться около CheckTimeout (2s), не висеть")
+	require.GreaterOrEqual(t, elapsed, CheckTimeout-100*time.Millisecond,
+		"Check не должен возвращаться раньше configured CheckTimeout")
 }

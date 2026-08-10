@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,12 +19,15 @@ import (
 	"google.golang.org/grpc"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 
@@ -302,107 +304,43 @@ func runServe(cfg config.Config) error {
 	// (см. orphan_sweep_backstop.go).
 	startOrphanSweepBackstop(ctx, registryRepo, logger)
 
-	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
-	// internal :9091 НЕ освобождён, security.md). Check обязателен —
-	// validateSecurityConfig уже гарантировал наличие адреса kacho-iam без breakglass.
-	authzIntr, aerr := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-registry",
-		IAMConn:     authzConn,
-		Breakglass:  cfg.AuthZBreakglass,
-		CacheTTL:    cfg.AuthZCacheTTL,
-		Logger:      logger,
-	})
-
-	// ── цепочки интерсепторов ──
-	// ОБА листенера: panic-recovery → cert-identity → trusted-principal
-	// (anti-spoof) → authz Check.
-	// Public (:9090) не освобождён от доверенной пары так же, как internal (:9091)
-	// не освобождён от per-RPC authz: публичный листенер — обычный Service внутри
-	// пространства имён, и дозвониться до него может любой под (см. identityUnary).
-	//
-	// panic-recovery монтируется ОТДЕЛЬНОЙ опцией у самого листенера (ниже, в
-	// grpcsrv.NewServer), а не подмешивается в эти переменные. Причина не
-	// косметическая: переменные цепочек обязаны оставаться ровно тем, что вернул
-	// боевой сборщик личности, иначе переприсваивание литералом вернуло бы дыру
-	// анти-спуфинга, оставив остальные проверки зелёными — это стережёт
-	// TestServe_ChainVariablesAreNeverReassignedToALiteral, и ослаблять его ради
-	// удобства проводки нельзя. grpc.ChainUnaryInterceptor накапливает, поэтому
-	// опция, объявленная раньше, оказывается outermost — то есть звено всё равно
-	// стоит НАД принципалом и authz.
-	publicUnary := identityUnary(cfg)
-	publicStream := identityStream(cfg)
-	internalUnary := identityUnary(cfg)
-	internalStream := identityStream(cfg)
-
-	switch {
-	case aerr == nil && authzIntr != nil:
-		publicUnary = append(publicUnary, authzIntr.Unary())
-		publicStream = append(publicStream, authzIntr.Stream())
-		internalUnary = append(internalUnary, authzIntr.Unary())
-		internalStream = append(internalStream, authzIntr.Stream())
-		if cfg.AuthZBreakglass {
-			logger.Warn("BREAKGLASS active: per-RPC authz Check bypassed on BOTH listeners (emergency mode)")
-		} else {
-			logger.Info("authz interceptor enabled",
-				"iam_endpoint", cfg.AuthZIAMGRPCAddr,
-				"listeners", "public+internal",
-				"cache_ttl", cfg.AuthZCacheTTL)
-		}
-	case errors.Is(aerr, check.ErrIAMConnNotConfigured):
-		// Недостижимо при штатной конфигурации: validateSecurityConfig уже отказал
-		// бы старту. Defensive fail-closed.
-		return errors.New("authz Check required: set KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
-	case aerr != nil:
-		return fmt.Errorf("build authz interceptor: %w", aerr)
-	}
-
-	// ── server-creds (mTLS обязателен на обоих листенерах, кроме breakglass) ──
-	publicCreds, err := cfg.PublicServerCreds()
-	if err != nil {
-		return fmt.Errorf("public listener tls creds: %w", err)
-	}
-	internalCreds, err := cfg.InternalServerCreds()
-	if err != nil {
-		return fmt.Errorf("internal listener tls creds: %w", err)
-	}
-
-	// Звено восстановления паники объявлено ПЕРВОЙ опцией цепочки, поэтому оно
-	// outermost и охватывает принципала, authz и обработчик: grpc-go панику не
-	// восстанавливает, а её последствие — завершение процесса, который держит и
-	// оба этих листенера, и data-plane docker pull/push.
-	grpcSrv := grpcsrv.NewServer(
-		publicCreds,
-		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
-		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
-		grpc.ChainUnaryInterceptor(publicUnary...),
-		grpc.ChainStreamInterceptor(publicStream...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		internalCreds,
-		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
-		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
-		grpc.ChainUnaryInterceptor(internalUnary...),
-		grpc.ChainStreamInterceptor(internalStream...),
-	)
-
 	// per-repo authz-Check для ScopeFiltered RPC (ListRepositories/ListTags/DeleteTag):
-	// interceptor их пропускает, handler сам Check'ает (call-gate + row-filter +
-	// existence-hiding). Тот же conn к iam :9091, что и per-RPC interceptor.
-	// authzConn==nil (breakglass) → nil authorizer → handler bypass (как interceptor).
+	// звено решения о доступе их пропускает, handler сам Check'ает (call-gate +
+	// row-filter + existence-hiding). Тот же conn к iam :9091, что и per-RPC звено.
+	// authzConn==nil (breakglass) → nil authorizer → handler bypass.
 	var listAuthz handler.Authorizer
 	if authzConn != nil {
 		listAuthz = check.NewIAMCheckClient(authzConn)
 	}
+	// Сужатель страницы — ТОТ ЖЕ объект, который решает по сужаемым методам, а не
+	// собранный рядом второй: два сужателя были бы двумя предметами, расходящимися
+	// молча. Порт `handler.Authorizer` его не отдаёт (и не должен — это порт
+	// обработчика), поэтому берём у конкретного клиента; форма присваивания выше
+	// оставлена дословно, её читает страж сужения списков
+	// (`tools/auditlistfilter`).
+	var pageNarrower servicecontract.ListNarrower
+	if c, ok := listAuthz.(*check.IAMCheckClient); ok {
+		pageNarrower = c.Narrower()
+	}
 
-	// Публичный control-plane RegistryService на :9090.
-	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL))
-	// Admin InternalRegistryService ТОЛЬКО на cluster-internal :9091.
-	registryv1.RegisterInternalRegistryServiceServer(internalSrv, handler.NewInternalRegistryHandler(registryUC))
-	// OperationService (LRO poll) на ОБОИХ листенерах: async-мутации идут на public
-	// и internal, клиент поллит результат через тот же mux. Read-RPC гейтятся authz.
+	// ── обработчики. Слушателей здесь больше нет: их поднимает носитель контура
+	// (`pkg/servicehost`), и регистратор получает `grpc.ServiceRegistrar` —
+	// интерфейс с единственным методом. Приделать сюда своё звено не к чему, и это
+	// свойство ПОСТРОЕНИЯ, а не соглашение.
+	registryHandler := handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL)
+	internalHandler := handler.NewInternalRegistryHandler(registryUC)
 	opHandler := handler.NewOperationHandler(opsRepo)
-	operationpb.RegisterOperationServiceServer(grpcSrv, opHandler)
-	operationpb.RegisterOperationServiceServer(internalSrv, opHandler)
+
+	// ── дескриптор процесса: ОБЪЯВЛЕНИЕ о себе. Порты (сверка существования и
+	// проводка сужателя) приезжают сюда уже собранными — их предмет живёт в этом
+	// корне, а судит их носитель против каталога прав на каждом старте.
+	desc, err := describe(cfg, logger, servePorts{
+		existence: pg.NewExistenceProbe(pool),
+		narrower:  pageNarrower,
+	})
+	if err != nil {
+		return err
+	}
 
 	// ── data-plane OCI auth-proxy (registry.kacho.local): отдельный HTTP-листенер,
 	// Docker Registry v2 / OCI token-auth flow перед zot. per-request JWKS-verify +
@@ -434,29 +372,15 @@ func runServe(cfg config.Config) error {
 		}
 	}
 
-	listener, err := net.Listen("tcp", ":"+cfg.GrpcPort)
-	if err != nil {
-		return err
-	}
-	internalListener, err := net.Listen("tcp", ":"+cfg.InternalGrpcPort)
-	if err != nil {
-		_ = listener.Close()
-		return err
-	}
-	logger.Info("kacho-registry listening",
-		"public_mtls", cfg.PublicServerMTLS.Enable,
-		"internal_mtls", cfg.InternalServerMTLS.Enable,
-		"public_port", cfg.GrpcPort,
-		"internal_port", cfg.InternalGrpcPort,
-		"dataplane_addr", cfg.DataplaneAddr,
-		"zot_addr", cfg.ZotAddr)
-
+	// Гашение всего, что НЕ входит в контур: плоскость данных, диагностический
+	// листенер и дренаж исполнителей длительных операций. Носитель гасит свои два
+	// слушателя сам, но об этих трёх он не знает и знать не должен — их жизненный
+	// цикл принадлежит сервису. Порядок остаётся прежним: отмена контекста →
+	// graceful-остановка docker push/pull → закрытие скрейпа → дренаж операций.
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
-		internalSrv.GracefulStop()
-		grpcSrv.GracefulStop()
 		// Graceful drain data-plane HTTP: перестаёт принимать новые, дожидается
 		// in-flight docker push/pull в пределах bounded-таймаута.
 		if dpServer != nil {
@@ -482,12 +406,6 @@ func runServe(cfg config.Config) error {
 		}
 	}()
 
-	go func() {
-		if serr := internalSrv.Serve(internalListener); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-			logger.Error("internal grpc server stopped", "err", serr)
-		}
-	}()
-
 	if dpServer != nil {
 		go func() {
 			if serr := dpServer.ListenAndServe(); serr != nil && !errors.Is(serr, http.ErrServerClosed) {
@@ -496,10 +414,34 @@ func runServe(cfg config.Config) error {
 		}()
 	}
 
-	serveErr := grpcSrv.Serve(listener)
+	serveErr := servicehost.Serve(ctx, desc,
+		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, opHandler) },
+		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler) },
+	)
 	cancel()
 	<-shutdownDone
 	return serveErr
+}
+
+// registerPublic — публичный слушатель :9090: tenant-facing RegistryService плюс
+// опрос длительных операций.
+func registerPublic(reg grpc.ServiceRegistrar, h registryv1.RegistryServiceServer,
+	opHandler operationpb.OperationServiceServer) {
+	registryv1.RegisterRegistryServiceServer(reg, h)
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
+}
+
+// registerInternal — cluster-internal слушатель :9091: админ-RPC реестра
+// (GC/статистика) плюс тот же опрос операций.
+//
+// `InternalRegistryService` регистрируется ТОЛЬКО здесь: `Internal.*` не
+// публикуется на внешнем endpoint. Разделение проверяется пробой через
+// `grpc.Server.GetServiceInfo` — регрессия «Internal* уехал на публичный» ловится,
+// а не остаётся на совести обзора.
+func registerInternal(reg grpc.ServiceRegistrar, h registryv1.InternalRegistryServiceServer,
+	opHandler operationpb.OperationServiceServer) {
+	registryv1.RegisterInternalRegistryServiceServer(reg, h)
+	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 
 // buildDataplaneHandler собирает data-plane OCI auth-proxy (fail-closed). Штатно:
@@ -779,34 +721,178 @@ func requirePeerTransport(cfg config.Config) error {
 	return nil
 }
 
-// identityUnary / identityStream — цепочка извлечения личности вызывающего,
-// ОДНА на оба листенера.
-//
-// Пара, а не одиночный извлекатель: сначала классифицируется транспорт и
-// снимается личность клиентского сертификата (CertIdentityExtract), и только
-// потом переданная в метаданных личность конечного пользователя принимается —
-// и только от пира, чья личность сертификата перечислена оператором.
-//
-// Почему это обязательно и на ПУБЛИЧНОМ листенере. Прежде он монтировал
-// grpcsrv.UnaryPrincipalExtract, который читает x-kacho-principal-* безусловно;
-// его собственный godoc разрешает такое лишь там, куда не дозвонится
-// неконтролируемый пир. У registry дозванивается любой: сетевой политики на его
-// поды нет (в отличие от vpc/nlb), :9090 — обычный Service пространства имён, а
-// клиентский сертификат всем соседям выдаёт один и тот же внутренний центр.
-//
-// Список отправителей приходит ТОЛЬКО из конфигурации и никогда не задаётся здесь
-// литералом: пустой список для corelib означает не «никому», а «любому пиру с
-// проверенным сертификатом» (pkg/grpcsrv principalIsTrusted сужает круг лишь на
-// непустом списке), и переданная личность становится субъектом проверки прав.
-// Боевой режим на пустом списке не стартует (validateSecurityConfig).
-//
-// Законный отправитель один — api-gateway, и он ходит на ОБА листенера
-// (KACHO_API_GATEWAY_REGISTRY_GRPC :9090 и ..._REGISTRY_INTERNAL_GRPC :9091),
-// поэтому список общий: внутренний периметр не освобождён.
-func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
-	return grpcsrv.PrincipalExtractUnary(cfg.TrustedForwarders())
+// servePorts — порты, которые сервис приносит носителю контура вместе с
+// объявлением о себе. Их предмет живёт в этом корне (своя БД, свой клиент к
+// владельцу модели), поэтому собрать их за сервис носитель не может; судит он их
+// сам — против каталога прав, на каждом старте.
+type servePorts struct {
+	// existence — сверка «есть ли объект в МОЕЙ базе». Обязателен ровно потому,
+	// что дескриптор объявляет скрытие существования: без него отказ на
+	// существующем чужом реестре пришёл бы текстом, отличимым от промаха владельца.
+	existence servicecontract.ExistenceProbe
+	// narrower — ПРОВОДКА сужателя списочной выдачи. Перечень сужаемых методов
+	// даёт каталог прав, а не это поле.
+	narrower servicecontract.ListNarrower
 }
 
-func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
-	return grpcsrv.PrincipalExtractStream(cfg.TrustedForwarders())
+// describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.
+//
+// Стражей старта здесь нет ни одного — они живут в конструкторе дескриптора и в
+// носителе. То, что осталось в композиционном корне (`validateAuthMode`,
+// `validateSecurityConfig`, `requireZotCredentials`, `requirePeerTransport` и
+// стражи плоскости данных), носителем НЕ выражается и потому не снимается: он
+// судит боевую посадку, а эти четверо действуют в ЛЮБОМ режиме либо стерегут
+// поверхность, которой у носителя нет вовсе (docker-листенер, хранилище слоёв).
+//
+// Прежде здесь собирались две цепочки звеньев и два сервера. Теперь сервис
+// приносит ЗНАЧЕНИЯ, а порядок звеньев — один на все сервисы и правится как
+// правка контура, а не как правка реестра.
+func describe(cfg config.Config, logger *slog.Logger, ports servePorts) (servicecontract.Descriptor, error) {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", err)
+	}
+	// Транспорт ребра решения о доступе строится ЗДЕСЬ, а проверяется
+	// конструктором дескриптора — по ответу самого транспорта, а не по ручке:
+	// сборщик на невзведённой ручке отдаёт незашифрованные креды БЕЗ ошибки.
+	checkCreds, err := grpcclient.TLSClientTransportCreds(cfg.IAMAuthzMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("registry→iam Check mTLS creds: %w", err)
+	}
+	publicCreds, err := grpcsrv.TLSServerTransportCreds(cfg.PublicServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("public listener tls creds: %w", err)
+	}
+	internalCreds, err := grpcsrv.TLSServerTransportCreds(cfg.InternalServerMTLS)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
+	}
+
+	return servicecontract.New(servicecontract.Spec{
+		Service: "kacho-registry",
+		Mode:    mode,
+		Logger:  logger,
+
+		// Круг отправителей чужой личности. Значение — то же, что читают стража
+		// конфигурации и самоотчёт о посадке (`cfg.TrustedForwarders()`), поэтому
+		// «страж пропустил» ⟺ «круг реально сужен» по построению. Законный
+		// отправитель один — api-gateway, и он ходит на ОБА слушателя, поэтому круг
+		// общий: внутренний периметр не освобождён.
+		Forwarders: cfg.TrustedForwarders(),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS",
+			TrustAny: "KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER",
+			OptIn:    cfg.AuthZTrustAnyForwarder,
+		},
+
+		Authz:     servicecontract.AuthzViaIAM,
+		CheckEdge: servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
+		// Окно кэша положительных вердиктов — оно же окно отзыва. Читается через
+		// `check.CacheWindow`, потому что ручка реестра несёт landed-значение
+		// «ноль = кэш выключен, отзыв немедленный», а носитель требует строго
+		// положительной величины; обе стороны спрашивают ОДНУ функцию, поэтому
+		// разойтись им нечем.
+		CacheWindow: check.CacheWindow(cfg.AuthZCacheTTL),
+		// Срок ОДНОГО вопроса о доступе. Та же величина, с какой реестр спрашивает
+		// владельца модели на путях списка и плоскости данных (`check.CheckTimeout`),
+		// и это один источник, а не два одинаковых числа.
+		ClientBudget: check.CheckTimeout,
+
+		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
+		// срока держит соединение из ограниченного пула столько, сколько
+		// выполняется его запрос. Величина и её обоснование — у ручки конфигурации.
+		HandlingBudget: cfg.HandlingBudget,
+
+		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
+		// реестр принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
+		// сосед, которого шторм отказов может уронить, у него ЕСТЬ. До носителя
+		// этой отсечки у реестра не было вовсе (поле не заполнялось, а механизм
+		// читает неположительное как «ограничения нет»).
+		DenyBudget: servicecontract.Value(cfg.AuthZDenyBudgetPerSec),
+
+		DBSSLMode:     cfg.DBSSLMode,
+		PublicAddr:    ":" + cfg.GrpcPort,
+		InternalAddr:  ":" + cfg.InternalGrpcPort,
+		PublicCreds:   publicCreds,
+		InternalCreds: internalCreds,
+
+		// ── оси ──────────────────────────────────────────────────────────────
+
+		// Что реестр эмитит владельцу прав. Четыре отношения, и все четыре
+		// принимаются его закрытым набором: три иерархических (`project` реестра,
+		// `parent` репозитория, `owner` создателя) плюс публичное чтение `v_get`,
+		// которым материализуется публичный репозиторий. Перечень выведен из
+		// единственного места, где интенты собираются
+		// (`internal/domain/fga_intent.go`), а не выписан по памяти.
+		Emits: servicecontract.Value([]proxytuple.Relation{
+			proxytuple.RelationProject,
+			proxytuple.RelationParent,
+			proxytuple.RelationOwner,
+			proxytuple.PublicReadRelation,
+		}),
+		// Типы объектов, которые реестр заводит у владельца прав. Ровно два:
+		// сам реестр и репозиторий внутри него (`<regId>/<repo>` — глобально
+		// уникальный идентификатор by construction, core rule #15).
+		Registers: servicecontract.Value([]servicecontract.ObjectType{
+			domain.FGAObjectTypeRegistry,
+			domain.FGAObjectTypeRepository,
+		}),
+
+		// Проводка сужателя — на ДЕСЯТЬ методов `RegistryService`, которые каталог
+		// прав объявляет `scope_filtered`. Перечень выписан ИЗ КАТАЛОГА, а не из
+		// памяти, и носитель сверяет его с каталогом в ОБЕ стороны: метод,
+		// объявленный сужаемым и оставшийся без проводки, — отказ старта (О3);
+		// проводка на метод, которого каталог сужаемым не называет, — тоже (О4).
+		//
+		// За этими методами пообъектной проверки на крае НЕТ вовсе: их решение
+		// принимается на уровне данных в `internal/handler/listauthz.go` (личность →
+		// вопрос о правах → сокрытие существования), а пакетную половину этого
+		// вопроса задаёт ровно тот сужатель, который здесь объявлен.
+		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
+			"/kacho.cloud.registry.v1.RegistryService/List":             ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/CreateRepository": ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/GetRepository":    ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/ListRepositories": ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/UpdateRepository": ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/RenameRepository": ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/DeleteRepository": ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/ListTags":         ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/DeleteTag":        ports.narrower,
+			"/kacho.cloud.registry.v1.RegistryService/ListReferrers":    ports.narrower,
+		}),
+
+		// Форма отказа для типа, чьё существование скрывается. Каталог называет
+		// таким `registry_registry` (строки `hide_existence` на
+		// `RegistryService/Update` и `/Delete`), и форма обязана быть ДОСЛОВНО той,
+		// которой отвечает звено решения о доступе: носитель сверяет её с
+		// `authz.OwnerNotFoundFormat`, поэтому выписать «на глаз» нельзя — расхождение
+		// роняет старт. Текст — промах владельца из его же слоя доступа к данным
+		// (`internal/repo/kacho/pg/errmap.go`, ресурс «Registry»).
+		HideExistence: servicecontract.Value(map[servicecontract.ObjectType]servicecontract.NotFoundFormat{
+			domain.FGAObjectTypeRegistry: "Registry %s not found",
+		}),
+
+		// Происхождение намерений регистрации: их пишет ТА ЖЕ writer-транзакция,
+		// что создаёт/меняет/удаляет строку (transactional outbox
+		// `kacho_registry.registry_outbox`), — происхождение доказано записью, а не
+		// выведено из часов в момент доставки.
+		Delivery: servicecontract.Value(servicecontract.DeliveryWriterTransaction),
+
+		// Порт сверки существования — обязателен, потому что скрытие объявлено выше.
+		Existence: ports.existence,
+
+		// Загрузочный гейт мутаций — ИЗЪЯТИЕ, и оно названо, а не умолчано: такого
+		// гейта у реестра в дереве нет (`pkg/outbox/bootgate` его композиционный
+		// корень не импортирует; на сегодня гейт несут vpc, compute и nlb). Принести
+		// сюда чужой было бы не переводом на носитель, а новой защитой под видом
+		// оформления — и вводить её следует своим изменением, со своей приёмкой и
+		// своим замером окна, в котором путь доставки ещё не поднят.
+		//
+		// Заявление ИСТЕКАЕТ САМО: проба `TestRegistryBringsNoBootGateYet` спрашивает
+		// дерево тем же именем механизма, и как только гейт появится в корне —
+		// краснеет и требует объявить его здесь величиной.
+		BootGate: servicecontract.NotApplicable[servicecontract.BootGate](
+			"загрузочного гейта мутаций у реестра в дереве нет: пакет гейта его композиционный " +
+				"корень не импортирует. Изъятие держится пробой, которая читает дерево, а не память автора"),
+	})
 }

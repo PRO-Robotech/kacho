@@ -35,7 +35,11 @@ const (
 	testGetMethod = "/kacho.cloud.registry.v1.RegistryService/Get"
 )
 
-// ---- pure cache-semantics (helper authzCache, на котором строится фабрика) ----
+// authzCache — кэш вердиктов, собранный ровно тем окном, с которым поднимается
+// процесс (`CacheWindow` читает и композиционный корень, и эти пробы).
+func authzCache(ttl time.Duration) *authz.Cache { return authz.NewCache(CacheWindow(ttl)) }
+
+// ---- pure cache-semantics (окно CacheWindow, на котором строится кэш) ----
 
 // TestAuthzCache_ConfiguredTTLBoundsRevokeWindow — при CacheTTL>0 positive-запись
 // живёт РОВНО TTL: до истечения — hit, после — miss. Значит окно, в течение которого
