@@ -53,7 +53,7 @@ import (
 
 func serveDataplane(addr string, h http.Handler, logger *slog.Logger) {
 	go func() {
-		if err := http.ListenAndServe(addr, h); err != nil { //nolint:gosec // фикстура гейта
+		if err := http.ListenAndServe(addr, h); err != nil {
 			logger.Error("data-plane stopped", "err", err)
 		}
 	}()

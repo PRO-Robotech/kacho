@@ -72,8 +72,12 @@ func TestDiagnosticSurfaceDisabledByDeclaration(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if serr := servicehost.ServeSurface(ctx, d); serr != nil {
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
 		t.Fatalf("выключенная поверхность вернула ошибку: %v", serr)
+	}
+	if werr := wait(); werr != nil {
+		t.Fatalf("ожидание выключенной поверхности вернуло ошибку: %v", werr)
 	}
 	l, berr := net.Listen("tcp", addr)
 	if berr != nil {
@@ -102,8 +106,12 @@ func TestDiagnosticSurfaceServesMetricsAndReleasesItsPort(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("поверхность не поднялась: %v", serr)
+	}
 	done := make(chan error, 1)
-	go func() { done <- servicehost.ServeSurface(ctx, d) }()
+	go func() { done <- wait() }()
 
 	deadline := time.Now().Add(3 * time.Second)
 	var resp *http.Response

@@ -86,8 +86,12 @@ func TestSurfaceReleasesItsPortBeforeReturning(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("законный профиль не поднялся: %v", serr)
+	}
 	done := make(chan error, 1)
-	go func() { done <- servicehost.ServeSurface(ctx, d) }()
+	go func() { done <- wait() }()
 
 	// Положительный контроль: пока контекст жив, поверхность ОТВЕЧАЕТ. Без него
 	// «порт свободен» ниже было бы верно и для поверхности, которая не поднялась
@@ -130,8 +134,12 @@ func TestSurfaceDisabledByDeclarationBindsNothing(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("выключенная поверхность отказала при подъёме: %v", serr)
+	}
 	done := make(chan error, 1)
-	go func() { done <- servicehost.ServeSurface(ctx, d) }()
+	go func() { done <- wait() }()
 	select {
 	case serr := <-done:
 		if serr != nil {
@@ -152,7 +160,11 @@ func TestSurfaceDisabledByDeclarationBindsNothing(t *testing.T) {
 // проходил ни одного отказа. Поднимать по нему слушатель значит не проверить
 // ничего, и это отказ, а не умолчание.
 func TestSurfaceRefusesUnacceptedProfile(t *testing.T) {
-	err := servicehost.ServeSurface(context.Background(), servicecontract.SurfaceDescriptor{})
+	wait, err := servicehost.ServeSurface(context.Background(), servicecontract.SurfaceDescriptor{})
+	if wait != nil {
+		t.Fatal("непринятый профиль вернул ожидание — вызывающему есть что позвать " +
+			"после отказа, и он позовёт")
+	}
 	if err == nil {
 		t.Fatal("непринятый профиль поднят — конструктор перестал быть обязательным")
 	}
@@ -180,11 +192,77 @@ func TestSurfaceReportsBindFailureInsteadOfLoggingIt(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if serr := servicehost.ServeSurface(ctx, d); serr == nil {
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr == nil {
 		t.Fatal("привязка к занятому адресу прошла молча — вызывающий не узнает, " +
 			"что поверхности нет")
-	} else if !strings.Contains(serr.Error(), held.Addr().String()) {
+	}
+	if !strings.Contains(serr.Error(), held.Addr().String()) {
 		t.Fatalf("отказ не называет адрес — по нему нечего чинить: %v", serr)
+	}
+	if wait != nil {
+		t.Fatal("отказ привязки вернул ожидание: вызывающий, написавший `wait, err := …` " +
+			"и позвавший wait() в задаче супервизора, повис бы вместо отказа")
+	}
+}
+
+// Отказ привязки приходит ДО обслуживания, а не кодом возврата процесса.
+//
+// Дефект, ради которого проба заведена, был живым и на трёх сервисах сразу:
+// подъём поверхности уезжал в горутину, исход читался на выходе — то есть
+// занятый порт становился кодом возврата процесса, успевшего сколько угодно
+// проработать при мёртвой поверхности. Верное использование зависело от
+// дисциплины вызывающего; теперь оно следует из сигнатуры, и проба это
+// закрепляет.
+func TestSurfaceBindFailureArrivesBeforeAnyServing(t *testing.T) {
+	held, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("занять порт под пробу: %v", err)
+	}
+	defer func() { _ = held.Close() }()
+
+	d, derr := servicecontract.NewSurface(probeSurface(t, held.Addr().String()))
+	if derr != nil {
+		t.Fatalf("законный профиль отвергнут: %v", derr)
+	}
+	// Контекст НЕ отменяется: отказ обязан прийти сам, а не по отмене. Проба на
+	// живом контексте отличает «привязка не удалась» от «мы дождались гашения».
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	returned := make(chan error, 1)
+	go func() {
+		_, berr := servicehost.ServeSurface(ctx, d)
+		returned <- berr
+	}()
+	select {
+	case berr := <-returned:
+		if berr == nil {
+			t.Fatal("привязка к занятому адресу объявлена успешной")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("отказ привязки не пришёл на живом контексте — значит подъём снова ждёт " +
+			"отмены, и процесс объявит себя поднявшимся при мёртвой поверхности")
+	}
+
+	// Законный близнец: на СВОБОДНОМ адресе тот же вызов возвращается успехом и
+	// тоже сразу — иначе утверждение выше зеленело бы на функции, которая всегда
+	// отказывает.
+	free, ferr := servicecontract.NewSurface(probeSurface(t, freeAddr(t)))
+	if ferr != nil {
+		t.Fatalf("законный профиль отвергнут: %v", ferr)
+	}
+	wait, serr := servicehost.ServeSurface(ctx, free)
+	if serr != nil {
+		t.Fatalf("свободный адрес отвергнут при подъёме: %v", serr)
+	}
+	cancel()
+	if werr := wait(); werr != nil {
+		t.Fatalf("гашение вернуло ошибку: %v", werr)
+	}
+	// Ожидание идемпотентно: второй вопрос отвечает тем же, а не блокирует.
+	if werr := wait(); werr != nil {
+		t.Fatalf("повторное ожидание ответило иначе: %v", werr)
 	}
 }
 
@@ -234,8 +312,12 @@ func TestSurfaceDeclaredTLSReachesTheListener(t *testing.T) {
 		t.Fatalf("законный профиль отвергнут: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("профиль с объявленным транспортом не поднялся: %v", serr)
+	}
 	done := make(chan error, 1)
-	go func() { done <- servicehost.ServeSurface(ctx, d) }()
+	go func() { done <- wait() }()
 	defer func() {
 		cancel()
 		<-done

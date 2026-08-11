@@ -272,8 +272,13 @@ func runServe(cfg config.Config) error {
 	// и после дренажа исполнителей операций — иначе проба живости и скрейп исчезают
 	// раньше, чем процесс закончил останавливаться.
 	diagCtx, stopDiag := context.WithCancel(context.Background())
-	diagDone := make(chan error, 1)
-	go func() { diagDone <- servicehost.ServeSurface(diagCtx, diagDesc) }()
+	// Привязка порта синхронна: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
+	}
 
 	opHandler := handler.NewOperationHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
@@ -302,7 +307,7 @@ func runServe(cfg config.Config) error {
 	// контекстом БЕЗ срока — то есть остановка ждала последнего скрейпа
 	// неограниченно.
 	stopDiag()
-	if derr := <-diagDone; derr != nil {
+	if derr := waitDiag(); derr != nil {
 		logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
 		if serveErr == nil {
 			serveErr = derr

@@ -119,8 +119,13 @@ func runServe(cfg config.Config) error {
 	// gRPC-слушателя погашены, а не одновременно с ними. Отмена корневого
 	// контекста уносила бы скрейп и пробы раньше, чем закончится остановка.
 	diagCtx, stopDiag := context.WithCancel(context.Background())
-	diagDone := make(chan error, 1)
-	go func() { diagDone <- servicehost.ServeSurface(diagCtx, diagDesc) }()
+	// Привязка порта синхронна: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, derr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if derr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", derr)
+	}
 
 	opHandler := handler.NewOperationHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
@@ -132,7 +137,7 @@ func runServe(cfg config.Config) error {
 	// того, как порт освобождён, и без ожидания процесс завершался бы, оставляя
 	// это неизвестным.
 	stopDiag()
-	if derr := <-diagDone; derr != nil {
+	if derr := waitDiag(); derr != nil {
 		logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
 		if serveErr == nil {
 			serveErr = derr

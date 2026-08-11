@@ -131,8 +131,12 @@ func runServe(cfg config.Config) error {
 	// процесс закончил останавливаться.
 	diagCtx, stopDiag := context.WithCancel(context.Background())
 	defer stopDiag()
-	diagDone := make(chan error, 1)
-	go func() { diagDone <- servicehost.ServeSurface(diagCtx, diagDesc) }()
+	// Привязка порта синхронна: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
+	}
 
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho_registry.
 	opsRepo := operations.NewRepo(pool, "kacho_registry")
@@ -454,8 +458,11 @@ func runServe(cfg config.Config) error {
 	// строкой уровня Error, после чего процесс продолжал работать, объявляя себя
 	// исправным при мёртвой плоскости данных. Профиль возвращает это отказом.
 	dpCtx, stopDP := context.WithCancel(context.Background())
-	dpDone := make(chan error, 1)
-	go func() { dpDone <- servicehost.ServeSurface(dpCtx, dpProfile) }()
+	waitDP, dpErr := servicehost.ServeSurface(dpCtx, dpProfile)
+	if dpErr != nil {
+		stopDP()
+		return fmt.Errorf("плоскость данных: %w", dpErr)
+	}
 
 	// Порядок гашения того, что не входит в gRPC-контур. Носитель гасит свои два
 	// слушателя сам; об этих трёх предметах он не знает и знать не должен — их
@@ -474,7 +481,7 @@ func runServe(cfg config.Config) error {
 		defer close(shutdownDone)
 		<-ctx.Done()
 		stopDP()
-		if derr := <-dpDone; derr != nil {
+		if derr := waitDP(); derr != nil {
 			logger.Error("плоскость данных остановлена с ошибкой", "err", derr)
 		}
 		// Дренируем in-flight LRO-worker'ы: SIGTERM не должен оставить async-мутацию
@@ -487,7 +494,7 @@ func runServe(cfg config.Config) error {
 				"err", werr, "active", operations.Active())
 		}
 		stopDiag()
-		if derr := <-diagDone; derr != nil {
+		if derr := waitDiag(); derr != nil {
 			logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
 		}
 	}()
