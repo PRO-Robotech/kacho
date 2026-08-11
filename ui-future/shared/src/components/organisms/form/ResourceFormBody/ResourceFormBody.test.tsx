@@ -8,7 +8,7 @@
 
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
-import type { FormField } from "@shared/lib/form-schema";
+import type { ArrayField, FormField } from "@shared/lib/form-schema";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceFormBody, matchesVisibleWhen } from "./ResourceFormBody";
 
@@ -169,6 +169,64 @@ describe("ResourceFormBody — что можно тронуть", () => {
     const opts = [...screen.getByRole("combobox").querySelectorAll("option")].map((o) => o.textContent);
     expect(opts).toContain("внутренний");
     expect(opts).not.toContain("внешний");
+  });
+});
+
+describe("ResourceFormBody — раскладка: имя слева, ввод справа", () => {
+  // Канон формы: `labelCol` 200px несёт ИМЯ поля и его пояснение, `wrapperCol` —
+  // ввод. Поле, вышедшее из этой пары, читается как чужеродное: его имя
+  // оказывается внутри собственной рамки, а левая колонка против него пуста —
+  // взгляд теряет строку, по которой шёл сверху вниз.
+  const arr = (over: Partial<ArrayField> & { name: string; label: string; itemFields: FormField[] }): FormField =>
+    ({ type: "array", itemLabel: "элемент", ...over }) as FormField;
+
+  const cidrItem: FormField[] = [{ type: "string", name: "value", label: "CIDR" } as FormField];
+  const twoItems: FormField[] = [
+    { type: "string", name: "a", label: "Первое" } as FormField,
+    { type: "string", name: "b", label: "Второе" } as FormField,
+  ];
+
+  // Предикат опирается на контракт ЗАГЛУШКИ antd, а не на её классы: заглушка
+  // рисует `Form.Item` как `<div><label>{label}</label>{дети}</div>` и классов
+  // `ant-*` не производит вовсе. Проба по классам была бы зелёной ровно никогда
+  // — она проверяла бы разметку, которой в этом харнессе не существует.
+  /** `<label>`, внутри которого стоит этот текст (null — имя нарисовано не левой колонкой). */
+  const labelCellOf = (text: string) => screen.queryByText(text)?.closest("label") ?? null;
+
+  it("обычное поле держит имя в левой колонке — это и есть канон", () => {
+    show([str({ name: "name", label: "поле имя" })]);
+
+    expect(labelCellOf("поле имя")).not.toBeNull();
+  });
+
+  it("список из одного подполя подчиняется канону: имя слева, редактор справа", () => {
+    show([arr({ name: "ipv4_cidr_blocks", label: "поле супернет", itemFields: cidrItem })]);
+
+    expect(labelCellOf("поле супернет")).not.toBeNull();
+  });
+
+  it("имя списка названо ровно один раз — левой колонкой, не рамкой поверх неё", () => {
+    show([arr({ name: "ipv4_cidr_blocks", label: "поле супернет", itemFields: cidrItem })]);
+
+    expect(screen.getAllByText("поле супернет")).toHaveLength(1);
+  });
+
+  it("составной список остаётся во всю ширину — в правую колонку он не помещается", () => {
+    show([arr({ name: "network_interface_specs", label: "поле интерфейсы", itemFields: twoItems })], {
+      obj: { network_interface_specs: [{ a: "", b: "" }] },
+    });
+
+    // Положительный рядом с отрицанием: без него `null` означал бы и «имя не в
+    // левой колонке», и «поле вовсе не отрисовалось» — второе зеленело бы на
+    // пропавшем поле.
+    expect(screen.getByText("Первое")).toBeInTheDocument();
+    expect(labelCellOf("поле интерфейсы")).toBeNull();
+  });
+
+  it("явное указание ширины сильнее вывода по типу", () => {
+    show([arr({ name: "nics", label: "поле интерфейсы", itemFields: twoItems, fullWidth: false })]);
+
+    expect(labelCellOf("поле интерфейсы")).not.toBeNull();
   });
 });
 
