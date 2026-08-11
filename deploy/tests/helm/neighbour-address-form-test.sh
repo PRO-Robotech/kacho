@@ -113,6 +113,13 @@ ADDR = re.compile(r'[A-Za-z0-9][A-Za-z0-9.-]*\.svc\.cluster\.local(?!\.)')
 
 # Законные полные формы, которые НЕ являются адресом нашего соседа.
 # Запись живёт, пока у неё есть предмет: не встретилась ни разу — сама находка.
+# Потребители, у которых резолвер НЕ libc. Полная форма для них ОБЯЗАТЕЛЬНА, и это
+# не послабление, а другое требование: nginx с `resolver` поисковый список не
+# применяет (доказано воспроизведением; см. lessons/rule-true-for-one-resolver-
+# applied-to-all-addresses). Признак — имя переменной потребителя.
+NGINX_RESOLVED = re.compile(r'KACHO_UI_[A-Z0-9_]*UPSTREAM|_UPSTREAM$')
+nginx_hits = {}
+
 ALLOWED = {
     'kubernetes.default.svc.cluster.local':
         'идентификатор издателя API-сервера (--service-account-issuer), сверяется '
@@ -132,19 +139,36 @@ def classify(path, stack):
     strings = 0
     allow_hits = {}
 
-    def walk(node, kind, where):
+    def walk(node, kind, where, ctx=''):
         nonlocal findings, strings
         if isinstance(node, dict):
+            # Пара {name, value} у переменной окружения: имя стоит рядом со
+            # значением, и без него значение неотличимо от любого другого адреса.
+            envname = node.get('name') if isinstance(node.get('name'), str) else ''
+            if envname and NGINX_RESOLVED.search(envname):
+                nginx_hits[envname] = nginx_hits.get(envname, 0) + 1
+                return
             for key, val in node.items():
                 # SAN — перечень предъявляемых имён, а не адрес вызова.
                 if kind == 'Certificate' and key == 'dnsNames':
                     continue
-                walk(val, kind, where + '.' + str(key))
+                # Адрес, который резолвит НЕ libc, а nginx: он читает его через
+                # свой `resolver` и поисковый список НЕ применяет — короткая
+                # форма не резолвится никогда, апстрим отвечает 502. Признак
+                # различения — КТО резолвит, поэтому исключение привязано к имени
+                # переменной потребителя, а не к файлу и не к перечню адресов.
+                if isinstance(key, str) and NGINX_RESOLVED.search(key):
+                    nginx_hits[key] = nginx_hits.get(key, 0) + 1
+                    continue
+                walk(val, kind, where + '.' + str(key), str(key))
         elif isinstance(node, list):
             for i, val in enumerate(node):
-                walk(val, kind, '%s[%d]' % (where, i))
+                walk(val, kind, '%s[%d]' % (where, i), ctx)
         elif isinstance(node, str):
             strings += 1
+            if NGINX_RESOLVED.search(ctx or ''):
+                nginx_hits[ctx] = nginx_hits.get(ctx, 0) + 1
+                return
             for m in ADDR.finditer(node):
                 name = m.group(0)
                 if name in ALLOWED:
@@ -428,7 +452,14 @@ ok "объём половины 1: стеков $rendered/$stack_n, докуме
 # Самоистечение при этом настоящее: строка исчезнет из дерева — запись станет
 # находкой.
 assertion
-allow_names="$(sed -n "/^ALLOWED = {/,/^}/p" "$CLASSIFIER" | sed -nE "s/^    '([^']+)':.*/\1/p")"
+allow_names="$(sed -n "/^# Потребители, у которых резолвер НЕ libc. Полная форма для них ОБЯЗАТЕЛЬНА, и это
+# не послабление, а другое требование: nginx с `resolver` поисковый список не
+# применяет (доказано воспроизведением; см. lessons/rule-true-for-one-resolver-
+# applied-to-all-addresses). Признак — имя переменной потребителя.
+NGINX_RESOLVED = re.compile(r'KACHO_UI_[A-Z0-9_]*UPSTREAM|_UPSTREAM$')
+nginx_hits = {}
+
+ALLOWED = {/,/^}/p" "$CLASSIFIER" | sed -nE "s/^    '([^']+)':.*/\1/p")"
 allow_n="$(printf '%s\n' "$allow_names" | grep -c . || true)"
 if [ "${allow_n:-0}" -lt 1 ]; then
   ok "записей законных полных форм нет — исключать нечего, проверять нечего"
