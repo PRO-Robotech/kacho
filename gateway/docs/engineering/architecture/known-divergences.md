@@ -230,14 +230,33 @@ ignoring it follows from the sentence above and is not spelled out further here,
 since this registry is published.
 
 **Gateway state.** Backend-dial transport is a per-edge overlay
-(`cmd/api-gateway/mtls_config.go`): each edge (vpc / compute / iam / nlb / geo /
-registry) is independently enabled via its `MTLS_<EDGE>_ENABLE` flag. The build is
-**fail-fast when an edge is enabled but its cert material is missing/partial**
-(`buildBackendDialCreds` → `main.go log.Fatalf`), so the process never comes up
-half-secured on a configured edge. With every edge disabled (the default), every
-dial is insecure — identical to dev. The shipped prod profile
-(`kacho-deploy values.prod.yaml`) does **not** set any
-`KACHO_API_GATEWAY_MTLS_*_ENABLE`.
+(`gateway/cmd/api-gateway/mtls_config.go`): each edge is independently enabled via its
+`MTLS_<EDGE>_ENABLE` flag. The build is **fail-fast when an edge is enabled but its
+cert material is missing/partial** (`buildBackendDialCreds` → `gateway/cmd/api-gateway/main.go` `log.Fatalf`), so
+the process never comes up half-secured on a configured edge. With every edge disabled
+(the flag default), every dial is insecure — identical to dev.
+
+> [!warning] Здесь стояло «боевой профиль не задаёт НИ ОДНОГО такого ключа» — перемерено 2026-08-11
+> Профиль задаёт **все семь** и `mtls.enable: true` над ними. Предикат:
+> ```sh
+> awk '/^api-gateway:/{a=1} a&&/^    edges:/{e=1;next} e&&/^      [a-z]+: (true|false)$/{print} e&&!/^      /{exit}' >   deploy/helm/umbrella/values.prod.yaml
+> ```
+> → `vpc compute iam nlb geo registry storage`, каждый `true`. Профиль лежит в
+> `deploy/helm/umbrella/values.prod.yaml`; прежняя редакция называла его по имени
+> репозитория времён полирепо, которого нет.
+>
+> **Довод ниже опирался именно на это утверждение, и опора исчезла.** Раздел объяснял, что
+> жёсткая проверка при старте не заводится, поскольку «сломала бы `values.prod.yaml`, который
+> её не включает». Профиль её включает — значит этот конкретный аргумент больше не
+> применим, и **вопрос подлежит новому решению, а не наследованию**: остаётся ли отказ в
+> старте нежелательным по существу (топология с сеткой, где приложение законно ходит в
+> локальный прицеп открытым текстом) — или основание было только в профиле. Записываю
+> расхождение, а не выбираю за владельца: снятие или введение гейта безопасности — его
+> решение, и оно должно приниматься на верном факте.
+>
+> Что от прежнего текста остаётся верным без правки: сам размен «сетка против приложения»
+> сформулирован корректно, ключи по-прежнему умолчанием выключены, и требование к посадке
+> **без** сетки не меняется.
 
 **Why a hard app-level startup guard is NOT added here.** The deployed prod
 topology terminates inter-pod transport security at the **service mesh** (sidecar
@@ -261,7 +280,7 @@ the external advertised TLS edge runs with a relaxed auth posture. Operators who
 the gateway **without a mesh** (direct pod-to-pod) MUST enable the per-edge
 `KACHO_API_GATEWAY_MTLS_*_ENABLE` flags + cert material; promoting this to a fatal
 guard is tracked for the release that lands a mesh-vs-app transport-policy signal in
-`kacho-deploy` (so the guard can distinguish "mesh handles it" from "misconfigured"
+`deploy/` (so the guard can distinguish "mesh handles it" from "misconfigured"
 instead of over-constraining the prod profile).
 
 Rubric reference: security.md #1; CWE-319 / CWE-1188. Contract impact: none — no
@@ -389,7 +408,10 @@ which the rule counts as a violation in its own right.
 
 **Gateway state.** `middleware.DefaultPublicAllowlist()` is consulted by
 `phaseAllowlist`, which is **step 1** of `decide()`. Subject extraction — the
-phase that answers 401 — is step 4. An entry on this list therefore returns
+phase that answers 401 — is step **5** (allowlist → internal-origin exemption →
+override → catalog → subject; the ordinal moved when the internal-origin phase was
+inserted, and it is given here only to say "later than the allowlist", which is the
+part that matters). An entry on this list therefore returns
 ALLOW before any principal is resolved: it waives **authentication and
 authorization both**, on every listener including the advertised external TLS
 edge. This is strictly stronger than the catalog's `<exempt>`, which still
@@ -421,11 +443,11 @@ reached the health server and got `Unimplemented`; it now gets an authorization
 decision (catalog miss ⇒ denied). Nothing could `Watch` before and nothing can
 now.
 
-**The gate this produced.** `cmd/api-gateway/public_allowlist_answered_test.go`
+**The gate this produced.** `gateway/cmd/api-gateway/public_allowlist_answered_test.go`
 stands the edge's native surface up on an in-memory listener, invokes every
 bypass entry that surface serves, and fails the build on one answered
 `Unimplemented`. It is deliberately a SECOND gate rather than a widening of
-`middleware/authz_public_allowlist_resolves_test.go`: that one asks whether the
+`gateway/internal/middleware/authz_public_allowlist_resolves_test.go`: that one asks whether the
 name exists in the served contract and says in its own comment that
 served-but-unimplemented is legitimate for its question. It is — for that
 question. Reachability is a different question and needed a different probe, with
