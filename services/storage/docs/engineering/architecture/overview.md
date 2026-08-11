@@ -72,7 +72,7 @@ software TOCTOU — data-integrity.md ban #10):
   по размещению **называется вслух**; источник ЧУЖОГО проекта решает полоса проекта
   ПЕРВОЙ и остаётся byte-identical настоящему промаху (hide-existence не ослаблено).
   Regression: `internal/repo/pg/volume_image_region_integration_test.go`,
-  `volume_source_snapshot_zone_integration_test.go`, `image_source_region_integration_test.go`.
+  `services/storage/internal/repo/pg/volume_source_snapshot_zone_integration_test.go`, `services/storage/internal/repo/pg/image_source_region_integration_test.go`.
 - **Auto device-name — retry-until-free (INV-2).** Пустой `deviceName` → repo выбирает
   первое свободное `sdb..sdz` и вставляет; конкурент, занявший имя между выбором и
   вставкой, даёт `23505` на `UNIQUE(instance_id,device_name)` → repo пересчитывает
@@ -89,8 +89,9 @@ software TOCTOU — data-integrity.md ban #10):
   **кросс-проектную** утечку by construction.
   **Но project-scope отвечает лишь «чей это проект», не «какие объекты этому caller'у
   можно».** Поэтому use-case, прочитав СТРАНИЦУ курсором, прогоняет её id через
-  per-object фильтр `internal/authzfilter` (kacho-iam `AuthorizeService.BatchCheck`,
-  на `viewer` — том же отношении, что энфорсит `Get`; батчи ≤100 ограниченным
+  per-object фильтр `services/storage/internal/authzfilter` (kacho-iam
+  `AuthorizeService.BatchCheck` через общий сужатель `pkg/listnarrow`, предикат
+  `v_get` — то же отношение, которым каталог гейтит `Get`; батчи ≤100 ограниченным
   fan-out'ом) и отдаёт только видимые
   строки в порядке курсора. Без этого слоя ЛЮБОЙ член проекта видел каждый том,
   снимок и образ проекта независимо от per-object грантов (over-show / BOLA-lite),
@@ -105,8 +106,9 @@ software TOCTOU — data-integrity.md ban #10):
   конфигурируется `KACHO_STORAGE_LIST_FILTER_*`; production boot-guard
   (`config.Validate`) не пускает старт с `LIST_FILTER_ENABLED=false`.
   CI-гейт `make -C services/storage audit-list-filter` (`tools/audit-list-filter.sh`,
-  продублирован в `go test ./tools/...`; корневого Makefile в репо нет, поэтому голое
-  `make audit-list-filter` из корня не исполняется — CI вызывает именно `-C`-форму,
+  продублирован в `go test ./tools/...`; цели с таким именем нет в корневом Makefile —
+  она есть у каждого сервиса, поэтому голое `make audit-list-filter` из корня не
+  исполняется, и CI вызывает именно `-C`-форму по каждому сервису,
   `.github/workflows/ci.yaml`, job `authz-artifacts`) роняет PR, если **тело**
   `repo.List` перестаёт сужать по
   `project_id`, use-case `List` перестаёт требовать непустой `projectId` **или**
