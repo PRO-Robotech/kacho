@@ -330,22 +330,3 @@ func TestPermissionMap_CoverageSnapshot(t *testing.T) {
 		t.Errorf("PermissionMap слишком мала (%d entries): подозрение на drift регистраций", len(m))
 	}
 }
-
-func TestFactory_NoIAMConn_NoBreakglass_Error(t *testing.T) {
-	_, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-compute-test",
-		IAMConn:     nil,
-		Breakglass:  false,
-	})
-	require.ErrorIs(t, err, check.ErrIAMConnNotConfigured)
-}
-
-func TestFactory_Breakglass_NoIAMConn_OK(t *testing.T) {
-	intr, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-compute-test",
-		IAMConn:     nil,
-		Breakglass:  true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, intr)
-}

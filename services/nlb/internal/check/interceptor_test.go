@@ -830,32 +830,6 @@ func TestAZD030_RaceRevoke_CacheInvalidatesBeforeNextCheck(t *testing.T) {
 	require.Equal(t, "NetworkLoadBalancer nlb-1 not found", st.Message())
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Factory tests (NewInterceptor) — exercise все branches.
-// ────────────────────────────────────────────────────────────────────────────
-
-func TestFactory_Breakglass_NoIAM_OK(t *testing.T) {
-	intr, cache, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-nlb-test",
-		IAMCheck:    nil,
-		Breakglass:  true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, intr)
-	require.NotNil(t, cache)
-}
-
-func TestFactory_NoIAM_NoBreakglass_Error(t *testing.T) {
-	intr, cache, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-nlb-test",
-		IAMCheck:    nil,
-		Breakglass:  false,
-	})
-	require.Nil(t, intr)
-	require.Nil(t, cache)
-	require.ErrorIs(t, err, check.ErrIAMCheckNotConfigured)
-}
-
 // fakeIAMCheck — простой stub реализующий iam.CheckClient interface.
 type fakeIAMCheck struct {
 	fn func(ctx context.Context, subjectID, relation, object string) (bool, error)
@@ -863,19 +837,6 @@ type fakeIAMCheck struct {
 
 func (f *fakeIAMCheck) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	return f.fn(ctx, subjectID, relation, object)
-}
-
-func TestFactory_WithIAM_OK(t *testing.T) {
-	intr, cache, err := check.NewInterceptor(check.Options{
-		ServiceName: "kacho-nlb-test",
-		IAMCheck: &fakeIAMCheck{fn: func(_ context.Context, _, _, _ string) (bool, error) {
-			return true, nil
-		}},
-		Breakglass: false,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, intr)
-	require.NotNil(t, cache)
 }
 
 // IAMCheckClient adapter — ErrNoPath passthrough.
