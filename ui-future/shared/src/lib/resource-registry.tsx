@@ -20,6 +20,7 @@ import {
 } from "@shared/api/geo";
 import { RoutesEditor, type RouteEntry } from "@shared/components/organisms/RoutesEditor";
 import { CopyableName } from "@shared/components/atoms/CopyableName";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
@@ -317,22 +318,9 @@ function SupernetCell({ v4, v6 }: { v4: unknown; v6: unknown }): ReactNode {
   );
 }
 
-// VPC-1 Subnet cell: server-derived placement — ZONAL(zone) | REGIONAL(region,
-// anycast). Discriminated by placement_type° with zone_id/region_id fallback.
-function PlacementCell({ row }: { row: Record<string, unknown> }): ReactNode {
-  const pt = displayText(row.placement_type);
-  const zone = displayText(row.zone_id);
-  const region = displayText(row.region_id);
-  const anchor = region || zone;
-  if (!pt && !anchor) return <span className="text-muted-foreground">—</span>;
-  const isRegional = pt === "REGIONAL" || (!zone && !!region);
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-      {anchor && <span className="font-mono text-xs">{anchor}</span>}
-    </span>
-  );
-}
+// Размещение (ZONAL zone | REGIONAL region, anycast) рисует `PlacementAnchor` —
+// он же ставит ССЫЛКУ на зону/регион. Здесь эта ветка прежде жила своей копией,
+// показывавшей якорь плоским текстом.
 
 // ── IAM-1 render helpers (definitionTier / scopeType / target) ──
 const IAM_DASH = <span className="text-muted-foreground">—</span>;
@@ -1142,7 +1130,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // shows region (anycast). Single column reflects the anchor either way.
         header: "Размещение",
         path: "placement_type",
-        render: (row) => <PlacementCell row={row} />,
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
       },
       {
         header: "Метки",
@@ -2180,7 +2168,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         format: "text",
         className: "font-mono",
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "Размещение",
         path: "open_for_placement",
@@ -2253,7 +2245,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Статус", path: "status", format: "status" },
       { header: "Тип", path: "instance_kind", format: "code" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
       { header: "Тип машины", path: "machine_type_id", format: "code" },
       {
         header: "vCPU / RAM",
@@ -2589,7 +2585,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       { header: "Статус", path: "status", format: "status" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
     ],
     template: () => ({}),
   },
@@ -2796,7 +2796,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     columns: [
       { header: "Имя", path: "name", format: "text", className: "font-medium" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-      { header: "Регион", path: "region_id", format: "text", className: "font-mono" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "Размещение",
         path: "open_for_placement",
@@ -2981,7 +2985,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       { header: "Тип", path: "kind", format: "text" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "IPv4 CIDR",
         path: "v4_cidr_blocks",
@@ -3174,7 +3182,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
@@ -3373,7 +3385,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",

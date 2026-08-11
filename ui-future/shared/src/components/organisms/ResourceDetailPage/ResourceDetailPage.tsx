@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Dropdown, Space, Spin, Tag, Typography } from "antd";
+import { Button, Descriptions, Dropdown, Space, Spin, Typography } from "antd";
 import type { MenuProps } from "antd";
 import {
   ArrowLeftOutlined,
@@ -21,6 +21,7 @@ import {
 import { LazyJsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
 import { formatDateTime } from "@shared/lib/datetime";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { InlineResourceEditForm } from "@shared/components/organisms/InlineResourceEditForm";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
@@ -481,28 +482,13 @@ export function ResourceDetailPage({
         }
       : null,
     // Subnet-specific: derived placement (ZONAL zone / REGIONAL region).
+    // Якорь — ресурс каталога geo, поэтому он ССЫЛКА, как соседние «Сеть» и
+    // «Таблица маршрутизации». Ветку рисует единственный `PlacementAnchor`:
+    // прежде она стояла здесь своей копией и расходилась с двумя другими.
     spec.id === "subnets"
       ? {
           label: "Размещение",
-          value: (() => {
-            const region = getByPath<string>(data, "region_id") ?? "";
-            const zone = getByPath<string>(data, "zone_id") ?? "";
-            const pt = getByPath<string>(data, "placement_type") ?? "";
-            const isRegional = pt === "REGIONAL" || (!zone && !!region);
-            const anchor = isRegional ? region : zone;
-            return (
-              <Space size={8}>
-                <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-                {anchor ? (
-                  <Typography.Text code style={{ fontFamily: "monospace" }}>
-                    {anchor}
-                  </Typography.Text>
-                ) : (
-                  <Typography.Text type="secondary">—</Typography.Text>
-                )}
-              </Space>
-            );
-          })(),
+          value: <PlacementAnchor row={data as Record<string, unknown>} maxChars={42} />,
         }
       : null,
     // Subnet-specific: IPv4 CIDR — immutable primary anchor + additional ranges

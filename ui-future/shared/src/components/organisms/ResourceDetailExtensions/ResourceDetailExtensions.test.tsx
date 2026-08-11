@@ -93,15 +93,19 @@ describe("дополнения обзора показывают доменны�
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("зональная подсеть подписана зоной", () => {
+  // Зона и регион — ресурсы каталога geo, поэтому якорь размещения не просто
+  // подписан, а ВЕДЁТ на свой ресурс. Прежде обе пробы утверждали присутствие
+  // текста — и остались бы зелёными на плоском идентификаторе, из которого
+  // пользователю некуда пойти.
+  it("зональная подсеть ведёт на карточку своей зоны", () => {
     drawOverviewExtra("subnets", { id: "sub-1", zone_id: "zone-a", placement_type: "ZONAL", network_id: "net-1" });
 
     expect(screen.getByText("ZONAL")).toBeInTheDocument();
-    expect(screen.getByText("zone-a")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /zone-a/ })).toHaveAttribute("href", "/system/zones/zone-a");
     expect(screen.queryByText("REGIONAL")).not.toBeInTheDocument();
   });
 
-  it("региональная подсеть подписана регионом, а не пустой зоной", () => {
+  it("региональная подсеть ведёт на карточку своего региона, а не на пустую зону", () => {
     drawOverviewExtra("subnets", {
       id: "sub-1",
       region_id: "ru-central1",
@@ -110,7 +114,10 @@ describe("дополнения обзора показывают доменны�
     });
 
     expect(screen.getByText("REGIONAL")).toBeInTheDocument();
-    expect(screen.getByText("ru-central1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ru-central1/ })).toHaveAttribute(
+      "href",
+      "/system/regions/ru-central1",
+    );
   });
 
   it("подсеть без объявленного типа размещения, но с регионом, читается региональной", () => {

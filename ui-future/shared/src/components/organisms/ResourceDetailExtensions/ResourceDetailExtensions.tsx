@@ -18,6 +18,7 @@ import { Tag, Typography } from "antd";
 import { toast } from "@shared/lib/toast";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { SgRulesPanel, type SgRule } from "@shared/components/organisms/SgRulesPanel";
 import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
@@ -223,19 +224,13 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   subnets: {
     // VPC-1: derived placement (ZONAL zone / REGIONAL region) + primary anchor.
     overviewExtra: ({ data }) => {
-      const region = getByPath<string>(data, "region_id") ?? "";
-      const zone = getByPath<string>(data, "zone_id") ?? "";
-      const pt = getByPath<string>(data, "placement_type") ?? "";
-      const isRegional = pt === "REGIONAL" || (!zone && !!region);
       return [
         {
+          // Якорь размещения — ресурс geo, поэтому ссылка (как «Сеть» ниже), а
+          // не моноширинный идентификатор. Ветку рисует единственный
+          // `PlacementAnchor` — здесь стояла третья её копия.
           label: "Размещение",
-          value: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-              {mono(isRegional ? region : zone)}
-            </span>
-          ),
+          value: <PlacementAnchor row={data as Record<string, unknown>} maxChars={42} />,
         },
         {
           label: "Сеть",

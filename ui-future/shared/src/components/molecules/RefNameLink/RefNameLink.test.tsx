@@ -13,14 +13,20 @@ import { RefNameLink } from "./RefNameLink";
 
 const realFetch = globalThis.fetch;
 
+/** URL'ы, ушедшие со стенда за пробу — по ним видно, ЧТО именно спросили. */
+let asked: string[] = [];
+
 function stubList(payload: unknown) {
-  globalThis.fetch = () =>
-    Promise.resolve({
+  asked = [];
+  globalThis.fetch = (input: RequestInfo | URL) => {
+    asked.push(String(input));
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
       text: () => Promise.resolve(JSON.stringify(payload)),
     } as Response);
+  };
 }
 
 afterEach(() => {
@@ -89,6 +95,37 @@ describe("RefNameLink", () => {
     renderLink({ specId: "нет-такого-ресурса" });
     expect(screen.getByText("net-1")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  // Регион и зона — ГЛОБАЛЬНЫЙ каталог размещения (`scope: "global"`), а не
+  // ресурс проекта. Ссылка на них живёт на страницах ВНУТРИ проекта (подсеть
+  // называет свой регион), поэтому проект в контексте есть — и запрос всё равно
+  // не вправе его нести: у geo такого измерения нет.
+  it("глобальный справочник спрашивается без project_id, хотя проект в контексте есть", async () => {
+    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "reg-1" });
+
+    await screen.findByRole("link", { name: "ru-central1" });
+    expect(asked).not.toHaveLength(0);
+    expect(asked.some((u) => u.includes("project_id"))).toBe(false);
+  });
+
+  it("глобальный справочник резолвится и ведёт на карточку каталога", async () => {
+    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "reg-1" });
+
+    const link = await screen.findByRole("link", { name: "ru-central1" });
+    expect(link).toHaveAttribute("href", "/system/regions/reg-1");
+  });
+
+  it("ресурс проекта по-прежнему спрашивается С project_id", async () => {
+    // Положительный контроль: без него первая проба зеленела бы и на запросе,
+    // потерявшем project_id для ВСЕХ ресурсов, — то есть на сломанном списке.
+    stubList({ networks: [{ id: "net-1", name: "core" }] });
+    renderLink();
+
+    await screen.findByRole("link", { name: "core" });
+    expect(asked.some((u) => u.includes("project_id=prj-1"))).toBe(true);
   });
 
   it("длинное имя обрезает, а полное оставляет в подсказке", async () => {

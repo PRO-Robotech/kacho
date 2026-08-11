@@ -27,14 +27,21 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
   const projectId = projectOverride ?? params.projectId ?? project?.id ?? null;
   const spec = REGISTRY[specId];
 
+  // Область видимости ресурса решает, чем его спрашивать. Регион и зона —
+  // ГЛОБАЛЬНЫЙ каталог размещения: измерения «проект» у него нет, поэтому
+  // `project_id` в таком запросе — чужой параметр. Ссылка на него при этом
+  // стоит на страницах ВНУТРИ проекта (подсеть называет свой регион), так что
+  // проект в контексте есть — и требовать его для запуска запроса значит
+  // молча не резолвить имя там, где проекта нет вовсе (страницы /system/*).
+  const projectScoped = spec?.scope === "project";
   const { data } = useQuery({
-    queryKey: ["ref-name", specId, projectId],
+    queryKey: ["ref-name", specId, projectScoped ? projectId : null],
     queryFn: () =>
       api.list<Record<string, Array<{ id: string; name?: string }>>>(spec.apiPath, {
-        project_id: projectId!,
+        ...(projectScoped ? { project_id: projectId! } : {}),
         pageSize: "500",
       }),
-    enabled: !!spec && !!projectId && !!refId,
+    enabled: !!spec && !!refId && (!projectScoped || !!projectId),
     staleTime: 30_000,
   });
 
