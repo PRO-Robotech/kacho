@@ -5509,7 +5509,7 @@
       ]
     },
     {
-      "name": "AZD-BREAKGLASS-DEV-BYPASS — KACHO_NLB_AUTHZ__BREAKGLASS=true bypasses Check (dev-only, prod rejects flag)",
+      "name": "AZD-NO-CHECK-BYPASS-KNOB — per-RPC Check has no bypass knob: a stranger is denied on every posture",
       "description": "class:AZD | priority:P2",
       "item": [
         {
@@ -5567,7 +5567,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('breakglass OFF: stranger denied', () =>   pm.expect(pm.response.code).to.eql(403));"
+                  "pm.test('no Check bypass: stranger denied', () =>   pm.expect(pm.response.code).to.eql(403));"
                 ]
               }
             }

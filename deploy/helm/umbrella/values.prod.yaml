@@ -49,7 +49,10 @@
 #      leaf Certificates already shipped (kacho-<svc>-server-tls /
 #      kacho-<svc>-client-tls / api-gateway-tls / api-gateway-client-tls). Same
 #      enable + per-edge map the dev profile uses — just kept ON for every edge.
-#   4. AuthZ → enabled + fail-closed (failOpen=false) everywhere; breakglass off.
+#   4. AuthZ → enabled + fail-closed (failOpen=false) everywhere. Ручка обхода
+#      выставляется там, где она есть (registry); у vpc и nlb её нет вовсе —
+#      звено решения о доступе ставится безусловно, и объявлять ключ выключенным
+#      значило бы сообщать оператору о контроле, которого не существует.
 #
 # ─── Secrets discipline (workspace rule: no secrets in values) ──────────────
 # This file contains NO secret material. AuthN secrets the production binaries
@@ -565,10 +568,14 @@ kacho-nlb:
     existingSecret: kacho-umbrella-pg-nlb
     existingSecretKey: password
   config:
-    # production mode: authz.iam.addr required (set below) + breakglass forbidden.
+    # production mode: peer-рёбра обязаны быть mTLS, DSN — с sslmode ∈
+    # require/verify-ca/verify-full, per-object фильтр списков обязателен и
+    # fail-closed. Ручки аварийного обхода авторизации у nlb НЕТ: звено решения
+    # о доступе ставится безусловно, отключить его нечем. Здесь стояло
+    # `breakglass: false` — строка, которую оператор читает как «обход закрыт»,
+    # при том что её не читал ни шаблон чарта, ни описатель настроек процесса.
     mode: production
     authz:
-      breakglass: false
       # BOOT REQUIREMENT: non-empty when mode=production AND mtls.enable=true.
       # The chart default is [] — "trust any mTLS peer to forward the end-user
       # principal" — which production refuses to start on. Only api-gateway

@@ -62,8 +62,9 @@ Kachō). Полный список ключей подключения — на 
 ## 3. Запустить сервис
 
 API-сервер поднимает **два listener'а**: публичный (`:9090`, клиенты через api-gateway) и
-cluster-internal (`:9091`, peer-сервисы). В dev-режиме (`mode: dev`) TLS необязателен и
-breakglass допустим; production требует TLS и сконфигурированный адрес kacho-iam.
+cluster-internal (`:9091`, peer-сервисы). В dev-режиме (`mode: dev`) TLS необязателен;
+production требует TLS и сконфигурированный адрес kacho-iam. Ручки, отключающей проверку
+прав, нет ни в одном режиме — см. [Конфигурация](/install/configuration).
 
 <CodeBlock language="bash">
   {dedent`

@@ -1477,7 +1477,10 @@ kacho-nlb:
       dialDuration: 10s
   authz:
     iam:
-      addr: kacho-iam-internal.kacho.svc.cluster.local:9091
+      # Адреса здесь нет намеренно: соединение, по которому идёт per-RPC Check,
+      # строится из peers.iam.internalAddr. Прежний ключ `authz.iam.addr` снят —
+      # из него не строилось ни одного соединения, а профиль называл его как
+      # действующую настройку.
       dialDeadline: 3s
       requestTimeout: 500ms
   config:
@@ -1493,12 +1496,15 @@ kacho-nlb:
       cache:
         enable: true
         ttl: 5s
-        size: 10000
-      listenInvalidator:
-        enable: false
-        channel: kacho_iam_subjects
-        iamDsn: ""
-      breakglass: false
+      # Здесь стояли ещё четыре ключа — `cache.size`, три `listenInvalidator.*`
+      # и `breakglass`, — ни один из которых не читал ни шаблон чарта, ни
+      # описатель настроек процесса: у nlb нет ни поля размера кеша вердиктов,
+      # ни слушателя инвалидации (это механизм iam), ни ручки аварийного обхода.
+      # Последняя опаснее прочих: строка `breakglass: false` читается как
+      # заявление «обход закрыт», тогда как закрывать нечего — звено решения о
+      # доступе ставится безусловно. Держит снятое гейт
+      # internal/repohygiene TestDeclaredKnobHasAReader.
+      #
       # Круг отправителей, которым разрешено ГОВОРИТЬ ЗА пользователя
       # (заголовки x-kacho-principal-*). Пустой список — умолчание чарта —
       # НЕ означает «не принимаем ни от кого»: транспорт сужает круг только

@@ -196,8 +196,10 @@ type backgroundDeps struct {
 }
 
 // assembleBackgroundWorkers строит полный набор фоновых loop'ов (LRO-reconciler,
-// target-drain, free-ip, authz-listen-invalidator, fga-register-drainer + outbox-
-// backstop, vip-origin-reconcile). Возвращает workers, vip-origin-gate (для
+// target-drain, free-ip, fga-register-drainer + outbox-backstop,
+// vip-origin-reconcile). Слушателя инвалидации кэша вердиктов в этом наборе НЕТ —
+// он перечислялся здесь, но никогда не собирался: это механизм iam, а у nlb нет
+// ни его настроек, ни его кода. Возвращает workers, vip-origin-gate (для
 // readiness) и ошибку. Сами loop'ы НЕ запускаются здесь — их гоняет errgroup в
 // runServe; функция лишь собирает slice + строит их ресурсы (drainer.New,
 // backstop, bootGate.SetConnected). Порядок и side-effect'ы идентичны прежнему

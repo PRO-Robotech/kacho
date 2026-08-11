@@ -330,7 +330,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-PERMISSION-CATALOG-COMPLETE` — AZD/P0 — full enumeration of 26 loadbalancer.* permissions present (Verifies REQ-AZD-CATALOG)
 - `*-CUSTOM-ROLE-TARGET-MANAGER` — AZD/P1 — targetManager role can AddTargets but not Update TG metadata
 - `*-CUSTOM-ROLE-UNKNOWN-PERMISSION` — AZD/P1 — role with unknown permission rejected at create
-- `*-BREAKGLASS-DEV-BYPASS` — AZD/P2 — KACHO_NLB_AUTHZ__BREAKGLASS=true bypasses (dev-only)
+- `*-NO-CHECK-BYPASS-KNOB` — AZD/P2 — per-RPC Check не имеет ручки обхода: посторонний отвергнут
 - `*-LIFECYCLE-DELETED-TUPLE-CLEANUP` — AZD/P1 — D-13 DELETED event → openfga.DeleteByObject ≤10s (Verifies REQ-AZD-LIFECYCLE-DEL)
 - `*-CACHE-INVALIDATION-REVOKE` — AZD/P1 — revoke binding → ≤10s subject denied (Verifies REQ-AZD-CACHE-INVAL)
 - `*-OWNER-RELATION-CREATOR` — AZD/P1 — creator has owner relation on created LB (Verifies REQ-AZD-OWNER)

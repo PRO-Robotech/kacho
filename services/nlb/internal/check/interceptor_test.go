@@ -363,8 +363,13 @@ func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Breakglass dev-only (interceptor allows; production cfg
-// rejects breakglass=true, covered separately в config/validate_test.go).
+// Breakglass — поле ОБЩЕГО перехватчика (pkg/authz), а НЕ настройка nlb.
+//
+// Прежняя редакция этой шапки утверждала «production cfg rejects breakglass=true,
+// covered separately в config/validate_test.go»: ни ключа, ни поля, ни такой
+// проверки у nlb нет — композиционный корень поле не выставляет ни в одном
+// режиме, поэтому обход недостижим by construction. Обе пробы ниже закрепляют
+// поведение общего перехватчика на карте прав nlb, а не режим этого сервиса.
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestAZD013_Breakglass_AllowsAuthenticated(t *testing.T) {

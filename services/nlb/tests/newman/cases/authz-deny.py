@@ -891,18 +891,21 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="AZD-BREAKGLASS-DEV-BYPASS",
-    title="KACHO_NLB_AUTHZ__BREAKGLASS=true bypasses Check (dev-only, prod rejects flag)",
+    id="AZD-NO-CHECK-BYPASS-KNOB",
+    title="per-RPC Check has no bypass knob: a stranger is denied on every posture",
     classes=["AZD"], priority="P2",
     steps=[
-        # Cannot toggle env from a newman case; this is an assertion that
-        # under normal config the suite is NOT in breakglass mode (the same
-        # request as a stranger denies).
+        # Прежде кейс назывался KACHO_NLB_AUTHZ__BREAKGLASS=true и обещал
+        # проверить обход. Обхода не существует: ни ключа профиля, ни поля
+        # настроек, ни ветки — звено решения о доступе ставится безусловно.
+        # Утверждение кейса от переименования не изменилось (оно и было
+        # единственным, что здесь исполнялось): посторонний получает отказ.
+        # Название теперь описывает то, что проверяется, а не ручку, которой нет.
         Step(name="stranger-create", method="POST", path=_NLB, auth="jwtStranger",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-brk-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[
-                 "pm.test('breakglass OFF: stranger denied', () => "
+                 "pm.test('no Check bypass: stranger denied', () => "
                  "  pm.expect(pm.response.code).to.eql(403));",
              ]),
     ],

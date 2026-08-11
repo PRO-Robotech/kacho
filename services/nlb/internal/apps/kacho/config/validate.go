@@ -22,10 +22,18 @@ import (
 type ModeEnum int
 
 const (
-	// ModeDev — relaxed validation, TLS опционален, breakglass допускается.
+	// ModeDev — relaxed validation, TLS опционален.
 	ModeDev ModeEnum = iota + 1
 	// ModeProduction — TLS обязателен для public listener / peer-вызовов,
-	// FGA endpoint обязателен, breakglass запрещён, Postgres DSN обязателен.
+	// FGA endpoint обязателен, Postgres DSN обязателен, пообъектный фильтр
+	// списков включён и fail-closed.
+	//
+	// Аварийного обхода проверки прав здесь НЕ перечислено, и это не пропуск:
+	// такой ручки у сервиса нет вовсе — звено решения о доступе ставится
+	// безусловно. Прежняя редакция обоих комментариев называла её («в dev
+	// допускается, в production запрещена»), и по этому описанию три профиля
+	// развёртывания объявляли ключ выключенным. Запрет, которому нечего
+	// запрещать, читается как действующий контроль.
 	ModeProduction
 )
 

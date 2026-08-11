@@ -24,8 +24,8 @@ Kachō NLB конфигурируется YAML-файлом с ENV-override; п�
 <table>
   <thead><tr><th>Значение</th><th>Поведение</th></tr></thead>
   <tbody>
-    <tr><td><code>dev</code></td><td>Relaxed-валидация: TLS опционален, breakglass допустим, <code>sslmode=disable</code> в DSN разрешён</td></tr>
-    <tr><td><code>production</code></td><td>TLS обязателен, <code>extapi.iam.internal-addr</code> обязателен, breakglass запрещён, DSN обязан нести <code>sslmode=require</code>/<code>verify-ca</code>/<code>verify-full</code></td></tr>
+    <tr><td><code>dev</code></td><td>Relaxed-валидация: TLS опционален, <code>sslmode=disable</code> в DSN разрешён</td></tr>
+    <tr><td><code>production</code></td><td>TLS обязателен, <code>extapi.iam.internal-addr</code> обязателен, пообъектная фильтрация списков обязательна и fail-closed, DSN обязан нести <code>sslmode=require</code>/<code>verify-ca</code>/<code>verify-full</code></td></tr>
   </tbody>
 </table>
 
@@ -88,25 +88,36 @@ production — ещё и адреса peer-рёбер, в том числе `ext
   <tbody>
     <tr><td><code>extapi.iam.internal-addr</code></td><td><em>(обязателен в production)</em></td><td>Адрес iam INTERNAL listener'а — по этому соединению идёт per-RPC Check. Отдельного адреса в секции <code>authz</code> нет</td></tr>
     <tr><td><code>authz.iam.request-timeout</code></td><td><code>500ms</code></td><td>Per-request deadline к Check</td></tr>
-    <tr><td><code>authz.cache.enable</code> / <code>ttl</code> / <code>size</code></td><td><code>true</code> / <code>5s</code> / <code>10000</code></td><td>Positive-only LRU-кэш над Check</td></tr>
+    <tr><td><code>authz.cache.enable</code> / <code>ttl</code></td><td><code>true</code> / <code>5s</code></td><td>Positive-only кэш над Check. Ключа размера у него нет — прежняя строка таблицы называла <code>size</code>, которого не читает ни чарт, ни процесс</td></tr>
     <tr><td><code>authz.list-filter.enabled</code></td><td><code>true</code></td><td>Пообъектная фильтрация страницы List через <code>BatchCheck</code> по отношению <code>v_get</code>: членство в странице равно праву на чтение</td></tr>
     <tr><td><code>authz.list-filter.fail-open</code></td><td><code>false</code></td><td>iam недоступен → List → <code>UNAVAILABLE</code> (не нефильтрованный)</td></tr>
     <tr><td><code>authz.trusted-forwarder-sans</code></td><td><code>[]</code></td><td>Allow-list cert-SAN, которым разрешено форвардить end-user principal. Обязан быть непустым при production + mTLS (обычно SAN api-gateway)</td></tr>
-    <tr><td><code>authz.breakglass</code></td><td><code>false</code></td><td>Dev-only аварийный обход; в production отвергается валидацией</td></tr>
   </tbody>
 </table>
 
 ### Secure by default
 
-По умолчанию (`mode: production`, `breakglass: false`) операции **без авторизации и mTLS
-запрещены**: per-RPC Check и mTLS на **обоих** listener'ах обязательны. Если адрес kacho-iam не
-задан или TLS не включён — конфиг не проходит валидацию и сервис не стартует. Это инвариант
-«AuthN + AuthZ везде» (internal `:9091` не освобождён).
+По умолчанию (`mode: production`) операции **без авторизации и mTLS запрещены**: per-RPC Check
+и mTLS на **обоих** listener'ах обязательны. Если адрес kacho-iam не задан или TLS не включён —
+конфиг не проходит валидацию и сервис не стартует. Это инвариант «AuthN + AuthZ везде»
+(internal `:9091` не освобождён).
 
-:::warning Единственный обход — breakglass
-`authz.breakglass: true` (dev-only) запускает сервис, пропуская per-RPC Check. Аварийный режим:
-применять только локально / при инциденте, никогда на рабочем стенде. В `mode: production`
-валидация отвергает `breakglass: true`.
+:::warning Ручки, отключающей проверку прав, нет
+Здесь была описана настройка `authz.breakglass` — «dev-only аварийный обход, в production
+отвергается валидацией». Ни одного из двух утверждений не было в коде: обхода не существует
+(звено решения о доступе ставится безусловно, отменить его нечем), а значит и отвергать
+валидации нечего. Ключ не читали ни шаблон чарта, ни описатель настроек процесса, при этом
+три профиля развёртывания объявляли его выключенным — то есть страница и профили сообщали
+оператору, что он распоряжается поверхностью безопасности, которой нет.
+
+Что делать при инциденте, когда права мешают: доступ выдаётся **в модели** — привязкой роли
+нужному принципалу, — а не выключением проверки. Отдельная ручка на этот случай не заведена
+намеренно: она снимает контроль целиком и на всём, тогда как выдача ограничена областью,
+отзывается и попадает в аудит.
+
+Соседняя ручка `authz.list-filter.breakglass` — **другой** предмет и жива: она относится к
+сужению **списков** при отсутствующей модели прав на посадке, читается корнем сборки, и в
+production сужение обязано быть включённым и fail-closed.
 :::
 
 ## Authn (transport TLS) и mTLS per-edge
@@ -169,7 +180,6 @@ production оба server-флага и клиентские рёбра долж�
         fail-open: false
       trusted-forwarder-sans:
         - spiffe://kacho.cloud/ns/kacho-api-gateway/sa/kacho-api-gateway
-      breakglass: false
 
     mtls:
       server:       { enable: true }
