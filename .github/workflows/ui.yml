@@ -297,9 +297,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
       - name: установка
         working-directory: ui-future/e2e
         run: npm ci || npm install --no-audit --no-fund
@@ -313,7 +313,7 @@ jobs:
         run: npx playwright test
       - name: отчёт (в том числе на красном)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: console-e2e-results
           path: |
