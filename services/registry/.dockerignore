@@ -3,7 +3,7 @@
 
 .git
 bin/
-docs-site/
+docs/
 .github/
 *.md
 LICENSE
