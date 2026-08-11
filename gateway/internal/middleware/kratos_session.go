@@ -36,7 +36,7 @@ type KratosWhoamiResult struct {
 
 // KratosClient — minimal HTTP-обертка для GET /sessions/whoami.
 type KratosClient struct {
-	BaseURL string // например http://kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
+	BaseURL string // например http://kacho-umbrella-kratos-public.kacho.svc:80
 	HTTP    *http.Client
 
 	// cache — единый bounded TTL+LRU примитив (internal/lrucache), тот же, что у

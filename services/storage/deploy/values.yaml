@@ -7,7 +7,7 @@
 # fullnameOverride — фиксирует базовое имя ресурсов (Service/Deployment/DNS) как
 # `kacho-storage` вместо release-производного `<Release.Name>-storage`. ВСЕ консумеры
 # ждут именно `kacho-storage`: compute→storage (storageInternalAddr default
-# kacho-storage.kacho.svc.cluster.local:9091 + compute server-cert serverName.storage
+# kacho-storage.kacho.svc:9091 + compute server-cert serverName.storage
 # SAN), config-дефолты, deploy/Makefile reload-svc (DEPLOY_NAME=kacho-storage). Без
 # override Service рендерится `kacho-umbrella-storage` → DNS не резолвится, mTLS-SAN
 # не совпадает. См. templates/_helpers.tpl.
@@ -155,7 +155,7 @@ resources:
 #   storage→iam (все рёбра): KACHO_STORAGE_IAM_CLIENT_MTLS_*   (:9090 ProjectService.Get
 #                           + :9091 Check + :9091 RegisterResource fga-register)
 # Один client-cert (kacho-storage-client-tls) обслуживает ВСЕ storage→iam-дозвоны:
-# serverName=kacho-iam.kacho.svc.cluster.local входит в SAN iam-server-cert'а
+# serverName=kacho-iam.kacho.svc входит в SAN iam-server-cert'а
 # (serverHosts ["kacho-iam","kacho-iam-internal"]), поэтому валиден и для :9090, и
 # для internal :9091 (тот же pod предъявляет один cert на обоих листенерах).
 mtls:
@@ -184,8 +184,8 @@ mtls:
     geo: false    # storage→geo ZoneService.Get (zone_id, :9090)
     iam: false    # storage→iam ProjectService.Get (:9090) + Check + RegisterResource (:9091)
   serverName:
-    geo: kacho-geo.kacho.svc.cluster.local     # :9090 ZoneService.Get dial-host (∈ geo server-SAN)
-    iam: kacho-iam.kacho.svc.cluster.local     # ∈ iam server-SAN — валиден для :9090 И internal :9091
+    geo: kacho-geo.kacho.svc     # :9090 ZoneService.Get dial-host (∈ geo server-SAN)
+    iam: kacho-iam.kacho.svc     # ∈ iam server-SAN — валиден для :9090 И internal :9091
 
 # INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
 #

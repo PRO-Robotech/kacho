@@ -40,7 +40,7 @@ func TestResolvedHydraIntrospectionURL_UnsetIsNotDerived(t *testing.T) {
 
 // The explicit value is returned verbatim.
 func TestResolvedHydraIntrospectionURL_ExplicitIsVerbatim(t *testing.T) {
-	const want = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+	const want = "http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
 	cfg := config.Config{
 		APIDomain:             "api.kacho.cloud",
 		HydraIssuer:           "https://hydra.api.kacho.cloud",
@@ -61,7 +61,7 @@ func TestResolvedHydraAdminURL_UnsetIsNotDerived(t *testing.T) {
 
 // The explicit admin base is returned verbatim.
 func TestResolvedHydraAdminURL_ExplicitIsVerbatim(t *testing.T) {
-	const want = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+	const want = "http://kacho-umbrella-hydra-admin.kacho.svc:4445"
 	cfg := config.Config{APIDomain: "api.kacho.cloud", HydraAdminURL: want}
 	require.Equal(t, want, cfg.ResolvedHydraAdminURL())
 }

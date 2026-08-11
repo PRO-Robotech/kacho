@@ -236,8 +236,8 @@ func TestRequireSecureJWKSURL(t *testing.T) {
 		{"prod-scheme-uppercase-ok", "production", "HTTPS://hydra.api.kacho.cloud/jwks", false},
 		{"prod-bad-url", "production", "://not a url", true},
 		// iam JWKS proxy URL (post-unify): http:// rejected, https:// accepted in prod.
-		{"prod-iam-http-rejected", "production", "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json", true},
-		{"prod-iam-https-ok", "production", "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json", false},
+		{"prod-iam-http-rejected", "production", "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json", true},
+		{"prod-iam-https-ok", "production", "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestRequireSecureJWKSURL(t *testing.T) {
 // операторская диагностика указывает на актуальное имя env. Держит и позитивную сторону
 // (упомянут IAM), и негативную (старое имя вычищено).
 func TestRequireSecureJWKSURL_ErrorNamesIAMEnv(t *testing.T) {
-	err := requireSecureJWKSURL("production", "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json")
+	err := requireSecureJWKSURL("production", "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json")
 	if err == nil {
 		t.Fatalf("want error for http:// iam JWKS URL in production, got nil")
 	}

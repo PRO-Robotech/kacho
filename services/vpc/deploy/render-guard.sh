@@ -11,9 +11,9 @@
 # serverName verification.
 #
 # Asserts, against `helm template` with mtls.edges.geo=true:
-#   1. the rendered ConfigMap dials extapi.geo.endpoint = kacho-geo.kacho.svc.cluster.local:9090
-#   2. the rendered Deployment sets KACHO_VPC_GEO_MTLS_SERVERNAME = kacho-geo.kacho.svc.cluster.local
-#   3. the old `geo.kacho.svc.cluster.local` host appears NOWHERE in the render.
+#   1. the rendered ConfigMap dials extapi.geo.endpoint = kacho-geo.kacho.svc:9090
+#   2. the rendered Deployment sets KACHO_VPC_GEO_MTLS_SERVERNAME = kacho-geo.kacho.svc
+#   3. the old `geo.kacho.svc` host appears NOWHERE in the render.
 #
 # Usage: deploy/render-guard.sh   (run from the chart's parent, i.e. repo root or deploy/)
 # Exit 0 = all assertions pass; non-zero = a guard failed.
@@ -23,8 +23,8 @@ HELM_BIN="${HELM_BIN:-helm}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART_DIR="$SCRIPT_DIR"
 
-GOOD_HOST="kacho-geo.kacho.svc.cluster.local"
-BAD_HOST="geo.kacho.svc.cluster.local"
+GOOD_HOST="kacho-geo.kacho.svc"
+BAD_HOST="geo.kacho.svc"
 
 fail() { echo "render-guard: FAIL: $*" >&2; exit 1; }
 

@@ -31,17 +31,17 @@ func TestGeo_S5_BackendAddrs_HasGeoKeys(t *testing.T) {
 	geo, ok := addrs["geo"]
 	require.True(t, ok, "BackendAddrs must contain a \"geo\" key (public :9090)")
 	// geo cutover: the kacho-geo k8s Service is "kacho-geo" (NOT "geo") — the bare
-	// "geo.kacho.svc.cluster.local" host does NOT resolve (NXDOMAIN) → the grpc
+	// "geo.kacho.svc" host does NOT resolve (NXDOMAIN) → the grpc
 	// resolver returns no addresses → "no children to pick from" 503 on every
 	// /geo/v1/* request. The default MUST be the real Service name.
-	require.Equal(t, "kacho-geo.kacho.svc.cluster.local:9090", geo,
+	require.Equal(t, "kacho-geo.kacho.svc:9090", geo,
 		"geo public backend default addr must target the kacho-geo Service")
 
 	geoInternal, ok := addrs["geoInternal"]
 	require.True(t, ok, "BackendAddrs must contain a \"geoInternal\" key (internal :9091)")
 	// The internal listener is a separate Service: kacho-geo-internal (mirrors
 	// kacho-iam-internal / the iamInternal edge).
-	require.Equal(t, "kacho-geo-internal.kacho.svc.cluster.local:9091", geoInternal,
+	require.Equal(t, "kacho-geo-internal.kacho.svc:9091", geoInternal,
 		"geo internal backend default addr must target the kacho-geo-internal Service")
 }
 
@@ -66,7 +66,7 @@ func TestGeo_S5_GeoMTLSEdge(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	tc, berr := cfg.EdgeTLSClient("geo", "kacho-geo.kacho.svc.cluster.local:9090")
+	tc, berr := cfg.EdgeTLSClient("geo", "kacho-geo.kacho.svc:9090")
 	require.NoError(t, berr, "geo edge must build without error (default disabled)")
 	require.False(t, tc.Enable, "geo edge must be insecure by default")
 }
@@ -90,17 +90,17 @@ func TestGeo_Cutover_GeoMTLSEdge_ServerNameDerivesFromHost(t *testing.T) {
 
 	addrs := cfg.BackendAddrs()
 
-	// Public geo edge → SNI = kacho-geo.kacho.svc.cluster.local.
+	// Public geo edge → SNI = kacho-geo.kacho.svc.
 	pub, perr := cfg.EdgeTLSClient("geo", addrs["geo"])
 	require.NoError(t, perr)
 	require.True(t, pub.Enable, "enabled geo edge must produce TLS creds, not insecure")
-	require.Equal(t, "kacho-geo.kacho.svc.cluster.local", pub.ServerName,
+	require.Equal(t, "kacho-geo.kacho.svc", pub.ServerName,
 		"geo public SNI must match the kacho-geo server-cert SAN (not insecure, not geo.kacho.*)")
 
-	// Internal geo edge → SNI = kacho-geo-internal.kacho.svc.cluster.local.
+	// Internal geo edge → SNI = kacho-geo-internal.kacho.svc.
 	internal, ierr := cfg.EdgeTLSClient("geo", addrs["geoInternal"])
 	require.NoError(t, ierr)
 	require.True(t, internal.Enable, "enabled geoInternal edge must produce TLS creds")
-	require.Equal(t, "kacho-geo-internal.kacho.svc.cluster.local", internal.ServerName,
+	require.Equal(t, "kacho-geo-internal.kacho.svc", internal.ServerName,
 		"geo internal SNI must match the kacho-geo-internal server-cert SAN")
 }

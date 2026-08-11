@@ -90,8 +90,8 @@ func TestAdminHopClient_FileHoldingNoCertificate_RefusesToStart(t *testing.T) {
 func tlsServerSignedBy(t *testing.T, ca *testCA) *httptest.Server {
 	t.Helper()
 	certFile, keyFile := ca.issueLeaf(t, leafOpts{
-		commonName:  "hydra-admin.kacho.svc.cluster.local",
-		dnsNames:    []string{"hydra-admin.kacho.svc.cluster.local"},
+		commonName:  "hydra-admin.kacho.svc",
+		dnsNames:    []string{"hydra-admin.kacho.svc"},
 		ipAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 		isServer:    true,
 	})

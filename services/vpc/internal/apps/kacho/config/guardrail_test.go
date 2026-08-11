@@ -41,7 +41,7 @@ func prodCfg(mode Mode, iamEndpoint string) Config {
 
 // vpc8-C-01: production с настроенным authz-endpoint проходит Validate.
 func TestValidate_Production_WithAuthzEndpoint_Passes(t *testing.T) {
-	c := prodCfg(ModeProduction, "kacho-iam.kacho.svc.cluster.local:9091")
+	c := prodCfg(ModeProduction, "kacho-iam.kacho.svc:9091")
 	require.NoError(t, c.Validate())
 }
 
@@ -94,7 +94,7 @@ func TestValidate_AuthzEndpointRequiredUnconditionallyInProduction(t *testing.T)
 func TestValidate_ProductionWithAuthzEndpointPasses(t *testing.T) {
 	for _, mode := range []Mode{ModeProduction, ModeProductionStrict} {
 		t.Run(mode.String(), func(t *testing.T) {
-			require.NoError(t, prodCfg(mode, "kacho-iam.kacho.svc.cluster.local:9091").Validate())
+			require.NoError(t, prodCfg(mode, "kacho-iam.kacho.svc:9091").Validate())
 		})
 	}
 }

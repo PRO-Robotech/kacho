@@ -125,7 +125,7 @@ kratos:
   config:
     enabled: true
     smtp:
-      connectionURI: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+      connectionURI: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
       fromAddress: "noreply@kacho.cloud"
       fromName: "Kacho Cloud"
 

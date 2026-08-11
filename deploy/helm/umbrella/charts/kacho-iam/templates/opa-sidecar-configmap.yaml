@@ -27,7 +27,7 @@ a grace period (until OPA sidecars finish their next poll cycle ≈1h),
 otherwise bundle signature verification would fail across the fleet.
 
 The bundle endpoint URL uses cluster-internal DNS:
-  http://<svc-name>.<namespace>.svc.cluster.local:9091/opa/v1/bundle.tar.gz
+  http://<svc-name>.<namespace>.svc:9091/opa/v1/bundle.tar.gz
 
 NOT the api-gateway external TLS endpoint (запрет #6: Internal RPC stays
 cluster-internal). The service name resolves to kacho-iam's internal-port

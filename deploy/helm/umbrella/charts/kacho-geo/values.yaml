@@ -76,7 +76,7 @@ authMode: production
 # Empty is a REFUSAL TO START, not a graceful start without kacho-iam. The edge
 # carrying the access decision is declared explicitly — address and transport
 # together — and "unset" is not a mode. The service descriptor enforces that.
-authzIamGrpcAddr: "kacho-iam-internal.kacho.svc.cluster.local:9091"
+authzIamGrpcAddr: "kacho-iam-internal.kacho.svc:9091"
 #
 # The emergency pass-all knob is GONE, and its removal is the point rather than
 # a side effect: a chain without the decision link is not expressible to the
@@ -123,7 +123,7 @@ mtls:
     # ключ в новом профиле — открытый канал под решением о доступе.
     iamAuthz: true
   serverName:
-    iamAuthz: kacho-iam-internal.kacho.svc.cluster.local
+    iamAuthz: kacho-iam-internal.kacho.svc
 
 # Extra free-form env (KACHO_GEO_*) — merged verbatim onto both containers.
 env: {}

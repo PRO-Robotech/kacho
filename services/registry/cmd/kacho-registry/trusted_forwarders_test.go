@@ -68,7 +68,7 @@ func prodCfg(forwarders ...string) config.Config {
 	return config.Config{
 		AuthMode:           "production",
 		DBSSLMode:          "require",
-		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc.cluster.local:9091",
+		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc:9091",
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
 		// Транспорт поднимаемого ребра registry→iam: с тех пор как страж требует

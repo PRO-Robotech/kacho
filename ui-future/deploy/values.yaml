@@ -90,10 +90,10 @@ host:
   port: null
   resources: {}
   upstreams:
-    apiGateway: api-gateway.kacho.svc.cluster.local:8080
-    kratosPublic: kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
-    hydraPublic: kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444
-    kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000
+    apiGateway: api-gateway.kacho.svc:8080
+    kratosPublic: kacho-umbrella-kratos-public.kacho.svc:80
+    hydraPublic: kacho-umbrella-hydra-public.kacho.svc:4444
+    kratosUi: kratos-selfservice-ui.kacho.svc:3000
     dashboard: ""
     vpc: ""
     iam: ""

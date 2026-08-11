@@ -90,26 +90,26 @@ api-gateway:
   # KAC-NLB: pre-wire kacho-nlb public + internal endpoints so that when the
   # api-gateway proxy un-freezes the loadbalancer domain (see
   # kacho-api-gateway/internal/allowlist/list.go — `loadbalancer заморожен`),
-  # `kacho-nlb.kacho.svc.cluster.local:9090` / `kacho-nlb-internal:9091` are
+  # `kacho-nlb.kacho.svc:9090` / `kacho-nlb-internal:9091` are
   # already resolvable through the chart's `backends.*` map (template:
   # kacho-api-gateway/deploy/templates/deployment.yaml emits env vars
   # conditionally — these become `KACHO_API_GATEWAY_NLB_GRPC` /
   # `KACHO_API_GATEWAY_NLB_INTERNAL_GRPC` once the sub-chart adds the
   # corresponding `{{- if .Values.backends.nlb }}` block).
   backends:
-    vpc: vpc.kacho.svc.cluster.local:9090
-    vpcInternal: vpc.kacho.svc.cluster.local:9091
-    compute: compute.kacho.svc.cluster.local:9090
-    computeInternal: compute.kacho.svc.cluster.local:9091
-    iam: kacho-iam.kacho.svc.cluster.local:9090
-    iamInternal: kacho-iam-internal.kacho.svc.cluster.local:9091
-    nlb: kacho-nlb.kacho.svc.cluster.local:9090
-    nlbInternal: kacho-nlb-internal.kacho.svc.cluster.local:9091
+    vpc: vpc.kacho.svc:9090
+    vpcInternal: vpc.kacho.svc:9091
+    compute: compute.kacho.svc:9090
+    computeInternal: compute.kacho.svc:9091
+    iam: kacho-iam.kacho.svc:9090
+    iamInternal: kacho-iam-internal.kacho.svc:9091
+    nlb: kacho-nlb.kacho.svc:9090
+    nlbInternal: kacho-nlb-internal.kacho.svc:9091
     # registry Service is `registry` / `registry-internal` (registry chart .Values.name),
     # NOT `kacho-registry` — the gateway RegistryAddr default dials `kacho-registry` and
     # would NXDOMAIN 503 every registry control-plane REST call. Override to the real name.
-    registry: registry.kacho.svc.cluster.local:9090
-    registryInternal: registry-internal.kacho.svc.cluster.local:9091
+    registry: registry.kacho.svc:9090
+    registryInternal: registry-internal.kacho.svc:9091
   # The local stand authenticates the same way every other stand does: a bearer the
   # edge verifies by SIGNATURE against the identity facade's published JWKS.
   #
@@ -182,7 +182,7 @@ api-gateway:
   # it, KACHO_HYDRA_ISSUER derives the unreachable external default and every
   # real login token fails the iss check → AUTHN_REQUIRED persists.
   hydra:
-    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
     issuer: "http://localhost:28080/.ory/hydra/public/"
     # ─── Revocation path (ADMIN API — a different Service from the two above) ──
     # Where the gateway asks whether an access token has been revoked, and where
@@ -193,8 +193,8 @@ api-gateway:
     #
     # Same in-cluster Service the identity service already uses for its own
     # admin calls (kacho-iam.hydraAdminUrl below). Never routed outside.
-    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
+    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc:4445"
 
 compute:
   image: kacho-compute:dev
@@ -220,10 +220,10 @@ compute:
   # Delete-instance volume-release step. The 30s-hang risk the "" guarded only
   # applied when storage was DOWN — with storage Ready the InternalVolumeService
   # resolves fast. serverName.storage (compute→storage mTLS) chart default
-  # kacho-storage.kacho.svc.cluster.local ∈ storage server-cert SAN.
-  storageInternalAddr: kacho-storage.kacho.svc.cluster.local:9091
+  # kacho-storage.kacho.svc ∈ storage server-cert SAN.
+  storageInternalAddr: kacho-storage.kacho.svc:9091
   # vpcInternalAddr здесь БОЛЬШЕ НЕ ПЕРЕОПРЕДЕЛЯЕТСЯ — действует умолчание чарта
-  # (vpc.kacho.svc.cluster.local:9091), как и во всех остальных профилях: ни один
+  # (vpc.kacho.svc:9091), как и во всех остальных профилях: ни один
   # другой профиль зонтика этот ключ не задавал.
   #
   # Тут стояло `vpcInternalAddr: ""` с обоснованием «ребро compute→vpc :9091 в этом
@@ -277,7 +277,7 @@ compute:
       vpc: true
       geo: true        # compute→geo zone_id validation (geo cutover, kacho-workspace#82)
       storage: true    # compute→storage InternalVolumeService (attach/detach) over mTLS;
-                       # serverName.storage chart default kacho-storage.kacho.svc.cluster.local ∈ storage SAN
+                       # serverName.storage chart default kacho-storage.kacho.svc ∈ storage SAN
   # KAC-178 follow-up: compute authzIam.grpcAddr дефолт `kacho-iam:9091` в
   # kacho-compute/deploy/values.yaml неверный — Service `kacho-iam`
   # экспонирует только port 9090 (public AuthorizeService);
@@ -286,7 +286,7 @@ compute:
   # timeout → "authorization service unavailable" на каждом list/get RPC
   # (instances/disks/images/snapshots, и т.п.).
   authzIam:
-    grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    grpcAddr: kacho-iam-internal.kacho.svc:9091
 
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the
@@ -306,9 +306,9 @@ storage:
   config:
     # dev relaxes the prod-guard that would force TLS-DB; service→service mTLS stays ON.
     authMode: dev
-    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090        # storage→geo ZoneService.Get (zone_id), :9090
-    iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090        # storage→iam ProjectService.Get, :9090
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091  # per-RPC Check + RegisterResource, :9091
+    geoGrpcAddr: kacho-geo.kacho.svc:9090        # storage→geo ZoneService.Get (zone_id), :9090
+    iamGrpcAddr: kacho-iam.kacho.svc:9090        # storage→iam ProjectService.Get, :9090
+    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091  # per-RPC Check + RegisterResource, :9091
     # Materialize owner-tuples so gateway scope_extractors {storage_volume,volume_id}/
     # {storage_snapshot,snapshot_id} resolve target→project (own-resource authz).
     # Requires authzIamGrpcAddr + mtls.edges.iam + iam seed 0057_storage_sa_least_priv.
@@ -320,7 +320,7 @@ storage:
     passwordSecretName: kacho-umbrella-pg-storage
     passwordSecretKey: password
   # server-mTLS both listeners + client-mTLS storage→{geo,iam}. serverName.geo/iam
-  # chart defaults (kacho-geo… / kacho-iam.kacho.svc.cluster.local) are in the peer SANs.
+  # chart defaults (kacho-geo… / kacho-iam.kacho.svc) are in the peer SANs.
   mtls:
     enable: true
     edges:
@@ -525,7 +525,7 @@ vpc:
     # matrix *-LS-*-EMPTY scope-filter cases.
     listFilter:
       enabled: true
-      authorizeEndpoint: kacho-iam.kacho.svc.cluster.local:9090
+      authorizeEndpoint: kacho-iam.kacho.svc:9090
 
 # ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):
@@ -810,7 +810,7 @@ kratos:
             url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
       courier:
         smtp:
-          connection_uri: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+          connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
           from_address: "noreply@kacho.local"
           from_name: "Kacho"
   identitySchemas:
@@ -994,7 +994,7 @@ hydra:
         # на :9092 Service'а `kacho-iam-internal` (НЕ gRPC :9091 на `kacho-iam`).
         # Shared secret через KACHO_IAM_HOOK_TOKEN env (см. Secret kacho-iam-hook-token).
         token_hook:
-          url: "http://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
+          url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
             type: api_key
             config:
@@ -1002,7 +1002,7 @@ hydra:
               name: X-Kacho-Hook-Token
               value: ${KACHO_IAM_HOOK_TOKEN}
         refresh_token_hook:
-          url: "http://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
+          url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
             type: api_key
             config:
@@ -1026,7 +1026,7 @@ hydra:
           # KAC-127 (deploy#37): ключ `endpoint` переименован в `server_url` —
           # Hydra v26.2.0 tracing-schema (ory/x otelx) принимает `otlp.server_url`.
           otlp:
-            server_url: otel-collector.observability.svc.cluster.local:4317
+            server_url: otel-collector.observability.svc:4317
             insecure: true
   # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation.
   # The counterpart is any OIDC-conformant workload-identity endpoint that
@@ -1466,17 +1466,17 @@ kacho-nlb:
   peers:
     iam:
       # KAC-178 §2: ProjectService на PUBLIC (9090); InternalIAMService на INTERNAL (9091).
-      addr: kacho-iam.kacho.svc.cluster.local:9090
-      internalAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+      addr: kacho-iam.kacho.svc:9090
+      internalAddr: kacho-iam-internal.kacho.svc:9091
       tls: false
       dialDuration: 10s
     vpc:
-      addr: vpc.kacho.svc.cluster.local:9090
-      internalAddr: vpc.kacho.svc.cluster.local:9091
+      addr: vpc.kacho.svc:9090
+      internalAddr: vpc.kacho.svc:9091
       tls: false
       dialDuration: 10s
     compute:
-      addr: compute.kacho.svc.cluster.local:9090
+      addr: compute.kacho.svc:9090
       internalAddr: ""
       tls: false
       dialDuration: 10s

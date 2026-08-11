@@ -51,13 +51,13 @@ func TestPeerDialSpecs_VPCComputeWiredToPerEdgeMTLS(t *testing.T) {
 	// Enable the vpc + compute edges with distinct ServerNames so a zero-value
 	// (insecure) TLSClient on either edge is observable as a mismatch.
 	t.Setenv("KACHO_NLB_MTLS__VPC__ENABLE", "true")
-	t.Setenv("KACHO_NLB_MTLS__VPC__SERVERNAME", "vpc.kacho.svc.cluster.local")
+	t.Setenv("KACHO_NLB_MTLS__VPC__SERVERNAME", "vpc.kacho.svc")
 	t.Setenv("KACHO_NLB_MTLS__COMPUTE__ENABLE", "true")
-	t.Setenv("KACHO_NLB_MTLS__COMPUTE__SERVERNAME", "compute.kacho.svc.cluster.local")
+	t.Setenv("KACHO_NLB_MTLS__COMPUTE__SERVERNAME", "compute.kacho.svc")
 	// Give vpc/compute peer addrs so the specs are populated.
-	t.Setenv("KACHO_NLB_EXTAPI__VPC__ADDR", "kacho-vpc.kacho.svc.cluster.local:9090")
-	t.Setenv("KACHO_NLB_EXTAPI__VPC__INTERNAL_ADDR", "kacho-vpc.kacho.svc.cluster.local:9091")
-	t.Setenv("KACHO_NLB_EXTAPI__COMPUTE__ADDR", "kacho-compute.kacho.svc.cluster.local:9090")
+	t.Setenv("KACHO_NLB_EXTAPI__VPC__ADDR", "kacho-vpc.kacho.svc:9090")
+	t.Setenv("KACHO_NLB_EXTAPI__VPC__INTERNAL_ADDR", "kacho-vpc.kacho.svc:9091")
+	t.Setenv("KACHO_NLB_EXTAPI__COMPUTE__ADDR", "kacho-compute.kacho.svc:9090")
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
@@ -74,13 +74,13 @@ func TestPeerDialSpecs_VPCComputeWiredToPerEdgeMTLS(t *testing.T) {
 	assert.Equal(t, cfg.MTLS.VPC, vpcInt.mtls, "vpc-internal dial must present the nlb→vpc client-cert (cfg.MTLS.VPC)")
 	assert.True(t, vpcPub.mtls.Enable, "vpc-public dial must NOT fall back to a plaintext (insecure) TLSClient")
 	assert.True(t, vpcInt.mtls.Enable, "vpc-internal dial must NOT fall back to a plaintext (insecure) TLSClient")
-	assert.Equal(t, "vpc.kacho.svc.cluster.local", vpcPub.mtls.ServerName)
+	assert.Equal(t, "vpc.kacho.svc", vpcPub.mtls.ServerName)
 
 	// compute dials the compute server (mTLS) → carries cfg.MTLS.Compute.
 	cmp := edgeSpec(t, specs, "compute")
 	assert.Equal(t, cfg.MTLS.Compute, cmp.mtls, "compute dial must present the nlb→compute client-cert (cfg.MTLS.Compute)")
 	assert.True(t, cmp.mtls.Enable, "compute dial must NOT fall back to a plaintext (insecure) TLSClient")
-	assert.Equal(t, "compute.kacho.svc.cluster.local", cmp.mtls.ServerName)
+	assert.Equal(t, "compute.kacho.svc", cmp.mtls.ServerName)
 }
 
 // TestPeerDialSpecs_IAMPerListenerMTLS — regression mirror: the two iam dials

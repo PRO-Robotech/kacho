@@ -24,7 +24,7 @@ func TestLoad_Defaults(t *testing.T) {
 	// Fail-closed prod-гардрейл (S1): production-по-дефолту требует явный
 	// authz.iam-endpoint (либо authn.mode=dev). Задаем endpoint, чтобы изолировать
 	// проверку дефолтов от guardrail-отказа.
-	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc.cluster.local:9091"
+	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc:9091"
 	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
 	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	// S1b prod-гардрейл: production требует защищённый sslmode. Дефолт "disable"
@@ -53,10 +53,10 @@ func TestLoad_Defaults(t *testing.T) {
 	require.Equal(t, 5*time.Second, cfg.Network.ProjectCache.NegativeTTL)
 	require.Equal(t, 10000, cfg.Network.ProjectCache.MaxSize)
 
-	require.Equal(t, "iam.kacho.svc.cluster.local:9090", cfg.ExtAPI.IAM.Endpoint)
+	require.Equal(t, "iam.kacho.svc:9090", cfg.ExtAPI.IAM.Endpoint)
 	require.False(t, cfg.ExtAPI.IAM.TLS.Enable)
 	require.False(t, cfg.ExtAPI.IAM.DNSLB)
-	require.Equal(t, "kacho-geo.kacho.svc.cluster.local:9090", cfg.ExtAPI.Geo.Endpoint)
+	require.Equal(t, "kacho-geo.kacho.svc:9090", cfg.ExtAPI.Geo.Endpoint)
 }
 
 // TestLoad_GeoEndpointDialHost — regression guard на geo dial-host.
@@ -65,20 +65,20 @@ func TestLoad_Defaults(t *testing.T) {
 // только `kacho-geo.*` / `kacho-geo-internal.*`. Dial по старому хосту
 // `geo.kacho.svc...` ломает и DNS-резолв, и проверку TLS serverName, как только
 // включается mTLS-ребро. Default extapi.geo.endpoint dial-host ОБЯЗАН быть
-// `kacho-geo.kacho.svc.cluster.local:9090` (public :9090 listener, который
-// обслуживает ZoneService.Get/List), а не `geo.kacho.svc.cluster.local:9090`.
+// `kacho-geo.kacho.svc:9090` (public :9090 listener, который
+// обслуживает ZoneService.Get/List), а не `geo.kacho.svc:9090`.
 func TestLoad_GeoEndpointDialHost(t *testing.T) {
 	clearLegacyEnv(t)
 
 	cfg, err := Load("")
 	require.NoError(t, err)
-	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc.cluster.local:9091" // S1 prod-гардрейл
-	cfg.Repository.Postgres.SSLMode = "require"                      // S1b prod-гардрейл
+	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc:9091" // S1 prod-гардрейл
+	cfg.Repository.Postgres.SSLMode = "require"        // S1b prod-гардрейл
 	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
 	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	require.NoError(t, cfg.Validate())
 
-	require.Equal(t, "kacho-geo.kacho.svc.cluster.local:9090", cfg.ExtAPI.Geo.Endpoint,
+	require.Equal(t, "kacho-geo.kacho.svc:9090", cfg.ExtAPI.Geo.Endpoint,
 		"geo dial-host must match the kacho-geo Service name + server-cert SAN (kacho-geo.*)")
 }
 
@@ -361,7 +361,7 @@ func TestValidate_ProductionStrict_Passes(t *testing.T) {
 authn:
   mode: production-strict
 authz:
-  iam-endpoint: kacho-iam.kacho.svc.cluster.local:9091
+  iam-endpoint: kacho-iam.kacho.svc:9091
   trusted-forwarder-sans:
     - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 repository:

@@ -106,7 +106,7 @@ func gatewayClientCreds(t *testing.T, ca *muxTestCA, serverName string) grpc.Dia
 	return opt
 }
 
-const muxTestServerSAN = "vpc.kacho.svc.cluster.local"
+const muxTestServerSAN = "vpc.kacho.svc"
 
 // With the gateway client-cert + correct per-backend ServerName the REST
 // call reaches the mTLS backend and returns 200 (no 503, no reset). NewMux must
@@ -165,7 +165,7 @@ func TestSECK_RESTMux_WrongServerName_HandshakeRejected(t *testing.T) {
 	addrs := map[string]string{"vpc": addr}
 	dialOpts := map[string]grpc.DialOption{
 		// SNI of a DIFFERENT edge — does not match the vpc server-cert SAN.
-		"vpc": gatewayClientCreds(t, ca, "iam.kacho.svc.cluster.local"),
+		"vpc": gatewayClientCreds(t, ca, "iam.kacho.svc"),
 	}
 
 	h, err := NewMux(context.Background(), addrs, nil, dialOpts)

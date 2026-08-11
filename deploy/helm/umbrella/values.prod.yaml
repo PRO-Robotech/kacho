@@ -155,17 +155,17 @@ api-gateway:
   backends:
     # The registry Services are `registry` / `registry-internal` (registry chart
     # `.Values.name`), NOT `kacho-registry`. The chart default dials
-    # kacho-registry.kacho.svc.cluster.local, which does not exist → NXDOMAIN →
+    # kacho-registry.kacho.svc, which does not exist → NXDOMAIN →
     # 503 on every /registry/v1/* call. The dev profile carries this override
     # with the same note; the production profile never did.
     # These hosts are also the registry server-cert SANs, so the derived
     # SERVER_NAME matches once the mTLS edge below is armed.
-    registry: registry.kacho.svc.cluster.local:9090
-    registryInternal: registry-internal.kacho.svc.cluster.local:9091
+    registry: registry.kacho.svc:9090
+    registryInternal: registry-internal.kacho.svc:9091
     # nlb's internal listener lives on its OWN Service `kacho-nlb-internal`; the
     # public `kacho-nlb` Service publishes only grpc/metrics, so the chart default
     # (kacho-nlb:9091) hits a port the Service does not expose.
-    nlbInternal: kacho-nlb-internal.kacho.svc.cluster.local:9091
+    nlbInternal: kacho-nlb-internal.kacho.svc:9091
   # AuthN: production-strict → Bearer REQUIRED (reject missing token) + Hydra
   # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
   authn:
@@ -195,7 +195,7 @@ api-gateway:
     # certificate nobody checks, both leave that open. registry already fetches from
     # this same :9097 over https (see registry.iam.jwksUrl below) — one port, one
     # transport.
-    jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
     # Unreadable or certificate-less ⇒ REFUSES THE START, exactly like the admin hop —
     # falling back to the system roots would read as configured and verify nothing.
@@ -230,8 +230,8 @@ api-gateway:
     # issued by the internal CA, the process trusts the system roots, and the
     # introspection layer treats an unknown authority as a permanent
     # misconfiguration — after which it refuses every request.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445/admin/oauth2/introspect"
+    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
     # ca.crt of the provider's admin serving secret (templates/hydra-admin-certificate.yaml)
     # — the internal-CA bundle that signs it. Mounted as a volume and pointed at by
     # KACHO_HYDRA_ADMIN_CA_FILE; an unreadable or certificate-less bundle refuses the start.
@@ -275,7 +275,7 @@ api-gateway:
       # internal :9091 admin surface). storage runs server-mTLS on BOTH listeners
       # (RequireAndVerifyClientCert), so without this edge every /storage/v1/* call
       # fails the handshake. SERVER_NAME is derived from the dial-host
-      # (kacho-storage.kacho.svc.cluster.local ∈ the storage server-cert SAN).
+      # (kacho-storage.kacho.svc ∈ the storage server-cert SAN).
       storage: true
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ compute:
   auth:
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   authzIam:
-    grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    grpcAddr: kacho-iam-internal.kacho.svc:9091
   listFilter:
     enabled: true
     failOpen: false
@@ -380,7 +380,7 @@ compute:
       # mirror on Instance). storage owns volume_attachments, so this edge IS the
       # attach path — with storage enabled below and running server-mTLS, leaving
       # it off makes every attach fail the handshake (fail-closed Unavailable).
-      # serverName.storage chart default kacho-storage.kacho.svc.cluster.local ∈
+      # serverName.storage chart default kacho-storage.kacho.svc ∈
       # the storage server-cert SAN.
       storage: true
 
@@ -453,7 +453,7 @@ kacho-iam:
       # the administrative bearer here, and the admin API it opens authenticates
       # nobody. The anchor is the internal-CA bundle already mounted for mTLS —
       # the same CA that signs the provider's admin certificate.
-      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
       # The two hops to the provider's PUBLIC listener, DECLARED for the same
       # reason and by the same rule as the admin one above — and they were the
@@ -483,8 +483,8 @@ kacho-iam:
       # (hydraJwksCaFile / hydraTokenCaFile), and production REFUSES TO START if
       # either address is https without one — so the flip cannot land half-done,
       # verifying against the system roots.
-      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
-      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
+      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
+      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
       # Machine-credential lifetime, production posture.
       #
       # accessTokenTtl pins `access_token_lifespan` ON EACH SA-key OAuth2 client
@@ -621,11 +621,11 @@ storage:
     # Runtime peer edges. storage→geo (ZoneService.Get for zone_id + the zone's
     # region, which is never derived from the zone name) and storage→iam PUBLIC
     # :9090 (ProjectService.Get) — both fail-closed when unset.
-    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
-    iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
+    geoGrpcAddr: kacho-geo.kacho.svc:9090
+    iamGrpcAddr: kacho-iam.kacho.svc:9090
     # iam INTERNAL :9091 — carries BOTH the per-RPC Check and the fga-register
     # RegisterResource/UnregisterResource owner-tuple edge.
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091
     # Who may forward an end-user identity (x-kacho-principal-*) into storage.
     # Restated (it IS the chart default) so that no future edit to this profile can
     # silently drop it: an EMPTY list does not mean "nobody" — corelib narrows the
@@ -665,7 +665,7 @@ storage:
     passwordSecretKey: password
   # server-mTLS on both listeners (gateway + compute dial here) + client-mTLS
   # storage→{geo,iam}. One client leaf (kacho-storage-client-tls) serves every
-  # storage→iam dial: serverName kacho-iam.kacho.svc.cluster.local is in the iam
+  # storage→iam dial: serverName kacho-iam.kacho.svc is in the iam
   # server-cert SAN, valid for :9090 and internal :9091 alike.
   mtls:
     enable: true
@@ -723,9 +723,9 @@ registry:
   authz:
     # Restated (they ARE the chart defaults) because all three are fail-closed:
     # an empty address does not degrade, it refuses to boot or refuses the call.
-    iamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
-    iamProjectGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
-    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
+    iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
+    iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
+    geoGrpcAddr: kacho-geo.kacho.svc:9090
     # Who may forward an end-user identity (x-kacho-principal-*) into registry.
     # Restated (it IS the chart default) so that no future edit to this profile can
     # silently drop it: an EMPTY list does not mean "nobody" — corelib narrows the
@@ -744,7 +744,7 @@ registry:
   # key DISTRIBUTION goes through iam. https is required by requireSecureJWKSURL,
   # and the chart default is http:// — which fails the guard.
   iam:
-    jwksUrl: https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json
+    jwksUrl: https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
   hydra:
     # Expected `iss` of the identity-JWT — pinned on Hydra (the signer), decoupled
     # from the JWKS URL above. Empty fails requireIssuerPinned; an unpinned issuer
@@ -1108,7 +1108,7 @@ hydra:
         # token/refresh webhooks → https on the kacho-iam-internal Service :9092
         # HTTP hooks listener (NOT the gRPC :9091). api_key HMAC header unchanged.
         token_hook:
-          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/token"
+          url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
             type: api_key
             config:
@@ -1116,7 +1116,7 @@ hydra:
               name: X-Kacho-Hook-Token
               value: ${KACHO_IAM_HOOK_TOKEN}
         refresh_token_hook:
-          url: "https://kacho-iam-internal.kacho.svc.cluster.local:9092/iam/v1/hooks/refresh"
+          url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
             type: api_key
             config:
@@ -1326,5 +1326,5 @@ networkPolicy:
 # выключен), но латентность от проверки не освобождает: гейты рендерят его с
 # включённым ключом.
 hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
   adminCaFile: /etc/hydra-admin-ca/ca.crt

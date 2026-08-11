@@ -87,19 +87,19 @@ func RegisterDefaults(v *viper.Viper) {
 	// extapi
 	// project-existence peer — kacho-iam (ProjectService.Get).
 	v.SetDefault("extapi.def-dial-duration", 10*time.Second)
-	v.SetDefault("extapi.iam.endpoint", "iam.kacho.svc.cluster.local:9090")
+	v.SetDefault("extapi.iam.endpoint", "iam.kacho.svc:9090")
 	v.SetDefault("extapi.iam.tls.enable", false)
 	v.SetDefault("extapi.iam.dns-lb", false)
 	// zone_id валидируется через kacho-geo (leaf-домен Geography), а не
 	// kacho-compute. Dial-host = geo k8s Service `kacho-geo` на public :9090
 	// listener (ZoneService.Get/List); host совпадает с server-cert SAN
 	// (kacho-geo.* / kacho-geo-internal.*).
-	v.SetDefault("extapi.geo.endpoint", "kacho-geo.kacho.svc.cluster.local:9090")
+	v.SetDefault("extapi.geo.endpoint", "kacho-geo.kacho.svc:9090")
 	v.SetDefault("extapi.geo.tls.enable", false)
 
 	// authz. По умолчанию iam-endpoint пустой → interceptor не навешивается;
 	// включается через values.yaml / ENV. В dev-стенде — values-dev.yaml
-	// выставит iam-endpoint=kacho-iam.kacho.svc.cluster.local:9091.
+	// выставит iam-endpoint=kacho-iam.kacho.svc:9091.
 	v.SetDefault("authz.iam-endpoint", "")
 	v.SetDefault("authz.iam-tls.enable", false)
 	v.SetDefault("authz.check-timeout", 2*time.Second)

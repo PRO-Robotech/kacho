@@ -211,7 +211,7 @@ networkPolicy:
 # cutover (kacho-workspace#82) and omits it, so the hardened services fail-closed
 # at startup ("geo edge requires verified transport"). Enable the geo mTLS client
 # edge (reuses the per-service kacho-<svc>-client-tls cert; serverName defaults to
-# kacho-geo.kacho.svc.cluster.local ∈ geo server-cert SAN).
+# kacho-geo.kacho.svc ∈ geo server-cert SAN).
 vpc:
   image: docker.io/prorobotech/kacho-vpc:main-b622b388
   networkPolicy:
@@ -250,11 +250,11 @@ compute:
       geo: true
       # compute→storage edge (InternalVolumeService attach/detach + Volume mirror, :9091)
       # is now FIRST-CLASS in the compute chart: storageInternalAddr (default
-      # kacho-storage.kacho.svc.cluster.local:9091) + mtls.edges.storage → the
+      # kacho-storage.kacho.svc:9091) + mtls.edges.storage → the
       # KACHO_COMPUTE_STORAGE_MTLS_* block. mTLS reuses compute's already-mounted client
       # leaf (kacho-compute-client-tls at /etc/kacho-compute/tls/client) — storage's
       # internal :9091 is RequireAndVerifyClientCert; serverName default
-      # kacho-storage.kacho.svc.cluster.local ∈ the storage server-cert SAN
+      # kacho-storage.kacho.svc ∈ the storage server-cert SAN
       # (storage.mtls.serverHosts=["kacho-storage"]). NB storage is disabled below
       # (chart not yet umbrella-integrated) so this edge is armed but not yet exercised.
       storage: true
@@ -421,8 +421,8 @@ registry:
   db:
     sslmode: disable
   authz:
-    iamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
-    iamProjectGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
+    iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
+    iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
   zot:
     # ─── Аутентификация хранилища слоёв ───────────────────────────────────────
     # zot не различает тенантов: пока его порт отвечал любому в сети подов, весь
@@ -537,7 +537,7 @@ registry:
   #   Runbook: roll kacho-iam first (this chart adds the :9097 listener), curl the
   #   in-cluster endpoint, THEN let the registry pod pick up this URL.
   iam:
-    jwksUrl: https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json
+    jwksUrl: https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
   # HydraIssuer stays pinned on Hydra (issuer-pin retained; decoupled from the JWKS
   # URL knob). registry serve.go requireIssuerPinned still forces this non-empty; the
   # verifier rejects any token whose iss ≠ this Hydra issuer even though JWKS is iam's.
@@ -551,7 +551,7 @@ registry:
       iamProject: true
       # registry→geo RegionService.Get (public :9090, REG-1 F4). geo runs hardened
       # (AUTH_MODE=production) and requires verified transport, so arm the client-mTLS
-      # edge (reuses registry-client-tls; serverName default kacho-geo.kacho.svc.cluster.local
+      # edge (reuses registry-client-tls; serverName default kacho-geo.kacho.svc
       # ∈ geo server-cert SAN). Without it the geo peer rejects the insecure dial.
       geo: true
 
@@ -604,9 +604,9 @@ storage:
     authMode: production
     # storage→geo (zone_id) + storage→iam PUBLIC (ProjectService.Get, :9090) +
     # INTERNAL (Check + RegisterResource fga-register, :9091).
-    geoGrpcAddr: kacho-geo.kacho.svc.cluster.local:9090
-    iamGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
-    authzIamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
+    geoGrpcAddr: kacho-geo.kacho.svc:9090
+    iamGrpcAddr: kacho-iam.kacho.svc:9090
+    authzIamGrpcAddr: kacho-iam-internal.kacho.svc:9091
     # fga-register drainer (SEC-D / CS-1 GAP-D). Chart default already true; restated
     # for prod-explicitness. Requires authzIamGrpcAddr (set) + mtls.edges.iam (below).
     fgaRegisterDrainerEnabled: true
@@ -619,7 +619,7 @@ storage:
     passwordSecretKey: password
   # server-mTLS on both listeners + per-edge client-mTLS storage→{geo,iam}. Один
   # client-leaf (kacho-storage-client-tls) на все storage→iam-дозвоны; serverName
-  # default kacho-iam.kacho.svc.cluster.local ∈ iam server-cert SAN (валиден и для
+  # default kacho-iam.kacho.svc ∈ iam server-cert SAN (валиден и для
   # :9090, и для internal :9091).
   mtls:
     enable: true

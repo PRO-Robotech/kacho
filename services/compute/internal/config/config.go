@@ -54,20 +54,20 @@ type Config struct {
 	MetricsAddr string `envconfig:"KACHO_COMPUTE_METRICS_ADDR" default:":9095"`
 
 	// IAMGRPCAddr — адрес kacho-iam (ProjectService.Get — project-existence-check).
-	IAMGRPCAddr string `envconfig:"KACHO_COMPUTE_IAM_GRPC_ADDR" default:"kacho-iam.kacho.svc.cluster.local:9090"`
+	IAMGRPCAddr string `envconfig:"KACHO_COMPUTE_IAM_GRPC_ADDR" default:"kacho-iam.kacho.svc:9090"`
 
 	// GeoGRPCAddr — адрес kacho-geo (geo.v1.ZoneService.Get, public :9090) для
 	// валидации Instance/Disk.zone_id. Geography (Region/Zone) — leaf-сервис
 	// kacho-geo; compute больше не валидирует zone_id по своей таблице `zones` и не
 	// обслуживает Region/Zone.
-	GeoGRPCAddr string `envconfig:"KACHO_COMPUTE_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc.cluster.local:9090"`
+	GeoGRPCAddr string `envconfig:"KACHO_COMPUTE_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc:9090"`
 
 	// VPCInternalGRPCAddr — адрес kacho-vpc internal listener (:9091) для
 	// InternalNetworkInterfaceService.Attach/Detach/ListByInstance (NIC↔Instance
 	// attach-saga, S4). Internal-only (не external endpoint). Пустое значение
 	// → NIC-ребро не сконфигурировано (NoopNicClient: attach fail-closed Unavailable,
 	// зеркало опускается).
-	VPCInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_INTERNAL_GRPC_ADDR" default:"kacho-vpc.kacho.svc.cluster.local:9091"`
+	VPCInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_INTERNAL_GRPC_ADDR" default:"kacho-vpc.kacho.svc:9091"`
 
 	// VPCGRPCAddr — адрес kacho-vpc PUBLIC listener (:9090) для
 	// vpc.v1.SubnetService.Get: placement-валидация подсети NIC-спеки на
@@ -75,14 +75,14 @@ type Config struct {
 	// региональная когерентность). Читается под идентичностью вызывающего.
 	// Пустое значение → ребро не сконфигурировано: Create с NIC-спеками
 	// fail-closed Unavailable (coherence неверифицируема).
-	VPCGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_GRPC_ADDR" default:"kacho-vpc.kacho.svc.cluster.local:9090"`
+	VPCGRPCAddr string `envconfig:"KACHO_COMPUTE_VPC_GRPC_ADDR" default:"kacho-vpc.kacho.svc:9090"`
 
 	// StorageInternalGRPCAddr — адрес kacho-storage internal listener (:9091) для
 	// InternalVolumeService.Attach/Detach/ListAttachments (volume↔Instance attach-saga).
 	// Internal-only (не external endpoint). Пустое значение → storage-ребро не
 	// сконфигурировано (NoopStorageClient: attach fail-closed Unavailable, зеркало
 	// опускается).
-	StorageInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR" default:"kacho-storage.kacho.svc.cluster.local:9091"`
+	StorageInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR" default:"kacho-storage.kacho.svc:9091"`
 
 	// SkipPeerValidation — отключить cross-service existence-check (project в
 	// kacho-iam, zone_id в kacho-geo) → no-op. Для unit/newman/load-тестов без

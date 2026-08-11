@@ -58,18 +58,18 @@ type Config struct {
 	InternalRESTAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_REST_ADDR"  default:":8081"`
 	TLSCertFile      string `envconfig:"KACHO_API_GATEWAY_TLS_CERT_FILE"        default:""`
 	TLSKeyFile       string `envconfig:"KACHO_API_GATEWAY_TLS_KEY_FILE"         default:""`
-	VPCAddr          string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc.cluster.local:9090"`
+	VPCAddr          string `envconfig:"KACHO_API_GATEWAY_VPC_GRPC"              default:"vpc.kacho.svc:9090"`
 	// VPCInternalAddr — admin-only internal-port (9091) of vpc backend.
 	// Routes AddressPool RESTful endpoints (kacho-only admin).
-	VPCInternalAddr string `envconfig:"KACHO_API_GATEWAY_VPC_INTERNAL_GRPC" default:"vpc.kacho.svc.cluster.local:9091"`
+	VPCInternalAddr string `envconfig:"KACHO_API_GATEWAY_VPC_INTERNAL_GRPC" default:"vpc.kacho.svc:9091"`
 	// ComputeAddr — public gRPC backend of kacho-compute (Disk/Image/Snapshot/Instance/DiskType/Zone).
-	ComputeAddr string `envconfig:"KACHO_API_GATEWAY_COMPUTE_GRPC" default:"compute.kacho.svc.cluster.local:9090"`
+	ComputeAddr string `envconfig:"KACHO_API_GATEWAY_COMPUTE_GRPC" default:"compute.kacho.svc:9090"`
 	// ComputeInternalAddr — admin-only internal-port (9091) of compute backend.
 	// Routes InternalDiskType RESTful endpoints (kacho-only admin).
-	ComputeInternalAddr string `envconfig:"KACHO_API_GATEWAY_COMPUTE_INTERNAL_GRPC" default:"compute.kacho.svc.cluster.local:9091"`
+	ComputeInternalAddr string `envconfig:"KACHO_API_GATEWAY_COMPUTE_INTERNAL_GRPC" default:"compute.kacho.svc:9091"`
 	// IAMAddr — public gRPC backend of kacho-iam (Account/Project/User/ServiceAccount/Group/Role/AccessBinding).
 	// Все RPC под /iam/v1/*.
-	IAMAddr string `envconfig:"KACHO_API_GATEWAY_IAM_GRPC" default:"iam.kacho.svc.cluster.local:9090"`
+	IAMAddr string `envconfig:"KACHO_API_GATEWAY_IAM_GRPC" default:"iam.kacho.svc:9090"`
 	// IAMInternalAddr — admin-only internal-port (9091) of iam backend.
 	// InternalUserService.Get для admin tooling (gRPC-direct; REST-routing no-op,
 	// proto-аннотации `google.api.http` отсутствуют — handler регистрируется в mux
@@ -81,61 +81,61 @@ type Config struct {
 	// напрямую по gRPC — одно другого не отменяет, а прежняя редакция этой строки
 	// выводила из второго первое и утверждала, что маршрутов нет. `ListPermissions`
 	// оттуда же выведен: RPC удалён (tombstone), регистрировать нечего.
-	IAMInternalAddr string `envconfig:"KACHO_API_GATEWAY_IAM_INTERNAL_GRPC" default:"iam.kacho.svc.cluster.local:9091"`
+	IAMInternalAddr string `envconfig:"KACHO_API_GATEWAY_IAM_INTERNAL_GRPC" default:"iam.kacho.svc:9091"`
 
 	// NLBAddr — public gRPC backend of kacho-nlb (NetworkLoadBalancer/Listener/TargetGroup).
 	// Public RPC под /nlb/v1/*. При пустом значении nlb-handlers не регистрируются
 	// (graceful — позволяет деплоить api-gateway до kacho-nlb pod'a).
-	NLBAddr string `envconfig:"KACHO_API_GATEWAY_NLB_GRPC" default:"kacho-nlb.kacho.svc.cluster.local:9090"`
+	NLBAddr string `envconfig:"KACHO_API_GATEWAY_NLB_GRPC" default:"kacho-nlb.kacho.svc:9090"`
 
 	// NLBInternalAddr — admin-only internal-port (9091) of kacho-nlb backend.
 	// InternalResourceLifecycleService.Subscribe — gRPC server-streaming для
 	// подписки на CREATED/UPDATED/DELETED события (data-plane consumer'ы дозваниваются
 	// напрямую). Регистрируется в REST mux pro-forma (как iam InternalUserService),
 	// реальный трафик идет через gRPC-direct. Internal-only, cluster-internal listener.
-	NLBInternalAddr string `envconfig:"KACHO_API_GATEWAY_NLB_INTERNAL_GRPC" default:"kacho-nlb.kacho.svc.cluster.local:9091"`
+	NLBInternalAddr string `envconfig:"KACHO_API_GATEWAY_NLB_INTERNAL_GRPC" default:"kacho-nlb.kacho.svc:9091"`
 
 	// GeoAddr — public gRPC backend of kacho-geo (RegionService/ZoneService read).
 	// Public RPC под /geo/v1/*. Geography — отдельный leaf-сервис kacho-geo. При
 	// пустом значении geo-handlers не регистрируются (graceful — позволяет
 	// деплоить api-gateway до kacho-geo pod'a).
-	// The geo k8s Service is "kacho-geo" — the bare "geo.kacho.svc.cluster.local"
+	// The geo k8s Service is "kacho-geo" — the bare "geo.kacho.svc"
 	// host does NOT resolve (NXDOMAIN) → the grpc resolver returns no addresses →
 	// "no children to pick from" 503 on every /geo/v1/* request. Target the real
 	// Service name (mirrors kacho-iam / kacho-nlb).
-	GeoAddr string `envconfig:"KACHO_API_GATEWAY_GEO_GRPC" default:"kacho-geo.kacho.svc.cluster.local:9090"`
+	GeoAddr string `envconfig:"KACHO_API_GATEWAY_GEO_GRPC" default:"kacho-geo.kacho.svc:9090"`
 
 	// GeoInternalAddr — admin-only internal-port (9091) of kacho-geo backend.
 	// Routes InternalRegionService/InternalZoneService admin-CRUD endpoints
 	// (kacho-only). Cluster-internal listener only.
 	// Separate Service "kacho-geo-internal" (mirrors kacho-iam-internal).
-	GeoInternalAddr string `envconfig:"KACHO_API_GATEWAY_GEO_INTERNAL_GRPC" default:"kacho-geo-internal.kacho.svc.cluster.local:9091"`
+	GeoInternalAddr string `envconfig:"KACHO_API_GATEWAY_GEO_INTERNAL_GRPC" default:"kacho-geo-internal.kacho.svc:9091"`
 
 	// RegistryAddr — public gRPC backend of kacho-registry (RegistryService:
 	// control-plane реестра). Public RPC под /registry/v1/*. При пустом значении
 	// registry-handlers не регистрируются (graceful — позволяет деплоить
 	// api-gateway до kacho-registry pod'a). Data-plane OCI v2 (/v2/*) — отдельный
 	// ingress, НЕ через api-gateway.
-	RegistryAddr string `envconfig:"KACHO_API_GATEWAY_REGISTRY_GRPC" default:"kacho-registry.kacho.svc.cluster.local:9090"`
+	RegistryAddr string `envconfig:"KACHO_API_GATEWAY_REGISTRY_GRPC" default:"kacho-registry.kacho.svc:9090"`
 
 	// RegistryInternalAddr — admin-only internal-port (9091) of kacho-registry
 	// backend. Routes InternalRegistryService (TriggerGarbageCollection/
 	// GetRegistryStats) — GC zot-стора + инфра-статистика namespace. Cluster-internal
 	// listener only. Same host, internal port (mirrors iam/nlb).
-	RegistryInternalAddr string `envconfig:"KACHO_API_GATEWAY_REGISTRY_INTERNAL_GRPC" default:"kacho-registry.kacho.svc.cluster.local:9091"`
+	RegistryInternalAddr string `envconfig:"KACHO_API_GATEWAY_REGISTRY_INTERNAL_GRPC" default:"kacho-registry.kacho.svc:9091"`
 
 	// StorageAddr — public gRPC backend of kacho-storage (VolumeService/
 	// SnapshotService/DiskTypeService). Public RPC под /storage/v1/*. При пустом
 	// значении storage-handlers не регистрируются (graceful — позволяет деплоить
 	// api-gateway до kacho-storage pod'a; симметрично registry/geo/nlb).
-	StorageAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_GRPC" default:"kacho-storage.kacho.svc.cluster.local:9090"`
+	StorageAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_GRPC" default:"kacho-storage.kacho.svc:9090"`
 
 	// StorageInternalAddr — admin-only internal-port (9091) of kacho-storage
 	// backend. Routes InternalVolumeService (Attach/Detach/ListAttachments/
 	// GetInternal — placement/инфра-поля) + InternalDiskTypeService (admin CRUD
 	// справочника DiskType). Cluster-internal listener only. Same host, internal
 	// port (mirrors iam/nlb/registry).
-	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc.cluster.local:9091"`
+	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc:9091"`
 
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
@@ -174,7 +174,7 @@ type Config struct {
 	// KratosPublicURL — base URL of the Ory Kratos public API (session /whoami).
 	// The sentinel "disabled" turns Kratos session-auth off entirely. Default is
 	// the cluster-internal kratos-public Service.
-	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc.cluster.local:80"`
+	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
 	// InternalGRPCAddr — dedicated cluster-internal gRPC listener for RPCs that
 	// must not be on the external TLS endpoint (InternalAuthzCacheService).

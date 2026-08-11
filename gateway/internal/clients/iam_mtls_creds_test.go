@@ -30,14 +30,14 @@ func TestSECE_IAMSubjectClient_AcceptsTransportCreds(t *testing.T) {
 	logger := slog.Default()
 
 	// nil → insecure default (current dev behaviour preserved).
-	c1, err := clients.NewIAMSubjectClient("iam.kacho.svc.cluster.local:9091", logger, nil)
+	c1, err := clients.NewIAMSubjectClient("iam.kacho.svc:9091", logger, nil)
 	require.NoError(t, err)
 	require.NotNil(t, c1)
 	t.Cleanup(func() { _ = c1.Close() })
 
 	// Explicit transport-creds option (this is where main.go injects mTLS).
 	opt := grpc.WithTransportCredentials(insecure.NewCredentials())
-	c2, err := clients.NewIAMSubjectClient("iam.kacho.svc.cluster.local:9091", logger, opt)
+	c2, err := clients.NewIAMSubjectClient("iam.kacho.svc:9091", logger, opt)
 	require.NoError(t, err)
 	require.NotNil(t, c2)
 	t.Cleanup(func() { _ = c2.Close() })
@@ -50,7 +50,7 @@ func TestSECE_IAMAuthorizeClient_AcceptsTransportCreds(t *testing.T) {
 
 	opt := grpc.WithTransportCredentials(insecure.NewCredentials())
 	c, err := clients.NewIAMAuthorizeClient(clients.IAMAuthorizeClientConfig{
-		Addr:           "iam.kacho.svc.cluster.local:9090",
+		Addr:           "iam.kacho.svc:9090",
 		Timeout:        200 * time.Millisecond,
 		Logger:         logger,
 		TransportCreds: opt,
@@ -61,7 +61,7 @@ func TestSECE_IAMAuthorizeClient_AcceptsTransportCreds(t *testing.T) {
 
 	// nil TransportCreds → insecure default (backward-compat).
 	c2, err := clients.NewIAMAuthorizeClient(clients.IAMAuthorizeClientConfig{
-		Addr:    "iam.kacho.svc.cluster.local:9090",
+		Addr:    "iam.kacho.svc:9090",
 		Timeout: 200 * time.Millisecond,
 		Logger:  logger,
 	})

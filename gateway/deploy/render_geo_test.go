@@ -5,7 +5,7 @@
 //
 // The api-gateway dials the kacho-geo gRPC backend by host:port. The geo k8s
 // Service is "kacho-geo" (public) / "kacho-geo-internal" (internal); the bare
-// "geo.kacho.svc.cluster.local" host does NOT resolve (NXDOMAIN) → the grpc
+// "geo.kacho.svc" host does NOT resolve (NXDOMAIN) → the grpc
 // balancer reports "no children to pick from" → every authenticated /geo/v1/*
 // request returns 503. This guard renders the helm chart and asserts the chart
 // emits the correct dial host (and the geo mTLS edge env when the edge is on),
@@ -47,23 +47,23 @@ func helmTemplate(t *testing.T, sets ...string) string {
 
 // TestRender_GeoBackendHost — the rendered Deployment must set the geo gRPC
 // backend env to the real Service host (kacho-geo / kacho-geo-internal), never
-// the NXDOMAIN "geo.kacho.svc.cluster.local".
+// the NXDOMAIN "geo.kacho.svc".
 func TestRender_GeoBackendHost(t *testing.T) {
 	out := helmTemplate(t)
 
 	mustContain(t, out, "KACHO_API_GATEWAY_GEO_GRPC")
-	mustContain(t, out, "kacho-geo.kacho.svc.cluster.local:9090")
+	mustContain(t, out, "kacho-geo.kacho.svc:9090")
 	mustContain(t, out, "KACHO_API_GATEWAY_GEO_INTERNAL_GRPC")
-	mustContain(t, out, "kacho-geo-internal.kacho.svc.cluster.local:9091")
+	mustContain(t, out, "kacho-geo-internal.kacho.svc:9091")
 
-	if strings.Contains(out, "geo.kacho.svc.cluster.local") &&
-		!strings.Contains(out, "kacho-geo.kacho.svc.cluster.local") {
+	if strings.Contains(out, "geo.kacho.svc") &&
+		!strings.Contains(out, "kacho-geo.kacho.svc") {
 		t.Fatalf("stale NXDOMAIN geo host rendered; want kacho-geo.*")
 	}
 	// Belt-and-suspenders: the bare "geo." host (not prefixed by kacho-) must be
 	// absent from the geo env value lines.
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "value:") && strings.Contains(line, " geo.kacho.svc.cluster.local") {
+		if strings.Contains(line, "value:") && strings.Contains(line, " geo.kacho.svc") {
 			t.Fatalf("stale geo host in rendered env line: %q", strings.TrimSpace(line))
 		}
 	}
@@ -77,7 +77,7 @@ func TestRender_GeoMTLSEdgeEnabled(t *testing.T) {
 	out := helmTemplate(t, "mtls.enable=true", "mtls.edges.geo=true")
 	mustContain(t, out, "KACHO_API_GATEWAY_MTLS_GEO_ENABLE")
 	// the geo backend host must still be correct under the mTLS profile.
-	mustContain(t, out, "kacho-geo.kacho.svc.cluster.local:9090")
+	mustContain(t, out, "kacho-geo.kacho.svc:9090")
 }
 
 // TestRender_InternalListenerMTLS — #57: the chart must expose a FIRST-CLASS knob

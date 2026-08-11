@@ -56,24 +56,24 @@ echo "==> render-guard: peer-edge wiring (config.yaml + mTLS)"
 # ─── 1. extapi peer-addrs всегда присутствуют (вне зависимости от mTLS) ────────
 echo "[extapi peer addrs — всегда в config.yaml]"
 OUT_PLAIN="$(render)"
-assert_contains "$OUT_PLAIN" 'addr: "kacho-vpc.kacho.svc.cluster.local:9090"'      "vpc extapi addr рендерится"
-assert_contains "$OUT_PLAIN" 'addr: "kacho-compute.kacho.svc.cluster.local:9090"'  "compute extapi addr рендерится"
-assert_contains "$OUT_PLAIN" 'addr: "kacho-iam.kacho.svc.cluster.local:9090"'      "iam extapi addr рендерится"
+assert_contains "$OUT_PLAIN" 'addr: "kacho-vpc.kacho.svc:9090"'      "vpc extapi addr рендерится"
+assert_contains "$OUT_PLAIN" 'addr: "kacho-compute.kacho.svc:9090"'  "compute extapi addr рендерится"
+assert_contains "$OUT_PLAIN" 'addr: "kacho-iam.kacho.svc:9090"'      "iam extapi addr рендерится"
 # geo — новое ребро nlb→geo (epic kacho-geo). Паритет с compute: addr на public :9090.
-assert_contains "$OUT_PLAIN" 'addr: "kacho-geo.kacho.svc.cluster.local:9090"'      "geo extapi addr рендерится"
+assert_contains "$OUT_PLAIN" 'addr: "kacho-geo.kacho.svc:9090"'      "geo extapi addr рендерится"
 
 # ─── 2. per-edge mTLS: compute (reference) ────────────────────────────────────
 echo "[mTLS compute edge — reference shape]"
 OUT_COMPUTE="$(render --set mtls.enable=true --set mtls.edges.compute=true)"
-assert_contains "$OUT_COMPUTE" 'servername: "compute.kacho.svc.cluster.local"' "compute mTLS serverName рендерится при edges.compute=true"
+assert_contains "$OUT_COMPUTE" 'servername: "compute.kacho.svc"' "compute mTLS serverName рендерится при edges.compute=true"
 
 # ─── 3. per-edge mTLS: geo (mirror of compute) ────────────────────────────────
 echo "[mTLS geo edge — mirror of compute]"
 OUT_GEO="$(render --set mtls.enable=true --set mtls.edges.geo=true)"
 # geo addr ОБЯЗАН быть в том же рендере (config.yaml).
-assert_contains "$OUT_GEO" 'addr: "kacho-geo.kacho.svc.cluster.local:9090"'        "geo addr присутствует при edges.geo=true"
+assert_contains "$OUT_GEO" 'addr: "kacho-geo.kacho.svc:9090"'        "geo addr присутствует при edges.geo=true"
 # geo mTLS-блок: enable + serverName (∈ geo server-SAN).
-assert_contains "$OUT_GEO" 'servername: "kacho-geo.kacho.svc.cluster.local"'       "geo mTLS serverName рендерится при edges.geo=true"
+assert_contains "$OUT_GEO" 'servername: "kacho-geo.kacho.svc"'       "geo mTLS serverName рендерится при edges.geo=true"
 # geo-edge client-creds переиспользуют общий nlb-client cert (не выдумываем новый).
 assert_contains "$OUT_GEO" 'certfile: "/etc/kacho-nlb/tls/client/tls.crt"'         "geo mTLS использует общий nlb-client cert"
 
@@ -103,7 +103,7 @@ else
   fail "geo mTLS должен быть enable: false по умолчанию (получили: '${GEO_MTLS_ENABLE_OFF:-<пусто>}')"
 fi
 # При выключенном edge serverName geo НЕ рендерится (gated, как у compute).
-assert_absent "$OUT_GEO_OFF" 'servername: "kacho-geo.kacho.svc.cluster.local"' "geo serverName отсутствует при edges.geo=false"
+assert_absent "$OUT_GEO_OFF" 'servername: "kacho-geo.kacho.svc"' "geo serverName отсутствует при edges.geo=false"
 
 # ─── 5. каждый rendered-объект несёт apiVersion ───────────────────────────────
 # Лицензионный хедер (`# SPDX-License-Identifier: …`) перед условным объектом

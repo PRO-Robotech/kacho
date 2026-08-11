@@ -66,12 +66,12 @@ type Config struct {
 	// возвращает Unimplemented. Поэтому project-ребро держит СОБСТВЕННЫЙ conn на :9090,
 	// отдельный от authz/register-ребра на :9091 (единый conn на :9091 давал
 	// Unimplemented на Get → фикс. INTERNAL на Create ещё до insert'а).
-	IAMProjectGRPCAddr string `envconfig:"KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR" default:"kacho-iam.kacho.svc.cluster.local:9090"`
+	IAMProjectGRPCAddr string `envconfig:"KACHO_REGISTRY_IAM_PROJECT_GRPC_ADDR" default:"kacho-iam.kacho.svc:9090"`
 	// GeoGRPCAddr — PUBLIC endpoint kacho-geo (:9090) для RegionService.Get
 	// (existence-валидация Registry.region_id на Create — новое ребро registry→geo,
 	// REG-1 F4). RegionService — публичный read-only справочник Geography на :9090.
 	// Пусто → geo-client nil → RegionExists отвечает Unavailable (Create fail-closed).
-	GeoGRPCAddr string `envconfig:"KACHO_REGISTRY_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc.cluster.local:9090"`
+	GeoGRPCAddr string `envconfig:"KACHO_REGISTRY_GEO_GRPC_ADDR" default:"kacho-geo.kacho.svc:9090"`
 	// AuthZTrustedForwarderSANs — allow-list личностей клиентского сертификата
 	// (SPIFFE-SAN), которым разрешено ПЕРЕДАВАТЬ личность конечного пользователя в
 	// метаданных x-kacho-principal-*. Уезжает в ОБА листенера через
@@ -234,7 +234,7 @@ type Config struct {
 	// Токен Hydra-issued (client_credentials для docker, jwt-bearer для k8s);
 	// подпись — RS256 (Ory default) либо ES256. issuer-pin (HydraIssuer) — отдельный
 	// knob, остаётся на Hydra. Пусто + не breakglass → data-plane fail-closed на старте.
-	IAMJWKSURL string `envconfig:"KACHO_REGISTRY_IAM_JWKS_URL" default:"https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"`
+	IAMJWKSURL string `envconfig:"KACHO_REGISTRY_IAM_JWKS_URL" default:"https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"`
 	// TokenRealm — realm для WWW-Authenticate; docker сам идёт туда за Bearer-токеном.
 	// Остаётся token-шимом (kacho-iam /iam/token): docker предъявляет SA-key шиму,
 	// шим брокерит токен у Hydra. Для data-plane realm — непрозрачный указатель на

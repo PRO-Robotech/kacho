@@ -78,7 +78,7 @@ type IAMConfig struct {
 // последствиям. Снятие держит `retired_knobs_test.go`.
 type AuthZConfig struct {
 	// IAMEndpoint — gRPC адрес kacho-iam internal-port'а (обычно
-	// `kacho-iam.kacho.svc.cluster.local:9091`). Обязателен на ЛЮБОЙ посадке:
+	// `kacho-iam.kacho.svc:9091`). Обязателен на ЛЮБОЙ посадке:
 	// ребро решения о доступе объявляется дескриптором явно, и незаданный адрес
 	// отвергает конструктор дескриптора (не только в боевом режиме).
 	IAMEndpoint string `mapstructure:"iam-endpoint"`

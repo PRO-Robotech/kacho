@@ -98,7 +98,7 @@
 {{- if .Values.host.upstreams.dashboard -}}
 {{- .Values.host.upstreams.dashboard -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.dashboardName" .) .Release.Namespace .Values.dashboard.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.dashboardName" .) .Release.Namespace .Values.dashboard.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -106,7 +106,7 @@
 {{- if .Values.host.upstreams.vpc -}}
 {{- .Values.host.upstreams.vpc -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.vpcName" .) .Release.Namespace .Values.vpc.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.vpcName" .) .Release.Namespace .Values.vpc.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -114,7 +114,7 @@
 {{- if .Values.host.upstreams.iam -}}
 {{- .Values.host.upstreams.iam -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.iamName" .) .Release.Namespace .Values.iam.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.iamName" .) .Release.Namespace .Values.iam.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -122,7 +122,7 @@
 {{- if .Values.host.upstreams.system -}}
 {{- .Values.host.upstreams.system -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.systemName" .) .Release.Namespace .Values.system.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.systemName" .) .Release.Namespace .Values.system.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -203,7 +203,7 @@ app.kubernetes.io/component: iam-remote
 {{- if .Values.host.upstreams.nlb -}}
 {{- .Values.host.upstreams.nlb -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.nlbName" .) .Release.Namespace .Values.nlb.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.nlbName" .) .Release.Namespace .Values.nlb.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -238,7 +238,7 @@ app.kubernetes.io/component: nlb-remote
 {{- if .Values.host.upstreams.registry -}}
 {{- .Values.host.upstreams.registry -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.registryName" .) .Release.Namespace .Values.registry.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.registryName" .) .Release.Namespace .Values.registry.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -279,7 +279,7 @@ app.kubernetes.io/component: system-remote
 {{- if .Values.host.upstreams.compute -}}
 {{- .Values.host.upstreams.compute -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.computeName" .) .Release.Namespace .Values.compute.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.computeName" .) .Release.Namespace .Values.compute.port -}}
 {{- end -}}
 {{- end -}}
 
@@ -314,7 +314,7 @@ app.kubernetes.io/component: compute-remote
 {{- if .Values.host.upstreams.storage -}}
 {{- .Values.host.upstreams.storage -}}
 {{- else -}}
-{{- printf "%s.%s.svc.cluster.local:%v" (include "ui.storageName" .) .Release.Namespace .Values.storage.port -}}
+{{- printf "%s.%s.svc:%v" (include "ui.storageName" .) .Release.Namespace .Values.storage.port -}}
 {{- end -}}
 {{- end -}}
 

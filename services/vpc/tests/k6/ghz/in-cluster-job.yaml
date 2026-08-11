@@ -59,4 +59,4 @@ spec:
           - '{"x-kacho-actor":"ghz-loadtest","x-kacho-project-id":"<PROJECT_ID>"}'
           - "--data"
           - '{"project_id":"<PROJECT_ID>","name":"ghz-{{.RequestNumber}}-{{.TimestampUnixNano}}"}'
-          - "vpc.kacho.svc.cluster.local:9090"
+          - "vpc.kacho.svc:9090"

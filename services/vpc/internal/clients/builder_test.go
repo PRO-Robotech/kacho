@@ -60,7 +60,7 @@ func TestBuild_DNSLB_PrependsScheme(t *testing.T) {
 	// DNSLB path: addr должен получить префикс `dns:///`. Сетевого вызова нет
 	// (grpc.NewClient ленив), но успешный вызов + открытый conn это подтверждают.
 	conn, err := Build(context.Background(), BuildOptions{
-		Endpoint: "kacho-iam.kacho.svc.cluster.local:9090",
+		Endpoint: "kacho-iam.kacho.svc:9090",
 		DNSLB:    true,
 	})
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestBuild_DNSLB_RespectsExistingScheme(t *testing.T) {
 	t.Parallel()
 	// Если addr уже с `dns:///` префиксом — не дублируем.
 	conn, err := Build(context.Background(), BuildOptions{
-		Endpoint: "dns:///kacho-iam.kacho.svc.cluster.local:9090",
+		Endpoint: "dns:///kacho-iam.kacho.svc:9090",
 		DNSLB:    true,
 	})
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestDNSLBServiceConfig_MirrorsCorlibRetries(t *testing.T) {
 
 	// And the assembled config parses cleanly inside grpc.NewClient (DNSLB Build).
 	conn, err := Build(context.Background(), BuildOptions{
-		Endpoint: "kacho-iam.kacho.svc.cluster.local:9090",
+		Endpoint: "kacho-iam.kacho.svc:9090",
 		DNSLB:    true,
 	})
 	require.NoError(t, err)

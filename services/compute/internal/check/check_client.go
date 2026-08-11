@@ -20,7 +20,7 @@ type IAMCheckClient struct {
 }
 
 // NewIAMCheckClient создаёт adapter. conn — `*grpc.ClientConn`/`ClientConnInterface`
-// к internal-port'у kacho-iam (обычно `kacho-iam.kacho.svc.cluster.local:9091`).
+// к internal-port'у kacho-iam (обычно `kacho-iam.kacho.svc:9091`).
 func NewIAMCheckClient(conn grpc.ClientConnInterface) *IAMCheckClient {
 	return &IAMCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)}
 }

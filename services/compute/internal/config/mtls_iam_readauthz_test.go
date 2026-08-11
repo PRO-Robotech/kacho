@@ -48,10 +48,10 @@ func TestMTLS_SEC_I_C02_IAMProjectEnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc.cluster.local",
+		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
 	})
 	assert.True(t, cfg.IAMProjectMTLS.Enable)
-	assert.Equal(t, "kacho-iam.kacho.svc.cluster.local", cfg.IAMProjectMTLS.ServerName)
+	assert.Equal(t, "kacho-iam.kacho.svc", cfg.IAMProjectMTLS.ServerName)
 	opt, err := cfg.IAMProjectClientCreds()
 	require.NoError(t, err, "valid cert trio → ProjectService.Get client creds build")
 	require.NotNil(t, opt)
@@ -68,10 +68,10 @@ func TestMTLS_SEC_I_C03_IAMAuthzEnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kacho-iam-internal.kacho.svc.cluster.local",
+		"KACHO_COMPUTE_IAM_AUTHZ_MTLS_SERVERNAME": "kacho-iam-internal.kacho.svc",
 	})
 	assert.True(t, cfg.IAMAuthzMTLS.Enable)
-	assert.Equal(t, "kacho-iam-internal.kacho.svc.cluster.local", cfg.IAMAuthzMTLS.ServerName)
+	assert.Equal(t, "kacho-iam-internal.kacho.svc", cfg.IAMAuthzMTLS.ServerName)
 	opt, err := cfg.IAMAuthzClientCreds()
 	require.NoError(t, err, "valid cert trio → Check/list-filter client creds build")
 	require.NotNil(t, opt)
@@ -116,7 +116,7 @@ func TestMTLS_SEC_I_PerEdgeIndependence(t *testing.T) {
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_IAM_PROJECT_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc.cluster.local",
+		"KACHO_COMPUTE_IAM_PROJECT_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
 	})
 	assert.True(t, cfg.IAMProjectMTLS.Enable, "project edge on")
 	assert.False(t, cfg.IAMAuthzMTLS.Enable, "authz edge independently off")

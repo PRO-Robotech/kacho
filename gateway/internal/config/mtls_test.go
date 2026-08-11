@@ -25,7 +25,7 @@ func TestSECE01_MTLS_DefaultDisabled_AllEdgesInsecure(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, edge := range []string{"vpc", "compute", "iam", "nlb"} {
-		tc, berr := cfg.EdgeTLSClient(edge, "x.kacho.svc.cluster.local:9090")
+		tc, berr := cfg.EdgeTLSClient(edge, "x.kacho.svc:9090")
 		require.NoError(t, berr, "edge %s default must build without error", edge)
 		require.False(t, tc.Enable, "edge %s must be insecure by default", edge)
 	}
@@ -42,18 +42,18 @@ func TestSECE02_MTLS_IAMEnabled_FullCert_BuildsEnabled(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	iam, err := cfg.EdgeTLSClient("iam", "iam.kacho.svc.cluster.local:9091")
+	iam, err := cfg.EdgeTLSClient("iam", "iam.kacho.svc:9091")
 	require.NoError(t, err)
 	require.True(t, iam.Enable)
 	require.Equal(t, "/etc/mtls/client.crt", iam.CertFile)
 	require.Equal(t, "/etc/mtls/client.key", iam.KeyFile)
 	require.Equal(t, []string{"/etc/mtls/ca.crt"}, iam.CAFiles)
 	// server_name derived from the dial host when no per-edge override is set.
-	require.Equal(t, "iam.kacho.svc.cluster.local", iam.ServerName)
+	require.Equal(t, "iam.kacho.svc", iam.ServerName)
 
 	// vpc/compute/nlb flags still false → disabled.
 	for _, edge := range []string{"vpc", "compute", "nlb"} {
-		tc, berr := cfg.EdgeTLSClient(edge, "x.kacho.svc.cluster.local:9090")
+		tc, berr := cfg.EdgeTLSClient(edge, "x.kacho.svc:9090")
 		require.NoError(t, berr)
 		require.False(t, tc.Enable, "edge %s must stay insecure", edge)
 	}
@@ -70,7 +70,7 @@ func TestSECE03_MTLS_Enabled_MissingCert_FailFast(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	_, berr := cfg.EdgeTLSClient("iam", "iam.kacho.svc.cluster.local:9091")
+	_, berr := cfg.EdgeTLSClient("iam", "iam.kacho.svc:9091")
 	require.Error(t, berr, "enable=true with no cert material must fail-fast, not fall back to insecure")
 	require.Contains(t, berr.Error(), "iam")
 }
@@ -84,7 +84,7 @@ func TestSECE03b_MTLS_Enabled_PartialCert_FailFast(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	_, berr := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc.cluster.local:9090")
+	_, berr := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc:9090")
 	require.Error(t, berr, "enable=true with partial cert material must fail-fast")
 }
 
@@ -99,11 +99,11 @@ func TestSECE09_MTLS_PerEdgeSelection(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	iam, err := cfg.EdgeTLSClient("iam", "iam.kacho.svc.cluster.local:9090")
+	iam, err := cfg.EdgeTLSClient("iam", "iam.kacho.svc:9090")
 	require.NoError(t, err)
 	require.True(t, iam.Enable)
 
-	vpc, err := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc.cluster.local:9090")
+	vpc, err := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc:9090")
 	require.NoError(t, err)
 	require.False(t, vpc.Enable)
 }
@@ -119,7 +119,7 @@ func TestSECE_PerEdgeServerNameOverride(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
-	vpc, err := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc.cluster.local:9090")
+	vpc, err := cfg.EdgeTLSClient("vpc", "vpc.kacho.svc:9090")
 	require.NoError(t, err)
 	require.True(t, vpc.Enable)
 	require.Equal(t, "spiffe-host.kacho.internal", vpc.ServerName, "explicit override must win over host-derive")

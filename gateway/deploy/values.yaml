@@ -20,28 +20,28 @@ internalRestPort: 8081
 # Адреса активных backend-сервисов (KACHO_API_GATEWAY_*_GRPC env vars).
 # Публичные RPC nlb обслуживаются под /nlb/v1/*.
 backends:
-  vpc: vpc.kacho.svc.cluster.local:9090
-  vpcInternal: vpc.kacho.svc.cluster.local:9091
-  compute: compute.kacho.svc.cluster.local:9090
-  computeInternal: compute.kacho.svc.cluster.local:9091
+  vpc: vpc.kacho.svc:9090
+  vpcInternal: vpc.kacho.svc:9091
+  compute: compute.kacho.svc:9090
+  computeInternal: compute.kacho.svc:9091
   # kacho-iam public + internal endpoints
-  iam: kacho-iam.kacho.svc.cluster.local:9090
-  iamInternal: kacho-iam-internal.kacho.svc.cluster.local:9091
+  iam: kacho-iam.kacho.svc:9090
+  iamInternal: kacho-iam-internal.kacho.svc:9091
   # kacho-nlb public + internal endpoints
-  nlb: kacho-nlb.kacho.svc.cluster.local:9090
-  nlbInternal: kacho-nlb.kacho.svc.cluster.local:9091
+  nlb: kacho-nlb.kacho.svc:9090
+  nlbInternal: kacho-nlb.kacho.svc:9091
   # kacho-geo public + internal endpoints (Geography Region/Zone leaf service).
   # The geo k8s Service is "kacho-geo" / "kacho-geo-internal" (mirrors kacho-iam /
-  # kacho-iam-internal). The bare "geo.kacho.svc.cluster.local" host does NOT resolve
+  # kacho-iam-internal). The bare "geo.kacho.svc" host does NOT resolve
   # (NXDOMAIN) → grpc "no children to pick from" 503 on every /geo/v1/* request.
-  geo: kacho-geo.kacho.svc.cluster.local:9090
-  geoInternal: kacho-geo-internal.kacho.svc.cluster.local:9091
+  geo: kacho-geo.kacho.svc:9090
+  geoInternal: kacho-geo-internal.kacho.svc:9091
   # kacho-registry public + internal endpoints (OCI/Docker image registry leaf).
   # Public RegistryService on /registry/v1/*; InternalRegistryService (GC/stats)
   # on the internal :9091 mux (ban #6). The registry data-plane :8080 is NOT
   # gateway-routed — docker push/pull go through the registry.kacho.local ingress.
-  registry: kacho-registry.kacho.svc.cluster.local:9090
-  registryInternal: kacho-registry.kacho.svc.cluster.local:9091
+  registry: kacho-registry.kacho.svc:9090
+  registryInternal: kacho-registry.kacho.svc:9091
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
 # Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
@@ -161,10 +161,10 @@ authn: {}
 # admin Service outside the cluster.
 #
 #   hydra:
-#     jwksUrl:          http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json
+#     jwksUrl:          http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json
 #     issuer:           https://hydra.api.kacho.cloud
-#     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect
-#     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445
+#     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect
+#     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc:4445
 #   adminCa:    trust anchor for the admin hop, when that hop is served over
 #               TLS. Since the revocation check moved onto the authN layer the
 #               hop carries the caller's LIVE bearer on every introspection

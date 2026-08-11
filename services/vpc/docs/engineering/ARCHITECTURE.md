@@ -167,7 +167,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | `KACHO_VPC_DB_MAX_CONNS` | `0` (pgx default = `max(4, NumCPU)`) | Размер pgx pool'а. Прокидывается в DSN как `pool_max_conns` **только** для pgxpool — миграции используют DSN без него (иначе `database/sql` передает `pool_max_conns` серверу как unknown PG-параметр → fatal) |
 | `KACHO_VPC_GRPC_PORT` | `9090` | Публичный gRPC |
 | `KACHO_VPC_INTERNAL_PORT` | `9091` | Internal gRPC |
-| `KACHO_VPC_IAM_GRPC_ADDR` | `iam.kacho.svc.cluster.local:9090` | Endpoint kacho-iam (`extapi.iam.endpoint`) |
+| `KACHO_VPC_IAM_GRPC_ADDR` | `iam.kacho.svc:9090` | Endpoint kacho-iam (`extapi.iam.endpoint`) |
 | `KACHO_VPC_IAM_TLS` | `false` | TLS на канале к kacho-iam (`extapi.iam.tls.enable`) |
 | `KACHO_VPC_DEFAULT_SG_INLINE` | `true` | `true` — `Network.doCreate` синхронно создает default SG. `false` — Network.Create НЕ создает SG (убирает 2 INSERT + 1 UPDATE из hot-path, +30-40% write-throughput; для load-тестов и deploy с внешним SG-reconciler'ом). При `false` newman-кейсы `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` краснеют |
 | `KACHO_VPC_AUTH_MODE` | `dev` | `dev / production / production-strict` |

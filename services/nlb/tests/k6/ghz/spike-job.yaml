@@ -70,4 +70,4 @@ spec:
             - '{"authorization":"Bearer ${IAM_TOKEN}","x-kacho-actor":"ghz-loadtest","x-kacho-project-id":"${PROJECT_ID}"}'
             - "--data"
             - '{"project_id":"${PROJECT_ID}","page_size":20}'
-            - "nlb.kacho.svc.cluster.local:9090"
+            - "nlb.kacho.svc:9090"

@@ -13,14 +13,14 @@ import "testing"
 func TestLoad_GeoGRPCAddr_FromEnv(t *testing.T) {
 	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default fail-closed production
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/d")
-	t.Setenv("KACHO_NLB_GEO_GRPC_ADDR", "kacho-geo.kacho.svc.cluster.local:9090")
+	t.Setenv("KACHO_NLB_GEO_GRPC_ADDR", "kacho-geo.kacho.svc:9090")
 
 	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ExtAPI.Geo.Addr != "kacho-geo.kacho.svc.cluster.local:9090" {
-		t.Errorf("ExtAPI.Geo.Addr: got %q, want kacho-geo.kacho.svc.cluster.local:9090", cfg.ExtAPI.Geo.Addr)
+	if cfg.ExtAPI.Geo.Addr != "kacho-geo.kacho.svc:9090" {
+		t.Errorf("ExtAPI.Geo.Addr: got %q, want kacho-geo.kacho.svc:9090", cfg.ExtAPI.Geo.Addr)
 	}
 }
 
@@ -28,7 +28,7 @@ func TestLoad_GeoMTLS_FromEnv(t *testing.T) {
 	t.Setenv("KACHO_NLB_MODE", "dev") // dev-opt-in: default fail-closed production
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://u:p@h/d")
 	t.Setenv("KACHO_NLB_MTLS__GEO__ENABLE", "true")
-	t.Setenv("KACHO_NLB_MTLS__GEO__SERVERNAME", "kacho-geo.kacho.svc.cluster.local")
+	t.Setenv("KACHO_NLB_MTLS__GEO__SERVERNAME", "kacho-geo.kacho.svc")
 
 	cfg, err := Load("")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestLoad_GeoMTLS_FromEnv(t *testing.T) {
 	if !cfg.MTLS.Geo.Enable {
 		t.Error("MTLS.Geo.Enable: got false, want true")
 	}
-	if cfg.MTLS.Geo.ServerName != "kacho-geo.kacho.svc.cluster.local" {
+	if cfg.MTLS.Geo.ServerName != "kacho-geo.kacho.svc" {
 		t.Errorf("MTLS.Geo.ServerName: got %q", cfg.MTLS.Geo.ServerName)
 	}
 }

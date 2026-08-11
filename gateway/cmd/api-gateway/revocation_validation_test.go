@@ -18,13 +18,13 @@ import (
 )
 
 const (
-	testIntrospectURL = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-	testAdminURL      = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+	testIntrospectURL = "http://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
+	testAdminURL      = "http://kacho-umbrella-hydra-admin.kacho.svc:4445"
 
 	// The same two addresses over TLS — the shape a production-class stand is
 	// required to carry.
-	tlsIntrospectURL = "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-	tlsAdminURL      = "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+	tlsIntrospectURL = "https://kacho-umbrella-hydra-admin.kacho.svc:4445/admin/oauth2/introspect"
+	tlsAdminURL      = "https://kacho-umbrella-hydra-admin.kacho.svc:4445"
 )
 
 // Production-class env with no introspection endpoint MUST be refused: with it

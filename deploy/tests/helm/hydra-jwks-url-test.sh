@@ -49,12 +49,12 @@ UMBRELLA="$REPO_ROOT/helm/umbrella"
 AGW="$(sed -nE 's#^[[:space:]]*repository:[[:space:]]*file://\.\./\.\./\.\./(.*)$#\1#p' \
         "$UMBRELLA/Chart.yaml" | grep -m1 'gateway')"
 AGW="$MONOREPO/$AGW"
-WANT="http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+WANT="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 # Боевой профиль забирает ключи через зеркало iam — единственный фасад к
 # провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
 # здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
 # значило бы сверять файл сам с собой.
-WANT_PROD="https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+WANT_PROD="https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
 # Написания адреса ПРОВАЙДЕРА: любое из них в боевом профиле — обход фасада.
 PROVIDER_SPELLING='hydra-public|hydra\.api\.'
 N=0
