@@ -44,9 +44,20 @@ const (
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user` (зеркалит SAKeyService на
-// `iam_service_account`). Мутации требуют `v_update`, чтение — `v_list`;
-// `required_acr_min="2"` (step-up) на ВСЕХ трёх RPC — выпуск/просмотр
-// креденшала чувствителен.
+// `iam_service_account`). Мутации требуют `v_update`, чтение — `v_list`.
+//
+// Step-up (`required_acr_min`) — НЕ на всех трёх, и разница намеренна:
+// `Issue` и `Revoke` требуют `"2"`, `List` — `"1"`. Повышенный уровень
+// полагается тому, что МЕНЯЕТ посадку доступа: выпуск креденшала и его отзыв.
+// Перечисление своих токенов посадку не меняет и лишним требованием отсекало бы
+// владельца от обзора собственных ключей — то есть мешало бы ровно тому, кто
+// должен заметить чужой.
+//
+// Здесь стояло «на ВСЕХ трёх RPC», и это было неверно с той же строки, где
+// объявлено `"1"` двадцатью строками ниже: два места об одном предмете, из
+// которых верно одно. Комментарий у контроля безопасности, противоречащий коду,
+// провоцирует «починку» кода под неверный комментарий — то есть привёл бы к
+// повышению уровня на чтении, а не к правке текста.
 type UserTokenServiceClient interface {
 	Issue(ctx context.Context, in *IssueUserTokenRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	List(ctx context.Context, in *ListUserTokensRequest, opts ...grpc.CallOption) (*ListUserTokensResponse, error)
@@ -107,9 +118,20 @@ func (c *userTokenServiceClient) Revoke(ctx context.Context, in *RevokeUserToken
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user` (зеркалит SAKeyService на
-// `iam_service_account`). Мутации требуют `v_update`, чтение — `v_list`;
-// `required_acr_min="2"` (step-up) на ВСЕХ трёх RPC — выпуск/просмотр
-// креденшала чувствителен.
+// `iam_service_account`). Мутации требуют `v_update`, чтение — `v_list`.
+//
+// Step-up (`required_acr_min`) — НЕ на всех трёх, и разница намеренна:
+// `Issue` и `Revoke` требуют `"2"`, `List` — `"1"`. Повышенный уровень
+// полагается тому, что МЕНЯЕТ посадку доступа: выпуск креденшала и его отзыв.
+// Перечисление своих токенов посадку не меняет и лишним требованием отсекало бы
+// владельца от обзора собственных ключей — то есть мешало бы ровно тому, кто
+// должен заметить чужой.
+//
+// Здесь стояло «на ВСЕХ трёх RPC», и это было неверно с той же строки, где
+// объявлено `"1"` двадцатью строками ниже: два места об одном предмете, из
+// которых верно одно. Комментарий у контроля безопасности, противоречащий коду,
+// провоцирует «починку» кода под неверный комментарий — то есть привёл бы к
+// повышению уровня на чтении, а не к правке текста.
 type UserTokenServiceServer interface {
 	Issue(context.Context, *IssueUserTokenRequest) (*operation.Operation, error)
 	List(context.Context, *ListUserTokensRequest) (*ListUserTokensResponse, error)
