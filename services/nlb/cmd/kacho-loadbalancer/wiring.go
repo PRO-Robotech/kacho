@@ -195,15 +195,28 @@ type backgroundDeps struct {
 	freeIPPoisonObs func()
 }
 
-// assembleBackgroundWorkers строит полный набор фоновых loop'ов (LRO-reconciler,
-// target-drain, free-ip, fga-register-drainer + outbox-backstop,
-// vip-origin-reconcile). Слушателя инвалидации кэша вердиктов в этом наборе НЕТ —
-// он перечислялся здесь, но никогда не собирался: это механизм iam, а у nlb нет
-// ни его настроек, ни его кода. Возвращает workers, vip-origin-gate (для
-// readiness) и ошибку. Сами loop'ы НЕ запускаются здесь — их гоняет errgroup в
-// runServe; функция лишь собирает slice + строит их ресурсы (drainer.New,
-// backstop, bootGate.SetConnected). Порядок и side-effect'ы идентичны прежнему
-// inline-блоку runServe.
+// assembleBackgroundWorkers строит полный набор фоновых loop'ов: lro-reconciler,
+// target-drain, free-ip-runner, fga-register-drainer, fga-register-reconciler,
+// outbox-metrics-collector. Возвращает workers и ошибку. Сами loop'ы НЕ
+// запускаются здесь — их гоняет errgroup в runServe; функция лишь собирает slice
+// + строит их ресурсы (drainer.New, backstop, bootGate.SetConnected).
+//
+// В этом перечне НЕТ и не должно быть двух вещей, которые он раньше называл, —
+// обе снялись вместе со своим предметом, и обе успели пережить его в этом же
+// комментарии:
+//
+//   - слушатель инвалидации кэша вердиктов — механизм iam, у nlb нет ни его
+//     настроек, ни его кода;
+//   - vip-origin-reconcile и возвращаемые им ворота готовности — обратное
+//     заполнение дискриминатора источника VIP на ЛИСТЕНЕРЕ. VIP консолидирован
+//     на балансировщике, адресные колонки листенера дропнуты миграцией
+//     0028_drop_dead_listener_address_columns.sql, и она же прямо фиксирует
+//     снятие этой работы вместе с воротами. Имя пережило код и оставалось в
+//     дереве только здесь — то есть по грепу выглядело живым.
+//
+// Перечень в этом комментарии обязан совпадать с именами bgWorker ниже: он
+// читается как ответ на вопрос «что вообще крутится в процессе», и разошедшийся
+// с кодом ответ хуже отсутствующего.
 func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorker, error) {
 	var background []bgWorker
 

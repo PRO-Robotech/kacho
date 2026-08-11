@@ -5,6 +5,7 @@ package shared
 
 import (
 	"errors"
+	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 
@@ -29,11 +30,14 @@ func OperationToProto(op *operations.Operation) *operationpb.Operation {
 		return nil
 	}
 	p := &operationpb.Operation{
-		Id:                   op.ID,
-		Description:          op.Description,
-		CreatedAt:            timestamppb.New(op.CreatedAt),
+		Id:          op.ID,
+		Description: op.Description,
+		// Усечение до секунды — конвенция продукта для КАЖДОГО proto-ответа:
+		// БД хранит микросекунды, клиент их не видит. Operation — ответ каждой
+		// мутации, то есть самая частая поверхность утечки долей секунды.
+		CreatedAt:            timestamppb.New(op.CreatedAt.Truncate(time.Second)),
 		CreatedBy:            op.CreatedBy,
-		ModifiedAt:           timestamppb.New(op.ModifiedAt),
+		ModifiedAt:           timestamppb.New(op.ModifiedAt.Truncate(time.Second)),
 		Done:                 op.Done,
 		Metadata:             op.Metadata,
 		PrincipalType:        op.Principal.Type,

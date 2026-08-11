@@ -1,24 +1,27 @@
 # 04 — API Surface
 
-Полный список RPC kacho-vpc + соответствующие REST endpoints. Public: 8
-доменных сервисов (7 ресурсов + `NetworkInterfaceService`) + internal admin-сервисы.
+Полный список RPC kacho-vpc + соответствующие REST endpoints. Public — **7** доменных
+сервисов, internal — **4**. Оба числа выводятся из контрактов, а не выписываются:
+`grep -h '^service ' proto/kacho/cloud/vpc/v1/*.proto | sort`. Прежняя редакция считала
+`NetworkInterfaceService` **сверх** семи ресурсов и получала восемь — интерфейс является
+одним из семи, а не восьмым.
 
 ## Сводка
 
 | Категория | Listener | REST exposed |
 |---|---|---|
-| Public домены (8: 7 + `NetworkInterfaceService`) | `:9090` (public gRPC) | ✅ да, через api-gateway (оба listener'а) |
-| Internal admin (kacho-only) | `:9091` (internal gRPC) | ✅ выборочно — только cluster-internal listener (CRUD + admin actions) |
+| Public домены (7) | `:9090` (public gRPC) | ✅ да, через api-gateway (оба listener'а) |
+| Internal admin (kacho-only, 4) | `:9091` (internal gRPC) | ✅ выборочно — только cluster-internal listener (CRUD + admin actions) |
 
 ## Public сервисы (`:9090`)
 
 | Сервис | RPC | Что делает |
 |---|---|---|
-| `NetworkService` | CRUD + ListSubnets + ListSecurityGroups + ListRouteTables + ListOperations | у `Network` нет внутреннего инфра-идентификатора |
-| `SubnetService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListUsedAddresses + ListOperations | `v4_cidr_blocks` опционально на Create; `:add/:remove-cidr-blocks` принимают **и `v6_cidr_blocks`** (валидный IPv6-префикс, host-bits=0, intra-request disjoint, overlap → `FailedPrecondition`); `UpdateSubnet` получил `v6_cidr_blocks` (soft-immutable / no-op) |
+| `NetworkService` | CRUD + ListSubnets + ListSecurityGroups + ListRouteTables + ListOperations | публичная проекция `Network` инфра-полей не несёт; `vrf_id` отдаётся только `InternalNetworkService`. `Network` объявляет супернет (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`) и системный `default_route_table_id` |
+| `SubnetService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListUsedAddresses + ListOperations | `placement_type` обязателен (`ZONAL`→`zone_id` / `REGIONAL`→`region_id`), immutable; CIDR на Create — **якорь** `ipv4_cidr_primary`/`ipv6_cidr_primary` (immutable), дополнительные диапазоны — только через `:add/:remove-cidr-blocks` (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); в `UpdateSubnet` CIDR-полей нет вовсе — номера зарезервированы |
 | `AddressService` | CRUD + GetByValue + ListBySubnet + ListOperations | `CreateAddressRequest` получил `internal_ipv6_address_spec`; `ListAddressesRequest.subnet_id` матчит `internal_ipv4`/`internal_ipv6`; `Delete` адреса в использовании у NIC → `FailedPrecondition` |
 | `RouteTableService` | CRUD + AddRoutes + RemoveRoutes + UpdateRoute + ListOperations | |
-| `SecurityGroupService` | CRUD + UpdateRules + UpdateRule + ListOperations | `network_id` опционально на Create (project-level / network-less SG); `List?filter=network_id="<id>"` |
+| `SecurityGroupService` | CRUD + UpdateRules + UpdateRule + ListOperations | `network_id` **обязателен** на Create (`[(required) = true]` в контракте, пустой → `InvalidArgument "network_id required"`) и immutable после него; `List?filter=network_id="<id>"` |
 | `GatewayService` | CRUD + ListOperations | |
 | `NetworkInterfaceService` | Get + List + Create + Update + Delete + ListOperations | REST `/vpc/v1/networkInterfaces`; NIC принадлежит `Subnet` (`subnet_id`), ссылается на `Address` по id (`v4_address_ids[]`/`v6_address_ids[]`), `security_group_ids[]`, `used_by` (денормализованное зеркало — кто использует NIC); проекция чисто control-plane (lean) — инфра-полей у kacho-vpc нет |
 

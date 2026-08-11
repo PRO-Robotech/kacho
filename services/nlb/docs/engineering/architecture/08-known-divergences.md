@@ -301,8 +301,8 @@ orchestration in handler»).
 
 ## Фоновые reconcile-джобы — raw `*pgxpool.Pool` в use-case-слое (минуя CQRS Repository)
 
-**Что.** Три фоновые джобы в `internal/apps/kacho/jobs/` (`free_ip_runner`,
-`target_drain_runner`, `viporigin_reconcile`) держат `*pgxpool.Pool` и исполняют
+**Что.** Обе фоновые джобы в `services/nlb/internal/apps/kacho/jobs/`
+(`free_ip_runner`, `target_drain_runner`) держат `*pgxpool.Pool` и исполняют
 hand-written SQL (`SELECT … FOR UPDATE SKIP LOCKED`, `DELETE`, INSERT в
 `nlb_outbox`/`fga_register_outbox`) напрямую, минуя `kacho.Repository`/
 `RepositoryWriter`, через который идут все per-RPC use-case'ы. Outbox-INSERT'ы в
@@ -314,8 +314,16 @@ request-path use-case'ы, а multi-replica admin-reconcilers: их суть — 
 застрявшей строки под `FOR UPDATE SKIP LOCKED`, удержание row-lock'а на время
 внешнего release-вызова (network) и финализация — семантика, которая НЕ ложится на
 per-resource CQRS-порт (тот моделирует ресурс-мутации, а не scan-claim-reconcile).
-Паттерн — устоявшаяся конвенция сервиса (`TargetDrainRunner` той же формы; см.
-`jobs/doc.go` «admin-job поверх *pgxpool.Pool, минуя [repo]»). Джобы —
+Паттерн — устоявшаяся конвенция сервиса (`TargetDrainRunner` той же формы; перечень
+джоб и их предмет — в шапке пакета, `services/nlb/internal/apps/kacho/jobs/doc.go`).
+
+> Здесь стояло «Три … джобы» с третьим именем — обратным заполнением дискриминатора
+> источника VIP. Такой джобы в пакете нет: он снят вместе с листенерным VIP миграцией
+> `0028_drop_dead_listener_address_columns.sql`, которая прямо это фиксирует. Предикат:
+> `git ls-files services/nlb/internal/apps/kacho/jobs/*.go | grep -v _test`. Разбор —
+> `14-vip-origin.md`.
+
+Джобы —
 **вне** dependency-rule request-path'а (нет доменных инвариантов ресурса, только
 housekeeping-VIP-release/target-drain). Дрейф дублированных outbox-INSERT'ов от
 каноничных эмиттеров закрыт тестами:
