@@ -53,6 +53,12 @@ type Network struct {
 	// must be a subset of one of these blocks. There is no primary at the network
 	// level — this is a pure set of supernet blocks. Mutated only via
 	// :add-cidr-blocks / :remove-cidr-blocks (immutable through Update).
+	//
+	// Optional at Create — and the consequence is stated rather than left implied:
+	// a network that declares no IPv4 supernet REFUSES IPv4 subnets
+	// (INVALID_ARGUMENT), because there is nothing to carve them from. Declare the
+	// blocks here or grow them later via :add-cidr-blocks. The constraint above is
+	// unconditional: it is never silently skipped for an empty list.
 	Ipv4CidrBlocks []string `protobuf:"bytes,8,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`
 	// Declared IPv6 supernet block(s) for the network. Mirror of ipv4_cidr_blocks.
 	Ipv6CidrBlocks []string `protobuf:"bytes,9,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
