@@ -135,14 +135,27 @@ vpc_bg="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -
 vpc_fwd="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '[.authz."trusted-forwarder-sans"[] | select(. != "")] | length' -)"
 [ "${vpc_fwd:-0}" -gt 0 ] || violation "kacho-vpc authz.trusted-forwarder-sans is empty (any certificate-verified peer could then act as any tenant)"; ok
 
-# ── 3. kacho-nlb — production + sslmode != disable + breakglass off ──────────
+# ── 3. kacho-nlb — production + sslmode != disable + breakglass RETIRED ──────
 NLB_CM="$(render_only "$PROD" charts/kacho-nlb/templates/configmap.yaml)"
 nlb_mode="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.mode' -)"
 nlb_dsn="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.repository.postgres.url' -)"
 case "$nlb_mode" in production|production-strict) ;; *) violation "kacho-nlb mode=$nlb_mode (want production*, NOT dev)";; esac
 case "$nlb_dsn" in *sslmode=disable*) violation "kacho-nlb DSN has sslmode=disable: $nlb_dsn";; *sslmode=*) ;; *) violation "kacho-nlb DSN missing sslmode: $nlb_dsn";; esac
+# authz.breakglass at nlb: same story as vpc above, same day. The knob went out
+# with the move to the shared carrier — the decision edge is now mounted in EVERY
+# posture and there is no field able to unmount it, so the chart stopped rendering
+# the key at all. Demanding "false" here turned null into a violation on a CORRECT
+# tree: the gate went red on exactly the state it exists to require.
+#
+# Inverted, not deleted — for the same reason as vpc: a knob that once bypassed
+# every Check must not come back quietly, so `null` is the only accepted value and
+# re-adding the key with ANY value fails here first.
+#
+# NOTE the neighbouring knob that did NOT go away: `authz.list-filter.breakglass`
+# is a different subject (list narrowing degrades instead of refusing) and stays
+# wired, declared and asserted on its own line above.
 nlb_bg="$(echo "$NLB_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -)"
-[ "$nlb_bg" = "false" ] || violation "kacho-nlb authz.breakglass=$nlb_bg (must be false in production)"; ok
+[ "$nlb_bg" = "null" ] || violation "kacho-nlb authz.breakglass=$nlb_bg — the knob is retired; its reappearance (with ANY value) means the Check-bypass path came back"; ok
 
 # ── 4. api-gateway — production-strict AuthN + fail-closed AuthZ ──────────────
 AGW="$(render_only "$PROD" charts/api-gateway/templates/deployment.yaml)"
