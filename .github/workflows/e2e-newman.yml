@@ -678,7 +678,7 @@ jobs:
       # отказ скачивания, из которого не видно, чьей описи не хватает.
       - name: скачать архивы шардов (описи + отчёты)
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: newman-shard-*
           path: .
