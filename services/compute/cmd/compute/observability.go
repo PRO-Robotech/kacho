@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 
@@ -22,6 +21,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/health"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/metrics"
@@ -130,35 +130,61 @@ func superviseBackground(ctx context.Context, name string, run func(context.Cont
 	return fmt.Errorf("%s exited unexpectedly", name)
 }
 
-// startDiagnosticListener поднимает cluster-internal HTTP-listener для метрик и
-// health-проб. Возвращает task для супервизора и shutdown-функцию. Отключён
-// (пустой addr) → (nil, no-op): листенер не поднимается (back-compat).
-func startDiagnosticListener(addr string, m *metrics.Metrics, agg *health.Aggregator, logger *slog.Logger) (task func() error, shutdown func(context.Context), err error) {
-	if addr == "" {
-		return nil, func(context.Context) {}, nil
-	}
+// Сроки диагностической поверхности. Названы константами, а не вписаны в
+// объявление: они одинаковы у всех диагностических поверхностей платформы, и
+// разъехавшиеся числа читались бы как осознанная разница.
+const (
+	diagReadHeaderBudget = 5 * time.Second
+	diagRequestBudget    = 30 * time.Second
+	diagIdleBudget       = 60 * time.Second
+	diagShutdownBudget   = 5 * time.Second
+)
+
+// describeDiagnosticSurface — ОБЪЯВЛЕНИЕ cluster-internal диагностической
+// поверхности (/metrics, /healthz, /readyz).
+//
+// Сервера, привязки порта и гашения здесь нет: их держит профиль не-gRPC
+// поверхности (`pkg/servicehost.ServeSurface`). Корень отвечает на четыре
+// вопроса — что обслуживается, откуда досягаемо, чем аутентифицировано и на
+// сколько рассчитан каждый срок.
+//
+// Пустой эндпоинт перестал выключать поверхность МОЛЧА: теперь это объявленное
+// выключение с причиной, и причина едет в журнал. Различие не косметическое —
+// профиль развёртывания, забывший задать адрес, и посадка без скрейпа выглядели
+// одинаково.
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, agg *health.Aggregator,
+	mode servicecontract.Mode, logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", m.Handler())
 	mux.Handle("GET /healthz", agg.LiveHandler())
 	mux.Handle("GET /readyz", agg.ReadyHandler())
 
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
+	addr := servicecontract.Value(endpoint)
+	if endpoint == "" {
+		addr = servicecontract.NotApplicable[string](
+			"KACHO_COMPUTE_METRICS_ADDR не задан профилем развёртывания: ни скрейпа, ни проб " +
+				"живости и готовности на этой посадке нет — kubelet не узнает о неготовности " +
+				"зависимостей ничего")
 	}
-	lis, lerr := net.Listen("tcp", addr)
-	if lerr != nil {
-		return nil, nil, lerr
-	}
-	logger.Info("kacho-compute diagnostic listener", "endpoint", addr, "paths", "/metrics,/healthz,/readyz")
+	return servicecontract.NewSurface(servicecontract.Surface{
+		Service: "kacho-compute",
+		Name:    "диагностика (/metrics, /healthz, /readyz)",
+		Mode:    mode,
+		Logger:  logger,
 
-	task = func() error {
-		if serr := srv.Serve(lis); serr != nil && serr != http.ErrServerClosed {
-			return serr
-		}
-		return nil
-	}
-	shutdown = func(ctx context.Context) { _ = srv.Shutdown(ctx) }
-	return task, shutdown, nil
+		Addr:    addr,
+		Handler: mux,
+
+		Reach: servicecontract.ReachClusterInternal,
+		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
+			"снята осознанно: поверхность выставлена только на внутренний Service, её читают " +
+				"скрейп и kubelet. На проводе счётчики процесса и имена зависимостей — ни " +
+				"секретов, ни данных арендатора, ни сведений о размещении " +
+				"(security.md §«Инфра-чувствительные данные»)"),
+
+		ReadHeaderBudget: diagReadHeaderBudget,
+		RequestBudget:    servicecontract.Value(diagRequestBudget),
+		IdleBudget:       diagIdleBudget,
+		ShutdownBudget:   diagShutdownBudget,
+	})
 }

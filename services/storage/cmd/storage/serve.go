@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -265,18 +264,21 @@ func runServe(cfg config.Config) error {
 	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
 	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
 	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
-	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, svcMetrics, logger)
+	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, desc.Spec().Mode, logger)
 	if err != nil {
-		return fmt.Errorf("diagnostic listener: %w", err)
+		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}
-	if diagTask != nil {
-		go func() {
-			if derr := diagTask(); derr != nil {
-				logger.Error("diagnostic listener stopped", "err", derr)
-			}
-		}()
+	// Собственный контекст поверхности: гасить её надо ПОСЛЕ обоих gRPC-слушателей
+	// и после дренажа исполнителей операций — иначе проба живости и скрейп исчезают
+	// раньше, чем процесс закончил останавливаться.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	// Привязка порта синхронна: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
 	}
-	defer func() { diagShutdown(context.Background()) }()
 
 	opHandler := handler.NewOperationHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
@@ -297,6 +299,19 @@ func runServe(cfg config.Config) error {
 	if werr := operations.Wait(drainCtx); werr != nil {
 		logger.Warn("LRO workers did not finish before shutdown timeout",
 			"err", werr, "active", operations.Active())
+	}
+
+	// Диагностическая поверхность гасится ПОСЛЕДНЕЙ и её возврата ЖДУТ: профиль
+	// возвращается только после того, как порт освобождён, а без ожидания процесс
+	// завершался бы, оставляя это неизвестным. Прежде здесь стоял `defer` с
+	// контекстом БЕЗ срока — то есть остановка ждала последнего скрейпа
+	// неограниченно.
+	stopDiag()
+	if derr := waitDiag(); derr != nil {
+		logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
+		if serveErr == nil {
+			serveErr = derr
+		}
 	}
 	return serveErr
 }
@@ -565,27 +580,54 @@ func diagnosticMux(m *metrics.Metrics) *http.ServeMux {
 	return mux
 }
 
-// startDiagnosticListener поднимает cluster-internal HTTP-listener
-// (/healthz, /metrics). Пустой addr → (nil, no-op): отключён. net.Listen
-// синхронный — ошибка привязки видна вызывающему сразу.
-func startDiagnosticListener(addr string, m *metrics.Metrics, logger *slog.Logger) (task func() error, shutdown func(context.Context), err error) {
-	if addr == "" {
-		return nil, func(context.Context) {}, nil
+// Сроки диагностической поверхности. Названы константами, а не вписаны в
+// объявление: они одинаковы у всех диагностических поверхностей платформы, и
+// разъехавшиеся числа читались бы как осознанная разница.
+const (
+	diagReadHeaderBudget = 5 * time.Second
+	diagRequestBudget    = 30 * time.Second
+	diagIdleBudget       = 60 * time.Second
+	diagShutdownBudget   = 5 * time.Second
+)
+
+// describeDiagnosticSurface — ОБЪЯВЛЕНИЕ cluster-internal диагностической
+// поверхности (/healthz, /metrics).
+//
+// Сервера, привязки порта и гашения здесь нет: их держит профиль не-gRPC
+// поверхности (`pkg/servicehost.ServeSurface`). Корень отвечает на четыре
+// вопроса — что обслуживается, откуда досягаемо, чем аутентифицировано и на
+// сколько рассчитан каждый срок.
+//
+// Пустой эндпоинт перестал выключать поверхность МОЛЧА: теперь это объявленное
+// выключение с причиной, и причина едет в журнал.
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, mode servicecontract.Mode,
+	logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
+	addr := servicecontract.Value(endpoint)
+	if endpoint == "" {
+		addr = servicecontract.NotApplicable[string](
+			"KACHO_STORAGE_METRICS_ADDR не задан профилем развёртывания: ни скрейпа, ни пробы " +
+				"живости на этой посадке нет")
 	}
-	srv := &http.Server{Addr: addr, Handler: diagnosticMux(m), ReadHeaderTimeout: 5 * time.Second}
-	lis, lerr := net.Listen("tcp", addr)
-	if lerr != nil {
-		return nil, nil, lerr
-	}
-	logger.Info("kacho-storage diagnostic listener", "endpoint", addr, "paths", "/healthz,/metrics")
-	task = func() error {
-		if serr := srv.Serve(lis); serr != nil && serr != http.ErrServerClosed {
-			return serr
-		}
-		return nil
-	}
-	shutdown = func(sctx context.Context) { _ = srv.Shutdown(sctx) }
-	return task, shutdown, nil
+	return servicecontract.NewSurface(servicecontract.Surface{
+		Service: "kacho-storage",
+		Name:    "диагностика (/healthz, /metrics)",
+		Mode:    mode,
+		Logger:  logger,
+
+		Addr:    addr,
+		Handler: diagnosticMux(m),
+
+		Reach: servicecontract.ReachClusterInternal,
+		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
+			"снята осознанно: поверхность выставлена только на внутренний Service и несёт " +
+				"счётчики процесса и признак живости — ни секретов, ни данных арендатора, ни " +
+				"сведений о размещении на проводе нет (security.md §«Инфра-чувствительные данные»)"),
+
+		ReadHeaderBudget: diagReadHeaderBudget,
+		RequestBudget:    servicecontract.Value(diagRequestBudget),
+		IdleBudget:       diagIdleBudget,
+		ShutdownBudget:   diagShutdownBudget,
+	})
 }
 
 // buildListFilter собирает пообъектный сужатель видимости (kacho-iam

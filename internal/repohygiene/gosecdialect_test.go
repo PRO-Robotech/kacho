@@ -36,6 +36,9 @@
 package repohygiene
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,7 +100,7 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 	root := repoRoot(t)
 
 	var hits []string
-	goFiles, withAnyNolint := 0, 0
+	goFiles, withAnyNolint, insideLiteral := 0, 0, 0
 	walkGoFiles(t, root, func(rel string, body []byte) {
 		goFiles++
 		if rel == selfFile || slices.Contains(pendingHandoff, rel) {
@@ -109,17 +112,18 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 		if strings.Contains(string(body), "//nolint") {
 			withAnyNolint++
 		}
-		for i, line := range strings.Split(string(body), "\n") {
-			if nolintGosecRe.MatchString(line) {
-				hits = append(hits, rel+":"+strconv.Itoa(i+1)+" — "+strings.TrimSpace(line))
-			}
-		}
+		found, skipped := inertGosecHits(rel, body)
+		hits = append(hits, found...)
+		insideLiteral += skipped
 	})
 
-	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного» — и от «ноль
+	// после отсева». Строки, отсеянные как содержимое литерала, названы числом:
+	// молчаливый отсев неотличим от слепоты гейта.
 	t.Logf("осмотрено: файлов .go %d (освобождено %d + сам гейт); "+
-		"несут директиву `//nolint` в любом виде: %d; из них называют gosec: %d",
-		goFiles, len(pendingHandoff), withAnyNolint, len(hits))
+		"несут директиву `//nolint` в любом виде: %d; называют gosec в КОДЕ: %d; "+
+		"названы внутри строкового литерала и потому не считаются подавлением: %d",
+		goFiles, len(pendingHandoff), withAnyNolint, len(hits), insideLiteral)
 
 	if goFiles == 0 {
 		t.Fatal("обход не прочитал ни одного файла .go — это отказ, а не чистота: " +
@@ -230,5 +234,120 @@ func walkGoFiles(t *testing.T, root string, fn func(rel string, body []byte)) {
 			t.Fatalf("чтение %s: %v", rel, readErr)
 		}
 		fn(rel, body)
+	}
+}
+
+// stringLiteralLines — номера строк, занятых строковыми литералами файла.
+//
+// Нужно затем, что фикстуры соседних гейтов носят синтетический Go-код в raw-
+// литералах, и текстовый поиск не отличает его от кода данного файла. Разница
+// существенная: директива в литерале не читается НИ ОДНИМ инструментом — ни в
+// этом дереве, ни в том, где такой диалект был бы рабочим, — то есть подавлением
+// она не является даже формально.
+//
+// Файл, который не разбирается (битый синтаксис), не отсеивает ничего: пустая
+// карта означает «весь файл считается кодом». Это осознанно строгая сторона —
+// гейт скорее покраснеет лишний раз, чем промолчит.
+func stringLiteralLines(rel string, body []byte) map[int]bool {
+	out := map[int]bool{}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, body, 0)
+	if err != nil {
+		return out
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		from := fset.Position(lit.Pos()).Line
+		to := fset.Position(lit.End()).Line
+		for i := from; i <= to; i++ {
+			out[i] = true
+		}
+		return true
+	})
+	return out
+}
+
+// inertGosecHits — предикат гейта: строки файла, несущие инертную директиву, и
+// число строк, отсеянных как содержимое строкового литерала.
+//
+// Вынесен отдельно, чтобы проба различения гоняла ТУ ЖЕ функцию, что и обход
+// дерева: проба, повторяющая логику гейта своей копией, доказывала бы свойство
+// копии.
+//
+// Строковые литералы отсеиваются потому, что синтетическая фикстура соседнего
+// гейта — это ДАННЫЕ, а не код данного файла: директива внутри неё не читается
+// НИ ОДНИМ инструментом даже в том дереве, где такой диалект был бы рабочим.
+// Различать обязательно — иначе первая же фикстура соседа либо ломает гейт, либо
+// (что хуже) заставляет автора фикстуры выхолостить её под текстовый поиск.
+func inertGosecHits(rel string, body []byte) ([]string, int) {
+	var (
+		hits    []string
+		skipped int
+	)
+	literal := stringLiteralLines(rel, body)
+	for i, line := range strings.Split(string(body), "\n") {
+		if !nolintGosecRe.MatchString(line) {
+			continue
+		}
+		if literal[i+1] {
+			skipped++
+			continue
+		}
+		hits = append(hits, rel+":"+strconv.Itoa(i+1)+" — "+strings.TrimSpace(line))
+	}
+	return hits, skipped
+}
+
+// synthGosecMixed — файл, где директива стоит ДВАЖДЫ: в коде (где она инертна и
+// потому находка) и внутри raw-литерала синтетической фикстуры (где она не
+// подавление вовсе).
+const synthGosecMixed = "package p\n" +
+	"\n" +
+	"import \"net/http\"\n" +
+	"\n" +
+	"const fixture = `package main\n" +
+	"\n" +
+	"func serve(addr string, h http.Handler) {\n" +
+	"\tif err := http.ListenAndServe(addr, h); err != nil { //nolint:gosec // фикстура\n" +
+	"\t\tpanic(err)\n" +
+	"\t}\n" +
+	"}\n" +
+	"`\n" +
+	"\n" +
+	"func serve(addr string, h http.Handler) error {\n" +
+	"\treturn http.ListenAndServe(addr, h) //nolint:gosec // настоящее подавление\n" +
+	"}\n"
+
+// Гейт различает код и строковый литерал — доказано на входе, где есть и то и
+// другое.
+//
+// Без этой пробы новая ветка отсева не проверена ничем: в дереве сегодня ноль
+// директив в литералах, поэтому «отсеяно 0» одинаково читается и как «отсев
+// работает», и как «отсева нет».
+func TestGosecGateDistinguishesCodeFromStringLiteral(t *testing.T) {
+	hits, skipped := inertGosecHits("synth/p.go", []byte(synthGosecMixed))
+
+	if len(hits) != 1 {
+		t.Fatalf("находок %d, ожидалась одна — та, что в КОДЕ: %v", len(hits), hits)
+	}
+	if !strings.Contains(hits[0], "настоящее подавление") {
+		t.Errorf("гейт нашёл не ту строку: %s", hits[0])
+	}
+	if skipped != 1 {
+		t.Errorf("отсеяно строк литерала %d, ожидалась одна — иначе гейт либо считает "+
+			"фикстуру кодом, либо перестал видеть предмет вовсе", skipped)
+	}
+}
+
+// Битый синтаксис не превращает файл в слепое пятно: разбор не удался — весь
+// файл считается кодом, и директива остаётся находкой.
+func TestUnparsableFileIsTreatedAsCodeNotAsLiteral(t *testing.T) {
+	broken := []byte("package p\nfunc (((\nvar x = 1 //nolint:gosec\n")
+	hits, skipped := inertGosecHits("synth/broken.go", broken)
+	if len(hits) != 1 || skipped != 0 {
+		t.Fatalf("на неразбираемом файле гейт ослеп: находок %d, отсеяно %d", len(hits), skipped)
 	}
 }

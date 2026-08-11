@@ -13,13 +13,15 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 )
 
-// freeAddr резервирует свободный TCP-порт на loopback и отдаёт его адрес (listener
-// закрыт — startDiagnosticListener переоткроет). Небольшое TOCTOU-окно приемлемо
-// для unit-теста.
+// freeAddr резервирует свободный TCP-порт на loopback и отдаёт его адрес
+// (слушатель закрыт — профиль переоткроет). Фиксированный адрес нужен по
+// существу: «порт освобождён» доказывается повторной привязкой к ТОМУ ЖЕ адресу.
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -48,41 +50,73 @@ func TestLROWorkerStaysUndispatched(t *testing.T) {
 	}
 }
 
-// TestStartDiagnosticListener_Disabled — пустой addr отключает listener (back-compat):
-// task=nil, shutdown — no-op, без ошибки.
-func TestStartDiagnosticListener_Disabled(t *testing.T) {
-	task, shutdown, err := startDiagnosticListener("", metrics.New("v", "c"), discardLogger())
+// TestDiagnosticSurfaceDisabledByDeclaration — пустой эндпоинт выключает
+// поверхность, и выключение это ОБЪЯВЛЕНИЕ, а не тишина.
+//
+// Проба усилена против прежней: та утверждала «задача nil, гашение — пустышка»,
+// то есть форму возврата. Здесь утверждается наблюдаемое — профиль принят,
+// сообщает, что не поднимается, НАЗЫВАЕТ причину, и порт остаётся свободен.
+func TestDiagnosticSurfaceDisabledByDeclaration(t *testing.T) {
+	addr := freeAddr(t)
+	d, err := describeDiagnosticSurface("", metrics.New("v", "c"),
+		servicecontract.ModeProduction, discardLogger())
 	if err != nil {
-		t.Fatalf("disabled listener err: %v", err)
+		t.Fatalf("объявленное выключение отвергнуто: %v", err)
 	}
-	if task != nil {
-		t.Fatal("disabled listener must yield nil task")
+	if d.Enabled() {
+		t.Fatal("поверхность объявлена выключенной, а сообщает, что поднимается")
 	}
-	shutdown(context.Background()) // no-op, must not panic
+	if d.DisabledBecause() == "" {
+		t.Fatal("выключено, а причина не названа — это снова молчаливое выключение")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("выключенная поверхность вернула ошибку: %v", serr)
+	}
+	if werr := wait(); werr != nil {
+		t.Fatalf("ожидание выключенной поверхности вернуло ошибку: %v", werr)
+	}
+	l, berr := net.Listen("tcp", addr)
+	if berr != nil {
+		t.Fatalf("поверхность выключена, а порт занят: %v", berr)
+	}
+	_ = l.Close()
 }
 
-// TestStartDiagnosticListener_ServesMetrics — непустой addr поднимает listener,
-// который отдаёт /metrics (LRO-durability серии видны Prometheus scrape'у).
-func TestStartDiagnosticListener_ServesMetrics(t *testing.T) {
+// TestDiagnosticSurfaceServesMetricsAndReleasesItsPort — непустой эндпоинт
+// поднимает поверхность, она отдаёт /metrics, и ПОСЛЕ отмены контекста порт
+// свободен.
+//
+// Вторая половина — усиление против прежней пробы: та звала гашение через
+// `defer` и о его исходе не утверждала ничего, поэтому осталась бы зелёной на
+// слушателе, который порт всё ещё держит.
+func TestDiagnosticSurfaceServesMetricsAndReleasesItsPort(t *testing.T) {
 	m := metrics.New("v", "c")
 	m.IncOrphansRecovered("done")
 	addr := freeAddr(t)
-	task, shutdown, err := startDiagnosticListener(addr, m, discardLogger())
+	d, err := describeDiagnosticSurface(addr, m, servicecontract.ModeProduction, discardLogger())
 	if err != nil {
-		t.Fatalf("start listener: %v", err)
+		t.Fatalf("законный профиль отвергнут: %v", err)
 	}
-	if task == nil {
-		t.Fatal("enabled listener must yield a task")
+	if !d.Enabled() {
+		t.Fatal("эндпоинт задан, а профиль сообщает, что не поднимается")
 	}
-	// listener уже слушает (net.Listen отработал синхронно в startDiagnosticListener);
-	// task обслуживает соединения. Дёргаем /metrics через фактический порт.
-	go func() { _ = task() }()
-	defer shutdown(context.Background())
 
-	deadline := time.Now().Add(2 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	wait, serr := servicehost.ServeSurface(ctx, d)
+	if serr != nil {
+		t.Fatalf("поверхность не поднялась: %v", serr)
+	}
+	done := make(chan error, 1)
+	go func() { done <- wait() }()
+
+	deadline := time.Now().Add(3 * time.Second)
 	var resp *http.Response
 	for time.Now().Before(deadline) {
-		r, e := http.Get("http://" + addr + "/metrics")
+		r, e := http.Get("http://" + addr + "/metrics") //nolint:noctx // срок держит петля
 		if e == nil {
 			resp = r
 			break
@@ -90,10 +124,26 @@ func TestStartDiagnosticListener_ServesMetrics(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if resp == nil {
-		t.Fatal("GET /metrics never succeeded")
+		t.Fatal("GET /metrics ни разу не удался")
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("/metrics status=%d, want 200", resp.StatusCode)
+		_ = resp.Body.Close()
+		t.Fatalf("/metrics status=%d, ожидался 200", resp.StatusCode)
 	}
+	_ = resp.Body.Close()
+
+	cancel()
+	select {
+	case serr := <-done:
+		if serr != nil {
+			t.Fatalf("гашение вернуло ошибку: %v", serr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("профиль не вернулся после отмены контекста — слушатель пережил свой контекст")
+	}
+	l, berr := net.Listen("tcp", addr)
+	if berr != nil {
+		t.Fatalf("порт %s занят после возврата профиля: %v", addr, berr)
+	}
+	_ = l.Close()
 }

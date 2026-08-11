@@ -106,11 +106,24 @@ func probeLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
 }
 
+// probeMode — посадка фикстуры. Разбирается тем же местом, что и в
+// композиционном корне: там она уезжает и в профиль не-gRPC поверхностей, и в
+// дескриптор процесса, поэтому проба обязана ходить через тот же разбор, а не
+// подставлять константу.
+func probeMode(t *testing.T, cfg config.Config) servicecontract.Mode {
+	t.Helper()
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		t.Fatalf("посадка фикстуры не разобралась: %v", err)
+	}
+	return mode
+}
+
 // TestDescribeIsAcceptedByTheConstructor — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первым:
 // пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже
 // зеленеет по чужой причине.
 func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), probeLogger(), probePorts())
+	desc, err := describe(bootConfig(t, nil), probeMode(t, bootConfig(t, nil)), probeLogger(), probePorts())
 	if err != nil {
 		t.Fatalf("дескриптор kacho-registry отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
 	}
@@ -149,7 +162,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestDescribeProbeCanFail(t *testing.T) {
 	t.Run("ребро решения о доступе не названо", func(t *testing.T) {
 		cfg := bootConfig(t, map[string]string{"KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR": ""})
-		_, err := describe(cfg, probeLogger(), probePorts())
+		_, err := describe(cfg, probeMode(t, cfg), probeLogger(), probePorts())
 		if err == nil {
 			t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
 				"и положительная проба выше вакуумна")
@@ -160,7 +173,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 	})
 	t.Run("граница обработки снята", func(t *testing.T) {
 		cfg := bootConfig(t, map[string]string{"KACHO_REGISTRY_HANDLING_BUDGET": "0s"})
-		_, err := describe(cfg, probeLogger(), probePorts())
+		_, err := describe(cfg, probeMode(t, cfg), probeLogger(), probePorts())
 		if err == nil {
 			t.Fatal("дескриптор без верхней границы обработки принят: вызов без срока держал бы " +
 				"соединение из ограниченного пула сколько угодно")
@@ -172,7 +185,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 	t.Run("порт сверки существования не принесён", func(t *testing.T) {
 		ports := probePorts()
 		ports.existence = nil
-		_, err := describe(bootConfig(t, nil), probeLogger(), ports)
+		_, err := describe(bootConfig(t, nil), probeMode(t, bootConfig(t, nil)), probeLogger(), ports)
 		if err == nil {
 			t.Fatal("дескриптор со скрытием существования и без порта сверки принят: отказ на " +
 				"существующем чужом реестре пришёл бы формой, отличимой от промаха владельца")
@@ -270,7 +283,7 @@ func TestNarrowersMatchTheCatalogInBothDirections(t *testing.T) {
 			"исчезла, и «расхождений нет» означало бы «ничего не прочитано»")
 	}
 
-	desc, err := describe(bootConfig(t, nil), probeLogger(), probePorts())
+	desc, err := describe(bootConfig(t, nil), probeMode(t, bootConfig(t, nil)), probeLogger(), probePorts())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -336,7 +349,7 @@ func TestHideExistenceFormsSpeakInTheOwnersVoice(t *testing.T) {
 		t.Fatal("каталог не называет скрывающим НИ ОДИН тип служимых методов — предпосылка пробы исчезла")
 	}
 
-	desc, err := describe(bootConfig(t, nil), probeLogger(), probePorts())
+	desc, err := describe(bootConfig(t, nil), probeMode(t, bootConfig(t, nil)), probeLogger(), probePorts())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}

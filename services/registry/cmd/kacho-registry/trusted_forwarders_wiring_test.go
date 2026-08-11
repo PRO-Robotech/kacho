@@ -111,7 +111,7 @@ func TestCompositionRootCarriesNoChainOfItsOwn(t *testing.T) {
 //	    на «отказывать всегда», то есть на полностью сломанной посадке.
 func TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor(t *testing.T) {
 	t.Run("круг из конфигурации доезжает сужённым", func(t *testing.T) {
-		desc, err := describe(bootConfig(t, nil), probeLogger(), probePorts())
+		desc, err := describe(bootConfig(t, nil), probeMode(t, bootConfig(t, nil)), probeLogger(), probePorts())
 		if err != nil {
 			t.Fatalf("дескриптор отвергнут: %v", err)
 		}
@@ -130,9 +130,10 @@ func TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor(t *testin
 	})
 
 	t.Run("несуженный круг дескриптора не даёт", func(t *testing.T) {
-		_, err := describe(bootConfig(t, map[string]string{
+		narrowCfg := bootConfig(t, map[string]string{
 			"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": "",
-		}), probeLogger(), probePorts())
+		})
+		_, err := describe(narrowCfg, probeMode(t, narrowCfg), probeLogger(), probePorts())
 		if err == nil {
 			t.Fatal("дескриптор с пустым кругом принят — цепочка приняла бы переданную личность " +
 				"от любого пира с проверенным сертификатом")
@@ -143,10 +144,11 @@ func TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor(t *testin
 	})
 
 	t.Run("тот же круг с явным опт-ином принимается", func(t *testing.T) {
-		_, err := describe(bootConfig(t, map[string]string{
+		optInCfg := bootConfig(t, map[string]string{
 			"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": "",
 			"KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER":    "true",
-		}), probeLogger(), probePorts())
+		})
+		_, err := describe(optInCfg, probeMode(t, optInCfg), probeLogger(), probePorts())
 		if err != nil {
 			t.Fatalf("явный опт-ин вне боевого режима обязан пропускать локальную фикстуру, "+
 				"иначе отрицание выше зеленеет на «отказывать всегда»: %v", err)

@@ -292,17 +292,24 @@ func runServe(configPath string) error {
 	// Diagnostic HTTP-listener (cluster-internal): /metrics + /healthz + /readyz.
 	// metrics.enable=false ИЛИ пустой metrics.address → не поднимается (back-compat).
 	//
-	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
-	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
-	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
+	// Поверхность входит в контур ОТДЕЛЬНЫМ ПРОФИЛЕМ той же функции (решение
+	// владельца XC-7, в-1): не gRPC, цепочка другая, полями общего дескриптора её
+	// не втягивают. Корень приносит ОБЪЯВЛЕНИЕ; подъём, самоотчёт и гашение
+	// принадлежат профилю.
 	diagAddr := ""
 	if cfg.Metrics.Enable {
 		diagAddr = cfg.Metrics.Address
 	}
-	diagTask, diagShutdown, err := startDiagnosticListener(diagAddr, metricsAdapter, healthAgg, logger)
+	diagDesc, err := describeDiagnosticSurface(diagAddr, metricsAdapter, healthAgg,
+		desc.Spec().Mode, logger)
 	if err != nil {
-		return fmt.Errorf("start diagnostic listener: %w", err)
+		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}
+	// Собственный контекст поверхности: она гасится ПОСЛЕДНЕЙ — после обоих
+	// gRPC-слушателей и после дренажа исполнителей операций, — чтобы переброс
+	// /readyz в 503 успел отработать до закрытия порта.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	defer stopDiag()
 
 	// Отдельный контекст слушателей. Носитель гасит оба слушателя по отмене СВОЕГО
 	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
@@ -356,17 +363,28 @@ func runServe(configPath string) error {
 			return superviseBackground(ctx, bg.name, bg.run, triggerShutdown, logger)
 		})
 	}
-	// Diagnostic HTTP-listener (когда поднят).
-	if diagTask != nil {
-		g.Go(func() error {
-			if derr := diagTask(); derr != nil {
-				logger.Error("diagnostic listener stopped", "err", derr)
-				triggerShutdown()
-				return fmt.Errorf("diagnostic listener: %w", derr)
-			}
-			return nil
-		})
+	// Привязка порта — ЗДЕСЬ, до постановки задачи: занятый адрес есть ошибка
+	// посадки, и узнать о ней надо до того, как процесс объявит себя поднявшимся.
+	// Прежде подъём целиком уезжал в задачу супервизора, и отказ привязки
+	// становился кодом возврата процесса, успевшего сколько угодно проработать.
+	//
+	// Ожидание ставится задачей ВСЕГДА, даже когда поверхность объявлена
+	// выключенной: тогда оно сразу возвращается, а причина уже названа в журнале.
+	// Условная постановка вернула бы то самое молчание, ради устранения которого
+	// выключение стало объявлением.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
 	}
+	g.Go(func() error {
+		if derr := waitDiag(); derr != nil {
+			logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
+			triggerShutdown()
+			return fmt.Errorf("диагностическая поверхность: %w", derr)
+		}
+		return nil
+	})
 	// ОБА gRPC-слушателя — носитель контура. Он поднимает их с одной цепочкой
 	// звеньев, прогоняет отказы старта, которым нужен служимый набор RPC, и
 	// обслуживает до отмены serveCtx. Исход внутреннего слушателя учитывается
@@ -401,7 +419,9 @@ func runServe(configPath string) error {
 			logger.Warn("operations workers did not finish in time",
 				"err", werr, "active", operations.Active())
 		}
-		diagShutdown(drainCtx)
+		// Гашение поверхности — последним действием остановки. Её возврата ждёт
+		// сам errgroup: профиль возвращается только после того, как порт освобождён.
+		stopDiag()
 		return nil
 	})
 

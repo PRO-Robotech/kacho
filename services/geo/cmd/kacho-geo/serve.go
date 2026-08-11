@@ -105,32 +105,45 @@ func runServe(cfg config.Config) error {
 	lroReconciler := startLRORecovery(ctx, pool, regionRepo, zoneRepo, metricsAdapter, logger)
 	go lroReconciler.Run(ctx)
 
-	// ── cluster-internal diagnostic-listener (/metrics). Пустой MetricsAddr явно
-	// отключает его (back-compat). Ошибка привязки порта видна синхронно здесь;
-	// сам Serve крутится на фоновой goroutine и гасится diagShutdown на ctx.Done().
+	// ── cluster-internal диагностическая поверхность (/metrics).
 	//
-	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
-	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
-	// дескриптор в свалку. Её берёт отдельный профиль той же функции — работа
-	// отдельной фазы, и до неё поверхность честно остаётся вне контура.
-	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsAddr, metricsAdapter, logger)
+	// Она входит в контур ОТДЕЛЬНЫМ ПРОФИЛЕМ той же функции (решение владельца
+	// XC-7, в-1): не gRPC, цепочка другая, и полями общего дескриптора её не
+	// втягивают — иначе дескриптор становится свалкой. Корень приносит сюда
+	// ОБЪЯВЛЕНИЕ, а подъём, самоотчёт и гашение принадлежат профилю.
+	diagDesc, err := describeDiagnosticSurface(cfg.MetricsAddr, metricsAdapter, desc.Spec().Mode, logger)
 	if err != nil {
-		return fmt.Errorf("diagnostic listener: %w", err)
+		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}
-	if diagTask != nil {
-		go func() {
-			if derr := diagTask(); derr != nil {
-				logger.Error("diagnostic listener stopped", "err", derr)
-			}
-		}()
+	// Собственный контекст поверхности: гасить её надо ПОСЛЕ того, как оба
+	// gRPC-слушателя погашены, а не одновременно с ними. Отмена корневого
+	// контекста уносила бы скрейп и пробы раньше, чем закончится остановка.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	// Привязка порта синхронна: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, derr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if derr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", derr)
 	}
-	defer func() { diagShutdown(context.Background()) }()
 
 	opHandler := handler.NewOperationHandler(opsRepo)
-	return servicehost.Serve(ctx, desc,
+	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, regionUC, zoneUC, opHandler) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, regionUC, zoneUC, opHandler) },
 	)
+
+	// Ожидание возврата профиля — не вежливость: он возвращается ТОЛЬКО после
+	// того, как порт освобождён, и без ожидания процесс завершался бы, оставляя
+	// это неизвестным.
+	stopDiag()
+	if derr := waitDiag(); derr != nil {
+		logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
+		if serveErr == nil {
+			serveErr = derr
+		}
+	}
+	return serveErr
 }
 
 // describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.

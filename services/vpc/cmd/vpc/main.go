@@ -416,12 +416,21 @@ func runServe(cfg config.Config) error {
 		health.WithResultObserver(metricsAdapter.SetDependencyUp),
 	)
 
-	// Diagnostic HTTP-listener (cluster-internal): /metrics + /healthz + /readyz.
-	// Пустой endpoint (metrics.enable=false) → не поднимается (back-compat).
-	diagTask, diagShutdown, err := startDiagnosticListener(cfg.MetricsEndpoint(), metricsAdapter, healthAgg, logger)
+	// Диагностическая поверхность (cluster-internal): /metrics + /healthz + /readyz.
+	//
+	// Входит в контур ОТДЕЛЬНЫМ ПРОФИЛЕМ той же функции (решение владельца XC-7,
+	// в-1): не gRPC, цепочка другая, полями общего дескриптора её не втягивают.
+	// Корень приносит ОБЪЯВЛЕНИЕ; подъём, самоотчёт и гашение принадлежат профилю.
+	diagDesc, err := describeDiagnosticSurface(cfg.MetricsEndpoint(), metricsAdapter, healthAgg,
+		desc.Spec().Mode, logger)
 	if err != nil {
-		return fmt.Errorf("start diagnostic listener: %w", err)
+		return fmt.Errorf("профиль диагностической поверхности: %w", err)
 	}
+	// Собственный контекст поверхности: она гасится ПОСЛЕДНЕЙ — после обоих
+	// gRPC-слушателей и после дренажа исполнителей операций, — чтобы переброс
+	// /readyz в 503 успел отработать до закрытия порта.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	defer stopDiag()
 
 	// Durable LRO recovery: доменный resolver + corelib-reconciler поверх schema
 	// kacho_vpc. RecoverAll прогоняется ДО приема трафика; периодический Run —
@@ -525,24 +534,37 @@ func runServe(cfg config.Config) error {
 				logger.Warn("operations workers did not finish in time",
 					"err", err, "active", operations.Active())
 			}
-			// Diagnostic-listener гасится последним (после дренажа LRO worker'ов),
-			// чтобы probe-flip /readyz→503 успел отработать до закрытия порта.
-			diagShutdown(drainCtx)
+			// Диагностическая поверхность гасится последней (после дренажа LRO
+			// worker'ов), чтобы переброс /readyz в 503 успел отработать до закрытия
+			// порта. Ждать её возврата здесь не нужно: он ждётся самим набором задач —
+			// профиль возвращается только после того, как порт освобождён.
+			stopDiag()
 			return nil
 		},
 	}
-	// Diagnostic HTTP-listener — отдельная task (когда поднят). Краш одного
-	// сервера триггерит graceful-stop всех через triggerShutdown/shutdownCh.
-	if diagTask != nil {
-		tasks = append(tasks, func() error {
-			if derr := diagTask(); derr != nil {
-				logger.Error("diagnostic listener stopped", "err", derr)
-				triggerShutdown()
-				return fmt.Errorf("diagnostic listener: %w", derr)
-			}
-			return nil
-		})
+	// Привязка порта — ЗДЕСЬ, до постановки задачи: занятый адрес есть ошибка
+	// посадки, и узнать о ней надо до того, как процесс объявит себя поднявшимся.
+	// Прежде подъём целиком уезжал в задачу супервизора, и отказ привязки
+	// становился кодом возврата процесса, успевшего сколько угодно проработать.
+	//
+	// Ожидание ставится задачей ВСЕГДА, даже когда поверхность объявлена
+	// выключенной: тогда оно сразу возвращается, а причина уже названа в журнале.
+	// Условная постановка вернула бы то самое молчание, ради устранения которого
+	// выключение стало объявлением. Крах поверхности триггерит graceful-stop всех
+	// через triggerShutdown/shutdownCh.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		stopDiag()
+		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
 	}
+	tasks = append(tasks, func() error {
+		if derr := waitDiag(); derr != nil {
+			logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
+			triggerShutdown()
+			return fmt.Errorf("диагностическая поверхность: %w", derr)
+		}
+		return nil
+	})
 
 	// ExecAbstract(taskCount, maxConcurrency, fn): запускает все задачи
 	// параллельно; собирает первую ошибку. maxConcurrency=len(tasks)-1 дает

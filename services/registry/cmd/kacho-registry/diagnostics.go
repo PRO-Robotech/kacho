@@ -16,13 +16,13 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/observability/metrics"
 )
@@ -46,31 +46,53 @@ func diagnosticMux(m *metrics.Metrics) *http.ServeMux {
 	return mux
 }
 
-// startDiagnosticListener поднимает diagnostic HTTP-listener. Пустой addr →
-// (nil, no-op): выключен. net.Listen синхронный — ошибка привязки видна
-// вызывающему сразу, а не «когда-нибудь в горутине».
-func startDiagnosticListener(addr string, m *metrics.Metrics, logger *slog.Logger) (
-	task func() error, shutdown func(context.Context), err error,
-) {
-	if addr == "" {
-		logger.Warn("kacho-registry diagnostic listener disabled: очередь регистраций " +
-			"останется без сканера состояния, застрявшая очередь будет молчать как пустая")
-		return nil, func(context.Context) {}, nil
+// Сроки диагностической поверхности. Названы константами, а не вписаны в
+// объявление: они одинаковы у всех диагностических поверхностей платформы, и
+// разъехавшиеся числа читались бы как осознанная разница.
+const (
+	diagReadHeaderBudget = 5 * time.Second
+	diagRequestBudget    = 30 * time.Second
+	diagIdleBudget       = 60 * time.Second
+	diagShutdownBudget   = 5 * time.Second
+)
+
+// describeDiagnosticSurface — ОБЪЯВЛЕНИЕ diagnostic-поверхности (/healthz,
+// /metrics).
+//
+// Сервера, привязки порта и гашения здесь нет: их держит профиль не-gRPC
+// поверхности (`pkg/servicehost.ServeSurface`). Прежнее предупреждение о том,
+// что выключенная поверхность оставляет очередь регистраций без сканера
+// состояния, никуда не делось — оно переехало в ПРИЧИНУ выключения, то есть
+// стало частью объявления, а не отдельной строкой рядом с ним.
+func describeDiagnosticSurface(endpoint string, m *metrics.Metrics, mode servicecontract.Mode,
+	logger *slog.Logger) (servicecontract.SurfaceDescriptor, error) {
+	addr := servicecontract.Value(endpoint)
+	if endpoint == "" {
+		addr = servicecontract.NotApplicable[string](
+			"KACHO_REGISTRY_METRICS_ADDR не задан профилем развёртывания. Цена названа здесь, " +
+				"а не в отдельном предупреждении: очередь регистраций останется без сканера " +
+				"состояния, и застрявшая очередь будет молчать так же, как пустая")
 	}
-	srv := &http.Server{Addr: addr, Handler: diagnosticMux(m), ReadHeaderTimeout: 5 * time.Second}
-	lis, lerr := net.Listen("tcp", addr)
-	if lerr != nil {
-		return nil, nil, lerr
-	}
-	logger.Info("kacho-registry diagnostic listener", "endpoint", addr, "paths", "/healthz,/metrics")
-	task = func() error {
-		if serr := srv.Serve(lis); serr != nil && serr != http.ErrServerClosed {
-			return serr
-		}
-		return nil
-	}
-	shutdown = func(sctx context.Context) { _ = srv.Shutdown(sctx) }
-	return task, shutdown, nil
+	return servicecontract.NewSurface(servicecontract.Surface{
+		Service: "kacho-registry",
+		Name:    "диагностика (/healthz, /metrics)",
+		Mode:    mode,
+		Logger:  logger,
+
+		Addr:    addr,
+		Handler: diagnosticMux(m),
+
+		Reach: servicecontract.ReachClusterInternal,
+		Auth: servicecontract.NotApplicable[servicecontract.SurfaceAuthMech](
+			"снята осознанно: поверхность выставлена только на внутренний Service. Именно " +
+				"поэтому она и отдельная — внутренняя кардинальность очередей на публичную " +
+				"gRPC-поверхность и на плоскость данных не выносится"),
+
+		ReadHeaderBudget: diagReadHeaderBudget,
+		RequestBudget:    servicecontract.Value(diagRequestBudget),
+		IdleBudget:       diagIdleBudget,
+		ShutdownBudget:   diagShutdownBudget,
+	})
 }
 
 // runRegisterOutboxMetrics — периодический скан очереди регистраций: глубина,
