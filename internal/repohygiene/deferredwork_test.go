@@ -123,6 +123,44 @@ func TestDeferralGateStaysSilentOnLawfulTree(t *testing.T) {
 	}
 }
 
+// TestEveryDeferralFormIsCaughtThroughTheSieve — КАЖДАЯ объявленная форма
+// доходит до решения, пройдя дешёвый отсев.
+//
+// Отсев по затравке существует ради времени: без него гейт стоил треть бюджета
+// пакета и ронял конвейер по таймауту. Но отсев — это место, где форма может
+// исчезнуть молча: образец её ловит, а до образца дело не доходит. Поэтому
+// каждая форма проверяется НА СКВОЗНОМ пути — тем же auditDeferredWork, что
+// работает по дереву, а не образцом в отрыве от сита.
+func TestEveryDeferralFormIsCaughtThroughTheSieve(t *testing.T) {
+	if len(deferralForms) == 0 {
+		t.Fatal("осмотрено: форм 0 — «все формы ловятся» здесь означало бы «форм нет»")
+	}
+	for _, f := range deferralForms {
+		t.Run(f.seed, func(t *testing.T) {
+			if !hasDeferralSeed(f.example) {
+				t.Fatalf("затравка %q не встречается в примере %q — отсев отсечёт эту форму "+
+					"ДО образца, и она перестанет ловиться, оставаясь на вид объявленной",
+					f.seed, f.example)
+			}
+			root := synthDeferralTree(t, map[string]string{
+				"services/x/internal/thing.go": "package thing\n\n" + f.example + "\nfunc F() {}\n",
+			})
+			findings, files, err := auditDeferredWork(root)
+			if err != nil {
+				t.Fatalf("обход синтетического дерева: %v", err)
+			}
+			if files == 0 {
+				t.Fatal("синтетическое дерево не прочитано")
+			}
+			if len(findings) != 1 {
+				t.Fatalf("форма %q на примере %q не поймана сквозным путём: %+v",
+					f.seed, f.example, findings)
+			}
+		})
+	}
+	t.Logf("осмотрено: форм %d, затравок %d", len(deferralForms), len(deferralSeeds))
+}
+
 // Русскоязычная форма ловится наравне с англоязычной.
 //
 // Корпус двуязычен, и запрет, знающий только TODO, обходится словом «потом» без

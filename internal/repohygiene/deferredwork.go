@@ -47,25 +47,101 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
-// deferralMarker — формы, которыми в этом дереве пишется «сделаю позже».
+// deferralForm — одна форма отсрочки: затравка для дешёвого отсева и точный
+// образец для решения.
+//
+// Затравка и образец лежат в ОДНОЙ записи намеренно. Отсев по подстроке
+// («есть ли в файле хоть одна затравка») экономит порядок величины — regexp с
+// альтернацией по всему дереву стоил 155 секунд из 438 у пакета, то есть треть
+// его бюджета и, в конечном счёте, таймаут конвейера. Но отсев, живущий
+// ОТДЕЛЬНЫМ списком, — второе место об одном предмете: добавят форму в образец,
+// забудут в затравки, и гейт молча перестанет её видеть. Здесь такое
+// расхождение невозможно by construction: и предикат, и отсев выводятся из
+// этого перечня.
+type deferralForm struct {
+	seed    string // подстрока, обязательно присутствующая в любом совпадении
+	pat     string // образец, решающий по существу
+	example string // строка, которую эта форма ОБЯЗАНА ловить (проверяется пробой)
+}
+
+// deferralForms — формы, которыми в этом дереве пишется «сделаю позже».
 //
 // Слова русского языка включены наравне с англоязычными: корпус двуязычен, и
 // запрет, ловящий только TODO, обходится словом «потом» без единой уловки.
-var deferralMarker = regexp.MustCompile(
-	// Отсрочка отличается от УПОМИНАНИЯ формой обращения: она адресует читателя
-	// кода и потому пишется как `TODO:` либо `TODO(тикет):`. Голое слово внутри
-	// предложения («`TODO.md` упразднён», «design §«Future TODO»», «никакого
-	// context.TODO()») — разговор О маркерах, а не обещание сделать.
-	//
-	// Различать обязательно: запрет, ловящий слово, заставляет переписывать
-	// собственную документацию о запрете — и первым делом снимают сам запрет.
-	`(?:^|[\s;{(])(?:TODO|FIXME|XXX|HACK)\s*(?:\([^)]*\))?\s*:` +
-		// Русские формы собираются из ЧАСТЕЙ, а не пишутся целиком: иначе строка
-		// определения совпадает сама с собой, и гейт объявляет находкой
-		// собственный исходник. Заводить ради этого исключение по пути было бы
-		// хуже — список прощённых есть место, куда отсрочку вносят незамеченной.
-		`|` + "позже " + `допил|` + "потом " + `додел|` + "пока " + `заглушк|` +
-		"временное " + `упрощени|` + "надо " + `допилить|` + "заглушка " + `на время`)
+//
+// Отсрочка отличается от УПОМИНАНИЯ формой обращения: она адресует читателя
+// кода и потому пишется как `TODO:` либо `TODO(тикет):`. Голое слово внутри
+// предложения («`TODO.md` упразднён», «design §«Future TODO»», «никакого
+// context.TODO()») — разговор О маркерах, а не обещание сделать.
+//
+// Различать обязательно: запрет, ловящий слово, заставляет переписывать
+// собственную документацию о запрете — и первым делом снимают сам запрет.
+//
+// Русские формы собираются из ЧАСТЕЙ, а не пишутся целиком: иначе строка
+// определения совпадает сама с собой, и гейт объявляет находкой собственный
+// исходник. Заводить ради этого исключение по пути было бы хуже — список
+// прощённых есть место, куда отсрочку вносят незамеченной.
+var deferralForms = []deferralForm{
+	// Примеры англоязычных форм собираются из частей ровно по той же причине, что
+	// и русские образцы: написанные целиком, они делают ЭТОТ файл нарушителем
+	// собственного запрета. Это не гипотеза — первая редакция перечня дала четыре
+	// находки, все в этих строках, и гейт был прав.
+	{seed: "TODO", pat: `(?m)(?:^|[\s;{(])TODO\s*(?:\([^)]*\))?\s*:`,
+		example: "\t// " + "TODO" + ": дочинить"},
+	{seed: "FIXME", pat: `(?m)(?:^|[\s;{(])FIXME\s*(?:\([^)]*\))?\s*:`,
+		example: "\t// " + "FIXME" + "(KAC-1): поправить"},
+	{seed: "XXX", pat: `(?m)(?:^|[\s;{(])XXX\s*(?:\([^)]*\))?\s*:`,
+		example: "\t// " + "XXX" + ": разобраться"},
+	{seed: "HACK", pat: `(?m)(?:^|[\s;{(])HACK\s*(?:\([^)]*\))?\s*:`,
+		example: "\t// " + "HACK" + ": обход"},
+	{seed: "позже", pat: "позже " + `допил`,
+		example: "\t// " + "позже " + "допилим" + " до конца"},
+	{seed: "потом", pat: "потом " + `додел`,
+		example: "\t// " + "потом " + "доделаем"},
+	{seed: "пока", pat: "пока " + `заглушк`,
+		example: "\t// " + "пока " + "заглушка"},
+	{seed: "временное", pat: "временное " + `упрощени`,
+		example: "\t// " + "временное " + "упрощение"},
+	{seed: "надо", pat: "надо " + `допилить`,
+		example: "\t// " + "надо " + "допилить"},
+	{seed: "заглушка", pat: "заглушка " + `на время`,
+		example: "\t// " + "заглушка " + "на время" + " релиза"},
+}
+
+// deferralMarker — объединение всех образцов; собирается из deferralForms,
+// поэтому форма, добавленная в перечень, не может остаться неучтённой.
+var deferralMarker = regexp.MustCompile(func() string {
+	pats := make([]string, 0, len(deferralForms))
+	for _, f := range deferralForms {
+		pats = append(pats, f.pat)
+	}
+	return strings.Join(pats, "|")
+}())
+
+// deferralSeeds — те же формы, что и выше, но затравками: файл, не содержащий
+// ни одной, разбору не подлежит.
+var deferralSeeds = func() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, f := range deferralForms {
+		if seen[f.seed] {
+			continue
+		}
+		seen[f.seed] = true
+		out = append(out, f.seed)
+	}
+	return out
+}()
+
+// hasDeferralSeed — дешёвый отсев перед разбором.
+func hasDeferralSeed(body string) bool {
+	for _, s := range deferralSeeds {
+		if strings.Contains(body, s) {
+			return true
+		}
+	}
+	return false
+}
 
 // contextTODO — `context.TODO()` из стандартной библиотеки: имя функции, а не
 // отсрочка. Вычитается отдельно, потому что синтаксически неотличим от формы
@@ -93,6 +169,50 @@ var deferralScanRoots = []string{"pkg", "services", "gateway", "internal", "depl
 type deferralFinding struct {
 	Where string
 	Line  string
+}
+
+// markedLine — строка тела, в которой сработал образец, вместе с её номером.
+type markedLine struct {
+	no   int
+	text string
+}
+
+// markedLines гонит образец по ВСЕМУ телу разом и возвращает только затронутые
+// строки.
+//
+// Прежняя редакция звала образец на каждой строке отдельно — то есть платила
+// накладными расходами вызова за каждую строку дерева. Один проход по телу
+// дешевле на порядок; номер строки восстанавливается по смещению совпадения,
+// поэтому координата в находке та же самая.
+func markedLines(body string) []markedLine {
+	locs := deferralMarker.FindAllStringIndex(body, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+	var (
+		out      []markedLine
+		lineNo   = 1
+		scanned  int
+		lastLine = -1
+	)
+	for _, loc := range locs {
+		lineNo += strings.Count(body[scanned:loc[0]], "\n")
+		scanned = loc[0]
+		if lineNo == lastLine {
+			continue // два совпадения в одной строке — одна находка
+		}
+		lastLine = lineNo
+
+		start := strings.LastIndexByte(body[:loc[0]], '\n') + 1
+		end := strings.IndexByte(body[loc[0]:], '\n')
+		if end < 0 {
+			end = len(body)
+		} else {
+			end += loc[0]
+		}
+		out = append(out, markedLine{no: lineNo, text: body[start:end]})
+	}
+	return out
 }
 
 // auditDeferredWork обходит дерево и ищет маркеры отложенной работы.
@@ -127,19 +247,22 @@ func auditDeferredWork(root string) (findings []deferralFinding, filesRead int, 
 			}
 			body := string(raw)
 			filesRead++
-			for i, line := range strings.Split(body, "\n") {
-				if !deferralMarker.MatchString(line) {
-					continue
-				}
+			// Отсев: файл без единой затравки разбору не подлежит. Подавляющее
+			// большинство дерева отсекается здесь, и именно поэтому гейт
+			// укладывается в бюджет пакета.
+			if !hasDeferralSeed(body) {
+				continue
+			}
+			for _, line := range markedLines(body) {
 				// Строка, где единственное совпадение — имя стандартной функции,
 				// отсрочкой не является.
-				if contextTODO.MatchString(line) &&
-					!deferralMarker.MatchString(contextTODO.ReplaceAllString(line, "")) {
+				if contextTODO.MatchString(line.text) &&
+					!deferralMarker.MatchString(contextTODO.ReplaceAllString(line.text, "")) {
 					continue
 				}
 				findings = append(findings, deferralFinding{
-					Where: fmt.Sprintf("%s:%d", slashed, i+1),
-					Line:  strings.TrimSpace(line),
+					Where: fmt.Sprintf("%s:%d", slashed, line.no),
+					Line:  strings.TrimSpace(line.text),
 				})
 			}
 		}
