@@ -58,11 +58,25 @@ func readRepoFile(t *testing.T, parts ...string) string {
 // values.fe3455-ory.yaml is deliberately absent — it is gitignored (Ory secrets)
 // and carries no gateway configuration.
 var deployableStacks = map[string][]string{
-	"dev":         {"values.dev.yaml"},
-	"dev-prod":    {"values.dev.yaml", "values.dev-prod.yaml"},
-	"prod":        {"values.prod.yaml"},
-	"fe3455":      {"values.prod.yaml", "values.fe3455.yaml", "values.fe3455-prod.yaml"},
-	"prorobotech": {"values.dev.yaml", "values.prorobotech.yaml"},
+	"dev":      {"values.dev.yaml"},
+	"dev-prod": {"values.dev.yaml", "values.dev-prod.yaml"},
+	"prod":     {"values.prod.yaml"},
+	"fe3455":   {"values.prod.yaml", "values.fe3455.yaml", "values.fe3455-prod.yaml"},
+	// Три слоя, а не два. Средний (`values.dev-prod.yaml`) несёт посадку, и
+	// шапка самой накладки объявляет его НЕ опциональным: она описывает только
+	// образы и наследует безопасность у слоя под собой.
+	//
+	// Пока его здесь не было, состав читался «объявлено dev» — и обе проверки
+	// транспорта административного перехода на этом стеке ПРОПУСКАЛИСЬ, потому
+	// что их условие звучит «стек объявил боевую посадку». Между «объявил dev» и
+	// «не объявил ничего» разница ровно та, из-за которой пропуск выглядел
+	// законным: накладка образов не объявляет посадку вовсе, а набор судил её
+	// так, будто она выбрала dev.
+	//
+	// Собранный по своей же документации, стек становится боевым и приходит под
+	// проверки — как и должен, потому что именно им поднимают продукт на
+	// управляемом кластере.
+	"prorobotech": {"values.dev.yaml", "values.dev-prod.yaml", "values.prorobotech.yaml"},
 }
 
 // introspectionAdminPath — the path the provider's admin API serves token
