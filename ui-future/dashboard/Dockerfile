@@ -2,7 +2,7 @@ FROM node:26-alpine AS build
 
 WORKDIR /app
 
-ARG KACHO_PUBLIC_BASE=/dashboard/
+ARG KACHO_PUBLIC_BASE=/dashboard-remote/
 ENV KACHO_PUBLIC_BASE=$KACHO_PUBLIC_BASE
 
 COPY dashboard/package*.json ./

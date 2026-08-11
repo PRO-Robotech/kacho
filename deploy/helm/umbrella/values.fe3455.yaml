@@ -221,4 +221,9 @@ ingress-nginx:
 # never navigated; password flow doesn't use the Hydra OAuth path).
 kratos-selfservice-ui:
   kratosSelfServiceUI:
-    kratosBrowserUrl: "http://kacho.in-cloud.io/.ory/kratos/public"
+    # Относительный, как и в остальных профилях: этот адрес исполняет браузер, а
+    # консоль проксирует Kratos через себя же (same-origin). Абсолютная форма
+    # здесь дополнительно фиксировала СХЕМУ `http://` — то есть при переводе
+    # площадки на https редиректы входа продолжали бы уводить на открытый канал,
+    # и заметить это можно было бы только по адресной строке.
+    kratosBrowserUrl: "/.ory/kratos/public"

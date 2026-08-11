@@ -1077,7 +1077,12 @@ kratos-selfservice-ui:
       # версий у Ory (v1.3.1 → v25.x → v26.x), а не двадцатью пятью мажорами
       # изменений. Проверено по каталогу тегов, а не по номеру.
       tag: "v26.2.0"
-    kratosBrowserUrl: "http://localhost:28080/.ory/kratos/public"
+    # Относительный: значение уходит в редиректы, которые исполняет БРАУЗЕР.
+    # Абсолютное `http://localhost:28080/...` работало ровно для того, кто открыл
+    # консоль по этому адресу; на её собственном хосте регистрация упиралась в
+    # `404 nginx`, потому что редирект уводил на хост без ingress. Разбор и
+    # проверка — в умолчании чарта (charts/kratos-selfservice-ui/values.yaml).
+    kratosBrowserUrl: "/.ory/kratos/public"
     kratosPublicUrl: "http://kacho-umbrella-kratos-public:80"
     hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"
     # Dev-only throwaway signing secret (kind stand). Prod sources it from an

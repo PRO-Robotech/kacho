@@ -53,5 +53,20 @@ kratosSelfServiceUI:
     seccompProfile:
       type: RuntimeDefault
   hydraAdminUrl: http://kacho-umbrella-hydra-admin:4445
-  kratosBrowserUrl: http://localhost:28080/.ory/kratos/public
+  # ОТНОСИТЕЛЬНЫЙ, а не абсолютный. Значение попадает в редиректы, которые видит
+  # БРАУЗЕР: с абсолютным адресом вход и регистрация уводят с того хоста, на
+  # котором открыта консоль, — то есть работают, только если её открыли ровно по
+  # этому адресу. Здесь стояло `http://localhost:28080/.ory/kratos/public`, и на
+  # хосте консоли `/registration` отвечал `303` на `localhost:28080`, где такого
+  # ingress нет: регистрация упиралась в `404 nginx`. Найдено проходом браузера
+  # 2026-08-11, воспроизведено одним curl с заголовком хоста.
+  #
+  # Относительная форма верна по построению: всё, с чем говорит консоль,
+  # проксируется ЧЕРЕЗ НЕЁ же, same-origin (`location /.ory/kratos/public/` в её
+  # nginx), и сам Kratos рядом сконфигурирован так же — `base_url:
+  # /.ory/kratos/public/`. Абсолютным этот адрес был единственным во всей связке.
+  #
+  # Проверено на стенде: с относительным значением `/registration` отвечает `303`
+  # на тот же хост, форма открывается, регистрация проходит до `/dashboard`.
+  kratosBrowserUrl: /.ory/kratos/public
   kratosPublicUrl: http://kacho-umbrella-kratos-public:80

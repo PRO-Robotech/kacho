@@ -94,3 +94,64 @@ func TestUIRemoteAssetPathsDoNotShadowConsoleRoutes(t *testing.T) {
 		}
 	}
 }
+
+// uiPublicBaseRe — базовый путь, с которым модуль СОБИРАЕТСЯ.
+var uiPublicBaseRe = regexp.MustCompile(`(?m)^ARG\s+KACHO_PUBLIC_BASE=(\S+)`)
+
+// TestUIRemoteBuildBaseMatchesItsServedPath — базовый путь сборки модуля совпадает
+// с путём, по которому его отдают.
+//
+// # Почему это ОТДЕЛЬНОЕ утверждение, а не часть предыдущего
+//
+// Адресов два, и живут они в разных файлах. Оболочка знает, откуда взять ВХОД
+// модуля (`ARG KACHO_*_REMOTE` в её Dockerfile). Сам модуль знает, откуда
+// браться его ЛЕНИВЫМ кускам, — и это зашито в ЕГО образ при сборке
+// (`ARG KACHO_PUBLIC_BASE`, попадает в `vite base`). Совпадать они обязаны, но
+// ничто их не связывает.
+//
+// Наблюдалось на стенде 2026-08-11, и обошлось дороже, чем выглядело: починив
+// первый адрес и не тронув второй, я получил маршрут, который открывается, и
+// модуль, чьи куски отдают 404 — то есть заменил один дефект другим. Кодами
+// ответа это не ловится: страница приходит 200, а недостающее видно только в
+// журнале браузера (`__federation_expose_*.js` → 404). Поймано проходом
+// headless-браузером, не проверкой HTTP.
+func TestUIRemoteBuildBaseMatchesItsServedPath(t *testing.T) {
+	root := repoRoot(t)
+	dirs, err := filepath.Glob(filepath.Join(root, "ui-future", "*", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("обход ui-future: %v", err)
+	}
+	if len(dirs) == 0 {
+		t.Fatal("модулей консоли с Dockerfile не найдено — предмет гейта исчез")
+	}
+
+	checked := 0
+	for _, df := range dirs {
+		name := filepath.Base(filepath.Dir(df))
+		// #nosec G304 -- путь получен обходом фиксированного каталога дерева.
+		raw, rerr := os.ReadFile(df)
+		if rerr != nil {
+			t.Fatalf("%s не читается: %v", df, rerr)
+		}
+		m := uiPublicBaseRe.FindStringSubmatch(string(raw))
+		if m == nil {
+			// Оболочка базового пути не несёт — она и есть корень.
+			continue
+		}
+		checked++
+		want := "/" + name + "-remote/"
+		if m[1] != want {
+			t.Errorf("модуль %s собирается с базовым путём %q, а отдаётся по %q — его ленивые "+
+				"куски будут запрашиваться по несуществующему адресу и отдадут 404. Страница при "+
+				"этом придёт 200: расхождение видно только в журнале браузера, поэтому проверкой "+
+				"кодов ответа оно не ловится",
+				name, m[1], want)
+		}
+	}
+
+	t.Logf("осмотрено: модулей с базовым путём — %d (из %d Dockerfile'ов; оболочка базы не несёт)",
+		checked, len(dirs))
+	if checked == 0 {
+		t.Fatal("ни один модуль не объявляет базовый путь — гейт молча проверяет пустоту")
+	}
+}
