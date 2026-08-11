@@ -131,7 +131,11 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 					TraceId:         intent.ResourceID,
 					Labels:          intent.Labels,
 					ParentProjectId: intent.ParentProjectID,
-					SourceVersion:   stepSourceVersion(intent.SourceVersion.Time, seq),
+					// Цепь идёт ОБОИМИ путями доставки — синхронным и очередным.
+					// Проведи её одним, и повтор из очереди затёр бы цепь пустой:
+					// доставки одного намерения обязаны нести одно содержание.
+					ParentChain:   intent.ParentChain,
+					SourceVersion: stepSourceVersion(intent.SourceVersion.Time, seq),
 				})
 				return err
 			}

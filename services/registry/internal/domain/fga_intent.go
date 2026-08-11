@@ -193,6 +193,14 @@ type RegisterIntent struct {
 	Labels map[string]string `json:"labels,omitempty"`
 	// ParentProjectID — owning-project (containment scope в iam-mirror).
 	ParentProjectID string `json:"parent_project_id,omitempty"`
+	// ParentChain — цепь предков от БЛИЖАЙШЕГО к дальнему, `"<type>:<id>"`.
+	//
+	// Заполняется там, где иерархия ГЛУБЖЕ проекта. У реестра это репозиторий:
+	// он лежит под реестром, а реестр — под проектом. Без цепи репозиторий
+	// регистрировался с одним лишь `ParentProjectID`, то есть как будто он
+	// подчинён проекту напрямую, и промежуточное звено — сам реестр — не
+	// существовало для области выдачи вовсе.
+	ParentChain []string `json:"parent_chain,omitempty"`
 	// SourceVersion — монотонный per-object маркер. На write-пути значение,
 	// сериализованное здесь, ПЕРЕЗАПИСЫВАЕТСЯ BEFORE-INSERT-триггером
 	// registry_outbox (clock_timestamp() внутри writer-tx, миграция 0011) — Go его не
@@ -391,9 +399,13 @@ func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) Regi
 		tuples = append(tuples, FGARepoOwnerTuple(registryID, repo, subject))
 	}
 	return RegisterIntent{
-		Kind:            RegisterIntentKindRepository,
-		ResourceID:      repoObjectID(registryID, repo),
-		Tuples:          tuples,
+		Kind:       RegisterIntentKindRepository,
+		ResourceID: repoObjectID(registryID, repo),
+		Tuples:     tuples,
+		// Цепь называет ПРОМЕЖУТОЧНОЕ звено, которого два прежних поля выразить
+		// не могли: репозиторий подчинён реестру, а реестр — проекту. Порядок от
+		// ближайшего предка к дальнему.
+		ParentChain:     []string{"registry_registry:" + registryID, "project:" + projectID},
 		ParentProjectID: projectID,
 	}
 }
