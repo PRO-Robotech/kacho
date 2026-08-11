@@ -9,6 +9,11 @@
 # Off by default; dev enables it (umbrella values.dev.yaml). NOTE: the Service
 # name must stay `kratos-selfservice-ui` — kacho-ui nginx proxies to it by name.
 kratosSelfServiceUI:
+  # Умолчание ресурсов. Живёт здесь, а не в шаблоне: зашитое в шаблон значение
+  # нельзя переопределить, и профиль, объявлявший потолок, до процесса не доезжал.
+  defaultResources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
   enabled: false
   image:
     repository: oryd/kratos-selfservice-ui-node
@@ -70,3 +75,9 @@ kratosSelfServiceUI:
   # на тот же хост, форма открывается, регистрация проходит до `/dashboard`.
   kratosBrowserUrl: /.ory/kratos/public
   kratosPublicUrl: http://kacho-umbrella-kratos-public:80
+# ─── Ресурсы контейнера ───────────────────────────────────────────────────────
+#
+# `resources` — ручка для профиля развёртывания. Пустое значение означает «взять
+# умолчание ниже», а не «без ограничений»: контейнер без запроса планируется
+# куда угодно и вытесняется первым.
+resources: {}

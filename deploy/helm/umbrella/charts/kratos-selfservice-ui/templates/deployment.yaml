@@ -107,9 +107,13 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          # Ресурсы — РУЧКА, а не константа. Зашитое значение нельзя было
+          # подогнать ни под какой кластер: профиль, объявлявший здесь потолок,
+          # до процесса не доезжал, и оператор читал строку как заявление о
+          # посадке, распоряжаясь тем, чего нет. Умолчание — прежние значения,
+          # поэтому существующие стенды не меняются.
           resources:
-            requests: { cpu: 100m, memory: 128Mi }
-            limits:   { cpu: 500m, memory: 512Mi }
+            {{- toYaml (.Values.resources | default .Values.kratosSelfServiceUI.defaultResources) | nindent 12 }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp

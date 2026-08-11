@@ -1,3 +1,38 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+# ═══════════════════════════════════════════════════════════════════════════
+# values.a8f60d.yaml — посадка на управляемый кластер a8f60d (Beget).
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Накладывается ТРЕТЬИМ, поверх values.dev.yaml + values.dev-prod.yaml:
+#
+#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
+#     -f helm/umbrella/values.dev.yaml \
+#     -f helm/umbrella/values.dev-prod.yaml \
+#     -f helm/umbrella/values.a8f60d.yaml
+#
+# Средний слой НЕ опционален: он и есть production-посадка. Этот файл объявляет
+# только то, чем ЭТОТ кластер отличается, и ничего о безопасности.
+#
+# ── Чем отличается кластер (померено, а не предположено) ────────────────────
+#
+#  1. cert-manager УЖЕ установлен оператором (ns beget-cert-manager) — свой не
+#     ставим. Корневой сертификат при этом рождается в пространстве ресурсов
+#     cert-manager, а поды монтируют его из СВОЕГО: секрет kacho-internal-ca-root
+#     копируется в ns kacho отдельным шагом.
+#  2. IngressClass в кластере НЕТ ни одного (есть GatewayClass envoy-gateway) —
+#     контроллер ingress-nginx поднимать бессмысленно, объекты Ingress инертны.
+#     Внешний доступ — Service типа LoadBalancer с аннотациями lb.beget.com/*.
+#  3. StorageClass НЕТ ни одного и CSI-драйвера хранения нет — постоянные тома
+#     невозможны by construction, все базы эфемерны. Отсюда же требование к
+#     первичной настройке Postgres: каждый запуск здесь ПЕРВИЧНЫЙ, и профиль,
+#     работавший на стенде с постоянным томом, тут ломается (см. values.dev-prod
+#     §«Почему на сокете и петле trust»).
+#  4. Узлов 4 по 1500m/3Gi, и 84%% процессора уже заняты компонентами самого
+#     кластера — потолки здесь ниже, чем на стенде разработчика. Это решение о
+#     РАЗМЕРЕ, а не о посадке: посадка остаётся production.
+#
+# Файл ПОРОЖДАЕТСЯ; правится порождающий скрипт, а не он.
 cert-manager:
   enabled: false
 mtls:
@@ -170,6 +205,33 @@ kratos:
 kratos-selfservice-ui:
   resources: *id002
 uif:
-  enabled: false
+  enabled: true
+  image: docker.io/prorobotech/kacho-ui-future-host:main-dc50f5b4582785470def2d8399febab8ec408d85
+  imagePullPolicy: IfNotPresent
+  resources: *id002
+  dashboard:
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  vpc:
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  compute:
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  storage:
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  nlb:
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  registry:
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  iam:
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
+  system:
+    image: docker.io/prorobotech/kacho-ui-future-system:main-dc50f5b4582785470def2d8399febab8ec408d85
+    resources: *id002
 minioDev:
   enabled: false
