@@ -4,7 +4,7 @@
         assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
-        reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
+        reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json fga-model-embed \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
@@ -1092,6 +1092,15 @@ openfga-model-json:
 	python3 scripts/gen-openfga-model-configmap.py \
 	  helm/umbrella/charts/openfga-bootstrap/templates/openfga-model-stub-configmap.yaml \
 	  $(OPENFGA_CANONICAL_FGA) $(OPENFGA_CLI_IMAGE)
+
+# Третья производная того же канонического текста: копия, вшиваемая в двоичный
+# файл iam, из которой реляционная форма вердикта выводит отношения (XC-12).
+# Держится тем же способом, что и настройка кластера, — порождением плюс гейтом
+# побайтового равенства (services/iam/internal/authzmodel/identity_test.go).
+FGA_MODEL_EMBED ?= ../services/iam/internal/authzmodel/fga_model.fga
+fga-model-embed:
+	@cp $(OPENFGA_CANONICAL_FGA) $(FGA_MODEL_EMBED)
+	@echo "fga-model-embed: $(FGA_MODEL_EMBED) обновлён из $(OPENFGA_CANONICAL_FGA)"
 
 # ─── KAC-127 Phase 10 — SPIRE / Cilium mesh / cosign ─────────────────────
 # Targets для bootstrap, dry-run проверки, и emergency operations.
