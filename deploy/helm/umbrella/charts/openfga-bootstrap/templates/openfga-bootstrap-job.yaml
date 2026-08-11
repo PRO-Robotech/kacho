@@ -174,8 +174,24 @@ spec:
               CURRENT_MODEL_ID=$(kubectl -n "${NAMESPACE}" get secret "${MODEL_SECRET_NAME}" \
                 -o jsonpath='{.data.current}' 2>/dev/null | base64 -d 2>/dev/null || true)
 
-              if [ "${CURRENT_DSL_SHA}" = "${DSL_SHA}" ] && [ -n "${CURRENT_MODEL_ID}" ]; then
-                echo "[bootstrap] DSL sha256 matches Secret annotation -> skip-write (current model_id=${CURRENT_MODEL_ID})"
+              # Пропуск законен ТОЛЬКО если названная модель ЕСТЬ в ЭТОМ хранилище.
+              #
+              # Прежде условие спрашивало лишь про совпадение хеша и непустоту
+              # записи в секрете — то есть про СВОЮ ПРЕЖНЮЮ ОТМЕТКУ, а не про
+              # предмет. На кластере без постоянных томов хранилище рождается
+              # заново при каждом перезапуске своей базы, а секрет переживает
+              # это, — и установка печатала «OK (no-op)» над хранилищем, где
+              # моделей ноль. Права после этого не разрешаются НИ У КОГО, при
+              # том что задание вышло успехом, а все поды готовы.
+              MODEL_PRESENT=""
+              if [ -n "${CURRENT_MODEL_ID}" ]; then
+                MODEL_PRESENT=$(curl -sf --max-time 10 \
+                  "${OPENFGA_URL}/stores/${STORE_ID}/authorization-models/${CURRENT_MODEL_ID}" \
+                  2>/dev/null | jq -r '.authorization_model.id // empty' || true)
+              fi
+
+              if [ "${CURRENT_DSL_SHA}" = "${DSL_SHA}" ] && [ -n "${CURRENT_MODEL_ID}" ] && [ -n "${MODEL_PRESENT}" ]; then
+                echo "[bootstrap] DSL sha256 matches И модель ${CURRENT_MODEL_ID} есть в хранилище ${STORE_ID} -> skip-write"
                 # Still ensure Secret has store_id reference for kacho-iam consumers (no-op if equal).
                 kubectl -n "${NAMESPACE}" annotate secret "${MODEL_SECRET_NAME}" \
                   "kacho-deploy/last-bootstrap-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -185,6 +201,9 @@ spec:
               fi
 
               # ─── Step D: write new authorization-model ──────────────────────────
+              if [ "${CURRENT_DSL_SHA}" = "${DSL_SHA}" ] && [ -n "${CURRENT_MODEL_ID}" ] && [ -z "${MODEL_PRESENT}" ]; then
+                echo "[bootstrap] отметка называет модель ${CURRENT_MODEL_ID}, которой в хранилище ${STORE_ID} НЕТ — пишем заново"
+              fi
               echo "[bootstrap] writing new authorization model (DSL changed or first install)..."
               MODEL_ID=$(curl -sf -XPOST "${OPENFGA_URL}/stores/${STORE_ID}/authorization-models" \
                 -H 'content-type: application/json' \
