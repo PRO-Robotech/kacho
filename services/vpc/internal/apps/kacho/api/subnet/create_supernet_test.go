@@ -51,9 +51,16 @@ func TestValidateSubnetWithinSupernet(t *testing.T) {
 			wantMsgSubstr: "subnet CIDR 10.99.0.0/24 is not within any network CIDR block",
 		},
 		{
-			name:  "empty supernet (legacy network) → skip, no error",
+			// Здесь стояло «empty supernet (legacy network) → skip, no error»: проба
+			// ЗАКРЕПЛЯЛА пропуск проверки. Поле супернета не обязательно на создании
+			// сети, поэтому пустой супернет — штатное состояние, и «пропуск» означал,
+			// что ограничение не действует на всём этом классе сетей. Контракт при
+			// этом заявлял вложенность безусловно: два места об одном предмете, из
+			// которых верно одно.
+			name:  "супернет не объявлен → отказ: нарезать не из чего",
 			netV4: nil, subV4: []string{"192.168.0.0/24"},
-			wantErr: false,
+			wantErr: true, wantInvalidArgErr: true,
+			wantMsgSubstr: "network declares no IPv4 supernet: add blocks via :add-cidr-blocks (ipv4CidrBlocks) before creating an IPv4 subnet",
 		},
 		{
 			name:  "v6 within supernet → ok",
