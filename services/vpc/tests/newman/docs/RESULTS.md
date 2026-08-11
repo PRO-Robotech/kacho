@@ -261,4 +261,4 @@ cluster-internal mux, возвращают ресурсы напрямую (не
 ## Findings
 
 Найденные баги / расхождения — заводятся в issue-трекер репозитория; намеренные
-особенности контракта — `docs/architecture/07-known-divergences.md`.
+особенности контракта — `docs/engineering/architecture/07-known-divergences.md`.
