@@ -48,8 +48,10 @@ docker:
 	docker build -f Dockerfile -t $(IMAGE) .
 
 # proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
-# Доменный proto geo генерируется этими тремя плагинами; permission-catalog для geo —
-# hand-written (internal/check/permission_map.go), buf-catalog-плагин не нужен.
+# Доменный proto geo генерируется этими тремя плагинами; buf-catalog-плагин не нужен —
+# отношения geo объявлены аннотациями в самом proto (`permission` / `required_relation`
+# в internal_catalog_service.proto), рукописной карты RPC→объект у сервиса нет: здесь
+# стоял путь в `internal/check`, каталога с таким именем у geo ноль файлов.
 proto-install-plugins:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc

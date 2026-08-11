@@ -16,12 +16,36 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 
 - В модели OpenFGA (kacho-iam) **нет типов `region`/`zone`** — есть `type cluster`
   с синглтоном `cluster:cluster_kacho_root`.
-- `internal/check/permission_map.go` мапит каждый RPC Region/Zone на объект
-  `cluster:cluster_kacho_root`: публичное чтение → relation `viewer`, admin-CRUD →
-  `system_admin`. Это в точности совпадает с аннотациями proto.
-- Публичное чтение разрешается через `user:*` (любой аутентифицированный) и прямой
-  `service_account`; admin-CRUD — через тапл `cluster:cluster_kacho_root#system_admin`,
-  который сидит bootstrap kacho-iam.
+- **Отношение объявляется в proto и больше нигде.** Каждый admin-RPC несёт
+  `required_relation = "system_admin"` рядом со своим `permission`
+  (`proto/kacho/cloud/geo/v1/internal_catalog_service.proto`); тапл
+  `cluster:cluster_kacho_root#system_admin` сидит bootstrap kacho-iam. Своей рукописной
+  карты RPC→объект у geo нет: контур решения о доступе собирает носитель
+  (`pkg/servicehost`) по дескриптору (`pkg/servicecontract`), который geo заполняет в
+  `services/geo/cmd/kacho-geo/serve.go` (`Authz: servicecontract.AuthzViaIAM`).
+- **Четыре публичных чтения гейтом прав НЕ закрыты, и это решение, а не пробел.**
+  `RegionService.Get/List` и `ZoneService.Get/List` несут в proto
+  `permission = "<exempt>"`: с них снята проверка области по проекту, аутентификация
+  остаётся обязательной. Что именно снято, что нет и почему — на странице сайта
+  «Архитектура» (`docs/content/architecture/overview.mdx`, раздел о публичных чтениях);
+  здесь это не пересказывается.
+
+> [!note] Здесь стояла рукописная карта прав, которой у geo нет — исправлено по дереву
+> Прежняя редакция называла файл карты RPC→объект в `internal/check` и утверждала, что
+> публичное чтение гейтится отношением `viewer` на кластерном синглтоне, «в точности
+> совпадая с аннотациями proto». Оба утверждения ложны и расходились с деревом в разные
+> стороны: каталога `internal/check` у geo **ноль** файлов (предикат:
+> `git ls-files services/geo/internal/check | wc -l`; у compute, iam, nlb, registry, vpc
+> он есть — отсюда и списанный «по аналогии» абзац), а четыре публичных read-RPC
+> объявлены `<exempt>`, то есть per-RPC Check по ним не задаётся вовсе — предикат:
+> `grep -c '"<exempt>"' proto/kacho/cloud/geo/v1/{region,zone}_service.proto` → `2` и `2`.
+>
+> Почему это стоило исправить, а не удалить: отношение `viewer` на кластерном синглтоне
+> **выполнимо подстановочным таплом** (`user:*`), поэтому документ описывал проверку,
+> которая ответила бы «да» каждому аутентифицированному, — и читался как доказательство,
+> что гейт есть. Действительность защитимее написанного: снятие объявлено в proto одним
+> токеном, который видно в дифе, а не спрятано в отношении, чью выполнимость надо знать
+> отдельно.
 
 **Следствие:** geo **намеренно НЕ участвует** в потоке owner-таплов
 (`RegisterResource`/`UnregisterResource`), которым vpc/compute регистрируют свои
