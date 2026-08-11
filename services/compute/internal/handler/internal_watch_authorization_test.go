@@ -363,7 +363,7 @@ func TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows(t *testing.T
 // were never entitled to see individually. That is an existence oracle and a widening
 // of access, and it is a product decision about deletion-event visibility, not a
 // detail of this fix. Guessing it would be worse than naming it. Recorded as item 14 of
-// docs/architecture/07-known-divergences.md.
+// docs/engineering/architecture/07-known-divergences.md.
 //
 // Delivering the row unconditionally is NOT an option: that is the leak this whole
 // file exists to close.

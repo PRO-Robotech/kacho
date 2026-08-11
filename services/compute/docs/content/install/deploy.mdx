@@ -23,7 +23,7 @@ kacho-compute — gRPC-сервис на Go с хранилищем PostgreSQL. 
 | kacho-iam | authz-Check, `ProjectService.Get`, регистрация owner-tuple |
 | kacho-geo | валидация `zoneId` (`ZoneService.Get`) |
 | kacho-vpc | валидация NIC-spec (при работе с сетевыми интерфейсами) |
-| kacho-api-gateway | REST-проекция и маршрутизация операций (для tenant-клиентов) |
+| api-gateway | REST-проекция и маршрутизация операций (для tenant-клиентов) |
 
 Peer-валидацию можно отключить в изолированных сценариях (`KACHO_COMPUTE_SKIP_PEER_VALIDATION=true`)
 — тогда existence-check project/zone/vpc становится no-op (для unit/newman без поднятых peer'ов).
@@ -51,14 +51,19 @@ Peer-валидацию можно отключить в изолированн�
 | Порт | Listener | Назначение |
 |---|---|---|
 | `:9090` (env `KACHO_COMPUTE_GRPC_PORT`) | public gRPC | Tenant-API (Instance / MachineType) |
-| `:9091` (env `KACHO_COMPUTE_INTERNAL_PORT`) | internal gRPC | `InternalWatchService` (mTLS) |
+| `:9091` (env `KACHO_COMPUTE_INTERNAL_PORT`) | internal gRPC | `InternalWatchService`, `InternalMachineTypeService` (mTLS) |
 | metrics (env `KACHO_COMPUTE_METRICS_ADDR`) | HTTP | Prometheus-метрики, health-пробы |
 
 ## Миграции
 
 Схема версионируется goose (встроена в бинарь через embed.FS). При старте сервиса миграции
-применяются к базе `kacho_compute`; `0001_initial.sql` — squashed baseline (все таблицы, FK,
-индексы, seed `disk_types`). Применённые миграции не редактируются — только новые.
+применяются к базе `kacho_compute`; `0001_initial.sql` — squashed baseline. Применённые
+миграции **не редактируются** — только новые, поэтому в истории рядом стоят и создание
+таблицы, и её удаление: `0001` заводил в том числе таблицы блочного хранения и оси
+размещения с их посевом, а `0011`, `0013`, `0021`, `0022` их сняли, когда владельцами стали
+kacho-geo и kacho-storage. Каждое удаление проходит через манифест
+(`internal/migrations/dropguard.json`), который называет таблицу, причину и ожидаемое число
+строк: удаление, не совпавшее с заявленным, не проходит.
 
 :::caution Проверяйте наличие объектов, а не только версию
 При renumbering/hard-cut схемы `goose_db_version` может числить миграцию применённой, хотя
@@ -90,5 +95,5 @@ Helm-чарт документации — в `docs/deploy/` (`compute-docs`).
   `}
 </CodeBlock>
 
-Ответ со списком типов дисков подтверждает, что сервис поднят, база доступна и authz-цепочка
+Ответ со списком типов машин подтверждает, что сервис поднят, база доступна и authz-цепочка
 работает.

@@ -19,7 +19,7 @@ import dedent from 'ts-dedent'
 раздела (см. [Instance](/api/instance), [MachineType](/api/machine-type)).
 
 :::info Единый контракт — gRPC, REST — проекция
-Источник истины — Protocol Buffers в `kacho-proto`. REST-поверхность строится через
+Источник истины — Protocol Buffers в каталоге `proto/`. REST-поверхность строится через
 **grpc-gateway**: каждый RPC аннотирован `google.api.http`. Семантика (коды ошибок, валидация,
 async) одинакова для gRPC и REST; примеры ниже — в REST-форме (через `api-gateway`).
 :::
@@ -278,24 +278,29 @@ URL-кодировать.
 
 ## Формат идентификаторов
 
-Идентификатор ресурса — `TEXT`: **3-символьный префикс** + **17-символьный crockford-base32**
-(итого 20 символов), генерируется сервером (output-only). Префикс кодирует домен ресурса; по
-префиксу **id операции** api-gateway маршрутизирует `OperationService.Get(id)` в нужный
+Идентификатор ресурса — `TEXT`, генерируется сервером (output-only) и **неизменяем на всю
+жизнь ресурса**: операции смены id не существует. Ресурсы compute адресуются **дефисной**
+формой — префикс, дефис и 17 символов crockford-base32. Id операции сохраняет **слитную**
+форму: по его первым трём символам край маршрутизирует `OperationService.Get(id)` в нужный
 backend.
 
 <table>
   <thead><tr><th>Префикс</th><th>Ресурс</th><th>Пример</th></tr></thead>
   <tbody>
-    <tr><td><code>epd</code></td><td>Instance (legacy-форма)</td><td><code>epd0am5d8q1w4e7r2t6y</code></td></tr>
-    <tr><td><code>epd</code></td><td>Operation (Compute)</td><td><code>epdk3xe746h019hnz182</code></td></tr>
-    <tr><td><code>prj</code></td><td>Project (домен kacho-iam; ссылка)</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
+    <tr><td><code>ins-</code></td><td>Instance</td><td><code>ins-7t4w9e2x5h8mz0c3v</code></td></tr>
+    <tr><td><code>mt-</code></td><td>MachineType</td><td><code>mt-k3xe746h019hnz182</code></td></tr>
+    <tr><td><code>epd</code></td><td>Operation (Compute), слитно</td><td><code>epdk3xe746h019hnz182</code></td></tr>
+    <tr><td><code>prj</code></td><td>Project (домен kacho-iam; ссылка), слитно</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
   </tbody>
 </table>
 
-:::note Валидация id
-Формат id не валидируется синхронно на входе RPC (proto ограничивает только max-длину). Диск
-и инстанс делят префикс `epd`, образ и снимок — `fd8`: тип различается контекстом RPC.
-Well-formed, но несуществующий id → `NOT_FOUND` (ловится на DB-уровне).
+:::note Обе формы валидны одновременно, и это не двусмысленность
+Крокфордово тело дефиса не содержит, поэтому дефис — **однозначный** дискриминатор: старая
+слитная форма и новая дефисная различаются по построению, а не по договорённости.
+
+Формат own-owned id проверяется **синхронно, первым стейтментом RPC**: malformed →
+`INVALID_ARGUMENT "invalid <res> id '<X>'"`, well-formed, но несуществующий → `NOT_FOUND`.
+Разница смысловая: первый ввод валидным не станет никогда, второй мог бы существовать.
 :::
 
 <Restrictions items={[{ label: 'resourceId', rules: RESTRICTIONS.resourceId }]} />
@@ -330,9 +335,9 @@ Kachō. БД хранит микросекунды, но клиент видит
     <tr><td><strong>DetachDisk</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:detachDisk</code></td><td>async</td></tr>
     <tr><td><strong>AttachNetworkInterface</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:attachNetworkInterface</code></td><td>async</td></tr>
     <tr><td><strong>DetachNetworkInterface</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:detachNetworkInterface</code></td><td>async</td></tr>
-    <tr><td><strong>AddOneToOneNat</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;/addOneToOneNat</code></td><td>async</td></tr>
-    <tr><td><strong>RemoveOneToOneNat</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;/removeOneToOneNat</code></td><td>async</td></tr>
-    <tr><td><strong>UpdateNetworkInterface</strong></td><td><code>PATCH /compute/v1/instances/&#123;id&#125;/updateNetworkInterface</code></td><td>async</td></tr>
+    <tr><td><strong>AddOneToOneNat</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;/addOneToOneNat</code></td><td><strong>501 UNIMPLEMENTED</strong> (см. «Сетевые интерфейсы и NAT»)</td></tr>
+    <tr><td><strong>RemoveOneToOneNat</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;/removeOneToOneNat</code></td><td><strong>501 UNIMPLEMENTED</strong> (см. «Сетевые интерфейсы и NAT»)</td></tr>
+    <tr><td><strong>UpdateNetworkInterface</strong></td><td><code>PATCH /compute/v1/instances/&#123;id&#125;/updateNetworkInterface</code></td><td><strong>501 UNIMPLEMENTED</strong> (см. «Сетевые интерфейсы и NAT»)</td></tr>
     <tr><td><code>ListOperations</code></td><td><code>GET /compute/v1/instances/&#123;id&#125;/operations</code></td><td>sync</td></tr>
   </tbody>
 </table>

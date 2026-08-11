@@ -24,12 +24,12 @@ import (
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
 //
-// Unimplemented RPC (наследуются из UnimplementedInstanceServiceServer →
-// codes.Unimplemented):
-// UpdateNetworkInterface/AddOneToOneNat/RemoveOneToOneNat (NIC first-class в kacho-vpc —
-// адресация/NAT редактируются через vpc NetworkInterface, не через Instance),
-// Relocate (blocked: cross-zone disk move), ListAccessBindings/SetAccessBindings/
-// UpdateAccessBindings (AAA-скелет). См. docs/architecture/07-known-divergences.md.
+// Семь RPC объявлены контрактом и НЕ несут реализации; каждый переопределён в
+// хвосте файла и отвечает `UNIMPLEMENTED` с названной причиной и адресом
+// владельца возможности. Прежде они наследовались от заглушки, то есть
+// вызывающий получал `method X not implemented`: страница документации причину
+// называла, а клиент API не узнавал её никогда — а он и есть тот, кто
+// сталкивается с ограничением. Разбор — docs/engineering/architecture/07-known-divergences.md.
 // AttachNetworkInterface/DetachNetworkInterface — реализованы (S4, NIC-attach saga →
 // kacho-vpc InternalNetworkInterfaceService).
 type InstanceHandler struct {
@@ -115,7 +115,7 @@ func (h *InstanceHandler) Create(ctx context.Context, req *computev1.CreateInsta
 // раньше они принимались и молча выбрасывались, то есть вызывающий получал успех
 // и был уверен, что параметр применён. Решение и разбор по каждому полю (включая
 // то, почему они оставлены в контракте, а не сняты) —
-// `docs/architecture/07-known-divergences.md`, раздел 7.1.
+// `docs/engineering/architecture/07-known-divergences.md`, раздел 7.1.
 //
 // Форма отказа: код INVALID_ARGUMENT, сообщение обобщённое, имена полей — в
 // google.rpc.BadRequest.field_violations (машиночитаемо; текст сообщения — часть

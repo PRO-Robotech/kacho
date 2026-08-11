@@ -11,86 +11,44 @@
 критерия закрытия, потому что закрывать нечего.
 
 **Сюда НЕ пишем** то, что просто корректно реализует контракт — это спека
-(см. `00-overview.md`, `01-resources.md`, `04-api-surface.md`). Например:
-Compute-ресурсы project-scoped; `metadata` омитится из `Instance` в `List`;
-Disk size max в Update меньше, чем в Create — всё это **и есть** контракт,
-отступления тут нет.
+(страницы сайта в `../../content/`, состав ресурса — `01-resources.md`). Например:
+Compute-ресурсы project-scoped; `metadata` омитится из `Instance` в `List` — всё
+это **и есть** контракт, отступления тут нет.
 
-Баги / подтверждённые отступления, которые решили выровнять — GitHub Issues
-(`PRO-Robotech/kacho-compute` / `kacho-api-gateway`), см. `06-conventions.md`
-→ «Где фиксировать находки» и workspace `CLAUDE.md` §14.4.
+Баги / подтверждённые отступления, которые решили выровнять — GitHub Issues в
+`PRO-Robotech/kacho` (общее / кросс-репо — `PRO-Robotech/kacho-workspace`).
+Регламент — правило документооборота воркспейса.
 
 ---
 
-## 1. Malformed / wrong-prefix resource id → `NotFound` вместо `InvalidArgument`
+> [!note] §1–§4 сняты: у трёх из них не осталось предмета, а четвёртый закрыт кодом
+>
+> **§1 (формат id → `NotFound` вместо `InvalidArgument`)** — **закрыт**. Формат
+> own-owned id проверяется синхронно, первым стейтментом: `corevalidate.ResourceID`
+> в `Get`/`Update`/`Delete` обоих ресурсов (`internal/apps/kacho/api/instance/instance.go`,
+> `internal/apps/kacho/api/machinetype/machine_type.go`), malformed → `InvalidArgument
+> "invalid <res> id '<X>'"`, well-formed-но-отсутствующий → `NotFound` через `repo.Get`.
+> Запись сохранялась после закрытия и читалась как действующее расхождение.
+>
+> **§2 (валидация имени)** был снят раньше: его единственным содержанием была
+> несверенность с чужим API, то есть предмета у записи не было. Собственный контракт
+> имени задан proto-pattern'ом и `corevalidate.NameCompute`.
+>
+> **§3 (тексты предусловий «ещё не закреплены»)** — **предмета нет**. Тексты
+> закреплены на трёх уровнях: в прод-коде (`instance.go`, `instance_nic.go`,
+> `instance_repo.go`), в go-тестах (`instance_test.go`, `instance_nic_test.go`) и в
+> newman-кейсах, ассертящих точный текст (`instance-nic-attach.py`,
+> `instance-redesign.py`). Перечисленные в прежней редакции формулировки были
+> **догадками** и половина из них с кодом не совпадала — то есть запись не просто
+> устарела, она вводила в заблуждение о самом контракте. Действующие тексты —
+> в таблице на странице жизненного цикла.
+>
+> **§4 (тексты ограничений размера тома)** — предмета нет: блочное хранение
+> принадлежит `services/storage/`, у compute нет ни ресурса, ни этих полей.
+>
+> Номера не переиспользуются: на них ссылаются другие документы и код.
 
-Конвенция Kachō (`api-conventions.md`) требует: malformed own-owned id →
-**первым стейтментом RPC** sync `InvalidArgument "invalid <res> id '<X>'"`
-(`corevalidate.ResourceID`); well-formed-но-отсутствующий → `NotFound`.
-
-Здесь первая половина не выполнена. Proto-поля `*_id` помечены только
-`(length) = "<=50"` — это max-длина, не format-regex, а на входе RPC синтаксис id
-**не валидируется** (нет prefix-check, нет base32-check) — идём в `repo.Get` → если
-строки нет, получаем sentinel `ErrNotFound` → `NOT_FOUND "<Resource> <id> not found"`.
-Следствие для вызывающего: явный мусор получает тон **отсутствия ресурса** вместо
-терминального отказа по формату.
-
-Выравнивание затрагивает ~все RPC, берущие resource-id, + newman-кейсы,
-ассертящие «garbage id → InvalidArgument». **Что нужно для закрытия:** добавить
-`corevalidate.ResourceID` первым стейтментом каждого handler'а (или общий
-decorator) → завести GitHub Issue `PRO-Robotech/kacho-compute`, мигрировать
-newman-кейсы. Низкоприоритетно (реальные клиенты в это редко упираются).
-
-> §2 (name-validation) снят: единственным его содержанием была несверенность с
-> чужим API, то есть предмета у записи не было. Собственный контракт имени
-> зафиксирован proto-pattern'ом и `corevalidate.NameCompute` — см.
-> `06-conventions.md`. Номер не переиспользуется: на §-номера ссылаются другие
-> документы.
-
-## 3. Instance precondition error texts ещё не закреплены как контракт
-
-State-машина (см. `03-instance-lifecycle.md`) определена корректно по семантике,
-но **тексты** `FailedPrecondition`-ошибок при нарушении precondition пока
-placeholder'ы. По конвенции Kachō тон сообщений — часть контракта (стабильный,
-меняется только осознанно), поэтому незакреплённая формулировка — отступление.
-Текущие формулировки (могут ещё измениться):
-- `Start` при не-`STOPPED` → ожидаем `"Instance is not stopped"` / `"Cannot
-  start instance in state <X>"`;
-- `Stop` при не-`RUNNING` → `"Instance is not running"` / `"Cannot stop instance
-  in state <X>"`;
-- `Restart` при не-`RUNNING` → `"Instance is not running"`;
-- `Update` resources_spec/platform_id при не-`STOPPED` → `"Instance must be
-  stopped"`;
-- `AttachDisk`/`DetachDisk`/`AddNat`/`RemoveNat` при не-`{RUNNING,STOPPED}` →
-  precondition-текст probe;
-- `AttachNetworkInterface`/`DetachNetworkInterface` при не-`STOPPED` →
-  proto-комментарий говорит «must have STOPPED status» — текст ошибки probe;
-- `DetachDisk` boot disk → `"Boot disk cannot be detached"` / similar;
-- `AttachDisk` disk не READY / wrong zone / уже attached → `"The disk is being
-  used"` / `"Disk and instance must be in the same zone"` — probe.
-
-**Что нужно для закрытия:** пройти каждый precondition (намеренно нарушить,
-записать текст+код), зафиксировать формулировки в контракте — регламент
-`tests/newman/docs/PRODUCT-REQUIREMENTS.md` + newman-ассерты на точный текст.
-До закрепления — фиксируется здесь.
-
-## 4. Disk size «only increase» / `Image.min_disk_size` constraint texts ещё не закреплены
-
-- `Disk.Update` с уменьшением `size` → ожидаем `InvalidArgument "Disk size can
-  only be increased"` (точная формулировка ещё не закреплена).
-- `Disk.Create` с `image_id`, где `size < image.min_disk_size` → ожидаем
-  `InvalidArgument "Disk size <X> is less than minimum disk size <Y> for image
-  <id>"` (текст probe).
-- `Disk.Create` с `snapshot_id`, где `size < snapshot.disk_size` → аналогично
-  (текст probe).
-- `block_size` whitelist — точный допустимый set (4096, 8192, ...) probe;
-  невалидный → `InvalidArgument` (текст probe).
-
-**Что нужно для закрытия:** закрепить тексты в регламенте
-`tests/newman/docs/PRODUCT-REQUIREMENTS.md` и в newman-ассертах на точный текст;
-несоответствие кода закреплённому тексту — Issue.
-
-## 5. Control-plane simulation — Instance/Disk lifecycle мгновенный, данных нет
+## 5. Control-plane simulation — жизненный цикл Instance мгновенный, данных нет
 
 Самое крупное by-design расхождение. Kachō — control plane only:
 - **Instance status transitions мгновенны** — нет реального гипервизора → переходы
@@ -101,27 +59,27 @@ placeholder'ы. По конвенции Kachō тон сообщений — ч�
 - **`GetSerialPortOutput` — синтетический текст** (стабильный per-instance
   плейсхолдер вида `[ OK ] Reached target Multi-User System.`), не реальный
   console-вывод.
-- **`Image.Create` через `uri`-source — мгновенный «download»** (control-plane
-  заглушка), статус сразу `READY`, `storage_size` синтетический: реального
-  скачивания из объектного хранилища нет, промежуточного `CREATING` не бывает.
-- **disk data не существует** — Disk/Snapshot/Image — только метаданные. Snapshot
-  «делается» мгновенно из Disk `READY`.
 - **`SimulateMaintenanceEvent` — no-op** (operation сразу `done`, Instance не
-  переселяется по `maintenance_policy`).
-- **`reserved_instance_pool_id` / `host_group_id` / `host_id` / `gpu_cluster_id`
-  / `placement_policy.placement_group_id`** — хранятся как переданные значения,
-  но реальных ReservedInstancePool / HostGroup / Host / GpuCluster / PlacementGroup
-  нет (proto vendored, реализация отложена) → existence-check этих ссылок **не
-  делается** (в отличие от subnet/SG/address, которые валидируются через vpcClient).
-- При краше pod'а compute операция остаётся `done=false` навсегда (общее
-  ограничение `operations.Run` без heartbeat/cleanup; `operations.Wait(30s)` на
-  graceful shutdown спасает только от in-flight worker'ов при штатном завершении).
+  переселяется).
+- **`placement_group_id`** — opaque passthrough-слаг: формат проверяется, а
+  существование группы размещения **не** проверяется, потому что домена
+  PlacementGroup нет.
 
-**Это не «фиксится»** — это архитектурное решение Kachō (control plane only,
-весь проект). Если когда-нибудь появится data-plane проект — он отдельный (как
-`kacho-vpc-implement` для VPC).
+> Здесь перечислялись ещё мгновенное «скачивание» образа, отсутствие данных диска
+> и четыре ссылки на несуществующие домены хостов и пулов. У первых двух владелец
+> другой (`services/storage/`), а поля хостов и пулов сняты с контракта
+> редизайном — они объявлены `reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`,
+> то есть их нельзя ни принять, ни проигнорировать.
 
-## 6. DiskType / Region / Zone admin CRUD через `Internal*` сервисы — kacho-only расширение
+Отдельно: при краше процесса операция удаления больше **не** остаётся незавершённой
+навсегда — её доводит добиватель (`FinishStuckDeletes`, `cmd/compute/stuck_delete_finisher.go`).
+Прежняя редакция называла это общим неустранимым ограничением; для удаления оно
+устранено, и запись пережила свой предмет.
+
+**Сама имитация не «фиксится»** — это архитектурное решение Kachō (control plane
+only, весь проект). Появится data-plane — он будет отдельным проектом.
+
+## 6. Admin-CRUD каталога типов машин — через `Internal*` сервис, kacho-only расширение
 
 Публичная поверхность справочника compute — только чтение: `MachineTypeService.{Get,List}`
 (статический discovery, без Create/Update/Delete). Сеять справочник всё равно кому-то
@@ -139,78 +97,101 @@ cluster-internal порту `:9091`, проброшенном через api-gat
 
 Это **сознательное решение** (admin-функция не расширяет публичный сервис
 ресурса — иначе она засветилась бы на external endpoint). На external TLS
-endpoint эти POST/PATCH/DELETE paths
-**не должны** быть доступны (workspace `CLAUDE.md` §запрет 6) — публичными
-остаются только Get/List у `DiskTypeService` / `RegionService` / `ZoneService`.
+endpoint эти POST/PATCH/DELETE paths **не должны** быть доступны (правило
+безопасности воркспейса, раздел про internal-vs-external) — публичным остаётся
+только `MachineTypeService.{Get,List}`.
 
-### 6.1. Geography (Region/Zone) — owner kacho-compute (эпик KAC-15)
+### 6.1. Geography — владелец kacho-geo, у compute это чужой домен
 
-Раньше зоны проксировались из kacho-vpc `InternalZoneService` («зону бери из VPC
-модуля»). С эпика **`KAC-15`** Geography (Region/Zone) **полностью переехала в
-kacho-compute** — это **намеренное решение** (не баг): компьют — owner, у него
-свои таблицы `regions`/`zones` (миграция `0003_geography_owner.sql`, seed
-`ru-central1` + `ru-central1-{a,b,d}` здесь), `RegionService`/`ZoneService` читают
-из них; **нет** ни proxy в kacho-vpc, ни `skipPeer`-fallback-таблицы. `disk_types.
-zone_ids`, `Disk.zone_id`, `Instance.zone_id` валидируются локально. Другие
-сервисы (kacho-vpc — `Subnet.zone_id`, `AddressPool.zone_id`, `Address.zone_id`)
-валидируют `zone_id` вызовом нашего `ZoneService.Get` (`kacho-vpc → kacho-compute`
-runtime-edge; раньше было наоборот). `Region.Delete` блокируется FK `zones.region_id`
-RESTRICT (same-DB), если есть зоны; `Zone.Delete` проверяет своих dependents
-(instances/disks/disk_types), кросс-сервисных (vpc-подсети) — нет (admin-ответственность,
-workspace `CLAUDE.md` §«Кросс-доменные ссылки на ресурсы»). Старый
-`KACHO_COMPUTE_VPC_INTERNAL_GRPC_ADDR` и зеркало-таблица `zones` упразднены.
+Здесь стоял раздел, объявлявший compute **владельцем** оси размещения: свои
+таблицы регионов и зон, свои публичные и внутренние сервисы каталога, seed
+здесь, и ребро «vpc спрашивает зону у compute». Всё это неверно.
 
-### 6.2. `Instance` NIC бэкуется ресурсом kacho-vpc `NetworkInterface` (эпик KAC-9)
+Ось размещения принадлежит `services/geo/`. У compute нет ни одного из этих
+контрактов (предикат: `grep -hE '^message (Region|Zone)\b' proto/kacho/cloud/compute/v1/*.proto`
+→ ноль), таблицы сняты миграцией `0011_drop_geography.sql` и зарегистрированы в
+манифесте удалений, а `Instance.zone_id` проверяется **peer-вызовом** к geo через
+порт `ZoneRegistry` (`internal/ports/ports.go`) — там же записано и то, что регион
+зоны берётся только у владельца и НИКОГДА не выводится из имени зоны.
 
-> **Снято (no auto-NIC).** `Instance` создаётся **без** network interface:
-> NIC-привязка вынесена из lifecycle Instance целиком. `Instance.Create`
-> игнорирует `network_interface_specs`, NIC-строки в `instance_network_interfaces`
-> не пишутся и не читаются, а RPC `AttachNetworkInterface` /
-> `DetachNetworkInterface` / `UpdateNetworkInterface` / `AddOneToOneNat` /
-> `RemoveOneToOneNat` — `Unimplemented`. Соответственно снято и ребро
-> `kacho-compute → kacho-vpc` (NIC-spec/IPAM): единый клиент vpc и его порт удалены как
-> мёртвый код — имя файла здесь не воспроизводится, процитированное оно читается как живая
-> координата. Сегодня в `internal/clients/` лежат два узких клиента vpc (NIC и подсеть),
-> заведённые под другую задачу. Описание ниже сохранено как история прежнего дизайна.
+Раздел снят, а не снабжён оговоркой: описание чужого домена в документе сервиса
+читается как «это здесь», сколько бы оговорок к нему ни приписали. Номер сохранён,
+потому что на §-номера ссылаются другие документы.
 
-**Намеренное решение** (clean-API дизайн; verbatim-parity отложена): compute-NIC
-бэкуется first-class ресурсом kacho-vpc `NetworkInterface` (вариант А, эпик
-`KAC-2`/`KAC-9`). `compute.v1.Instance.NetworkInterface += nic_id` (proto field 7;
-а `NetworkInterfaceSpec += nic_id`); он source of truth интерфейса (адрес, SG,
-data-plane wiring), `subnet_id` / `primary_v4_address` / `security_group_ids` —
-read-only denorm-зеркало. `NetworkInterfaceSpec` принимает **exactly one of
-{`subnet_id`, `nic_id`}** — `subnet_id` больше **не** безусловно `(required)`. На
-`Instance.Create`: `nic_id` → attach уже существующего kacho-vpc NIC к инстансу;
-`subnet_id` → inline-создание Address + NetworkInterface + attach. `SKIP_PEER_VALIDATION`
-→ синтетический NIC без kacho-vpc-ресурса (`nic_id=''`). На `Instance.Delete` —
-detach + delete kacho-vpc NIC (release его Address-ресурсов; best-effort). Device-index
-интерфейса — `compute.v1.NetworkInterface.index` (как было). Миграция
-`0005_instance_nic_id.sql` (`instance_network_interfaces.nic_id TEXT NOT NULL
-DEFAULT ''`; `''` = legacy / synthetic NIC). Новый runtime cross-domain edge
-(зафиксирован в workspace `CLAUDE.md`): `kacho-compute → kacho-vpc` (NIC
-create/attach/detach + эфемерный Address IPAM).
+### 6.2. Сетевые интерфейсы — форма проверяется на Create, материализация отдельной фазой
 
-## 7. Blocked-on-missing-service — отложено до появления зависимого сервиса
+`network_interface_specs` **обязателен** на `Instance.Create` (либо
+`useDefaultNetwork`) — отсутствие обоих даёт `FAILED_PRECONDITION` с текстом,
+называющим, где взять подсеть и группу безопасности. Список проверяется в три
+шага, и порядок здесь — предмет решения, а не стиль:
 
-Не расхождение «по решению», а пробел из-за нереализованного peer-сервиса
-(workspace `CLAUDE.md` §запрет 4 / принцип 4 — откладываем только то, чему нужен
-ещё не существующий сервис). Помечается `blocked:*`-меткой.
+1. **кратность — до первого обращения к соседу** (`domain.MaxNetworkInterfaceSpecsPerInstance`):
+   каждый элемент стоит round-trip к владельцу подсети, поэтому длина списка
+   напрямую умножает внешние вызовы и время удержания слота общего пула
+   исполнителей. Проверка сверх предела не должна стоить ни одного вызова;
+2. **структура** — `subnetId` в каждом элементе обязателен;
+3. **placement-coherence** — `checkNicSpecPlacement`: зона ZONAL-подсети обязана
+   совпадать с зоной инстанса; у REGIONAL (anycast) подсети зоны нет by
+   construction, поэтому зональная проверка исключена и остаётся региональная.
+   Регион зоны инстанса резолвится **у владельца Geography**, из имени зоны не
+   выводится. Одна и та же подсеть спрашивается ровно один раз (ответ от
+   повторения вопроса не меняется). Вся фаза несёт **свой** потолок
+   (`nicPlacementBudget`), потому что per-call дедлайн ограничивает один хоп, а не
+   их последовательность.
+
+Нерезолвящаяся подсеть → `FAILED_PRECONDITION` с тем же hide-existence текстом,
+что и настоящий miss (анти-BOLA); недоступность vpc/geo → `UNAVAILABLE`
+(fail-closed на мутации).
+
+**Что остаётся отступлением:** сама материализация интерфейсов на Create — фаза
+COMP-2; на Create проверяется форма и размещение, строки интерфейсов заводятся
+через `AttachNetworkInterface`. Это отмечено в коде (`CreateInstanceReq`,
+launch-specs) и здесь, а не молчанием.
+
+**Что из NIC-поверхности действительно не отвечает** — и это отдельное решение, а не
+пробел: `UpdateNetworkInterface`, `AddOneToOneNat`, `RemoveOneToOneNat` отвечают
+`Unimplemented` (12). Основание: адрес, NAT и группы безопасности — свойства ресурса
+`NetworkInterface`, который принадлежит **kacho-vpc**, и правятся у владельца; инстанс
+их зеркалит. Там же и `Relocate` — перенос машины в другую зону требует переноса её
+томов, а тома у kacho-storage.
+
+Утверждение здесь — про **наблюдаемый код ответа**, а не про то, переопределён ли метод
+над встроенной заглушкой: механизм отказа может смениться (например, на явный отказ с
+причиной), решение о владельце — нет.
+
+> Прежняя редакция утверждала это шире, чем есть, и одновременно неверно в другую
+> сторону: что `Create` **игнорирует** спецификации интерфейсов (они обязательны и
+> проверяются, см. выше) и что `AttachNetworkInterface`/`DetachNetworkInterface`
+> тоже отвечают `Unimplemented` (обработчики существуют, см.
+> `internal/handler/instance_handler.go`). Запись описывала промежуточное состояние
+> и пережила его в обе стороны сразу.
+
+## 7. Поля и вызовы, у которых нет домена-владельца
+
+Не расхождение «по решению», а следствие того, что домена-владельца **не
+существует**. Это единственный законный вид отсрочки: откладывается то, чему нужен
+ещё не заведённый домен, — и откладывается вместе с **предметом** (acceptance-док
+домена), а не маркером в коде.
 
 | Что | Зависит от | Текущее поведение | Что нужно для закрытия |
 |---|---|---|---|
-| `Disk.Create` / `AttachedDiskSpec.DiskSpec` поле `kms_key_id`; `Disk/Image/Snapshot.kms_key` | `kacho-kms` | поле принимается синтаксически, но шифрование не реализовано; `kms_key` в ответе пуст. Попытка использовать → `blocked:kacho-kms` (либо игнор, либо `Unimplemented`) | реализовать `kacho-kms` → валидировать `kms_key_id` через kms-client, проставлять `kms_key` |
-| `Image.Create` поле `os_product_ids` (marketplace product IDs) | `kacho-marketplace` | `product_ids` хранятся как переданы (license IDs), но marketplace-семантика не реализована | реализовать `kacho-marketplace` → валидировать product IDs |
-| `Instance.filesystems[]` / `filesystem_specs[]` | `kacho-filesystem` (ресурса Filesystem нет) | `filesystem_specs[]` в `Instance.Create` отвергается синхронным `INVALID_ARGUMENT` (см. §7.1); `filesystems[]` всегда пуст. RPC `AttachFilesystem`/`DetachFilesystem` и весь контракт `FilesystemService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в модели прав) | реализовать `kacho-filesystem` + ресурс Filesystem → вернуть attach/detach контракт вместе с реализацией |
-| `Disk.Create` поле `snapshot_schedule_ids` | `kacho-snapshot-schedule` | `snapshot_schedule_ids` игнорируется. RPC `Disk.ListSnapshotSchedules` и весь контракт `SnapshotScheduleService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в модели прав) | реализовать `kacho-snapshot-schedule` + ресурс SnapshotSchedule → вернуть list-контракт вместе с реализацией |
-| `Disk.Relocate` (cross-zone disk move) | — (частично; нужен реальный cross-zone disk relocation pipeline) | меняет `zone_id` с проверкой «disk не attached»; cross-zone semantics simplified (нет реального переноса данных — control-plane) | по сути закрыто на control-plane уровне; «полное» закрытие требует data-plane (не делается) |
-| `Instance.Relocate` (cross-zone instance move) | `Disk.Relocate` + restart-семантика | `Unimplemented` / частично | реализовать cross-zone disk move для всех attached disks + restart-логику |
-| `Instance.SimulateMaintenanceEvent` | — (control-plane: нечего симулировать) | no-op (operation сразу done, Empty) | по сути закрыто на control-plane уровне; «реальное» поведение требует data-plane |
-| Ресурсы `DiskPlacementGroup`, `PlacementGroup`, `HostGroup`, `HostType`, `GpuCluster`, `Filesystem`, `SnapshotSchedule`, `ReservedInstancePool`, `Maintenance` | каждый — отдельный store/домен | proto vendored, сервисы не реализованы (`enhancement` / `blocked:*`); связанные поля в Instance/Disk хранятся, но не интерпретируются | реализовать соответствующие домены (отдельные acceptance-документы) |
+| `Instance.filesystems[]` / `filesystem_specs[]` | домена Filesystem нет | `filesystem_specs[]` в `Instance.Create` отвергается синхронным `INVALID_ARGUMENT` (см. §7.1); `filesystems[]` всегда пуст. RPC `AttachFilesystem`/`DetachFilesystem` и весь контракт `FilesystemService` **удалены** как мертворождённые (не были реализованы, зарегистрированы и не имели типа в применённой модели прав) | завести домен со своим acceptance → вернуть attach/detach контракт **вместе** с реализацией |
+| `Instance.Relocate` | перенос томов в другую зону (домен kacho-storage) | обработчика нет → `Unimplemented` | перенос томов у владельца + restart-семантика |
+| `Instance.SimulateMaintenanceEvent` | — (control-plane: нечего симулировать) | no-op (operation сразу done, `Empty`) | по сути закрыто на control-plane уровне; «реальное» поведение требует data-plane |
+| `placement_group_id` | домена PlacementGroup нет | формат слага проверяется, существование группы — нет | завести домен со своим acceptance |
 
-> Каждый `blocked:*` пункт также имеет (или должен иметь) GitHub Issue в
-> `PRO-Robotech/kacho-compute` с меткой `blocked:<service>` и описанием «при
-> каких условиях браться». Этот файл — карта by-design состояния; Issues —
-> трекинг работы.
+> [!note] Отсюда сняты пять строк — их предмет принадлежит другому сервису
+> Прежняя редакция держала в этой таблице поля шифрования, marketplace-продуктов,
+> расписаний снимков и перенос тома между зонами, а также перечень несуществующих
+> доменов «хостов и пулов». Первые четыре — поля ресурсов **блочного хранения**,
+> владелец `services/storage/`; ссылки на хосты и пулы **сняты с контракта**
+> редизайном (`reserved` по номеру и имени в
+> `proto/kacho/cloud/compute/v1/instance.proto` и `proto/kacho/cloud/compute/v1/instance_service.proto`), то
+> есть их нельзя ни принять, ни проигнорировать. Строка, называющая чужое поле
+> «нашим отложенным», ставит в очередь работу, которой у нас нет.
+
+Каждый оставшийся пункт — это **отсутствующий домен**, а не отложенная доделка:
+такой домен заводится своим acceptance-документом, а не полем в чужом сообщении.
 
 ### 7.1. Поля, которые принимались и выбрасывались, — отвергаются явно
 
@@ -295,75 +276,21 @@ newman); `internal/handler/instance_dropped_fields_test.go` (седьмое по
 вырезаются, иначе сама проверка отказа выглядела бы чтением (проверено инъекцией: без
 вырезания гейт оставался зелёным на реальном дефекте).
 
-## 8. Instance NIC IPv4 — реальные адреса через эфемерные VPC `Address`-ресурсы
+## 8. Выделение IPv4 инстансу через эфемерные адреса kacho-vpc — снято
 
-> **Снято (no auto-NIC).** Instance больше не выделяет IPv4 через kacho-vpc IPAM:
-> раз NIC не создаётся (см. §6.2), эфемерные `Address`-ресурсы, referrer-tracking
-> и teardown не выполняются. Прежний единый клиент vpc (IPAM + referrer) удалён как мёртвый
-> код — имя не воспроизводится по той же причине, что выше. Раздел ниже сохранён как история
-> прежнего дизайна.
+Здесь стоял разбор прежнего дизайна: `Instance.Create` и включение one-to-one NAT
+создавали в kacho-vpc эфемерные ресурсы-адреса, помечали их «в работе у инстанса» и
+снимали на удалении, а инженерным разменом объявлялась видимость служебных адресов
+в списке арендатора.
 
-`Instance.Create` (и `AddOneToOneNat`) выделяют **реальные** IPv4 для NIC-ей
-через kacho-vpc IPAM, создавая в kacho-vpc эфемерные `Address`-ресурсы:
+Ничего из этого сегодня не выполняется. Адресация интерфейса — свойство ресурса
+`NetworkInterface` у kacho-vpc; вызовы включения и снятия NAT обработчика не имеют
+(см. §6.2), а `Instance.Delete` снимает **привязку** интерфейса, не адрес. Разбор снят
+целиком, а не помечен «историей»: раздел на 60 строк с описанием живого механизма
+читается как описание живого механизма, сколько бы врезок к нему ни приписали.
 
-- **internal IP** — `AddressService.Create` с `internal_ipv4_address_spec.subnet_id`
-  → kacho-vpc inline выделяет IP из CIDR подсети; compute читает его обратно и
-  хранит `address.id` в колонке `instance_network_interfaces.primary_v4_address_id`;
-- **external (one-to-one NAT) IP** — `AddressService.Create` с
-  `external_ipv4_address_spec.zone_id` → kacho-vpc inline выделяет публичный IP
-  из `AddressPool` (cascade resolve); `address.id` + флаг `ephemeral` хранятся
-  в JSONB `primary_v4_nat`. Если клиент передал `one_to_one_nat.address_id` — это
-  его reserved Address, compute его **не** создаёт и **не** удаляет (`ephemeral=false`).
-
-На `Instance.Delete` (и `RemoveOneToOneNat`) compute удаляет эти эфемерные
-`Address`-ресурсы (best-effort: VPC недоступен / уже удалён → warning в лог, не
-валит операцию). Если клиент передал `primary_v4_address_spec.address` вручную —
-адрес валидируется на принадлежность CIDR подсети и используется как есть,
-`Address`-ресурс не создаётся. В режиме `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true`
-NIC-ам по-прежнему выдаются синтетические IP (`10.0.0.x` / `203.0.113.x`), VPC не
-дёргается.
-
-**Referrer-tracking (с этой фичи) и эфемерный-in-use:** аллокация
-адресов в `AddressService.Create` рождает их в состоянии `reserved=true, used=false`
-(как обычные user-reserved-адреса). Compute после успешного `repo.Insert` инстанса
-помечает их фактическим состоянием:
-
-- **эфемерные адреса, которые compute создал сам** (internal `<vmid>-nicN` и
-  ephemeral external `<vmid>-natN`, если NAT не указывал `address_id`) → вызов
-  `InternalAddressService.MarkAddressEphemeralInUse(addressId, "compute_instance",
-  instanceId, instanceName)` — атомарно (в одной tx на стороне kacho-vpc) ставит
-  `reserved=false, used=true` и upsert-ит referrer. В REST-ответе адрес выглядит
-  как `{"reserved": false, "used": true, "usedBy": [{"referrer":
-  {"type":"compute_instance","id":"<instanceId>"}}, "type":"USED_BY"}]}` —
-  «эфемерный, в работе у инстанса».
-- **reserved user-адреса** (`one_to_one_nat.address_id` указан клиентом)
-  → `SetAddressReference` (только referrer, `reserved=true` не трогаем) — адрес
-  остаётся reserved-by-user, просто получает `used_by` ссылку на инстанс.
-
-Обе операции best-effort: ошибка → warning, IP уже выделен, `Instance.Create`
-не валится. На `Instance.Delete`/`RemoveOneToOneNat`: эфемерные адреса
-удаляются (`DeleteAddress` — referrer-row уходит через FK CASCADE в kacho-vpc),
-у reserved-адреса referrer снимается явно (`ClearAddressReference`) — адрес
-снова `used=false`, остаётся reserved. В `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true`
-все Mark/Set/ClearAddressReference — no-op.
-
-**Что НЕ расхождение:** field-семантика эфемерных адресов теперь корректна
-(`reserved=false, used=true, used_by=[…]`) — никакого «фиктивно reserved» не
-осталось.
-
-**Осознанный trade-off, который сохраняется:** внутренний IPAM инстанса
-**не прозрачен** — каждый авто-аллоцированный NIC-IP это полноценная строка в
-`addresses`, видимая в `AddressService.List` (`GET /vpc/v1/addresses?projectId=...`,
-`name` вида `<instanceId>-nic0` / `<instanceId>-nat0`, поля
-`reserved=false, used=true, used_by=[…]`). Цена — служебные адреса видны тенанту
-в списке; выигрыш — переиспользование существующего VPC IPAM без новых
-cross-service RPC / миграций в kacho-vpc. Альтернатива (тонкий internal-RPC
-`AllocateInternalIPInSubnet` / `AllocateExternalIPInZone` + лёгкая таблица
-allocations в kacho-vpc) отложена. Newman-кейсы kacho-vpc, проверяющие
-`AddressService.List`, изолированы по `runId` и не пересекаются с
-compute-инстансами, так что суиты не ломаются.
-
----
+Что осталось верным и потому названо здесь: **инстанс адресами не распоряжается**.
+Тот, кому нужен адрес, идёт к владельцу интерфейса.
 
 ## 9. FGA-register intent несёт labels+parent и эмитится на `Instance.Update(labels)` (epic RSAB β)
 
@@ -405,52 +332,32 @@ compute), которое γ будет читать для selector-матчин
   Disk/Image/Snapshot Update-триггер достроен в под-фазе **T3.1** (см. ниже).
   vpc-сторона — отдельная волна **β2**.
 
-### 9.1 Update-on-labels emit достроен на Disk/Image/Snapshot (под-фаза T3.1, #113)
+### 9.1 Здесь описывался тот же триггер на ресурсах блочного хранения — предмета нет
 
-Закрытие разрыва D-β8 (и бага #113): ARM_LABELS-грант на cross-service
-compute-ресурс **не ревокался** при снятии/смене метки, т.к. `Disk/Image/Snapshot.Update`
-не эмитили `RegisterResource`/mirror.upsert на label-change → IAM `resource_mirror`
-протухал и rsab держал стейл-членство. **Create-эмит этих трёх ресурсов уже нёс
-`result.Labels` корректно** (bare-create-бага, как у vpc.SG/nlb.listener, у compute
-**нет** — §0.1 acceptance T3.1). Фикс — только Update-путь:
+Раздел разбирал, как достраивался emit на правку меток у трёх ресурсов блочного
+хранения, и называл их репозитории и интеграционные пробы. Владелец этих ресурсов —
+`services/storage/`; у compute их нет ни в контракте, ни в схеме, ни в коде. Решение
+и его основание остаются верными **на своей стороне** и записаны там же, где живёт
+код: `services/storage/docs/engineering/architecture/`.
 
-- `DiskRepo.Update` / `ImageRepo.Update` / `SnapshotRepo.Update` теперь принимают
-  `emitLabelsRegister bool` (parity с `InstanceRepo.Update`); use-case вычисляет его
-  из update-mask (`labelsInMask`: `labels` ∈ mask, либо empty-mask = full-PATCH ⇒ true).
-  Эмит `emitFGARegisterIntent(EventRegister, …, result.Labels)` — в **той же writer-tx**,
-  что и UPDATE (atomic, ban #10 / SEC-D; rollback Update ⇒ intent не записан).
-- **Gated (G-2):** non-label Update (name/description/size) **не** эмитит intent —
-  меньше reconcile-шума; external-наблюдаемое поведение идентично always-emit
-  (`source_version`-monotonic делает «лишний» upsert безвредным).
-- **Полное снятие меток → mirror.upsert с `labels={}`, НЕ `UnregisterResource` (G-3).**
-  Ресурс жив; mirror-строка должна остаться (с пустыми labels) — owner-tuple/containment
-  на той же строке не сносятся, протухают **только** label-селекторы. `UnregisterResource`
-  остаётся исключительно на `Delete` ресурса.
-- IAM-сторона изменений **не требует** (G-6): rsab reconciler уже eager-revoke-ит
-  fell-out members на `mirror.upsert` (`access_binding/reconcile/reconcile.go`).
-
-Покрытие: `internal/repo/{disk,image,snapshot}_repo_integration_test.go`
-(`Test{Disk,Image,Snapshot}Repo_T31Revoke03*_LabelRemoveEmitsMirrorUpsert` +
-`*_T31Idm03*_NonLabelUpdateNoEmit`), testcontainers.
-
-Регистрация intent остаётся **Internal-only :9091** (ban #6); расширение payload
-authz не меняет (решение по subject-cert, не по содержимому payload — D-β9).
+У compute триггер на правку меток остаётся ровно один — `Instance.Update`, описан в §9.
 
 ---
 
 ## Подтверждённые отступления, вынесенные в issues (здесь — указатель)
 
-- **Malformed / wrong-prefix resource id → `NotFound` вместо `InvalidArgument`**
-  — см. §1 выше. Тот же паттерн в kacho-vpc. → GitHub Issue
-  `PRO-Robotech/kacho-compute` (создать при выравнивании).
-- **`OperationService.Get`/`Cancel` с bad id** — api-gateway opsproxy парсит
-  первые 3 символа id, на любой нероутящийся id возвращает `400 INVALID_ARGUMENT
+- **`OperationService.Get`/`Cancel` с нероутящимся id** — opsproxy края парсит
+  первые 3 символа id и на любой нероутящийся отвечает `400 INVALID_ARGUMENT
   "operation_id has unknown prefix"`. По конвенции by-lane split
-  (`api-conventions.md`) well-formed-но-нерезолвящийся own-owned id — это
-  direct-read lane, то есть `404 NotFound "Operation <X> not found"`; malformed —
-  `400 InvalidArgument`. Сейчас различия нет, оба схлопнуты в 400 — отступление по
-  коду. Общий для всех kacho-* (issue в `kacho-api-gateway`, см. `../kacho-vpc/docs/
-  architecture/07-known-divergences.md`).
+  well-formed-но-нерезолвящийся own-owned id — это direct-read lane, то есть
+  `404 NotFound "Operation <X> not found"`; malformed — `400 InvalidArgument`.
+  Сейчас различия нет, оба схлопнуты в 400 — отступление по коду. Предмет живёт
+  **на крае**, не здесь, и общий для всех сервисов; парная запись —
+  `services/vpc/docs/engineering/architecture/07-known-divergences.md`.
+
+> Первым пунктом здесь стоял формат own-owned id → `NotFound`. Снят вместе с §1:
+> расхождение закрыто кодом, а указатель на несуществующее расхождение ставит в
+> очередь работу, которой нет.
 
 ---
 
@@ -461,14 +368,21 @@ authz не меняет (решение по subject-cert, не по содер�
 
 ### OperationService.Get/Cancel — не гейтятся моделью прав; владелец энфорсится в сервисе
 
-`OperationService.Get`/`Cancel` в `internal/check/permission_map.go` помечены
-`Public: true` — на них **не** гоняется per-RPC FGA-Check.
+`OperationService.Get`/`Cancel` объявлены в контракте с `permission = "<exempt>"`
+(`proto/kacho/cloud/operation/operation_service.proto`) — на них **не** гоняется
+per-RPC FGA-Check.
 
 **Почему не Check.** В модели прав нет типа объекта под операцию, и per-operation
 tuple'ов никто не эмитит, поэтому вопрос «viewer на этой операции» **не имеет пути**
-и отверг бы даже поллинг самого создателя сразу после успешной мутации. api-gateway
-помечает эти RPC `<exempt>` по той же причине; `Public: true` в compute держит
-интерсептор консистентным с ним (map-miss иначе fail-closed'ился бы `ErrUnmapped`).
+и отверг бы даже поллинг самого создателя сразу после успешной мутации.
+
+**Где это записано — уже в одном месте, и это часть решения.** Прежняя редакция
+называла здесь второе объявление: отдельную пометку в карте прав сервиса, которую
+надо было «держать консистентной» со шлюзом. Такого объявления больше нет — карта
+**выводится** из аннотаций тех же методов (`internal/check/permission_map.go`:
+`catalogderive.MustDerive` по списку proto-пакетов), из того же источника, что и
+каталог края. «Сервис спрашивает не то, что объявлено оператору» перестало быть
+выразимым: двух объявлений нет, поэтому разойтись нечему.
 
 > **Прежняя редакция описывала это как capability-модель и записывала «осознанно
 > принятый риск» — она устарела (сверено с деревом 2026-08-02).** Здесь стояло, что
@@ -484,7 +398,7 @@ tuple'ов никто не эмитит, поэтому вопрос «viewer н
 > Оставлять запись в прежнем виде было опаснее, чем не иметь её вовсе: реестр
 > расхождений читают как источник **решений**, поэтому следующий аудитор
 > перепринимает то, что уже закрыто, — либо кто-то откатывает фикс на авторитете
-> документа. Тот же исход разобран в `services/registry/docs/architecture/known-divergences.md` §9.
+> документа. Тот же исход разобран в `services/registry/docs/engineering/architecture/known-divergences.md` §9.
 
 **Класс, ради которого запись остаётся.** Непрозрачный идентификатор — это
 **capability**. Там, где он единственное основание доступа, любая его утечка
@@ -651,7 +565,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   сборку, если имя вернётся.
 - **`InternalWatchHandler` (transport-слой) держит `*pgxpool.Pool` + raw DSN и сам
   делает pgx-`Connect`/`LISTEN`/raw SELECT по `compute_outbox`** — обход repo-порта
-  (dependency-rule). Структурно идентичен `kacho-vpc/internal/handler/internal_watch_handler.go`
+  (dependency-rule). Тот же приём, что у kacho-vpc в его слое транспорта
   (комментарий в файле это фиксирует). Вынос в `OutboxReader`-порт — согласованная
   vpc+compute правка (та же причина, что god-struct/CQRS выше), не compute-only.
   Streaming-логика теперь покрыта тестами (см. закрытое выше), так что рефактор не
@@ -725,9 +639,8 @@ sentinel→code в отдельный слой (если когда-либо) �
   плоские `KACHO_COMPUTE_*` env через `corecfg.LoadPrefixed → envconfig.Process`.
   `evgeniy` предписывает YAML-config через viper/koanf; позитивная половина регламента
   соблюдена (есть отдельный `cmd/migrator`). Механизм config — **shared corelib-решение
-  для всех kacho-сервисов** (см. `09-go-skills-applied.md` → `golang-spf13-viper`
-  skipped: «corelib/config — envconfig — покрывает»); миграция на koanf/viper —
-  workspace-wide corelib-решение, не compute-only. (findings7 #9)
+  для всех сервисов** (`pkg/config`); миграция на koanf/viper — общее решение уровня
+  фундамента, не compute-only. (findings7 #9)
 - ~~**`Instance.Metadata` принимается без размерного лимита**~~ — **ЗАКРЫТО, и
   прежнее обоснование было ЛОЖНЫМ.** Здесь стояло: «ограничивает только default 4 MB
   gRPC message ceiling». Потолок сообщения ограничивает ОДИН вызов, а правка
@@ -838,11 +751,10 @@ sentinel→code в отдельный слой (если когда-либо) �
   `handler.CreateReqFromProto` (proto→use-case конвертация); `Create`-методы теперь их
   вызывают. 12s fuzz-burst: 137 new-interesting, 0 crashers.
 - **ban #2 (чужие облака) — имя провайдера вычищено из architecture-докладов.**
-  `00-overview.md` (контракт-позиционирование, package-note, секция «Стабильность
-  внешнего контракта»), `ARCHITECTURE.md`, `docs/architecture/README.md`,
-  `07-known-divergences.md` (шапка) переписаны в own-product терминах (замороженный
+  Главы обзора и конвенций (с тех пор снятые вместе со своим предметом), индекс
+  каталога и шапка этого файла переписаны в own-product терминах (замороженный
   контракт продукта в `kacho.cloud.compute.v1`), без имени/хостнейма чужого облака
-  (finding r9b#6). Rule-statement'ы в `06-conventions.md` (сам запрет) прежде
+  (finding r9b#6). Формулировки самого запрета прежде
   сохраняли имя провайдера «осознанно, они формулируют ban» — это отменено:
   формулировка запрета не обязана его нарушать, а сам запрет теперь энфорсится
   гейтом `tools/foreignclouds`, который и держит список имён.
@@ -868,7 +780,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   (`*_Production_BreakglassRefusesBoot` prod+strict — assert'ит СООБЩЕНИЕ, не только факт
   ошибки; `*_ProductionStrict_BreakglassRefusesBoot`; `*_Dev_BreakglassAllowed`).
 - **`internal/authzfilter.FGAFilter` — per-service hand-rolled per-object фильтр,
-  не `kacho-corelib/authz.ListObjectsService`.** Тот же класс, что «corelib-копии
+  не перечислением разрешённых объектов у модели прав.** Тот же класс, что «corelib-копии
   helper'ов» (findings7 #1 / r7b): подъём в corelib — координированная workspace-wide
   правка (vpc несёт идентичный двойник), не compute-only. **Corelib-примитив здесь
   вообще неприменим**: он строит видимость перечислением
@@ -996,5 +908,4 @@ field: \"<field>\""`, и **никогда** не игнорируется мол
 иначе будущему решению о видимости удалений негде было бы вступить в силу.
 
 **Практическое влияние сегодня — нулевое:** подписчиков у потока нет, UI и CLI его не
-используют (`08-ui.md`, `02-data-flows.md`). Вопрос ставится до появления первого
-потребителя, а не после.
+используют. Вопрос ставится до появления первого потребителя, а не после.

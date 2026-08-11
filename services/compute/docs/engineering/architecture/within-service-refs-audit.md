@@ -32,7 +32,7 @@
 > - Слой use-case `internal/apps/kacho/api/<resource>/*.go` (software-prechecks как UX-layer).
 > - Repo-слой `internal/repo/*.go` (маппинг ошибок в sentinel-errors).
 >
-> Парный аудит для kacho-vpc — `services/vpc/docs/architecture/within-service-refs-audit.md`
+> Парный аудит для kacho-vpc — `services/vpc/docs/engineering/architecture/within-service-refs-audit.md`
 > (KAC-84).
 >
 > **Cross-service ссылки** (`project_id` → kacho-iam;
@@ -183,7 +183,7 @@
 |---|---|---|---|---|
 | `(instance_id, idx)` PK | уникальный NIC-index в пределах instance | `instance_network_interfaces_pkey` ✅ | n/a | OK |
 | `instance_id` → `instances(id)` | существует, CASCADE при delete instance | FK ON DELETE CASCADE ✅ | n/a | OK |
-| `subnet_id` | существует subnet в kacho-vpc | N/A (cross-service) | n/a — `Instance.Create` больше не создаёт/валидирует NIC (auto-NIC `materializeNICs` удалён в KAC-266) | OK (cross-service; NIC-привязка — будущая переделка) |
+| `subnet_id` | существует subnet в kacho-vpc | N/A (cross-service) | `Instance.Create` строк интерфейсов не заводит, но подсеть **проверяет** peer-вызовом (зональная когерентность) | OK (cross-service: FK через границу запрещён) |
 | `subnet_idx` для cascade-check на Subnet.Delete | `instance_nic_subnet_idx` partial WHERE `subnet_id <> ''` ✅ | n/a | OK |
 | `security_group_ids` (JSONB array) | каждый id existed in kacho-vpc at attach time | N/A (cross-service) | n/a — NIC не создаётся на Create (auto-NIC удалён в KAC-266) | OK (cross-service) |
 | `primary_v4_address_id` (TEXT, '' = none) | если задан — Address-ресурс в kacho-vpc | N/A (cross-service) | (создан в `vpcClient.CreateInternalAddress`, не валидируется на чтение) | OK (cross-service) |
@@ -307,7 +307,7 @@ fail-closed. Остаточный риск — обычный класс cross-s
 (`0011_drop_geography.sql`), и таблица-источник `disks` тоже —
 `0021_drop_block_storage_duplicates.sql`. Зональность тома живёт теперь в
 `kacho-storage` и проверяется на когерентность с регионом образа внутри
-insert-CAS (см. `services/storage/docs/architecture/compute-storage-parity.md` §4).
+insert-CAS (см. `services/storage/docs/engineering/architecture/compute-storage-parity.md` §4).
 
 ---
 
@@ -454,7 +454,7 @@ KAC-266 (контракт-removal). Move-семантики больше нет 
 | KAC-87.compute.1 — G1 | partial UNIQUE на привязку диска | Не понадобилась: таблица дропнута, инвариант живёт у владельца-storage |
 | KAC-87.compute.2 — G2 | CAS на переход состояния | **Сделана** (code-only, как и планировалось) + гоночные integration-тесты |
 | KAC-87.compute.3 — G3+G4+G5 | within-service FK на зону и тип | Не понадобилась: ссылки стали cross-service, FK через границу запрещён |
-| KAC-87.compute.4 — G9 | enum CHECK | Отложена и остаётся отложенной (Low) |
+| KAC-87.compute.4 — G9 | enum CHECK | Предмет большей частью снят вместе с таблицами (см. §3); на живых колонках решение не пересматривалось |
 | ~~KAC-87.compute.5~~ — G14 | Move-семантика | Снята: RPC удалены (KAC-266) |
 | KAC-87.compute.6 — G6/G7/G8 | doc-only | Решения зафиксированы; переиспользованы владельцем-storage |
 | KAC-87.compute.7 — G12/G13 | таблицы kube-ovn-эпохи | Закрыта: `0006_drop_hypervisors.sql` |
@@ -472,11 +472,11 @@ KAC-266 (контракт-removal). Move-семантики больше нет 
 ## 5. Ссылки
 
 - Workspace `.claude/rules/data-integrity.md` § «Within-service инварианты — только на DB-уровне» (запрет #10)
-- kacho-vpc parity-аудит: `services/vpc/docs/architecture/within-service-refs-audit.md` (KAC-84)
+- kacho-vpc parity-аудит: `services/vpc/docs/engineering/architecture/within-service-refs-audit.md` (KAC-84)
 - KAC-52 — NIC-attach race в kacho-vpc, инцидент 2026-05-14 (источник pattern'а для G1/G2)
 - KAC-15 — Geography переносилась в compute (породила G3/G4); эпик kacho-workspace#82 — вынесена в kacho-geo (сняла их)
 - KAC-36/79/80 — таблицы kube-ovn-эпохи удалены (`0006_drop_hypervisors.sql`)
 - KAC-266 — `Move` RPC удалены (снял G14)
-- Раскол блочного хранения: `services/storage/docs/architecture/compute-storage-parity.md`
+- Раскол блочного хранения: `services/storage/docs/engineering/architecture/compute-storage-parity.md`
 - Миграции, снявшие предмет находок: `0011_drop_geography.sql`, `0013_drop_attached_disks.sql`,
   `0021_drop_block_storage_duplicates.sql`, `0022_drop_disk_types.sql`

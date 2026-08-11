@@ -489,7 +489,7 @@ CASES.append(Case(
 # (проверено grep по services/compute вне тестов). Раньше они принимались и молча
 # выбрасывались: клиент получал 200 + Operation и был уверен, что параметр применён.
 # «Принято-и-проигнорировано» — не исход (api-conventions.md); поля остаются в
-# контракте, но отвергаются явно, как docs/architecture/07-known-divergences.md уже
+# контракте, но отвергаются явно, как docs/engineering/architecture/07-known-divergences.md уже
 # обещал по filesystemSpecs.
 #
 # Контракт отказа: 400 / code 3, сообщение ОБОБЩЁННОЕ («invalid argument»), имя поля
@@ -892,7 +892,7 @@ CASES.append(Case(
 ))
 
 # Фаза фильтра — `name=` и только он (acceptance F14 сведён к коду 2026-07-27,
-# см. docs/architecture/07-known-divergences.md §12). Контракт наблюдаемый и СТРОГИЙ:
+# см. docs/engineering/architecture/07-known-divergences.md §12). Контракт наблюдаемый и СТРОГИЙ:
 # не-whitelisted поле отвергается 400 с ИМЕНЕМ поля в сообщении. Прежний oneOf([200,400])
 # был «формой без содержания» — он проходил и при молчаливом игнорировании фильтра,
 # то есть ровно на том дефекте, ради которого писался.

@@ -121,7 +121,7 @@
 - **Unimplemented RPC в wired-сервисах** (наследуются из `Unimplemented*ServiceServer`):
   `Instance.{AddOneToOneNat, RemoveOneToOneNat, UpdateNetworkInterface, Relocate}`,
   все `*.{ListAccessBindings, SetAccessBindings, UpdateAccessBindings}` (AAA-скелет). `Disk.kms_key_id` →
-  sync `Unimplemented` (`blocked:kacho-kms`). См. `docs/architecture/07-known-divergences.md`.
+  sync `Unimplemented` (`blocked:kacho-kms`). См. `docs/engineering/architecture/07-known-divergences.md`.
 - **`InternalDiskTypeService.{Create,Update,Delete}`** (:9091 admin, `system_admin`) — wired, но **cluster-internal**
   listener, не external TLS endpoint → вне public newman-suite (`security.md` Internal-vs-external; TAXONOMY scope-cut).
   Покрытие — unit/integration + отдельная internal-suite.

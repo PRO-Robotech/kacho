@@ -12,7 +12,7 @@
 // believe was applied.
 //
 // Why widening the whitelist is not a one-token edit (evidence behind the
-// reconciliation recorded in docs/architecture/07-known-divergences.md, entry 12):
+// reconciliation recorded in docs/engineering/architecture/07-known-divergences.md, entry 12):
 // pkg/filter.Parse emits FilterAST.Field unchanged as a SQL column identifier, so
 //   - the acceptance spelling was camelCase (`instanceKind`, `placementGroupId`)
 //     while the columns are snake_case → `instanceKind = $2` fails at the DB with

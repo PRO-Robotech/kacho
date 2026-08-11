@@ -24,7 +24,7 @@ import (
 // Шесть полей CreateInstanceRequest, которые compute принимал и выбрасывал: они
 // живы в контракте, но во всём непроверочном дереве services/compute нет ни одного
 // читателя. «Принято-и-проигнорировано» — не исход (api-conventions.md); поведение
-// приведено к тому, что docs/architecture/07-known-divergences.md уже обещал по
+// приведено к тому, что docs/engineering/architecture/07-known-divergences.md уже обещал по
 // filesystem_specs, и распространено на остальные пять.
 //
 // Форма отказа — контракт: код INVALID_ARGUMENT, сообщение ОБОБЩЁННОЕ

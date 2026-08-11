@@ -9,9 +9,9 @@
 **Кто ведёт.** Тестировщики добавляют сюда новые `REQ-*` по мере выявления требований (из ревью,
 прогонов, проб собственного API). Формат — ниже. Не путать с:
 - `REQUIREMENTS.md` — бэклог *улучшений* (testability/contract-clarification asks), не нормативный.
-- `docs/architecture/07-known-divergences.md` — намеренные отступления от конвенций Kachō (исключения из регламента,
+- `docs/engineering/architecture/07-known-divergences.md` — намеренные отступления от конвенций Kachō (исключения из регламента,
   помечаются в REQ как «Divergence: …»).
-- баги/задачи — GitHub Issues (`kacho-compute/CLAUDE.md` §14.4).
+- баги/задачи — GitHub Issues в `PRO-Robotech/kacho` (правило документооборота воркспейса).
 
 **Формат REQ.**
 ```
@@ -85,7 +85,7 @@ lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-sta
 ⚠️ Это НЕ `NameVPC` (там uppercase разрешён) — нужен `corevalidate.NameCompute`.
 - Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,DIGIT-START,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
 - Agent-check: `pkg/validate/validate.go` (`NameCompute`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`).
-- Divergence: формулировка контракта для empty/edge ещё не закреплена — `# probe-needed`; см. `docs/architecture/07-known-divergences.md`.
+- Divergence: формулировка контракта для empty/edge ещё не закреплена — `# probe-needed`; см. `docs/engineering/architecture/07-known-divergences.md`.
 
 ### REQ-VAL-01 — required-поля Create — sync `InvalidArgument`                                  [P0]
 До создания Operation проверяются required: `project_id` (все), `zone_id` (Disk/Instance),
@@ -176,7 +176,7 @@ Well-formed-но-отсутствующий id → `NotFound` (Get — sync; mut
 Конвенция Kachō требует на malformed/wrong-prefix id sync `InvalidArgument "invalid <res> id '<X>'"`; здесь пока `NotFound` — отступление.
 - Validated-by: `*-GET-NEG-NOTFOUND`, `*-UPD-AUTHZ-NF-SYNC`, `*-DEL-NEG-NOTFOUND`, `INST-{START,STOP}-AUTHZ-NF-SYNC`, `INST-SPO-*-NF-SYNC`
 - Agent-check: `internal/apps/kacho/api/*/` mutate-методы — Get перед Operation; `internal/repo/` `ErrNotFound`.
-- Divergence: malformed-id → NotFound вместо InvalidArgument; `docs/architecture/07-known-divergences.md` (паритет kacho-vpc gotcha #1).
+- Divergence: malformed-id → NotFound вместо InvalidArgument; `docs/engineering/architecture/07-known-divergences.md` (паритет kacho-vpc gotcha #1).
 
 ### REQ-AUTHZ-02 — duplicate name `(project_id, name)` в Create → async `ALREADY_EXISTS`            [P1]
 Partial UNIQUE `(project_id, name) WHERE name <> ''` для disks/images/snapshots/instances.

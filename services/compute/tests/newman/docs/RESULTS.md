@@ -8,7 +8,7 @@
 | Collection | Cases | Покрытие COMP-1-NN |
 |---|---|---|
 | `machine-type` | 12 | F7 sync sizing-каталог: Get/List (18/19), malformed-first + NOT_FOUND (20), admin-CRUD на Internal* :8081 (21), pageSize/token BVA |
-| `instance-redesign` | 43 | легаси-поля Create отвергаются, не игнорируются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 6 полей + «все шесть разом»; см. `docs/architecture/07-known-divergences.md` §7.1) · F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
+| `instance-redesign` | 43 | легаси-поля Create отвергаются, не игнорируются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 6 полей + «все шесть разом»; см. `docs/engineering/architecture/07-known-divergences.md` §7.1) · F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
 
 Прогон — **CI** (`deploy/scripts/newman-e2e.sh`, локальный env-blocked: harness убивает port-forward).
 Ожидание: все кейсы **зелёные** (поведение сверено с реализацией
@@ -191,14 +191,14 @@ core 277→**283**. `gen.py` зелёный (нет дублей case-id — har
 api-gateway REST не проброшен; известное ограничение харнесса, memory `local-newman-env-blocked`). Live-probe
 шести кейсов **не** выполнен → RED-фаза не наблюдалась локально. Кейсы построены как точные зеркала уже-зелёных
 Disk-эталонов на идентичном handler-паттерне; **финальная зелёность подтверждается umbrella-CI** (gate
-`iam/tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
+`services/iam/tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
 (pre-disk) — как остальные disk-sourced кейсы.
 
 ## Бывший coverage-gap — malformed-id → InvalidArgument (предмет исчез)
 
 Запись описывала RPC блочного хранения (`Disk`/`Image`/`Snapshot`/`DiskType` — `Get`, `Delete`), которые
 **не делали** format-check id и отвечали `NOT_FOUND` на явный мусор (documented deferred divergence #1,
-`docs/architecture/07-known-divergences.md` §1). Этих RPC в compute больше нет: блочное хранение принадлежит
+`docs/engineering/architecture/07-known-divergences.md` §1). Этих RPC в compute больше нет: блочное хранение принадлежит
 kacho-storage, дубль ретайрен, и гейт `internal/check/retired_block_storage_test.go` держит его ретайренным.
 Оставшийся `InstanceService.Get` формат проверяет **первым стейтментом** (`corevalidate.ResourceID`,
 `instance.go`), а `Update`/`Delete` идут через него же — то есть на compute-поверхности предмета у этой
@@ -296,5 +296,5 @@ cluster-scoped админ-маршруте · Operation читает её соз
 Найденные баги / отступления от контракта / observability-gaps — заводятся в GitHub Issues
 (`PRO-Robotech/kacho-compute`, метки `bug`/`tech-debt`/`enhancement`; `blocked:kacho-kms` /
 `blocked:kacho-marketplace` / `blocked:kacho-snapshot-schedule` / `blocked:kacho-filesystem` для
-заблокированного), см. `kacho-compute/CLAUDE.md` §14.4. By-design расхождения — `docs/architecture/07-known-divergences.md`.
+заблокированного) — правило документооборота воркспейса. By-design расхождения — `docs/engineering/architecture/07-known-divergences.md`.
 Отдельного bug-map / FINDING-реестра нет.

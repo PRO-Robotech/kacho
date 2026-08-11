@@ -48,9 +48,10 @@ export const RESTRICTIONS = {
   ],
   filter: ['синтаксис фильтрации Kachō; в текущей фазе поддержан предикат name="<value>"'],
   resourceId: [
-    'TEXT: 3-символьный префикс + 17 символов crockford-base32 (20 всего)',
-    'генерируется сервером (output-only)',
-    'well-formed, но несуществующий id → NOT_FOUND',
+    'TEXT: префикс, дефис и 17 символов crockford-base32 (ins-…, mt-…)',
+    'id операции сохраняет слитную форму epd + 17 символов',
+    'генерируется сервером (output-only), неизменяем на всю жизнь ресурса',
+    'malformed → INVALID_ARGUMENT синхронно; well-formed, но несуществующий → NOT_FOUND',
   ],
 } as const
 

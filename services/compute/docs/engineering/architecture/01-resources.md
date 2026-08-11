@@ -24,7 +24,7 @@ Instance (1) ───┬─ machine_type_id ──→ MachineType (sizing-ка�
    │            │     у владельца, compute local attach-state НЕ держит
    ├─ network_interfaces[] (N): subnet_id, primary_v4_address,
    │     {one_to_one_nat: address}, security_group_ids[]
-   └─ status: state-машина (см. 03-instance-lifecycle.md)
+   └─ status: state-машина (см. страницу сайта «Жизненный цикл Instance»)
 
 MachineType — cluster-level read-only справочник sizing (id `mt-…`)
 Volume/Image/Snapshot/DiskType — блочное хранение, owner = kacho-storage (`/storage/v1`)
@@ -39,28 +39,32 @@ Region/Zone — публичный read-only справочник Geography (own
 
 ## Resource ID format
 
-ID получают через `kacho-corelib/ids.NewID(<prefix>)` — 3 символа + 17-char
-crockford-base32 (всего 20). Источник истины — `kacho-corelib/ids/ids.go`:
+Источник истины — `pkg/ids/ids.go` (в прежней полирепо-топологии этот пакет звался
+`kacho-corelib`, отсюда старое имя в записках). Id **ресурсов** compute — дефисной
+формы: префикс, дефис и 17 символов crockford-base32. Id **операций** сохраняет
+слитную форму.
 
-| Ресурс           | Prefix const                                              | Значение | Пример              |
-|------------------|-----------------------------------------------------------|----------|---------------------|
-| Instance         | `ids.PrefixInstance`                                      | `epd`    | `epd + 17 base32`   |
-| MachineType      | `ids.PrefixMachineType`                                   | `mt-`    | `mt- + …` (hyphen)  |
-| Operation (CMP)  | `ids.PrefixOperationCompute` (== `ids.PrefixInstance`)    | `epd`    | `epd + ...`         |
-| Zone             | литерал-строка (`ru-central1-a` и т.п.)                   | —        | не prefix-id        |
+| Ресурс           | Константа префикса               | Значение | Форма                |
+|------------------|----------------------------------|----------|----------------------|
+| Instance         | `ids.PrefixInstanceHyphen`       | `ins`    | `ins-` + 17 base32   |
+| MachineType      | `ids.PrefixMachineTypeHyphen`    | `mt`     | `mt-` + 17 base32    |
+| Operation (CMP)  | `ids.PrefixOperationCompute` (== `ids.PrefixInstance`) | `epd` | `epd` + 17 base32 (слитно) |
 
 **Все compute-операции** независимо от ресурса получают prefix `epd`
 (`PrefixOperationCompute == PrefixInstance`) — api-gateway opsproxy маршрутизирует
 `OperationService.Get(id)` по первым 3 символам, поэтому все операции домена
 должны идти в один backend. `InternalMachineTypeService.Create` вернёт operation с
-id `epd...`, внутри которого `response` = MachineType с id `mt-...` (как в VPC
-`SubnetService.Create` → op `enp...`, внутри Subnet `e9b...`).
+id `epd…`, внутри которого `response` = MachineType с id `mt-…`. Обе формы валидны
+одновременно: крокфордово тело дефиса не содержит, поэтому дефис — однозначный
+дискриминатор.
 
-**Не валидировать id-формат sync** на входе RPC (`(length) = "<=50"` из proto —
-max-длина, не format): well-formed-но-несуществующий id даёт
-async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invalid
-<res> id '<X>'"` (probe 2026-05-11), у нас пока ловится на DB-уровне → `NotFound`
-— расхождение, см. [`07-known-divergences.md`](07-known-divergences.md) §1.
+**Формат own-owned id проверяется синхронно, первым стейтментом RPC** —
+`corevalidate.ResourceID` в `Get`/`Update`/`Delete` обоих ресурсов
+(`internal/apps/kacho/api/instance/instance.go`,
+`internal/apps/kacho/api/machinetype/machine_type.go`); malformed → `InvalidArgument
+"invalid <res> id '<X>'"`, well-formed-но-отсутствующий → `NotFound` через
+`repo.Get`. Прежняя редакция объявляла это расхождением и отсылала к записи о
+намеренных отступлениях: расхождение закрыто кодом, запись снята вместе с ним.
 
 ---
 
@@ -94,7 +98,7 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `description` | 5 | string | ≤256 |
 | `labels` | 6 | map<string,string> | ≤64 записей |
 | `zone_id` | 7 | string | required; существование — peer-валидация в kacho-geo; immutable |
-| `status` | 10 | Instance.Status | state-машина, см. [`03-instance-lifecycle.md`](03-instance-lifecycle.md) |
+| `status` | 10 | Instance.Status | state-машина, см. [страницу сайта](../../content/architecture/instance-lifecycle.mdx) |
 | `metadata` | 11 | map<string,string> | меняется только `UpdateMetadata`; **омитится из ответа List** (часть контракта) |
 | `boot_disk` | 12 | AttachedDisk | read-only зеркало привязки тома; источник истины — `volume_attachments` у kacho-storage |
 | `secondary_disks` | 13 | repeated AttachedDisk | то же зеркало |
@@ -136,9 +140,9 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/instances/{instance_id}?view=` (BASIC/FULL — FULL включает metadata) |
 | `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (часть контракта). filter — whitelist РОВНО `name=` (`instance_repo.go`: `filter.Parse(f.Filter, []string{"name"})`); любое другое имя поля → `INVALID_ARGUMENT` с именем поля. Расширение — COMP-3 вместе с индексом, см. `07-known-divergences.md` §12 |
-| `Create` | async | ✅ | required `zone_id`/`instance_kind`/`machine_type_id`/`boot_source` + ветвь `oneof spec` по роду. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. ⚠️ **без авто-NIC** (`KAC-266`): интерфейсы на Create не материализуются, привязка явная (`AttachNetworkInterface`). Легаси-поля запроса **отвергаются по имени**, синхронно и первым стейтментом: `network_settings`, `filesystem_specs`, `local_disk_specs`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`, `ssh_public_keys` + четыре поля внутри `network_interface_specs[]` (`primary_v4_address_spec`, `primary_v6_address_spec`, `nic_id`, `index`). Снятые редизайном `platform_id`/`resources_spec`/`boot_disk_spec` зарезервированы в proto по номеру И имени — вернуться не могут. end status `RUNNING` |
+| `Create` | async | ✅ | required `zone_id`/`instance_kind`/`machine_type_id`/`boot_source` + ветвь `oneof spec` по роду + `network_interface_specs` либо `useDefaultNetwork`. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. Интерфейсы на Create **не материализуются** — форма и размещение проверяются, привязка явная (`AttachNetworkInterface`). Легаси-поля запроса **отвергаются по имени**, синхронно и первым стейтментом: `network_settings`, `filesystem_specs`, `local_disk_specs`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`, `ssh_public_keys` + четыре поля внутри `network_interface_specs[]` (`primary_v4_address_spec`, `primary_v6_address_spec`, `nic_id`, `index`). Снятые редизайном `platform_id`/`resources_spec`/`boot_disk_spec` зарезервированы в proto по номеру И имени — вернуться не могут. end status `RUNNING` |
 | `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable свободно: `name`/`description`/`labels`. Только при `STOPPED` (F10): `machine_type_id`/`cpu_guarantee_percent`/`placement_group_id`, иначе `FailedPrecondition`. `metadata` — только через `UpdateMetadata`. immutable: `zone_id`/`instance_kind`/`boot_source` |
-| `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. worker: обрабатывает attached disks по `auto_delete` (true → DELETE disk; false → строка `attached_disks` чистится CASCADE при DELETE instance), для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface` (release его Address-ресурсов; best-effort vpcClient), DELETE instance (CASCADE чистит NIC-строки + attached_disks), освобождает one_to_one_nat addresses (best-effort vpcClient) |
+| `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. Сага (`releaseAndDelete`): пометить строку `DELETING` → снять привязки интерфейсов у kacho-vpc → снять привязки томов у kacho-storage → удалить строку **последней**. Отказ владельца **не проглатывается** — операция краснеет, строка остаётся на месте. Повтор идемпотентен: списки привязок резолвятся у владельцев по id машины на каждом прогоне. Осиротевшее удаление (процесс умер посередине) добивает `FinishStuckDeletes` |
 | `UpdateMetadata` | async | ✅ | `POST /compute/v1/instances/{instance_id}/updateMetadata` body `{delete:[], upsert:{}}`. metadata `UpdateInstanceMetadataMetadata`, response `Instance`. status unchanged |
 | `GetSerialPortOutput` | **sync** | ✅ (синтетика) | `GET /compute/v1/instances/{instance_id}:serialPortOutput?port=1..4`. response `GetInstanceSerialPortOutputResponse{contents}` — синтетический текст (НЕ операция) |
 | `Stop` | async | ✅ | `POST /compute/v1/instances/{instance_id}:stop`. precondition `status ∈ {RUNNING}` → end `STOPPED`. metadata `StopInstanceMetadata`, response `Empty` |
@@ -146,32 +150,34 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `Restart` | async | ✅ | precondition `status ∈ {RUNNING}` → end `RUNNING`. metadata `RestartInstanceMetadata`, response `Empty` |
 | `AttachDisk` | async | ✅ | `POST :attachDisk` body `{attached_disk_spec}`. precondition `status ∈ {RUNNING, STOPPED}`; disk READY & same zone & not attached. metadata `AttachInstanceDiskMetadata{instance_id, disk_id}`, response `Instance`. status unchanged |
 | `DetachDisk` | async | ✅ | `POST :detachDisk` body `oneof {disk_id, device_name}` (`exactly_one`). precondition `status ∈ {RUNNING, STOPPED}`; disk attached & not boot. metadata `DetachInstanceDiskMetadata`, response `Instance` |
-| `AddOneToOneNat` | async | ✅ | `POST /addOneToOneNat` body `{network_interface_index, internal_address?, one_to_one_nat_spec?}`. precondition `status ∈ {RUNNING, STOPPED}`; NIC index valid. metadata `AddInstanceOneToOneNatMetadata`, response `Instance` |
-| `RemoveOneToOneNat` | async | ✅ | `POST /removeOneToOneNat` body `{network_interface_index, internal_address?}`. precondition как у Add. metadata `RemoveInstanceOneToOneNatMetadata`, response `Instance` |
-| `UpdateNetworkInterface` | async | ✅ | `PATCH /updateNetworkInterface` body `{network_interface_index, update_mask, subnet_id?, primary_v4_address_spec?, primary_v6_address_spec?, security_group_ids?}`. metadata `UpdateInstanceNetworkInterfaceMetadata`, response `Instance`. OCC через `xmin` (read-modify-write). Precondition-семантика ещё не закреплена |
-| `AttachNetworkInterface` | async | ✅ | `POST :attachNetworkInterface` body `{network_interface_index, subnet_id, primary_v4_address_spec?, security_group_ids[]}`. proto: instance должен быть `STOPPED`. metadata `AttachInstanceNetworkInterfaceMetadata`, response `Instance` |
-| `DetachNetworkInterface` | async | ✅ | `POST :detachNetworkInterface` body `{network_interface_index}`. proto: instance `STOPPED`. metadata `DetachInstanceNetworkInterfaceMetadata`, response `Instance` |
+| `AddOneToOneNat` | — | 🚫 `Unimplemented` (12) | Внешний адрес — свойство ресурса `NetworkInterface` домена kacho-vpc, правится у владельца |
+| `RemoveOneToOneNat` | — | 🚫 `Unimplemented` (12) | То же основание, что у Add |
+| `UpdateNetworkInterface` | — | 🚫 `Unimplemented` (12) | То же основание: адресация и группы безопасности интерфейса правятся у владельца интерфейса, не через инстанс |
+| `AttachNetworkInterface` | async | ✅ | `POST :attachNetworkInterface` body `{attached_nic_spec:{nic_id, index?}}` — подключается **существующий** kacho-vpc NIC по id; `index` не задан → сервер атомарно занимает первый свободный слот. Прежняя форма с `subnet_id`/`network_interface_index` **зарезервирована** в proto по номерам и именам. precondition `STOPPED`. metadata `AttachInstanceNetworkInterfaceMetadata`, response `Instance` |
+| `DetachNetworkInterface` | async | ✅ | `POST :detachNetworkInterface` body — `oneof {nic_id, index}` с `(exactly_one)`; нарушение → `InvalidArgument "exactly one of nic_id or index is required"`. `network_interface_index` **зарезервирован**. precondition `STOPPED`. metadata `DetachInstanceNetworkInterfaceMetadata`, response `Instance` |
 | `ListOperations` | sync | ✅ | `GET /compute/v1/instances/{instance_id}/operations` |
-| `Relocate` | async | 🚫 blocked | `POST :relocate` body `{destination_zone_id, network_interface_specs[1], boot_disk_placement?, secondary_disk_placements[]}`. metadata `RelocateInstanceMetadata`, response `Instance`. Нужен cross-zone disk move + restart-семантика → `Unimplemented` / частично |
+| `Relocate` | — | 🚫 `Unimplemented` (12) | Перенос машины в другую зону требует переноса её томов, а тома принадлежат kacho-storage |
 | `SimulateMaintenanceEvent` | async | ⏭️ no-op | `POST :simulateMaintenanceEvent`. metadata `SimulateInstanceMaintenanceEventMetadata`, response `Empty`. operation сразу done |
-| `ListAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | тип запроса не принимает ни одна сигнатура прод-кода → RPC отвечает `Unimplemented` (12). Права выдаются kacho-iam (`AccessBindingService`), не здесь |
-| `SetAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | то же: `Unimplemented` (12) |
-| `UpdateAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | то же: `Unimplemented` (12) |
+| `ListAccessBindings` | — | 🚫 `Unimplemented` (12) | Права выдаёт kacho-iam (`AccessBindingService`), не здесь |
+| `SetAccessBindings` | — | 🚫 `Unimplemented` (12) | То же основание |
+| `UpdateAccessBindings` | — | 🚫 `Unimplemented` (12) | То же основание |
 
 ### Инварианты
 
-- `Create`: ⚠️ **без авто-NIC** — auto-NIC материализация (`materializeNICs`)
-  удалена в `KAC-266`: per-NIC валидация (subnet/SG/NAT-address) и создание
-  kacho-vpc `NetworkInterface` больше не выполняются, инстанс создаётся без
-  сетевых интерфейсов; правильная сетевая модель — будущая переделка. boot
+- `Create`: спецификации интерфейсов **обязательны** (либо `useDefaultNetwork`) и
+  проверяются в три шага — кратность до первого обращения к соседу, структура,
+  placement-coherence зоны подсети (см. `07-known-divergences.md` §6.2). **Строки
+  интерфейсов на Create не заводятся**: привязка явная, через
+  `AttachNetworkInterface` по id уже существующего интерфейса kacho-vpc. boot
   source — `storage.image` / `registry.image` / том kacho-storage по id;
   inline-создание диска на attach снято с контракта вместе с дублем блочного
   хранения. Insert instance в **одной транзакции** worker'а, затем outbox
   `Instance CREATED`.
-- Ровно один boot-disk (`attached_disks_boot_uniq` partial UNIQUE на
-  `instance_id WHERE is_boot`). `device_name` уникален в пределах instance
-  (`attached_disks_device_uniq` partial UNIQUE на `(instance_id, device_name)
-  WHERE device_name <> ''`).
+- Уникальность загрузочного тома и имени устройства — инвариант **владельца**:
+  привязка живёт в его таблице, и её ограничения принадлежат его схеме. Прежняя
+  редакция называла здесь два частичных индекса своей таблицы привязок — таблица
+  снята миграцией 0013, и вместе с ней предмет этих инвариантов у compute
+  отсутствует.
 - Размер инстанса задаётся ссылкой `machine_type_id` на каталожную запись; валидация —
   резолв ссылки (`internal/apps/kacho/api/instance/instance.go`, `resolveMachineType`)
   против каталога (`internal/apps/kacho/api/machinetype/machine_type.go`), а сами
@@ -180,7 +186,7 @@ sizing-каталог (`machine_type_id`), из которого выводит�
   файл-таблицу платформ: поле снято с контракта (`reserved` в
   `proto/kacho/cloud/compute/v1/instance_service.proto`), файла нет, имя не цитируется.
 - `status_message` поле — всегда пусто (control-plane).
-- State-машина статуса — [`03-instance-lifecycle.md`](03-instance-lifecycle.md).
+- State-машина статуса — [страница сайта](../../content/architecture/instance-lifecycle.mdx).
 
 ### Cross-resource links
 
@@ -188,10 +194,9 @@ sizing-каталог (`machine_type_id`), из которого выводит�
   инстансу живёт в `volume_attachments` у владельца-storage, compute local
   attach-state не держит (миграция 0013 сняла `attached_disks`).
 - `network_interfaces[].nic_id` → VPC `NetworkInterface` (НЕ FK; source of truth
-  для интерфейса). ⚠️ `Instance.Create` **больше не создаёт и не привязывает NIC**
-  (auto-NIC материализация `materializeNICs` удалена в `KAC-266`; инстанс
-  создаётся без сетевых интерфейсов, правильная сетевая модель — будущая
-  переделка). На `Instance.Delete` — delete NIC (если `nic_id` непустой).
+  для интерфейса). `Instance.Create` спецификации интерфейсов **проверяет**, но строк
+  не заводит — привязка явная, через `AttachNetworkInterface`. На `Instance.Delete`
+  привязки интерфейсов **снимаются у владельца**, до удаления строки машины.
 - `network_interfaces[].subnet_id` → VPC `Subnet` (НЕ FK; в proto-ответе — denorm-зеркало
   kacho-vpc NIC).
 - `network_interfaces[].security_group_ids[]` → VPC `SecurityGroup` (НЕ FK; denorm-зеркало).
@@ -220,4 +225,4 @@ owner Geography». С этапа S7 это неверно: Geography — дом�
   (`resource_kind` ∈ {Instance}, `event_type` ∈
   {CREATED, UPDATED, DELETED}) + триггер `compute_outbox_notify_trg` →
   `pg_notify('compute_outbox', sequence_no::text)`. Подписчик —
-  `InternalWatchService.Watch`. См. [`05-database.md`](05-database.md).
+  `InternalWatchService.Watch`. См. [модель данных](../../content/architecture/data-model.mdx).

@@ -7,7 +7,7 @@ assert'ов. Закрытие пункта = решение владельца �
 плюс ассерт на точный текст/код. Пункт без такого решения не закрывается «сверкой» ни с чем.
 
 Найденные баги/отступления — НЕ здесь, а GitHub Issues `PRO-Robotech/kacho-compute` (метки `bug`/`tech-debt`),
-см. `kacho-compute/CLAUDE.md` §14.4. By-design отступления — `docs/architecture/07-known-divergences.md`.
+правило документооборота воркспейса. By-design отступления — `docs/engineering/architecture/07-known-divergences.md`.
 
 ## A. Формулировки контракта, ещё не закреплённые
 

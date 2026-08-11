@@ -50,7 +50,7 @@ kacho-compute конфигурируется переменными окруже
 | Переменная | Назначение |
 |---|---|
 | `KACHO_COMPUTE_AUTH_MODE` | Режим аутентификации; в проде — production-strict (anonymous fail-closed) |
-| `KACHO_COMPUTE_REQUIRE_IAM` | Boot-gate: требовать доступность kacho-iam при старте (fail-fast) |
+| `KACHO_COMPUTE_REQUIRE_IAM` | Fail-closed boot-gate: пока дренер регистраций не связался с kacho-iam, сервис **NotReady** и **отказывает мутирующему Create** (процесс при этом жив — падение при старте лишило бы оператора диагностики) |
 | `KACHO_COMPUTE_AUTHZ_BREAKGLASS` | Аварийный обход authz (используется осознанно; по умолчанию выключен) |
 | `KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS` | Разрешённые SAN доверенного forwarder'а (api-gateway) |
 | `KACHO_COMPUTE_IAM_AUTHZ_MTLS_*` | mTLS для authz-канала к kacho-iam (`ENABLE`/`CERTFILE`/`KEYFILE`/`CAFILES`/`SERVERNAME`) |

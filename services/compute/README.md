@@ -2,7 +2,7 @@
 
 Compute-сервис Kachō: control-plane для **Instance** и справочника
 **MachineType**. Compute-NIC бэкуется ресурсом vpc `NetworkInterface` (`nic_id`,
-эпик `KAC-9`). Подробности — `CLAUDE.md` и `docs/architecture/`.
+эпик `KAC-9`). Подробности — `docs/content/` (страницы сервиса) и `docs/engineering/` (инженерные записки).
 
 > [!note] Блочное хранение и ось размещения принадлежат другим сервисам
 > Здесь перечислялись как свои ещё четыре ресурса блочного хранения и два
@@ -48,7 +48,7 @@ Clean Architecture (`internal/domain` → `internal/apps/kacho/api/<resource>` �
 репозитория фундамента здесь не воспроизводится — координатой оно не является).
 Outbox + LISTEN/NOTIFY дают event stream через
 `InternalWatchService` (для admin-tooling / UI). Подробности по слоям и
-паттернам — `CLAUDE.md` §4 и `docs/architecture/`.
+паттернам — правила воркспейса и `docs/engineering/architecture/`.
 
 ### Dual gRPC ports
 
@@ -76,8 +76,10 @@ Postman-коллекции). Критерий приёмки: newman-кейс з
 
 ## Полезное
 
-- Открытые задачи / баги: GitHub Issues (`TODO.md` упразднён).
-- By-design отступления от конвенций: `docs/architecture/07-known-divergences.md`.
+- Открытые задачи / баги: **только** GitHub Issues в `PRO-Robotech/kacho`
+  (кросс-репо — `PRO-Robotech/kacho-workspace`). Файла-списка задач в репозитории
+  нет и не заводится: список, за который никто не отвечает, переживает свои пункты.
+- By-design отступления от конвенций: `docs/engineering/architecture/07-known-divergences.md`.
 - Proto: `proto/kacho/cloud/compute/v1/` — единственный дом контрактов, в каталоге
   сервиса `.proto` нет.
 - Эталон-паттерны: `services/vpc/` (compute написан на них).

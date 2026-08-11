@@ -1,7 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// resources_doc_census_test.go — сверка `docs/architecture/01-resources.md` с деревом.
+// resources_doc_census_test.go — сверка `docs/engineering/architecture/01-resources.md`
+// с деревом.
 //
 // Документ описывал ДОРЕДИЗАЙНОВЫЙ compute и читался как описание кода. Измерено
 // механически: из 28 строк таблицы полей Instance 11 описывали поля, которых в
@@ -41,13 +42,19 @@ import (
 )
 
 // docPath — путь к документу от каталога этого теста (services/compute/tools).
+//
+// Каталог инженерных записок переехал под `docs/engineering/` (единый `docs` у
+// компонента: `content/` — страницы сайта, `engineering/` — записки). Переезд оставил
+// здесь прежний путь, и гейт покраснел на `os.Stat` — это правильный исход: он
+// объявляет, что документа нет, вместо того чтобы прочитать ноль файлов и напечатать
+// «ноль находок».
 func docPath(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	p := filepath.Join(filepath.Dir(self), "..", "docs", "architecture", "01-resources.md")
+	p := filepath.Join(filepath.Dir(self), "..", "docs", "engineering", "architecture", "01-resources.md")
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("нет документа %s: %v", p, err)
 	}

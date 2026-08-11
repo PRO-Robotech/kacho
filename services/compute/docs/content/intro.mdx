@@ -73,7 +73,7 @@ Kachō Compute управляет **намерением и состоянием
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
     <span className={hero.featureTitle}>gRPC + REST API</span>
-    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>kacho-proto</code>), REST-проекция через grpc-gateway.</span>
+    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (каталог <code>proto/</code>), REST-проекция через grpc-gateway.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⏱</span>
@@ -229,7 +229,7 @@ internal-порту.
   <thead><tr><th>Технология</th><th>Применение</th></tr></thead>
   <tbody>
     <tr><td>Go</td><td>Язык реализации</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>kacho-proto</code>), кодогенерация</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (каталог <code>proto/</code>), кодогенерация</td></tr>
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_compute</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (<code>0001</code> — squashed baseline)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
@@ -238,18 +238,22 @@ internal-порту.
   </tbody>
 </table>
 
-## Структура репозиториев
+## Где что лежит
+
+Платформа разрабатывается в **одном** репозитории `PRO-Robotech/kacho`; перечисленное ниже —
+каталоги в нём, а не отдельные репозитории. Отдельная база данных у каждого сервиса при этом
+остаётся: общий репозиторий не означает общего хранилища.
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-compute</strong></td><td>Этот сервис: control-plane Compute</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (ids, operations, db, outbox, ...)</td></tr>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Account / Project / авторизация (per-RPC Check)</td></tr>
-    <tr><td><strong>kacho-vpc</strong></td><td>Subnet / SecurityGroup / Address (валидация NIC-spec)</td></tr>
-    <tr><td><strong>kacho-geo</strong></td><td>Geography (Region / Zone) — валидация <code>zoneId</code></td></tr>
-    <tr><td><strong>kacho-storage</strong></td><td>Volume / Image / Snapshot / DiskType — блочное хранение; резолв источника загрузки и attach/detach тома</td></tr>
+    <tr><td><code>services/compute/</code></td><td>Этот сервис: control-plane Compute</td></tr>
+    <tr><td><code>proto/</code></td><td>Единственный дом всех <code>.proto</code>; в каталоге сервиса контрактов нет</td></tr>
+    <tr><td><code>pkg/</code></td><td>Общий фундамент: сгенерированные стабы, ids, operations, db, outbox, authz, …</td></tr>
+    <tr><td><code>gateway/</code></td><td>Край: gRPC-proxy + REST mux</td></tr>
+    <tr><td><code>services/iam/</code></td><td>Account / Project / авторизация (per-RPC Check)</td></tr>
+    <tr><td><code>services/vpc/</code></td><td>Subnet / SecurityGroup / Address / NetworkInterface</td></tr>
+    <tr><td><code>services/geo/</code></td><td>Region / Zone — валидация <code>zoneId</code></td></tr>
+    <tr><td><code>services/storage/</code></td><td>Volume / Image / Snapshot / DiskType — блочное хранение; резолв источника загрузки и attach/detach тома</td></tr>
   </tbody>
 </table>

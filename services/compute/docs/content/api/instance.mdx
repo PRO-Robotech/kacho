@@ -500,38 +500,35 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 
 <ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}:attachNetworkInterface" async>
 
-Подключает сетевой интерфейс к инстансу. Предусловие: статус `STOPPED`. Спека несёт `subnetId`
-(создать новый NIC в kacho-vpc) либо `nicId` (подключить существующий) — ровно одно из.
+Подключает к инстансу **уже существующий** интерфейс домена kacho-vpc:
+`attachedNicSpec.nicId` обязателен, `index` — необязателен (не задан → сервер атомарно
+занимает первый свободный слот). Создать интерфейс «на лету» из подсети этот вызов **не
+может**: прежняя форма запроса с `subnetId` снята с контракта — её номера и имена стоят в
+`reserved`, вернуться они не могут. Интерфейс заводится в kacho-vpc, сюда приходит по id.
+Предусловие: статус `STOPPED`.
 
 </ApiOperation>
 
 <ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}:detachNetworkInterface" async>
 
-Отключает сетевой интерфейс по индексу. Предусловие: статус `STOPPED`.
+Отключает интерфейс: ровно одно из `nicId` или `index` (нарушение → `INVALID_ARGUMENT`
+`"exactly one of nic_id or index is required"`). Предусловие: статус `STOPPED`.
 
 </ApiOperation>
 
-<ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}/addOneToOneNat" async>
+:::warning Изменение интерфейса и one-to-one NAT через Instance недоступны
+`updateNetworkInterface`, `addOneToOneNat` и `removeOneToOneNat` объявлены в контракте, но
+отвечают **`UNIMPLEMENTED`** (HTTP 501). Это не пробел в описании и не временный сбой: адрес,
+NAT и группы безопасности — свойства ресурса `NetworkInterface`, который принадлежит
+**kacho-vpc**, и правятся там же, а не через инстанс. Инстанс их зеркалит.
 
-Включает one-to-one NAT (внешний IP) на указанном сетевом интерфейсе (по индексу). Предусловие:
-статус `RUNNING` или `STOPPED`.
+По той же причине `UNIMPLEMENTED` отвечает `relocate` (перенос машины в другую зону требует
+переноса её томов, а тома принадлежат kacho-storage) и тройка `listAccessBindings` /
+`setAccessBindings` / `updateAccessBindings` (права выдаёт kacho-iam).
 
-</ApiOperation>
-
-<ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}/removeOneToOneNat" async>
-
-Отключает one-to-one NAT на указанном интерфейсе.
-
-</ApiOperation>
-
-<ApiOperation method="PATCH" endpoint="/compute/v1/instances/{instanceId}/updateNetworkInterface" async>
-
-Изменяет параметры сетевого интерфейса (subnet, security groups, адрес) по индексу.
-Read-modify-write защищён OCC (`xmin`).
-
-<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unavailable', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
+Отказ здесь — **решение о владельце**, а не отложенная доделка: он останется отказом и
+после того, как соответствующая возможность появится у владельца.
+:::
 
 :::note Источник истины сетевого интерфейса — kacho-vpc
 `networkInterfaces[]` в `Instance` — денормализованное **зеркало** ресурса `NetworkInterface`

@@ -40,8 +40,8 @@ tests/newman/
 │   └── RESULTS.md             — последний прогон pass/fail + история версий + skill-mapping
 └── out/                     — newman raw output + summary.txt (gitignored snap-логи)
 ```
-(Найденные дефекты/наблюдения — в GitHub Issues `PRO-Robotech/kacho-compute`, см. `kacho-compute/CLAUDE.md` §14.4;
-by-design отступления от конвенций Kachō — `docs/architecture/07-known-divergences.md`. Отдельного bug-map нет.)
+(Найденные дефекты/наблюдения — в GitHub Issues `PRO-Robotech/kacho`, по правилу документооборота воркспейса;
+by-design отступления от конвенций Kachō — `docs/engineering/architecture/07-known-divergences.md`. Отдельного bug-map нет.)
 
 ## Быстрый старт
 
@@ -71,7 +71,7 @@ python3 services/compute/tests/newman/scripts/gen.py        # все ресур�
 
 - **Black-box**: тестируем продукт через публичный gRPC/REST api-gateway, не код. Тест не знает о
   SQLSTATE, имени constraint'а, конкретной БД.
-- **Источник истины**: acceptance-spec + proto-определения (`kacho-proto/.../compute/v1/`).
+- **Источник истины**: acceptance-spec + proto-определения (`proto/kacho/cloud/compute/v1/`).
 - **Изоляция**: каждый case-сценарий внутри своего `runId`; suite внутри pre-allocated
   `existingProjectId`/`existingProjectCrossId` (env), проектов **не создаёт**; имена суффиксуются `{{runId}}`.
 - **Актор — ПРОЕКТНЫЙ, отступления объявляет шаг.** Дефолтный Bearer всех шести коллекций —
