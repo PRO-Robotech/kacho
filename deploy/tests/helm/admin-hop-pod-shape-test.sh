@@ -659,7 +659,7 @@ python3 -c 'import yaml' 2>/dev/null || { echo "FATAL: нужен python3 с PyY
 STACKS='dev:values.dev.yaml
 dev-prod:values.dev.yaml,values.dev-prod.yaml
 prod:values.prod.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 prorobotech:values.dev.yaml,values.prorobotech.yaml'
 
 echo "=== $SCRIPT: форма пода административного перехода ==="

@@ -1,0 +1,150 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+# values.fe3455-ory-posture.yaml — ПОСАДКА провайдеров личности площадки fe3455.
+#
+# ── Зачем этот файл существует отдельно ──
+# До 2026-08-11 весь четвёртый слой боевого набора жил в ОДНОМ файле
+# values.fe3455-ory.yaml, который не отслеживается git (шаблон
+# `**/values.*-ory.yaml` в .gitignore — он несёт строки соединения с паролями и
+# секреты Ory). Вместе с кредами туда уехала и ПОСАДКА: режим разработки
+# провайдера личности, issuer, PKCE, сроки жизни токенов, CORS.
+#
+# Следствие было структурным, а не разовым: ни один гейт этого слоя не читал —
+# ни таблица стеков, ни рендер CI, ни объявленческие проверки в deploy/*_test.go
+# о нём не знали. Их «ноль находок» по этому слою означало «ноль прочитанного».
+# Посадка боевого кластера менялась правкой файла, которого нет ни в одном
+# ревью, ни в одной проверке.
+#
+# ── Разделение, которое это чинит ──
+#   ЭТОТ файл (отслеживается git)      — только ПОСАДКА. Секретов не несёт.
+#   values.fe3455-ory.yaml (в .gitignore) — только КРЕДЫ: строки соединения с
+#                                        паролями и секреты Ory. Посадки не
+#                                        несёт, и это ПРОВЕРЯЕТСЯ: cutover-fe3455.sh
+#                                        отказывается разворачивать набор, если в
+#                                        слое кредов появилась координата посадки.
+#
+# Порядок слоёв (креды — последними, чтобы их нельзя было переопределить
+# посадкой):
+#   -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml \
+#   -f values.fe3455-ory-posture.yaml -f values.fe3455-ory.yaml
+#
+# ── Что теперь читают гейты ──
+#   - таблица стеков tests/helm/admin-hop-address-census-test.sh (цепочка fe3455)
+#     → её выводят все шесть shell-стражей и объявленческие проверки deploy/;
+#   - шаг рендера боевого профиля в .github/workflows/ci.yaml;
+#   - deploy/identity_dev_flag_declaration_test.go — режим разработки провайдера
+#     личности на стеке, объявившем боевую посадку.
+
+hydra:
+  enabled: true
+  hydra:
+    automigration: { enabled: true, type: initContainer }
+    # Боевая посадка: провайдер требует https у собственного issuer.
+    # Умолчание чарта тоже false; объявлено явно, потому что значение здесь —
+    # решение площадки, а умолчание — свойство чарта, которое меняется под
+    # профилем без единой правки профиля.
+    dev: false
+    config:
+      serve:
+        public:
+          cors: { enabled: true, allowed_origins: ["*"] }
+      urls:
+        self:
+          public: "https://hydra.api.kacho.cloud/"
+          # issuer края (SEC-J), сверяется точным совпадением
+          issuer: "https://hydra.api.kacho.cloud"
+        consent: "/consent"
+        login: "/login"
+        logout: "/logout"
+        error: "/error"
+        post_logout_redirect: "/"
+      strategies:
+        access_token: jwt
+        jwt: { scope_claim: list }
+      ttl:
+        access_token: 15m
+        refresh_token: 720h
+        id_token: 15m
+        auth_code: 1m
+      oauth2:
+        expose_internal_errors: false
+        pkce: { enforced: true, enforced_for_public_clients: true }
+
+kratos:
+  enabled: true
+  kratos:
+    # ПОСЛАБЛЕНИЕ, ЗАПИСАННОЕ И ПРОВЕРЯЕМОЕ.
+    #
+    # Площадка обслуживается по http://kacho.in-cloud.io (перед кластером стоит
+    # прокси, TLS на нём не терминируется). Ory Kratos привязывает атрибут
+    # `Secure` у cookie сессии и CSRF ИСКЛЮЧИТЕЛЬНО к этой ручке — переопределения
+    # в конфиге у v26 нет. Со снятым послаблением cookie помечаются Secure,
+    # браузер по HTTP их не отдаёт, и /login бесконечно чеканит новый flow
+    # (ERR_TOO_MANY_REDIRECTS).
+    #
+    # Послабление касается ТОЛЬКО транспорта интерфейса личности. Посадка
+    # control-plane им не затронута: authn.mode=production-strict на крае,
+    # mTLS между сервисами, per-RPC authZ через OpenFGA, sslmode=require на
+    # пяти базах сервисов.
+    #
+    # Условие снятия: появление HTTPS у площадки. Тогда здесь ставится false, а
+    # запись `fe3455/kratos.kratos.development` в
+    # deploy/identity_dev_flag_declaration_test.go обязана уйти вместе с ней —
+    # проверка TestRecordedIdentityDevConcessions_StillHaveASubject покраснеет,
+    # если её забыть.
+    #
+    # Значение стоит ЗДЕСЬ, а не в слое кредов, именно чтобы эта строка была
+    # видна в ревью и читалась гейтами.
+    development: true
+    automigration: { enabled: true, type: initContainer }
+    config:
+      serve:
+        public:
+          # Абсолютный http-origin: та же причина, что у ручки выше — при
+          # относительном base_url kratos исходит из https и метит cookie
+          # Secure. Схема http здесь и есть рычаг, дающий не-Secure cookie.
+          base_url: "http://kacho.in-cloud.io/.ory/kratos/public/"
+          cors: { enabled: true, allowed_origins: ["*"] }
+        admin:
+          base_url: "http://kacho-umbrella-kratos-admin:80/"
+      selfservice:
+        default_browser_return_url: "/"
+        allowed_return_urls: ["/", "/dashboard"]
+        methods:
+          password: { enabled: true }
+        flows:
+          registration:
+            enabled: true
+            ui_url: "/registration"
+            after: { password: { hooks: [{ hook: "session" }] } }
+          login: { ui_url: "/login" }
+          settings: { ui_url: "/settings" }
+          recovery: { enabled: true, ui_url: "/recovery" }
+          verification: { enabled: false }
+          error: { ui_url: "/error" }
+      log: { level: info, format: json }
+      session:
+        lifespan: "24h"
+      identity:
+        default_schema_id: default
+        schemas:
+          - id: default
+            url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
+      courier:
+        smtp:
+          connection_uri: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+          from_address: "noreply@kacho.local"
+          from_name: "Kacho"
+
+# ── Что ОСТАЛОСЬ за пределами этого разделения (названо, чтобы «разделено» не
+#    читалось шире, чем есть) ──
+# Строки соединения провайдеров личности и openfga остаются целиком в слое
+# кредов, потому что пароль из них рычагом helm не вынимается: чарты Ory
+# принимают DSN одной строкой. Вместе с паролем там остаётся и их `sslmode`.
+# Это НЕ новое послабление и не молчание: канал этих трёх хранилищ объявлен
+# уступкой в шапке values.fe3455-prod.yaml §KNOWN, DOCUMENTED greenfield
+# concessions, пункт 1, а объявленческая проверка deploy/dbtls_declaration_test.go
+# намеренно ограничена подчартами нашего дерева и хранилища Ory не рассматривает.
+# Снятие этой части требует вынести DSN в отдельный Secret кластера
+# (`secret.enabled=false` + `secret.nameOverride`, чарты это умеют) — отдельная
+# работа, меняющая механику раскатки живого кластера.

@@ -86,22 +86,24 @@ kacho-iam|iam|cm:kacho-iam-config:authn.trusted-forwarder-sans
 # круг отправителей — величина послойная: слой волен переопределить здоровое
 # умолчание нижнего. Профиль, которым никто не поднимается, и профиль, которым
 # поднимаются, — разные вопросы, и мерить надо второй.
+# Четвёртый слой — ПОСАДКА провайдеров личности — с 2026-08-11 отслеживается
+# git и потому входит в набор ВСЕГДА, включая CI.
 PROFILES="
 dev|values.dev.yaml
 dev-prod|values.dev.yaml,values.dev-prod.yaml
 prod|values.prod.yaml
-fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 "
 
-# Четвёртый слой боевого набора — values.fe3455-ory.yaml — НЕ в репозитории
-# (несёт учётные данные стенда, см. его шапку). Поэтому он добавляется к набору
-# fe3455, только когда файл на месте: в CI меряются три слоя, на машине, где
-# файл есть, — все четыре. Что именно измерено, печатается ниже — «измерили
-# меньше» не должно выглядеть как «измерили всё».
+# ПЯТЫЙ слой — values.fe3455-ory.yaml — НЕ в репозитории (несёт учётные данные
+# стенда, см. его шапку). Посадки он больше не несёт, поэтому его отсутствие в
+# CI ничего не скрывает; добавляется к набору, только когда файл на месте. Что
+# именно измерено, печатается ниже — «измерили меньше» не должно выглядеть как
+# «измерили всё».
 OPTIONAL_ORY="values.fe3455-ory.yaml"
 if [ -f "$UMBRELLA/$OPTIONAL_ORY" ]; then
   PROFILES="$PROFILES
-fe3455+ory|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,$OPTIONAL_ORY"
+fe3455+ory|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml,$OPTIONAL_ORY"
 fi
 
 # render <файлы-через-запятую> — рендер умбреллы; пустой вывод считаем сорванным.

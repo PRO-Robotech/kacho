@@ -360,10 +360,14 @@ import yaml,sys
 v = yaml.safe_load(sys.stdin)
 print(",".join(v["hydra"]["config"]["serve"]["tls"]["allow_termination_from"]))')"
 
+# fe3455 несёт ЧЕТВЁРТЫЙ слой — values.fe3455-ory-posture.yaml. Он ОБЪЯВЛЯЕТ
+# отладочный флаг соседа явно (dev: false), тогда как без него стек попадал под
+# ветку «умолчание чарта». Классификация от этого не меняется, но меряется
+# теперь объявление боевой цепочки, а не умолчание.
 STACKS='dev:values.dev.yaml
 dev-prod:values.dev.yaml,values.dev-prod.yaml
 prod:values.prod.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 prorobotech:values.dev.yaml,values.prorobotech.yaml'
 
 echo "=== $SCRIPT: порт соседа против политик + объявления боевого класса ==="

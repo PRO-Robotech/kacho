@@ -230,10 +230,19 @@ for p in paths:
 #
 # Те же цепочки `-f`, которыми стенды реально раскатываются. Держатся
 # синхронными с `deployableStacks` — расхождение ловит проверка ниже.
+#
+# У fe3455 ЧЕТЫРЕ слоя, а не три. Четвёртый — values.fe3455-ory-posture.yaml,
+# посадка провайдеров личности. До 2026-08-11 он существовал в одном файле с
+# кредами Ory (values.fe3455-ory.yaml, не отслеживается git), поэтому эта
+# таблица знала о боевой цепочке три слоя из четырёх, и «ноль находок» по
+# четвёртому означало «ноль прочитанного». Посадка вынесена в отслеживаемый
+# файл и перечислена здесь; слой кредов в таблицу НЕ входит и входить не может
+# (его нет ни в git, ни на машине CI), но посадки он больше не несёт — это
+# проверяет cutover-fe3455.sh перед раскаткой.
 STACKS='dev:values.dev.yaml
 dev-prod:values.dev.yaml,values.dev-prod.yaml
 prod:values.prod.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 prorobotech:values.dev.yaml,values.prorobotech.yaml'
 
 # ─────────────────────────────────────────────────────────────────────────────

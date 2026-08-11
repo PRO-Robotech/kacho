@@ -73,13 +73,19 @@ pg-registry|kacho_registry.registry_outbox
 NON_QUEUE_INSTANCES="pg-geo pg-openfga pg-kratos pg-hydra"
 
 # Профили, которыми стенды реально разворачивают (см. deploy/Makefile dev-up /
-# dev-prod-up и helm/umbrella/cutover-fe3455.sh). values.fe3455-ory.yaml
-# намеренно отсутствует — он gitignored (секреты Ory) и на набор pg-* не влияет.
+# dev-prod-up и helm/umbrella/cutover-fe3455.sh).
+#
+# values.fe3455-ory-posture.yaml — четвёртый слой боевой цепочки (посадка
+# провайдеров личности), отслеживается git и перечислен здесь. Слой КРЕДОВ
+# values.fe3455-ory.yaml намеренно отсутствует: он gitignored (секреты Ory) и
+# на набор pg-* не влияет. Раньше эта оговорка покрывала ОБА, потому что оба
+# лежали в одном файле, — то есть отсутствие посадки в перечне выглядело
+# осознанным решением, хотя было следствием слипшихся слоёв.
 PROFILES="
 dev|values.dev.yaml
 dev-prod|values.dev.yaml values.dev-prod.yaml
 prod|values.prod.yaml
-fe3455|values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml
+fe3455|values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml values.fe3455-ory-posture.yaml
 prorobotech|values.dev.yaml values.prorobotech.yaml
 "
 

@@ -93,11 +93,40 @@ die()  { printf '\033[1;31m[cutover ABORT]\033[0m %s\n' "$*" >&2; exit 1; }
 command -v helm    >/dev/null || die "helm not found in PATH"
 command -v kubectl >/dev/null || die "kubectl not found in PATH"
 CTX="$(kubectl config current-context 2>/dev/null || true)"
-log "kubectl context: ${CTX:-<none>}   namespace: $NS   chart: $CHART_DIR"
+APISERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)"
+log "kubectl context: ${CTX:-<none>}   apiserver: ${APISERVER:-<none>}"
+log "namespace: $NS   chart: $CHART_DIR"
+
+# The context NAME is a label chosen by whoever wrote the kubeconfig, so it is a
+# convenience filter and never the authority: a same-named context has already
+# pointed at a different cluster in this project's history. What identifies the
+# target is the apiserver address, which renaming a context cannot forge — and
+# this script runs `helm upgrade --take-ownership --wait` against whatever it is
+# pointed at, so "probably the right one" is not good enough.
 case "$CTX" in
   *fe3455*) : ;;
-  *) warn "context '$CTX' does not look like fe3455 — Ctrl-C within 5s if this is the wrong cluster"; sleep 5 ;;
+  *) warn "context '$CTX' does not look like fe3455 — the apiserver check below is what decides" ;;
 esac
+
+[ -n "$APISERVER" ] || die "cannot read the apiserver address of the active context — refusing to
+       converge a cluster this script cannot identify."
+
+if [ -z "${FE3455_APISERVER:-}" ]; then
+  die "FE3455_APISERVER is not set, so there is nothing to check the active context against.
+       The active context claims:   $APISERVER
+       If that IS fe3455, pin it for this and future runs:
+           export FE3455_APISERVER='$APISERVER'
+       Pin it once from a session you have already verified — the point is that the value comes
+       from you, not from the name of whatever context happens to be selected."
+fi
+
+if [ "$APISERVER" != "$FE3455_APISERVER" ]; then
+  die "WRONG CLUSTER — refusing to run.
+       active context '$CTX' points at:  $APISERVER
+       FE3455_APISERVER expects:         $FE3455_APISERVER
+       Switch context (kubectl config use-context …), or correct FE3455_APISERVER if fe3455 itself moved."
+fi
+log "target cluster confirmed by apiserver address (not by context name)."
 
 # ── 0b. KNOWN-BAD-TAG GUARD: the iam image must carry the issued_at RFC3339 fix ────
 #    main-b3d23769 reverts kacho-iam c300053 (issued_at RFC3339 string) → `docker login`
@@ -118,10 +147,59 @@ if grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/values.fe3455-prod.yaml" 
 fi
 
 # ── 1. required value files present (values.fe3455-ory.yaml is gitignored) ─────
-for f in values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml values.fe3455-ory.yaml; do
+for f in values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml \
+         values.fe3455-ory-posture.yaml values.fe3455-ory.yaml; do
   [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  (values.fe3455-ory.yaml is gitignored — restore it locally before cutover)"
 done
-log "all 4 overlay value files present."
+log "all 5 overlay value files present."
+
+# ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
+#
+# Why this gate exists. Until 2026-08-11 the whole Ory overlay lived in the one
+# gitignored file, so the PRODUCTION POSTURE of the identity providers (kratos
+# development mode, hydra issuer/PKCE/TTL) was invisible to git, to review and to
+# every gate — their "no findings" over that layer meant "nothing read". Posture
+# now lives in the tracked values.fe3455-ory-posture.yaml.
+#
+# A convention alone would not hold that split: the easiest way to change the
+# live cluster is still to edit the file nobody sees. So the split is CHECKED
+# here — the credentials layer may declare only the coordinates below, and a
+# posture key reappearing in it refuses the cutover instead of shipping quietly.
+#
+# The allow-list is deliberately a LEAF-PATH list, not a subtree list: allowing
+# `hydra.hydra.config` wholesale would re-admit every posture key under it.
+ORY_CRED_PATHS='
+hydra.hydra.config.dsn
+hydra.hydra.config.secrets.system
+hydra.hydra.config.secrets.cookie
+kratos.kratos.config.dsn
+kratos.kratos.config.secrets.cookie
+kratos.kratos.config.secrets.cipher
+kratos.kratos.config.courier.smtp.connection_uri
+'
+stray="$(ORY_CRED_PATHS="$ORY_CRED_PATHS" python3 - "$CHART_DIR/values.fe3455-ory.yaml" <<'PY'
+import os, sys, yaml
+allowed = set(os.environ["ORY_CRED_PATHS"].split())
+tree = yaml.safe_load(open(sys.argv[1])) or {}
+def leaves(node, path=()):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            yield from leaves(v, path + (str(k),))
+    else:
+        yield ".".join(path)
+print("\n".join(sorted(p for p in leaves(tree) if p not in allowed)))
+PY
+)" || die "could not read values.fe3455-ory.yaml (need python3 with PyYAML)"
+
+if [ -n "$stray" ]; then
+  warn "values.fe3455-ory.yaml declares coordinates that are NOT credentials:"
+  printf '  %s\n' $stray >&2
+  die "posture must live in the TRACKED values.fe3455-ory-posture.yaml, where review and the
+       gates can see it. Move the coordinates above there (or, if they really are credentials,
+       add them to ORY_CRED_PATHS in this script with a reason). Refusing to deploy a posture
+       that no gate has read."
+fi
+log "credentials layer carries credentials only (posture is in the tracked layer)."
 
 # ── 2. required Secrets present (NOT created here — they hold creds you provide) ─
 kubectl -n "$NS" get secret zot-s3-creds >/dev/null 2>&1 \
@@ -159,6 +237,7 @@ if ! helm upgrade "$RELEASE" . -n "$NS" \
       -f values.prod.yaml \
       -f values.fe3455.yaml \
       -f values.fe3455-prod.yaml \
+      -f values.fe3455-ory-posture.yaml \
       -f values.fe3455-ory.yaml \
       --set uif.enabled=true \
       --take-ownership \

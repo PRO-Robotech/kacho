@@ -86,11 +86,14 @@ fatal() { echo "FATAL: $1"; exit 2; }
 command -v helm >/dev/null 2>&1 || fatal "helm не найден"
 python3 -c 'import yaml' 2>/dev/null || fatal "нужен python3 с PyYAML"
 
+# fe3455 несёт ЧЕТВЁРТЫЙ слой — values.fe3455-ory-posture.yaml (посадка
+# провайдеров личности). Он включает kratos/hydra, то есть добавляет шаблоны
+# подов, которые эта проверка обязана рассматривать.
 PROFILES="
 dev|values.dev.yaml
 dev-prod|values.dev.yaml,values.dev-prod.yaml
 prod|values.prod.yaml
-fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
 "
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT

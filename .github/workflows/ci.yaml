@@ -1018,9 +1018,13 @@ jobs:
       # `helm dependency build` без sibling-чекаута не проходил. После переезда ui-future
       # в монорепу гейт вернулся.
       #
-      # prod-профиль требует values.fe3455-ory.yaml (gitignored — несёт креды кластера),
-      # поэтому в CI рендерим dev + prod-БЕЗ-ory: этого хватает, чтобы поймать
-      # шаблонные дефекты, а секрет остаётся вне репозитория.
+      # Боевой набор — ЧЕТЫРЕ слоя. Четвёртый (values.fe3455-ory-posture.yaml,
+      # посадка провайдеров личности) с 2026-08-11 отслеживается git и рендерится
+      # здесь. Раньше посадка лежала в одном файле с кредами Ory, файл был
+      # gitignored, и «рендерим prod-БЕЗ-ory» звучало как решение про секрет, хотя
+      # заодно выводило из-под всех гейтов посадку боевого кластера.
+      # Вне репозитория остаётся ТОЛЬКО слой кредов (values.fe3455-ory.yaml) —
+      # посадки он не несёт, и это проверяет cutover-fe3455.sh перед раскаткой.
       - name: umbrella dependency build (без sibling-чекаутов)
         working-directory: deploy/helm/umbrella
         run: helm dependency build
@@ -1031,7 +1035,7 @@ jobs:
 
       - name: umbrella template — prod-профиль
         working-directory: deploy/helm/umbrella
-        run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml > /dev/null
+        run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml -f values.fe3455-ory-posture.yaml > /dev/null
 
       # helm template/lint НЕ ловят монт на несуществующий том — манифест рендерится, а
       # валится только на apiserver, уже при деплое. Проверяем МАТРИЦУ тумблеров, потому
