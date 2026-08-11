@@ -60,7 +60,11 @@ defaults:
 env:
   # Пакеты со СВОИМ package-lock.json — они standalone и корневой `npm ci` их не ставит.
   # Workspaces (shared/vpc/iam/system, см. package.json) ставятся корневым npm ci.
-  STANDALONE: host dashboard compute storage nlb registry
+  # e2e стоит здесь по тому же признаку, что и остальные, — у него свой lock-файл.
+  # Он не входит ни в матрицу сборки, ни в typecheck/test (там перечислены девять
+  # приложений консоли), но гейт покрытия линта загружает конфигурацию КАЖДОГО
+  # пакета его же инструментом, поэтому набор e2e обязан быть установлен.
+  STANDALONE: host dashboard compute storage nlb registry e2e
 
 jobs:
   typecheck:

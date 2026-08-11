@@ -5,9 +5,15 @@
   "description": "Сквозные пробы консоли через браузер: поток входа, чтение каждого модуля, создание ресурса, отказ там, где он и есть правильный исход.",
   "scripts": {
     "test": "playwright test",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "lint": "eslint ."
   },
   "devDependencies": {
-    "@playwright/test": "1.56.1"
+    "@eslint/js": "^9.39.4",
+    "@playwright/test": "1.56.1",
+    "eslint": "^9.39.4",
+    "globals": "^17.6.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.64.0"
   }
 }
