@@ -109,7 +109,6 @@ func ctxNamedCaller() context.Context {
 		operations.Principal{Type: "user", ID: "usr_integration"})
 }
 
-
 // stubSubnetClient — заглушка vpc SubnetClient для integration-стенда: REGIONAL
 // подсеть в заданном регионе, одна сеть на все семейства (dualstack same-network
 // инвариант выполняется). Заменяет прежний nil-клиент, который молча снимал

@@ -119,6 +119,8 @@ func auditDeferredWork(root string) (findings []deferralFinding, filesRead int, 
 			if strings.HasPrefix(slashed, "pkg/api/") {
 				continue
 			}
+			// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из
+			// ввода: включить посторонний файл нечем.
 			raw, berr := os.ReadFile(abs)
 			if berr != nil {
 				return nil, 0, fmt.Errorf("чтение %s: %w", slashed, berr)

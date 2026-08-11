@@ -102,7 +102,6 @@ func ctxNamedCaller() context.Context {
 		operations.Principal{Type: "user", ID: "usr_integration"})
 }
 
-
 // ---- Integration tests -----------------------------------------------------
 
 func TestIntegration_CreateTargetGroup_EndToEnd(t *testing.T) {

@@ -191,7 +191,7 @@ func auditProfileKnobReaders(root string) ([]knobFinding, knobCensus, error) {
 		switch {
 		case strings.HasPrefix(relToChart, "templates/") &&
 			knobIsTemplate(relToChart):
-			body, rerr := os.ReadFile(abs) //nolint:gosec // путь получен из индекса git этого дерева
+			body, rerr := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из ввода: включить посторонний файл нечем
 			if rerr != nil {
 				return nil, census, fmt.Errorf("шаблон %s: %w", abs, rerr)
 			}
@@ -274,7 +274,7 @@ type knobDep struct {
 // не доедет». Найдя его, проверка отказывает — запрет, чьё обоснование
 // перестало быть верным, обязан об этом сказать, а не молчать.
 func loadKnobChart(abs, relDir string) (*knobChart, error) {
-	body, err := os.ReadFile(abs) //nolint:gosec // путь получен из индекса git этого дерева
+	body, err := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из ввода: включить посторонний файл нечем
 	if err != nil {
 		return nil, fmt.Errorf("чарт %s: %w", abs, err)
 	}
@@ -394,7 +394,7 @@ func knobCollectRefs(body string, into map[string]bool) {
 // knobAuditValuesFile разбирает один файл значений и относит каждый лист к
 // чарту-получателю.
 func knobAuditValuesFile(abs, rel string, owner *knobChart, census *knobCensus) ([]knobFinding, error) {
-	body, err := os.ReadFile(abs) //nolint:gosec // путь получен из индекса git этого дерева
+	body, err := os.ReadFile(abs) // #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из ввода: включить посторонний файл нечем
 	if err != nil {
 		return nil, fmt.Errorf("значения %s: %w", abs, err)
 	}
