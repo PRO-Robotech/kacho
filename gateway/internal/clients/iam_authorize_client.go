@@ -118,7 +118,7 @@ type IAMAuthorizeClient struct {
 
 // IAMAuthorizeClientConfig — DI bag.
 type IAMAuthorizeClientConfig struct {
-	// Addr — IAM AuthorizeService address ("iam.kacho.svc.cluster.local:9090").
+	// Addr — IAM AuthorizeService address ("iam.kacho.svc:9090").
 	// Required.
 	Addr string
 

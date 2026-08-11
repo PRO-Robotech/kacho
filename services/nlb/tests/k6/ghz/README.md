@@ -12,7 +12,7 @@ overhead vs raw gRPC.
    docker build -t ghz:dev .
    kind load docker-image ghz:dev --name kacho
    ```
-2. Loadbalancer service reachable as `nlb.kacho.svc.cluster.local:9090`.
+2. Loadbalancer service reachable as `nlb.kacho.svc:9090`.
 3. Proto descriptor set baked into the image OR available via reflection.
    `kacho-nlb` enables grpc-reflection by default in dev, so the jobs use
    reflection (no protoset needed).

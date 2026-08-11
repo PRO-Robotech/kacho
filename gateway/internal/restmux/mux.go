@@ -298,22 +298,22 @@ func isInternalPath(path string) bool {
 //
 // addrs — карта domain → адрес gRPC backend:
 //
-//	"iam"                  → kacho-iam.kacho.svc.cluster.local:9090
-//	"iamInternal"          → kacho-iam.kacho.svc.cluster.local:9091
-//	"vpc"                  → vpc.kacho.svc.cluster.local:9090
-//	"vpcInternal"          → vpc.kacho.svc.cluster.local:9091 (admin internal-порт)
-//	"compute"              → compute.kacho.svc.cluster.local:9090
-//	"computeInternal"      → compute.kacho.svc.cluster.local:9091 (admin internal-порт)
-//	"loadbalancer"         → kacho-nlb.kacho.svc.cluster.local:9090
-//	"loadbalancerInternal" → kacho-nlb.kacho.svc.cluster.local:9091 (зарезервирован
+//	"iam"                  → kacho-iam.kacho.svc:9090
+//	"iamInternal"          → kacho-iam.kacho.svc:9091
+//	"vpc"                  → vpc.kacho.svc:9090
+//	"vpcInternal"          → vpc.kacho.svc:9091 (admin internal-порт)
+//	"compute"              → compute.kacho.svc:9090
+//	"computeInternal"      → compute.kacho.svc:9091 (admin internal-порт)
+//	"loadbalancer"         → kacho-nlb.kacho.svc:9090
+//	"loadbalancerInternal" → kacho-nlb.kacho.svc:9091 (зарезервирован
 //	                        под admin/internal REST, если в будущем добавятся http-аннотации;
 //	                        сейчас InternalResourceLifecycleService — streaming gRPC-direct only)
-//	"geo"                  → kacho-geo.kacho.svc.cluster.local:9090 (Region/Zone read)
-//	"geoInternal"          → kacho-geo-internal.kacho.svc.cluster.local:9091 (admin Region/Zone CRUD)
-//	"registry"             → kacho-registry.kacho.svc.cluster.local:9090 (RegistryService control-plane)
-//	"registryInternal"     → kacho-registry.kacho.svc.cluster.local:9091 (InternalRegistryService GC/stats admin)
-//	"storage"              → kacho-storage.kacho.svc.cluster.local:9090 (Volume/Snapshot/DiskType read)
-//	"storageInternal"      → kacho-storage.kacho.svc.cluster.local:9091 (InternalVolume attach/detach + InternalDiskType admin)
+//	"geo"                  → kacho-geo.kacho.svc:9090 (Region/Zone read)
+//	"geoInternal"          → kacho-geo-internal.kacho.svc:9091 (admin Region/Zone CRUD)
+//	"registry"             → kacho-registry.kacho.svc:9090 (RegistryService control-plane)
+//	"registryInternal"     → kacho-registry.kacho.svc:9091 (InternalRegistryService GC/stats admin)
+//	"storage"              → kacho-storage.kacho.svc:9090 (Volume/Snapshot/DiskType read)
+//	"storageInternal"      → kacho-storage.kacho.svc:9091 (InternalVolume attach/detach + InternalDiskType admin)
 //
 // conns — карта domain → *grpc.ClientConn (нужна для OpsProxy);
 // при nil — OperationService регистрируется через no-op Unimplemented (тесты).

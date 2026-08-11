@@ -93,11 +93,11 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 |---|---|---|
 | `KACHO_API_GATEWAY_LISTEN_ADDR` | `:8080` | cmux listener (gRPC + REST) |
 | `KACHO_API_GATEWAY_TLS_LISTEN_ADDR` | — | внешний TLS listener (пусто — выключен) |
-| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc.cluster.local:9090` | backend iam |
-| `KACHO_API_GATEWAY_VPC_GRPC` | `vpc.kacho.svc.cluster.local:9090` | backend vpc |
-| `KACHO_API_GATEWAY_COMPUTE_GRPC` | `compute.kacho.svc.cluster.local:9090` | backend compute |
-| `KACHO_API_GATEWAY_GEO_GRPC` | `kacho-geo.kacho.svc.cluster.local:9090` | backend geo |
-| `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc.cluster.local:9090` | backend nlb |
+| `KACHO_API_GATEWAY_IAM_GRPC` | `iam.kacho.svc:9090` | backend iam |
+| `KACHO_API_GATEWAY_VPC_GRPC` | `vpc.kacho.svc:9090` | backend vpc |
+| `KACHO_API_GATEWAY_COMPUTE_GRPC` | `compute.kacho.svc:9090` | backend compute |
+| `KACHO_API_GATEWAY_GEO_GRPC` | `kacho-geo.kacho.svc:9090` | backend geo |
+| `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc:9090` | backend nlb |
 | `KACHO_API_GATEWAY_AUTHN_MODE` | `dev` | `dev` / `production` / `production-strict` |
 | `KACHO_API_GATEWAY_AUTHZ_ENABLED` | `false` | per-RPC authz-middleware |
 | `KACHO_HYDRA_ISSUER` | derived | issuer/JWKS для проверки JWT |

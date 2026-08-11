@@ -10,7 +10,7 @@ By default it is "<Release.Name>-storage" (e.g. kacho-umbrella-storage), but a
 `fullnameOverride` pins it to a stable value regardless of the release name. The
 umbrella sets fullnameOverride=kacho-storage so the Service/Deployment/DNS name is
 `kacho-storage` — the name every consumer dials (compute→storage
-storageInternalAddr default kacho-storage.kacho.svc.cluster.local:9091, the
+storageInternalAddr default kacho-storage.kacho.svc:9091, the
 compute server-cert serverName.storage SAN, the geo/iam config defaults) and the
 name deploy/Makefile reload-svc expects (DEPLOY_NAME=kacho-storage). Without the
 override the Service renders as kacho-umbrella-storage and none of those resolve.

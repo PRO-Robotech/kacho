@@ -18,7 +18,7 @@ import (
 // Полосы: хранилище не сконфигурировано (адрес пуст) — гейт молчит, ходить некуда;
 // dev — no-op (in-process фикстуры поднимают zot без аутентификации).
 func TestRequireZotCredentials(t *testing.T) {
-	const addr = "http://zot.kacho.svc.cluster.local:5000"
+	const addr = "http://zot.kacho.svc:5000"
 	cases := []struct {
 		name     string
 		authMode string

@@ -45,8 +45,8 @@ auth:
   # forwarder). Set empty only when auth.mode=dev.
   trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
-iamAddr: "kacho-iam.kacho.svc.cluster.local:9090"
-vpcAddr: "vpc.kacho.svc.cluster.local:9090"
+iamAddr: "kacho-iam.kacho.svc:9090"
+vpcAddr: "vpc.kacho.svc:9090"
 # vpcInternalAddr — внутренний листенер kacho-vpc (:9091):
 # InternalNetworkInterfaceService (Attach/Detach/ListByInstance) — привязка
 # интерфейса к машине и её снятие на удалении. config.go cfg.VPCInternalGRPCAddr.
@@ -59,10 +59,10 @@ vpcAddr: "vpc.kacho.svc.cluster.local:9090"
 # другого нет: справочник зон принадлежит kacho-geo (эпик #82), а названный
 # раздел объявляет эту переменную упразднённой — при том что её читает конфиг и
 # выставляет чарт. Комментарий пережил свой предмет дважды.
-vpcInternalAddr: "vpc.kacho.svc.cluster.local:9091"
+vpcInternalAddr: "vpc.kacho.svc:9091"
 # geoAddr — kacho-geo public :9090 (geo.v1.ZoneService.Get): consumer-валидация
 # Instance.zone_id (kacho-geo epic, Stage S4). config.go cfg.GeoGRPCAddr default-host.
-geoAddr: "kacho-geo.kacho.svc.cluster.local:9090"
+geoAddr: "kacho-geo.kacho.svc:9090"
 # storageInternalAddr — kacho-storage INTERNAL :9091 (storage.v1.InternalVolumeService
 # Attach/Detach/ListAttachments): volume↔Instance attach-saga (compute→storage edge,
 # compute/storage split). Internal-only (never external endpoint, ban #6). config.go
@@ -75,7 +75,7 @@ geoAddr: "kacho-geo.kacho.svc.cluster.local:9090"
 # зонтике, и обнулять адрес нечему. Обнуление отвергает проба
 # peer_addr_profiles_test.go — стенд без соседа собирается выключением САБЧАРТА
 # соседа, а не подменой его вызова заглушкой у консумера.
-storageInternalAddr: "kacho-storage.kacho.svc.cluster.local:9091"
+storageInternalAddr: "kacho-storage.kacho.svc:9091"
 skipPeerValidation: "false"
 
 # ─── SEC-F mTLS — per-edge opt-in (cert-manager internal-CA certs) ─────
@@ -124,12 +124,12 @@ mtls:
     geo: false           # compute→geo ZoneService.Get (Instance.zone_id, :9090) — kacho-geo epic S4
     storage: false       # compute→storage InternalVolumeService (attach-saga, :9091) — compute/storage split
   serverName:
-    iamRegister: kacho-iam-internal.kacho.svc.cluster.local
-    iamProject: kacho-iam.kacho.svc.cluster.local            # :9090 ProjectService.Get dial-host
-    iamAuthz: kacho-iam-internal.kacho.svc.cluster.local     # :9091 Check/list-filter dial-host
-    vpc: vpc.kacho.svc.cluster.local
-    geo: kacho-geo.kacho.svc.cluster.local                   # :9090 ZoneService.Get dial-host
-    storage: kacho-storage.kacho.svc.cluster.local           # :9091 InternalVolumeService dial-host (∈ storage server-SAN)
+    iamRegister: kacho-iam-internal.kacho.svc
+    iamProject: kacho-iam.kacho.svc            # :9090 ProjectService.Get dial-host
+    iamAuthz: kacho-iam-internal.kacho.svc     # :9091 Check/list-filter dial-host
+    vpc: vpc.kacho.svc
+    geo: kacho-geo.kacho.svc                   # :9090 ZoneService.Get dial-host
+    storage: kacho-storage.kacho.svc           # :9091 InternalVolumeService dial-host (∈ storage server-SAN)
 
 # compute is not on the Address.Create write-path; HPA + resources
 # present for uniform policy across services. maxReplicas=5 is plenty.
@@ -181,7 +181,7 @@ authzIam:
   # собирал сам композиционный корень; после переезда контура на общий носитель
   # такой ветки не существует, и оператор, поверивший комментарию, получил бы
   # неподнимающийся стенд вместо «отключённой проверки».
-  grpcAddr: "kacho-iam.kacho.svc.cluster.local:9091"
+  grpcAddr: "kacho-iam.kacho.svc:9091"
 
 # Sidecar внутриподовых политик УДАЛЁН (был `opa.*`). Он тянул подписанный bundle с
 # эндпоинта iam, которого больше нет — сервис выдачи bundle'ов из iam удалён, — и ни

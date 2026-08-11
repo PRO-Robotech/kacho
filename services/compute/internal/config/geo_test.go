@@ -16,7 +16,7 @@ func TestGeo_DefaultAddr(t *testing.T) {
 	cfg := loadCfg(t, map[string]string{
 		"KACHO_COMPUTE_DB_PASSWORD": "x",
 	})
-	assert.Equal(t, "kacho-geo.kacho.svc.cluster.local:9090", cfg.GeoGRPCAddr)
+	assert.Equal(t, "kacho-geo.kacho.svc:9090", cfg.GeoGRPCAddr)
 }
 
 // TestGeo_AddrOverride — адрес geo конфигурируем через env.
@@ -50,7 +50,7 @@ func TestGeo_MTLS_EnabledClientCredsBuild(t *testing.T) {
 		"KACHO_COMPUTE_GEO_MTLS_CERTFILE":   certFile,
 		"KACHO_COMPUTE_GEO_MTLS_KEYFILE":    keyFile,
 		"KACHO_COMPUTE_GEO_MTLS_CAFILES":    caFile,
-		"KACHO_COMPUTE_GEO_MTLS_SERVERNAME": "kacho-iam.kacho.svc.cluster.local",
+		"KACHO_COMPUTE_GEO_MTLS_SERVERNAME": "kacho-iam.kacho.svc",
 	})
 	assert.True(t, cfg.GeoMTLS.Enable)
 	opt, err := cfg.GeoClientCreds()

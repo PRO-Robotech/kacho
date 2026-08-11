@@ -12,7 +12,7 @@ data:
     import { sleep } from 'k6';
     import { Trend, Counter, Rate } from 'k6/metrics';
 
-    const BASE_URL = __ENV.BASE_URL || 'http://api-gateway.kacho.svc.cluster.local:8080';
+    const BASE_URL = __ENV.BASE_URL || 'http://api-gateway.kacho.svc:8080';
     const PROJECT_ID = __ENV.PROJECT_ID;
     const TARGET_RPS = parseInt(__ENV.TARGET_RPS || '10000', 10);
     const TEST_DURATION = __ENV.TEST_DURATION || '5m';
@@ -140,7 +140,7 @@ spec:
           args: ["run", "--quiet", "/scripts/script.js"]
           env:
             - name: BASE_URL
-              value: "http://api-gateway.kacho.svc.cluster.local:8080"
+              value: "http://api-gateway.kacho.svc:8080"
             - name: PROJECT_ID
               value: "b1gf63pakyt2tb1qjd6v"
             - name: TARGET_RPS

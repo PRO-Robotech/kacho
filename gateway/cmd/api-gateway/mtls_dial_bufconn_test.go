@@ -38,7 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 )
 
-const mtlsServerName = "vpc.kacho.svc.cluster.local"
+const mtlsServerName = "vpc.kacho.svc"
 
 // capturingHealth records the metadata + peer-cert SAN seen on the wire for the
 // last Check call, so the test can assert both the principal layer and the mTLS

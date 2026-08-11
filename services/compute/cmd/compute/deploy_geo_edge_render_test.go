@@ -67,11 +67,11 @@ func TestGeoEdge_Values_DeclareGeoAddrAndPerEdgeMTLS(t *testing.T) {
 	v := readValues(t)
 	require.Contains(t, v, "geoAddr:",
 		"values.yaml must declare geoAddr (compute→geo ZoneService.Get dial host)")
-	require.Contains(t, v, "kacho-geo.kacho.svc.cluster.local:9090",
+	require.Contains(t, v, "kacho-geo.kacho.svc:9090",
 		"geoAddr default must be the kacho-geo public :9090 dial host (config.go GeoGRPCAddr default)")
 	require.Regexp(t, `geo:\s*false`, v,
 		"mtls.edges.geo must default to false (per-edge opt-in, dev insecure back-compat)")
-	require.Contains(t, v, "geo: kacho-geo.kacho.svc.cluster.local",
+	require.Contains(t, v, "geo: kacho-geo.kacho.svc",
 		"mtls.serverName.geo must be the kacho-geo dial host (∈ geo server-cert SAN)")
 }
 
@@ -125,7 +125,7 @@ func TestGeoEdge_HelmRender_GeoEnvPresent(t *testing.T) {
 
 	require.Contains(t, rendered, "KACHO_COMPUTE_GEO_GRPC_ADDR",
 		"rendered Deployment must carry the geo dial addr env")
-	require.Contains(t, rendered, "kacho-geo.kacho.svc.cluster.local:9090",
+	require.Contains(t, rendered, "kacho-geo.kacho.svc:9090",
 		"rendered geo dial addr must be the kacho-geo public :9090 host")
 	require.Contains(t, rendered, "KACHO_COMPUTE_GEO_MTLS_ENABLE",
 		"rendered Deployment must carry the geo mTLS enable env when mtls.edges.geo=true")

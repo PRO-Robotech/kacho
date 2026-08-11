@@ -35,7 +35,7 @@ func writeTestCert(t *testing.T) (certFile, keyFile, caFile string) {
 		NotAfter:              time.Now().Add(time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:              []string{"kacho-iam.kacho.svc.cluster.local"},
+		DNSNames:              []string{"kacho-iam.kacho.svc"},
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 	}
@@ -101,12 +101,12 @@ func TestMTLS_SEC_I_02_ProjectEdgeClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_SERVERNAME", "kacho-iam.kacho.svc.cluster.local")
+	t.Setenv("KACHO_VPC_IAM_PROJECT_MTLS_SERVERNAME", "kacho-iam.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	assert.True(t, m.IAMProjectMTLS.Enable)
-	assert.Equal(t, "kacho-iam.kacho.svc.cluster.local", m.IAMProjectMTLS.ServerName)
+	assert.Equal(t, "kacho-iam.kacho.svc", m.IAMProjectMTLS.ServerName)
 	opt, err := m.IAMProjectClientCreds()
 	require.NoError(t, err, "valid cert trio → client creds build")
 	require.NotNil(t, opt)
@@ -121,12 +121,12 @@ func TestMTLS_SEC_I_03_AuthzEdgeClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_SERVERNAME", "kacho-iam-internal.kacho.svc.cluster.local")
+	t.Setenv("KACHO_VPC_IAM_AUTHZ_MTLS_SERVERNAME", "kacho-iam-internal.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
 	assert.True(t, m.IAMAuthzMTLS.Enable)
-	assert.Equal(t, "kacho-iam-internal.kacho.svc.cluster.local", m.IAMAuthzMTLS.ServerName)
+	assert.Equal(t, "kacho-iam-internal.kacho.svc", m.IAMAuthzMTLS.ServerName)
 	opt, err := m.IAMAuthzClientCreds()
 	require.NoError(t, err, "valid cert trio → client creds build")
 	require.NotNil(t, opt)
@@ -159,7 +159,7 @@ func TestMTLS_SEC_D_17_EnabledClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_SERVERNAME", "kacho-iam.kacho.svc.cluster.local")
+	t.Setenv("KACHO_VPC_IAM_REGISTER_MTLS_SERVERNAME", "kacho-iam.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func TestMTLS_SEC_D_19_GeoEdgeClientCredsBuild(t *testing.T) {
 	t.Setenv("KACHO_VPC_GEO_MTLS_CERTFILE", certFile)
 	t.Setenv("KACHO_VPC_GEO_MTLS_KEYFILE", keyFile)
 	t.Setenv("KACHO_VPC_GEO_MTLS_CAFILES", caFile)
-	t.Setenv("KACHO_VPC_GEO_MTLS_SERVERNAME", "kacho-geo.kacho.svc.cluster.local")
+	t.Setenv("KACHO_VPC_GEO_MTLS_SERVERNAME", "kacho-geo.kacho.svc")
 
 	m, err := config.LoadMTLS()
 	require.NoError(t, err)

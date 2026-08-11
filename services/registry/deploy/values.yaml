@@ -100,7 +100,7 @@ service:
       enabled: false
       image: nginxinc/nginx-unprivileged:1.31-alpine
       # Upstream, куда nginx проксирует `/iam/token` (iam registry-token shim :9096).
-      iamTokenShimUpstream: kacho-iam.kacho.svc.cluster.local:9096
+      iamTokenShimUpstream: kacho-iam.kacho.svc:9096
       # ─── Server-cert для :8443-listener'а sidecar'а ──────────────────────────
       # Этот серт предъявляется ДОКЕР-КЛИЕНТУ, значит клиент обязан ему ДОВЕРЯТЬ.
       # Дефолт (kacho-internal-ca) годится только для in-cluster/dev-клиентов, которым
@@ -173,18 +173,18 @@ authz:
   # AUTHZ_IAM_GRPC_ADDR — kacho-iam INTERNAL listener (:9091) for per-RPC Check +
   # fga-proxy RegisterResource/UnregisterResource. Empty + breakglass=false →
   # validateSecurityConfig REJECTS start (authz Check required).
-  iamGrpcAddr: "kacho-iam-internal.kacho.svc.cluster.local:9091"
+  iamGrpcAddr: "kacho-iam-internal.kacho.svc:9091"
   # IAM_PROJECT_GRPC_ADDR — kacho-iam PUBLIC listener (:9090) for ProjectService.Get
   # (existence-validation of project on Create). Separate conn from iamGrpcAddr —
   # ProjectService is registered ONLY on public :9090.
-  iamProjectGrpcAddr: "kacho-iam.kacho.svc.cluster.local:9090"
+  iamProjectGrpcAddr: "kacho-iam.kacho.svc:9090"
   # GEO_GRPC_ADDR — kacho-geo PUBLIC listener (:9090) for RegionService.Get
   # (existence-validation of Registry.region_id on Create — runtime edge
   # registry→geo, REG-1 F4). geo is a leaf domain; registry is never called back
   # (acyclic). RegionService is a public read-only Geography catalog on :9090 —
   # a SEPARATE conn from the iam edges. Empty → geo-client nil → RegionExists
   # returns Unavailable (Create fail-closed).
-  geoGrpcAddr: "kacho-geo.kacho.svc.cluster.local:9090"
+  geoGrpcAddr: "kacho-geo.kacho.svc:9090"
   # trustedForwarderSANs — comma-separated list of the client-cert identities
   # (SPIFFE SANs) allowed to FORWARD an end-user identity (the x-kacho-principal-*
   # headers). Goes to BOTH gRPC listeners.
@@ -424,9 +424,9 @@ mtls:
     iamProject: false   # registry→iam ProjectService.Get (public :9090)
     geo: false          # registry→geo RegionService.Get (public :9090, REG-1 F4)
   serverName:
-    iamAuthz: kacho-iam-internal.kacho.svc.cluster.local
-    iamProject: kacho-iam.kacho.svc.cluster.local
-    geo: kacho-geo.kacho.svc.cluster.local
+    iamAuthz: kacho-iam-internal.kacho.svc
+    iamProject: kacho-iam.kacho.svc
+    geo: kacho-geo.kacho.svc
 
 # Extra free-form env (KACHO_REGISTRY_*) — merged verbatim onto the server container.
 env: {}

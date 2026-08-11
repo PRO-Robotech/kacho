@@ -77,7 +77,7 @@ data:
     # посадка без list-filter.authorize-tls.enable (или без общего client-cert'а
     # KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE) НЕ СТАРТУЕТ.
     authz:
-      iam-endpoint: {{ default "kacho-iam-internal.kacho.svc.cluster.local:9091" .Values.authz.iamEndpoint | quote }}
+      iam-endpoint: {{ default "kacho-iam-internal.kacho.svc:9091" .Values.authz.iamEndpoint | quote }}
       # Круг отправителей, которым разрешено передавать личность конечного
       # пользователя. Пустой список НЕ запрещает — он не сужает (см. values.yaml);
       # производственная посадка на нём не стартует.
@@ -123,12 +123,12 @@ data:
     extapi:
       def-dial-duration: 10s
       iam:
-        endpoint: {{ default "kacho-iam.kacho.svc.cluster.local:9090" .Values.iamAddr | quote }}
+        endpoint: {{ default "kacho-iam.kacho.svc:9090" .Values.iamAddr | quote }}
         tls:
           enable: {{ default false .Values.extapi.iam.tls.enable }}
         dns-lb: {{ default false .Values.extapi.iam.dnsLb }}
       geo:
-        endpoint: {{ default "kacho-geo.kacho.svc.cluster.local:9090" .Values.extapi.geo.endpoint | quote }}
+        endpoint: {{ default "kacho-geo.kacho.svc:9090" .Values.extapi.geo.endpoint | quote }}
         tls:
           enable: {{ default false .Values.extapi.geo.tls.enable }}
 

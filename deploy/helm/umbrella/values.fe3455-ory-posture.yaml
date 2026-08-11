@@ -132,7 +132,7 @@ kratos:
             url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
       courier:
         smtp:
-          connection_uri: "smtp://mailhog.kacho.svc.cluster.local:1025/?disable_starttls=true"
+          connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
           from_address: "noreply@kacho.local"
           from_name: "Kacho"
 

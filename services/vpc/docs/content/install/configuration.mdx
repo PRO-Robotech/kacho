@@ -51,7 +51,7 @@ import dedent from 'ts-dedent'
       mode: production                       # production (default) | production-strict | dev
 
     authz:                                   # per-RPC authz-gate (kacho-iam) + read-side List-filter
-      iam-endpoint: kacho-iam-internal.kacho.svc.cluster.local:9091
+      iam-endpoint: kacho-iam-internal.kacho.svc:9091
       check-timeout: 2s
       cache-ttl: 5s
       list-filter:
@@ -61,9 +61,9 @@ import dedent from 'ts-dedent'
     extapi:                                  # peer-сервисы (gRPC service→service)
       def-dial-duration: 10s
       iam:
-        endpoint: kacho-iam.kacho.svc.cluster.local:9090   # ProjectService.Get
+        endpoint: kacho-iam.kacho.svc:9090   # ProjectService.Get
       geo:
-        endpoint: kacho-geo.kacho.svc.cluster.local:9090   # ZoneService.Get (валидация zone_id)
+        endpoint: kacho-geo.kacho.svc:9090   # ZoneService.Get (валидация zone_id)
 
     network:
       default-sg-inline: true                # создавать default-SG при Network.Create

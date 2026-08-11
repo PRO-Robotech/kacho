@@ -128,7 +128,7 @@ api-gateway:
   # was told plaintext was fine and the canonical profile went around the facade to the
   # provider instead. One port cannot be two transports.
   hydra:
-    jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
     jwksCa:
       secretName: kacho-internal-ca-root
       key: tls.crt
@@ -144,8 +144,8 @@ api-gateway:
     # Introspection asks about a bearer by SENDING it, on every authenticated
     # request that misses the cache — the wire carries a live end-user credential,
     # not merely administrative calls.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445/admin/oauth2/introspect"
+    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
     adminCa:
       secretName: kacho-umbrella-hydra-admin-tls
       key: ca.crt
@@ -306,9 +306,9 @@ kacho-iam:
       # pinned — the internal-CA bundle already mounted for mTLS is the same CA
       # that signs the provider's admin certificate. dev's plaintext value is
       # deep-merged over here; leaving it would refuse the start on this stand.
-      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
-      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
+      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc:4444/oauth2/token"
       # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
       # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
       # derives its upstream from KACHO_IAM_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
@@ -317,7 +317,7 @@ kacho-iam:
       # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
       # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
       # honours this explicit override ahead of the issuer-derived default.
-      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
       # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
       # private_key_jwt client_assertion the mint exchanges at Hydra. Empty ⇒ env
       # absent ⇒ MintBootstrapToken fails closed (UNAVAILABLE). Provisioned as a
@@ -366,7 +366,7 @@ registry:
   # The Docker data-plane itself is NOT exercised on kind (dataplaneLB off) — these are
   # config-level boot guards, no live fetch, so registry boots control-plane-only.
   iam:
-    jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
   hydra:
     # Same string the provider stamps (no trailing slash — see hydra.urls.self.issuer).
     issuer: "https://localhost:28080/.ory/hydra/public"
@@ -761,5 +761,5 @@ kratos-selfservice-ui:
 # выключен), но латентность от проверки не освобождает: гейты рендерят его с
 # включённым ключом.
 hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
   adminCaFile: /etc/hydra-admin-ca/ca.crt

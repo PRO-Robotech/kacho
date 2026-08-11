@@ -366,7 +366,7 @@ spec:
             # REQUIRED в коде (cmd/kacho-iam/subject_change_wiring.go) — без него pod
             # падает на старте. api-gateway internal gRPC = cmux-порт 8080 (cluster-internal).
             - name: KACHO_IAM_GATEWAY_INTERNAL_ADDR
-              value: {{ .Values.gatewayInternalAddr | default "api-gateway.kacho.svc.cluster.local:8080" | quote }}
+              value: {{ .Values.gatewayInternalAddr | default "api-gateway.kacho.svc:8080" | quote }}
             # ─── KAC-127 Phase 2 — AuthN core env vars ──────────────────
             # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook.
             # Создаётся отдельным Secret kacho-iam-hook-token (см. cluster overrides);

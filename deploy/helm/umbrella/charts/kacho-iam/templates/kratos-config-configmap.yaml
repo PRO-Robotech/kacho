@@ -139,7 +139,7 @@ data:
                 # UpsertFromIdentity use-case in-process.
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -155,7 +155,7 @@ data:
                 # C4 fix — see webauthn note above (same :9092 HTTP route).
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -177,7 +177,7 @@ data:
                 # (see the registration.after note above for the rationale).
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -192,7 +192,7 @@ data:
                 # C4 fix — provisioning web_hook → kacho-iam :9092 HTTP route.
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -238,7 +238,7 @@ data:
               # НАЛИЧИЕ держит проба, а не память автора.
               - hook: web_hook
                 config:
-                  url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/recovery
+                  url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/recovery
                   method: POST
                   body: file:///etc/config/kratos/hooks/recovery-payload.jsonnet
                   auth:

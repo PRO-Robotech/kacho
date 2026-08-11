@@ -222,7 +222,7 @@ http_code=400'
   expect_class "TLS есть, доверия нет" tls-verify-failed \
     'curl: (60) SSL certificate problem: unable to get local issuer certificate'
   expect_class "имя не разрешилось" unreachable-name \
-    'curl: (6) Could not resolve host: kacho-umbrella-hydra-admin.kacho.svc.cluster.local'
+    'curl: (6) Could not resolve host: kacho-umbrella-hydra-admin.kacho.svc'
   expect_class "срок ожидания истёк" unreachable-timeout \
     'curl: (28) Connection timed out after 5001 milliseconds'
   expect_class "слушателя нет" refused \
@@ -365,7 +365,7 @@ fi
 HYDRA_POD="$(kubectl -n "$NS" get pod -l app.kubernetes.io/name=hydra \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
 TERM_SVC="$RELEASE-hydra-admin-tls"
-TERM_ADDR="$TERM_SVC.$NS.svc.cluster.local"
+TERM_ADDR="$TERM_SVC.$NS.svc"
 TERM_PORT="${TERM_PORT:-4445}"
 SECRET="${ADMIN_TLS_SECRET:-$RELEASE-hydra-admin-tls}"
 
@@ -498,7 +498,7 @@ spec:
           #     имени Service и по адресу пода, снаружи пода провайдера.
           say NEG_PROVIDER_SVC
           curl -sS -v -m 8 -o /dev/null -w 'http_code=%{http_code}\\n' \\
-               http://$RELEASE-hydra-admin.$NS.svc.cluster.local:4445/health/ready 2>&1
+               http://$RELEASE-hydra-admin.$NS.svc:4445/health/ready 2>&1
           say NEG_PROVIDER_PODIP
           curl -sS -v -m 8 -o /dev/null -w 'http_code=%{http_code}\\n' \\
                http://$POD_IP:$PROV_PORT/health/ready 2>&1
