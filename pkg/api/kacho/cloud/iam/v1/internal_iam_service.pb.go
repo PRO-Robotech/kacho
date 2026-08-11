@@ -571,6 +571,29 @@ type RegisterResourceRequest struct {
 	// перезапись свежих labels. Пусто/нулевой → legacy-caller (graceful): IAM
 	// трактует как «-infinity», т.е. любой register применяется (back-compat).
 	SourceVersion *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=source_version,json=sourceVersion,proto3" json:"source_version,omitempty"`
+	// Цепь родительства регистрируемого объекта, от БЛИЖАЙШЕГО предка к дальнему.
+	//
+	// Каждый элемент — объект в форме `"<type>:<id>"`, той же, что `object` выше:
+	//
+	//	["registry_registry:reg-…", "project:prj-…", "account:acc-…"]
+	//
+	// ЗАЧЕМ ОТДЕЛЬНОЕ ПОЛЕ ПРИ ДВУХ УЖЕ СУЩЕСТВУЮЩИХ. `parent_project_id` и
+	// `parent_account_id` несут ровно двух предков и ровно этих. Модель прав
+	// требует цепи ПРОИЗВОЛЬНОЙ формы: репозиторий → реестр → проект → аккаунт →
+	// кластер — глубина четыре. Объект, чей предок не проект и не аккаунт, сегодня
+	// регистрируется без предка вовсе, а объект без предка МОЛЧА выпадает из
+	// области выдачи и из каскада: вопрос о нём задаётся, ответ «нет», и это
+	// неотличимо от честного отказа.
+	//
+	// АДДИТИВНО: старые вызывающие остаются валидными, номера не переиспользуются.
+	// Пустая цепь у вызывающего, который её не шлёт, — законный вход (graceful),
+	// и iam выводит предков из двух прежних полей ровно как раньше.
+	//
+	// ПРИНЯТЬ И НЕ ЗАПИСАТЬ — ЗАПРЕЩЕНО (`api-conventions.md`). Поле обязано иметь
+	// читателя в прод-коде iam с той же фазы, в которой появилось: иначе продукт
+	// обещает возможность, которой нет, а форма E получает объект без предка —
+	// то есть ровно тот дефект, ради которого поле и заводится.
+	ParentChain   []string `protobuf:"bytes,9,rep,name=parent_chain,json=parentChain,proto3" json:"parent_chain,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -661,6 +684,13 @@ func (x *RegisterResourceRequest) GetSourceVersion() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *RegisterResourceRequest) GetParentChain() []string {
+	if x != nil {
+		return x.ParentChain
+	}
+	return nil
+}
+
 // RegisterResourceResponse — пусто; success implicit (gRPC OK). Идемпотентность
 // контракта (повтор → OK) опирается на пустой ответ без уникального id.
 type RegisterResourceResponse struct {
@@ -700,7 +730,10 @@ func (*RegisterResourceResponse) Descriptor() ([]byte, []int) {
 }
 
 // UnregisterResourceRequest — Internal FGA-proxy unregister-owner-tuple payload.
-// Поля идентичны RegisterResourceRequest.
+// Поля — те же, ЗА ИСКЛЮЧЕНИЕМ `parent_chain`: снятие адресуется объектом, и
+// цепь предков ему не нужна. Прежняя редакция говорила «идентичны», и это стало
+// бы ложью в момент появления девятого поля у соседа — правится здесь же, а не
+// «когда-нибудь», потому что расхождение в прозе не даёт конфликта слияния.
 type UnregisterResourceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA-subject string (см. RegisterResourceRequest.subject_id).
@@ -1320,7 +1353,7 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
 	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
 	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\"\x1b\n" +
-	"\x19WriteCreatorTupleResponse\"\xf8\x03\n" +
+	"\x19WriteCreatorTupleResponse\"\x9b\x04\n" +
 	"\x17RegisterResourceRequest\x12,\n" +
 	"\n" +
 	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
@@ -1330,7 +1363,8 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntryR\x06labels\x124\n" +
 	"\x11parent_project_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentProjectId\x124\n" +
 	"\x11parent_account_id\x18\a \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentAccountId\x12A\n" +
-	"\x0esource_version\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\rsourceVersion\x1a9\n" +
+	"\x0esource_version\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\rsourceVersion\x12!\n" +
+	"\fparent_chain\x18\t \x03(\tR\vparentChain\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1a\n" +
