@@ -91,6 +91,12 @@ func synthAdoptionTree(t *testing.T, svc string, files map[string]string) string
 	for rel, body := range files {
 		write("services/"+svc+"/cmd/"+svc+"/"+rel, body)
 	}
+	// Край обязан существовать в синтетическом дереве, потому что обход гейта
+	// требует ОБА поддерева и отказывает на отсутствующем: «состав взять неоткуда»
+	// — это отказ, а не пустой успех. Файл заведомо чистый: предмет проб инъекции
+	// — распознавание сборки у СЕРВИСА, и посторонняя находка на крае смазала бы
+	// счёт.
+	write("gateway/cmd/api-gateway/main.go", "package main\n\nfunc main() {}\n")
 	synthTrack(t, root)
 	return root
 }
