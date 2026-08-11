@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -66,7 +65,13 @@ func (c *GeoZoneClient) Get(ctx context.Context, id string) (*domain.Zone, error
 		defer cancel()
 		resp, rerr := c.zones.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: id})
 		if rerr != nil {
-			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
+			// Полосу выбирает носитель (pkg/peer). Прежде здесь распознавался
+			// ОДИН код — NotFound, — а отказ владельца в правах и негодная по
+			// его мнению ссылка проваливались наружу сырым ответом соседа: повтор
+			// (retry.OnUnavailable) их не касался, а сервисный маппер разворачивал
+			// в недоступность, то есть арендатор получал «повтори позже» на
+			// терминальный отказ.
+			if peer.Classify(rerr).RefusedReference() {
 				return repo.ErrNotFound
 			}
 			return rerr

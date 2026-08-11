@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -127,18 +126,22 @@ func (c *zoneClient) ListZoneIDsInRegion(ctx context.Context, regionID string) (
 
 // mapZoneErr транслирует gRPC-status в domain-sentinel-ошибки.
 func mapZoneErr(err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("geo zone list: %w", err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.PermissionDenied:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeDenied:
 		return fmt.Errorf("%w: zone lookup denied", domain.ErrInvalidArg)
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: geo zone list: %s", domain.ErrUnavailable, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: geo zone list: %s", domain.ErrInvalidArg, st.Message())
-	default:
-		return fmt.Errorf("geo zone list: %w", err)
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: geo zone list: %s", domain.ErrUnavailable, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: geo zone list: %s", domain.ErrInvalidArg, peer.PeerMessage(err))
 	}
+	// Непонятый ответ соседа — не полоса контракта: оборачивается как есть и
+	// разбирается человеком, а не выдаётся за одну из полос.
+	return fmt.Errorf("geo zone list: %w", err)
 }

@@ -44,6 +44,7 @@ import (
 	"testing"
 
 	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 )
 
 // canonPeerMissLane — КАНОН полосы «чужой ресурс не резолвится у владельца».
@@ -90,6 +91,44 @@ var lanesByName = map[string]kerrors.Reason{
 	"ReasonPeerResourceMissing": kerrors.ReasonPeerResourceMissing,
 	"ReasonPeerResourceState":   kerrors.ReasonPeerResourceState,
 	"ReasonPeerUnavailable":     kerrors.ReasonPeerUnavailable,
+}
+
+// proseFieldLanes — соответствие «поле peer.Prose → имя полосы». Оно НЕ
+// изобретается здесь: то же соответствие реализует носитель, и
+// TestProseFieldsMatchTheCarrier сверяет их между собой. Два экземпляра одного
+// соответствия разошлись бы молча — и разошлись бы ровно на полосе, добавленной
+// позже в одно из двух мест.
+var proseFieldLanes = map[string]string{
+	"Missing":     "ReasonPeerResourceMissing",
+	"State":       "ReasonPeerResourceState",
+	"Unavailable": "ReasonPeerUnavailable",
+}
+
+// Соответствие полей носителю — сверкой С НИМ, а не прочтением его кода.
+func TestProseFieldsMatchTheCarrier(t *testing.T) {
+	byOutcome := map[string]peer.Outcome{
+		"Missing":     peer.OutcomeMissing,
+		"State":       peer.OutcomeStateRefused,
+		"Unavailable": peer.OutcomeUnavailable,
+	}
+	for field, wantName := range proseFieldLanes {
+		o, ok := byOutcome[field]
+		if !ok {
+			t.Errorf("поле %s объявлено гейтом, но исхода для него нет — соответствие\n"+
+				"    описывает форму, которой носитель не производит", field)
+			continue
+		}
+		want, ok := laneByName(wantName)
+		if !ok {
+			t.Errorf("полоса %s не найдена в словаре", wantName)
+			continue
+		}
+		if got := o.Reason(); got.Token() != want.Token() {
+			t.Errorf("поле %s: гейт ждёт полосу %q, носитель отдаёт %q — два места об одном\n"+
+				"    предмете разошлись", field, want.Token(), got.Token())
+		}
+	}
+	t.Logf("перепись: полей прозы сверено %d", len(proseFieldLanes))
 }
 
 func laneByName(name string) (kerrors.Reason, bool) {
@@ -166,6 +205,47 @@ func collectLaneSites(t *testing.T, roots []string) (sites []laneSite, filesRead
 					"непрочитанный файл в перепись", abs, perr)
 			}
 			ast.Inspect(f, func(n ast.Node) bool {
+				// Эмиссия через НОСИТЕЛЬ (pkg/peer): текст полосы стоит полем
+				// `peer.Prose`, а сама полоса выбирается классификацией. Место
+				// собирается по ИМЕНИ ПОЛЯ — оно и связывает текст с полосой.
+				//
+				// Без этой ветки гейт перестал бы видеть эмиссии, переехавшие на
+				// носитель, и «ноль находок» означало бы «ноль осмотренного»
+				// ровно там, где полоса теперь и живёт.
+				if lit, ok := n.(*ast.CompositeLit); ok {
+					if selT, ok := lit.Type.(*ast.SelectorExpr); ok && selT.Sel.Name == "Prose" {
+						pos := fset.Position(lit.Pos())
+						rel := relTo(root, pos.Filename)
+						for _, el := range lit.Elts {
+							kv, ok := el.(*ast.KeyValueExpr)
+							if !ok {
+								continue
+							}
+							key, ok := kv.Key.(*ast.Ident)
+							if !ok {
+								continue
+							}
+							lane, known := proseFieldLanes[key.Name]
+							if !known {
+								continue
+							}
+							bl, ok := kv.Value.(*ast.BasicLit)
+							if !ok || bl.Kind != token.STRING {
+								continue
+							}
+							txt, uerr := strconv.Unquote(bl.Value)
+							if uerr != nil {
+								continue
+							}
+							sites = append(sites, laneSite{
+								file: rel, line: fset.Position(kv.Pos()).Line,
+								lane: lane, text: txt, viaType: true,
+								atOwner: strings.HasPrefix(filepath.ToSlash(rel), geoOwnerDir),
+							})
+						}
+					}
+					return true
+				}
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
 					return true

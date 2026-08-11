@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -131,24 +130,27 @@ func (c *projectClient) Get(ctx context.Context, projectID string) (*Project, er
 // mapProjectErr транслирует gRPC-status в domain-sentinel ошибки. См. контракт
 // ProjectClient.Get.
 func mapProjectErr(projectID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("iam project get %q: %w", projectID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing:
 		return fmt.Errorf("%w: Project %s not found", domain.ErrNotFound, projectID)
-	case codes.PermissionDenied:
-		// Не лик'аем разницу: tenant видит "не существует" и для NotFound,
-		// и для denied (existence-hiding: не раскрываем инфра-чувствительные данные).
-		// Используется FailedPrecondition (а не NotFound) чтобы handler-слой
-		// сервиса различал internal-precondition от honest-NotFound резолва.
+	case peer.OutcomeDenied:
+		// Не лик'аем разницу: tenant видит "не существует" и для промаха, и для
+		// отказа в правах (existence-hiding). Внутренний sentinel при этом РАЗНЫЙ —
+		// FailedPrecondition против NotFound, — чтобы handler-слой отличал
+		// предусловие от честного промаха резолва. Полоса носителя эту разницу
+		// сохраняет: наружу они неразличимы, внутри — нет.
 		return fmt.Errorf("%w: Project %s not found", domain.ErrFailedPrecondition, projectID)
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: iam project %s: %s", domain.ErrUnavailable, projectID, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: iam project %s: %s", domain.ErrInvalidArg, projectID, st.Message())
-	default:
-		return fmt.Errorf("iam project get %q: %w", projectID, err)
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: iam project %s: %s", domain.ErrUnavailable, projectID, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: iam project %s: %s", domain.ErrInvalidArg, projectID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("iam project get %q: %w", projectID, err)
 }

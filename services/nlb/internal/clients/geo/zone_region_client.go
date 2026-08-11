@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -94,14 +93,19 @@ func (c *ZoneRegionClient) RegionOfZone(ctx context.Context, zoneID string) (str
 // (fail-closed: любой не-успех zone→region резолва → ErrUnavailable, кроме
 // нераспознанного raw-err без обёртки).
 func mapZoneGetErr(zoneID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("geo zone get %q: %w", zoneID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound, codes.PermissionDenied, codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: geo zone %s: %s", domain.ErrUnavailable, zoneID, st.Message())
-	default:
-		return fmt.Errorf("geo zone get %q: %w", zoneID, err)
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing, peer.OutcomeDenied, peer.OutcomeUnavailable:
+		// Резолв зоны в регион — предусловие когерентности размещения: любой из
+		// трёх исходов означает «регион зоны неустановим», и мутация не проходит
+		// (fail-closed). Различать их наружу нечем — регион не назван ни в одном.
+		return fmt.Errorf("%w: geo zone %s: %s", domain.ErrUnavailable, zoneID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("geo zone get %q: %w", zoneID, err)
 }

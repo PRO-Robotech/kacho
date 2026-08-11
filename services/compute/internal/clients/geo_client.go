@@ -13,6 +13,7 @@ import (
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -72,7 +73,11 @@ func (c *GeoClient) GetZone(ctx context.Context, zoneID string) error {
 		defer cancel()
 		_, rerr := c.zones.Get(auth.PropagateOutgoing(callCtx), &geov1.GetZoneRequest{ZoneId: zoneID})
 		if rerr != nil {
-			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
+			// Полосу выбирает носитель (pkg/peer). Прежде распознавался ОДИН код —
+			// NotFound; отказ владельца в правах и негодная по его мнению ссылка
+			// уходили наружу сырым ответом соседа и приезжали арендатору
+			// недоступностью, то есть «повтори позже» на терминальный отказ.
+			if peer.Classify(rerr).RefusedReference() {
 				return ports.ErrNotFound
 			}
 			return rerr
@@ -94,7 +99,11 @@ func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, er
 		defer cancel()
 		resp, rerr := c.zones.Get(auth.PropagateOutgoing(callCtx), &geov1.GetZoneRequest{ZoneId: zoneID})
 		if rerr != nil {
-			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
+			// Полосу выбирает носитель (pkg/peer). Прежде распознавался ОДИН код —
+			// NotFound; отказ владельца в правах и негодная по его мнению ссылка
+			// уходили наружу сырым ответом соседа и приезжали арендатору
+			// недоступностью, то есть «повтори позже» на терминальный отказ.
+			if peer.Classify(rerr).RefusedReference() {
 				return ports.ErrNotFound
 			}
 			return rerr

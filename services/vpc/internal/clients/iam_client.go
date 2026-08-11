@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
@@ -51,14 +50,16 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 		defer cancel()
 		_, rerr := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
-			st, ok := status.FromError(rerr)
-			if ok && (st.Code() == codes.NotFound || st.Code() == codes.InvalidArgument) {
-				// NotFound → проекта нет.
-				// InvalidArgument → id проекта malformed (неверный prefix / длина):
-				//   IAM валидирует формат id и отдает InvalidArgument на мусорные id.
-				//   Трактуем как «not found», чтобы caller получил каноничную async-
-				//   ошибку "Project X not found", а не «утекший» текст вида
-				//   "project check: rpc error: code = Inval...".
+			// Полосу выбирает носитель (pkg/peer). «Владелец установил, что ссылка
+			// не годится» — это промах, негодный по его мнению id И ОТКАЗ В ПРАВАХ:
+			// последний прежде проваливался наружу сырым ответом соседа и приезжал
+			// арендатору недоступностью, то есть «повтори позже» на отказ, который
+			// повтором не лечится.
+			//
+			// Каноничная async-ошибка «Project <id> not found» собирается выше по
+			// exists=false; сырой текст соседа («project check: rpc error: code =
+			// Inval…») наружу не уходит.
+			if peer.Classify(rerr).RefusedReference() {
 				exists = false
 				return nil
 			}

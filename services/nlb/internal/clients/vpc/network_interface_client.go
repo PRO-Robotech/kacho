@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -137,22 +136,23 @@ func (c *networkInterfaceClient) Get(ctx context.Context, nicID string) (*Networ
 
 // mapNICErr транслирует gRPC-status в domain-sentinel-ошибки.
 func mapNICErr(nicID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("vpc network interface get %q: %w", nicID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing, peer.OutcomeDenied:
+		// anti-oracle: «нет интерфейса» и «не виден» — один текст.
 		return fmt.Errorf("%w: NetworkInterface %s not found", domain.ErrInvalidArg, nicID)
-	case codes.PermissionDenied:
-		return fmt.Errorf("%w: NetworkInterface %s not found", domain.ErrInvalidArg, nicID)
-	case codes.FailedPrecondition:
-		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrFailedPrecondition, nicID, st.Message())
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrUnavailable, nicID, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrInvalidArg, nicID, st.Message())
-	default:
-		return fmt.Errorf("vpc network interface get %q: %w", nicID, err)
+	case peer.OutcomeStateRefused:
+		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrFailedPrecondition, nicID, peer.PeerMessage(err))
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrUnavailable, nicID, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: vpc network interface %s: %s", domain.ErrInvalidArg, nicID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("vpc network interface get %q: %w", nicID, err)
 }

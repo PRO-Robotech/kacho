@@ -8,11 +8,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -60,7 +59,10 @@ func (c *GeoRegionClient) Get(ctx context.Context, id string) (*domain.Region, e
 		defer cancel()
 		resp, rerr := c.regions.Get(auth.PropagateOutgoing(cctx), &geov1.GetRegionRequest{RegionId: id})
 		if rerr != nil {
-			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
+			// Та же полоса и тот же носитель, что у зоны: разбор кодов, писавшийся
+			// в каждом клиенте отдельно, расходился между соседними файлами
+			// одного пакета.
+			if peer.Classify(rerr).RefusedReference() {
 				return repo.ErrNotFound
 			}
 			return rerr

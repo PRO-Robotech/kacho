@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -204,20 +203,21 @@ func (c *addressClient) Get(ctx context.Context, addressID string) (*Address, er
 // Полоса отсутствия у владельца — `ErrNotFound` (§By-lane code-split);
 // `ErrInvalidArg` остаётся за тем, что повтором не лечится.
 func mapAddressErr(addressID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("vpc address get %q: %w", addressID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing, peer.OutcomeDenied:
+		// anti-oracle: «нет адреса» и «не виден» — один sentinel и один текст.
 		return fmt.Errorf("%w: address %s not found", domain.ErrNotFound, addressID)
-	case codes.PermissionDenied:
-		return fmt.Errorf("%w: address %s not found", domain.ErrNotFound, addressID)
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: vpc address %s: %s", domain.ErrUnavailable, addressID, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: vpc address %s: %s", domain.ErrInvalidArg, addressID, st.Message())
-	default:
-		return fmt.Errorf("vpc address get %q: %w", addressID, err)
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: vpc address %s: %s", domain.ErrUnavailable, addressID, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: vpc address %s: %s", domain.ErrInvalidArg, addressID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("vpc address get %q: %w", addressID, err)
 }

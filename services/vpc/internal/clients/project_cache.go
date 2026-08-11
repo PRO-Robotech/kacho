@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 )
@@ -125,7 +124,11 @@ func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (boo
 		//     доходит. На всякий случай обработаем — кешируем negative.
 		//   - Unavailable / Internal / DeadlineExceeded / любая другая
 		//     ошибка — НЕ кешируем (fail-open). Возвращаем err как есть.
-		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+		// Отрицательный результат кешируется ТОЛЬКО тогда, когда владелец его
+		// установил (носитель: pkg/peer). Недоступность и непонятый ответ
+		// установленным отказом не являются — их кеширование зафиксировало бы
+		// перебой у соседа как «проекта нет» на всё окно TTL.
+		if peer.Classify(err).RefusedReference() {
 			c.store(projectID, false, c.negTTL)
 			return false, nil
 		}

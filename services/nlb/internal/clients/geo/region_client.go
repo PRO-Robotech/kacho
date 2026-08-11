@@ -9,12 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -134,39 +132,35 @@ func (c *regionClient) Get(ctx context.Context, regionID string) (*Region, error
 // где «invalid argument» — текст внутреннего sentinel, а не утверждение о
 // регионе.
 func mapRegionErr(regionID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("geo region get %q: %w", regionID, err)
+	// Полосу выбирает носитель (pkg/peer). Прежде здесь стоял свой разбор кодов, и
+	// он уже разошёлся с соседними файлами того же сервиса: PermissionDenied тут
+	// сводился к промаху, а в клиенте зон — к отдельному sentinel'у.
+	switch o := peer.Classify(err); {
+	case o.RefusedReference():
+		// Промах, отказ в правах (edge-case agg-route filtering) и негодный по
+		// мнению владельца id — одна полоса и один текст: иначе по коду отличали
+		// бы «нет региона» от «есть, но не виден».
+		return regionLane(o, regionID)
+	case o.Transient():
+		return regionLane(o, regionID)
 	}
-	switch st.Code() {
-	case codes.NotFound, codes.PermissionDenied:
-		// PermissionDenied — edge-case agg-route filtering. Полоса и текст те же,
-		// что у промаха: authz-факт наружу не течёт.
-		return regionMissing(regionID)
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return regionUnavailable(regionID)
-	case codes.InvalidArgument:
-		return regionMissing(regionID)
-	default:
-		return fmt.Errorf("geo region get %q: %w", regionID, err)
-	}
+	// Непонятый ответ соседа полосой контракта не притворяется.
+	return fmt.Errorf("geo region get %q: %w", regionID, err)
 }
 
 // serviceDomain — источник отказа в ErrorInfo.domain. Назван один раз на сервис.
 const serviceDomain = "nlb"
 
-// regionMissing / regionUnavailable — две полосы ребра nlb→geo. Тексты — часть
-// контракта: "Region <id> not found" утверждается пробами и e2e, а
-// "region lookup unavailable" дословно повторяет то, что прежде собирал
-// сервисный маппер из kind'а.
-func regionMissing(regionID string) error {
-	return kerrors.ReasonPeerResourceMissing.Errf(
-		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
-		"Region %s not found", regionID)
-}
-
-func regionUnavailable(regionID string) error {
-	return kerrors.ReasonPeerUnavailable.Errf(
-		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
-		"region lookup unavailable")
+// regionLane — ответ ребра nlb→geo. Тексты — часть контракта:
+// "Region <id> not found" утверждается пробами и e2e, а "region lookup
+// unavailable" дословно повторяет то, что прежде собирал сервисный маппер.
+//
+// Код и машинный признак берутся у полосы, поэтому разойтись не могут; прежде
+// текст промаха обрастал по дороге двойным sentinel-префиксом, и клиент видел
+// "region: invalid argument: Region <id> not found", где «invalid argument» —
+// текст внутреннего sentinel'а, а не утверждение о регионе.
+func regionLane(o peer.Outcome, regionID string) error {
+	return o.Status(
+		peer.Ref{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+		peer.Prose{Missing: "Region %s not found", Unavailable: "region lookup unavailable"})
 }

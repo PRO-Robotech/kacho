@@ -16,11 +16,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -77,24 +76,20 @@ func (c *Client) ProjectExists(ctx context.Context, projectID string) error {
 	if err == nil {
 		return nil
 	}
-	st, ok := status.FromError(err)
-	if !ok {
-		// Non-status ошибка транспорта — наружу фикс. INTERNAL, но причину логируем
-		// (иначе живой сбой = «internal database error» без единой строки диагностики).
-		slog.Default().Error("registry: iam ProjectService.Get unexpected non-status error",
-			"project_id", projectID, "err", err.Error())
-		return regerrors.ErrInternal
-	}
-	switch st.Code() {
-	case codes.NotFound, codes.PermissionDenied, codes.InvalidArgument:
+	// Полосу выбирает носитель (pkg/peer): «владелец установил, что ссылка не
+	// годится» — нет проекта / нет доступа / негодный по его мнению id.
+	switch o := peer.Classify(err); {
+	case o.RefusedReference():
 		return regerrors.ErrInvalidArg
-	case codes.Unavailable, codes.DeadlineExceeded:
+	case o.Transient():
 		return regerrors.ErrUnavailable
 	}
-	// Прочие коды (в частности Unimplemented, если conn ошибочно указывает на iam
-	// internal :9091, где ProjectService не зарегистрирован) наружу — фикс. INTERNAL,
-	// но код+message логируем: иначе misroute теряется немо (урок этого бага).
+	// Непонятый ответ (в частности Unimplemented, если conn ошибочно указывает на
+	// iam internal :9091, где ProjectService не зарегистрирован) наружу — фикс.
+	// INTERNAL, но причина уходит в журнал: иначе ошибка маршрутизации теряется
+	// немо (урок этого бага). Проза соседа наружу НЕ идёт — она несёт host/port.
 	slog.Default().Error("registry: iam ProjectService.Get unexpected",
-		"project_id", projectID, "grpc_code", st.Code().String(), "grpc_msg", st.Message())
+		"project_id", projectID, "outcome", peer.Classify(err).String(),
+		"grpc_code", peer.PeerCode(err).String(), "grpc_msg", err.Error())
 	return regerrors.ErrInternal
 }
