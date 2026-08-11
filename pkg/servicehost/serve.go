@@ -324,10 +324,29 @@ func listenAndServe(ctx context.Context, spec servicecontract.Spec, publicSrv, i
 // ошибке — крах админ-плоскости дал бы нулевой код возврата, оркестратор не
 // перезапустил бы процесс, и недоступность осталась бы тихой.
 func serveResult(publicErr, internalErr error) error {
-	if publicErr != nil {
+	if publicErr = gracefulNil(publicErr); publicErr != nil {
 		return publicErr
 	}
-	return internalErr
+	return gracefulNil(internalErr)
+}
+
+// gracefulNil обращает «сервер остановлен» в отсутствие ошибки.
+//
+// ПОЧЕМУ ЗДЕСЬ, А НЕ ТОЛЬКО У ВНУТРЕННЕГО СЛУШАТЕЛЯ. Внутренний фильтровал этот
+// сентинел, публичный — нет, и асимметрия давала отказ на штатном гашении:
+// остановка ПО НАШЕЙ ЖЕ просьбе (ctx отменён → GracefulStop) возвращалась
+// вызывающему как ошибка старта. Наблюдалось пробой подъёма nlb, и только под
+// полной параллелью прогона — то есть в окне, где отмена успевает опередить
+// начало обслуживания. Флейк здесь был симптомом, а не природой: исход зависел
+// от того, кто выиграл гонку, но неверным он был всегда.
+//
+// Отличать «нас попросили остановиться» от «мы упали» обязан носитель: у
+// вызывающего для этого нет ничего, кроме текста ошибки.
+func gracefulNil(err error) error {
+	if err == nil || errors.Is(err, grpc.ErrServerStopped) {
+		return nil
+	}
+	return err
 }
 
 // decisionSlot — место звена решения о доступе в цепочке.
