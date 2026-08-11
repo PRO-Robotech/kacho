@@ -328,126 +328,23 @@ sync `INVALID_ARGUMENT "invalid route table id '<X>'"`.
 
 ---
 
-## AddRoutes
+## Гранулярная правка маршрутов недоступна
 
-<ApiOperation method="POST" endpoint="/vpc/v1/routeTables/{routeTableId}:add-routes" async>
+:::warning `:add-routes`, `:remove-routes`, `:update-route` отвечают 501
+Три verb-RPC объявлены в контракте, но **обработчика у них нет**: вызов получает
+`UNIMPLEMENTED` (HTTP 501) с текстом, называющим причину и рабочий путь. Это не пробел в
+описании и не временный сбой.
 
-Гранулярное добавление маршрутов: добавляет переданные `routes[]` к существующему списку,
-не затрагивая остальные. **Асинхронный** verb-RPC; ответ `Operation` → `response` =
-родительская `RouteTable` с обновленным `staticRoutes[]`. Идентификатор каждому маршруту
-присваивает сервер (входящий id игнорируется).
+Причина в том, что у маршрута **нет идентификатора**. `StaticRoute` несёт только
+`destinationPrefix`, `nextHopAddress` и `labels` — ни в контракте, ни в хранилище
+(`staticRoutes` хранится JSON-массивом) ключа у маршрута не существует, а `:remove-routes`
+и `:update-route` адресуют маршрут именно по нему. Ввести такой идентификатор — отдельная
+работа: адресуемая идентичность в Kachō неизменяема и присваивается сервером, значит нужны
+правила присвоения и перенос уже сохранённых наборов.
 
-#### Тело запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>routeTableId</code></td><td><strong>да</strong> (path)</td><td><code>{TYPES.string}</code></td><td>Идентификатор RouteTable</td></tr>
-    <tr><td><code>routes</code></td><td>нет</td><td><code>StaticRoute[]</code></td><td>Маршруты для добавления (id присваивается сервером)</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST 'http://localhost:18080/vpc/v1/routeTables/{routeTableId}:add-routes' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{
-        "routes": [
-          { "destinationPrefix": "192.168.0.0/16", "nextHopAddress": "10.0.0.5" }
-        ]
-      }'
-  `}
-</CodeBlock>
-
-<Restrictions items={[{ label: 'resourceId', rules: RESTRICTIONS.resourceId }]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
-
-## RemoveRoutes
-
-<ApiOperation method="POST" endpoint="/vpc/v1/routeTables/{routeTableId}:remove-routes" async>
-
-Удаляет маршруты по их идентификаторам (`routeIds[]`), оставляя остальные нетронутыми.
-**Асинхронный** verb-RPC; ответ `Operation` → `response` = родительская `RouteTable`.
-
-#### Тело запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>routeTableId</code></td><td><strong>да</strong> (path)</td><td><code>{TYPES.string}</code></td><td>Идентификатор RouteTable</td></tr>
-    <tr><td><code>routeIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>id маршрутов (<code>StaticRoute.id</code>) для удаления</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST 'http://localhost:18080/vpc/v1/routeTables/{routeTableId}:remove-routes' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{ "routeIds": ["{routeId}"] }'
-  `}
-</CodeBlock>
-
-<Restrictions items={[{ label: 'resourceId', rules: RESTRICTIONS.resourceId }]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
-
-## UpdateRoute
-
-<ApiOperation method="POST" endpoint="/vpc/v1/routeTables/{routeTableId}:update-route" async>
-
-Точечно заменяет содержимое одного маршрута по его `routeId` (id берется из `routeId`,
-поле `route.id` во входе игнорируется). **Асинхронный** verb-RPC; ответ `Operation` →
-`response` = родительская `RouteTable`.
-
-#### Тело запроса
-
-<table>
-  <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><code>routeTableId</code></td><td><strong>да</strong> (path)</td><td><code>{TYPES.string}</code></td><td>Идентификатор RouteTable</td></tr>
-    <tr><td><code>routeId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>id обновляемого маршрута</td></tr>
-    <tr><td><code>route</code></td><td>нет</td><td><code>StaticRoute</code></td><td>Новое содержимое маршрута</td></tr>
-  </tbody>
-</table>
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST 'http://localhost:18080/vpc/v1/routeTables/{routeTableId}:update-route' \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{
-        "routeId": "{routeId}",
-        "route": { "destinationPrefix": "10.2.0.0/16", "nextHopAddress": "10.0.0.9" }
-      }'
-  `}
-</CodeBlock>
-
-<Restrictions items={[{ label: 'resourceId', rules: RESTRICTIONS.resourceId }]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
-:::note Гранулярные verb-RPC и полная замена через `Update`
-`:add-routes` / `:remove-routes` / `:update-route` — гранулярные операции над отдельными
-маршрутами (стиль verb-RPC, как у [`Subnet`](/api/subnet) `:addCidrBlocks`). Каждая
-возвращает `Operation` → обновленную `RouteTable`. Когда нужно переопределить весь набор
-разом — используйте `Update` с полным списком `staticRoutes`. Обе модели согласованы: и
-verb-RPC, и `Update` оперируют одним и тем же `staticRoutes[]`.
+**Что делать вместо.** Правьте набор целиком через `Update` с
+`updateMask: ["staticRoutes"]`, предварительно прочитав текущий список (`Get`). Полная
+замена — единственная поддерживаемая форма правки маршрутов.
 :::
 
 ---

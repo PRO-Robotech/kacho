@@ -73,6 +73,17 @@ var Profile = listfiltergate.Profile{
 			Shape: listfiltergate.ParentGate,
 			Gate:  "svc.Get",
 		},
+		// Объявлен контрактом, реализации не несёт: привязки доступа —
+		// ресурс домена iam, и поверхность на инстансе задваивала бы выдачу
+		// прав. Метод переопределён рукой и отказывает с названной причиной
+		// (internal/handler/declared_but_absent.go), поэтому страницы не
+		// существует — сужать нечего.
+		//
+		// Форма проверяется по коду: гейт требует, чтобы КАЖДЫЙ возврат метода
+		// отдавал nil-ответ с ошибкой. Появится путь, строящий ответ, —
+		// объявление станет ложным и гейт покраснеет; уйдёт RPC из контракта —
+		// у записи не станет предмета.
+		"instance.ListAccessBindings": {Shape: listfiltergate.NeverServes},
 		"machine_type.List": {
 			Shape: listfiltergate.ClusterScoped,
 			Reason: "cluster-wide sizing catalog (COMP-1 F7): every authenticated caller reads " +

@@ -61,6 +61,11 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.RouteTableService/Delete":         {},
 	"/kacho.cloud.vpc.v1.RouteTableService/ListOperations": {},
 	// :verb-мутации маршрутов (REST POST /vpc/v1/routeTables/{id}:add-routes и т.д.).
+	// Все три отвечают UNIMPLEMENTED с названной причиной: у маршрута нет
+	// идентификатора ни в контракте, ни в хранилище, а два из трёх адресуют его
+	// именно по нему (vpc, 07-known-divergences.md, запись 26). В списке они
+	// остаются НАМЕРЕННО: снятие отсюда дало бы вызывающему отказ края вместо
+	// отказа владельца, то есть скрыло бы причину за общим «метод не разрешён».
 	"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes":    {},
 	"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes": {},
 	"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute":  {},

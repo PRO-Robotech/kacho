@@ -390,9 +390,9 @@ ephemeral Address по значению / подсети). REST использу
     <tr><td><strong>Create</strong></td><td><code>POST /vpc/v1/routeTables</code></td><td>async</td></tr>
     <tr><td><strong>Update</strong></td><td><code>PATCH /vpc/v1/routeTables/&#123;id&#125;</code></td><td>async</td></tr>
     <tr><td><strong>Delete</strong></td><td><code>DELETE /vpc/v1/routeTables/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><strong>AddRoutes</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:add-routes</code></td><td>async</td></tr>
-    <tr><td><strong>RemoveRoutes</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:remove-routes</code></td><td>async</td></tr>
-    <tr><td><strong>UpdateRoute</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:update-route</code></td><td>async</td></tr>
+    <tr><td><strong>AddRoutes</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:add-routes</code></td><td><strong>501 UNIMPLEMENTED</strong> (см. «Гранулярная правка маршрутов недоступна»)</td></tr>
+    <tr><td><strong>RemoveRoutes</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:remove-routes</code></td><td><strong>501 UNIMPLEMENTED</strong> (там же)</td></tr>
+    <tr><td><strong>UpdateRoute</strong></td><td><code>POST /vpc/v1/routeTables/&#123;id&#125;:update-route</code></td><td><strong>501 UNIMPLEMENTED</strong> (там же)</td></tr>
     <tr><td><code>ListOperations</code></td><td><code>GET /vpc/v1/routeTables/&#123;id&#125;/operations</code></td><td>sync</td></tr>
   </tbody>
 </table>

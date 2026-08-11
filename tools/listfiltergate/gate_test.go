@@ -686,3 +686,71 @@ func (h *MachineTypeHandler) List(ctx context.Context) error { return nil }
 		t.Fatalf("a declaration that still matches a method must not be a finding: %v\n--- output ---\n%s", err, out)
 	}
 }
+
+// TestNeverServes_SilentWhenEveryPathRefuses — injection, silent direction: a
+// listing method whose every return hands back (nil, error) serves no page, so
+// there is nothing to narrow and the declaration holds.
+func TestNeverServes_SilentWhenEveryPathRefuses(t *testing.T) {
+	out, err := run(t, flatProfile, map[string]string{"internal/handler/instance_handler.go": `package handler
+
+type InstanceHandler struct{}
+
+func (h *InstanceHandler) List(ctx context.Context) error {
+	rows, _ := h.svc.List(ctx)
+	visible, _ := filterVisible(ctx, h.listFilter, rows)
+	_ = visible
+	return nil
+}
+
+func (h *InstanceHandler) ListAccessBindings(ctx context.Context, req *Req) (*Resp, error) {
+	return nil, status.Error(codes.Unimplemented, "owned by iam")
+}
+`}, map[string]Listing{
+		"instance.ListAccessBindings": {Shape: NeverServes},
+	})
+	if err != nil {
+		t.Fatalf("метод, у которого каждый возврат — отказ, страницы не отдаёт: %v"+
+			"\n--- output ---\n%s", err, out)
+	}
+	if !strings.Contains(out, "instance.ListAccessBindings") {
+		t.Errorf("молчание обязано относиться к осмотренному: метода нет в переписи"+
+			"\n--- output ---\n%s", out)
+	}
+}
+
+// TestNeverServes_RedWhenAPathBuildsAResponse — injection, defect direction: one
+// path that returns a response makes the declaration false, and that page is then
+// served with no narrowing at all.
+//
+// Without this half the shape would be a rubber stamp: "declared NeverServes"
+// would exempt a method from every check while it quietly handed back rows.
+func TestNeverServes_RedWhenAPathBuildsAResponse(t *testing.T) {
+	out, err := run(t, flatProfile, map[string]string{"internal/handler/instance_handler.go": `package handler
+
+type InstanceHandler struct{}
+
+func (h *InstanceHandler) List(ctx context.Context) error {
+	rows, _ := h.svc.List(ctx)
+	visible, _ := filterVisible(ctx, h.listFilter, rows)
+	_ = visible
+	return nil
+}
+
+func (h *InstanceHandler) ListAccessBindings(ctx context.Context, req *Req) (*Resp, error) {
+	if req.Sneaky {
+		return &Resp{}, nil
+	}
+	return nil, status.Error(codes.Unimplemented, "owned by iam")
+}
+`}, map[string]Listing{
+		"instance.ListAccessBindings": {Shape: NeverServes},
+	})
+	if err == nil {
+		t.Fatalf("объявление NeverServes на методе, строящем ответ, обязано быть находкой"+
+			"\n--- output ---\n%s", out)
+	}
+	if !strings.Contains(out, "builds a response") {
+		t.Errorf("находка обязана называть предмет (путь, строящий ответ)"+
+			"\n--- output ---\n%s", out)
+	}
+}

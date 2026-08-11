@@ -238,6 +238,28 @@ const (
 	// including listing methods nobody had considered, such as addresspool's
 	// ListAddresses — and recorded its reason nowhere the gate could read.
 	ClusterScoped
+
+	// NeverServes — the method returns no page at all: every path out of it is a
+	// refusal. Nothing is narrowed because nothing is served, so demanding a
+	// narrowing shape of it would be demanding evidence for an event that cannot
+	// happen.
+	//
+	// Evidence is in the code and is checked, not taken on the word of the
+	// declaration: EVERY return statement of the method must hand back a nil
+	// response together with a non-nil error. One path that builds a response is
+	// enough to make the declaration false, and the gate says so.
+	//
+	// This shape exists because a declared-but-unimplemented RPC is now written by
+	// hand rather than inherited from the generated stub — the refusal has to name
+	// its reason and the owner of the capability, and that turns it into a method
+	// this gate can see. Before that it was invisible here: an inherited stub
+	// declares no receiver, so the analyser had nothing to judge and stayed silent
+	// on an RPC the contract advertised.
+	//
+	// It expires with its method twice over: implement the listing and the shape
+	// becomes false (a response is built), retire the RPC and the entry has no
+	// subject.
+	NeverServes
 )
 
 // String names a shape for messages.
@@ -255,6 +277,8 @@ func (s Shape) String() string {
 		return "StoreQuery"
 	case ClusterScoped:
 		return "ClusterScoped"
+	case NeverServes:
+		return "NeverServes"
 	}
 	return "unknown"
 }
@@ -492,7 +516,7 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 
 	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
 	// is about HOW a page is narrowed, not about which shape does it.
-	if l.Shape != ClusterScoped && l.Shape != StoreQuery {
+	if l.Shape != ClusterScoped && l.Shape != StoreQuery && l.Shape != NeverServes {
 		for _, b := range p.Banned {
 			if called[b] {
 				findings = append(findings, fmt.Sprintf(
@@ -544,6 +568,14 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 				"%s — declared SubjectScoped, but nothing along the calls it makes reaches %s: the "+
 					"query is not narrowed by the authenticated caller\n  declared: %s",
 				key, orList(p.SubjectScopers), a.pos))
+		}
+
+	case NeverServes:
+		if served, where := a.unit.returnsAResponse(a.fn); served {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared NeverServes, but a path out of it builds a response (%s): the "+
+					"declaration says no page is ever served, so that page is served without any "+
+					"narrowing at all\n  declared: %s", key, where, a.pos))
 		}
 
 	case ClusterScoped:
@@ -1384,3 +1416,45 @@ A cluster catalog or an admin-only internal surface is declared ClusterScoped
 with a reason. That reason lives in the profile, where this gate reads it — not
 in a reviewer's memory.
 `
+
+// returnsAResponse reports whether any return statement of fn hands back a
+// non-nil first result — that is, whether the method can serve a page at all.
+//
+// This is the evidence behind Shape NeverServes. It is deliberately a property
+// of the METHOD's own returns, not of its call graph: a refusal that delegates
+// to a helper still has to return that helper's error, and a path that builds a
+// response has to name it here.
+//
+// The two-result shape (response, error) is the only one gRPC unary handlers
+// have, so a return with fewer results means the anchor is not a handler and the
+// caller should not have declared this shape; that is reported as "serves" so the
+// declaration cannot pass on a method the analyser does not understand — silence
+// on an unrecognised shape is exactly how a gate stops being one.
+func (u *unit) returnsAResponse(fn *ast.FuncDecl) (bool, string) {
+	if fn == nil || fn.Body == nil {
+		return true, "no body to inspect"
+	}
+	served := false
+	where := ""
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if served {
+			return false
+		}
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok {
+			return true
+		}
+		if len(ret.Results) != 2 {
+			served, where = true, fmt.Sprintf("return with %d result(s) at %s",
+				len(ret.Results), u.fset.Position(ret.Pos()))
+			return false
+		}
+		// nil first result = nothing served on this path.
+		if id, ok := ret.Results[0].(*ast.Ident); ok && id.Name == "nil" {
+			return true
+		}
+		served, where = true, fmt.Sprintf("non-nil response at %s", u.fset.Position(ret.Pos()))
+		return false
+	})
+	return served, where
+}
