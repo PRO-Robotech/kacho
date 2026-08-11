@@ -26,7 +26,7 @@ import (
 // and propagation semantics, and its own authorization — a domain, with its own
 // acceptance. `dns_zone_id` even referred to a zone resource this platform does not
 // have. Carried on Address it promised callers a feature nobody owned, and the
-// docs-site passed that promise on ("поле зарезервировано; обработка отложена").
+// published documentation passed that promise on ("поле зарезервировано; обработка отложена").
 //
 // So it is withdrawn rather than implemented, input and output together — withdrawing
 // only the input would leave the resource still advertising records nothing can ever

@@ -251,7 +251,7 @@ func TestNoRawCmuxNewOutsideFactory(t *testing.T) {
 			t.Fatalf("относительный путь для %s: %v", path, relErr)
 		}
 		rel = filepath.ToSlash(rel)
-		if strings.HasSuffix(rel, "_test.go") || hasPathSegment(rel, "docs-site", "testdata") {
+		if strings.HasSuffix(rel, "_test.go") || hasPathSegment(rel, "docs", "testdata") {
 			continue
 		}
 		scanned++

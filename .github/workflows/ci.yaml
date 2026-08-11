@@ -1338,8 +1338,8 @@ jobs:
           # каждый в своём каталоге, и кэш, привязанный к одному из них, обновлялся бы
           # мимо остальных семи.
           cache-dependency-path: |
-            gateway/docs-site/package-lock.json
-            services/*/docs-site/package-lock.json
+            gateway/docs/package-lock.json
+            services/*/docs/package-lock.json
       # Вся логика — в скрипте (его можно прогнать локально: `make docs-sites`).
       # Здесь только вызов, чтобы гейт не расходился с тем, что запускает человек.
       #
@@ -1363,6 +1363,6 @@ jobs:
         with:
           name: docs-sites
           path: |
-            gateway/docs-site/build
-            services/*/docs-site/build
+            gateway/docs/build
+            services/*/docs/build
           retention-days: 7

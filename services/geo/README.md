@@ -115,7 +115,7 @@ make lint         # golangci-lint
 cmd/            точки входа: kacho-geo (сервис), migrator (схема БД)
 internal/       domain, use-case'ы (region/zone), repo, handler, check, config
 internal/migrations/   goose SQL-миграции схемы kacho_geo
-docs-site/      документация (Docusaurus)
+docs/           документация: content/ — сайт (Docusaurus), engineering/ — записки
 ```
 
 ## Разработка и вклад

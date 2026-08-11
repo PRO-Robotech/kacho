@@ -6,8 +6,8 @@
 ## Структура
 
 ```
-docs-site/
-├── docs/
+docs/
+├── content/
 │   ├── intro.mdx                 # обзор продукта
 │   ├── architecture/             # overview · data-model · operations · ipam · authz
 │   ├── api/                      # overview + per-resource (Network/Subnet/Address/...) + operations
@@ -24,7 +24,7 @@ docs-site/
 ## Локальный запуск
 
 ```bash
-cd docs-site
+cd docs
 npm install
 npm run start      # dev-сервер http://localhost:3000
 npm run build      # production-сборку в build/

@@ -115,7 +115,7 @@ message Address {
   // Field 20 held `dns_records`, the output half of a DNS promise this service never
   // kept. Nothing ever wrote it: no handler, use-case or repository referenced the
   // field or its message, so it came back empty on every Get and List while the
-  // docs-site told callers it was "reserved, handling deferred". The input half
+  // published documentation told callers it was "reserved, handling deferred". The input half
   // (`dns_record_specs` on Create/Update) is withdrawn in address_service.proto for
   // the same reason, and leaving the output behind would keep advertising records
   // nothing can produce. DNS needs a zone somebody owns, record sets with their own

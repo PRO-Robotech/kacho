@@ -241,9 +241,13 @@ func TestNoServiceDeclaresItsPermissionsASecondTime(t *testing.T) {
 		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
+		// Каталога документации в этом перечне нет намеренно: обход читает только
+		// не-тестовые `.go`, а их под `*/docs/` ноль. Стоявшее здесь исключение
+		// `docs-site/` было к тому же дано префиксом от корня репозитория, где
+		// каталога с таким именем не существовало никогда, — оно не исключало
+		// ничего ни одного дня. Исключение живёт, пока у него есть предмет.
 		if strings.HasPrefix(rel, "pkg/api/") || strings.HasPrefix(rel, "pkg/authz/catalogderive/") ||
-			strings.HasPrefix(rel, "vendor/") || strings.HasPrefix(rel, "ui-future/") ||
-			strings.HasPrefix(rel, "docs-site/") {
+			strings.HasPrefix(rel, "vendor/") || strings.HasPrefix(rel, "ui-future/") {
 			continue
 		}
 		f, perr := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, 0)

@@ -2524,7 +2524,7 @@ CASES.append(Case(
 # `v4Source/v6Source.subnetId|.addressId` are vpc-owned. api-conventions §By-lane
 # code-split (B4) keeps existence with the OWNER; nlb keeps only a *family-agnostic*
 # syntactic gate over the platform prefix catalogue in front of it — a recorded,
-# narrow exception (services/nlb/docs/architecture/08-known-divergences.md
+# narrow exception (services/nlb/docs/engineering/architecture/08-known-divergences.md
 # §"Формат чужого id (VIP-источники)"). These three lock what the CALLER reads, end
 # to end through the gateway; all are fixture-free and strict (a literal non-id and
 # a literal empty string need nothing seeded).

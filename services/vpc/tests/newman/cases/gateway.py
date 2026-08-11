@@ -236,7 +236,7 @@ CASES.append(Case(
 # Gateway — единственный VPC-ресурс со СТРОГИМ контрактом имени
 # (`corevalidate.NameGateway`: только строчные буквы, цифры и дефис, без
 # заглавных и подчёркиваний). Это by-design, объявленное независимо от прогона:
-# см. `services/vpc/docs/architecture/07-known-divergences.md` §22.
+# см. `services/vpc/docs/engineering/architecture/07-known-divergences.md` §22.
 CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}, strict_name=True))
 CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
 CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))

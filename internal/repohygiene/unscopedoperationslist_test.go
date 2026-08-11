@@ -231,7 +231,7 @@ func forEachProductionGoFile(t *testing.T, root string, fn func(rel string, body
 			}
 			if info.IsDir() {
 				switch info.Name() {
-				case ".git", "node_modules", "vendor", "docs-site", "testdata":
+				case ".git", "node_modules", "vendor", "docs", "testdata":
 					return filepath.SkipDir
 				}
 				return nil

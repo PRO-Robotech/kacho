@@ -40,12 +40,12 @@ func repoRoot(t *testing.T) string {
 }
 
 // skipPath — пути вне области покрытия хедерами: VCS, синканная AI-оснастка,
-// docs-site, вендоренное и build-артефакты. Принимает REL-путь (обход идёт по индексу
+// каталоги документации, вендоренное и build-артефакты. Принимает REL-путь (обход идёт по индексу
 // git, где имена каталогов отдельно не приходят).
 func skipPath(rel string) bool {
 	for _, seg := range strings.Split(rel, "/") {
 		switch seg {
-		case ".git", ".claude", "docs-site", "node_modules", "vendor", "bin":
+		case ".git", ".claude", "docs", "node_modules", "vendor", "bin":
 			return true
 		}
 	}

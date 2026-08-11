@@ -66,18 +66,18 @@ Peer-валидацию можно отключить в изолированн�
 таблиц/колонок (`to_regclass`), а не только `max(version_id)`.
 :::
 
-## Сборка образа docs-site
+## Сборка образа документации
 
 Документация (этот сайт) собирается отдельным multi-stage образом и отдаётся nginx:
 
 <CodeBlock language="bash">
   {dedent`
-    cd docs-site
+    cd docs
     docker build -t kacho-compute-docs:dev .   # npm build → nginx (порт 8080)
   `}
 </CodeBlock>
 
-Helm-чарт docs-site — в `docs-site/deploy/` (`compute-docs`).
+Helm-чарт документации — в `docs/deploy/` (`compute-docs`).
 
 ## Проверка работоспособности
 

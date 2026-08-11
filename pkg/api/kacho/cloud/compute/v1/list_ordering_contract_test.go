@@ -20,7 +20,7 @@ import (
 // the query produced. It is removed, and its number stays reserved.
 //
 // compute is not an afterthought here: its four copies are the same dead field with
-// the same wrong comment, and compute's own api-surface doc and docs-site advertised
+// the same wrong comment, and compute's own api-surface doc and published documentation advertised
 // it to callers as a working parameter.
 
 // vacatedOrderBy maps each List…Request that used to carry the sort knob to the

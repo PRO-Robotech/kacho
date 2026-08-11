@@ -17,7 +17,7 @@
 // независимым причинам, каждой из которых хватало в одиночку:
 //
 //  1. Читатель видел только огороженный блок и код-спан. Исполняемая оболочка
-//     страниц docs-site живёт в MDX-регионе <CodeBlock>{dedent`…`} — это ни то,
+//     страниц сайта документации живёт в MDX-регионе <CodeBlock>{dedent`…`} — это ни то,
 //     ни другое, поэтому регион не читался вовсе, а его цитаты не попадали даже
 //     в перепись осмотренного: «ноль находок» было неотличимо от «ноль
 //     прочитанного» ровно там, где лежали находки.
@@ -41,7 +41,7 @@
 //     абсолютный путь, `-`, `~` или путь чужой оболочки (`D:\…`). Резолвить
 //     нечего, и «не резолвится» было бы обвинением на пустом месте;
 //   - цель, разрешимая хотя бы под одним прочтением, — включая `cd ..` и
-//     `cd docs-site` со страницы этого же сайта.
+//     `cd docs` со страницы этого же сайта.
 package repohygiene
 
 import (
@@ -337,11 +337,11 @@ title: deploy
 `
 
 func TestDocsCdGate_ProvenByInjection(t *testing.T) {
-	// Дерево-близнец боевого: страница docs-site у сервиса, каталог стенда
+	// Дерево-близнец боевого: страница сайта документации сервиса, каталог стенда
 	// deploy лежит в корне репозитория, соседнего репозитория стенда нет.
 	tree := func(command string) map[string]string {
 		return map[string]string{
-			"services/vpc/docs-site/docs/install/deploy.mdx": fmt.Sprintf(mdxStandPage, command),
+			"services/vpc/docs/content/install/deploy.mdx": fmt.Sprintf(mdxStandPage, command),
 			"deploy/Makefile": "dev-up:\n\t@true\n",
 		}
 	}
@@ -360,7 +360,7 @@ func TestDocsCdGate_ProvenByInjection(t *testing.T) {
 			t.Fatalf("ожидалась 1 находка, получено %d: %v", len(findings), findings)
 		}
 		got := findings[0]
-		if got.doc != "services/vpc/docs-site/docs/install/deploy.mdx" || got.line != 9 ||
+		if got.doc != "services/vpc/docs/content/install/deploy.mdx" || got.line != 9 ||
 			got.kind != regionMDXTpl || got.target != "../kacho-deploy" {
 			t.Fatalf("находка не называет координату: %s", got)
 		}

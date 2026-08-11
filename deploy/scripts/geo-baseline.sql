@@ -20,7 +20,7 @@
 -- Здесь это законная замена, и вот предикат: Region/Zone НЕ несут пообъектного
 -- tuple в модели прав — `git grep -c RegisterResource -- 'services/geo/**/*.go'`
 -- даёт 0 файлов (зеркальная форма на compute даёт 14, то есть предикат читает
--- то, что должен), а services/geo/docs/architecture/authz-and-tuples.md заявляет
+-- то, что должен), а services/geo/docs/engineering/architecture/authz-and-tuples.md заявляет
 -- это решением: «geo намеренно НЕ участвует в потоке owner-таплов». Публичное
 -- чтение объявлено project-scope EXEMPT, поэтому строка, записанная
 -- SQL-ом, для КАЖДОГО читателя тождественна записанной через RPC. Единственное

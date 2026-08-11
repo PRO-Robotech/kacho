@@ -1,4 +1,4 @@
-# Kachō Compute — docs-site
+# Kachō Compute — документация
 
 Публичная документация сервиса **kacho-compute** (Instance / Disk / Image / Snapshot /
 DiskType) на Docusaurus 3. RU-locale, тёмная тема по умолчанию, оформление в палитре

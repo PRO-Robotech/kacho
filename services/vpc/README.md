@@ -35,7 +35,7 @@ SPDX-License-Identifier: BUSL-1.1
 
 `Internal*`-методы и инфра-чувствительные данные никогда не публикуются на внешнем
 endpoint — это разделение защищает топологию от разведки. Полное описание ресурсов,
-методов и кодов ошибок — в документации (`docs-site/`).
+методов и кодов ошибок — в документации (`docs/content/`).
 
 ## Быстрый старт
 
@@ -50,7 +50,7 @@ make build-migrator   # → bin/kacho-migrator
 KACHO_VPC_DB_PASSWORD=secret bin/kacho-migrator up
 KACHO_VPC_DB_PASSWORD=secret bin/kacho-migrator status
 
-# Запустить сервис (конфиг — через YAML/ENV, см. docs-site «Установка»)
+# Запустить сервис (конфиг — через YAML/ENV, см. документацию, раздел «Установка»)
 bin/kacho-vpc serve
 ```
 
@@ -79,7 +79,7 @@ clients ─┘
 Within-service инварианты выражены на уровне БД (FK / UNIQUE / EXCLUDE / CHECK /
 атомарный CAS), а не software-проверками. Мутации эмитят запись в outbox в той же
 транзакции, что и DML, — это гарантирует атомарность изменения и его публикации.
-Подробности — в `docs/architecture/` и `docs-site/`.
+Подробности — в `docs/engineering/architecture/` и `docs/content/`.
 
 ## Тестирование
 
@@ -109,7 +109,7 @@ internal/       domain, use-case'ы, repo, clients, handler, config
 pkg/sdk/vpc/    Go-SDK для вызова сервиса
 internal/migrations/   goose SQL-миграции (0001_initial — squashed baseline)
 deploy/         Helm-чарт
-docs/, docs-site/      архитектурные заметки и документация
+docs/           content/ — сайт документации, engineering/ — архитектурные заметки
 tests/          newman (e2e) и k6 (нагрузка)
 ```
 

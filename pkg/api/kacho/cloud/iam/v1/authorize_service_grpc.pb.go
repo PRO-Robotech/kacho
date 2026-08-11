@@ -105,7 +105,7 @@ type AuthorizeServiceClient interface {
 	// sequence. The relation store itself does serve a batched question (that is
 	// what internal/authzfilter uses for iam's own pages); routing this RPC through
 	// it is open work, tracked as a number in
-	// services/iam/docs/architecture/known-divergences.md §11.
+	// services/iam/docs/engineering/architecture/known-divergences.md §11.
 	//
 	// Order of results matches the order of `checks` in the request. Per-item
 	// failures (e.g. malformed subject) are surfaced as `allowed=false` with
@@ -295,7 +295,7 @@ type AuthorizeServiceServer interface {
 	// sequence. The relation store itself does serve a batched question (that is
 	// what internal/authzfilter uses for iam's own pages); routing this RPC through
 	// it is open work, tracked as a number in
-	// services/iam/docs/architecture/known-divergences.md §11.
+	// services/iam/docs/engineering/architecture/known-divergences.md §11.
 	//
 	// Order of results matches the order of `checks` in the request. Per-item
 	// failures (e.g. malformed subject) are surfaced as `allowed=false` with

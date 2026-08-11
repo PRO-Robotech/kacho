@@ -42,7 +42,7 @@ gateway `restmux`/`DiscardUnknown` — не по идеализированно�
    `filter.Parse(f, []string{"name"})`) whitelist'ит **только `name=`**, что совпадает с нормативным
    `api-conventions.md` «текущая фаза — name=». Расхождение сведено **в пользу кода**: acceptance
    приведён к реализации (§Reconcile F14 filter-whitelist), отклонение записано в
-   `services/compute/docs/architecture/07-known-divergences.md` §12, расширение отложено в COMP-3
+   `services/compute/docs/engineering/architecture/07-known-divergences.md` §12, расширение отложено в COMP-3
    вместе с ресурсом `PlacementGroup` и **обязательным** индексом под новое поле. Замеры на живой
    Postgres, обосновавшие решение: camelCase-написание из дока → `42703 column "instancekind" does not
    exist`; `instance_kind = 'CONTAINER'` → `22P02` (колонка INTEGER-ordinal, парсер даёт строку).

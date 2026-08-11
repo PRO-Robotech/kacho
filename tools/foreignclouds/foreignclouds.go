@@ -37,7 +37,7 @@
 // They are a real instance of the same ban, but they are seed data: they are
 // primary keys inside applied migrations, which are never edited (ban #5), so a
 // rule covering them could not be satisfied by any change to this tree. That
-// debt is tracked as a divergence in services/compute/docs/architecture, not
+// debt is tracked as a divergence in services/compute/docs/engineering/architecture, not
 // as an alarm nobody can turn off.
 //
 // # Exemptions

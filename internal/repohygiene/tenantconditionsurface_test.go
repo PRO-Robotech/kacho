@@ -55,7 +55,7 @@ var retiredPaths = []string{
 	"services/iam/internal/domain/access_binding_condition.go",
 	"services/iam/tests/newman/cases/iam-condition.py",
 	"services/iam/tests/newman/collections/iam-condition.postman_collection.json",
-	"services/iam/docs/components/09-conditions.md",
+	"services/iam/docs/engineering/components/09-conditions.md",
 	"services/iam/tools/auditlistfilter/exclusion_expiry_test.go",
 }
 

@@ -111,7 +111,7 @@ func TestExternalGRPCSurface_IsExactlyTheDocumentedSet(t *testing.T) {
 			t.Errorf("%q is registered natively on the externally-reachable gRPC server but is not in the "+
 				"documented edge surface. Anything registered here is answerable from the advertised TLS "+
 				"listener and from the ingress-facing plaintext listener. Either record the decision in "+
-				"gateway/docs/architecture/known-divergences.md §10 and add it to this set, or register it "+
+				"gateway/docs/engineering/architecture/known-divergences.md §10 and add it to this set, or register it "+
 				"on the cluster-internal listener instead.", svc)
 		}
 	}
