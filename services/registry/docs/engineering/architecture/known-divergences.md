@@ -148,7 +148,7 @@ fixture-gated (SKIP while `jwtProjectViewerA` is empty). See
 `tests/newman/cases/registry-authz.py` docstring.
 
 **Current mitigation (runnable in CI, no stand).**
-- Real authz-seam: `internal/check/viewer_boundary_test.go` runs the **real** corelib
+- Real authz-seam: `services/registry/internal/check/viewer_boundary_test.go` runs the **real** corelib
   authz-interceptor over the registry `PermissionMap` with a fake `CheckClient` granting
   exactly `v_get`, asserting Update/Delete → `NOT_FOUND` (existence-hidden) **and its
   verbatim text** for an authenticated principal. Not a handler fake — the production
@@ -171,7 +171,7 @@ unverified test code (against the verification discipline).
 role grant) on the stand; the three fixture-gated viewer cases in `registry-authz.py`
 then enforce authenticated-deny→404 automatically with no code change.
 
-## 6. ScopeFiltered-RPC row-filter / existence-hiding lives in `handler/listauthz.go`, not the use-case
+## 6. ScopeFiltered-RPC row-filter / existence-hiding lives in `services/registry/internal/handler/listauthz.go`, not the use-case
 
 **Rule.** Thin handler: no domain-state / security decisions in transport; per-object
 authz belongs with the use-case.
@@ -219,7 +219,7 @@ RPC/field ships its Newman case in the same PR.
 её одним потоком — материализация прав тяжёлая). Так что коллекции исполняются.
 
 Что действительно НЕ вызывается ничем — **сквозной харнесс плоскости данных**
-(`scripts/dataplane-e2e.sh`): ни один workflow и ни один скрипт стенда его не зовёт
+(`services/registry/tests/newman/scripts/dataplane-e2e.sh`): ни один workflow и ни один скрипт стенда его не зовёт
 (проверяется поиском по имени файла — ноль вхождений вне самого файла, его самопроверки
 и документов). Его инварианты — 401-вызов без токена, регистрация при первой записи,
 запрет разрушительного удаления на плоскости данных, обход по закодированному
@@ -232,18 +232,24 @@ Per-repo `ci.yaml` по-прежнему гоняет только сборку/
 **Why accepted.**
 - Newman is a **through-the-gateway black box**: it needs a live api-gateway + Hydra
   token-exchange + IAM/OpenFGA + zot + Postgres — i.e. the aggregate deployed stack. Per
-  `polyrepo.md`, e2e-through-api-gateway is owned by the deployed stand
-  (`kacho-deploy` / `kacho-test`), not by a per-service unit-CI runner that has no such
-  stack. Spinning the full multi-service topology inside this repo's `ci.yaml` would
-  duplicate the deploy repo's responsibility.
+  `polyrepo.md`, e2e-through-api-gateway is owned by the deployed stand — today the
+  `deploy/` directory of this monorepo (`deploy/scripts/newman-parallel.sh` and the
+  charts it raises), not by a per-service unit-CI runner that has no such stack.
+  Spinning the full multi-service topology inside `services/registry/ci.yaml` would
+  duplicate what `deploy/` already owns.
+
+  > Здесь стояли имена двух отдельных репозиториев времён полирепо. Один стал каталогом
+  > `deploy/`, второго в дереве нет вовсе (`polyrepo.md` это фиксирует). Ссылка на
+  > несуществующего владельца ответственности читается как «за это отвечает кто-то
+  > другой» — и не даёт спросить, кто именно.
 - The cases/collections **are** authored, `validate-cases.py`/`gen.py`-clean and
   committed, so the regression assets exist and are review-gated; only their *execution*
   is deferred to the stand. Shipping a CI job that cannot bring up the stack would be a
   perpetually-red or perpetually-skipped job (no signal), which the verification
   discipline forbids.
 - REST-contract / gateway-wiring / cross-service-authz regressions are additionally
-  guarded here by build-time seams: `internal/handler/*_test.go` (ScopeFiltered authz),
-  `internal/check/viewer_boundary_test.go` (real corelib interceptor + PermissionMap),
+  guarded here by build-time seams: `services/registry/internal/handler/*_test.go` (ScopeFiltered authz),
+  `services/registry/internal/check/viewer_boundary_test.go` (real corelib interceptor + PermissionMap),
   and the dataplane unit suite.
 
 **What would revisit this.** Для коллекций это уже произошло — их гоняет
