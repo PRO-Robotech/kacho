@@ -26,11 +26,12 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // peerProseScanRoots — область обхода. Каталог, которого здесь нет, гейтом не
@@ -73,53 +74,53 @@ var peerProseExpect = map[string]int{
 // не считается — гейт обязан называть границу своего зрения, а не делать вид,
 // что её нет.
 func auditPeerProse(root string) ([]peerProseFinding, peerProseCensus, error) {
+	var paths []string
+	for _, sub := range peerProseScanRoots {
+		base := filepath.Join(root, sub)
+		// Состав берётся у ИНДЕКСА git, а не у диска: обход диска прочитал бы
+		// игнорируемое (рабочие копии агентов, распаковки чартов, сборочные
+		// каталоги фронтенда), и вердикт стал бы свойством рабочего каталога, а
+		// не коммита. Отсутствие каталога — отказ, а не тихий пропуск: область
+		// обхода гейта тогда сломана.
+		under, err := treecorpus.UnderWithSuffix(base, ".go")
+		if err != nil {
+			return nil, peerProseCensus{}, fmt.Errorf("состав %s: %w", sub, err)
+		}
+		paths = append(paths, under...)
+	}
+	return auditPeerProseFiles(root, paths)
+}
+
+// auditPeerProseFiles — ядро разбора: та же логика, но состав приходит списком.
+//
+// Разделение нужно ради проб инъекции: синтетическое дерево во временном
+// каталоге репозиторием не является, спрашивать у него индекс нечего. Обе
+// стороны гоняют ЭТУ функцию — проба, повторяющая логику гейта своей копией,
+// доказывала бы свойство копии.
+func auditPeerProseFiles(root string, paths []string) ([]peerProseFinding, peerProseCensus, error) {
 	var (
 		findings []peerProseFinding
 		census   peerProseCensus
 	)
-	for _, sub := range peerProseScanRoots {
-		base := filepath.Join(root, sub)
-		if _, err := os.Stat(base); err != nil {
-			return nil, census, fmt.Errorf("каталог %s не найден (%w) — область обхода гейта сломана", sub, err)
-		}
-	}
 
 	// Строковые константы собираются по каталогам: пакет — это каталог, и
 	// значение, пришедшее в литерал именем, чаще всего объявлено рядом.
 	consts := map[string]map[string]string{}
 	files := map[string][]string{}
 
-	walk := func(base string) error {
-		return filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() {
-				switch info.Name() {
-				case ".git", "node_modules", "vendor", "docs-site", "testdata":
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			rel, relErr := filepath.Rel(root, path)
-			if relErr != nil {
-				return relErr
-			}
-			if strings.HasPrefix(rel, "pkg/api/") || strings.Contains(rel, "mock") {
-				return nil
-			}
-			dir := filepath.Dir(path)
-			files[dir] = append(files[dir], path)
-			return nil
-		})
-	}
-	for _, sub := range peerProseScanRoots {
-		if err := walk(filepath.Join(root, sub)); err != nil {
-			return nil, census, fmt.Errorf("обход %s: %w", sub, err)
+	for _, path := range paths {
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			continue
 		}
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return nil, census, fmt.Errorf("путь %s вне дерева %s: %w", path, root, relErr)
+		}
+		if strings.HasPrefix(rel, "pkg/api/") || strings.Contains(rel, "mock") {
+			continue
+		}
+		dir := filepath.Dir(path)
+		files[dir] = append(files[dir], path)
 	}
 
 	fset := token.NewFileSet()

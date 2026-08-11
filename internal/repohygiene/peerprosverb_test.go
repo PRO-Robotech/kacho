@@ -136,6 +136,35 @@ func lane(o peer.Outcome, id string) error {
 }
 `
 
+// synthPeerAudit — разбор синтетического дерева.
+//
+// Состав собирается обходом файловой системы, и это законно ровно здесь:
+// временный каталог репозиторием не является, спрашивать у него индекс git
+// нечего. Разбирает при этом ТА ЖЕ функция, что и гейт по дереву.
+func synthPeerAudit(t *testing.T, root string) ([]peerProseFinding, peerProseCensus) {
+	t.Helper()
+	var paths []string
+	for _, sub := range peerProseScanRoots {
+		err := filepath.Walk(filepath.Join(root, sub), func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("обход синтетического %s: %v", sub, err)
+		}
+	}
+	findings, census, err := auditPeerProseFiles(root, paths)
+	if err != nil {
+		t.Fatalf("разбор синтетического дерева: %v", err)
+	}
+	return findings, census
+}
+
 func synthPeerTree(t *testing.T, extra map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -165,10 +194,7 @@ func synthPeerTree(t *testing.T, extra map[string]string) string {
 // вычисляется в рантайме (его гейт не видит и обязан это назвать, а не выдумать
 // находку).
 func TestPeerProseGateStaysSilentOnLawfulProse(t *testing.T) {
-	findings, census, err := auditPeerProse(synthPeerTree(t, nil))
-	if err != nil {
-		t.Fatalf("обход синтетического дерева: %v", err)
-	}
+	findings, census := synthPeerAudit(t, synthPeerTree(t, nil))
 	if len(findings) != 0 {
 		t.Fatalf("гейт нашёл дефект в законной прозе: %+v", findings)
 	}
@@ -183,10 +209,7 @@ func TestPeerProseGateStaysSilentOnLawfulProse(t *testing.T) {
 // Сторона дефекта: гейт краснеет и НАЗЫВАЕТ координату.
 func TestPeerProseGateCatchesTheVerbMismatch(t *testing.T) {
 	root := synthPeerTree(t, map[string]string{"services/nlb/internal/clients/geo/broken.go": synthDefect})
-	findings, _, err := auditPeerProse(root)
-	if err != nil {
-		t.Fatalf("обход синтетического дерева: %v", err)
-	}
+	findings, _ := synthPeerAudit(t, root)
 	if len(findings) != 1 {
 		t.Fatalf("находок %d, ожидалась одна: %+v", len(findings), findings)
 	}
@@ -199,10 +222,7 @@ func TestPeerProseGateCatchesTheVerbMismatch(t *testing.T) {
 // доходит до вызова.
 func TestPeerProseGateSeesThroughAWrapper(t *testing.T) {
 	root := synthPeerTree(t, map[string]string{"services/nlb/internal/clients/wrapped/lane.go": synthWrapperDefect})
-	findings, census, err := auditPeerProse(root)
-	if err != nil {
-		t.Fatalf("обход синтетического дерева: %v", err)
-	}
+	findings, census := synthPeerAudit(t, root)
 	if len(findings) != 1 || !strings.Contains(findings[0].Where, "lane.go") {
 		t.Fatalf("глагол пронесён через обёртку незамеченным: findings=%+v, вне зрения=%v",
 			findings, census.Unresolved)
