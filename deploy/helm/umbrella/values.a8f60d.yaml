@@ -1,0 +1,175 @@
+cert-manager:
+  enabled: false
+mtls:
+  enabled: true
+  internalCA:
+    caNamespace: beget-cert-manager
+ingress-nginx:
+  enabled: false
+pg-vpc:
+  primary:
+    persistence:
+      enabled: false
+    resources: &id001
+      requests:
+        cpu: 10m
+        memory: 96Mi
+      limits:
+        memory: 640Mi
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-compute:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-iam:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-geo:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-nlb:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-storage:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-registry:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-openfga:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-kratos:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+pg-hydra:
+  primary:
+    persistence:
+      enabled: false
+    resources: *id001
+  volumePermissions:
+    enabled: false
+  readReplicas:
+    persistence:
+      enabled: false
+vpc:
+  resources: &id002
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 448Mi
+  image: docker.io/prorobotech/kacho-vpc:main-2ab95495
+compute:
+  resources: *id002
+  image: docker.io/prorobotech/kacho-compute:main-2ab95495
+storage:
+  resources: *id002
+  image:
+    repository: docker.io/prorobotech/kacho-storage
+    tag: main-2ab95495
+    pullPolicy: IfNotPresent
+registry:
+  resources: *id002
+  image:
+    repository: docker.io/prorobotech/kacho-registry
+    tag: main-2ab95495
+    pullPolicy: IfNotPresent
+  zot:
+    auth:
+      username: kacho
+      password: zot-2ab95495
+    storage:
+      persistence: false
+    resources: *id002
+api-gateway:
+  resources: *id002
+  image: docker.io/prorobotech/kacho-api-gateway:main-2ab95495
+kacho-iam:
+  resources: *id002
+  image:
+    repository: docker.io/prorobotech/kacho-iam
+    tag: main-2ab95495
+    pullPolicy: IfNotPresent
+kacho-geo:
+  resources: *id002
+  image: docker.io/prorobotech/kacho-geo:main-2ab95495
+kacho-nlb:
+  resources: *id002
+  image:
+    repository: docker.io/prorobotech/kacho-nlb
+    tag: main-2ab95495
+    pullPolicy: IfNotPresent
+openfga:
+  resources: *id002
+hydra:
+  deployment:
+    resources: *id002
+kratos:
+  deployment:
+    resources: *id002
+kratos-selfservice-ui:
+  resources: *id002
+uif:
+  enabled: false
+minioDev:
+  enabled: false
