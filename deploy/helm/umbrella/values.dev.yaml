@@ -1073,7 +1073,10 @@ kratos-selfservice-ui:
     enabled: true
     image:
       repository: oryd/kratos-selfservice-ui-node
-      tag: "v1.3.1"
+      # v26.2.0 — последний тег образа; прыжок с v1.3.1 объясняется сменой схемы
+      # версий у Ory (v1.3.1 → v25.x → v26.x), а не двадцатью пятью мажорами
+      # изменений. Проверено по каталогу тегов, а не по номеру.
+      tag: "v26.2.0"
     kratosBrowserUrl: "http://localhost:28080/.ory/kratos/public"
     kratosPublicUrl: "http://kacho-umbrella-kratos-public:80"
     hydraAdminUrl: "http://kacho-umbrella-hydra-admin:4445"

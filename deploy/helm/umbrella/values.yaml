@@ -168,7 +168,10 @@ openfga-bootstrap:
     # auto-creates the DB from auth.username / auth.database.
     initDatabase: false
     dbAdmin:
-      image: postgres:16-alpine
+      # Клиент джобы инициализации, а не сервер: серверы приходят из подчарта со
+      # своими тегами. Клиент 18 к серверу 16 совместим — протокол обратно
+      # совместим, а джоба делает только CREATE DATABASE/ROLE.
+      image: postgres:18-alpine
       host: kacho-umbrella-pg-openfga
       port: "5432"
       user: postgres
