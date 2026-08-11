@@ -52,17 +52,11 @@
 package deploy_test
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 // identityDevKnob — одна ручка режима разработки у стороннего чарта личности.
@@ -100,51 +94,6 @@ func identityDevKnobs() []identityDevKnob {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Чтение дерева.
-
-// chartArchiveValues достаёт values.yaml из архива чарта в charts/.
-func chartArchiveValues(t *testing.T, archive string) map[string]any {
-	t.Helper()
-	p := filepath.Join(umbrellaDir, "charts", archive)
-	f, err := os.Open(p)
-	if err != nil {
-		t.Fatalf("архив чарта %s не читается (%v) — предпосылка проверки исчезла, "+
-			"а не дерево стало чистым", p, err)
-	}
-	defer f.Close()
-
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		t.Fatalf("архив %s не распаковывается: %v", p, err)
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatalf("архив %s не читается: %v", p, err)
-		}
-		// values.yaml корня чарта — ровно один уровень вложенности.
-		parts := strings.Split(filepath.ToSlash(h.Name), "/")
-		if len(parts) != 2 || parts[1] != "values.yaml" {
-			continue
-		}
-		raw, err := io.ReadAll(tr)
-		if err != nil {
-			t.Fatalf("values.yaml из %s не читается: %v", p, err)
-		}
-		var tree map[string]any
-		if err := yaml.Unmarshal(raw, &tree); err != nil {
-			t.Fatalf("values.yaml из %s не разбирается: %v", p, err)
-		}
-		return tree
-	}
-	t.Fatalf("в архиве %s нет values.yaml — форма архива сменилась", p)
-	return nil
-}
 
 // identityStackFacts — то, что проверке нужно знать про один стек.
 type identityStackFacts struct {
@@ -341,25 +290,12 @@ func TestProductionStacks_DoNotEnableIdentityDevMode(t *testing.T) {
 	}
 }
 
-// Умолчание чарта — предпосылка того, что «не объявлено» выше не находка.
-// Перевернётся умолчание — красной станет эта проверка, а не тишина.
-func TestIdentityDevFlags_ChartDefaultsAreStillSecure(t *testing.T) {
-	for _, k := range identityDevKnobs() {
-		vals := chartArchiveValues(t, k.archive)
-		v, ok := lookup(vals, k.path...)
-		if !ok {
-			t.Errorf("%s: ручки %s нет в values.yaml чарта %s — координата переехала, "+
-				"и проверка боевых стеков молча перестала её читать",
-				k.coord(), strings.Join(k.path, "."), k.archive)
-			continue
-		}
-		if v != false {
-			t.Errorf("%s: умолчание чарта %s стало %v — «не объявлено» больше НЕ безопасно, "+
-				"и каждый боевой профиль обязан объявить false сам", k.coord(), k.archive, v)
-		}
-		t.Logf("предпосылка: %s умолчание чарта %s = %v", k.coord(), k.archive, v)
-	}
-}
+// Проверка предпосылки — «умолчание чарта всё ещё безопасно» — живёт в
+// identity_chart_default_premise_test.go под тегом сборки `helmcharts`: она
+// читает АРХИВ чарта, а архивы подкачиваются `helm dependency build` и в git
+// не отслеживаются. Здесь её нет не потому, что она необязательна, а потому
+// что задание unit-прогона её условия не создаёт. Что она всё-таки зовётся —
+// утверждает TestChartPremiseIsActuallyInvoked ниже.
 
 // Записанное послабление обязано иметь предмет.
 func TestRecordedIdentityDevConcessions_StillHaveASubject(t *testing.T) {

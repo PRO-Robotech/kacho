@@ -998,6 +998,13 @@ jobs:
         with:
           version: v4.2.3
 
+      # Go нужен ровно одному шагу — проверке умолчаний чужих чартов личности
+      # (`-tags helmcharts`): её условие создаёт `helm dependency build`, а не
+      # unit-прогон, поэтому она живёт здесь.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
       # Только `helm lint`, БЕЗ голого `helm template <chart>`: последний НЕ является
       # валидным гейтом — часть чартов ОСОЗНАННО падает без секретов (kacho-nlb:
       # «db.password is required when db.existingSecret is empty» — fail-closed,
@@ -1028,6 +1035,16 @@ jobs:
       - name: umbrella dependency build (без sibling-чекаутов)
         working-directory: deploy/helm/umbrella
         run: helm dependency build
+
+      # Умолчания чужих чартов личности. Проверка читает АРХИВ (charts/*.tgz),
+      # который подкачивает шаг выше и который git не отслеживает, — поэтому её
+      # место здесь, а не в unit-прогоне: там её условие не создаётся ничем, и
+      # «архив не читается» было бы безусловным красным на исправном дереве.
+      # Файл выведен из общего прогона тегом `helmcharts`; что тег зовётся —
+      # утверждает deploy/identity_chart_premise_reachability_test.go, читающий
+      # ЭТОТ файл, поэтому удаление шага ниже уронит unit-прогон.
+      - name: умолчания чартов личности всё ещё безопасны
+        run: go test -tags helmcharts ./deploy/ -run 'TestIdentityDevFlags_ChartDefaultsAreStillSecure' -count=1 -v
 
       - name: umbrella template — dev-профиль
         working-directory: deploy/helm/umbrella
