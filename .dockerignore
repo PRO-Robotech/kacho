@@ -107,6 +107,10 @@ gateway/coverage.out
 **/coverage.out
 **/coverage-full.out
 **/test-results
+# Отчёт сквозных проб консоли — продукт прогона, а не исходник. Без строки он
+# едет в контекст и промахивается мимо кэша слоя на КАЖДОЙ сборке.
+ui-future/e2e/results.json
+ui-future/e2e/playwright-report
 # собранный фронтенд: образы ui берут `dist` из СВОЕЙ стадии сборки
 # (`COPY --from=build /app/dist`), а не из контекста, поэтому локальная сборка
 # в контексте лишняя — проверено по всем Dockerfile каталога ui-future
