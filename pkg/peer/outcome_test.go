@@ -279,3 +279,59 @@ func TestRefusedReferenceSplitsTheClosedSet(t *testing.T) {
 		"набор исходов изменился — перепись предиката больше не покрывает его целиком")
 	t.Logf("перепись: исходов %d, установленный отказ у %d", len(peer.AllOutcomes()), len(refused))
 }
+
+// Полоса недоступности не называет чужой ресурс — и её текст доезжает целиком.
+//
+// Носитель подставлял идентификатор в ЛЮБУЮ прозу, а проза недоступности глагола
+// не несёт (так объявлено в [peer.Prose] и так написаны все три её объявления в
+// дереве). Лишний аргумент печатается форматтером как `%!(EXTRA string=<id>)` —
+// то есть арендатор получал служебный мусор в контрактном тексте, а
+// идентификатор чужого ресурса всё-таки называл, вопреки замыслу полосы.
+//
+// Прежняя редакция проб этого не ловила: `TestCodeAndReasonComeFromTheSameLane`
+// утверждает код, признак и метаданные — сообщение не утверждает ни одна.
+func TestUnavailableProseCarriesNoResourceVerb(t *testing.T) {
+	ref := peer.Ref{Service: "nlb", ResourceType: "geo.region", ResourceID: "reg-1"}
+	form := peer.Prose{Missing: "Region %s not found", Unavailable: "region lookup unavailable"}
+
+	err := peer.OutcomeUnavailable.Status(ref, form)
+	msg := status.Convert(err).Message()
+	require.Equal(t, "region lookup unavailable", msg,
+		"текст полосы недоступности изменён носителем")
+	require.NotContains(t, msg, "reg-1",
+		"полоса недоступности назвала чужой ресурс, о котором ничего не установила")
+
+	// Законный близнец: полоса, которая ресурс НАЗЫВАЕТ, по-прежнему его называет —
+	// иначе отрицание выше зеленело бы на носителе, разучившемся подставлять вовсе.
+	named := status.Convert(peer.OutcomeMissing.Status(ref, form)).Message()
+	require.Equal(t, "Region reg-1 not found", named)
+}
+
+// Пустая ссылка не превращает недоступность в утверждение о ссылке.
+//
+// Ветка «ссылка пуста» принадлежит полосам, которые чужой ресурс называют. У
+// недоступности утверждения о ссылке нет вовсе: сосед не ответил, и что там за
+// идентификатор — не установлено. «region reference is empty» было бы вторым
+// ложным утверждением поверх первого.
+func TestUnavailableSaysNothingAboutTheReference(t *testing.T) {
+	err := peer.OutcomeUnavailable.Status(
+		peer.Ref{Service: "storage", ResourceType: "geo.zone"},
+		peer.Prose{Missing: "unknown zone id '%s'", Unavailable: "geo zone validation unavailable"})
+	require.Equal(t, "geo zone validation unavailable", status.Convert(err).Message())
+
+	// Законный близнец: у полосы промаха пустая ссылка по-прежнему называет себя.
+	lost := peer.OutcomeMissing.Status(
+		peer.Ref{Service: "storage", ResourceType: "geo.zone"},
+		peer.Prose{Missing: "unknown zone id '%s'"})
+	require.Contains(t, status.Convert(lost).Message(), "reference is empty")
+}
+
+// Нейтральная форма недоступности — тоже без глагола: полоса, у которой своей
+// прозы нет, обязана ответить честным текстом, а не служебным мусором.
+func TestNeutralUnavailableProseIsAlsoVerbless(t *testing.T) {
+	err := peer.OutcomeUnavailable.Status(
+		peer.Ref{Service: "vpc", ResourceType: "iam.project", ResourceID: "prj-9"}, peer.Prose{})
+	msg := status.Convert(err).Message()
+	require.Equal(t, "iam.project lookup unavailable", msg)
+	require.NotContains(t, msg, "prj-9")
+}

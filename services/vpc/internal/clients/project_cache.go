@@ -128,11 +128,23 @@ func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (boo
 		// установил (носитель: pkg/peer). Недоступность и непонятый ответ
 		// установленным отказом не являются — их кеширование зафиксировало бы
 		// перебой у соседа как «проекта нет» на всё окно TTL.
-		if peer.Classify(err).RefusedReference() {
-			c.store(projectID, false, c.negTTL)
-			return false, nil
+		lane := peer.Classify(err)
+		if !lane.RefusedReference() {
+			return false, err
 		}
-		return false, err
+		// Наружу — отказ ссылки (анти-оракул: промах, отказ в правах и негодный
+		// идентификатор для арендатора неразличимы).
+		//
+		// В КЭШ — только исход, не зависящий от того, кто спросил. Ключ здесь
+		// не несёт личности, поэтому отказ в правах, сохранённый под ним, был бы
+		// отдан ДРУГОМУ вызывающему — решение, вынесенное не ему. Окно отказа на
+		// своём свежем ресурсе объявлено штатным (материализация прав идёт
+		// eventually-consistent), и фиксировать его как «проекта нет» на всё окно
+		// TTL для всех — значит превратить транзиент в общий отказ.
+		if lane.CallerIndependent() {
+			c.store(projectID, false, c.negTTL)
+		}
+		return false, nil
 	}
 
 	ttl := c.posTTL
