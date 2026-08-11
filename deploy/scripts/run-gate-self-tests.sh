@@ -104,6 +104,7 @@ deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
+deploy/tests/helm/openfga-datastore-durable-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/podtemplate-annotation-single-owner-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh

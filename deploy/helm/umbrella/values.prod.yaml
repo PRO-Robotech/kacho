@@ -96,9 +96,18 @@ mtls:
   pgTls:
     enabled: true
     # One entry per kacho-owned datastore that a service dials with ssl-mode=require.
-    # The Ory/OpenFGA tier (pg-kratos/pg-hydra/pg-openfga) is excluded — those DSNs
-    # are managed by their own charts and are not on the kacho ssl-mode floor.
-    services: [vpc, compute, iam, geo, nlb, storage, registry]
+    # ЭТОТ СПИСОК — ТО, ЧТО ВЫПУСКАЕТ СЕРВЕРНЫЙ СЕРТИФИКАТ. Имя, несущее ниже
+    # `tls.enabled: true`, но отсутствующее здесь, оставляет StatefulSet
+    # примонтированным к секрету, которого никто не создаёт: под висит, рендер
+    # при этом зелёный. Пара «tls.enabled ⇔ имя в списке» держится вручную —
+    # правя одно, правь второе.
+    #
+    # `openfga` добавлен вместе с DSN движка прав: пока движок работал на
+    # `memory`, соединения к pg-openfga не было вовсе и исключение тира было
+    # честным. Теперь DSN пишется в этом же файле — значит и транспорт наш.
+    # pg-kratos/pg-hydra остаются вне пола: их DSN действительно принадлежат
+    # чужим чартам, и это их собственный предмет.
+    services: [vpc, compute, iam, geo, nlb, storage, registry, openfga]
   # Serving certificate for the ADMIN hop — consumed by the TERMINATOR sidecar in
   # the provider's pod, not by the provider itself (it does not read a
   # per-listener TLS declaration; measured, see deploy/PROVIDER-LISTENER-PREMISE.md).
@@ -837,6 +846,23 @@ pg-openfga:
     username: openfga
     database: openfga
     existingSecret: kacho-umbrella-pg-openfga
+  # TLS здесь появился ВМЕСТЕ с DSN движка прав (см. блок `openfga` ниже) и по той
+  # же причине. Пока движок работал на `memory`, соединения к этому инстансу не
+  # существовало вовсе — шифровать было нечего, и тир честно стоял вне ssl-пола.
+  # Как только адрес хранилища пишется ЗДЕСЬ, отговорка «DSN управляет чужой чарт»
+  # перестаёт действовать: DSN наш, значит и транспорт наш.
+  #
+  # Server-auth ONLY (как у остальных pg-*): клиент подключается sslmode=require —
+  # канал шифрован, сертификат не пинится. `certCAFilename` НЕ добавлять: он
+  # переключает bitnami на проверку клиентских сертификатов, и проба готовности
+  # предъявляет серверный лист (EKU server auth) → под никогда не станет Ready.
+  tls:
+    enabled: true
+    certificatesSecret: kacho-umbrella-pg-openfga-server-tls
+    certFilename: tls.crt
+    certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-nlb:
   enabled: true
   auth:
@@ -898,6 +924,36 @@ pg-hydra:
 # ─── OpenFGA ReBAC engine + bootstrap (required for production authz) ───────
 openfga:
   enabled: true
+  # ХРАНИЛИЩЕ ПРАВ — НА ДИСКЕ, А НЕ В ПАМЯТИ. Умолчание подчарта — `memory`, и
+  # объявить `enabled: true`, не объявив `datastore`, значило поднять движок,
+  # который теряет ВСЕ кортежи доступа при первом рестарте пода: всё, что выдано
+  # арендаторам. Отдельно поучительно, что рядом уже поднимался выделенный
+  # Postgres (`pg-openfga.enabled: true` выше) — инстанс крутился и не участвовал
+  # ни в чём, потому что на него никто не ссылался.
+  #
+  # Наблюдаемого симптома у этого состояния нет ДО потери: memory и postgres
+  # отвечают одинаково, любой e2e зелёный. Поэтому пара «инстанс поднят ⇒ движок
+  # postgres» держится проверкой, а не вниманием:
+  # deploy/tests/helm/openfga-datastore-durable-test.sh (она же запрещает
+  # `memory` на любом разворачиваемом профиле — иначе гейт снимался бы
+  # выключением инстанса, и потеря оставалась бы на месте).
+  datastore:
+    engine: postgres
+    # Пароль в DSN НЕ пишется: он приезжает отдельной переменной из секрета,
+    # который провижинит bitnami-подчарт pg-openfga (ключ `password`). Подчарт
+    # openfga это прямо поддерживает — статический URI + ссылки на секрет.
+    # sslmode=require — канал шифрован; сертификат сервера выпускается
+    # mtls.pgTls.services (см. выше), клиент его не пинит.
+    uri: postgres://kacho-umbrella-pg-openfga:5432/openfga?sslmode=require
+    username: openfga
+    existingSecret: kacho-umbrella-pg-openfga
+    secretKeys:
+      passwordKey: password
+    # migrationType=initContainer, а не отдельный Job: умолчание `job` +
+    # waitForMigrations даёт OpenFGA init-контейнер, ждущий чужого Job'а, и под
+    # `helm install --wait` это взаимная блокировка — релиз уходит в failed по
+    # таймауту. Та же причина, что в values.dev.yaml.
+    migrationType: initContainer
 openfga-bootstrap:
   openfga:
     enabled: true

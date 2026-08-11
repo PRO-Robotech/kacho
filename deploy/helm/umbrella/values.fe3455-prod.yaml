@@ -29,9 +29,15 @@
 #            server certs (templates/pg-certificates.yaml).
 #
 # ── KNOWN, DOCUMENTED greenfield concessions (follow-ups, not dev-mode) ──
-#   1. openfga/kratos/hydra backing Postgres keep their Ory/openfga-managed DSN
-#      (sslmode=disable, in-cluster) — control-plane DB TLS lands first; these
-#      three harden in a follow-up (their own DSN/TLS config).
+#   1. kratos/hydra backing Postgres keep their Ory-managed DSN (sslmode=disable,
+#      in-cluster) — those DSNs belong to their own charts, and hardening them is
+#      their own subject.
+#      openfga ИЗ ЭТОЙ УСТУПКИ ВЫВЕДЕН. Она описывала состояние, которого не было:
+#      DSN движка прав не существовало вовсе — движок поднимался на `memory` и
+#      терял ВСЕ кортежи доступа при рестарте пода, при живом рядом pg-openfga.
+#      Теперь DSN пишется в values.prod.yaml (engine=postgres, sslmode=require,
+#      пароль ссылкой на секрет), а pg-openfga стоит в mtls.pgTls.services ниже.
+#      Держится проверкой deploy/tests/helm/openfga-datastore-durable-test.sh.
 #   2. PG credentials inherit the base-chart values (k8s Secret material, never
 #      exposed on the wire). A cosmetic rotation away from the changeme-* default
 #      is a clean follow-up once the stack is green — orthogonal to auth posture.
@@ -54,7 +60,12 @@ mtls:
     # on pg-registry. The registry SERVICE keeps its sslmode=disable concession on
     # this cluster (see the registry block) — a server that offers TLS to a client
     # that does not ask for it is a no-op, so this is safe and reversible.
-    services: [vpc, compute, iam, geo, nlb, storage, registry]
+    # `openfga` — по той же причине: values.prod.yaml включил TLS на pg-openfga
+    # вместе с DSN движка прав (тот работал на `memory` и терял все кортежи
+    # доступа при рестарте пода). Список здесь ЗАМЕЩАЕТ прод-овский, поэтому имя
+    # обязано приехать и сюда — иначе StatefulSet ждёт секрет, которого никто не
+    # выпустит.
+    services: [vpc, compute, iam, geo, nlb, storage, registry, openfga]
 
 # ── greenfield image provisioning: bitnami PGs from docker.io/bitnamilegacy ──
 # values.yaml pins global.imageRegistry=docker.io/prorobotech (the kacho-* mirror,
