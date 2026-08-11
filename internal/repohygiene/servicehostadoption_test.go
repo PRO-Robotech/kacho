@@ -146,6 +146,25 @@ var hostAdoptionExceptions = map[string]hostAdoptionException{
 			"дескриптор сегодня нечем. Основание держится пробой " +
 			"TestModelOwnerStillCarriesTheRubiconsTheDecisionRestsOn",
 	},
+	// api-gateway — НЕ ожидающий перевода. Край не является сервисом по ФОРМЕ, а
+	// не по объёму работы.
+	edgeService: {
+		kind: adoptionDecided,
+		why: "край — ПРОКСИ, а не сервис со своим набором служб: его сервер поднимается с " +
+			"обработчиком НЕИЗВЕСТНОЙ службы и маршрутизирует вызов бэкенду по имени метода, " +
+			"а второй слушатель мультиплексируется с REST на одном порту. Носитель контура " +
+			"поднимает два слушателя, регистрируя в них ОБЪЯВЛЕННЫЙ набор служб (`Registrar`), " +
+			"и о маршрутизации чужих методов не знает — перевести край «как есть» значит либо " +
+			"внести в дескриптор обработчик неизвестной службы (то есть поле, которым сервис " +
+			"сможет принести свою маршрутизацию), либо оставить край без прокси-семантики " +
+			"вовсе. До Ф8 это место молчало: гейт кончался на services/*/cmd/**, и самая " +
+			"нагруженная поверхность была вне суждения, будучи объявленной внутри контура",
+		basis: "у носителя НЕТ ни поля обработчика неизвестной службы, ни поля мультиплексора: " +
+			"`servicecontract.Spec` их не несёт, а `servicehost.Serve` регистрирует службы " +
+			"только через переданные `Registrar`. Пока это так, форма края носителю невыразима. " +
+			"Основание истекает от ВНЕШНЕГО факта — появления такого поля у дескриптора, — и " +
+			"держится пробой TestCarrierStillCannotExpressAProxyEdge",
+	},
 }
 
 // adoptionFinding — одна находка с координатой.
@@ -243,30 +262,40 @@ func auditHostAdoption(t *testing.T, root string) adoptionResult {
 	t.Helper()
 	var res adoptionResult
 
-	servicesDir := filepath.Join(root, "services")
-	tracked, err := treecorpus.Under(servicesDir)
-	if err != nil {
-		t.Fatalf("состав дерева под %s не читается: %v", servicesDir, err)
+	// Обход захватывает КРАЙ наравне с сервисами.
+	//
+	// Прежде он кончался на `services/*/cmd/**`, и два живых вызова конструктора
+	// сервера у края не были ни находками, ни записями с причиной — то есть
+	// поверхность, через которую проходит весь внешний трафик, оставалась вне
+	// суждения гейта, будучи объявленной внутри контура. §9 п.2 приёмки XC-7
+	// требует явного состояния по КАЖДОМУ месту с момента, как гейт вооружён.
+	var tracked []string
+	for _, sub := range []string{"services", "gateway"} {
+		dir := filepath.Join(root, sub)
+		under, err := treecorpus.Under(dir)
+		if err != nil {
+			t.Fatalf("состав дерева под %s не читается: %v", dir, err)
+		}
+		tracked = append(tracked, under...)
 	}
 
 	roots := map[string]struct{}{}
 	seenFinding := map[string]struct{}{}
 	fset := token.NewFileSet()
 	for _, abs := range tracked {
-		rel, err := filepath.Rel(servicesDir, abs)
+		rel, err := filepath.Rel(root, abs)
 		if err != nil {
 			t.Fatalf("относительный путь для %s: %v", abs, err)
 		}
-		parts := strings.Split(filepath.ToSlash(rel), "/")
-		// Композиционный корень — `services/<svc>/cmd/**`.
-		if len(parts) < 3 || parts[1] != "cmd" {
-			continue
-		}
+		slashed := filepath.ToSlash(rel)
 		if !strings.HasSuffix(abs, ".go") || strings.HasSuffix(abs, "_test.go") {
 			continue
 		}
-		svc := parts[0]
-		roots[svc+"/"+parts[2]] = struct{}{}
+		svc, rootKey, ok := adoptionRootOf(slashed)
+		if !ok {
+			continue
+		}
+		roots[rootKey] = struct{}{}
 		res.files++
 
 		file, perr := parser.ParseFile(fset, abs, nil, parser.SkipObjectResolution)
@@ -303,6 +332,39 @@ func auditHostAdoption(t *testing.T, root string) adoptionResult {
 		res.roots, res.files, len(res.findings), len(hostAdoptionExceptions), pending, decided)
 	return res
 }
+
+// adoptionRootOf — принадлежит ли путь композиционному корню, и чьему.
+//
+// Два вида корня, и они РАЗНЫЕ по форме, поэтому распознаются порознь:
+//   - сервис: `services/<svc>/cmd/**` — набор своих RPC, оба слушателя носителя;
+//   - край: `gateway/cmd/**` и `gateway/internal/proxy` — прокси с
+//     `UnknownServiceHandler` поверх мультиплексора, а не сервис со своим
+//     набором служб. Сборка сервера у него живёт не только в `cmd`, поэтому в
+//     обход входит и пакет прокси: иначе «край осмотрен» было бы верно ровно для
+//     той половины, где сервера нет.
+func adoptionRootOf(rel string) (svc, rootKey string, ok bool) {
+	parts := strings.Split(rel, "/")
+	switch {
+	case parts[0] == "services":
+		if len(parts) < 4 || parts[2] != "cmd" {
+			return "", "", false
+		}
+		return parts[1], parts[1] + "/" + parts[3], true
+	case parts[0] == "gateway":
+		if len(parts) >= 3 && parts[1] == "cmd" {
+			return edgeService, "gateway/" + parts[2], true
+		}
+		if len(parts) >= 3 && parts[1] == "internal" && parts[2] == "proxy" {
+			return edgeService, "gateway/internal/proxy", true
+		}
+		return "", "", false
+	}
+	return "", "", false
+}
+
+// edgeService — имя края в реестре записей. Каталогом под `services/` он не
+// является, поэтому имя задано здесь, а не выводится из пути.
+const edgeService = "api-gateway"
 
 // scanFileForOwnAssembly читает ИСПОЛНЯЕМУЮ ЧАСТЬ одного файла.
 func scanFileForOwnAssembly(fset *token.FileSet, file *ast.File, svc, where string) []adoptionFinding {
