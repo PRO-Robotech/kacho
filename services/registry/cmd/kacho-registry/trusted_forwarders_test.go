@@ -188,7 +188,7 @@ func hostIdentityChain(t *testing.T, forwarders ...string) []grpc.UnaryServerInt
 	cfg := bootConfig(t, map[string]string{
 		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": strings.Join(forwarders, ","),
 	})
-	desc, err := describe(cfg, probeLogger(), probePorts())
+	desc, err := describe(cfg, probeMode(t, cfg), probeLogger(), probePorts())
 	if err != nil {
 		t.Fatalf("дескриптор с кругом %v отвергнут конструктором — процесс не поднялся бы:\n%v",
 			forwarders, err)

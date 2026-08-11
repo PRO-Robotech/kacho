@@ -46,6 +46,23 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
 
+// Сроки ПЛОСКОСТИ ДАННЫХ. Названы отдельно от диагностических намеренно: у этих
+// двух поверхностей разные предметы, и общие числа читались бы как утверждение,
+// что предмет один.
+const (
+	// dataplaneReadHeaderBudget — потолок чтения заголовка. Длиннее
+	// диагностического: docker-клиент шлёт заголовки после рукопожатия TLS через
+	// вход кластера, и жёсткая отсечка отрезала бы медленную, но исправную сеть.
+	dataplaneReadHeaderBudget = 15 * time.Second
+	// dataplaneIdleBudget — потолок простоя keep-alive соединения. Прежде его не
+	// было вовсе: `IdleTimeout` не задавался, `ReadTimeout` тоже, а stdlib читает
+	// такой ноль как «не ограничивать» — то есть брошенное docker-клиентом
+	// соединение висело до конца жизни процесса.
+	dataplaneIdleBudget = 120 * time.Second
+	// dataplaneShutdownBudget — срок гашения: начатый push обязан дописаться.
+	dataplaneShutdownBudget = 15 * time.Second
+)
+
 // runServe — composition root: единственное место wiring, без глобальных синглтонов.
 func runServe(cfg config.Config) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -91,18 +108,31 @@ func runServe(cfg config.Config) error {
 	// всю жизнь, и узнать это было неоткуда» наблюдался вживую. Ошибка привязки
 	// порта фатальна для старта: молча поднятый сервис без наблюдаемости — ровно
 	// та форма без содержания, которую мы ловим в коде.
+	//
+	// Поверхность входит в контур ОТДЕЛЬНЫМ ПРОФИЛЕМ той же функции (решение
+	// владельца XC-7, в-1): не gRPC, цепочка другая, полями общего дескриптора её
+	// не втягивают. Корень приносит ОБЪЯВЛЕНИЕ; подъём, самоотчёт и гашение
+	// принадлежат профилю.
+	//
+	// Посадка разбирается ЗДЕСЬ и уезжает в оба объявления — и в профиль
+	// поверхности, и в дескриптор процесса. Двух разборов одной ручки не
+	// заводится: разойтись им было бы нечем, но читателю пришлось бы это доказывать.
+	mode, merr := servicecontract.ParseMode(cfg.AuthMode)
+	if merr != nil {
+		return fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", merr)
+	}
 	svcMetrics := metrics.New()
-	diagTask, diagShutdown, derr := startDiagnosticListener(cfg.MetricsAddr, svcMetrics, logger)
+	diagDesc, derr := describeDiagnosticSurface(cfg.MetricsAddr, svcMetrics, mode, logger)
 	if derr != nil {
-		return fmt.Errorf("start diagnostic listener: %w", derr)
+		return fmt.Errorf("профиль диагностической поверхности: %w", derr)
 	}
-	if diagTask != nil {
-		go func() {
-			if serr := diagTask(); serr != nil {
-				logger.Error("diagnostic listener stopped", "err", serr)
-			}
-		}()
-	}
+	// Собственный контекст поверхности: гасится ПОСЛЕ плоскости данных и обоих
+	// gRPC-слушателей — скрейп и проба живости не должны исчезать раньше, чем
+	// процесс закончил останавливаться.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	defer stopDiag()
+	diagDone := make(chan error, 1)
+	go func() { diagDone <- servicehost.ServeSurface(diagCtx, diagDesc) }()
 
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho_registry.
 	opsRepo := operations.NewRepo(pool, "kacho_registry")
@@ -334,7 +364,7 @@ func runServe(cfg config.Config) error {
 	// ── дескриптор процесса: ОБЪЯВЛЕНИЕ о себе. Порты (сверка существования и
 	// проводка сужателя) приезжают сюда уже собранными — их предмет живёт в этом
 	// корне, а судит их носитель против каталога прав на каждом старте.
-	desc, err := describe(cfg, logger, servePorts{
+	desc, err := describe(cfg, mode, logger, servePorts{
 		existence: pg.NewExistenceProbe(pool),
 		narrower:  pageNarrower,
 	})
@@ -342,24 +372,69 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
-	// ── data-plane OCI auth-proxy (registry.kacho.local): отдельный HTTP-листенер,
-	// Docker Registry v2 / OCI token-auth flow перед zot. per-request JWKS-verify +
-	// InternalIAMService.Check + existence-hiding + stream-proxy. Отдельно от gRPC.
-	var dpServer *http.Server
-	if cfg.DataplaneAddr != "" {
+	// ── ПЛОСКОСТЬ ДАННЫХ OCI (registry.kacho.local): Docker Registry v2 /
+	// OCI token-auth flow перед zot.
+	//
+	// Это НЕ диагностика, и профиль их не смешивает: поверхность досягаема
+	// СНАРУЖИ кластера и аутентифицирует КАЖДЫЙ запрос сама — проверка подписи
+	// Bearer'а против зеркала ключей iam плюс вопрос владельцу модели прав. Обе
+	// эти вещи она объявляет данными, и именно их пара делает объявление
+	// судимым: снаружи досягаемая поверхность с объявленным ОТСУТСТВИЕМ
+	// аутентификации профилем не принимается вовсе.
+	//
+	// Два срока у неё тоже свои, и оба — следствие потоковости: потолка чтения и
+	// записи запроса НЕТ (слой образа едет минутами; потолок разорвал бы
+	// исправную передачу), а срок гашения втрое длиннее диагностического —
+	// начатый push обязан дописаться.
+	//
+	// Выключение поверхности — тоже ОБЪЯВЛЕНИЕ: пустой адрес превращается в
+	// названную причину, а не в молчаливо пропущенную ветку. У этой поверхности
+	// цена выключения особенно велика — docker push/pull перестаёт существовать
+	// целиком, — и в журнале она теперь названа.
+	dpAddr := servicecontract.Value(cfg.DataplaneAddr)
+	var dpHandler http.Handler
+	if cfg.DataplaneAddr == "" {
+		dpAddr = servicecontract.NotApplicable[string](
+			"KACHO_REGISTRY_DATAPLANE_ADDR не задан профилем развёртывания: docker push и pull " +
+				"на этой посадке не обслуживаются вовсе, реестр остаётся только управляющей " +
+				"поверхностью")
+	} else {
 		// registryRepo подаётся трижды и в трёх разных ролях: RepoRegistrar (эмит
 		// интента + durable-признак существования), RepositoryPresence (чтение того же
 		// признака ⊔ строки наложения — по нему выбирается глагол записи) и
 		// RegistryLookup (owning-project реестра для containment scope интента).
-		dpHandler, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
+		h, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
 		if dperr != nil {
 			return fmt.Errorf("build data-plane proxy: %w", dperr)
 		}
-		dpServer = &http.Server{
-			Addr:              cfg.DataplaneAddr,
-			Handler:           dpHandler,
-			ReadHeaderTimeout: 15 * time.Second,
-		}
+		dpHandler = h
+	}
+	dpProfile, dperr := servicecontract.NewSurface(servicecontract.Surface{
+		Service: "kacho-registry",
+		Name:    "плоскость данных OCI (docker push/pull)",
+		Mode:    mode,
+		Logger:  logger,
+
+		Addr:    dpAddr,
+		Handler: dpHandler,
+
+		Reach: servicecontract.ReachExternal,
+		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
+			"каждый запрос: подпись Bearer-токена против зеркала ключей проверки iam " +
+				"(fail-closed при недоступности зеркала) плюс вопрос владельцу модели прав " +
+				"по названному репозиторию, со скрытием существования"),
+
+		ReadHeaderBudget: dataplaneReadHeaderBudget,
+		RequestBudget: servicecontract.NotApplicable[time.Duration](
+			"поверхность потоковая: слой образа едет минутами, и потолок чтения либо " +
+				"записи разорвал бы исправную передачу по таймеру"),
+		IdleBudget:     dataplaneIdleBudget,
+		ShutdownBudget: dataplaneShutdownBudget,
+	})
+	if dperr != nil {
+		return fmt.Errorf("профиль плоскости данных: %w", dperr)
+	}
+	if dpProfile.Enabled() {
 		// TTL-sweeper'ы REG-33: подметают протухшие строки. Реюзают ctx-lifecycle сервиса;
 		// интервал = TTL (роста таблицы не более двух окон). TTL≤0 → трекинг выключен.
 		//   - pending-blob (> PendingBlobTTL): registry_pending_blob (Defect A).
@@ -371,30 +446,37 @@ func runServe(cfg config.Config) error {
 			go runStaleSweeper(ctx, pushGrantRepo, cfg.PushGrantTTL, "push-grant", logger)
 		}
 	}
+	// Плоскость данных поднимается СРАЗУ и своим контекстом: её гашение идёт
+	// первым, раньше gRPC-слушателей, и раньше диагностики.
+	//
+	// Прежде она поднималась `ListenAndServe` в горутине — то есть привязка порта
+	// происходила ТАМ ЖЕ, где обслуживание, и занятый адрес попадал в журнал
+	// строкой уровня Error, после чего процесс продолжал работать, объявляя себя
+	// исправным при мёртвой плоскости данных. Профиль возвращает это отказом.
+	dpCtx, stopDP := context.WithCancel(context.Background())
+	dpDone := make(chan error, 1)
+	go func() { dpDone <- servicehost.ServeSurface(dpCtx, dpProfile) }()
 
-	// Гашение всего, что НЕ входит в контур: плоскость данных, диагностический
-	// листенер и дренаж исполнителей длительных операций. Носитель гасит свои два
-	// слушателя сам, но об этих трёх он не знает и знать не должен — их жизненный
-	// цикл принадлежит сервису. Порядок остаётся прежним: отмена контекста →
-	// graceful-остановка docker push/pull → закрытие скрейпа → дренаж операций.
+	// Порядок гашения того, что не входит в gRPC-контур. Носитель гасит свои два
+	// слушателя сам; об этих трёх предметах он не знает и знать не должен — их
+	// жизненный цикл принадлежит сервису.
+	//
+	// Порядок: отмена контекста → docker push/pull дописывается → дренаж
+	// исполнителей операций → и ПОСЛЕДНЕЙ диагностика. Прежде диагностика
+	// закрывалась ДО дренажа, то есть скрейп и проба живости исчезали, пока
+	// процесс ещё останавливался; теперь она переживает остановку, как у
+	// остальных сервисов платформы.
+	//
+	// Каждое ожидание — за возвратом ПРОФИЛЯ, а не за вызовом гашения: профиль
+	// возвращается только после того, как порт освобождён.
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
-		// Graceful drain data-plane HTTP: перестаёт принимать новые, дожидается
-		// in-flight docker push/pull в пределах bounded-таймаута.
-		if dpServer != nil {
-			dpCtx, cancelDP := context.WithTimeout(context.Background(), 15*time.Second)
-			if serr := dpServer.Shutdown(dpCtx); serr != nil {
-				logger.Warn("data-plane proxy shutdown", "err", serr)
-			}
-			cancelDP()
+		stopDP()
+		if derr := <-dpDone; derr != nil {
+			logger.Error("плоскость данных остановлена с ошибкой", "err", derr)
 		}
-		// Diagnostic-листенер закрывается вместе с остальными: скрейп в момент
-		// остановки не должен висеть на полузакрытом соединении.
-		diagCtx, cancelDiag := context.WithTimeout(context.Background(), 5*time.Second)
-		diagShutdown(diagCtx)
-		cancelDiag()
 		// Дренируем in-flight LRO-worker'ы: SIGTERM не должен оставить async-мутацию
 		// done=false навсегда (клиент завис бы в polling). Свежий ctx — request-ctx
 		// уже отменён возвратом Operation клиенту.
@@ -404,15 +486,11 @@ func runServe(cfg config.Config) error {
 			logger.Warn("LRO workers did not finish before shutdown timeout",
 				"err", werr, "active", operations.Active())
 		}
+		stopDiag()
+		if derr := <-diagDone; derr != nil {
+			logger.Error("диагностическая поверхность остановлена с ошибкой", "err", derr)
+		}
 	}()
-
-	if dpServer != nil {
-		go func() {
-			if serr := dpServer.ListenAndServe(); serr != nil && !errors.Is(serr, http.ErrServerClosed) {
-				logger.Error("data-plane proxy stopped", "err", serr)
-			}
-		}()
-	}
 
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, opHandler) },
@@ -747,11 +825,8 @@ type servePorts struct {
 // Прежде здесь собирались две цепочки звеньев и два сервера. Теперь сервис
 // приносит ЗНАЧЕНИЯ, а порядок звеньев — один на все сервисы и правится как
 // правка контура, а не как правка реестра.
-func describe(cfg config.Config, logger *slog.Logger, ports servePorts) (servicecontract.Descriptor, error) {
-	mode, err := servicecontract.ParseMode(cfg.AuthMode)
-	if err != nil {
-		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_REGISTRY_AUTH_MODE: %w", err)
-	}
+func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
+	ports servePorts) (servicecontract.Descriptor, error) {
 	// Транспорт ребра решения о доступе строится ЗДЕСЬ, а проверяется
 	// конструктором дескриптора — по ответу самого транспорта, а не по ручке:
 	// сборщик на невзведённой ручке отдаёт незашифрованные креды БЕЗ ошибки.

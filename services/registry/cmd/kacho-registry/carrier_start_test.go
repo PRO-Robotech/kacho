@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
@@ -54,7 +55,13 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 	// печатает ВСЕГДА, и без неё «отказов нет» неотличимо от «ничего не
 	// осмотрено».
 	var log strings.Builder
-	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&log, nil)), probePorts())
+	// Посадка разбирается тем же местом, что и в композиционном корне: там она
+	// уезжает и в профиль не-gRPC поверхностей, и в дескриптор процесса.
+	mode, merr := servicecontract.ParseMode(cfg.AuthMode)
+	if merr != nil {
+		t.Fatalf("посадка фикстуры не разобралась: %v", merr)
+	}
+	desc, err := describe(cfg, mode, slog.New(slog.NewTextHandler(&log, nil)), probePorts())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
