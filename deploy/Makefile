@@ -295,47 +295,55 @@ guard-destructive:
 	read -r confirm; \
 	if [ "$$confirm" != "$$token" ]; then echo "Отменено."; exit 1; fi
 
-# MTLS_OFF — глушим mTLS у КАЖДОГО сабчарта на фазе 1 (bootstrap чистого кластера).
+# CERT_MANAGER_RELEASE / CERT_MANAGER_CHART — cert-manager ставится ОТДЕЛЬНЫМ
+# релизом, до продукта.
 #
-# Зачем: cert-manager — сабчарт этого же umbrella, поэтому его CRD появляются только
-# ПОСЛЕ фазы 1. Любой сабчарт, рендерящий Certificate раньше, валит весь релиз:
-#   no matches for kind "Certificate" in version "cert-manager.io/v1";
-#   ensure CRDs are installed first
-# Фаза 2 включает mTLS обратно — CRD к тому моменту уже есть.
+# ПОЧЕМУ. Раньше подъём был двухфазным: сперва весь продукт ставился с
+# `$(MTLS_OFF)` — ради того, чтобы появились CRD cert-manager, — и только потом
+# перекатывался с mTLS. То есть на КАЖДОМ подъёме чистого кластера продукт
+# какое-то время работал в посадке, которую ban #16 запрещает на поднятом
+# кластере: mTLS снят у всех подчартов И включён аварийный обход авторизации
+# реестра (`registry.authz.breakglass=true`).
 #
-# Список ОБЯЗАН покрывать все сабчарты, у которых values.dev.yaml включает mtls.enable.
-# Прежде здесь не хватало kacho-geo (добавлен позже, а --set-список не обновили) →
-# bootstrap с нуля был сломан. Не всплывало годами: kind-кластер переиспользовался, CRD
-# в нём уже стояли, и фаза 1 «проходила». Проверяется целью `check-mtls-off-complete`.
-MTLS_SUBCHARTS := vpc compute api-gateway kacho-nlb kacho-iam kacho-geo storage registry
-# registry is fail-closed BY DESIGN: its control-plane refuses to start without
-# server-mTLS on both listeners UNLESS AUTHZ_BREAKGLASS=true (there is no
-# auth.mode=dev relaxation like compute/storage — control-plane w/o authz+mTLS is
-# forbidden). Phase-1 forces mtls off (Certificate-before-CRD guard), so it would
-# CrashLoop ("mTLS required on both listeners"). Run it breakglass ONLY in phase-1;
-# phase-2 (no override) restores breakglass=false + mtls on → real authz.
+# Причина двухфазности была структурной, а не небрежностью: Certificate нельзя
+# применить, пока нет CRD, а CRD приезжают с cert-manager, который лежал внутри
+# той же умбреллы. Разрывается это не флагами, а порядком: cert-manager ни от
+# чего нашего не зависит, поэтому ставится своим релизом первым, а продукт —
+# ОДНИМ прогоном и сразу в боевой посадке.
 #
-# geo NO LONGER NEEDS AN OVERRIDE, and the reason is the point rather than a
-# convenience: it went onto the service host, whose start refusals judge the
-# TRANSPORT of the authz edge as part of the deployment POSTURE (production), not
-# as part of "is the edge declared" (always). Phase-1 is not a production posture,
-# so an unverified edge is accepted there and refused in production exactly as
-# before — with no named bypass knob left to reach for. The knob it used to need
-# is gone from the chart along with it, so an override here would set an
-# undefined value and read as if it still did something.
-MTLS_OFF := --set mtls.enabled=false $(foreach s,$(MTLS_SUBCHARTS),--set $(s).mtls.enable=false) \
-            --set registry.authz.breakglass=true
+# Радиус переименования измерен: релизное имя cert-manager называл ровно ОДИН
+# файл дерева — этот.
+CERT_MANAGER_RELEASE := kacho-cert-manager
+CERT_MANAGER_CHART   := ./helm/umbrella/charts/cert-manager-v1.16.5.tgz
 
-# check-mtls-off-complete — CI-гейт: MTLS_SUBCHARTS не отстаёт от values.dev.yaml.
-# Новый сервис с mtls.enable=true, забытый в MTLS_OFF, снова сломает bootstrap с нуля —
-# и снова незаметно, если кластер переиспользуют. Пусть падает здесь.
-check-mtls-off-complete:
-	@python3 -c "import yaml,sys; \
-	d=yaml.safe_load(open('helm/umbrella/values.dev.yaml')); \
-	want={k for k,v in d.items() if isinstance(v,dict) and isinstance(v.get('mtls'),dict) and v['mtls'].get('enable')}; \
-	have=set('$(MTLS_SUBCHARTS)'.split()); \
-	miss=want-have; \
-	sys.exit('ERROR: mtls включён в values.dev.yaml, но НЕ заглушен в MTLS_SUBCHARTS: '+', '.join(sorted(miss))+chr(10)+'       Фаза 1 (до CRD cert-manager) упадёт на Certificate.' ) if miss else print('mtls-off complete:', ' '.join(sorted(have)))"
+# UMBRELLA_OPTS — то, что обязан нести КАЖДЫЙ вызов helm по умбрелле.
+#
+# Вынесено в переменную, а не дописано к вызовам, по цене одной ошибки: правя
+# подъём, я поставил `cert-manager.enabled=false` на один вызов из трёх и получил
+# отказ на третьем — helm попытался присвоить CRD, которыми уже владеет отдельный
+# релиз («invalid ownership metadata»). Отказ был громкий и потому дешёвый, но
+# следующий вызов умбреллы забыл бы флаг так же, и заметить это можно было бы
+# уже на чужом кластере. Переменная делает забывание невозможным.
+UMBRELLA_OPTS := --set cert-manager.enabled=false
+
+# ФАЗЫ 1 БОЛЬШЕ НЕТ — и вместе с ней снята вся её оснастка.
+#
+# Здесь стояли `MTLS_SUBCHARTS`, `MTLS_OFF` и цель `check-mtls-off-complete`.
+# Их предметом была ровно одна вещь: первый helm-прогон обязан был обойтись без
+# Certificate, потому что CRD приезжали вместе с cert-manager — сабчартом той же
+# умбреллы. Ради этого продукт поднимался с mTLS, снятым у ВСЕХ подчартов, и с
+# включённым аварийным обходом авторизации реестра
+# (`registry.authz.breakglass=true`), то есть в посадке, которую ban #16
+# запрещает на поднятом кластере. На каждом подъёме чистого кластера.
+#
+# cert-manager вынесен в собственный релиз ДО продукта (см. CERT_MANAGER_RELEASE
+# выше), поэтому CRD существуют раньше первого объекта продукта, а продукт
+# ставится ОДНИМ прогоном и сразу в боевой посадке. Незащищённого окна больше
+# нет — не «оно короткое», а его не существует.
+#
+# Снято, а не оставлено «на всякий»: `$(MTLS_OFF)` после правки не имел ни одной
+# подстановки, а гейт `check-mtls-off-complete` защищал полноту списка для фазы,
+# которой нет. Исключение живёт, пока у него есть предмет.
 
 # `set -e` — ОБЯЗАТЕЛЕН, а не косметика. Рецепт — одна `; \`-цепочка, т.е. упавшая
 # команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
@@ -375,21 +383,20 @@ dev-up: preflight
 	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
 	  --overwrite >/dev/null; \
 	$(MAKE) build-services; \
+	$(MAKE) build-ui; \
 	./scripts/gen-tls-cert.sh; \
 	( cd helm/umbrella && helm dep update >/dev/null ); \
-	echo "=== helm phase 1: cert-manager + control-plane (insecure) ==="; \
+	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \
+	helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n kacho --create-namespace \
+	  --set crds.enabled=true \
+	  --wait --timeout 5m; \
+	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
+	kubectl -n kacho rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  -f ./helm/umbrella/values.dev.yaml \
 	  -f ./$(IMAGE_IDS_VALUES) \
-	  $(MTLS_OFF) $(DEV_UP_VALUES) \
-	  --wait --timeout 10m; \
-	echo "=== waiting for cert-manager webhook (before applying Issuer/Certificate CRs) ==="; \
-	kubectl -n kacho rollout status deploy/kacho-umbrella-cert-manager-webhook --timeout=180s; \
-	echo "=== helm phase 2: enable cluster-internal mTLS (internal-CA + per-service certs) ==="; \
-	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
-	  -f ./helm/umbrella/values.dev.yaml \
-	  -f ./$(IMAGE_IDS_VALUES) \
-	  $(DEV_UP_VALUES) \
+	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
 	kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=60s; \
@@ -404,7 +411,7 @@ dev-up: preflight
 	  -f ./helm/umbrella/values.dev.yaml \
 	  -f ./helm/umbrella/values.dev-prod.yaml \
 	  -f ./$(IMAGE_IDS_VALUES) \
-	  $(DEV_UP_VALUES) \
+	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
@@ -443,8 +450,9 @@ dev-down:
 # ЧЕГО НЕ ДОКАЗЫВАЕТ: функциональную корректность authz/токенов — это e2e-newman.
 #
 # ПОЧЕМУ ПОВЕРХ dev-up, а не отдельный fresh-install: bootstrap чистого кластера
-# двухфазный (cert-manager CRD появляются только после фазы 1, см. MTLS_OFF), плюс
-# fga-bootstrap. Дублировать этот рецепт значит завести вторую копию, которая
+# несёт свой порядок (cert-manager отдельным релизом до продукта, затем один
+# helm-прогон продукта, затем fga-bootstrap и секреты).
+# Дублировать этот рецепт значит завести вторую копию, которая
 # разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up; сам перевод
 # в production-posture (секреты + фаза 3) теперь ЧАСТЬ `dev-up`, а эта цель осталась
 # ГЕЙТОМ поверх него — она утверждает, что каждый под перезапустился с production-

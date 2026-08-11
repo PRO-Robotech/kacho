@@ -1077,9 +1077,12 @@ jobs:
           make -C services/vpc helm-render-guard
           make -C services/nlb helm-render-guard
 
-      - name: mtls-off список покрывает values.dev.yaml
-        working-directory: deploy
-        run: make check-mtls-off-complete
+      # Здесь стоял шаг «mtls-off список покрывает values.dev.yaml». Он снят
+      # вместе со своим предметом: подъём стенда больше не двухфазный, фазы с
+      # выключенным mTLS не существует, и полноту её списка защищать не от чего.
+      # cert-manager ставится отдельным релизом ДО продукта, поэтому CRD есть
+      # раньше первого объекта продукта, а продукт поднимается одним прогоном и
+      # сразу в боевой посадке (deploy/Makefile, CERT_MANAGER_RELEASE).
 
       # Офлайновый набор утверждений о манифестах (deploy/tests/helm/, 14 скриптов).
       # Он существовал, но его не звал НИКТО: цель `helm-manifest-test` не была
