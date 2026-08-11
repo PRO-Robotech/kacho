@@ -89,11 +89,22 @@ host:
   imagePullPolicy: ""
   port: null
   resources: {}
+  # ─── ПОЛНАЯ форма имени здесь ОБЯЗАТЕЛЬНА ───────────────────────────────────
+  # Эти адреса потребляет nginx через `resolver` + переменную в `proxy_pass`. В
+  # такой связке nginx резолвит СВОИМ клиентом, который `/etc/resolv.conf` не
+  # читает вовсе — что доказывает соседний `resolver-from-resolvconf.envsh`: он
+  # достаёт оттуда адрес сервера имён вручную ИМЕННО потому, что nginx его не
+  # видит. Поискового списка у nginx, следовательно, нет тоже, и короткая форма
+  # `<svc>.<ns>.svc` не резолвится НИКОГДА — все апстримы консоли отвечают 502.
+  #
+  # Это отличает данный случай от вызовов сервис→сервис (там резолвит libc,
+  # поисковый список применяется, и короткая форма правильна — см. #145).
+  # Признак различения: КТО резолвит, а не «какая форма короче».
   upstreams:
-    apiGateway: api-gateway.kacho.svc:8080
-    kratosPublic: kacho-umbrella-kratos-public.kacho.svc:80
-    hydraPublic: kacho-umbrella-hydra-public.kacho.svc:4444
-    kratosUi: kratos-selfservice-ui.kacho.svc:3000
+    apiGateway: api-gateway.kacho.svc.cluster.local:8080
+    kratosPublic: kacho-umbrella-kratos-public.kacho.svc.cluster.local:80
+    hydraPublic: kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444
+    kratosUi: kratos-selfservice-ui.kacho.svc.cluster.local:3000
     dashboard: ""
     vpc: ""
     iam: ""
