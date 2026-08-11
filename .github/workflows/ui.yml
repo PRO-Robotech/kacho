@@ -38,6 +38,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      console_url:
+        description: >-
+          Адрес поднятой консоли для сквозных проб через браузер
+          (например http://46.173.29.131). Пусто — пробы не гоняются.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -271,3 +278,45 @@ jobs:
             exit 1
           fi
           echo "✓ матрица и дерево совпадают ($(wc -l < /tmp/on-disk.txt) remotes)"
+
+  # ─── СКВОЗНЫЕ ПРОБЫ КОНСОЛИ ЧЕРЕЗ БРАУЗЕР ──────────────────────────────────
+  #
+  # Гоняются ТОЛЬКО против поднятого стенда: они проверяют поток входа, загрузку
+  # модулей и создание ресурса, а это свойства РАЗВЁРНУТОГО продукта, не сборки.
+  # Адрес стенда приходит входом; без него работа не «пропускается тихо», а
+  # ОТКАЗЫВАЕТСЯ с названной причиной — иначе «зелёная консоль» означала бы
+  # «пробы не выполнялись».
+  #
+  # Почему не на каждый push: стенда в этом конвейере нет. Заводить его здесь
+  # значило бы дублировать развёртывание; пробы вызываются по требованию против
+  # уже поднятого стенда и в конвейере развёртывания.
+  console-e2e:
+    name: сквозные пробы консоли (браузер)
+    if: github.event_name == 'workflow_dispatch' && inputs.console_url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: установка
+        working-directory: ui-future/e2e
+        run: npm ci || npm install --no-audit --no-fund
+      - name: браузер
+        working-directory: ui-future/e2e
+        run: npx playwright install --with-deps chromium
+      - name: прогон
+        working-directory: ui-future/e2e
+        env:
+          KACHO_CONSOLE_URL: ${{ inputs.console_url }}
+        run: npx playwright test
+      - name: отчёт (в том числе на красном)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-e2e-results
+          path: |
+            ui-future/e2e/results.json
+            ui-future/e2e/test-results/
+          retention-days: 7
