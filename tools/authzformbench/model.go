@@ -8,18 +8,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 )
-
-// fgaModelRelPath — the canonical authorization model, relative to the monorepo
-// root. The SAME single source of truth every other real-FGA proof in this tree
-// reads (services/iam/internal/testsupport/fgatest). Its absence is a hard error:
-// a comparison against a model this harness invented would measure nothing about
-// the product.
-const fgaModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
 
 // BenchType — the leaf resource type the shapes are measured on.
 //
@@ -29,31 +21,6 @@ const fgaModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
 // THIS type's block, and a transform that silently matched nothing would leave the
 // shape indistinguishable from A while claiming to be C.
 const BenchType = "vpc_network"
-
-// ResolveCanonicalModel walks up from the working directory to the monorepo root
-// and returns the canonical DSL.
-func ResolveCanonicalModel() (path string, dsl []byte, err error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", nil, err
-	}
-	dir := wd
-	for {
-		cand := filepath.Join(dir, fgaModelRelPath)
-		if _, statErr := os.Stat(cand); statErr == nil {
-			b, rerr := os.ReadFile(cand) // #nosec G304 -- fixed in-repo path, tool-only
-			if rerr != nil {
-				return cand, nil, rerr
-			}
-			return cand, b, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", nil, fmt.Errorf("canonical model %s not found walking up from %s", fgaModelRelPath, wd)
-		}
-		dir = parent
-	}
-}
 
 // ── the two model transforms ──────────────────────────────────────────────────
 //

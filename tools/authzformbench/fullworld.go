@@ -136,7 +136,7 @@ type fmWorld struct {
 // берутся разбором, а не выписываются. Добавят в модель тип — он появится в мире
 // и в вопроснике сам.
 func buildWorld(m *Model) (*fmWorld, error) {
-	if err := m.assertOnePointerPerParentType(); err != nil {
+	if err := m.AssertOnePointerPerParentType(); err != nil {
 		return nil, err
 	}
 	w := &fmWorld{
@@ -194,8 +194,8 @@ func buildWorld(m *Model) (*fmWorld, error) {
 			}
 			o := fmObject{Type: t.Name, ID: fmt.Sprintf("obj-%s-%s", t.Name, tn),
 				Tenant: anchor, Labelled: labelled, Pointers: map[string]string{}}
-			for ptr := range m.pointers[t.Name] {
-				targets := m.pointerTargets(t.Rel(ptr))
+			for ptr := range m.Pointers[t.Name] {
+				targets := m.PointerTargets(t.Rel(ptr))
 				if len(targets) != 1 {
 					return nil, fmt.Errorf("указатель %s.%s ведёт в %d типов — мир не знает, куда его привязать",
 						t.Name, ptr, len(targets))
@@ -229,8 +229,8 @@ func buildWorld(m *Model) (*fmWorld, error) {
 		}
 		o := fmObject{Type: t.Name, ID: "obj-" + t.Name + "-home", Tenant: tenantHome,
 			Labelled: true, Pointers: map[string]string{}}
-		for ptr := range m.pointers[t.Name] {
-			targets := m.pointerTargets(t.Rel(ptr))
+		for ptr := range m.Pointers[t.Name] {
+			targets := m.PointerTargets(t.Rel(ptr))
 			if len(targets) != 1 {
 				return nil, fmt.Errorf("указатель %s.%s ведёт в %d типов", t.Name, ptr, len(targets))
 			}
@@ -462,7 +462,7 @@ func (w *fmWorld) ancestors(ref string) map[string]bool {
 	out := map[string]bool{}
 	var walk func(string, int)
 	walk = func(r string, depth int) {
-		if depth > maxPointerDepth+2 || out[r] {
+		if depth > MaxPointerDepth+2 || out[r] {
 			return
 		}
 		out[r] = true

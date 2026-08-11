@@ -430,7 +430,7 @@ SELECT DISTINCT m.object_id
   FROM mirror m
  WHERE m.object_type = $2 AND m.object_id = ANY($3::text[])
    AND (%s
-   )`, closure, maxPointerDepth+2, strings.Join(terms, "\n     OR")), nil
+   )`, closure, MaxPointerDepth+2, strings.Join(terms, "\n     OR")), nil
 }
 
 // usersetPairsSQL — перечень пар «тип#отношение», которые модель принимает в

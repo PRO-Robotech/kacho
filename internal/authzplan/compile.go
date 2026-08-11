@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package authzformbench
+package authzplan
 
 import (
 	"fmt"
@@ -111,7 +111,11 @@ type Model struct {
 	// считается ровно то отношение, через которое хоть одно объявление ходит
 	// формой `X from <указатель>`. Признак выводится, а не выписывается: список
 	// имён в этом файле был бы вторым местом об одном предмете.
-	pointers map[string]map[string]bool // тип → имя указателя
+	// Pointers — тип → имена его указателей на предка. Экспортировано: цепь
+	// областей есть ЧАСТЬ разобранной модели, и всякий, кто по ней ходит
+	// (вычисление предков, проверка выразимости, замер), обязан ходить по ЭТОЙ
+	// карте, а не строить свою из тех же объявлений.
+	Pointers map[string]map[string]bool
 }
 
 // Type возвращает тип по имени либо nil.
@@ -155,7 +159,7 @@ func (t *ModelType) Verbs() []string {
 // `but not`) — ошибка. Разбор, молча пропускающий конструкцию, произвёл бы план,
 // который «совпал» с движком потому, что о пропущенном не спросили.
 func ParseModel(dsl string) (*Model, error) {
-	m := &Model{byName: map[string]*ModelType{}, pointers: map[string]map[string]bool{}}
+	m := &Model{byName: map[string]*ModelType{}, Pointers: map[string]map[string]bool{}}
 	var cur *ModelType
 	inRelations := false
 
@@ -221,10 +225,10 @@ func ParseModel(dsl string) (*Model, error) {
 				if term.Kind != TermTTU {
 					continue
 				}
-				if m.pointers[t.Name] == nil {
-					m.pointers[t.Name] = map[string]bool{}
+				if m.Pointers[t.Name] == nil {
+					m.Pointers[t.Name] = map[string]bool{}
 				}
-				m.pointers[t.Name][term.TTUPointer] = true
+				m.Pointers[t.Name][term.TTUPointer] = true
 			}
 		}
 	}
@@ -328,7 +332,7 @@ func (m *Model) validate() error {
 					if ptr == nil {
 						return fmt.Errorf("%s.%s: указатель %q у типа не объявлен", t.Name, r.Name, term.TTUPointer)
 					}
-					for _, target := range m.pointerTargets(ptr) {
+					for _, target := range m.PointerTargets(ptr) {
 						tt := m.byName[target]
 						if tt == nil {
 							return fmt.Errorf("%s.%s: указатель %q ведёт в необъявленный тип %q", t.Name, r.Name, term.TTUPointer, target)
@@ -346,7 +350,9 @@ func (m *Model) validate() error {
 }
 
 // pointerTargets — типы, на которые ведёт отношение-указатель.
-func (m *Model) pointerTargets(ptr *Relation) []string {
+// PointerTargets — типы, на которые ведёт указатель. Экспортировано по той же
+// причине, что и Pointers: это чтение модели, а не шаг компиляции.
+func (m *Model) PointerTargets(ptr *Relation) []string {
 	var out []string
 	for _, term := range ptr.Terms {
 		if term.Kind != TermDirect {
@@ -361,7 +367,7 @@ func (m *Model) pointerTargets(ptr *Relation) []string {
 
 // IsPointer отвечает, является ли отношение типа указателем — то есть ходит ли
 // через него хоть одно объявление модели.
-func (m *Model) IsPointer(typeName, rel string) bool { return m.pointers[typeName][rel] }
+func (m *Model) IsPointer(typeName, rel string) bool { return m.Pointers[typeName][rel] }
 
 // ── компиляция плана ──────────────────────────────────────────────────────────
 
@@ -424,7 +430,7 @@ func (p Plan) Expressible() bool { return len(p.Unclassified) == 0 }
 // Compile строит план вердикта для одного отношения одного типа.
 //
 // Обход рекурсивный и завершается по построению: ключ посещения несёт ТИП, ИМЯ
-// отношения и путь, а глубина пути ограничена (`maxPointerDepth`). Цикл в модели
+// отношения и путь, а глубина пути ограничена (`MaxPointerDepth`). Цикл в модели
 // не повесил бы обход, а стал бы находкой — и это лучше, чем незавершимый разбор.
 func (m *Model) Compile(typeName, relation string) (Plan, error) {
 	t := m.byName[typeName]
@@ -457,12 +463,18 @@ func (m *Model) Compile(typeName, relation string) (Plan, error) {
 	return p, nil
 }
 
-const maxPointerDepth = 4
+// MaxPointerDepth — предел глубины цепи указателей на предка.
+//
+// Экспортирован намеренно: предел — часть КОНТРАКТА компиляции, а не деталь. Он
+// объявляет, сколько уровней иерархии областей вообще может быть пройдено, и
+// потребитель (в том числе прибор замера) обязан видеть ту же величину, иначе
+// два места разойдутся в том, что считают «слишком глубоко».
+const MaxPointerDepth = 4
 
 func (m *Model) walk(p *Plan, cur *ModelType, relation string, path []string, seen map[string]bool) error {
-	if len(path) > maxPointerDepth {
+	if len(path) > MaxPointerDepth {
 		p.Unclassified = append(p.Unclassified,
-			fmt.Sprintf("%s.%s: цепь указателей глубже %d — обход остановлен", cur.Name, relation, maxPointerDepth))
+			fmt.Sprintf("%s.%s: цепь указателей глубже %d — обход остановлен", cur.Name, relation, MaxPointerDepth))
 		return nil
 	}
 	key := strings.Join(path, "/") + "|" + cur.Name + "|" + relation
@@ -525,7 +537,7 @@ func (m *Model) walk(p *Plan, cur *ModelType, relation string, path []string, se
 					fmt.Sprintf("%s.%s: указатель %q не объявлен", cur.Name, relation, term.TTUPointer))
 				continue
 			}
-			targets := m.pointerTargets(ptr)
+			targets := m.PointerTargets(ptr)
 			if len(targets) == 0 {
 				p.Unclassified = append(p.Unclassified,
 					fmt.Sprintf("%s.%s: указатель %q никуда не ведёт", cur.Name, relation, term.TTUPointer))
@@ -555,11 +567,16 @@ func (m *Model) walk(p *Plan, cur *ModelType, relation string, path []string, se
 // двух указателей, ведущих в один и тот же тип. Предпосылка проверяется, а не
 // предполагается, — иначе первый же такой тип сделал бы два разных источника
 // неразличимыми, и план молча объединил бы их.
-func (m *Model) assertOnePointerPerParentType() error {
+// AssertOnePointerPerParentType — у типа не больше одного указателя на каждый
+// тип-предка.
+//
+// Экспортирована, потому что это утверждение о МОДЕЛИ, а не шаг компиляции:
+// его обязан уметь задать и тот, кто модель проверяет, не компилируя.
+func (m *Model) AssertOnePointerPerParentType() error {
 	for _, t := range m.Types {
 		byTarget := map[string]string{}
-		for rel := range m.pointers[t.Name] {
-			for _, target := range m.pointerTargets(t.Rel(rel)) {
+		for rel := range m.Pointers[t.Name] {
+			for _, target := range m.PointerTargets(t.Rel(rel)) {
 				if prev, ok := byTarget[target]; ok && prev != rel {
 					return fmt.Errorf("тип %q ведёт в %q двумя указателями (%s и %s) — "+
 						"выражение пути типом предка перестало быть однозначным", t.Name, target, prev, rel)
@@ -593,7 +610,7 @@ func (m *Model) Census() Census {
 			c.VerbTypes++
 			c.VerbDeclaration += len(v)
 		}
-		c.Pointers += len(m.pointers[t.Name])
+		c.Pointers += len(m.Pointers[t.Name])
 	}
 	return c
 }
