@@ -88,10 +88,20 @@ update-use-case'ах (а не вынесен в shared-пакет): one-liner-tr
 shared-helper связал бы несвязанные use-case-пакеты без реальной выгоды (locality over
 premature sharing).
 
-Корректные эмиттеры (vpc.subnet) не трогались. Остаточный gap
-(vpc.routeTable/address/gateway/networkInterface: selectable, но labels не feed-ятся) —
-осознанно отложен.
+**Остаточного gap'а больше нет — перемерено 2026-08-11.** Здесь стояло «vpc.routeTable /
+address / gateway / networkInterface: selectable, но labels не feed-ятся — осознанно
+отложен». Предикат по дереву:
+`git grep -n 'ProjectHierarchyItem' -- 'services/vpc/internal/apps/kacho/api/**/*.go' | grep -v _test`
+— конструктор с mirror-feed зовут **все семь** ресурсных пакетов, и на Create, и на Update
+(`address`, `gateway`, `network`, `networkinterface`, `routetable`, `securitygroup`,
+`subnet`). Голый `RegisterIntent` без labels остался ровно там, где ему и место — на
+Unregister, где кормить нечего.
 
-См. `internal/apps/kacho/api/network/update.go`,
+Отложенное, за которым никто не следит, переживает своё основание: этот пункт объявлял
+долг, закрытый до того, как его прочитали. Формулировка «осознанно отложен» без предиката
+снятия — не исход (core rule #11: сделать · снять вместе с кодом · завести предмет).
+
+См. `internal/apps/kacho/fgaregister/fgaregister.go` (`ProjectHierarchyItem` /
+`RegisterItems` / `RegisterIntent`), `internal/apps/kacho/api/network/update.go`,
 `internal/apps/kacho/api/securitygroup/{create,update}.go` и integration-тесты
 `internal/repo/{network,securitygroup}_fga_register_integration_test.go`.

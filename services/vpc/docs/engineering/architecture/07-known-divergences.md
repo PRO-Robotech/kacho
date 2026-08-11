@@ -12,14 +12,22 @@ Get/List/Create/Update/Delete/ListOperations), а не вложенная час
 Compute-Instance через `nic_id`. Multi-IP на VM собирается из нескольких NIC.
 Проекция — lean, control-plane-only (инфра/data-plane полей нет).
 
-## 2. Опциональные поля на Create
+## 2. Подсеть может быть одной семьи — но не «без CIDR вообще как норма»
 
-- **`Subnet.v4_cidr_blocks` опционально** — CIDR-less подсеть легальна, CIDR
-  добавляется позже через `:addCidrBlocks`. Internal-v4-allocate в CIDR-less подсеть →
-  `FailedPrecondition "subnet ... has no IPv4 CIDR"`.
-- **`SecurityGroup.network_id` опционально** — network-unbound (project-level) SG
-  легальна; NIC принимает такие SG, если они того же project. Default-SG-на-сети
-  всегда ставит непустой `network_id`.
+CIDR-якорь задаётся **на Create** и immutable: `ipv4_cidr_primary` / `ipv6_cidr_primary`.
+Пустым может быть **один** из двух (v4-only и v6-only подсети легальны); тогда аллокация
+отсутствующей семьи в эту подсеть даёт `FailedPrecondition "subnet %s has no IPv4 CIDR"`.
+Дополнительные диапазоны — только через `:add-cidr-blocks`.
+
+> [!warning] Здесь стояли два пункта об «опциональности», и оба пережили свой предмет
+> Первый — «`Subnet.v4_cidr_blocks` опционально на Create»: поля с таким именем в контракте
+> Create больше нет, его номер зарезервирован (VPC-1 F7), место занял immutable-якорь.
+> Второй — «`SecurityGroup.network_id` опционально, network-less SG легальна»: контракт
+> объявляет поле `[(required) = true]`, use-case отвергает пустое значение синхронно,
+> комментарий колонки в baseline-миграции называет её `mandatory and immutable after Create`.
+> Реестр намеренных решений опаснее прочей документации ровно этим: он существует, чтобы
+> решения «не фиксили по второму разу», — то есть запись здесь **запрещает** приводить
+> поведение к тому, что записано неверно.
 
 ## 3. IPv6 — симметрично IPv4
 
@@ -29,9 +37,11 @@ Compute-Instance через `nic_id`. Multi-IP на VM собирается из
 энфорсилась лишь в полосе IPv4). При добавлении проверки на набор, принимающий
 обе семьи, читать обе — обязательно.
 
-`:addCidrBlocks`/`:removeCidrBlocks` принимают и `v6_cidr_blocks`; `UpdateSubnet`
-несет `v6_cidr_blocks` как soft-immutable / no-op (зеркало v4). Internal IPv6 —
-`Address.internal_ipv6_address` oneof + `InternalAddressService.AllocateInternalIPv6`.
+`:add-cidr-blocks`/`:remove-cidr-blocks` принимают обе семьи (`ipv4_cidr_blocks` и
+`ipv6_cidr_blocks`); у сети — `ipv4_cidr_blocks`/`ipv6_cidr_blocks` супернета. Internal IPv6 —
+`Address.internal_ipv6_address` oneof + `InternalAddressService.AllocateInternalIPv6`;
+внешний IPv6 — `AllocateExternalIPv6` и глобальная уникальность на DB-уровне (0026),
+зеркально IPv4.
 
 ## 4. ListOperations переживает удаление ресурса
 
@@ -48,7 +58,7 @@ RouteTable/SecurityGroup/Gateway по-прежнему гейтят на `repo.G
 
 ## 6. REST-пути неоднородны по форме — НЕ нормализовать
 
-Стиль `google.api.http`-аннотаций в `.proto` (`kacho-proto`) намеренно смешанный:
+Стиль `google.api.http`-аннотаций в `proto/kacho/cloud/vpc/v1/` намеренно смешанный:
 kebab у custom-методов (`:addCidrBlocks`), child-list под ресурсом, camelCase у
 top-level (`routeTables`, `securityGroups`, `addressPools`), `/operations/{id}` без
 `/vpc/v1/`-префикса. Это зафиксированная форма поверхности API — «причесывание»
@@ -69,12 +79,22 @@ defensive (фиксируют `400` + непустое тело).
 затронула бы все ответы (напр. `done:false` в Operation), blast radius неоправдан.
 Кейсы `NET-LST-*` — defensive (`j.networks || []`).
 
-## 9. Subnet.Update с `v4CidrBlocks` в mask — no-op
+## 9. ~~Subnet.Update с `v4CidrBlocks` в mask — no-op~~ — СНЯТО вместе с предметом
 
-Запрос принимается (`200`), но `repo.Update` CIDR-колонки не перезаписывает
-(defensive depth). Менять CIDR существующей подсети в control-plane-only модели смысла
-мало; реальное изменение — через `:addCidrBlocks`/`:removeCidrBlocks`. Кейс
-`SUB-UPD-STATE-IMMUTABLE-CIDR` проверяет только `200`.
+Решение состояло в том, чтобы **принять и не применить** CIDR в `Update`. Сегодня принимать
+нечего: в `UpdateSubnetRequest` CIDR-полей нет вовсе, их номера зарезервированы (VPC-1 F7).
+То есть исход выбран третий из трёх законных — «снять с контракта», а не «молча
+игнорировать»; именно его `api-conventions.md` §«Принято-и-проигнорировано» и называет
+предпочтительным по умолчанию.
+
+Действующее поведение: `ipv4_cidr_primary`/`ipv4_cidr_blocks` (и v6) в `update_mask` →
+sync `InvalidArgument "ipv4_cidr_primary is immutable after Subnet.Create"` —
+immutable-switch стоит **до** `corevalidate.UpdateMask`, чтобы ответ нёс контракт-тон
+immutable, а не generic «unknown field». Кейс `SUB-UPD-STATE-IMMUTABLE-CIDR` это и
+проверяет; кейс, ожидающий здесь `200`, — находка, а не подтверждение.
+
+Запись оставлена, а не удалена, потому что решение переменилось на противоположное, и
+следующий читатель обязан увидеть **какое** и **почему**, а не пустое место.
 
 ## 10. OperationService.Get/Cancel с bad id
 
@@ -103,7 +123,7 @@ mapper'а оставлены отдельными **осознанно**:
   fallback).
 - **`handler.mapOpGetErr`** (`operation_handler.go`) — оперирует sentinel'ами
   **другого семейства**: `operations.ErrNotFound` / `operations.ErrAlreadyDone`
-  из `kacho-corelib/operations`, а не `repo.Err*`. К repo-sentinel classifier'у
+  из `pkg/operations`, а не `repo.Err*`. К repo-sentinel classifier'у
   отношения не имеет.
 
 Если появится необходимость дать IPAM-allocate-пути богаче классификацию — это
@@ -160,8 +180,11 @@ dev-поведение (локальный стенд / port-forward / тест�
 
 Production жёстко защищён и это **не** обходится:
 
-- `authzWiringDecision` возвращает **fatal** (отказ старта), если в production
-  IAM-endpoint отсутствует — анонимный admin в production невозможен.
+- `Config.Validate` (`internal/apps/kacho/config/validate.go`) **отказывает в старте**,
+  если в production не задан authz-эндпоинт — анонимный admin в production невозможен.
+  Там же — требование непустого круга отправителей чужой личности, причём **на любом**
+  старте, а не только в боевом режиме: вне production пустой круг остаётся возможным, но
+  как явный опт-ин, который надо попросить.
 - `ValidateServerMTLS` требует internal `:9091` server-mTLS в **ЛЮБОМ**
   production-режиме (не только strict; SEC-hardening r6 2026-07-05) — internal —
   это service→service, mTLS обязателен, trusted-forwarder escape-hatch на него не
@@ -293,33 +316,35 @@ Trade-off: под зависшим primary commit по Background ждёт ни�
 request-deadline. Это осознанный выбор «всегда финализировать TX», а не пропущенная
 ctx-propagation.
 
-## 19. Три TTL-кеша (existence / project / list-filter) НЕ сведены в общий primitive
+## 19. Два TTL-кеша сервиса НЕ сведены в общий primitive (третий уехал в общий дом)
 
-`internal/clients/existence_cache.go` (`existsCache` — positive-only, region/zone),
-`internal/clients/project_cache.go` (`CachedProjectClient` — TTL+LRU pos/neg через
-container/list, clock-inject) и `internal/authzfilter/filter.go` (`FGAFilter`-cache —
-TTL + slice-deep-copy) держат по своей mutex+map+expiry-реализации.
+В `services/vpc` осталось **два** собственных кеша, и они держат по своей
+mutex+map+expiry-реализации намеренно — политики eviction/invalidation разные, а не один
+primitive:
 
-Не сведены в один generic намеренно: три **разные** политики eviction/invalidation, а не
-один primitive:
+- `internal/clients/existence_cache.go` — обобщённый `valueCache[T]`, positive-only, без
+  bound (region/zone — low-cardinality: рост ограничен числом зон/регионов в деплое);
+- `internal/clients/project_cache.go` — `CachedProjectClient`: true-LRU с раздельными
+  positive/negative TTL + clock-injection под unit-тесты.
 
-- `existsCache`: positive-only, без bound (region/zone — low-cardinality: рост ограничен
-  числом зон/регионов в деплое, не unbounded на практике);
-- `CachedProjectClient`: true-LRU c раздельными positive/negative TTL + clock-injection
-  под unit-тесты;
-- `FGAFilter`-cache: positive-only per-object вердикты видимости (`subject|type|id`) с
-  LRU-bound и истечением по TTL. Отзыв доступа виден по ИСТЕЧЕНИИ записи, и другого
-  механизма нет: отрицательный вердикт не кешируется вовсе, поэтому свежая выдача
-  видна сразу, а снятый доступ перестаёт действовать самое позднее через TTL.
-  (Раньше здесь значился `Invalidate(subject)` «по LISTEN/NOTIFY» — ни подписки, ни
-  вызова из прод-кода не было, механизм существовал только в описании; метод удалён
-  вместе с этой строкой. Мгновенное снятие потребовало бы канала уведомлений от
-  владельца выдач — отдельного межсервисного ребра и отдельного решения.)
+**Третий кеш сервису больше не принадлежит.** Кеш вердиктов видимости списочной страницы
+уехал в общий дом `pkg/listnarrow`; в `internal/authzfilter/` осталось только то, что у
+сервиса действительно своё — словарь типов, аудит-строки действий и предикат членства
+страницы (`actions.go`, `narrower.go`, `relations.go`), а `Narrower` — псевдоним общего
+типа. Посадка кеша задаётся полями `CacheTTL`/`CacheMaxEntries` в `authzfilter.Config`.
+Прежняя редакция называла здесь файл с механикой сужения — такого файла в дереве нет:
+механика жила в четырёх почти дословных копиях у vpc/compute/nlb/storage и сведена в одну.
 
-Единый `ttlcache[V]`, покрывающий LRU + clock + copy-hook, нёс бы
-больше policy-knob-сложности, чем убирает дублирования — net-negative для LEAN-цели.
-Каждый кеш индивидуально оправдан (hot-path RTT-removal) и покрыт `-race` unit-тестом.
-Сведение оправдано, только если появится 4-й кеш с той же политикой.
+Свойство самого кеша вердиктов при этом не изменилось и остаётся важным: кешируются только
+**положительные** вердикты, отрицательный не кешируется вовсе. Поэтому свежая выдача видна
+сразу, а снятый доступ перестаёт действовать самое позднее через TTL — мгновенное снятие
+потребовало бы канала уведомлений от владельца выдач, то есть отдельного межсервисного
+ребра и отдельного решения.
+
+Единый `ttlcache[V]`, покрывающий LRU + clock + copy-hook, нёс бы больше
+policy-knob-сложности, чем убирает дублирования — net-negative для LEAN-цели. Оба
+оставшихся кеша индивидуально оправданы (hot-path RTT-removal) и покрыты `-race`
+unit-тестом. Сведение оправдано, только если появится третий с той же политикой.
 
 ## 20. Migrator `Dialect`-интерфейс сохранён при единственной реализации — тонкий seam
 
@@ -547,3 +572,50 @@ Network / Subnet / Address / RouteTable / SecurityGroup разрешают ещ�
 без смены представления и миграции **каждого** сохранённого правила.
 Выразимость при этом не теряется — HOPOPT адресуется именем, оно входит в набор.
 Ветка `protocol` не выбрана вовсе — по-прежнему законное «любой протокол».
+
+## 26. Гранулярная правка маршрутов — отказ с причиной, а не молчаливый 501
+
+`RouteTableService` объявляет три verb-RPC поверх набора маршрутов:
+`AddRoutes`, `RemoveRoutes`, `UpdateRoute`. Ни один не был переопределён над
+встроенной заглушкой, то есть все три отвечали `UNIMPLEMENTED` **молча** — без
+причины и без записи здесь. Сайт документации при этом описывал их полностью:
+отдельными разделами, с телом запроса, примерами `curl` и таблицей кодов, а
+соседнее предупреждение у `Update` прямо советовало пользоваться ими, чтобы «не
+потерять остальные маршруты». Продукт обещал то, чего нет, и советовал это как
+рекомендованный путь.
+
+**Почему не «реализовать» — предмета нет в трёх слоях сразу.** Два из трёх
+методов адресуют маршрут по идентификатору (`RemoveRoutes.route_ids`,
+`UpdateRoute.route_id`), а `StaticRoute` идентификатора **не несёт**:
+
+| слой | что есть |
+|---|---|
+| контракт | `destination_prefix` · `next_hop_address` · `gateway_id` (отвергается) · `labels` |
+| домен | те же три поля (`internal/domain/route_table.go`) |
+| хранилище | `static_routes jsonb NOT NULL DEFAULT '[]'` — массив объектов без ключа |
+
+То есть комментарии этих запросов ссылаются на `StaticRoute.id`, которого не
+существует ни на одном уровне. Дописать поле — не «дореализовать метод», а
+завести **идентичность маршрута**: адресуемая идентичность в этом продукте
+обязана быть неизменяемой и присваиваться сервером (ban #15), значит нужны
+правила присвоения, миграция каждой сохранённой строки и решение, что происходит
+с идентификаторами при полной замене набора через `Update`. Это отдельный
+инкремент со своей приёмкой, а не хвост чужого.
+
+**Выбран исход 2 — отвергать явно.** Все три метода переопределены и отвечают
+`UNIMPLEMENTED` с названной причиной и указанием рабочего пути (`Update` с
+`update_mask: ["static_routes"]`). Тот же исход и по той же причине уже применён
+в compute к `AddOneToOneNat`/`RemoveOneToOneNat`/`UpdateNetworkInterface`.
+
+**Почему не «снять с контракта»** (исход, который правило называет умолчанием):
+удаление RPC из публичного контракта — ломающее изменение, которое гейт
+`buf breaking --against main` обязан поймать, и принимать его следует
+осознанно, а не попутно с починкой документации. Решение отложено **не как
+работа**, а как выбор владельца: снятие уместно приурочить к следующему
+объявленному ломающему изменению домена vpc.
+
+**Предикат снятия этой записи:** появится идентичность маршрута (поле `id` у
+`StaticRoute` в контракте И в хранилище) — запись теряет предмет вместе с
+отказом; либо три RPC уйдут из контракта — тогда она уходит вместе с ними.
+Проверяется одной командой:
+`git grep -c 'string id' proto/kacho/cloud/vpc/v1/route_table.proto`.

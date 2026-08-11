@@ -77,8 +77,8 @@ sequenceDiagram
   participant N as NetworkService.repo
   participant DB as pg-vpc
 
-  U->>S: Create(project_id, network_id, zone_id, v4_cidr_blocks, …)
-  S->>S: sync validate:<br/>  NameVPC, ZoneId (required + existence via ZoneRegistry → zones table),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR disjoint в массиве
+  U->>S: Create(project_id, network_id, placement_type, zone_id|region_id, ipv4_cidr_primary?, …)
+  S->>S: sync validate:<br/>  NameVPC, placement_type (обязателен, immutable),<br/>  zone_id|region_id — existence через ZoneRegistry/RegionRegistry (peer geo),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR ⊆ супернета сети (validateSubnetWithinSupernet)
   S-->>U: Operation{subnetId}
 
   rect rgb(255,247,230)
@@ -90,7 +90,7 @@ sequenceDiagram
 
   alt CIDR overlap с другим Subnet в той же Network
     DB-->>S: 23P01 (EXCLUDE USING gist violation)
-    S->>S: mapRepoErr → FailedPrecondition<br/>"Subnet CIDRs can not overlap"
+    S->>S: serviceerr.MapRepoErr → FailedPrecondition<br/>"Subnet CIDRs can not overlap"
     S->>DB: UPDATE operation error
   else success
     S->>DB: INSERT vpc_outbox (Subnet CREATED)
@@ -132,7 +132,7 @@ sequenceDiagram
   POOL-->>ALC: ResolvedPool{pool, matched_via}
 
   loop for attempt in 1..max
-    ALC->>ALC: pickRandomIPv4(cidr) — exclude .0/.255
+    ALC->>ALC: domain.PickRandomIPv4(cidr) — exclude .0/.255
     ALC->>DB: UPDATE addresses SET external_ipv4.address=$ip,<br/>address_pool_id=$pool_id WHERE id=...
     alt UNIQUE violation (addresses_external_pool_ip_uniq)
       Note over ALC: continue → try другой IP
@@ -188,7 +188,7 @@ sequenceDiagram
   AS->>ALC: AllocateInternalIP(addressID)
   ALC->>SUB: Get(subnet_id) → cidr_blocks
   loop attempt in 1..max
-    ALC->>ALC: pickRandomIPv4(cidr) — exclude .0/.255 + reserved (.1?)
+    ALC->>ALC: domain.PickRandomIPv4(cidr) — exclude .0/.255 + reserved (.1?)
     ALC->>DB: UPDATE addresses SET internal_ipv4.address=$ip
     alt UNIQUE violation
       continue
@@ -388,5 +388,5 @@ flowchart TD
 | Cascade resolve | `internal/apps/kacho/api/addresspool/resolve.go` |
 | AllocateExternalIP / AllocateInternalIP / AllocateInternalIPv6 | `internal/apps/kacho/api/address/allocate.go` (аллокатор-константы — `create.go`; бенчмарки — `internal/repo/address_pool_freelist_bench_test.go`) |
 | ProjectClient.Exists → ProjectClient (IAM) | `internal/clients/iam_client.go` (+ `project_cache.go`) |
-| Operations worker | `kacho-corelib/operations/run.go` |
+| Operations worker | `pkg/operations/worker.go` |
 | Outbox emit (в writer-TX) + LISTEN/NOTIFY trigger | `internal/repo/helpers/outbox.go`, `internal/repo/kacho/pg/*` (триггер `vpc_outbox_notify_trg` — `internal/migrations/0001_initial.sql`) |

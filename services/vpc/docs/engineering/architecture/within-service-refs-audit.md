@@ -10,7 +10,10 @@
 > это TOCTOU-prone.
 >
 > Источник истины:
-> - Миграции `internal/migrations/0001_initial.sql` (базовая схема) + `0002..0009_*.sql` (delta).
+> - Миграции `internal/migrations/0001_initial.sql` (базовая схема) + все последующие
+>   delta-миграции каталога. Верхняя граница здесь не выписана: она выводится из дерева
+>   (`git ls-files services/vpc/internal/migrations/*.sql`) и устаревает от любой чужой правки —
+>   прежняя редакция называла `0002..0009` и отстала более чем вдвое.
 > - Service-слой `internal/apps/kacho/api/<resource>/*.go` (software-prechecks как UX-layer).
 > - Repo-слой `internal/repo/kacho/pg/*.go` (DDL-маппинг ошибок в sentinel-errors).
 >
@@ -27,7 +30,7 @@
 - **Покрыто DB-уровнем** (FK / partial UNIQUE / EXCLUDE / CHECK / CAS / SKIP LOCKED): все
   существенные within-service инварианты.
 - **Остаточные пункты** — описаны в разделе 2: enum-like колонки без CHECK (G5, Low) и
-  `network_interfaces.security_group_ids` — within-service ref (G6, Medium; [#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27)).
+  `network_interfaces.security_group_ids` — within-service ref (G6, Medium; issue #27 прежнего репозитория сервиса).
   **Delete-сторона G6 закрыта**: `SG.Delete` теперь несёт software-refcheck ВНУТРИ writer-TX
   (`FOR UPDATE` + `security_group_ids @> jsonb_build_array($id)` → FailedPrecondition) — dangling
   ref после Delete больше не образуется. Остаётся NIC-create-сторона (NIC пишет `security_group_ids`
@@ -124,7 +127,7 @@
 | `id` PK | уникальный | `network_interfaces_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `network_interfaces_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
-| `subnet_id` | существует, RESTRICT удаления Subnet | FK ON DELETE RESTRICT ✅ | sync `NICsBySubnet` precheck в `SubnetService.Delete` | OK |
+| `subnet_id` | существует, RESTRICT удаления Subnet | FK ON DELETE RESTRICT ✅ | sync precheck `CountBySubnet` в `SubnetService.Delete` (порт объявлен в `subnet/iface.go`) | OK |
 | `mac_address` | cloud-wide UNIQUE, NOT NULL, формат | `network_interfaces_mac_address_key` UNIQUE ✅ + `NOT NULL` ✅ + CHECK regex ✅ | retry on 23505 collision (`ErrMacCollision`) | OK |
 | `jsonb_array_length(v4_address_ids) ≤ 1` | максимум 1 v4 на NIC | CHECK `network_interfaces_v4_addr_max1` ✅ | sync `validateNICAddressCardinality` | OK |
 | `jsonb_array_length(v6_address_ids) ≤ 1` | максимум 1 v6 на NIC | CHECK `network_interfaces_v6_addr_max1` ✅ | sync check | OK |
@@ -132,7 +135,7 @@
 | `security_group_ids[*]` references | каждый SG существует, принадлежит проекту интерфейса и (если несёт сеть) сети его подсети | ❌ нет FK/join-table (jsonb-массив, scalar-FK невозможен); кардинальность — CHECK `network_interfaces_sg_cardinality` ✅ | ✅ **Обе стороны**: create/update интерфейса — `validateNICSecurityGroupRefs` (существование + проект + сеть, ОДИН запрос `GetMany` на весь массив, отказ одним тоном для «нет такой» и «не твоя»); delete группы — refcheck в writer-TX (`FOR UPDATE` + `EXISTS(security_group_ids @> jsonb_build_array($id))` → FailedPrecondition) | OK. Обе стороны обязаны стоять вместе: refcheck на удалении без проверки владельца на создании делает защиту целостности кросс-тенантным замком |
 | `used_by_id` attach race | атомарный set-if-free-or-same | CAS atomic UPDATE: `UPDATE … WHERE id=$1 AND (used_by_id='' OR used_by_id=$new) RETURNING …` ✅; 0 rows → `ErrFailedPrecondition` | n/a (DB CAS — единственная защита) | OK |
 | `used_by_type/id/name` co-clearing на detach | атомарно очищаются вместе | single-statement UPDATE всех 3-х колонок ✅ | n/a | OK |
-| `status` (TEXT enum) | значение из enum | CHECK `network_interfaces_status_check` ✅ | sync mapping в `niStatusName` | OK |
+| `status` (TEXT enum) | значение из enum | CHECK `network_interfaces_status_check` ✅ | отображение записи в proto — `internal/dto/toproto/network_interface.go` | OK |
 
 ### 1.6 `route_tables`
 
@@ -217,7 +220,7 @@
 |---|---|---|---|
 | `vpc_outbox.sequence_no` PK + sequence | строго возрастающий, уникальный | `PRIMARY KEY` + `nextval('vpc_outbox_sequence_no_seq')` default ✅ | OK |
 | `vpc_outbox_notify_trg` AFTER INSERT | каждый INSERT → `pg_notify('vpc_outbox', sequence_no)` | trigger ✅ | OK |
-| outbox row atomicity с ресурс-row | в одной tx | все `emitVPC` вызовы — в той же tx, что INSERT/UPDATE ресурса ✅ | OK |
+| outbox row atomicity с ресурс-row | в одной tx | все вызовы `helpers.EmitVPC` — в той же tx, что INSERT/UPDATE ресурса ✅ | OK |
 | `fga_register_outbox` exactly-once claim | атомарный claim drainer'ом | `UPDATE … WHERE sent_at IS NULL AND attempt_count < $max FOR UPDATE SKIP LOCKED RETURNING …` ✅ | OK |
 | `fga_register_outbox.event_type` | значение из enum | CHECK ✅ | OK |
 | `vpc_watch_cursors.subscriber_id` PK | один cursor на subscriber | PK ✅ | OK |
@@ -232,15 +235,22 @@
 **Severity**: Low — surface area для прямых INSERT-ов «мусора»; в текущем service-flow не достижимо.
 
 **Затрагивает поля** с известным конечным набором valid values (enum из proto / domain), где
-CHECK на DB-уровне пока не объявлен:
+CHECK на DB-уровне **не объявлен** — перепись 2026-08-11, предикат:
+`git grep -n 'addr_type\|ip_version\|gateway_type' -- services/vpc/internal/migrations/*.sql | grep -i check`
+даёт пусто.
 
 - `addresses.addr_type smallint`, `addresses.ip_version smallint`
 - `gateways.gateway_type TEXT`
-- `address_pools.kind smallint`
+
+**`address_pools.kind` из этого списка выведен: CHECK на него landed** миграцией
+`0011_address_pool_checks.sql` (`CHECK (kind = 1)`), вместе с CHECK'ами на
+name/description/selector_priority той же таблицы. Пункт, переживший свой фикс, читается
+как открытый долг и ставит в очередь работу, которой не требуется.
 
 Service-слой всегда пишет валидное значение. Прямой `psql` UPDATE / dump-restore не из
 текущей версии теоретически мог бы вставить мусор. NIC `status`, name/description/labels,
-mac_address уже покрыты CHECK-ами в базовой схеме; SG `status` дропнут (миграция 0003).
+mac_address уже покрыты CHECK-ами в базовой схеме; SG `status` дропнут (миграция 0003),
+а область значений правила SG закрыта CHECK'ами миграции 0027.
 
 **Решение**: при необходимости добавить CHECK новой миграцией `CHECK (col IN (…))`. Перед
 apply — pre-flight `SELECT … WHERE NOT (…)` на стенде (constraint нагнется на невалидных
@@ -308,7 +318,7 @@ jsonb остаётся output-only зеркалом.
 | Outbox sequence + emit-в-той-же-tx | trigger + repo convention | ✅ |
 | **Остаточные пункты** | | |
 | Enum-like columns no CHECK | addr_type / ip_version / gateway_type / kind | **G5** (Low) |
-| `security_group_ids` ref — Delete-side software-refcheck ✅ / NIC-create-side + write-skew ⏳ | network_interfaces → security_groups | **G6** — Delete-сторона закрыта ([#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27) fixed); полное закрытие = join-table |
+| `security_group_ids` ref — Delete-side software-refcheck ✅ / NIC-create-side + write-skew ⏳ | network_interfaces → security_groups | **G6** — Delete-сторона закрыта (issue #27 прежнего репозитория сервиса fixed); полное закрытие = join-table |
 
 ---
 

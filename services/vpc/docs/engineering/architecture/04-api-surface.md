@@ -17,10 +17,10 @@
 
 | Сервис | RPC | Что делает |
 |---|---|---|
-| `NetworkService` | CRUD + ListSubnets + ListSecurityGroups + ListRouteTables + ListOperations | публичная проекция `Network` инфра-полей не несёт; `vrf_id` отдаётся только `InternalNetworkService`. `Network` объявляет супернет (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`) и системный `default_route_table_id` |
+| `NetworkService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListSubnets + ListSecurityGroups + ListRouteTables + ListOperations | публичная проекция `Network` инфра-полей не несёт; `vrf_id` отдаётся только `InternalNetworkService`. `Network` объявляет супернет (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`) и системный `default_route_table_id` |
 | `SubnetService` | CRUD + AddCidrBlocks + RemoveCidrBlocks + ListUsedAddresses + ListOperations | `placement_type` обязателен (`ZONAL`→`zone_id` / `REGIONAL`→`region_id`), immutable; CIDR на Create — **якорь** `ipv4_cidr_primary`/`ipv6_cidr_primary` (immutable), дополнительные диапазоны — только через `:add/:remove-cidr-blocks` (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); в `UpdateSubnet` CIDR-полей нет вовсе — номера зарезервированы |
 | `AddressService` | CRUD + GetByValue + ListBySubnet + ListOperations | `CreateAddressRequest` получил `internal_ipv6_address_spec`; `ListAddressesRequest.subnet_id` матчит `internal_ipv4`/`internal_ipv6`; `Delete` адреса в использовании у NIC → `FailedPrecondition` |
-| `RouteTableService` | CRUD + AddRoutes + RemoveRoutes + UpdateRoute + ListOperations | |
+| `RouteTableService` | CRUD + ListOperations. Плюс три verb-RPC — AddRoutes / RemoveRoutes / UpdateRoute — **объявлены контрактом, но обработчиком не переопределены**: пакет ресурса встраивает `UnimplementedRouteTableServiceServer`, поэтому вызов получает `UNIMPLEMENTED`. Гранулярной правкой маршрутов пользоваться нельзя; правка — полным replace через `Update` | Перепись 2026-08-11: `git show HEAD:services/vpc/internal/apps/kacho/api/routetable/handler.go \| grep 'func (h \*Handler)'` даёт шесть методов из девяти объявленных |
 | `SecurityGroupService` | CRUD + UpdateRules + UpdateRule + ListOperations | `network_id` **обязателен** на Create (`[(required) = true]` в контракте, пустой → `InvalidArgument "network_id required"`) и immutable после него; `List?filter=network_id="<id>"` |
 | `GatewayService` | CRUD + ListOperations | |
 | `NetworkInterfaceService` | Get + List + Create + Update + Delete + ListOperations | REST `/vpc/v1/networkInterfaces`; NIC принадлежит `Subnet` (`subnet_id`), ссылается на `Address` по id (`v4_address_ids[]`/`v6_address_ids[]`), `security_group_ids[]`, `used_by` (денормализованное зеркало — кто использует NIC); проекция чисто control-plane (lean) — инфра-полей у kacho-vpc нет |
@@ -29,7 +29,7 @@
 > (precondition `repo.Get` убран — handler best-effort: жив → project-ownership; NotFound → пропуск).
 > Для route_table/SG/gateway `ListOperations` по-прежнему гейтит на `repo.Get`.
 
-REST mapping — `google.api.http` аннотации в proto, см. `kacho-proto/proto/kacho/cloud/vpc/v1/<resource>_service.proto`.
+REST mapping — `google.api.http` аннотации в proto, см. `proto/kacho/cloud/vpc/v1/<resource>_service.proto`.
 
 ## Internal admin сервисы (`:9091`, kacho-only)
 
@@ -37,7 +37,8 @@ REST mapping — `google.api.http` аннотации в proto, см. `kacho-pro
 |---|---|---|
 | `InternalAddressPoolService` | CRUD пулов + binding (BindAsNetworkDefault / UnbindNetworkDefault) + observability (ListAddresses, GetUtilization) | |
 | `InternalNetworkService` | GetNetwork (internal-only `vrf_id`) + SetDefaultSecurityGroupId (admin-only computed-field setter) | публичная проекция `Network` инфра-полей не содержит |
-| `InternalAddressService` | AllocateInternalIP / **AllocateInternalIPv6** / AllocateExternalIP + SetAddressReference / ClearAddressReference / GetAddressReference (referrer-tracking «кто использует адрес» — отражается в `Address.used` и `SubnetService.ListUsedAddresses.references[]`; referrer'ы: `compute_instance`, `network_interface`) | |
+| `InternalAddressService` | AllocateInternalIP / **AllocateInternalIPv6** / AllocateExternalIP + SetAddressReference / ClearAddressReference / GetAddressReference + MarkAddressEphemeralInUse (referrer-tracking «кто использует адрес» — отражается в `Address.used` и `SubnetService.ListUsedAddresses.references[]`; referrer'ы: `compute_instance`, `network_interface`) | |
+| `InternalNetworkInterfaceService` | Attach / Detach / ListByInstance — привязка NIC↔Instance, инициируется kacho-compute | Attach/Detach — атомарный CAS на `network_interfaces.used_by_id`, идемпотентны на повторе; vpc валидирует **свою** строку и compute обратно не зовёт. `ListByInstance` — единственный RPC vpc с `ScopeFiltered` (см. [07-known-divergences.md](07-known-divergences.md) §21) |
 | ~~`InternalRegionService` / `InternalZoneService`~~ | — | Geography (Region/Zone) живет в leaf-домене `kacho-geo`; в kacho-vpc этих сервисов нет |
 
 ## REST endpoints (через api-gateway)
@@ -47,21 +48,25 @@ REST mapping — `google.api.http` аннотации в proto, см. `kacho-pro
 ```
 # Network
 GET    /vpc/v1/networks?projectId=
-POST   /vpc/v1/networks                              → Operation
+POST   /vpc/v1/networks                              → Operation   # body: {ipv4CidrBlocks?, ipv6CidrBlocks?} — объявленный супернет
 GET    /vpc/v1/networks/{network_id}
 PATCH  /vpc/v1/networks/{network_id}                 → Operation
 DELETE /vpc/v1/networks/{network_id}                 → Operation
+POST   /vpc/v1/networks/{network_id}:add-cidr-blocks    → Operation  # расширение супернета
+POST   /vpc/v1/networks/{network_id}:remove-cidr-blocks → Operation
 GET    /vpc/v1/networks/{network_id}/subnets
 GET    /vpc/v1/networks/{network_id}/security_groups   # snake_case в child-list!
 GET    /vpc/v1/networks/{network_id}/route_tables      # snake_case!
 GET    /vpc/v1/networks/{network_id}/operations
 
-# Subnet (analogously)
-GET/POST/PATCH/DELETE /vpc/v1/subnets[/{id}]   # v4_cidr_blocks опционально на POST
+# Subnet
+GET/POST/PATCH/DELETE /vpc/v1/subnets[/{id}]
+#   POST body: {placementType, zoneId|regionId, ipv4CidrPrimary?, ipv6CidrPrimary?}
+#   PATCH: CIDR-полей нет — их номера в контракте зарезервированы
 GET    /vpc/v1/subnets/{subnet_id}/addresses         (UsedAddress[])
 GET    /vpc/v1/subnets/{subnet_id}/operations        # переживает удаление подсети
-POST   /vpc/v1/subnets/{subnet_id}:add-cidr-blocks   # body: {v4CidrBlocks?, v6CidrBlocks?} — теперь и v6
-POST   /vpc/v1/subnets/{subnet_id}:remove-cidr-blocks # body: {v4CidrBlocks?, v6CidrBlocks?}
+POST   /vpc/v1/subnets/{subnet_id}:add-cidr-blocks    # body: {ipv4CidrBlocks?, ipv6CidrBlocks?}
+POST   /vpc/v1/subnets/{subnet_id}:remove-cidr-blocks # body: {ipv4CidrBlocks?, ipv6CidrBlocks?}
 
 # Address
 GET/POST/PATCH/DELETE /vpc/v1/addresses[/{id}]   # POST принимает internalIpv6AddressSpec
@@ -77,16 +82,16 @@ GET    /vpc/v1/networkInterfaces/{network_interface_id}/operations   # пере�
 GET/POST/PATCH/DELETE /vpc/v1/routeTables[/{id}]
 
 # SecurityGroup
-GET/POST/PATCH/DELETE /vpc/v1/securityGroups[/{id}]   # POST: network_id опционален; GET?filter=network_id="<id>"
-PATCH  /vpc/v1/securityGroups/{sg_id}/rules           # UpdateRules — PATCH на /rules
-PATCH  /vpc/v1/securityGroups/{sg_id}/rules/{rule_id} # UpdateRule
+GET/POST/PATCH/DELETE /vpc/v1/securityGroups[/{id}]   # POST: networkId ОБЯЗАТЕЛЕН; GET?filter=network_id="<id>"
+PATCH  /vpc/v1/securityGroups/{security_group_id}/rules             # UpdateRules — PATCH на /rules
+PATCH  /vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}   # UpdateRule
 
 # Gateway
 GET/POST/PATCH/DELETE /vpc/v1/gateways[/{id}]
 ```
 
 > ⚠️ REST-пути неоднородны (наследие proto-аннотаций, proto-decided; см.
-> `docs/architecture/07-known-divergences.md`): child-list `security_groups`/`route_tables` —
+> [`07-known-divergences.md`](07-known-divergences.md)): child-list `security_groups`/`route_tables` —
 > snake_case, top-level `routeTables`/`securityGroups`/`addressPools` — camelCase,
 > custom-методы — kebab с двоеточием (`:add-cidr-blocks`),
 > `OperationService.Get` — `/operations/{id}` (без `/vpc/v1/`).
@@ -116,13 +121,17 @@ DELETE /vpc/v1/networks/{network_id}/addressPoolBinding
 ### Internal-only (НЕ через apiGW REST, gRPC server-to-server)
 
 ```
-InternalAddressService.AllocateInternalIP / AllocateInternalIPv6 / AllocateExternalIP / SetAddressReference / ClearAddressReference / GetAddressReference
+InternalAddressService.AllocateInternalIP / AllocateInternalIPv6
+                       AllocateExternalIP / AllocateExternalIPv6
+                       SetAddressReference / ClearAddressReference / GetAddressReference
+                       MarkAddressEphemeralInUse / CreateOwnedAddress
 InternalNetworkService.GetNetwork / SetDefaultSecurityGroupId
+InternalNetworkInterfaceService.Attach / Detach / ListByInstance
 ```
 
-Эти RPC дергают только сервисы (kacho-vpc сам себя через wiring или
-теоретически другие kacho-* через gRPC). Не зарегистрированы в apiGW
-restmux.
+Эти RPC дергают только сервисы (kacho-vpc сам себя через wiring, kacho-compute —
+через gRPC). Не зарегистрированы в apiGW restmux: `gateway/internal/allowlist/list.go`
+это прямо оговаривает для `InternalNetworkInterfaceService`.
 
 ## Operations (LRO)
 
@@ -145,15 +154,19 @@ service NetworkService {
 (`enp...` → kacho-vpc). Operation.id несет отдельный per-domain prefix
 `PrefixOperationVPC = "enp"` (декаплен от ресурсных prefix'ов вроде `net`).
 Неизвестный prefix → `400 INVALID_ARGUMENT "unknown prefix"` (intentional fail-fast
-перед роутингом; см. `docs/architecture/07-known-divergences.md`).
+перед роутингом; см. [`07-known-divergences.md`](07-known-divergences.md)).
 
-Все 6 Delete RPC возвращают `google.protobuf.Empty` в `response`;
-`DeleteXxxMetadata` лежит в `Operation.metadata`, как и положено по proto-options.
+Delete-RPC в домене **восемь** — по одному на каждый из семи публичных ресурсов плюс
+`InternalAddressPoolService.Delete` (предикат: `grep -c '  rpc Delete'
+proto/kacho/cloud/vpc/v1/*.proto | awk -F: '{s+=$2} END{print s}'`). Каждый возвращает
+`google.protobuf.Empty` в `response`, а `Delete<Resource>Metadata` лежит в
+`Operation.metadata`. Прежняя редакция называла шесть — число отстало от домена на два
+ресурса и не было ничем удержано.
 
 ## Где смотреть proto
 
 ```
-kacho-proto/proto/kacho/cloud/vpc/v1/
+proto/kacho/cloud/vpc/v1/
 ├── network.proto                       Network message
 ├── network_service.proto               NetworkService RPC
 ├── subnet.proto / subnet_service.proto
@@ -165,12 +178,14 @@ kacho-proto/proto/kacho/cloud/vpc/v1/
 │
 ├── internal_address_pool_service.proto AddressPool admin + observability
 ├── internal_network_service.proto      GetNetwork (internal-only vrf_id) + SetDefaultSecurityGroupId
-└── internal_address_service.proto      Allocate*IP (v4/v6/ext), {Set,Clear,Get}AddressReference
+├── internal_address_service.proto      Allocate*IP (v4/v6/ext), {Set,Clear,Get}AddressReference
+├── internal_network_interface_service.proto  Attach / Detach / ListByInstance (NIC↔Instance)
+└── package_options.proto
 # (Region/Zone — домен kacho-geo: proto/kacho/cloud/geo/v1/)
 ```
 
-Generated stubs: `kacho-proto/gen/go/kacho/cloud/vpc/v1/...`. Импорт:
+Сгенерённые стабы — `pkg/api/kacho/cloud/vpc/v1/` (руками не править). Импорт:
 
 ```go
-vpcv1 "github.com/PRO-Robotech/kacho-proto/gen/go/kacho/cloud/vpc/v1"
+vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 ```

@@ -17,10 +17,14 @@ erDiagram
   ADDRESS }o--o| ADDRESS_POOL : "external_ipv4.address_pool_id"
   ADDRESS_POOL_NETWORK_DEFAULT }o--|| NETWORK : "PK"
   ADDRESS_POOL_NETWORK_DEFAULT }o--|| ADDRESS_POOL : "FK"
-  ADDRESS_POOL_ADDRESS_OVERRIDE }o--|| ADDRESS : "PK"
-  ADDRESS_POOL_ADDRESS_OVERRIDE }o--|| ADDRESS_POOL : "FK"
-  CLOUD_POOL_SELECTOR }o--|| ADDRESS_POOL : "matches via selector"
 ```
+
+> Здесь стояли ещё две связи — per-address override пула и таблица селектора облака.
+> Обе сущности **дропнуты** миграцией `0002_drop_override_and_cloud_pool_selector.sql`
+> вместе с соответствующим шагом IPAM-каскада; в дереве от них не осталось ни таблицы,
+> ни Go-типа (предикат: `git grep -l CloudPoolSelector -- 'services/vpc/**/*.go'` —
+> пусто). Диаграмма схемы, рисующая снятые таблицы, читается как утверждение об их
+> существовании, поэтому связи убраны, а не помечены.
 
 > `Zone`/`Region` — это leaf-домен `kacho-geo`; в `kacho-vpc`
 > `subnet.zone_id` / `address_pool.zone_id` / `address.external_ipv4.zone_id` —
@@ -40,43 +44,57 @@ erDiagram
 | `name` | text | NameVPC permissive |
 | `description` | text | ≤256 |
 | `labels` | jsonb | ≤64 пар |
-| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается inline в `doCreate` при `KACHO_VPC_DEFAULT_SG_INLINE=true` (default). ON DELETE SET NULL |
+| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается inline в worker'е Create при `KACHO_VPC_DEFAULT_SG_INLINE=true` (умолчание). ON DELETE SET NULL |
+| `ipv4_cidr_blocks` / `ipv6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | **объявленный супернет сети** (миграция 0015, VPC-1 F2): CIDR каждой подсети обязан лежать внутри одного из этих блоков. Тенант-управляемые аддитивные наборы, меняются через `:add-cidr-blocks`/`:remove-cidr-blocks`; кардинальность ограничена CHECK (0016) |
+| `default_route_table_id` | text NULL FK→`route_tables` | системная RT сети, создаётся на `Network.Create` и является **источником истины** о том, какую RT наследует подсеть без явного `route_table_id` (0015 объявила колонку, 0017 сделала её действующей) |
 | `vrf_id` | bigint, internal-only | VRF tenancy-id, аллоцируется control-plane'ом (sequence); инфра-чувствительное поле, отдается **только** через `InternalNetworkService` — на публичной поверхности нет |
 | `created_at` | tstz | в proto-ответе truncate до секунд |
 
 **Инварианты**:
-- При Create (`KACHO_VPC_DEFAULT_SG_INLINE=true`, default) — атомарно создается
+- При Create (`KACHO_VPC_DEFAULT_SG_INLINE=true`, умолчание) — атомарно создается
   Network + Default SG + биндинг `default_security_group_id` в одной TX worker'а.
   При `=false` Network создается без SG (для load-тестов / внешнего reconciler'а).
+- Супернет объявляется на Create и **ограничивает** подсети: CIDR подсети обязан быть
+  подмножеством одного из блоков сети (`validateSubnetWithinSupernet`).
 - `vrf_id` — internal-only инфра-идентификатор; не на публичной проекции Network.
 - Hard-delete; FK от Subnet/RT/SG = RESTRICT.
 
 ### Subnet
 
-Подсеть в Network, привязана к Zone.
+Подсеть в Network. Размещение задаётся дискриминатором, а не набором ad-hoc полей.
 
-| Поле | Тип | Замечания |
+**Имена в контракте и имена колонок различаются — это не опечатка.** Контракт (proto/REST)
+несёт `ipv4_cidr_primary` + `ipv4_cidr_blocks`, БД хранит один массив `v4_cidr_blocks`,
+у которого якорь — элемент `[1]`. Ниже колонка и контрактное поле названы раздельно.
+
+| Колонка | Тип | Замечания |
 |---|---|---|
 | `id` | text PK, prefix `sub` | |
-| `project_id`, `network_id`, `zone_id` | text NOT NULL | immutable после Create; `subnets_project_id_name_key` UNIQUE(project_id, name) WHERE name<>'' |
+| `project_id`, `network_id` | text NOT NULL | immutable после Create; `subnets_project_id_name_key` UNIQUE(project_id, name) WHERE name<>'' |
+| `placement_type` | text NOT NULL | `ZONAL` \| `REGIONAL`, обязателен и immutable; `UNSPECIFIED` в БД быть не может — CHECK перечисляет только два значения (миграция 0012) |
+| `zone_id` / `region_id` | text NOT NULL DEFAULT `''` | ровно одно непусто, взаимоисключение держит CHECK `subnets_placement_payload_chk`: `ZONAL`→`zone_id`, `REGIONAL`→`region_id` |
 | `name`, `description`, `labels` | | |
-| `v4_cidr_blocks` | text[] DEFAULT `'{}'` | **опционально на Create** (proto-`(required)` снят); главный — `[0]`. CIDR-less подсеть легальна — `Address.Create` с internal-IPv4-спеком в нее / `AllocateInternalIP` → `FailedPrecondition "subnet ... has no IPv4 CIDR"`; добавить CIDR позже через `:add-cidr-blocks` |
-| `v6_cidr_blocks` | jsonb | dual-stack; добавляется/удаляется через `:add-cidr-blocks`/`:remove-cidr-blocks` (валидный IPv6-префикс, host-bits=0, intra-request disjoint; cross-subnet backstop — EXCLUDE `subnets_no_overlap_v6`) |
-| `v4_cidr_primary` | text computed | для EXCLUDE constraint (см. ниже) |
-| `route_table_id` | text NULL FK→`route_tables` | optional |
-| `dhcp_options` | jsonb | domain_name (RFC 1123), dns/ntp servers |
+| `v4_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | `[1]` — **якорь** `ipv4_cidr_primary` контракта (immutable, задаётся на Create); остальные элементы — дополнительные диапазоны из `:add-cidr-blocks`. v6-only подсеть легальна: якорь пуст, и тогда internal-v4-аллокация в неё → `FailedPrecondition "subnet %s has no IPv4 CIDR"` |
+| `v6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | то же для IPv6: `[1]` = `ipv6_cidr_primary`; v4-only подсеть легальна |
+| `v4_cidr_primary` / `v6_cidr_primary` | cidr GENERATED STORED | производные от `[1]`; нужны EXCLUDE-констрейнтам |
+| `route_table_id` | text NULL FK→`route_tables` | не задан на Create → подставляется `network.default_route_table_id` |
+| `dhcp_options` | jsonb | **колонка осталась от baseline, контракта у неё больше нет**: поле снято из `Subnet`/`Create`/`Update` (номера и имя зарезервированы, VPC-1-43). Ни один RPC его не принимает и не отдаёт |
 
 **Инварианты**:
-- CIDR overlap **запрещен** в пределах Network — DB-level через
-  `EXCLUDE USING gist` (v4 и v6). Маппится в `FailedPrecondition
-  "Subnet CIDRs can not overlap"` (для v6 — overlap из `:add-cidr-blocks` → `FailedPrecondition`).
-- `v4_cidr_blocks` / `v6_cidr_blocks` **необязательны** на Create — подсеть может быть
-  CIDR-less; реальное добавление/удаление блоков (обеих семей) — через verbs
-  `:add-cidr-blocks` / `:remove-cidr-blocks` (они принимают и `v6_cidr_blocks`).
-  `UpdateSubnet` получил `v6_cidr_blocks` — soft-immutable / no-op (зеркало v4).
-- `AddCidrBlocks` второй+ CIDR не покрывается DB EXCLUDE (constraint
-  смотрит только на `v4_cidr_primary`). Защищено сервис-level через
-  `networkRepo.List` cross-check.
+- CIDR подсети обязан лежать **внутри объявленного супернета сети**
+  (`network.ipv4_cidr_blocks`/`ipv6_cidr_blocks`) — проверка `validateSubnetWithinSupernet`
+  на Create и на `:add-cidr-blocks`.
+- CIDR overlap **запрещен** в пределах Network на DB-уровне, причём для **всех** блоков,
+  а не только для якоря: baseline-EXCLUDE `subnets_no_overlap_v4/v6` смотрит только на
+  `*_cidr_primary`, поэтому миграция 0010 завела нормализованную child-таблицу
+  `subnet_cidr_blocks` с `EXCLUDE USING gist (network_id WITH =, block inet_ops WITH &&)`.
+  Прежняя редакция утверждала, что вторичные блоки закрыты сервисным cross-check'ом —
+  сегодня это DB-инвариант, как и требует ban #10.
+  Маппится в `FailedPrecondition "Subnet CIDRs can not overlap"`.
+- **CIDR immutable через Update.** Якорь не меняется никогда; дополнительные диапазоны —
+  только через `:add-cidr-blocks` / `:remove-cidr-blocks`. В `UpdateSubnetRequest`
+  CIDR-полей **нет вовсе** — их номера зарезервированы, поэтому «soft-immutable / no-op»
+  здесь больше не про что: принять и выбросить нечего.
 - **Удаление подсети** блокируется (sync-precheck в `SubnetService.Delete`):
   есть внутренние Address (v4 ИЛИ v6 — `AddressesBySubnet` смотрит и `internal_ipv4`,
   и `internal_ipv6`) → `FailedPrecondition "Subnet has allocated internal addresses"`;
@@ -203,16 +221,25 @@ Subnet'ам.
 
 ### SecurityGroup
 
-Firewall rules. **`network_id` опционально на Create** (proto-`(required)` снят) — network-unbound
-(project-level) SG легальна. Один SG может быть `default_for_network`.
+Firewall rules. **`network_id` обязателен на Create и immutable после него**: SG принадлежит
+ровно одной Network своего проекта. Один SG может быть `default_for_network`.
+
+> [!warning] Здесь стояло обратное — «`network_id` опционально, proto-`(required)` снят»
+> Дерево говорит трижды и в одну сторону: в контракте у поля стоит `[(required) = true]`
+> (`proto/kacho/cloud/vpc/v1/security_group_service.proto`), use-case отвергает пустое
+> значение синхронно — `InvalidArgument "network_id required"`
+> (`internal/apps/kacho/api/securitygroup/create.go`), а комментарий колонки в
+> `0001_initial.sql` дословно объявляет её `mandatory and immutable after Create`.
+> Утверждение об опциональности жило в **восьми** местах инженерного корпуса при верной
+> странице сайта — тот случай, когда два места об одном предмете расходятся, и перевес у
+> того, что сверено с деревом, а не у того, что чаще повторено.
 
 | Поле | Замечания |
 |---|---|
 | `id` (prefix `sgr`), `project_id` | UNIQUE(project_id, name) WHERE name<>'' |
-| `network_id` | text **NULLABLE**; immutable после Create; пустой `network_id` хранится как SQL `NULL`, чтобы FK `security_groups_network_id_fkey` не срабатывал на `''`. `List?filter=network_id="<id>"` работает (whitelist фильтра включает `network_id`). Default-SG-на-сети всегда ставит непустой `network_id` |
-| `status` | text |
+| `network_id` | text; **обязателен** на Create, immutable после. Колонка объявлена NULLABLE ради FK (пустая строка сломала бы ссылку), но use-case пустую не пропускает. `List?filter=network_id="<id>"` работает (whitelist фильтра включает `network_id`) |
 | `default_for_network` | bool — `true` у inline-создаваемой default SG (если `KACHO_VPC_DEFAULT_SG_INLINE=true`) |
-| `rules` | jsonb array (см. SgRulesEditor в UI / proto SecurityGroupRule) |
+| `rules` | jsonb array; область значений правила (протокол, диапазон портов) держится CHECK'ами на DB-уровне — миграция `0027_security_group_rules_domain.sql` |
 
 **RPC специфика**:
 - `UpdateRules` — полный replace массива.
@@ -245,7 +272,7 @@ Geography (Region/Zone) — **не VPC-ресурс**, а leaf-домен `kacho
 |---|---|---|
 | `id` | text PK, prefix `apl` | |
 | `name`, `description`, `labels` | | |
-| `cidr_blocks` | text[] | IPv4 CIDR-блоки |
+| `v4_cidr_blocks` / `v6_cidr_blocks` | text[] | CIDR-блоки пула, **раздельно по семьям** (split-by-family). Прежняя редакция называла одну колонку `cidr_blocks` — такой колонки нет, и объединение семей было бы неверно по существу |
 | `kind` | smallint | 1=EXTERNAL_PUBLIC, 2=EXTERNAL_TEST, 100=RESERVED_INTERNAL |
 | `zone_id` | text NULL | `TEXT`-id домена geo, без FK; NULL = глобальный fallback |
 | `is_default` | bool | partial UNIQUE на (COALESCE(zone_id,''), kind) WHERE is_default |

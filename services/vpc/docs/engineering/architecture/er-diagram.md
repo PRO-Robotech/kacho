@@ -1,7 +1,12 @@
 # ER-diagram — `kacho_vpc` schema
 
-> **Источник**: `internal/migrations/0001_initial.sql` (базовая схема) + delta-миграции
-> `0002…0009`. Парная документация — `within-service-refs-audit.md`, которая аудитит,
+> **Источник**: `internal/migrations/0001_initial.sql` (базовая схема) + все последующие
+> delta-миграции каталога. Верхняя граница здесь **не выписана намеренно**: прежняя
+> редакция называла `0002…0009`, отстав от дерева более чем вдвое, и диаграмма молча
+> описывала схему годичной давности. Диапазон читается одной командой —
+> `git ls-files services/vpc/internal/migrations/*.sql`.
+>
+> Парная документация — `within-service-refs-audit.md`, которая аудитит,
 > что каждая ссылка / инвариант покрыты DB-уровнем (FK / UNIQUE / EXCLUDE / CHECK / CAS).
 >
 > Схема — `kacho_vpc`: все user-таблицы + `goose_db_version` + user-функции
@@ -27,6 +32,9 @@ erDiagram
     jsonb labels
     text default_security_group_id "FK → security_groups ON DELETE SET NULL (mig 0005)"
     text route_distinguisher
+    text_array ipv4_cidr_blocks "объявленный супернет (mig 0015); кардинальность CHECK (0016)"
+    text_array ipv6_cidr_blocks "объявленный супернет (mig 0015)"
+    text default_route_table_id "FK → route_tables (mig 0015 объявила, 0017 сделала действующей)"
     bigint vrf_id "UNIQUE; internal-only (data-plane VRF id, mig 0007)"
     timestamptz created_at
   }
@@ -38,14 +46,22 @@ erDiagram
     text description
     jsonb labels
     text network_id "FK → networks.id (NO ACTION = RESTRICT)"
-    text zone_id "cross-service ref → kacho-geo zones (no FK)"
-    text_array v4_cidr_blocks
-    text_array v6_cidr_blocks
+    text placement_type "ZONAL|REGIONAL, CHECK, immutable (mig 0012)"
+    text zone_id "непуст ⇔ ZONAL; cross-service ref → kacho-geo zones (no FK)"
+    text region_id "непуст ⇔ REGIONAL; cross-service ref → kacho-geo regions (mig 0012)"
+    text_array v4_cidr_blocks "[1] = якорь ipv4_cidr_primary контракта"
+    text_array v6_cidr_blocks "[1] = якорь ipv6_cidr_primary контракта"
     text route_table_id "FK → route_tables.id ON DELETE SET NULL"
-    jsonb dhcp_options
+    jsonb dhcp_options "baseline-колонка БЕЗ контракта — поле снято из proto (VPC-1-43)"
     cidr v4_cidr_primary "GENERATED STORED from v4_cidr_blocks[1]"
     cidr v6_cidr_primary "GENERATED STORED from v6_cidr_blocks[1]"
     timestamptz created_at
+  }
+
+  SUBNET_CIDR_BLOCKS {
+    text subnet_id "FK → subnets.id ON DELETE CASCADE (mig 0010)"
+    text network_id "область действия EXCLUDE"
+    cidr block "EXCLUDE USING gist (network_id WITH =, block inet_ops WITH &&)"
   }
 
   ADDRESSES {
@@ -110,9 +126,9 @@ erDiagram
     text name "partial UNIQUE (project_id, name) WHERE name<>''"
     text description
     jsonb labels
-    text network_id "NULLABLE; FK → networks.id ON DELETE RESTRICT (when not NULL)"
+    text network_id "ОБЯЗАТЕЛЕН на Create и immutable; FK → networks.id ON DELETE RESTRICT"
     bool default_for_network "partial UNIQUE (network_id) WHERE default_for_network (mig 0005)"
-    jsonb rules
+    jsonb rules "область значений правила — CHECK (mig 0027)"
     timestamptz created_at
   }
 
@@ -225,7 +241,9 @@ erDiagram
 
   NETWORKS ||--o{ SUBNETS : "subnets.network_id (RESTRICT)"
   NETWORKS ||--o{ ROUTE_TABLES : "route_tables.network_id (RESTRICT)"
-  NETWORKS ||--o{ SECURITY_GROUPS : "security_groups.network_id (RESTRICT, nullable)"
+  NETWORKS ||--o{ SECURITY_GROUPS : "security_groups.network_id (RESTRICT, обязателен)"
+  NETWORKS ||--o| ROUTE_TABLES : "networks.default_route_table_id (mig 0015/0017)"
+  SUBNETS ||--o{ SUBNET_CIDR_BLOCKS : "все блоки подсети, EXCLUDE per network (mig 0010)"
   NETWORKS ||--o{ ADDRESS_POOL_NETWORK_DEFAULT : "binding (CASCADE)"
   SUBNETS  ||--o{ NETWORK_INTERFACES : "network_interfaces.subnet_id (RESTRICT)"
   SUBNETS  ||--o{ ADDRESSES : "via addresses.internal_subnet_id GENERATED (RESTRICT)"
@@ -314,11 +332,15 @@ RouteTable project-level. UNIQUE `(project_id, name) WHERE name<>''`. FK `networ
 
 #### `security_groups`
 SG project-level. UNIQUE `(project_id, name) WHERE name<>''`. FK `network_id → networks(id)
-ON DELETE RESTRICT` — **колонка nullable** (SG без привязки к сети: global / project-level /
-unbound; пустая строка в домене хранится как NULL чтобы FK не срабатывал). `default_for_network`
-покрыт partial UNIQUE `security_groups_one_default_per_network` (миграция 0005). Поле `status`
-дропнуто миграцией 0003 (у SG нет provisioning-lifecycle). `rules` — jsonb-массив
-(service-level validation).
+ON DELETE RESTRICT`; **`network_id` обязателен на Create и immutable** — комментарий колонки
+в baseline-миграции объявляет её `mandatory and immutable after Create`, контракт несёт
+`[(required) = true]`, use-case отвергает пустую строку синхронно. Колонка объявлена nullable
+**только ради FK** (пустая строка сломала бы ссылку); прежняя редакция читала это как
+разрешение на SG без сети. `default_for_network` покрыт partial UNIQUE
+`security_groups_one_default_per_network` (миграция 0005). Поле `status` дропнуто миграцией
+0003 (у SG нет provisioning-lifecycle). `rules` — jsonb-массив; область значений правила
+(протокол, диапазон портов) держится CHECK'ами миграции 0027, а не только проверкой в
+use-case.
 
 #### `gateways`
 Project-level. `gateways` — без cross-resource FK (`gateway_type` пока единственное domain-поле).

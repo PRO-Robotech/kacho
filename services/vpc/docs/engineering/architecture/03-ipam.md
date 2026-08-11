@@ -14,7 +14,8 @@ erDiagram
     text name
     text kind "EXTERNAL_PUBLIC|EXTERNAL_TEST|RESERVED_INTERNAL"
     text zone_id "nullable = зоне-независимый (anycast) пул (TEXT-id домена geo, без FK)"
-    text_array cidr_blocks
+    text_array v4_cidr_blocks
+    text_array v6_cidr_blocks "split-by-family: семьи хранятся раздельно"
     bool is_default
   }
   ADDRESS_POOL_NETWORK_DEFAULT {
@@ -55,7 +56,11 @@ Account  ─ kacho-iam                   (no parent)
 ## AddressPool
 
 - Глобальный admin-only ресурс. **Нет** `project_id` — pool глобальный.
-- `cidr_blocks TEXT[]` — массив IPv4 CIDR-блоков.
+- `v4_cidr_blocks TEXT[]` / `v6_cidr_blocks TEXT[]` — CIDR-блоки **раздельно по семьям**
+  (split-by-family). Колонки `cidr_blocks` не существует; объединять семьи нельзя и по
+  существу — резолв каждой семьи смотрит только на свой массив (`poolHasFamily`).
+  Неперекрытие блоков внутри `kind` держит child-таблица `address_pool_cidrs` + EXCLUDE
+  gist (миграция 0004).
 - `kind` — `EXTERNAL_PUBLIC | EXTERNAL_TEST | RESERVED_INTERNAL`.
 - `zone_id` — `TEXT`-id домена geo, **nullable**. Объявляет, ГДЕ живут префиксы пула:
   непустая зона = **ZONAL**-пул; NULL = **зоне-независимый (REGIONAL/anycast)** пул
@@ -109,26 +114,33 @@ flowchart TD
 На каждом шаге pool пропускается, если его CIDR-список для запрошенного family пуст
 (`poolHasFamily`): v4-резолв берет pool только с непустым `v4_cidr_blocks`, симметрично для v6.
 
-## IP picker
+## IP picker — книга учёта, а не перебор по CIDR
 
-`AddressAllocator.AllocateExternalIP` после resolve:
+Внешний IPv4 выделяется **не** случайным подбором с повтором, а popом из книги учёта
+свободных адресов пула (`address_pool_free_ips`). Один SQL-стейтмент на попытку —
+`SELECT … LIMIT 1 FOR UPDATE SKIP LOCKED` → `DELETE FROM address_pool_free_ips` →
+`UPDATE addresses` с target-guard (`internal/repo/helpers/freelist_sql.go`,
+`AllocateUseCase.AllocateExternalIP` в `internal/apps/kacho/api/address/allocate.go`).
+Contention нулевая by construction: два конкурента не могут забрать одну строку.
+Ключ книги — **host-форма** адреса, без маски (миграция 0023: до неё один адрес мог
+лежать в двух разных ключах).
 
-```
-for attempt in 1..maxAttempts:
-  for cidr in pool.cidr_blocks:
-    ip = pickRandomIPv4(cidr)         # exclude .0/.broadcast
-    err = addrRepo.SetIPSpec(addressID, {address:ip, pool_id:pool.id})
-    if isUniqueViolation(err):
-      continue                         # try другой IP
-    return result, err
-return ResourceExhausted "address pool X exhausted (no free IP in any cidr_block)"
-```
+Внешний IPv6 — зеркало для v6, но sparse counter-based (`AllocateExternalIPv6`):
+материализовать книгу на /64 нереально.
 
-`isUniqueViolation` распознает **обе** формы:
-- raw pgErr (substring `SQLSTATE 23505` / `addresses_external_pool_ip_uniq`)
-- обертку `service.ErrAlreadyExists` (через `errors.Is`)
+Случайный подбор остался там, где книги нет — internal-адрес в подсети
+(`domain.PickRandomIPv4` / `PickRandomIPv6`, см. ниже). Там же осмысленна и
+повторная попытка на конфликте уникальности: `isUniqueViolation`
+(`internal/apps/kacho/api/address/helpers.go`) распознаёт **обе** формы —
+сырую pg-ошибку и уже обёрнутый sentinel «уже существует» через `errors.Is`.
+Без второй ветки петля повтора рвалась и наружу шёл сырой «already exists» вместо
+`ResourceExhausted`.
 
-Без второй ветки `wrapPgErr` в `SetIPSpec` ломал retry-loop и наружу шел raw "already exists" вместо `ResourceExhausted`.
+> Прежняя редакция описывала здесь перебор случайного адреса по перечню CIDR пула с
+> записью через отдельный сеттер спецификации адреса. Ни одно из трёх имён, которые она
+> называла, в дереве не резолвится, и механизм другой: перечисление CIDR заменено книгой
+> учёта. Мёртвые имена здесь намеренно не воспроизводятся — в обратных кавычках они
+> читаются как живая координата.
 
 ## Internal IP allocate (v4 + v6)
 

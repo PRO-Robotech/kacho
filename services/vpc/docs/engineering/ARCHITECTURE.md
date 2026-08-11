@@ -23,14 +23,21 @@ binding; Region/Zone — leaf-домен `kacho-geo`, в VPC только `zone_
 Сервис **control-plane only**: он хранит конфигурацию,
 валидирует ее и эмитит события об изменениях.
 API проектируется в чистой форме под задачу: NIC как отдельный ресурс,
-опциональные `Subnet` CIDR / `SecurityGroup` network и т.п.
+дискриминатор размещения подсети вместо ad-hoc полей, объявленный супернет сети
+как ограничение на подсети.
 
 ### 1.2 Место в системе Kachō
 
-Kachō — polyrepo. Каждый домен живет в отдельном Go-репозитории. Внешние
-клиенты ходят через `kacho-api-gateway` (gRPC-proxy + grpc-gateway REST).
-Сервисы общаются по gRPC. У каждого — своя Postgres-БД, шаринг через
-прямой SQL запрещен.
+Kachō — **монорепо** `PRO-Robotech/kacho`: каждый домен живёт своим каталогом
+`services/<domain>/` одного Go-модуля. Внешние клиенты ходят через край
+(`gateway/` — gRPC-proxy + grpc-gateway REST). Сервисы общаются по gRPC и **не
+импортируют друг друга по коду**; у каждого своя Postgres-БД, шаринг через прямой
+SQL запрещён.
+
+> Прежняя редакция объявляла топологию полирепо — «каждый домен в отдельном
+> Go-репозитории». Предикат: `git ls-files '*/go.mod' go.mod | wc -l` даёт **1**.
+> Имена вида `kacho-<svc>` ниже по тексту читать как **домены**, а не как
+> репозитории.
 
 ```
                            kacho-ui (SPA, REST/JSON)
@@ -102,10 +109,10 @@ vpc serve                        — запуск gRPC-серверов
 
 - gRPC-сервер на публичном порту (по умолчанию `:9090`).
 - gRPC-сервер на internal-порту (по умолчанию `:9091`).
-- Воркеров операций `kacho-corelib/operations.Run` — одна горутина на каждую
+- Воркеров операций `pkg/operations`.`Run` — одна горутина на каждую
   in-flight LRO; пул не явный.
 - Подключение к Postgres через `pgxpool` (один пул).
-- FGA register-drainer (`kacho-corelib/outbox/drainer`) — слушает
+- FGA register-drainer (`pkg/outbox/drainer`) — слушает
   `kacho_vpc_fga_register_outbox` и применяет owner-tuple intents через `kacho-iam`.
 
 ### 2.2 Хранилище
@@ -211,28 +218,41 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | `security_group.go` | `SecurityGroup` + `SecurityGroupRule` | Rules embedded в jsonb |
 | `gateway.go` | `Gateway` | `GatewayType` sentinel для oneof |
 | `address_pool.go` | `AddressPool` + `AddressPoolKind` | Глобальный (без `project_id`) |
-| `geography.go` | `Region`, `Zone` | Глобальные admin-ресурсы |
-| `cloud_pool_selector.go` | `CloudPoolSelector` | Admin-controlled labels на Cloud |
+| `geography.go` | `Region`, `Zone` | **узкие read-проекции** чужого домена `kacho-geo` для валидации `zone_id`/`region_id` через порты `ZoneRegistry`/`RegionRegistry`. Собственных таблиц Region/Zone у vpc нет |
+| `network_interface.go` | `NetworkInterface` | first-class NIC |
+| `cidr.go` | `PickRandomIPv4`, `PickRandomIPv6`, CIDR-арифметика | подбор адреса там, где нет книги учёта |
+| `types.go`, `constants.go`, `errors.go` | newtypes с `Validate()`, константы, sentinel'ы | |
+| `route_table_builders.go`, `security_group_builders.go`, `security_group_protocol.go` | сборка вложенных значений | |
 
-### 3.3 Слой `service/`
+> Таблица **выведена** из `git ls-files services/vpc/internal/domain/ | grep -v _test`.
+> Прежняя редакция называла файл селектора пулов облака — сущность дропнута миграцией
+> 0002, Go-типа с таким именем в дереве нет; и молчала о шести существующих файлах.
 
-Use-cases. Один файл на ресурс плюс общие модули.
+### 3.3 Слой use-case'ов — `internal/apps/`
 
-| Файл | Содержимое |
+> [!warning] Каталога `internal/service/` в дереве нет — здесь была описана раскладка,
+> которой не существует
+> Прежняя редакция перечисляла двенадцать файлов одного пакета `service/` и пять
+> порт-интерфейсов IPAM. Предикат: `git ls-files services/vpc/internal/service` — пусто;
+> из пяти названных портов ни один не резолвится в дереве, а два из них
+> два описывали сущности, снятые вместе с миграцией 0002 и с выносом Geography в
+> `kacho-geo` (мёртвые имена здесь не воспроизводятся). Раскладка ниже **выведена**:
+> `git ls-files services/vpc/internal/apps/kacho/api | cut -d/ -f7 | sort -u`.
+
+Use-case'ы разложены **по одному пакету на ресурс**, внутри пакета — **по одному файлу на
+RPC**: `internal/apps/kacho/api/{address,addresspool,gateway,network,networkinterface,routetable,securitygroup,subnet}/`.
+
+| Файл в пакете ресурса | Содержимое |
 |---|---|
-| `<resource>/iface.go` | Per-use-case port-интерфейсы: `NetworkRepo`, `SubnetRepo`, `AddressRepo`, `RouteTableRepo`, `SecurityGroupRepo`, `GatewayRepo`, `ProjectClient`, `Pagination`, фильтры |
-| `address_pool_ports.go` | Порты для IPAM (`AddressPoolRepo`, `AddressPoolBindingRepo`, `CloudPoolSelectorRepo`, `RegionRepo`, `ZoneRepo`) |
-| `network.go` | `NetworkService` — Create/Update/Delete/Get/List + ListSubnets/ListSecurityGroups/ListRouteTables/ListOperations |
-| `subnet.go` | `SubnetService` — выше + AddCidrBlocks/RemoveCidrBlocks/ListUsedAddresses |
-| `address.go` | `AddressService` — выше + AllocateInternalIP/AllocateExternalIP + GetByValue/ListBySubnet |
-| `route_table.go`, `security_group.go`, `gateway.go` | Аналогично, с domain-специфичными методами |
-| `address_pool_service.go` | `AddressPoolService` — CRUD пулов + cascade resolve + bindings |
-| `geography_service.go` | `RegionService`, `ZoneService` |
-| `network_internal.go` | Внутренние операции над Network для admin-RPC |
-| `errors.go` | Sentinel-ошибки: `ErrNotFound`, `ErrAlreadyExists`, `ErrInvalidArg`, `ErrFailedPrecondition`, `ErrInternal`, `ErrPoolNotResolved`, `ErrInvalidIPv4` |
-| `maperr.go` | Единая функция трансляции sentinel-ошибок в gRPC-status |
-| `validate.go` | Общие проверки (CIDR host-bits, IP в CIDR) |
-| `cidr_util.go` | Хелперы для CIDR-арифметики |
+| `create.go` / `update.go` / `delete.go` / `get.go` / `list.go` | по одному use-case'у на RPC; у ресурса со своими глаголами — свой файл (`add_cidr_blocks.go`, `remove_cidr_blocks.go`, `allocate.go`, `resolve.go`, `default_sg.go`, …) |
+| `iface.go` | порты **этого** пакета: репозиторий ресурса, читатели соседних, `ProjectClient`, `ZoneRegistry`/`RegionRegistry`, пагинация |
+| `handler.go` | тонкий transport этого ресурса (parse → use-case → format) |
+| `helpers.go` | локальные проверки и распознавание ошибок пакета |
+
+Не-ресурсные use-case'ы — `internal/apps/kacho/services/{addressref,networkinternal,nicinternal}`.
+Общее внутри сервиса — `internal/apps/kacho/shared/`: `serviceerr` (единственная трансляция
+sentinel → gRPC: `MapRepoErr` / `MapRepoErrLeakSafe`), `listpage`, `macutil`, `pbconv`.
+Конфигурация и загрузочная проверка посадки — `internal/apps/kacho/config/`.
 
 ### 3.4 Слой `repo/`
 
@@ -243,17 +263,26 @@ Pgx-адаптеры. Один файл на таблицу. Использую�
 |---|---|
 | `kacho/pg/network.go` | `NetworkRepo` |
 | `kacho/pg/subnet.go` | `SubnetRepo` (включая `SetCidrBlocks`, `SetZoneID`, `AddressesBySubnet`) |
-| `kacho/pg/address.go` | `AddressRepo` (включая `GetByValue`, `SetIPSpec`) |
+| `kacho/pg/address.go` | чтение/запись адреса, включая `GetByValue` и аллокацию из книги учёта |
 | `kacho/pg/route_table.go` | `RouteTableRepo` |
 | `kacho/pg/security_group.go` | `SecurityGroupRepo` (включая `UpdateRules` с xmin-OCC, `UpdateRule`) |
 | `kacho/pg/gateway.go` | `GatewayRepo` |
 | `kacho/pg/address_pool.go` | `AddressPoolRepo` (включая cascade-SQL) |
-| `kacho/pg/address_pool_binding.go` | `AddressPoolBindingRepo` (override/default привязки) |
-| `kacho/pg/cloud_pool_selector.go` | `CloudPoolSelectorRepo` |
-| `outbox.go` | `emitVPC` — обертка над `kacho-corelib/outbox.Emit` |
-| `unique.go` | Распознавание SQLSTATE для unique/exclude/fk |
-| `paging.go` | Кодирование/декодирование cursor-based page_token |
-| `jsonb.go` | Хелперы для безопасной JSON-сериализации |
+| `kacho/pg/address_pool_binding.go` | привязка пула к сети (network-default) |
+| `kacho/pg/existence_probe.go` | проба существования для peer-валидации |
+| `kacho/pg/fga_reconcile_adapter.go` | адаптер реконсайлера owner-tuple |
+| `kacho/pg/repository.go` | сборка репозитория, транзакции writer/reader |
+| `helpers/outbox.go` | эмиссия в `vpc_outbox` в той же writer-TX |
+| `helpers/unique.go` | Распознавание SQLSTATE для unique/exclude/fk |
+| `helpers/paging.go` | Кодирование/декодирование cursor-based page_token |
+| `helpers/jsonb.go` | Хелперы для безопасной JSON-сериализации |
+| `helpers/freelist_sql.go` | pop из книги учёта свободных адресов (`FOR UPDATE SKIP LOCKED` + `DELETE … RETURNING`) |
+| `helpers/{sg,nic,scans,payloads,sql,errors}.go` | сканеры строк, полезные нагрузки, общий SQL |
+
+> Таблица выведена из `git ls-files services/vpc/internal/repo/kacho/pg services/vpc/internal/repo/helpers | grep -v _test`.
+> Прежняя редакция называла файл репозитория селектора пулов облака (сущность дропнута
+> миграцией 0002) и неэкспортируемую функцию эмиссии, которой в дереве нет: эмиссия
+> экспортирована и лежит не в `repo/`, а в `repo/helpers/`.
 
 ### 3.5 Transport-слой (gRPC handlers)
 
@@ -295,7 +324,8 @@ Cross-cutting и internal transport (`internal/handler/`):
 
 ### 3.7 Слой `config/` и `migrations/`
 
-- `config/config.go` — `Config` структура + `Load` через `kacho-corelib/config`.
+- `internal/apps/kacho/config/` — `Config` (`config.go`), `Load` (`load.go`), умолчания
+  (`defaults.go`), загрузочная проверка посадки (`validate.go`, `mode.go`, `mtls.go`).
   Разделение DSN: для pgxpool — DSN с `pool_max_conns` (если `DBMaxConns>0`); для
   миграций (`database/sql.Open("pgx")`) — DSN без него, иначе `pool_max_conns`
   уходит серверу как unknown PG-параметр → fatal.
@@ -319,13 +349,19 @@ Cross-cutting и internal transport (`internal/handler/`):
 4. Открытие gRPC-клиента к kacho-iam (`ProjectClient`).
 5. Инстанцирование `*Repo` объектов.
 6. Инстанцирование `*Service` объектов с проброшенными портами.
-7. Инстанцирование двух `*grpc.Server` (публичный и internal) с
-   `TenantUnaryInterceptor` / `TenantStreamInterceptor`.
+7. Инстанцирование двух gRPC-слушателей (публичный `:9090` и internal `:9091`)
+   через общий носитель `pkg/servicehost`.`Serve` по дескриптору из
+   `cmd/vpc/describe.go`. Цепочку интерсепторов ставит носитель; своих у сервиса
+   два — `internal/handler/authn_interceptor.go` (принципал предъявлен?) и
+   `internal/handler/deadline_interceptor.go`. Прежняя редакция называла здесь два
+   tenant-интерсептора: имён с такими названиями в дереве нет.
 8. Регистрация всех handler-ов на оба сервера (см. таблицы в §8).
 9. Запуск listener-ов в отдельных горутинах.
 10. Блокировка `Serve` на публичном listener'е.
-11. На SIGTERM — `GracefulStop` обоих серверов + `operations.Wait(30s)`,
-    блокировка на `shutdownDone` перед возвратом из `runServe`.
+11. На SIGTERM (или крахе слушателей) — `triggerShutdown` закрывает `shutdownCh`,
+    затем дренаж LRO-воркеров `operations.Wait(drainCtx)` с бюджетом
+    `3*api-server.graceful-shutdown`, и последней гасится диагностическая
+    поверхность — чтобы переброс `/readyz` в 503 успел отработать.
 
 `cmd/` содержит composition root (`vpc/main.go`) и отдельный `migrator/`.
 Admin-операции над IPAM (AddressPool/pool-selector/bindings) — REST на
@@ -378,7 +414,7 @@ outbox-emit, формирование response).
 | `resource_kind` | text | `Network`, `Subnet`, ... |
 | `resource_id` | text | id ресурса |
 | `event_type` | text | `CREATED`, `UPDATED`, `DELETED` |
-| `payload` | jsonb | Snapshot ресурса (через `domainToMap`) |
+| `payload` | jsonb | Snapshot ресурса (через `helpers.DomainToMap`) |
 | `created_at` | timestamptz | now |
 | `processed_at` | timestamptz | Зарезервировано на будущее |
 
@@ -392,7 +428,7 @@ outbox-emit, формирование response).
 
 1. Открыть транзакцию (`pool.BeginTx`).
 2. Сделать INSERT/UPDATE/DELETE в ресурсной таблице.
-3. Сделать `emitVPC(ctx, tx, kind, id, eventType, payload)` через ту же
+3. Сделать `helpers.EmitVPC(ctx, tx, kind, id, eventType, payload)` через ту же
    `pgx.Tx`.
 4. COMMIT.
 
@@ -539,12 +575,12 @@ admin-заголовка. Привилегию выдаёт и отзывает 
 
 | Ресурс | ID prefix | Доп. поля | Особенности |
 |---|---|---|---|
-| Network | `net` | `default_security_group_id`, `route_distinguisher`, `vrf_id` (internal-only) | default SG создается inline в `doCreate` (опционально — `KACHO_VPC_DEFAULT_SG_INLINE`, default `true`); `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
-| Subnet | `sub` | `network_id`, `zone_id`, `v4_cidr_blocks[]`, `v6_cidr_blocks`, `route_table_id`, `dhcp_options` | EXCLUDE на `(network_id, v4_cidr_primary)` (и v6); **`v4_cidr_blocks` опционально на Create** (CIDR-less подсеть легальна); `:add/:remove-cidr-blocks` принимают и `v6_cidr_blocks`; `zone_id` — id-строка домена geo (без FK) |
+| Network | `net` | `default_security_group_id`, `ipv4_cidr_blocks`/`ipv6_cidr_blocks` (объявленный супернет), `default_route_table_id`, `route_distinguisher`, `vrf_id` (internal-only) | default SG создается inline в worker'е Create (опционально — `KACHO_VPC_DEFAULT_SG_INLINE`, умолчание `true`); супернет ограничивает CIDR подсетей; `default_route_table_id` — источник истины о RT подсети без явной ссылки; `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
+| Subnet | `sub` | `network_id`, `placement_type` (`ZONAL`\|`REGIONAL`), `zone_id`\|`region_id`, `v4_cidr_blocks[]`/`v6_cidr_blocks[]` (элемент `[1]` — якорь `ipv4_cidr_primary`/`ipv6_cidr_primary` контракта), `route_table_id` | Размещение — дискриминатор, обязателен и immutable, пара зона/регион взаимоисключается CHECK'ом; якорь CIDR immutable, дополнительные блоки — `:add/:remove-cidr-blocks`; неперекрытие ВСЕХ блоков — EXCLUDE на child-таблице `subnet_cidr_blocks`; `zone_id`/`region_id` — id-строки домена geo (без FK). Колонка `dhcp_options` осталась от baseline, контракта у неё нет |
 | Address | `adr` | `addr_type`, `ip_version`, `reserved`, `used`, `used_by`, `deletion_protection`, `external_ipv4` (jsonb), `internal_ipv4` (jsonb), `internal_ipv6` (jsonb) | Generated `internal_subnet_id` (из `internal_ipv4` ИЛИ `internal_ipv6`) → FK `addresses_internal_subnet_fkey ON DELETE RESTRICT`; `internal_ipv6_address_spec` + `InternalAddressService.AllocateInternalIPv6`; `Delete` used-адреса (referrer=NIC) → `FailedPrecondition` |
 | NetworkInterface | `nic` | `subnet_id` (FK RESTRICT), `mac_address`, `v4_address_ids[]`/`v6_address_ids[]` (ссылки на Address по id), `security_group_ids[]`, `used_by` (Reference — Attach/Detach), `status` enum | first-class самостоятельный сетевой интерфейс (отдельный от Instance); может быть создан без адресов; один Address ≤ на одном NIC (referrer-rows `address_references`, `referrer_type="network_interface"`); проекция чисто control-plane (lean) — инфра-полей у kacho-vpc нет |
 | RouteTable | `rtb` | `network_id`, `static_routes` (jsonb-массив) | Static-routes embedded |
-| SecurityGroup | `sgr` | `network_id` (**NULLABLE**), `status`, `default_for_network`, `rules` (jsonb) | Rules embedded; xmin-OCC; **`network_id` опционально на Create** (project-level / network-less SG); `List?filter=network_id="<id>"` |
+| SecurityGroup | `sgr` | `network_id` (**обязателен на Create, immutable**), `default_for_network`, `rules` (jsonb) | Rules embedded; xmin-OCC; колонка `status` дропнута миграцией 0003; область значений правила — CHECK (0027); `List?filter=network_id="<id>"` |
 | Gateway | `gtw` | `gateway_type` | Project-level, не привязан к Network |
 
 **Замечание про префиксы.** У каждого ресурса свой 3-char префикс
@@ -557,20 +593,25 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 
 | Ресурс | ID prefix | Глобальный | Заметки |
 |---|---|---|---|
-| AddressPool | `apl` (3-char, обязательный формат `corelib/ids`) | да | Не имеет `project_id`; `kind` enum; `zone_id` — id-строка домена compute без FK; `selector_labels` jsonb |
-| CloudPoolSelector | PK = `cloud_id` | n/a | Не имеет своего id, ключ — Cloud |
+| AddressPool | `apl` (3-char, формат `pkg/ids`) | да | Не имеет `project_id`; `kind` enum (CHECK — миграция 0011); `zone_id` — id-строка домена **geo** без FK; блоки — `v4_cidr_blocks`/`v6_cidr_blocks` раздельно по семьям; `selector_labels`/`selector_priority` хранятся, но в текущем каскаде не участвуют |
+
+> Здесь строкой ниже стоял селектор пулов облака как действующий ресурс. Его таблица
+> дропнута миграцией 0002 вместе с соответствующим шагом каскада, Go-типа с таким именем
+> в дереве нет. Прежняя редакция вдобавок относила `zone_id` к домену compute — Geography
+> живёт в `kacho-geo`.
 
 > Region/Zone — **не в kacho-vpc**; канонический владелец — leaf-домен `kacho-geo`.
 > `subnet.zone_id` / `address_pool.zone_id` хранятся как `TEXT`-id без FK, валидируются на
 > request-path через `geo.v1.ZoneService.Get`.
 
-### 5.3 Binding-таблицы (3)
+### 5.3 Binding-таблицы
 
 | Таблица | PK | Семантика |
 |---|---|---|
-| `address_pool_address_override` | `address_id` | Привязка конкретного Address к конкретному пулу (explicit per-address) |
 | `address_pool_network_default` | `network_id` | Default-pool для Network (explicit per-network) |
-| `cloud_pool_selector` | `cloud_id` | Admin-labels Cloud (legacy-таблица; в текущем cascade не используется) |
+
+> Заголовок раздела прежде обещал три таблицы; действующая — **одна**. Две другие
+> (per-address override пула и селектор пулов облака) дропнуты миграцией 0002.
 
 ### 5.4 Operations + Outbox
 
@@ -609,12 +650,10 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 |---|---|---|---|
 | `subnets` | `network_id` | `networks(id)` | NO ACTION (default) |
 | `route_tables` | `network_id` | `networks(id)` | NO ACTION (default) |
-| `security_groups` | `network_id` (**NULLABLE**) | `networks(id)` | RESTRICT |
+| `security_groups` | `network_id` (обязателен на Create; колонка nullable ради FK) | `networks(id)` | RESTRICT |
 | `addresses` | `internal_subnet_id` (generated, из `internal_ipv4` ИЛИ `internal_ipv6`) | `subnets(id)` | RESTRICT |
 | `network_interfaces` | `subnet_id` | `subnets(id)` | RESTRICT |
 | `address_references` | `address_id` | `addresses(id)` | CASCADE |
-| `address_pool_address_override` | `address_id` | `addresses(id)` | CASCADE |
-| `address_pool_address_override` | `pool_id` | `address_pools(id)` | RESTRICT |
 | `address_pool_network_default` | `network_id` | `networks(id)` | CASCADE |
 | `address_pool_network_default` | `pool_id` | `address_pools(id)` | RESTRICT |
 
@@ -645,17 +684,15 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 |---|---|
 | `operations` | `id text PK`, `description`, `created_at`, `created_by`, `done`, `metadata_type`, `metadata_data bytea`, `resource_id`, `response_type`, `response_data bytea`, `error_*` |
 | `networks` | `id text PK`, `project_id`, `created_at`, `name`, `description`, `labels jsonb`, `default_security_group_id`, `route_distinguisher`, `vrf_id bigint` (internal-only) |
-| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `zone_id text` (без FK — geography→geo), `v4_cidr_blocks text[] DEFAULT '{}'` (опционально на Create), `v6_cidr_blocks jsonb`, `route_table_id`, `dhcp_options jsonb`, `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
+| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `placement_type text` (CHECK `ZONAL`\|`REGIONAL`), `zone_id text` / `region_id text` (без FK — geography→geo, взаимоисключаются CHECK'ом), `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `route_table_id`, `dhcp_options jsonb` (без контракта), `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
 | `addresses` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `addr_type smallint`, `ip_version smallint`, `reserved`, `used`, `used_by_type/id/name`, `deletion_protection`, `external_ipv4 jsonb`, `internal_ipv4 jsonb`, `internal_ipv6 jsonb`, `internal_subnet_id text GENERATED` (из `internal_ipv4` ИЛИ `internal_ipv6`) |
 | `network_interfaces` | `id text PK` (`nic…`), `project_id`, `created_at`, `name`, `labels`, `subnet_id text NOT NULL FK→subnets ON DELETE RESTRICT`, `mac_address text`, `v4_address_ids text[]`, `v6_address_ids text[]`, `security_group_ids text[]`, `used_by_type/id/name text`, `status smallint` |
 | `address_references` | `address_id text PK FK→addresses ON DELETE CASCADE`, `referrer_type text` (`compute_instance` \| `network_interface`), `referrer_id`, `referrer_name`, `attached_at` |
 | `route_tables` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `static_routes jsonb` |
-| `security_groups` | `id`, `project_id`, `network_id text` (**NULLABLE**), `created_at`, `name`, `description`, `labels`, `status`, `default_for_network`, `rules jsonb` |
+| `security_groups` | `id`, `project_id`, `network_id text` (обязателен на Create, immutable; колонка nullable ради FK), `created_at`, `name`, `description`, `labels`, `default_for_network`, `rules jsonb` (CHECK области значений — миграция 0027). Колонка `status` дропнута миграцией 0003 |
 | `gateways` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `gateway_type` |
-| `address_pools` | `id`, `name`, `description`, `labels`, `cidr_blocks text[]`, `kind smallint`, `is_default`, `zone_id text` (без FK — geography→compute), `selector_labels jsonb`, `selector_priority` |
-| `address_pool_address_override` | `address_id PK`, `pool_id`, `bound_at` |
+| `address_pools` | `id`, `name`, `description`, `labels`, `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `kind smallint`, `is_default`, `zone_id text` (без FK — geography→**geo**), `selector_labels jsonb`, `selector_priority`, `modified_at`. Неперекрытие блоков внутри `kind` — child-таблица `address_pool_cidrs` + EXCLUDE (миграция 0004) |
 | `address_pool_network_default` | `network_id PK`, `pool_id`, `bound_at` |
-| `cloud_pool_selector` | `cloud_id PK`, `selector jsonb`, `set_at`, `set_by` |
 | `vpc_outbox` | `sequence_no bigserial PK`, `resource_kind`, `resource_id`, `event_type`, `payload jsonb`, `created_at`, `processed_at` |
 | `vpc_watch_cursors` | `subscriber_id PK`, `last_sequence_no`, `updated_at` |
 
@@ -683,7 +720,6 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 - `*_network_idx`, `addresses_internal_subnet_idx` — для cascade-фильтров.
 - `address_pools_selector_labels_gin` — GIN-индекс с `jsonb_path_ops` для
   `@>`-запроса в label-cascade.
-- `cloud_pool_selector_gin` — то же для CloudPoolSelector.
 - `vpc_outbox_seq_idx`, `vpc_outbox_kind_idx` — для выборок по `sequence_no` / `resource_kind` в outbox-журнале.
 - `operations_resource_idx` — для `ListOperations` per-resource.
 
@@ -751,7 +787,15 @@ k8s NodeSelector — safe-by-default: неучтенная комбинация 
 | `{tier=premium}` | `{tier=premium, customer=acme}` | нет (`customer` не в pool) |
 | `{tier=premium, customer=acme}` | `{tier=premium}` | да |
 
-### 7.3 Двухфазный allocator
+### 7.3 Двухфазный allocator — только для INTERNAL-адреса подсети
+
+> Внешний IPv4 этим путём **не** аллоцируется. У пула есть книга учёта свободных
+> адресов (`address_pool_free_ips`), и внешний адрес берётся из неё одним стейтментом
+> `SELECT … FOR UPDATE SKIP LOCKED` → `DELETE` → `UPDATE addresses`
+> (`internal/repo/helpers/freelist_sql.go`). Двухфазный подбор остался там, где книги
+> нет: адрес внутри подсети (`allocateInternalV4IntoTx` в
+> `internal/apps/kacho/api/address/alloc_shared.go` — единый источник для обоих путей,
+> inline-create и internal-RPC).
 
 Параметры — константы в `internal/apps/kacho/api/address/create.go`:
 
@@ -761,13 +805,13 @@ k8s NodeSelector — safe-by-default: неучтенная комбинация 
 | `allocateMaxAttempts` | 32 | Общий лимит попыток (random + sweep) |
 
 **Фаза 1 — random pick (cheap path).** До `allocateRandomPhase` попыток
-`pickRandomIPv4(cidr)` выбирает случайный host-IP из usable-диапазона;
+`domain.PickRandomIPv4(cidr)` выбирает случайный host-IP из usable-диапазона;
 делается `UPDATE addresses SET external_ipv4 = {ip, pool_id}`; при SQLSTATE
 23505 — следующий random. Для low/medium occupancy сходится за 1–2 попытки.
 
 **Фаза 2 — deterministic sweep с tried-set.** Если random за 8 попыток не
 сошелся (high occupancy: ≥95% занято), allocator переключается на
-`usableIPv4Sweep(cidr, maxN)` — итерация подряд по host-IP, исключая
+`domain.UsableIPv4Sweep(cidr, maxN)` — итерация подряд по host-IP, исключая
 network/broadcast и уже tried-IP из фазы 1. Гарантированное закрытие за
 конечное число попыток.
 
@@ -808,15 +852,16 @@ selector_priority)` — резолв возвращает первый по phys
 | Service | RPC | Тип | Описание |
 |---|---|---|---|
 | `NetworkService` | Get, List, ListSubnets, ListSecurityGroups, ListRouteTables, ListOperations | sync | Чтения |
+| `NetworkService` | AddCidrBlocks, RemoveCidrBlocks | async | Правка объявленного супернета сети |
 | `NetworkService` | Create, Update, Delete | async | Мутации, возвращают `Operation` |
 | `SubnetService` | Get, List, ListOperations, ListUsedAddresses | sync | Чтения |
 | `SubnetService` | Create, Update, Delete, AddCidrBlocks, RemoveCidrBlocks | async | Мутации |
 | `AddressService` | Get, List (фильтр `subnet_id` матчит `internal_ipv4`/`internal_ipv6`), GetByValue, ListBySubnet, ListOperations (переживает удаление) | sync | Чтения |
 | `AddressService` | Create (+ `internal_ipv6_address_spec`), Update, Delete (used-адрес у NIC → `FailedPrecondition`) | async | Мутации |
-| `SubnetService` (доп.) | AddCidrBlocks / RemoveCidrBlocks — теперь принимают и `v6_cidr_blocks`; `v4_cidr_blocks` опционально на Create; `UpdateSubnet` получил `v6_cidr_blocks` (soft-immutable) | async | — |
+| `SubnetService` (доп.) | AddCidrBlocks / RemoveCidrBlocks принимают обе семьи (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); на Create — только якоря `ipv4_cidr_primary`/`ipv6_cidr_primary`, immutable; в `Update` CIDR-полей нет (номера зарезервированы) | async | — |
 | `NetworkInterfaceService` | Get, List, ListOperations (переживает удаление) | sync | Чтения |
 | `NetworkInterfaceService` | Create, Update, Delete | async | Мутации; Create — `subnet_id` обязателен, адреса/SG опциональны; `used_by` — денормализованное зеркало |
-| `SecurityGroupService` (доп.) | Create — `network_id` опционален (project-level SG); `List?filter=network_id="<id>"` | — | — |
+| `SecurityGroupService` (доп.) | Create — `network_id` **обязателен** (`[(required) = true]`, пустой → `InvalidArgument "network_id required"`) и immutable; `List?filter=network_id="<id>"` | — | — |
 | `RouteTableService` | Get, List, ListOperations | sync | Чтения |
 | `RouteTableService` | Create, Update, Delete, AddRoutes, RemoveRoutes, UpdateRoute | async | Мутации |
 | `SecurityGroupService` | Get, List, ListOperations | sync | Чтения |
@@ -842,7 +887,7 @@ cluster-internal listener api-gateway и не публикуются на TLS-en
 
 ### 8.4 ID format
 
-ID получается через `kacho-corelib/ids.NewID(prefix)` (см. таблицу в §5.1).
+ID получается через `pkg/ids`.`NewID(prefix)` (см. таблицу в §5.1).
 Колонки — `TEXT`. Каждый id-берущий RPC первым стейтментом вызывает
 `corevalidate.ResourceID(resourceType, ids.PrefixXxx, id)`: нераспознанный id
 (нет известного 3-char prefix `net/sub/adr/rtb/sgr/gtw/nic/apl/enp`) → sync `INVALID_ARGUMENT
@@ -902,22 +947,20 @@ caller         addrSvc       poolSvc       addrPoolRepo    bindRepo    addrRepo 
   |               |               |<--nil                    +|           |         |
   |               |               |--bindings(network)--------+           |         |
   |               |               |<--nil                                 |         |
-  |               |               |--cloud selector (by ProjectClient.GetCloudIDFromProject) |
-  |               |               |--label-match SQL------>|              |         |
-  |               |               |<--pool / nil           |              |         |
+  |               |               |  (шаг селектора облака СНЯТ — миграция 0002)          |
   |               |               |--zone default--->|     |              |         |
   |               |               |<--pool / nil     |     |              |         |
   |               |               |--global default->|     |              |         |
   |               |<--pool                                                |         |
   |               |--phase 1 random pick (≤8 attempts)-->|                |         |
   |               |   loop attempt < 8:                  |                |         |
-  |               |   |  ip = pickRandomIPv4(cidr)       |                |         |
+  |               |   |  ip = domain.PickRandomIPv4(cidr)|                |         |
   |               |   |  UPDATE addresses SET external_ipv4 = {ip, pool_id} ------>23505?
   |               |   |  remember tried; if success → break                          |
   |               |   end                                                            |
   |               |--phase 2 sweep (если phase 1 не сошлась)                         |
   |               |   loop по cidr_blocks pool'а:                                    |
-  |               |   |  for ip in usableIPv4Sweep(cidr, maxN):                      |
+  |               |   |  for ip in domain.UsableIPv4Sweep(cidr, maxN):               |
   |               |   |    if ip ∈ tried: continue                                   |
   |               |   |    UPDATE addresses SET external_ipv4 = {ip, pool_id}-->23505?
   |               |   |    success → break                                           |
@@ -983,11 +1026,11 @@ SIGTERM ------>           |                       |                      |      
                           |                       |                      ⟵-- ctx canceled  |
                           |                       |--grpcSrv.GracefulStop                    |
                           |                       |  (отвергает новые RPC, ждет активные)    |
-                          |                       |--operations.Wait(30s)                    |
+                          |                       |--operations.Wait(drainCtx)                    |
                           |                       |                                          ⟵ ждем
                           |                       |                                          worker возвращает
-                          |                       |--close(shutdownDone)                     |
-                          |--<-shutdownDone-      |                                          |
+                          |                       |--close(shutdownCh)                      |
+                          |--<-shutdownCh--       |                                          |
                           |--exit                                                            |
 ```
 
@@ -1018,7 +1061,7 @@ goose создает `goose_db_version` автоматически. Миграц
 
 ### 10.4 Observability
 
-- Логи — `kacho-corelib/observability.NewSlogger` (slog в JSON или text).
+- Логи — `pkg/observability` (slog в JSON или text).
 - Метрики — не вынесены (GitHub Issue — observability gap); ожидается prometheus exporter на отдельном порту.
 - Trace — не реализован.
 
@@ -1059,12 +1102,24 @@ IAM sidecar — иначе anonymous = root.
 
 ### 11.4 Известные ограничения / пробелы
 
-- AuthN не реализован — service полагается на сетевой периметр + IAM
-  sidecar (future).
-- `OperationService.Get` не делает project-AuthZ (требует data-model change —
-  добавить `project_id` в `operations` или join через `metadata.resource_id`).
-- mTLS на :9091 — пока опциональный (TLS на listener'е возможен, но
-  NetworkPolicy + admin-interceptor работают как primary defense).
+> [!warning] Здесь стояли три «пробела», и все три пережили свой предмет
+> Перепись 2026-08-11 по дереву:
+>
+> - «AuthN не реализован, полагаемся на сетевой периметр» — неверно: AuthN есть
+>   (`internal/handler/authn_interceptor.go`), authz-Check провязан на **обоих**
+>   листенерах, а `Config.Validate` отказывает в старте в production без
+>   authz-эндпоинта и без сужённого круга отправителей чужой личности.
+> - «`OperationService.Get` не делает AuthZ» — неверно: `Get` и `Cancel`
+>   энфорсят **владельца** операции, резолвя ключ исключительно из доверенного
+>   принципала контекста; отсутствие ключа — отказ, а не пропуск
+>   (`internal/handler/operation_handler.go`).
+> - «mTLS на :9091 опционален, primary defense — NetworkPolicy» — неверно и опаснее
+>   прочего: `ValidateServerMTLS` требует server-mTLS на internal-листенере в **любом**
+>   production-режиме, и без него старт отказывает. Запись, объявляющая защиту
+>   необязательной, читается как разрешение её снять.
+>
+> Действующий перечень открытого — в [`architecture/09-go-skills-applied.md`](architecture/09-go-skills-applied.md)
+> §«Остаётся открытым», где у каждого пункта назван предикат.
 
 ---
 
@@ -1072,11 +1127,17 @@ IAM sidecar — иначе anonymous = root.
 
 ### 12.1 Unit-тесты
 
-В `internal/apps/kacho/api/<resource>/usecase_test.go` и `internal/handler/*_test.go`. Используют
-моки port-интерфейсов из общего пакета `internal/repo/repomock`
-(`fakeNetworkRepo`, `fakeProjectClient`, и т.д.). Worker-горутины
-`operations.Run` дожидаются детерминированно через `repomock.AwaitOpDone` /
-`AwaitAllOpsDone` (poll до `Operation.Done` с дедлайном 2s — не фиксированный `time.Sleep`).
+В `internal/apps/kacho/api/<resource>/usecase_test.go` и `internal/handler/*_test.go`.
+Используют два пакета дублёров: `internal/repo/repomock` (LRO-репозиторий и общее) и
+`internal/repo/kacho/kachomock` (по файлу на ресурсный репозиторий). Worker-горутины
+`operations.Run` дожидаются детерминированно через `repomock.AwaitOpDone` (poll до
+`Operation.Done` с дедлайном — не фиксированный `time.Sleep`).
+
+> Прежняя редакция называла три имени, которых в дереве нет, — два «фейка» и парное
+> ожидание всех операций; дублёры ресурсных репозиториев при этом лежат в отдельном пакете,
+> а не в `repomock`. Дублёр обязан выполнять контракт настоящего: подставной репозиторий,
+> молча принимающий вход, на котором настоящий отвечает отказом, скрывает именно тот
+> дефект, ради которого его подставляют.
 
 Запуск: `make test-short`.
 
@@ -1126,7 +1187,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 
 ---
 
-## Часть XIII. Зависимости от `kacho-corelib`
+## Часть XIII. Зависимости от общего фундамента `pkg/`
 
 | Пакет corelib | Использование в kacho-vpc |
 |---|---|
@@ -1141,7 +1202,8 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | `errors` | sentinel-wrappers / matchers |
 | `retry` | retry helper для transient gRPC ошибок |
 | `shutdown`, `backoff` | вспомогательные |
-| `audit` | `AuditLogger` (no-op в текущей фазе) |
+| `authz`, `listnarrow` | per-RPC Check, сужение списочной страницы (общий дом сужателя) |
+| `observability` | slog-логгер, обвязка метрик |
 
 ---
 
@@ -1149,33 +1211,37 @@ baseline в `tests/k6/results/BASELINE.md`.)
 
 ### 14.1 Подготовка инфраструктуры
 
-1. Завести polyrepo-структуру: sibling-репо `kacho-proto`,
-   `kacho-corelib`, `kacho-vpc`, `kacho-api-gateway`, `kacho-iam`, `kacho-geo`,
-   `kacho-deploy`.
-2. В `kacho-proto` определить `.proto` для `kacho.cloud.vpc.v1.*`,
-   `kacho.cloud.operation.v1.*`.
-   Сгенерировать Go-stubs в `gen/go/...`.
-3. В `kacho-corelib` обеспечить пакеты из таблицы §13.
+1. Всё живёт в **одном** репозитории `PRO-Robotech/kacho` и **одном** Go-модуле
+   `github.com/PRO-Robotech/kacho`. Отдельных репозиториев доменов заводить не надо —
+   прежняя редакция предписывала polyrepo из семи sibling-репозиториев и `replace`-стрелки
+   между ними; такой раскладки нет, а `replace` на внутренний модуль **запрещён** правилом
+   воркспейса (`polyrepo.md`), потому что не резолвится при single-repo checkout.
+2. В `proto/kacho/cloud/vpc/v1/` определить `.proto` домена (+ `kacho.cloud.operation`).
+   Стабы генерируются в `pkg/api/...` и **руками не правятся**.
+3. Горизонтальное (нужное 2+ сервисам) — в `pkg/<package>/`; перечень нужных пакетов —
+   таблица §13.
 
 ### 14.2 Каркас сервиса
 
-1. Создать `go.mod` для `github.com/PRO-Robotech/kacho-vpc` с replace-стрелками
-   на `kacho-corelib` и `kacho-proto` (для локальной разработки).
-2. Завести каталоги `cmd/vpc`, `internal/{config,domain,service,repo,clients,handler,migrations}`.
-3. Описать `config.Config` с переменными из §2.4.
+1. Отдельного `go.mod` у сервиса нет: `services/vpc/` — каталог того же модуля.
+2. Завести каталоги `cmd/vpc`, `cmd/migrator`,
+   `internal/{apps,domain,repo,clients,check,authzfilter,dto,handler,observability,migrations}`
+   (раскладка — §3.3).
+3. Описать `config.Config` с переменными из §2.4 и **загрузочную проверку посадки**
+   (`Validate`), отказывающую в старте при insecure-конфигурации.
 
 ### 14.3 Доменный слой
 
 1. По одному файлу в `internal/domain/` на каждую сущность из §5.1–5.4.
-2. Никаких импортов кроме `time`, `kacho-proto` (если нужны enum-зеркала).
+2. Никаких импортов кроме stdlib и сгенерённых стабов `pkg/api/...` (если нужны enum-зеркала).
 
 ### 14.4 Слой service — port-интерфейсы
 
 1. В `internal/apps/kacho/api/<resource>/iface.go` описать репо- и client-порты per-use-case
    (см. §3.3).
 2. В `internal/apps/kacho/shared/serviceerr/errors.go` — sentinel-ошибки (см. §4.6).
-3. В `internal/apps/kacho/shared/serviceerr/map.go` — `MapRepoErr` со стрипом sentinel-префикса
-   (per-resource `mapRepoErr` — в `internal/apps/kacho/api/<resource>/helpers.go`).
+3. В `internal/apps/kacho/shared/serviceerr/map.go` — `MapRepoErr` (и `MapRepoErrLeakSafe`
+   для internal/admin-путей). Трансляция одна на сервис; per-resource копий нет.
 4. В `internal/apps/kacho/config/validate.go` и CIDR-хелперах (`subnet/add_cidr_blocks.go` / `remove_cidr_blocks.go`) — общие хелперы.
 
 ### 14.5 БД-схема
@@ -1191,8 +1257,9 @@ baseline в `tests/k6/results/BASELINE.md`.)
 ### 14.6 Слой repo
 
 1. По одному файлу на таблицу. Каждый реализует port-интерфейс из service.
-2. В `outbox.go` — обертка `emitVPC` поверх `kacho-corelib/outbox.Emit`.
-3. В `unique.go` — функции распознавания pg-error по SQLSTATE
+2. В `internal/repo/helpers/outbox.go` — эмиссия в `vpc_outbox` в той же writer-TX
+   поверх `pkg/outbox`.
+3. В `internal/repo/helpers/unique.go` — функции распознавания pg-error по SQLSTATE
    (`23505`, `23P01`, `23503`).
 4. В `paging.go` — кодирование `(created_at, id)` в opaque base64 page_token.
 
@@ -1208,7 +1275,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
    - `ProjectClient.Exists` → `NotFound` если нет.
    - Domain-checks (Network exists, и т.п.).
    - `repo.Insert/Update/Delete`.
-   - `emitVPC` внутри той же TX.
+   - `helpers.EmitVPC` внутри той же TX.
    - Возврат `anypb.New(proto)` или `&emptypb.Empty{}` для Delete.
 5. Маппинг domain→proto в `domain<Resource>ToProto` функциях.
 
@@ -1216,7 +1283,8 @@ baseline в `tests/k6/results/BASELINE.md`.)
 
 - `AllocateInternalIP` и `AllocateExternalIP` методы.
 - `AddressPoolService.ResolvePoolForAddress` имплементирует cascade (§7.1).
-- Двухфазный allocator: `usableIPv4Sweep` + `pickRandomIPv4`.
+- Двухфазный allocator внутреннего адреса: `domain.UsableIPv4Sweep` + `domain.PickRandomIPv4`.
+  Внешний адрес — pop из книги учёта (`address_pool_free_ips`), не подбор.
 
 Для `SecurityGroupService`:
 
@@ -1250,8 +1318,9 @@ baseline в `tests/k6/results/BASELINE.md`.)
 5. Два `*grpc.Server` с interceptor-ами.
 6. Регистрация handler-ов на нужный сервер.
 7. Listener-ы, две горутины Serve, shutdown-горутина на `<-ctx.Done` с
-   GracefulStop обоих + `operations.Wait(30s)`.
-8. Возврат из runServe строго после `<-shutdownDone`.
+   остановка обоих слушателей + `operations.Wait(drainCtx)`.
+8. Возврат из `runServe` строго после того, как носитель вернул обе задачи —
+   слушатели и waiter, разбуженный `shutdownCh`.
 
 ### 14.10 Тестирование
 
@@ -1277,7 +1346,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | AuthMode production | Anonymous caller → `PermissionDenied` |
 | EXCLUDE constraint | Параллельный Create двух Subnet с overlap → один успешный, один `FailedPrecondition` |
 | Idempotent Allocate | Повторный Allocate того же address — same IP, `already_allocated=true` |
-| Outbox TX atomicity | Если worker падает между INSERT ресурса и `emitVPC`, оба откатываются (одна TX) |
+| Outbox TX atomicity | Если worker падает между INSERT ресурса и `helpers.EmitVPC`, оба откатываются (одна TX) |
 | garbage id | malformed/нераспознанный id (нет известного 3-char prefix `net/sub/adr/rtb/sgr/gtw/nic/apl/enp`) → sync `INVALID_ARGUMENT "invalid <res> id '<X>'"` (`corevalidate.ResourceID`). Well-formed-но-несуществующий → `NOT_FOUND` через `repo.Get`. Family-agnostic |
 | timestamp truncation | Все `created_at` в proto-response обрезаны до секунд |
 | empty mask | `UpdateNetwork` с пустой mask применяет mutable поля и игнорирует immutable из body |
@@ -1307,12 +1376,14 @@ kacho-vpc/
 │   │   ├── networkinterface/      — create.go, update.go, helpers.go (validateNICAddressCardinality), ...
 │   │   ├── routetable/, securitygroup/, gateway/, addresspool/ (InternalAddressPoolService)
 │   │   ├── <resource>/handler.go    — public per-resource gRPC handlers
-│   │   ├── shared/serviceerr/     — errors.go, map.go (MapRepoErr); per-resource mapRepoErr — в <resource>/helpers.go
+│   │   ├── shared/serviceerr/     — errors.go, map.go (MapRepoErr / MapRepoErrLeakSafe) — ЕДИНСТВЕННАЯ трансляция
 │   │   ├── shared/macutil/mac.go  — MAC-аллокация (package macutil)
 │   │   ├── config/validate.go     — общие проверки (CIDR host-bits, IP в CIDR)
 │   │   └── <resource>/usecase_test.go — unit-тесты (моки из internal/repo/repomock)
 │   ├── repo/kacho/pg/             — pgx adapters (см. §3.4)
-│   │   ├── 9 *.go файлов (network.go, subnet.go, address.go, ...)
+│   │   ├── network.go, subnet.go, address.go, network_interface.go, route_table.go,
+│   │   │   security_group.go, gateway.go, address_pool.go, address_pool_binding.go,
+│   │   │   existence_probe.go, fga_reconcile_adapter.go
 │   │   ├── repository.go          — общий pool/transactor
 │   │   └── *_integration_test.go  — testcontainers
 │   ├── clients/
@@ -1325,11 +1396,13 @@ kacho-vpc/
 │   │   └── internal_maperr.go     — info-leak-safe mapper
 │   └── migrations/
 │       ├── 0001_initial.sql       — baseline schema
-│       ├── 0002_…sql … 0009_…sql  — инкрементные миграции
+│       ├── 0002_…sql … — инкрементные миграции (диапазон не выписан: он выводится
+│       │   из каталога и устаревает от любой чужой правки)
 │       └── migrations.go          — embed.FS
 ├── deploy/                        — Helm chart
-├── docs/architecture/             — детальные арх-документы
-├── docs/ARCHITECTURE.md           — этот документ
+├── docs/content/                  — страницы сайта документации (арендатору)
+├── docs/engineering/architecture/ — детальные арх-документы (инженеру)
+├── docs/engineering/ARCHITECTURE.md — этот документ
 ├── tests/newman/                  — E2E/regression suite (Postman, генерится из cases/*.py)
 ├── tests/k6/                      — нагрузочные сценарии (k6 + ghz Jobs, см. tests/k6/README.md)
 ├── Makefile, Dockerfile, README.md
@@ -1351,15 +1424,21 @@ kacho-vpc/
 
 ### C. Связанные документы
 
+Пути даны **относительно этого файла** (`services/vpc/docs/engineering/`), а не от корня
+сервиса: инженерные записки переехали под `docs/engineering/`, когда у компонента остался
+один каталог `docs` (`docs/content/` — страницы сайта, `docs/engineering/` — эти документы).
+
 | Документ | Содержание |
 |---|---|
-| `docs/architecture/00-overview.md` | Высокоуровневое описание |
-| `docs/architecture/01-resources.md` | Детально по каждому ресурсу |
-| `docs/architecture/02-data-flows.md` | Sequence-диаграммы по сценариям |
-| `docs/architecture/03-ipam.md` | IPAM модель и cascade |
-| `docs/architecture/04-api-surface.md` | Все RPC и REST endpoints |
-| `docs/architecture/05-database.md` | Схема БД и история миграций |
-| `docs/architecture/06-conventions.md` | Правила и lesson-learned |
-| `README.md` | Quick-start и руководство контрибьютора |
-| `docs/architecture/07-known-divergences.md` | Registry осознанных дизайн-решений Kachō VPC |
-| GitHub Issues (`github.com/PRO-Robotech/kacho-vpc/issues`) | Outstanding tech-debt / баги / задачи |
+| [`architecture/00-overview.md`](architecture/00-overview.md) | Высокоуровневое описание |
+| [`architecture/01-resources.md`](architecture/01-resources.md) | Детально по каждому ресурсу |
+| [`architecture/02-data-flows.md`](architecture/02-data-flows.md) | Sequence-диаграммы по сценариям |
+| [`architecture/03-ipam.md`](architecture/03-ipam.md) | IPAM модель и cascade |
+| [`architecture/04-api-surface.md`](architecture/04-api-surface.md) | Все RPC и REST endpoints |
+| [`architecture/05-database.md`](architecture/05-database.md) | Схема БД и история миграций |
+| [`architecture/06-conventions.md`](architecture/06-conventions.md) | Правила и lesson-learned |
+| [`architecture/07-known-divergences.md`](architecture/07-known-divergences.md) | Реестр осознанных дизайн-решений Kachō VPC |
+| [`architecture/er-diagram.md`](architecture/er-diagram.md) | ER-диаграмма схемы `kacho_vpc` |
+| [`architecture/within-service-refs-audit.md`](architecture/within-service-refs-audit.md) | Аудит: каждая внутрисервисная ссылка покрыта DB-уровнем |
+| `../../README.md` | Quick-start и руководство контрибьютора |
+| GitHub Issues монорепо (`github.com/PRO-Robotech/kacho/issues`) | долги, баги, задачи |
