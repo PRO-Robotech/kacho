@@ -9,8 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 )
@@ -125,11 +124,27 @@ func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (boo
 		//     доходит. На всякий случай обработаем — кешируем negative.
 		//   - Unavailable / Internal / DeadlineExceeded / любая другая
 		//     ошибка — НЕ кешируем (fail-open). Возвращаем err как есть.
-		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
-			c.store(projectID, false, c.negTTL)
-			return false, nil
+		// Отрицательный результат кешируется ТОЛЬКО тогда, когда владелец его
+		// установил (носитель: pkg/peer). Недоступность и непонятый ответ
+		// установленным отказом не являются — их кеширование зафиксировало бы
+		// перебой у соседа как «проекта нет» на всё окно TTL.
+		lane := peer.Classify(err)
+		if !lane.RefusedReference() {
+			return false, err
 		}
-		return false, err
+		// Наружу — отказ ссылки (анти-оракул: промах, отказ в правах и негодный
+		// идентификатор для арендатора неразличимы).
+		//
+		// В КЭШ — только исход, не зависящий от того, кто спросил. Ключ здесь
+		// не несёт личности, поэтому отказ в правах, сохранённый под ним, был бы
+		// отдан ДРУГОМУ вызывающему — решение, вынесенное не ему. Окно отказа на
+		// своём свежем ресурсе объявлено штатным (материализация прав идёт
+		// eventually-consistent), и фиксировать его как «проекта нет» на всё окно
+		// TTL для всех — значит превратить транзиент в общий отказ.
+		if lane.CallerIndependent() {
+			c.store(projectID, false, c.negTTL)
+		}
+		return false, nil
 	}
 
 	ttl := c.posTTL

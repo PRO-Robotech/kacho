@@ -10,14 +10,14 @@ package geo
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -80,18 +80,26 @@ func (c *Client) RegionExists(ctx context.Context, regionID string) error {
 		return nil
 	}
 
-	st, ok := status.FromError(err)
-	if !ok {
-		return regerrors.ErrUnavailable
-	}
-	switch st.Code() {
-	case codes.NotFound, codes.InvalidArgument, codes.PermissionDenied:
-		// peer-validate lane: чужой ресурс отсутствует/недоступен → FAILED_PRECONDITION
-		// (PEER_RESOURCE_MISSING). existence-hiding parity: authz-факт наружу не течёт.
+	// Полосу выбирает носитель (pkg/peer). Прежде здесь стоял свой разбор кодов,
+	// у которого ветка `default` молча объявляла ЛЮБОЙ непонятый ответ соседа
+	// временным: клиент получал «повтори позже» на отказ, который повтором не
+	// лечится, и ни одной строки диагностики при этом не оставалось.
+	switch o := peer.Classify(err); {
+	case o.RefusedReference():
+		// Владелец установил, что ссылка не годится: нет региона / нет доступа /
+		// негодный по его мнению id — наружу одинаково (FAILED_PRECONDITION +
+		// PEER_RESOURCE_MISSING). Различать их значило бы отличать «нет доступа»
+		// от «не существует».
 		return regerrors.ErrFailedPrecondition
-	case codes.Unavailable, codes.DeadlineExceeded:
+	case o.Transient():
 		return regerrors.ErrUnavailable
 	default:
-		return regerrors.ErrUnavailable
+		// Непонятый ответ — СОСТОЯНИЕ, а не политика повтора. Наружу фикс.
+		// INTERNAL (проза соседа несёт host/port), причина — в журнал: иначе
+		// ошибка маршрутизации теряется немо.
+		slog.Default().Error("registry: geo RegionService.Get unexpected",
+			"region_id", regionID, "outcome", o.String(),
+			"grpc_code", peer.PeerCode(err).String(), "grpc_msg", err.Error())
+		return regerrors.ErrInternal
 	}
 }

@@ -21,11 +21,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 )
 
@@ -109,15 +108,17 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 		defer cancel()
 		_, rerr := c.cli.Get(auth.PropagateOutgoing(callCtx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
-			st, ok := status.FromError(rerr)
-			// A referenced project id iam cannot resolve — NotFound (well-formed but
-			// absent) OR InvalidArgument (malformed prefix/format) — both mean the peer
-			// ref does not exist → exists=false (→ checkProject NotFound "Project <id>
-			// not found"). Do NOT propagate these as errors: that maps to Unavailable
-			// ("project check: ..."), falsely telling the caller "retry later" when the
-			// input is a bad/absent id. Only genuine peer-unavailability stays an error.
-			// Parity with vpc ProjectClient.Exists.
-			if ok && (st.Code() == codes.NotFound || st.Code() == codes.InvalidArgument) {
+			// Полосу выбирает носитель (pkg/peer): «владелец установил, что ссылка
+			// не годится» — промах, негодный по его мнению id И отказ в правах.
+			// Пробрасывать их ошибкой нельзя: сервисный маппер разворачивает это в
+			// недоступность, то есть говорит вызывающему «повтори позже» на ввод,
+			// который валидным не станет никогда. Ошибкой остаётся только то, где
+			// владелец не установил ничего.
+			//
+			// Паритет с vpc ProjectClient.Exists держится теперь одним предикатом,
+			// а не двумя рукописными списками кодов, которые уже разошлись:
+			// отказ в правах у обоих попадал во «всё остальное».
+			if peer.Classify(rerr).RefusedReference() {
 				exists = false
 				return nil
 			}

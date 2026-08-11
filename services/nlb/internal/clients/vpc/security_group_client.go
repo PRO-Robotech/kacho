@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -103,19 +102,21 @@ func (c *securityGroupClient) Get(ctx context.Context, securityGroupID string) (
 
 // mapSecurityGroupErr — vpc gRPC-status → nlb domain-sentinel (peer-validate lane).
 func mapSecurityGroupErr(sgID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("vpc security group get %q: %w", sgID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound, codes.PermissionDenied:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing, peer.OutcomeDenied:
 		// anti-oracle: absent or not-accessible → same generic precondition failure.
 		return fmt.Errorf("%w: SecurityGroup %s not found", domain.ErrFailedPrecondition, sgID)
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: vpc security group %s: %s", domain.ErrUnavailable, sgID, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: vpc security group %s: %s", domain.ErrInvalidArg, sgID, st.Message())
-	default:
-		return fmt.Errorf("vpc security group get %q: %w", sgID, err)
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: vpc security group %s: %s", domain.ErrUnavailable, sgID, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: vpc security group %s: %s", domain.ErrInvalidArg, sgID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("vpc security group get %q: %w", sgID, err)
 }

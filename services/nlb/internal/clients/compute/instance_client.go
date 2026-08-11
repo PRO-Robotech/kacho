@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -142,22 +141,23 @@ func primaryNICAddress(inst *computepb.Instance) string {
 
 // mapInstanceErr транслирует gRPC-status в domain-sentinel-ошибки.
 func mapInstanceErr(instanceID string, err error) error {
-	st, ok := status.FromError(err)
-	if !ok {
-		return fmt.Errorf("compute instance get %q: %w", instanceID, err)
+	if err == nil {
+		return nil
 	}
-	switch st.Code() {
-	case codes.NotFound:
+	// Полосу выбирает носитель (pkg/peer), а не рукописный разбор кодов. Раскладка
+	// полос по sentinel'ам сохранена дословно; изменилось то, ЧТО попадает в каждую:
+	// отказ в правах и негодная по мнению владельца ссылка больше не проваливаются
+	// в ветку «прочее», а собственный истёкший срок читается как недоступность.
+	switch peer.Classify(err) {
+	case peer.OutcomeMissing, peer.OutcomeDenied:
+		// anti-oracle: «нет машины» и «не видна» — один текст.
 		return fmt.Errorf("%w: Instance %s not found", domain.ErrInvalidArg, instanceID)
-	case codes.PermissionDenied:
-		return fmt.Errorf("%w: Instance %s not found", domain.ErrInvalidArg, instanceID)
-	case codes.FailedPrecondition:
-		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrFailedPrecondition, instanceID, st.Message())
-	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrUnavailable, instanceID, st.Message())
-	case codes.InvalidArgument:
-		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrInvalidArg, instanceID, st.Message())
-	default:
-		return fmt.Errorf("compute instance get %q: %w", instanceID, err)
+	case peer.OutcomeStateRefused:
+		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrFailedPrecondition, instanceID, peer.PeerMessage(err))
+	case peer.OutcomeUnavailable:
+		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrUnavailable, instanceID, peer.PeerMessage(err))
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: compute instance %s: %s", domain.ErrInvalidArg, instanceID, peer.PeerMessage(err))
 	}
+	return fmt.Errorf("compute instance get %q: %w", instanceID, err)
 }

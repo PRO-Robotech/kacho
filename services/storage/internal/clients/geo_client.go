@@ -14,12 +14,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
-	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
@@ -67,38 +65,28 @@ func NewGeoClient(conn *grpc.ClientConn) *GeoClient {
 // выполненным).
 func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, error) {
 	if c.cli == nil {
-		return "", status.Error(codes.Unavailable, "storage→geo ZoneService not configured")
+		return "", zoneLane(peer.OutcomeUnavailable, zoneID, "storage→geo ZoneService not configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
 	defer cancel()
 	resp, err := c.cli.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: zoneID})
 	if err != nil {
-		switch status.Code(err) {
-		case codes.NotFound, codes.InvalidArgument:
-			return "", geoMissing("geo.zone", zoneID, "unknown zone id '%s'")
-		default:
-			return "", geoUnavailable("geo.zone", zoneID, "geo zone validation unavailable")
-		}
+		return "", zoneLane(peer.Classify(err), zoneID, zoneUnavailableText)
 	}
 	if resp.GetRegionId() == "" {
-		return "", geoUnavailable("geo.zone", zoneID, "geo zone validation unavailable")
+		return "", zoneLane(peer.OutcomeUnavailable, zoneID, zoneUnavailableText)
 	}
 	return resp.GetRegionId(), nil
 }
 
 func (c *GeoClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	if c.cli == nil {
-		return status.Error(codes.Unavailable, "storage→geo ZoneService not configured")
+		return zoneLane(peer.OutcomeUnavailable, zoneID, "storage→geo ZoneService not configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
 	defer cancel()
 	if _, err := c.cli.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: zoneID}); err != nil {
-		switch status.Code(err) {
-		case codes.NotFound, codes.InvalidArgument:
-			return geoMissing("geo.zone", zoneID, "unknown zone id '%s'")
-		default:
-			return geoUnavailable("geo.zone", zoneID, "geo zone validation unavailable")
-		}
+		return zoneLane(peer.Classify(err), zoneID, zoneUnavailableText)
 	}
 	return nil
 }
@@ -110,17 +98,12 @@ func (c *GeoClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 // Identity форвардится (auth.PropagateOutgoing).
 func (c *GeoClient) EnsureRegionExists(ctx context.Context, regionID string) error {
 	if c.regionCli == nil {
-		return status.Error(codes.Unavailable, "storage→geo RegionService not configured")
+		return regionLane(peer.OutcomeUnavailable, regionID, "storage→geo RegionService not configured")
 	}
 	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
 	defer cancel()
 	if _, err := c.regionCli.Get(auth.PropagateOutgoing(cctx), &geov1.GetRegionRequest{RegionId: regionID}); err != nil {
-		switch status.Code(err) {
-		case codes.NotFound, codes.InvalidArgument:
-			return geoMissing("geo.region", regionID, "unknown region id '%s'")
-		default:
-			return geoUnavailable("geo.region", regionID, "geo region validation unavailable")
-		}
+		return regionLane(peer.Classify(err), regionID, regionUnavailableText)
 	}
 	return nil
 }
@@ -151,7 +134,7 @@ const zoneListPageSize = 1000
 // нельзя молча принять за ответ.
 func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]string, error) {
 	if c.cli == nil {
-		return nil, status.Error(codes.Unavailable, "storage→geo ZoneService not configured")
+		return nil, regionLane(peer.OutcomeUnavailable, regionID, "storage→geo ZoneService not configured")
 	}
 	var (
 		out       []string
@@ -168,12 +151,7 @@ func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]strin
 		})
 		cancel()
 		if err != nil {
-			switch status.Code(err) {
-			case codes.InvalidArgument:
-				return nil, geoMissing("geo.region", regionID, "unknown region id '%s'")
-			default:
-				return nil, geoUnavailable("geo.region", regionID, "geo region validation unavailable")
-			}
+			return nil, regionLane(peer.Classify(err), regionID, regionUnavailableText)
 		}
 		for _, z := range resp.GetZones() {
 			// Фильтр по региону — серверный, но принадлежность подтверждаем и по
@@ -188,7 +166,7 @@ func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]strin
 			return out, nil
 		}
 	}
-	return nil, geoUnavailable("geo.region", regionID, "geo zone listing unavailable")
+	return nil, regionLane(peer.OutcomeUnavailable, regionID, "geo zone listing unavailable")
 }
 
 // serviceDomain — источник отказа в ErrorInfo.domain. Назван один раз на сервис:
@@ -196,32 +174,38 @@ func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]strin
 // именно там, где деталь читают машиной, а не глазом.
 const serviceDomain = "storage"
 
-// Полосы ребра storage→geo — два конструктора на четыре точки вызова. Общая
-// форма нужна не ради краткости: четыре ветки, собиравшие ответ каждая сама,
-// расходятся по одной, и расхождение видно только тому, кто читает их рядом.
-//
-// Промах — FAILED_PRECONDITION: чужой идентификатор корректен по форме, но у
-// владельца Geography не резолвится, то есть не выполнено предусловие на ЧУЖОЙ
-// ресурс (api-conventions.md §By-lane code-split). Прежде здесь возвращался
-// sentinel ErrInvalidArg, и сервисный маппер разворачивал его в INVALID_ARGUMENT.
+// Полосы ребра storage→geo — по одному helper'у на ресурс, и оба сводятся к
+// носителю (pkg/peer). Прежде здесь стояли два конструктора и четыре рукописных
+// `switch status.Code(err)`, разложивших коды соседа по полосам каждый по-своему:
+// три места считали `PermissionDenied` недоступностью, то есть ВРЕМЕННОЙ полосой.
+// Отказ в правах повтором не лечится — арендатор получал «повтори позже» на
+// нашу собственную неверную настройку, а сама настройка выглядела перебоем у
+// соседа.
 //
 // Тексты не меняются — они часть контракта. Возвращается СОБРАННЫЙ статус, а не
 // sentinel: pass-through сервисного маппера (serviceerr.ToStatus) отдаёт его как
-// есть, поэтому машинный признак переживает sentinel-слой. Пересборка статуса в
-// sentinel-ветке детали бы потеряла.
-func geoMissing(resourceType, id, format string) error {
-	return kerrors.ReasonPeerResourceMissing.Errf(
-		kerrors.PeerRef{Service: serviceDomain, ResourceType: resourceType, ResourceID: id},
-		format, id)
+// есть, поэтому машинный признак переживает sentinel-слой.
+const (
+	zoneUnavailableText   = "geo zone validation unavailable"
+	regionUnavailableText = "geo region validation unavailable"
+)
+
+// zoneLane / regionLane — полоса ответа о чужой зоне и чужом регионе.
+//
+// Проза промаха — FAILED_PRECONDITION «unknown … id»: чужой идентификатор
+// корректен по форме, но у владельца Geography не резолвится, то есть не
+// выполнено предусловие на ЧУЖОЙ ресурс (api-conventions.md §By-lane
+// code-split). Текст недоступности передаётся вызывающим: различие между
+// «не сконфигурировано», «не ответил» и «не уложился в бюджет страниц»
+// осмысленно в журнале, а полоса у них одна.
+func zoneLane(o peer.Outcome, zoneID, unavailable string) error {
+	return o.Status(
+		peer.Ref{Service: serviceDomain, ResourceType: "geo.zone", ResourceID: zoneID},
+		peer.Prose{Missing: "unknown zone id '%s'", Unavailable: unavailable})
 }
 
-// geoUnavailable — владелец не дал ответа, на который можно опереться: недоступен,
-// ответил без региона зоны либо не уложился в бюджет страниц. Все три — одно и то
-// же для вызывающего: предусловие НЕПРОВЕРЯЕМО, значит мутация не проходит
-// (fail-closed). Текст передаётся вызывающим, потому что различие между ними
-// осмысленно в логах, а полоса у них одна.
-func geoUnavailable(resourceType, id, msg string) error {
-	return kerrors.ReasonPeerUnavailable.Errf(
-		kerrors.PeerRef{Service: serviceDomain, ResourceType: resourceType, ResourceID: id},
-		"%s", msg)
+func regionLane(o peer.Outcome, regionID, unavailable string) error {
+	return o.Status(
+		peer.Ref{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+		peer.Prose{Missing: "unknown region id '%s'", Unavailable: unavailable})
 }
