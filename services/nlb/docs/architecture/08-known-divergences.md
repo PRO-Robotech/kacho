@@ -159,19 +159,31 @@ CAS-guard + row-lock сериализуют пересчёт с `SetStatusCAS`; 
 **не** нарушение layering'а и не «толстый сервис».
 
 **Почему by-design (а не рефакторить в helper'ы дальше).** Тяжёлые шаги уже вынесены
-в `wiring.go`/`observability.go`/`backstop.go`: `check.NewInterceptor`,
-`assembleBackgroundWorkers`, `buildInterceptorChains`, `registerGRPCServices`,
-`startDiagnosticListener`, `startLROWorker`, `buildReadinessCheckers`. Остаток
+в `wiring.go`/`observability.go`/`backstop.go`: `assembleBackgroundWorkers`,
+`startLROWorker`, `buildReadinessCheckers`, `describeDiagnosticSurface`. Остаток
 `runServe` — (1) плоская последовательность создания ресурсов с `defer`-cleanup'ами
 (`cancel`/`pool.Close`/`repo.Close`/`closeAll`) наверху функции, где порядок виден
 целиком, и (2) когезивная shutdown-оркестрация (`triggerShutdown` sync.Once + errgroup
 `g.Go`-блоки). Дальнейшее дробление shutdown-блока в отдельный helper потребовало бы
-протащить ~12 локалов (оба gRPC-сервера, `cancel`, `healthAgg`, `background`,
-`diagTask`/`diagShutdown`, `cfg`, `logger`) через struct и **разнесло бы** порядок
+протащить ~12 локалов (`cancel`, `healthAgg`, `background`, ожидание диагностической
+поверхности, `cfg`, `logger`) через struct и **разнесло бы** порядок
 `defer`/GracefulStop по двум функциям — ровно тот defer-ordering риск, который аудит и
 называет опасностью. Держать этот порядок в одной линейной функции с явными
 комментариями — сознательный trade-off читаемости-vs-безопасности в пользу второго
 (sec-hardening r5b, LEAN-finding «runServe 308 lines»).
+
+> [!note] Четыре имени из прежней редакции сняты вместе со своим предметом (перемерено 2026-08-11)
+> Абзац называл четыре вынесенных шага — фабрику перехватчика, сборку цепочек, регистрацию
+> служб и подъём диагностического слушателя. В дереве нет **ни одного**; имена здесь
+> намеренно не воспроизводятся в форме координаты: цитата мёртвого имени в обратных кавычках
+> читается как живое утверждение и заново отправляет читателя искать его в дереве. Сборка
+> цепочек, регистрация служб и оба слушателя переехали в общий носитель контура
+> (`pkg/servicehost`), а диагностическая поверхность поднимается его же профилем по
+> объявлению `describeDiagnosticSurface`. Фабрика перехватчика снята целиком — вместе с
+> ручкой аварийного пропуска, которой у носителя нет by construction.
+>
+> Размер функции перемерен на той же ревизии: **306** строк (прежняя редакция называла
+> ~300 и «308» в ссылке на находку — числа расходились между собой уже тогда).
 
 ## Package-local `shared.*`-делегаторы — намеренная per-package конвенция (не дубль)
 
