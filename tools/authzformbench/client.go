@@ -15,10 +15,24 @@ import (
 )
 
 // Tuple is one relation tuple. Field names match the OpenFGA wire form.
+//
+// `Condition` is emitted only when set, so every tuple the five measured shapes
+// write goes on the wire byte-for-byte as before: the field exists for the ONE
+// probe that has to show what a conditioned tuple does, and its absence must not
+// move a single number of the published comparison. Deletes carry no condition —
+// the engine's delete key has no such field — and a nil pointer emits nothing.
 type Tuple struct {
-	User     string `json:"user"`
-	Relation string `json:"relation"`
-	Object   string `json:"object"`
+	User      string          `json:"user"`
+	Relation  string          `json:"relation"`
+	Object    string          `json:"object"`
+	Condition *TupleCondition `json:"condition,omitempty"`
+}
+
+// TupleCondition — условие на кортеже: имя из каталога модели и контекст,
+// который движок подставляет в CEL.
+type TupleCondition struct {
+	Name    string         `json:"name"`
+	Context map[string]any `json:"context,omitempty"`
 }
 
 // Store is one OpenFGA store with one authorization model written into it — the
@@ -180,13 +194,29 @@ func (st *Store) mutate(ctx context.Context, tuples []Tuple, write bool) (int, e
 
 // Check asks ONE question.
 func (st *Store) Check(ctx context.Context, user, relation, object string) (bool, error) {
+	return st.CheckWithContext(ctx, user, relation, object, nil)
+}
+
+// CheckWithContext asks the same question WITH a request context — the half of a
+// conditioned tuple that lives outside the store.
+//
+// It exists to make one thing demonstrable rather than merely asserted: a
+// conditioned tuple answers DIFFERENTLY to two requests that differ only in
+// context. A shape whose fact is a row has nowhere to put that half, so the
+// difference is a property of the model, not a caveat about it.
+func (st *Store) CheckWithContext(ctx context.Context, user, relation, object string,
+	reqCtx map[string]any) (bool, error) {
 	var out struct {
 		Allowed bool `json:"allowed"`
 	}
-	err := st.call(ctx, "/stores/"+st.ID+"/check", map[string]any{
+	body := map[string]any{
 		"authorization_model_id": st.ModelID,
 		"tuple_key":              map[string]string{"user": user, "relation": relation, "object": object},
-	}, &out)
+	}
+	if len(reqCtx) > 0 {
+		body["context"] = reqCtx
+	}
+	err := st.call(ctx, "/stores/"+st.ID+"/check", body, &out)
 	return out.Allowed, err
 }
 
