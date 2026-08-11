@@ -190,11 +190,6 @@ func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 				"по неотправленным строкам в дереве нет. Удали запись.", tbl)
 		}
 	}
-
-	// Перепись: сколько очередей нашлось в дереве и сколько записей рассмотрено.
-	// Без первого числа «все записи с предметом» держится и на пустом обходе.
-	t.Logf("перепись: очередей с частичным индексом в дереве %d, записей исключений %d",
-		len(present), len(nonPartitionDrainedOutboxes))
 }
 
 var (
@@ -291,6 +286,15 @@ func indexOpsInTextOrder(up string) []sqlIndexOp {
 // слепую зону — безусловное удаление внутри такого блока, — поэтому зона названа,
 // а не подменена другой.
 //
+// # Снятая зона: комментарий больше не читается как код
+//
+// Разбору отдаётся ИСПОЛНЯЕМАЯ часть — комментарии забелены (`migrationUpSection`,
+// migrationsqltext_test.go). До этого `CREATE INDEX`, приведённый в комментарии
+// ПРИМЕРОМ, попадал в инвентарь живым индексом, а закомментированный `DROP INDEX`
+// снимал настоящий. В комментариях Up-секций дерева таких вхождений 33 и 5
+// соответственно (число печатает TestMigrationCommentsCarryParseableConstructs);
+// живого экземпляра не было, но зона была латентной, а не отсутствующей.
+//
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
 func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
 	t.Helper()
@@ -321,10 +325,11 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 				t.Fatalf("чтение %s: %v", path, readErr)
 			}
 			files++
-			up := string(body)
-			if i := strings.Index(up, "-- +goose Down"); i >= 0 {
-				up = up[:i]
-			}
+			// Читается ИСПОЛНЯЕМАЯ часть: комментарии забелены (migrationsqltext_test.go).
+			// Иначе `CREATE INDEX`, приведённый в комментарии как пример, попал бы в
+			// инвентарь живым индексом, а закомментированный `DROP INDEX` — снял бы
+			// настоящий.
+			up := migrationUpSection(string(body))
 			for _, op := range indexOpsInTextOrder(up) {
 				if op.drop {
 					for key := range svcKeys {
