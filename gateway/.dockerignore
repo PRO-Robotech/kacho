@@ -1,7 +1,7 @@
 .git
 .github/
 bin/
-docs-site/
+docs/
 node_modules/
 tests/newman/results/
 *.md
