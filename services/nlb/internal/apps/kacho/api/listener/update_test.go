@@ -150,7 +150,7 @@ func TestUpdateListener_GWT_LST_021_DefaultTGRegionMismatch(t *testing.T) {
 	}
 	suite.repo.seedTG(tg)
 
-	_, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
+	_, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
 		ListenerId:           string(suite.listener.ID),
 		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
 		DefaultTargetGroupId: string(tgID),
@@ -178,7 +178,7 @@ func TestUpdateListener_DefaultTGSameRegion(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	}
 	suite.repo.seedTG(tg)
-	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
+	op, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
 		ListenerId:           string(suite.listener.ID),
 		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
 		DefaultTargetGroupId: string(tgID),
@@ -236,7 +236,7 @@ type updateSuite struct {
 	uc       *UpdateUseCase
 }
 
-func newUpdateSuite(t *testing.T) *updateSuite {
+func newUpdateSuiteWith(t *testing.T, withDecider bool) *updateSuite {
 	t.Helper()
 	repo := newFakeRepo()
 	lb := newRecordLB(t, "prj01TESTPROJ0000001", "ru-central1", domain.LBTypeExternal, "parent-lb")
@@ -260,9 +260,21 @@ func newUpdateSuite(t *testing.T) *updateSuite {
 	}
 	repo.seedListener(listener)
 	ops := newFakeOpsRepo()
+	// Решатель доступа — ЯВНЫЙ разрешающий двойник, а не nil: nil означает «звена
+	// решения нет», и с некоторых пор это отказ (`shared.AuthorizeObject`), а не
+	// пропуск. Посадка БЕЗ решателя собирается флагом ниже.
 	uc := NewUpdateUseCase(repo, ops, slog.Default())
+	if withDecider {
+		uc.WithCheckClient(&fakeTGCheckClient{allowed: true})
+	}
 	return &updateSuite{t: t, repo: repo, ops: ops, listener: listener, uc: uc}
 }
+
+// newUpdateSuite — обычная посадка: решатель подключён и разрешает.
+func newUpdateSuite(t *testing.T) *updateSuite { return newUpdateSuiteWith(t, true) }
+
+// newUpdateSuiteNoDecider — посадка без решателя доступа (пробы fail-closed).
+func newUpdateSuiteNoDecider(t *testing.T) *updateSuite { return newUpdateSuiteWith(t, false) }
 
 func (s *updateSuite) getListener(id string) *kachorepo.ListenerRecord {
 	s.repo.mu.Lock()

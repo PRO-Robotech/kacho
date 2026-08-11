@@ -79,9 +79,29 @@ func mkHandler(t *testing.T, repo *kachopg.Repository, opsRepo operations.Repo) 
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	// nil peer-clients — Create/AddTargets/Move skip peer-validate (acceptable
-	// для integration сценариев DB happy-paths).
-	return targetgroup.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil, nil, nil, narrowtest.AllowingAll(), logger)
+	// для integration сценариев DB happy-paths). Решатель доступа — ЯВНЫЙ двойник,
+	// не nil: nil означает «звена решения нет» и роняет мутацию отказом.
+	return targetgroup.NewHandler(repo, opsRepo, nil, stubCheckClient{}, nil, nil, nil, nil, nil, narrowtest.AllowingAll(), logger)
 }
+
+// stubCheckClient — явный двойник решателя доступа для integration-стенда: iam
+// здесь не поднят, а nil означает «звена решения нет» и с некоторых пор роняет
+// вызов отказом (`shared.AuthorizeObject`), а не пропускает его. Двойник отвечает
+// «разрешено» — эти сценарии проверяют сторону БД, а не выдачу прав; сама
+// fail-closed посадка закреплена отдельно (objectauthz_failclosed_test.go).
+type stubCheckClient struct{}
+
+func (stubCheckClient) Check(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+
+// ctxNamedCaller — контекст с НАЗВАННЫМ вызывающим. Пообъектные решения о доступе
+// отвергают вызывающего, которого нельзя назвать субъектом модели прав
+// (`shared.AuthorizeObject`), поэтому сценарий, доходящий до такого решения,
+// обязан кого-то назвать — иначе он проверяет отказ, а не свой предмет.
+func ctxNamedCaller() context.Context {
+	return operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr_integration"})
+}
+
 
 // ---- Integration tests -----------------------------------------------------
 

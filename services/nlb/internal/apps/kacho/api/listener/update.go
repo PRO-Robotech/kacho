@@ -56,8 +56,8 @@ type UpdateUseCase struct {
 	repo    RepoFactory
 	opsRepo OperationsRepo
 	// checkClient — object-scoped authz-gate для caller-supplied `targetGroupId`
-	// (per-RPC interceptor скоупит только сам Listener). nil → Check пропускается
-	// (dev/unwired); owning-project-инвариант энфорсится безусловно. См. tg_ref.go.
+	// (per-RPC interceptor скоупит только сам Listener). nil НЕ означает
+	// «пропустить»: отсутствие решателя — отказ (`Unavailable`). См. tg_ref.go.
 	checkClient CheckClient
 	logger      *slog.Logger
 	registrar   Registrar
@@ -95,8 +95,8 @@ func (u *UpdateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 // WithCheckClient подключает object-scoped authz-gate для caller-supplied
 // `targetGroupId` (`viewer` на `nlb_target_group:<id>`). Per-RPC interceptor
 // авторизует caller'а только на самом Listener, поэтому TG репойнта — необойдённый
-// caller-supplied объект (CWE-863). nil → Check пропускается (dev/unwired);
-// owning-project-инвариант при этом энфорсится безусловно. Возвращает self.
+// caller-supplied объект (CWE-863). nil НЕ означает «пропустить»: отсутствие
+// решателя — отказ (`Unavailable`). Возвращает self.
 func (u *UpdateUseCase) WithCheckClient(c CheckClient) *UpdateUseCase {
 	u.checkClient = c
 	return u

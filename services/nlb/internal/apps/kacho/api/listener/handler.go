@@ -67,8 +67,8 @@ func (h *Handler) WithRegistrar(r Registrar) *Handler {
 // InternalIAMService.Check) в Create/Update use-case'ы: caller-supplied
 // `targetGroupId` авторизуется отдельно (`viewer` на `nlb_target_group:<id>`),
 // потому что per-RPC interceptor скоупит только parent LoadBalancer / сам
-// Listener. nil → Check пропускается (dev/unwired); owning-project-инвариант
-// энфорсится безусловно. Возвращает self для chaining.
+// Listener. nil НЕ означает «пропустить»: отсутствие решателя — отказ
+// (`Unavailable`), см. shared.AuthorizeObject. Возвращает self для chaining.
 func (h *Handler) WithCheckClient(c CheckClient) *Handler {
 	h.create.WithCheckClient(c)
 	h.update.WithCheckClient(c)

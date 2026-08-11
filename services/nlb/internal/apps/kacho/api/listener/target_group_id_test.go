@@ -4,7 +4,6 @@
 package listener
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -151,7 +150,7 @@ func TestUpdateListener_NLB_1_22_RepointTargetGroupId(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	})
 
-	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
+	op, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
 		ListenerId:    string(suite.listener.ID),
 		UpdateMask:    &fieldmaskpb.FieldMask{Paths: []string{"target_group_id"}},
 		TargetGroupId: string(tgID),

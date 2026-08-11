@@ -87,9 +87,28 @@ func makeHandler(t *testing.T, repo *kachopg.Repository, opsRepo operations.Repo
 	// (VIP-аллокация + subnet-резолв), а не nil-клиентами: nil означает
 	// «ребро не сконфигурировано» и теперь fail-close'ит мутацию (несконфигурированный
 	// peer — неверная конфигурация, а не режим работы). DB-сторона саги — реальная.
-	return loadbalancer.NewHandler(repo, opsRepo, nil, nil, nil, nil, nil,
+	return loadbalancer.NewHandler(repo, opsRepo, nil, stubCheckClient{}, nil, nil, nil,
 		&stubSubnetClient{region: "ru-central1"}, nil, &stubAddressClient{}, nil, logger)
 }
+
+// stubCheckClient — явный двойник решателя доступа для integration-стенда: iam
+// здесь не поднят, а nil означает «звена решения нет» и с некоторых пор роняет
+// вызов отказом (`shared.AuthorizeObject`), а не пропускает его. Двойник отвечает
+// «разрешено» — эти сценарии проверяют сторону БД, а не выдачу прав; сама
+// fail-closed посадка закреплена отдельно (objectauthz_failclosed_test.go).
+type stubCheckClient struct{}
+
+func (stubCheckClient) Check(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+
+// ctxNamedCaller — контекст с НАЗВАННЫМ вызывающим. Пообъектные решения о доступе
+// отвергают вызывающего, которого нельзя назвать субъектом модели прав
+// (`shared.AuthorizeObject`), поэтому сценарий, доходящий до такого решения,
+// обязан кого-то назвать — иначе он проверяет отказ, а не свой предмет.
+func ctxNamedCaller() context.Context {
+	return operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr_integration"})
+}
+
 
 // stubSubnetClient — заглушка vpc SubnetClient для integration-стенда: REGIONAL
 // подсеть в заданном регионе, одна сеть на все семейства (dualstack same-network
@@ -267,7 +286,7 @@ func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = h.Move(context.Background(), &lbv1.MoveNetworkLoadBalancerRequest{
+	_, err = h.Move(ctxNamedCaller(), &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
 		DestinationProjectId:  "prj-dst",
 	})
@@ -308,7 +327,7 @@ func TestIntegration_GetTargetStates_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
 
-	resp, err := h.GetTargetStates(context.Background(), &lbv1.GetTargetStatesRequest{
+	resp, err := h.GetTargetStates(ctxNamedCaller(), &lbv1.GetTargetStatesRequest{
 		NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
 	})
 	require.NoError(t, err)

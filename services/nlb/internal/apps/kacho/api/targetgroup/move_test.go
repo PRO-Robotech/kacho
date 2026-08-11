@@ -26,9 +26,10 @@ func TestMove_Happy(t *testing.T) {
 	tg := makeTG("prj-src", "movable")
 	repo.seedTG(tg)
 	opsRepo := newFakeOpsRepo()
-	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{}, nil, nil)
+	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, nil)
 
-	op, err := uc.Execute(context.Background(), &lbv1.MoveTargetGroupRequest{
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveTargetGroupRequest{
 		TargetGroupId:        string(tg.ID),
 		DestinationProjectId: "prj-dst",
 	})
@@ -69,9 +70,10 @@ func TestMove_RegisterDstCarriesLabelsAndParent(t *testing.T) {
 	tg.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
 	repo.seedTG(tg)
 	opsRepo := newFakeOpsRepo()
-	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{}, nil, nil)
+	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, nil)
 
-	op, err := uc.Execute(context.Background(), &lbv1.MoveTargetGroupRequest{
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveTargetGroupRequest{
 		TargetGroupId:        string(tg.ID),
 		DestinationProjectId: "prj-dst",
 	})

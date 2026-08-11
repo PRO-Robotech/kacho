@@ -5,7 +5,6 @@ package loadbalancer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -14,10 +13,10 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -45,8 +44,8 @@ type MoveLoadBalancerUseCase struct {
 }
 
 // NewMoveLoadBalancerUseCase конструктор. checkClient авторизует caller'а на
-// destination project (`editor on project:<dst>`); nil → dst-authz пропускается
-// (dev/unwired).
+// destination project (`editor on project:<dst>`). nil НЕ означает «пропустить»:
+// отсутствие решателя — отказ (`Unavailable`), см. shared.AuthorizeObject.
 func NewMoveLoadBalancerUseCase(
 	repo Repo, opsRepo operations.Repo,
 	pc ProjectClient, checkClient CheckClient, logger *slog.Logger,
@@ -139,43 +138,14 @@ func (u *MoveLoadBalancerUseCase) Execute(
 }
 
 // authorizeDestination авторизует caller'а на destination project
-// (`editor on project:<dst>`). nil checkClient или system/empty subject
-// (breakglass/dev — source-check тоже обойдён interceptor'ом) → пропуск.
+// (`editor on project:<dst>`). Fail-closed посадка (решателя нет / вызывающего
+// нельзя назвать → отказ, никогда не пропуск) живёт в `shared.AuthorizeObject` —
+// одно правило на все пообъектные решения сервиса.
 func (u *MoveLoadBalancerUseCase) authorizeDestination(ctx context.Context, dst string) error {
-	if u.checkClient == nil {
-		return nil
-	}
-	p := operations.PrincipalFromContext(ctx)
-	subject := domain.FGASubjectFromPrincipal(p.Type, p.ID)
-	if subject == "" {
-		return nil
-	}
-	allowed, err := u.checkClient.Check(ctx, subject, domain.FGARelationEditor,
-		domain.FGAObjectRef(domain.FGAObjectTypeProject, dst))
-	if err != nil {
-		return moveDestCheckErr(err, dst)
-	}
-	if !allowed {
-		return status.Errorf(codes.PermissionDenied,
-			"caller is not authorized (editor) on destination project %s", dst)
-	}
-	return nil
-}
-
-// moveDestCheckErr маппит ошибку destination-authz Check'а в gRPC-status
-// (fail-closed). no-path (нет grant'а) → PermissionDenied; iam недоступен →
-// Unavailable; bad args → InvalidArgument; прочее → Internal.
-func moveDestCheckErr(err error, dst string) error {
-	switch {
-	case errors.Is(err, authz.ErrNoPath):
-		return status.Errorf(codes.PermissionDenied,
-			"caller is not authorized (editor) on destination project %s", dst)
-	case errors.Is(err, domain.ErrUnavailable):
-		return status.Error(codes.Unavailable, "authorization check unavailable")
-	case errors.Is(err, domain.ErrInvalidArg):
-		return status.Errorf(codes.InvalidArgument, "authorization check: %v", err)
-	}
-	return status.Error(codes.Internal, "authorization check failed")
+	return shared.AuthorizeObject(ctx, u.checkClient,
+		domain.FGARelationEditor,
+		domain.FGAObjectRef(domain.FGAObjectTypeProject, dst),
+		fmt.Sprintf("caller is not authorized (editor) on destination project %s", dst))
 }
 
 // doMove — worker: Writer-TX → MoveProject + outbox MOVED → Commit → FGA rewrite.

@@ -28,8 +28,18 @@ import (
 
 const testTimeout = 2 * time.Second
 
-// newCreateUC — use-case без address-клиентов (VIP не аллоцируется).
+// newCreateUC — use-case без address-клиентов (VIP не аллоцируется), в ОБЫЧНОЙ
+// посадке: решатель доступа подключён и отвечает «разрешено». Двойник здесь
+// явный, а не nil: nil означает «звена решения нет», и с некоторых пор это отказ
+// (`shared.AuthorizeObject`), а не пропуск. Кому нужна посадка БЕЗ решателя —
+// newCreateUCNoDecider.
 func newCreateUC(repo *fakeRepo, ops *fakeOpsRepo) *CreateUseCase {
+	return newCreateUCNoDecider(repo, ops).WithCheckClient(&fakeTGCheckClient{allowed: true})
+}
+
+// newCreateUCNoDecider — use-case, которому решатель доступа НЕ подключён.
+// Используется пробами fail-closed посадки (objectauthz_failclosed_test.go).
+func newCreateUCNoDecider(repo *fakeRepo, ops *fakeOpsRepo) *CreateUseCase {
 	return NewCreateUseCase(repo, ops, slog.Default())
 }
 

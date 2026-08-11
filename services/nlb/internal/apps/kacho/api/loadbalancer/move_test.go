@@ -27,8 +27,9 @@ func TestMove_HappyPath(t *testing.T) {
 	repo := newFakeRepo()
 	lbID := seedLB(t, repo, "prj-src", "edge")
 	opsRepo := newFakeOpsRepo()
-	uc := NewMoveLoadBalancerUseCase(repo, opsRepo, &fakeProjectClient{}, nil, slog.Default())
-	op, err := uc.Execute(context.Background(), &lbv1.MoveNetworkLoadBalancerRequest{
+	uc := NewMoveLoadBalancerUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, slog.Default())
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
 		DestinationProjectId:  "prj-dst",
 	})
@@ -63,8 +64,9 @@ func TestMove_RegisterDstCarriesLabelsAndParent(t *testing.T) {
 	lbID := seedLB(t, repo, "prj-src", "edge")
 	repo.lbs[lbID].Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
 	opsRepo := newFakeOpsRepo()
-	uc := NewMoveLoadBalancerUseCase(repo, opsRepo, &fakeProjectClient{}, nil, slog.Default())
-	op, err := uc.Execute(context.Background(), &lbv1.MoveNetworkLoadBalancerRequest{
+	uc := NewMoveLoadBalancerUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, slog.Default())
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
 		DestinationProjectId:  "prj-dst",
 	})

@@ -178,7 +178,7 @@ func TestIntegration_MoveProjection_TargetGroupLandsOnDestination(t *testing.T) 
 		`SELECT id FROM kacho_nlb.target_groups WHERE project_id = $1`, srcProject).Scan(&tgID))
 	object := domain.FGAObjectTypeTargetGroup + ":" + tgID
 
-	moveOp, err := h.Move(ctx, &lbv1.MoveTargetGroupRequest{
+	moveOp, err := h.Move(ctxNamedCaller(), &lbv1.MoveTargetGroupRequest{
 		TargetGroupId:        tgID,
 		DestinationProjectId: dstProject,
 	})

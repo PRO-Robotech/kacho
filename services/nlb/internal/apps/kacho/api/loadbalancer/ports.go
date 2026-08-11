@@ -30,8 +30,8 @@ type ProjectClient = iamclient.ProjectClient
 // CheckClient — per-object FGA authorization gate (iam.InternalIAMService.Check).
 // Move использует его для авторизации caller'а на DESTINATION project (`editor on
 // project:<dst>`) — per-RPC interceptor проверяет только source-ресурс, поэтому
-// dst-authz — задача handler'а. nil → check пропускается
-// (dev/unwired; breakglass также обходит source-check).
+// dst-authz — задача handler'а. nil НЕ означает «пропустить»: отсутствие
+// решателя — отказ (`Unavailable`), см. shared.AuthorizeObject.
 type CheckClient = iamclient.CheckClient
 
 // RegionClient — Get(regionID) → *geoclient.Region. sync-precheck `region_id`

@@ -42,8 +42,8 @@ func TestGetTargetStates_HappyPath_EmptyTargets(t *testing.T) {
 	repo := newFakeRepo()
 	lbID := seedLB(t, repo, "prj-a", "edge")
 	tgID := seedTG(t, repo, "prj-a", "ru-central1", "tg")
-	uc := NewGetTargetStatesUseCase(repo, nil)
-	resp, err := uc.Execute(context.Background(), &lbv1.GetTargetStatesRequest{
+	uc := NewGetTargetStatesUseCase(repo, &fakeCheckClient{allowed: true})
+	resp, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.GetTargetStatesRequest{
 		NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
 	})
 	require.NoError(t, err)
@@ -56,17 +56,20 @@ func TestGetTargetStates_HappyPath_EmptyTargets(t *testing.T) {
 // so a caller authorized on their own LB (project prj-a) must NOT be able to
 // read another project's TargetGroup (prj-b) by passing its id in
 // target_group_id — refused (mirrors TestAttach_ProjectMismatch) before any
-// target data (instance/NIC ids, addresses, subnet ids) is returned, even
-// with checkClient nil (dev/unwired — the same-project invariant is
-// unconditional, not just an authz nicety).
+// target data (instance/NIC ids, addresses, subnet ids) is returned.
+//
+// The caller here IS authorized on the foreign TG (the decider allows), so the
+// refusal below is the same-project invariant alone — it does not ride on the
+// authz gate. Wiring a permissive decider is what makes that separable: with no
+// decider the request would not reach this branch at all (fail-closed).
 func TestGetTargetStates_DeniesCrossProjectTargetGroup(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	lbID := seedLB(t, repo, "prj-a", "edge")
 	tgID := seedTG(t, repo, "prj-b", "ru-central1", "tg")
-	uc := NewGetTargetStatesUseCase(repo, nil)
+	uc := NewGetTargetStatesUseCase(repo, &fakeCheckClient{allowed: true})
 
-	resp, err := uc.Execute(context.Background(), &lbv1.GetTargetStatesRequest{
+	resp, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.GetTargetStatesRequest{
 		NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
 	})
 	require.Nil(t, resp)

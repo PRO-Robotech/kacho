@@ -189,7 +189,7 @@ func TestIntegration_MoveProjection_LandsOnDestination(t *testing.T) {
 	object := domain.FGAObjectTypeLoadBalancer + ":" + lbID
 
 	// Move to the DESTINATION project.
-	moveOp, err := h.Move(ctx, &lbv1.MoveNetworkLoadBalancerRequest{
+	moveOp, err := h.Move(ctxNamedCaller(), &lbv1.MoveNetworkLoadBalancerRequest{
 		NetworkLoadBalancerId: lbID,
 		DestinationProjectId:  dstProject,
 	})

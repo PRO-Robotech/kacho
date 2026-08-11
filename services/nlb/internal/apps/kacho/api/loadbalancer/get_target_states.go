@@ -33,9 +33,9 @@ type GetTargetStatesUseCase struct {
 }
 
 // NewGetTargetStatesUseCase — конструктор. checkClient авторизует caller'а на
-// caller-supplied target_group_id (`viewer on nlb_target_group:<tg>`); nil →
-// TG-authz пропускается (dev/unwired; breakglass также обходит source-check
-// interceptor'а). `now` для тестов (можно подменить).
+// caller-supplied target_group_id (`viewer on nlb_target_group:<tg>`). nil НЕ
+// означает «пропустить»: отсутствие решателя — отказ (`Unavailable`), см.
+// shared.AuthorizeObject. `now` для тестов (можно подменить).
 func NewGetTargetStatesUseCase(repo Repo, checkClient CheckClient) *GetTargetStatesUseCase {
 	return &GetTargetStatesUseCase{repo: repo, checkClient: checkClient, now: time.Now}
 }
@@ -86,8 +86,7 @@ func (u *GetTargetStatesUseCase) Execute(
 	// security.md #6). Authorizing first collapses both lanes onto the same
 	// generic denial. Only once the caller is authorized on the target group is
 	// it resolved; the project-mismatch branch then runs on an id the caller may
-	// already see, so its message leaks nothing new. That equality is an
-	// unconditional invariant, checked even with checkClient nil (dev/unwired).
+	// already see, so its message leaks nothing new.
 	// Mirrors the listener wiring guards (listener/tg_ref.go).
 	if err := checkTargetGroupViewer(ctx, u.checkClient, tgID); err != nil {
 		return nil, err

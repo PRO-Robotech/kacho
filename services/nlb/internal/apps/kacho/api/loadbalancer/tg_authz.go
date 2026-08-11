@@ -5,14 +5,9 @@ package loadbalancer
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
-
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
@@ -32,42 +27,12 @@ import (
 // is a no-op there; it only bites narrowly-scoped custom grants and
 // cross-project ids.
 //
-// nil checkClient or system/empty subject (breakglass/dev — the source
-// object's own Check is bypassed by the interceptor for the same reason) →
-// skip.
+// Fail-closed posture (missing decider / unnameable caller → refusal, never a
+// pass) lives in `shared.AuthorizeObject` — one rule for every object-scoped
+// decision of this service.
 func checkTargetGroupViewer(ctx context.Context, checkClient CheckClient, tgID string) error {
-	if checkClient == nil {
-		return nil
-	}
-	p := operations.PrincipalFromContext(ctx)
-	subject := domain.FGASubjectFromPrincipal(p.Type, p.ID)
-	if subject == "" {
-		return nil
-	}
-	allowed, err := checkClient.Check(ctx, subject, domain.FGARelationViewer,
-		domain.FGAObjectRef(domain.FGAObjectTypeTargetGroup, tgID))
-	if err != nil {
-		return targetGroupCheckErr(err, tgID)
-	}
-	if !allowed {
-		return status.Errorf(codes.PermissionDenied,
-			"caller is not authorized (viewer) on target group %s", tgID)
-	}
-	return nil
-}
-
-// targetGroupCheckErr maps a TG-authz Check error to a gRPC status
-// (fail-closed): no-path → PermissionDenied; iam unavailable → Unavailable;
-// bad args → InvalidArgument; anything else → Internal.
-func targetGroupCheckErr(err error, tgID string) error {
-	switch {
-	case errors.Is(err, authz.ErrNoPath):
-		return status.Errorf(codes.PermissionDenied,
-			"caller is not authorized (viewer) on target group %s", tgID)
-	case errors.Is(err, domain.ErrUnavailable):
-		return status.Error(codes.Unavailable, "authorization check unavailable")
-	case errors.Is(err, domain.ErrInvalidArg):
-		return status.Errorf(codes.InvalidArgument, "authorization check: %v", err)
-	}
-	return status.Error(codes.Internal, "authorization check failed")
+	return shared.AuthorizeObject(ctx, checkClient,
+		domain.FGARelationViewer,
+		domain.FGAObjectRef(domain.FGAObjectTypeTargetGroup, tgID),
+		fmt.Sprintf("caller is not authorized (viewer) on target group %s", tgID))
 }

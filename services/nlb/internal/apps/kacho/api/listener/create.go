@@ -51,8 +51,8 @@ type CreateUseCase struct {
 	// register-drainer. См. WithRegistrar.
 	registrar Registrar
 	// checkClient — object-scoped authz-gate для caller-supplied `targetGroupId`
-	// (per-RPC interceptor скоупит только parent LB). nil → Check пропускается
-	// (dev/unwired); owning-project-инвариант энфорсится безусловно. См. tg_ref.go.
+	// (per-RPC interceptor скоупит только parent LB). nil НЕ означает «пропустить»:
+	// отсутствие решателя — отказ (`Unavailable`). См. tg_ref.go.
 	checkClient CheckClient
 	logger      *slog.Logger
 }
@@ -84,8 +84,8 @@ func (u *CreateUseCase) WithRegistrar(r Registrar) *CreateUseCase {
 // WithCheckClient подключает object-scoped authz-gate для caller-supplied
 // `targetGroupId` (`viewer` на `nlb_target_group:<id>`). Per-RPC interceptor
 // авторизует caller'а только на parent LoadBalancer, поэтому TG — необойдённый
-// caller-supplied объект (CWE-863). nil → Check пропускается (dev/unwired);
-// owning-project-инвариант при этом энфорсится безусловно. Возвращает self.
+// caller-supplied объект (CWE-863). nil НЕ означает «пропустить»: отсутствие
+// решателя — отказ (`Unavailable`). Возвращает self.
 func (u *CreateUseCase) WithCheckClient(c CheckClient) *CreateUseCase {
 	u.checkClient = c
 	return u

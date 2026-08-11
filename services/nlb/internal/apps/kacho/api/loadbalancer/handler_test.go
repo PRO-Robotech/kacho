@@ -28,7 +28,7 @@ func TestHandler_DispatchesAll(t *testing.T) {
 	lbID := seedLB(t, repo, "prj-a", "edge")
 	tgID := seedTG(t, repo, "prj-a", "ru-central1", "tg-1")
 	opsRepo := newFakeOpsRepo()
-	h := NewHandler(repo, opsRepo, &fakeProjectClient{}, nil, &fakeRegionClient{}, &fakeZoneClient{}, &fakeZoneRegionClient{}, &fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpcclient.Subnet, error) {
+	h := NewHandler(repo, opsRepo, &fakeProjectClient{}, &fakeCheckClient{allowed: true}, &fakeRegionClient{}, &fakeZoneClient{}, &fakeZoneRegionClient{}, &fakeSubnetClient{getFunc: func(_ context.Context, id string) (*vpcclient.Subnet, error) {
 		// This handler test drives Create in region "ru-central1" — the subnet
 		// projection must carry that same authoritative region.
 		return &vpcclient.Subnet{

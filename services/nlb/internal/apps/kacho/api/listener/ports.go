@@ -34,7 +34,8 @@ type Registrar = iamclient.Registrar
 // Create/Update используют его для авторизации caller'а на caller-supplied
 // `targetGroupId` (`viewer` на `nlb_target_group:<id>`): per-RPC interceptor
 // скоупит только parent LoadBalancer / сам Listener, поэтому TG остаётся
-// необойдённым объектом (CWE-863). nil → Check пропускается (dev/unwired).
+// необойдённым объектом (CWE-863). nil НЕ означает «пропустить»: отсутствие
+// решателя — отказ (`Unavailable`), см. shared.AuthorizeObject.
 // Parity с `loadbalancer.CheckClient` / `targetgroup.CheckClient`.
 type CheckClient = iamclient.CheckClient
 
