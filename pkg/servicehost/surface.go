@@ -139,17 +139,16 @@ func ServeSurface(ctx context.Context, d servicecontract.SurfaceDescriptor) (fun
 		"shutdown_budget", spec.ShutdownBudget.String())
 
 	stopped := make(chan struct{})
+	// #nosec G118 -- отрыв гашения от ctx НАМЕРЕННЫЙ и составляет предмет этой
+	// горутины: тело исполняется только после `<-ctx.Done()`, поэтому контекст,
+	// произведённый от ctx, был бы отменён в момент создания и оборвал бы запросы
+	// в полёте вместо мягкого гашения. Ожидание ограничено объявленным сроком
+	// поверхности (ShutdownBudget), а не бесконечно.
 	go func() {
 		defer close(stopped)
 		<-ctx.Done()
 		// Свежий контекст: ctx уже отменён, и гашение по нему истекло бы, не
-		// начавшись.
-		//
-		// #nosec G118 -- отрыв от ctx НАМЕРЕННЫЙ и составляет предмет этой ветки:
-		// сюда попадают только после `<-ctx.Done()`, поэтому производный контекст
-		// отменён в момент создания и оборвал бы запросы в полёте вместо мягкого
-		// гашения. Срок задан объявлением поверхности (ShutdownBudget), то есть
-		// ожидание ограничено и не бесконечно.
+		// начавшись. Почему это не дефект — сказано у директивы над горутиной.
 		sctx, cancel := context.WithTimeout(context.Background(), spec.ShutdownBudget)
 		defer cancel()
 		if serr := srv.Shutdown(sctx); serr != nil {
