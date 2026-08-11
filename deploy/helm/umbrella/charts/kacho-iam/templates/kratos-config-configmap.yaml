@@ -17,8 +17,9 @@ KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
     path that does not exist there → every hook failed silently → users were
     never mirrored into kacho_iam (no project/namespace). Body = identity-payload.jsonnet
     (kacho-iam-kratos-hooks ConfigMap), emitting {external_id, email, display_name}.
-  - post-recovery web_hook — left on legacy :9091 gRPC path (TODO(C4-followup):
-    OnRecoveryCompleted is Unimplemented, so no :9092 recovery route exists yet).
+  - post-recovery web_hook → `/iam/v1/hooks/recovery` на том же :9092. Прежде он
+    указывал на легаси :9091 с REST-подобным путём и падал молча, а объяснение
+    ссылалось на «нереализованный» RPC — тот был реализован, не хватало маршрута.
 
 Файл маунтится в Kratos pod как `/etc/config/kratos/kratos.yaml`. Hydra/Kratos
 helm subchart'ы умеют читать config из этого ConfigMap через `config.fromConfigMap`
@@ -222,16 +223,22 @@ data:
           after:
             hooks:
               - hook: revoke_active_sessions
-              # TODO(C4-followup): recovery provisioning route once
-              # OnRecoveryCompleted is implemented. The kacho-iam
-              # InternalUserService.OnRecoveryCompleted RPC is currently
-              # Unimplemented (no Go handler), so this web_hook is left pointing
-              # at the legacy :9091 gRPC path — it still fails silently. It is
-              # NOT re-routed to the :9092 HTTP hooks listener in this PR because
-              # there is no /iam/v1/hooks/* recovery handler to serve it yet.
+              # Завершение восстановления → :9092 HTTP hooks listener, как у трёх
+              # соседних хуков. Прежде здесь стоял ЛЕГАСИ gRPC-порт с REST-подобным
+              # путём, которого на чистом gRPC не существует: хук падал молча,
+              # провайдер считал вызов сделанным, и событие не доезжало НИКОГДА —
+              # восстановивший доступ оставался заблокированным, а прежние сессии
+              # переживали восстановление.
+              #
+              # Отсрочка объяснялась тем, что «OnRecoveryCompleted не реализован».
+              # Утверждение пережило свой предмет: use-case существовал
+              # (internal/apps/kacho/api/user/internal_on_recovery.go) и вызывался
+              # по внутреннему gRPC; не хватало ровно HTTP-маршрута к нему. Маршрут
+              # заведён (internal/handler/iamhooks/recovery_hook_handler.go), и его
+              # НАЛИЧИЕ держит проба, а не память автора.
               - hook: web_hook
                 config:
-                  url: http://kacho-iam.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.ports.internalGrpc }}/iam/v1/internal/users:onRecoveryCompleted
+                  url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/recovery
                   method: POST
                   body: file:///etc/config/kratos/hooks/recovery-payload.jsonnet
                   auth:

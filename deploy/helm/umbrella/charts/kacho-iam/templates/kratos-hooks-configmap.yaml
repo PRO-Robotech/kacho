@@ -22,10 +22,13 @@ keys.
 
 This ConfigMap is mounted into the Kratos pod at /etc/config/kratos/hooks/
 (alongside kratos.yaml + identity.schema.json) by the Kratos sub-chart's
-extraVolumes/extraVolumeMounts wiring — see values.<cluster>.yaml. The
-recovery-payload.jsonnet referenced by the (still-unimplemented) recovery
-web_hook is intentionally NOT authored here — TODO(C4-followup) tracks the
-recovery route.
+extraVolumes/extraVolumeMounts wiring — see values.<cluster>.yaml.
+
+recovery-payload.jsonnet AUTHORED HERE since the recovery route landed. Прежде
+его тут не было, и объяснение ссылалось на «ещё не реализованный» RPC — а тот был
+реализован; не хватало HTTP-маршрута. Отсутствие полезной нагрузки при этом было
+вторым дефектом того же места: даже верно нацеленный хук отправил бы
+несуществующий файл.
 */}}
 {{- if .Values.kratos.config.enabled }}
 apiVersion: v1
@@ -48,5 +51,19 @@ data:
       display_name: if std.objectHas(ctx.identity.traits, "display_name")
         then ctx.identity.traits.display_name
         else "",
+    }
+  recovery-payload.jsonnet: |
+    function(ctx) {
+      // Kratos identity id (UUID) — тот же external_id, что у заведения
+      // пользователя: обе стороны обязаны называть человека одинаково, иначе
+      // восстановление найдёт не ту строку либо не найдёт ни одной.
+      external_id: ctx.identity.id,
+      // Адрес, по которому шло восстановление.
+      email: ctx.identity.traits.email,
+      // Идентификатор события восстановления — ключ идемпотентности: провайдер
+      // вправе повторить доставку, и повтор обязан быть no-op, а не вторым
+      // сдвигом отсечки сессий. Берётся id потока, а не время: время у двух
+      // доставок одного события разное, и повтор перестал бы опознаваться.
+      recovery_jti: ctx.flow.id,
     }
 {{- end }}
