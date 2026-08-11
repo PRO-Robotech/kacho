@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: BUSL-1.1
 """build-docs-sites — собрать КАЖДЫЙ сайт документации и судить по коду возврата.
 
-ЧТО ЛОВИТ. Восемь сайтов документации (`gateway/docs-site`, `services/*/docs-site`)
-не собирал никто: ни один workflow их не упоминал, цели в Makefile не было, образы
+ЧТО ЛОВИТ. Восемь сайтов документации (по одному у края и каждого сервиса; каталог
+сайта опознаётся своим `docusaurus.config.ts`, а не выписанным именем) не собирал
+никто: ни один workflow их не упоминал, цели в Makefile не было, образы
 собирались только для сервисов. Правки содержания уезжали в ствол, не пройдя ни одной
 проверки, — а у Docusaurus проверок как раз достаточно, чтобы это было обидно:
 `onBrokenLinks`/`onBrokenAnchors: 'throw'` роняют сборку на ссылке в никуда.
@@ -57,7 +58,14 @@ import sys
 # ── что считается сайтом ────────────────────────────────────────────────────────
 # Перечень ВЫВОДИТСЯ из дерева, а не выписывается: рукописный список разошёлся бы
 # с деревом молча, и новый сайт остался бы вне гейта, ничем себя не выдав.
-SITE_GLOBS = ("*/docs-site/docusaurus.config.ts", "services/*/docs-site/docusaurus.config.ts")
+#
+# ПРИЗНАК САЙТА — ЕГО КОНФИГ, А НЕ ИМЯ КАТАЛОГА. Прежде здесь стояло имя `docs-site`
+# в двух шаблонах, то есть перечень выводился из дерева лишь наполовину: переименование
+# каталога документации вывело бы все восемь сайтов из-под гейта, и он отчитался бы
+# «сайтов найдено: 0» — отказом, но только потому, что пустой перечень объявлен отказом
+# ниже. Опознание по `docusaurus.config.ts` переживает любую раскладку: каталог
+# компонента — на глубине 1 (`gateway/`) или 2 (`services/<svc>/`), сайт — сразу под ним.
+SITE_GLOBS = ("*/*/docusaurus.config.ts", "services/*/*/docusaurus.config.ts")
 
 REQUIRED_CONFIG = (
     # (ключ, требуемое значение) — оба обязаны стоять на 'throw', см. §ПРЕДПОСЫЛКА.
@@ -69,6 +77,11 @@ ANCHOR_RE = re.compile(r"<a\b[^>]*?\bhref=[\"']([^\"']+)[\"']", re.IGNORECASE)
 ID_RE = re.compile(r'\bid="([^"]+)"')
 FRONTMATTER_SLUG_RE = re.compile(r"^slug:\s*(\S+)\s*$", re.MULTILINE)
 
+# Каталог страниц объявляет сам сайт — ключ `path` пресета docs. Регистр значим:
+# `sidebarPath`/`routeBasePath` под `\bpath:` не попадают (там заглавная `P`).
+DOCS_PATH_RE = re.compile(r"\bpath:\s*['\"]([^'\"]+)['\"]")
+DOCS_PATH_DEFAULT = "docs"  # умолчание Docusaurus, когда ключ не задан
+
 SOURCE_SUFFIXES = (".md", ".mdx", ".tsx", ".jsx")
 
 
@@ -78,6 +91,19 @@ def find_sites(root: pathlib.Path) -> list[pathlib.Path]:
         for cfg in root.glob(glob):
             sites.add(cfg.parent)
     return sorted(sites)
+
+
+def docs_dir(site: pathlib.Path) -> pathlib.Path:
+    """Каталог страниц сайта — ЧИТАЕТСЯ ИЗ КОНФИГА, не выписывается здесь.
+
+    Гейт проверяет якори по исходникам страниц, поэтому обязан смотреть туда же,
+    куда смотрит сборка. Выписанное имя разошлось бы с конфигом молча: несуществующий
+    каталог даёт пустой обход, «сырых якорей проверено 0» и зелёный вердикт — форма
+    без содержания. Расхождение ловится проверкой существования в `check_config`.
+    """
+    cfg = (site / "docusaurus.config.ts").read_text(encoding="utf-8")
+    m = DOCS_PATH_RE.search(cfg)
+    return site / (m.group(1) if m else DOCS_PATH_DEFAULT)
 
 
 def check_config(site: pathlib.Path) -> list[str]:
@@ -96,17 +122,23 @@ def check_config(site: pathlib.Path) -> list[str]:
                 f"PREMISE {site}/docusaurus.config.ts: {key}='{m.group(1)}', требуется '{want}' — "
                 f"иначе битая ссылка проезжает сборку молча"
             )
+    d = docs_dir(site)
+    if not d.is_dir():
+        findings.append(
+            f"PREMISE {site}/docusaurus.config.ts: каталог страниц '{d.name}' не существует — "
+            f"обход якорей прочитал бы ноль файлов и промолчал"
+        )
     return findings
 
 
 def route_of_source(site: pathlib.Path, path: pathlib.Path) -> str | None:
-    """Маршрут построенной страницы для исходного файла docs/*.
+    """Маршрут построенной страницы для исходного файла каталога страниц.
 
-    Возвращает None, если файл не из docs/ — тогда фрагмент к странице не привязать
-    и это докладывается как отказ предпосылки, а не проглатывается.
+    Возвращает None, если файл лежит вне этого каталога — тогда фрагмент к странице
+    не привязать, и это докладывается как отказ предпосылки, а не проглатывается.
     """
     try:
-        rel = path.relative_to(site / "docs")
+        rel = path.relative_to(docs_dir(site))
     except ValueError:
         return None
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -138,8 +170,8 @@ def check_raw_anchors(site: pathlib.Path) -> tuple[int, list[str]]:
     checked = 0
     sources = [
         p
-        for sub in ("docs", "src")
-        for p in (site / sub).rglob("*")
+        for sub in (docs_dir(site), site / "src")
+        for p in sub.rglob("*")
         if p.is_file() and p.suffix in SOURCE_SUFFIXES
     ]
     for src in sorted(sources):
