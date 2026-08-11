@@ -32,22 +32,24 @@ function show(v4: string[] = [], v6: string[] = []) {
   );
 }
 
-/** Карточка семейства — ближайший предок подписи, у которого есть своё поле ввода. */
-function family(label: string): HTMLElement {
-  let el: HTMLElement | null = screen.getByText(label);
+/** Секция семейства — ближайший предок бейджа, у которого есть своё поле ввода.
+ *  Семейство различается бейджем шапки («IPv4»/«IPv6»), а заголовок у обеих
+ *  секций общий («Супернет») — как и у CIDR подсети, чей вид здесь и принят. */
+function family(badge: string): HTMLElement {
+  let el: HTMLElement | null = screen.getByText(badge);
   while (el && !el.querySelector("input")) el = el.parentElement;
-  if (!el) throw new Error(`карточка «${label}» не найдена`);
+  if (!el) throw new Error(`секция «${badge}» не найдена`);
   return el;
 }
 
-const v4card = () => family("Супернет IPv4");
-const v6card = () => family("Супернет IPv6");
+const v4card = () => family("IPv4");
+const v6card = () => family("IPv6");
 
 function type(card: HTMLElement, value: string) {
   fireEvent.change(within(card).getByRole("textbox"), { target: { value } });
 }
 
-const addBtn = (card: HTMLElement) => within(card).getByRole("button", { name: /Add/ });
+const addBtn = (card: HTMLElement) => within(card).getByRole("button", { name: /Добавить/ });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -58,7 +60,7 @@ describe("NetworkCidrManager", () => {
   it("пустое семейство названо пустым", () => {
     show([], []);
 
-    expect(screen.getAllByText("— пусто —")).toHaveLength(2);
+    expect(screen.getAllByText("Супернет-блоков нет")).toHaveLength(2);
   });
 
   it("показывает объявленные блоки и их число по семействам", () => {
@@ -66,8 +68,8 @@ describe("NetworkCidrManager", () => {
 
     expect(screen.getByText("10.30.0.0/16")).toBeInTheDocument();
     expect(screen.getByText("fd00:31::/48")).toBeInTheDocument();
-    expect(within(v4card()).getByText("1 блок(ов)")).toBeInTheDocument();
-    expect(within(v6card()).getByText("2 блок(ов)")).toBeInTheDocument();
+    expect(within(v4card()).getByText("(1)")).toBeInTheDocument();
+    expect(within(v6card()).getByText("(2)")).toBeInTheDocument();
   });
 
   it("на пустом вводе добавить нечем", () => {
@@ -142,10 +144,10 @@ describe("NetworkCidrManager", () => {
     expect(action).not.toHaveBeenCalled();
   });
 
-  it("крестик на блоке снимает именно его", async () => {
+  it("кнопка снятия на строке снимает именно её блок", async () => {
     show(["10.30.0.0/16", "10.31.0.0/16"]);
 
-    fireEvent.click(within(v4card()).getAllByRole("button", { name: "close" })[1]);
+    fireEvent.click(within(v4card()).getAllByRole("button", { name: "Удалить CIDR" })[1]);
 
     await waitFor(() =>
       expect(action).toHaveBeenCalledWith("/vpc/v1/networks/net-1:remove-cidr-blocks", {
@@ -158,7 +160,7 @@ describe("NetworkCidrManager", () => {
     action.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "network CIDR block still contains subnets"));
     show(["10.30.0.0/16"]);
 
-    fireEvent.click(within(v4card()).getAllByRole("button", { name: "close" })[0]);
+    fireEvent.click(within(v4card()).getAllByRole("button", { name: "Удалить CIDR" })[0]);
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(

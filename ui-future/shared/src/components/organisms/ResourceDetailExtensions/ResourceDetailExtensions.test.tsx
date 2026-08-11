@@ -137,9 +137,13 @@ describe("панели под обзором", () => {
   it("сеть получает управление объявленным супернетом с её блоками", () => {
     draw(detailExtension("networks")!.overviewBelow!(ctx({ id: "net-1", ipv4_cidr_blocks: ["10.30.0.0/16"] })));
 
-    expect(screen.getByText("Супернет IPv4")).toBeInTheDocument();
+    // Вид — тот же, что у CIDR подсети: две секции семейств, заголовок
+    // «Супернет» и бейдж IPv4/IPv6 отдельно (прежде подпись была склеена в
+    // «Супернет IPv4», и сеть с подсетью выглядели разными предметами).
+    expect(screen.getAllByText("Супернет")).toHaveLength(2);
+    expect(screen.getByText("IPv4")).toBeInTheDocument();
     expect(screen.getByText("10.30.0.0/16")).toBeInTheDocument();
-    expect(screen.getByText("— пусто —")).toBeInTheDocument();
+    expect(screen.getByText("Супернет-блоков нет")).toBeInTheDocument();
   });
 
   it("таблица маршрутизации получает панель своих статических маршрутов", () => {
