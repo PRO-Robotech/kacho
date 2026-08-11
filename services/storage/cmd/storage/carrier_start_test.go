@@ -76,7 +76,11 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	}
 
 	census := log.String()
-	if strings.Contains(census, "методов 0") {
+	// Якорь — НАЧАЛО переписи: та же строка несёт «сужаемых методов 0», и
+	// предикат по голой подстроке краснел бы на сервисе, который законно не
+	// сужает ни одного метода. Здесь это не проявилось только потому, что
+	// storage сужает — то есть проба была зелёной случайно.
+	if strings.Contains(census, "осмотрено: методов 0") {
 		t.Fatalf("отказы старта осмотрели НОЛЬ методов — вердикт получен на пустом наборе:\n%s", census)
 	}
 	t.Logf("перепись носителя: %s", strings.TrimSpace(census))
