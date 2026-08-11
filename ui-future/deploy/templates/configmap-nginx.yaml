@@ -19,9 +19,15 @@ data:
         index index.html;
         {{- include "ui.securityHeaders" . | nindent 8 }}
 
-        location ^~ /dashboard/ {
+        # Путь ассетов модуля обязан лежать ВНЕ пространства маршрутов консоли:
+        # суффикс `-remote` — то, что его оттуда выводит. Здесь стоял
+        # `/dashboard/`, и он заслонял маршрут, на который оболочка уводит с
+        # корня И с любого неизвестного пути, — прямой заход и обновление
+        # страницы отдавали голый модуль вместо консоли. В разработке этого не
+        # видно: там у каждого модуля свой порт, общего пространства путей нет.
+        location ^~ /dashboard-remote/ {
             set $dashboard_upstream "${KACHO_UI_DASHBOARD_UPSTREAM}";
-            rewrite ^/dashboard/(.*)$ /$1 break;
+            rewrite ^/dashboard-remote/(.*)$ /$1 break;
             proxy_pass http://$dashboard_upstream;
             proxy_http_version 1.1;
             proxy_set_header Host $host;

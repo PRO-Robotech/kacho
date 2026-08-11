@@ -2,7 +2,7 @@ FROM node:26-alpine AS build
 
 WORKDIR /app
 
-ARG KACHO_DASHBOARD_REMOTE=/dashboard/assets/remoteEntry.js
+ARG KACHO_DASHBOARD_REMOTE=/dashboard-remote/assets/remoteEntry.js
 ARG KACHO_VPC_REMOTE=/vpc-remote/assets/remoteEntry.js
 ARG KACHO_IAM_REMOTE=/iam-remote/assets/remoteEntry.js
 ARG KACHO_NLB_REMOTE=/nlb-remote/assets/remoteEntry.js

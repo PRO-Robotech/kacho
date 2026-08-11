@@ -125,6 +125,35 @@ build-services:
 	done
 	@echo "=== образы привязаны к шаблонам подов: $(IMAGE_IDS_VALUES) ==="
 
+# UI_PROJECTS — модули консоли. ВЫВОДЯТСЯ ИЗ ДЕРЕВА, а не выписываются: перечень
+# уже живёт в матрице `ui.yml`, и вторая рукописная копия разошлась бы с ней молча
+# (ровно так в полирепо из матрицы выпали compute и storage — их образы не
+# проверялись вообще). Признак модуля — наличие своего Dockerfile, тот же, по
+# которому строит конвейер.
+UI_PROJECTS := $(sort $(notdir $(patsubst %/Dockerfile,%,$(wildcard ../ui-future/*/Dockerfile))))
+
+## build-ui — собрать образы консоли и загрузить их в kind.
+##
+## Консоль — микрофронтенд: оболочка плюс модули по одному на домен. До заведения
+## этой цели её образы не строились для стенда НИКАКОЙ целью: конвейер `ui.yml`
+## строит их тегом `:ci` и никуда не публикует, `build-services` собирает только
+## бэкенд, а профили подчарт консоли не включают. То есть консоль не
+## разворачивалась ни на одном стенде — при том что чарт для неё существует.
+build-ui:
+	@test -n "$(UI_PROJECTS)" || { \
+	  echo "ERROR: в ../ui-future не найдено ни одного модуля с Dockerfile — перечень выводится"; \
+	  echo "       из дерева, и пустой означает, что предмет цели исчез, а не что собирать нечего"; \
+	  exit 1; }
+	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
+	@echo "=== модулей консоли: $(words $(UI_PROJECTS)) [$(UI_PROJECTS)] ==="
+	@for p in $(UI_PROJECTS); do \
+	  echo "=== build kacho-ui-future-$$p:dev ==="; \
+	  ( cd ../ui-future && docker build -f $$p/Dockerfile $(IMAGE_LABELS) \
+	      -t kacho-ui-future-$$p:dev . ) || exit 1; \
+	  kind load docker-image kacho-ui-future-$$p:dev --name $(CLUSTER_NAME) || exit 1; \
+	done
+	@echo "=== консоль собрана и загружена в kind ==="
+
 # stand-provenance — what commit is the stand ACTUALLY running?
 #
 # Deliberately keyed on the image id of the RUNNING container, not on the local

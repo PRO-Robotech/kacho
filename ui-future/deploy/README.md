@@ -9,7 +9,7 @@ It installs:
   entrypoint used by ingress, port-forwarding, and existing `kacho-deploy`
   values.
 - `ui-dashboard` Deployment and Service: the dashboard remote consumed at
-  `/dashboard/assets/remoteEntry.js`.
+  `/dashboard-remote/assets/remoteEntry.js`.
 - `ui-vpc` Deployment and Service: the VPC remote consumed at
   `/vpc-remote/assets/remoteEntry.js`.
 - `ui-iam` Deployment and Service: the IAM remote consumed at
