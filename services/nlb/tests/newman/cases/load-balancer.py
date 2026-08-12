@@ -562,12 +562,17 @@ CASES.append(Case(
         # target group; repoint before Move").
         # No `ipVersion`: it is `reserved 8` in CreateListenerRequest (the VIP moved
         # Listener→LoadBalancer). The listener inherits the parent's per-family VIP.
+        # Повтор здесь был, утверждения — не было: шаг принимал любой ответ, и если
+        # слушатель не создавался, кейс проверял перенос БЕЗ ссылки, ради которой он и
+        # написан. Отказ обязан называться на месте, а не через три шага чужим именем.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "mv-att-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
+                          "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', "
+                          "() => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"])),
         poll_operation_until_done(),
         Step(name="move-rejected", method="POST",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
