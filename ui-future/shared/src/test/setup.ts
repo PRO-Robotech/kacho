@@ -31,6 +31,10 @@ if (!("ResizeObserver" in globalThis)) {
 jest.unstable_mockModule("@monaco-editor/react", () => ({
   __esModule: true,
   default: (props: React.HTMLAttributes<HTMLDivElement>) => React.createElement("div", props),
+  // Настоящий модуль отдаёт `loader`, и компонент зовёт `loader.config`, чтобы
+  // редактор грузился со своего origin. Заменитель без него ронял бы пробы на
+  // отсутствии метода — то есть на форме дублёра, а не на предмете.
+  loader: { config: () => undefined },
 }));
 
 jest.unstable_mockModule("antd", () => antdStub());
