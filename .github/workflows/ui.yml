@@ -143,6 +143,12 @@ jobs:
         run: node scripts/check-shared-lint-debt.mjs
       - name: форма ресурса объявлена в одном месте
         run: node scripts/check-resource-spec-single-source.mjs
+      # Принятое отступление от политики контента обязано иметь предмет и предикат
+      # снятия, который РОНЯЕТ прогон, когда наступает. Без вызова гейт исчезает из
+      # конвейера незаметно — а он и написан против записей, переживающих своё
+      # основание, так что молчащий гейт был бы экземпляром своего же класса.
+      - name: отступления от политики контента держатся предметом
+        run: node scripts/check-csp-divergence-records.mjs
       - name: линт оснастки scripts/
         working-directory: ui-future/scripts
         run: ../node_modules/.bin/eslint .
