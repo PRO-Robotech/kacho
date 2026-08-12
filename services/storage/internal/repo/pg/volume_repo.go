@@ -869,3 +869,110 @@ var (
 	_ volume.Reader = (*VolumeRepo)(nil)
 	_ volume.Writer = (*VolumeRepo)(nil)
 )
+
+// changeDiskTypeSQL — назначение ЖЕЛАЕМОЙ ревизии привязки одним стейтментом.
+//
+// Все предусловия проверяются ВНУТРИ него, а не запросом «до»: том готов, целевой
+// класс принимает новые тома, у него есть действующая ревизия В ТОЙ ЖЕ ЗОНЕ, а размер
+// тома укладывается в границы целевого класса. Проверка отдельным чтением была бы
+// гонкой — между ней и записью класс успели бы вывести из обращения.
+//
+// Зона НЕ меняется и меняться не может: она неизменяема у тома, а перенос между
+// зонами выражается копией снимка. Поэтому ревизия ищется по зоне тома, а не по
+// названной вызывающим.
+const changeDiskTypeSQL = `
+	WITH target AS (
+		SELECT b.id
+		  FROM disk_type_bindings b
+		  JOIN disk_types d ON d.id = b.disk_type_id
+		  JOIN volumes v ON v.id = $1
+		 WHERE b.disk_type_id = $2 AND b.zone_id = v.zone_id AND b.status = 'ACTIVE'
+		   AND d.lifecycle = 'ACTIVE'
+		   AND (d.min_size_bytes = 0 OR v.size_bytes >= d.min_size_bytes)
+		   AND (d.max_size_bytes = 0 OR v.size_bytes <= d.max_size_bytes)
+	)
+	UPDATE volumes v
+	   SET desired_binding_id = (SELECT id FROM target),
+	       disk_type_id       = $2,
+	       updated_at         = now()
+	  FROM target
+	 WHERE v.id = $1 AND v.state = 'READY' AND v.binding_id IS DISTINCT FROM target.id
+	RETURNING v.id`
+
+// ChangeDiskType реализует volume.Writer: назначает желаемую ревизию привязки.
+// Данные переносит сверщик — здесь фиксируется НАМЕРЕНИЕ.
+func (r *VolumeRepo) ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error) {
+	var got string
+	err := r.pool.QueryRow(ctx, changeDiskTypeSQL, id, diskTypeID).Scan(&got)
+	if err == nil {
+		return r.Get(ctx, id)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapVolumeErr(err, volErrCtx{volumeID: id, diskTypeID: diskTypeID})
+	}
+	return nil, r.changeDiskTypeUnavailable(ctx, id, diskTypeID)
+}
+
+// changeDiskTypeUnavailable разбирает нулевую выборку: каждая причина называется
+// своим текстом. Общий отказ отправил бы вызывающего чинить не то — а здесь у него
+// три разных предмета: том, класс и совместимость размера.
+func (r *VolumeRepo) changeDiskTypeUnavailable(ctx context.Context, id, diskTypeID string) error {
+	var state string
+	var sizeBytes int64
+	var zoneID, currentBinding string
+	verr := r.pool.QueryRow(ctx,
+		`SELECT state, size_bytes, zone_id, COALESCE(binding_id,'') FROM volumes WHERE id = $1`, id).
+		Scan(&state, &sizeBytes, &zoneID, &currentBinding)
+	if verr != nil {
+		if errors.Is(verr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, id)
+		}
+		return mapVolumeErr(verr, volErrCtx{volumeID: id})
+	}
+	if state != "READY" {
+		return fmt.Errorf("%w: Volume %s is not in a state that allows changing disk type",
+			storageerr.ErrFailedPrecondition, id)
+	}
+
+	var lifecycle string
+	var minSize, maxSize int64
+	derr := r.pool.QueryRow(ctx,
+		`SELECT lifecycle, min_size_bytes, max_size_bytes FROM disk_types WHERE id = $1`, diskTypeID).
+		Scan(&lifecycle, &minSize, &maxSize)
+	if derr != nil {
+		if errors.Is(derr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, diskTypeID)
+		}
+		return mapVolumeErr(derr, volErrCtx{diskTypeID: diskTypeID})
+	}
+	if lifecycle != "ACTIVE" {
+		return fmt.Errorf("%w: DiskType %s is not accepting new volumes",
+			storageerr.ErrFailedPrecondition, diskTypeID)
+	}
+	if minSize > 0 && sizeBytes < minSize {
+		return fmt.Errorf("%w: Volume size %d is less than DiskType %s minimum %d",
+			storageerr.ErrInvalidArg, sizeBytes, diskTypeID, minSize)
+	}
+	if maxSize > 0 && sizeBytes > maxSize {
+		return fmt.Errorf("%w: Volume size %d exceeds DiskType %s maximum %d",
+			storageerr.ErrInvalidArg, sizeBytes, diskTypeID, maxSize)
+	}
+
+	var bindingID string
+	berr := r.pool.QueryRow(ctx,
+		`SELECT id FROM disk_type_bindings WHERE disk_type_id = $1 AND zone_id = $2 AND status = 'ACTIVE'`,
+		diskTypeID, zoneID).Scan(&bindingID)
+	if berr != nil {
+		if errors.Is(berr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+				storageerr.ErrFailedPrecondition, diskTypeID, zoneID)
+		}
+		return mapVolumeErr(berr, volErrCtx{diskTypeID: diskTypeID})
+	}
+	if bindingID == currentBinding {
+		// Том уже на этой ревизии: повтор — успех, а не отказ. Смена класса
+		// идемпотентна тем же соображением, что и всё остальное на этом пути.
+		return nil
+	}
+	return storageerr.ErrInternal
+}

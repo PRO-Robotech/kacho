@@ -79,6 +79,9 @@ type Writer interface {
 	// REGIONAL-образа). Пусто → образ-полоса не матчится (fail-closed).
 	Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, []ownerregister.Registration, error)
 	Update(ctx context.Context, id string, u VolumeUpdate) (*domain.Volume, []ownerregister.Registration, error)
+	// ChangeDiskType назначает ЖЕЛАЕМУЮ ревизию привязки целевого класса. Данные
+	// переносит сверщик — этот вызов лишь фиксирует намерение.
+	ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error)
 	Delete(ctx context.Context, id string) error
 	Attach(ctx context.Context, a *domain.VolumeAttachment) error
 	Detach(ctx context.Context, volumeID, instanceID string) error
@@ -685,4 +688,51 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 // protoconv.Volume (та же проекция, что handler и LRO-recovery — без дрейфа полей).
 func marshalVolume(v *domain.Volume) (*anypb.Any, error) {
 	return anypb.New(protoconv.Volume(v))
+}
+
+// ChangeDiskTypeInput — вход смены класса тома.
+type ChangeDiskTypeInput struct {
+	VolumeID   string
+	DiskTypeID string
+}
+
+// ChangeDiskType переводит том в другой класс диска.
+//
+// # Почему это ОТДЕЛЬНЫЙ глагол, а не поле правки
+//
+// Это перемещение данных, а не изменение поля: оно длится, может отказать на
+// половине и меняет физическое расположение. Пропусти его через общую правку — и
+// запрос, менявший метку, мог бы задеть размещение терабайтов; а маска правки,
+// которая обязана быть предсказуемой, стала бы содержать поле с несопоставимой ценой.
+//
+// # Что делает этот вызов и чего он НЕ делает
+//
+// Он назначает ЖЕЛАЕМУЮ ревизию привязки и возвращается. Данные переносит сверщик,
+// и статус тома отражает переезд, пока действующая ревизия не сравняется с желаемой.
+// Предмет операции здесь тот же, что у создания: намерение зафиксировано.
+func (u *UseCase) ChangeDiskType(ctx context.Context, in ChangeDiskTypeInput) (*operations.Operation, error) {
+	if err := idInvalid(in.VolumeID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if in.DiskTypeID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: disk_type_id: required", storageerr.ErrInvalidArg))
+	}
+	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
+		fmt.Sprintf("Change disk type of volume %s", in.VolumeID),
+		&storagev1.ChangeDiskTypeMetadata{VolumeId: in.VolumeID})
+	if err != nil {
+		return nil, err
+	}
+	op.ResourceID = in.VolumeID
+	if err := u.ops.Create(ctx, op); err != nil {
+		return nil, err
+	}
+	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+		v, derr := u.writer.ChangeDiskType(ctx, in.VolumeID, in.DiskTypeID)
+		if derr != nil {
+			return nil, u.errStatus(derr)
+		}
+		return marshalVolume(v)
+	})
+	return &op, nil
 }

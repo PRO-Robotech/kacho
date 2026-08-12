@@ -82,17 +82,34 @@ const (
 	VolumeStatusInUse
 	VolumeStatusDeleting
 	VolumeStatusError
+	// VolumeStatusMigrating — том переезжает в другой класс.
+	//
+	// Состояние ВЫВОДИТСЯ из расхождения ревизий привязки (желаемая назначена,
+	// действующая ещё прежняя), а не хранится колонкой — той же линией, которой
+	// привязанность выводится из наличия строки привязки. Хранить его значило бы
+	// завести второй источник истины об одном факте.
+	VolumeStatusMigrating
 )
 
 // Validate проверяет, что статус — известное значение.
 func (s VolumeStatus) Validate() error {
 	switch s {
 	case VolumeStatusUnspecified, VolumeStatusCreating, VolumeStatusAvailable,
-		VolumeStatusInUse, VolumeStatusDeleting, VolumeStatusError:
+		VolumeStatusInUse, VolumeStatusDeleting, VolumeStatusError, VolumeStatusMigrating:
 		return nil
 	default:
 		return errors.New("volume status is out of range")
 	}
+}
+
+// DeriveMigrating — статус тома, у которого назначена другая ревизия привязки.
+// Переезд перекрывает готовность и привязанность: пока данные едут, «доступен» было
+// бы утверждением о том, чего сейчас нет.
+func DeriveMigrating(state string, migrating bool) (VolumeStatus, bool) {
+	if migrating && (state == "READY") {
+		return VolumeStatusMigrating, true
+	}
+	return VolumeStatusUnspecified, false
 }
 
 // DeriveStatus вычисляет wire-Status из persisted state + наличия attachment

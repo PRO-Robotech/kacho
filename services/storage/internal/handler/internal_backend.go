@@ -25,6 +25,7 @@ import (
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -239,4 +240,33 @@ func backendStatusFromProto(s storagev1.StorageBackend_Status) domain.BackendSta
 	default:
 		return ""
 	}
+}
+
+// ── InternalImageService.Register (:9091) ─────────────────────────────────
+
+// RegisterImage регистрирует образ, ВНЕСЁННЫЙ в хранилище вне облака.
+//
+// Метод обязан существовать: единственный источник ОС для машины — storage-образ, а
+// публичный Create делает образ только из тома или снимка. На чистой установке ни
+// того ни другого нет, поэтому без регистрации машина не запускается by construction.
+//
+// Имя объекта здесь ПРИХОДИТ ИЗВНЕ — единственное место контракта, где это так. На
+// всех прочих путях имя выводится из неизменяемого идентификатора, и приём его из
+// запроса позволил бы вызывающему адресовать чужой объект. Здесь выводить не из чего:
+// объект внесён ДО того, как у облака появилась строка, и его имя — факт провайдера.
+func (h *InternalImageHandler) Register(ctx context.Context, req *storagev1.RegisterImageRequest) (*storagev1.Image, error) {
+	registered, err := h.uc.Register(ctx, image.RegisterInput{
+		ProjectID:     req.GetProjectId(),
+		RegionID:      req.GetRegionId(),
+		Name:          req.GetName(),
+		Description:   req.GetDescription(),
+		Labels:        req.GetLabels(),
+		BackendObject: req.GetBackendObject(),
+		SizeBytes:     req.GetSizeBytes(),
+		MinDiskBytes:  req.GetMinDiskBytes(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return protoconv.Image(registered), nil
 }

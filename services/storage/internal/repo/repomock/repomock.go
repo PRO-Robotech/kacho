@@ -11,6 +11,7 @@ package repomock
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -52,11 +53,12 @@ func (m *VolumeReader) ListAttachments(ctx context.Context, instanceIDs []string
 
 // VolumeWriter — мок volume.Writer на функциях-полях.
 type VolumeWriter struct {
-	InsertFunc func(ctx context.Context, v *domain.Volume) (*domain.Volume, error)
-	UpdateFunc func(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error)
-	DeleteFunc func(ctx context.Context, id string) error
-	AttachFunc func(ctx context.Context, a *domain.VolumeAttachment) error
-	DetachFunc func(ctx context.Context, volumeID, instanceID string) error
+	ChangeDiskTypeFn func(ctx context.Context, id, diskTypeID string) (*domain.Volume, error)
+	InsertFunc       func(ctx context.Context, v *domain.Volume) (*domain.Volume, error)
+	UpdateFunc       func(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error)
+	DeleteFunc       func(ctx context.Context, id string) error
+	AttachFunc       func(ctx context.Context, a *domain.VolumeAttachment) error
+	DetachFunc       func(ctx context.Context, volumeID, instanceID string) error
 }
 
 // Insert — zoneRegionID (регион зоны тома) энфорсится в SQL-CAS реального repo;
@@ -419,6 +421,16 @@ func AwaitOpDone(t TestingT, r *OpsRepo, opID string) *operations.Operation {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// ChangeDiskType — подстановка смены класса. Дублёр обязан выполнять контракт
+// настоящего: незаданная функция ОТКАЗЫВАЕТ, а не отвечает успехом. Молча принявший
+// вызов дублёр прятал бы ровно тот путь, ради которого его подставляют.
+func (w *VolumeWriter) ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error) {
+	if w.ChangeDiskTypeFn != nil {
+		return w.ChangeDiskTypeFn(ctx, id, diskTypeID)
+	}
+	return nil, errors.New("repomock: ChangeDiskTypeFn is not set")
 }
 
 // Compile-time проверки соответствия портам.

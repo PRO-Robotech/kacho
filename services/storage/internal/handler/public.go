@@ -118,6 +118,22 @@ func (h *VolumeHandler) ListOperations(ctx context.Context, req *storagev1.ListV
 	return resp, nil
 }
 
+// ChangeDiskType переводит том в другой класс диска (async Operation).
+//
+// Отдельный глагол, а не поле правки: это перемещение данных — оно длится, может
+// отказать на половине и меняет физическое расположение. Тонкий хендлер: решение
+// принимает use-case.
+func (h *VolumeHandler) ChangeDiskType(ctx context.Context, req *storagev1.ChangeDiskTypeRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.ChangeDiskType(ctx, volume.ChangeDiskTypeInput{
+		VolumeID:   req.GetVolumeId(),
+		DiskTypeID: req.GetDiskTypeId(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
 // ── SnapshotService (public :9090) ────────────────────────────────────────
 
 // SnapshotHandler реализует storagev1.SnapshotServiceServer.
