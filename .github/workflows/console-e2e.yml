@@ -155,7 +155,7 @@ jobs:
       # каталога — законный ответ (состав образа ранера меняется), и это ОПИСЬ, а
       # не гейт. Чтобы «ноль освобождённого» не сошло за успех, печатаем число.
       - name: освободить диск под стенд
-        timeout-minutes: 6
+        timeout-minutes: 5
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         run: |
           echo "=== диск до уборки:"; df -h / | tail -1
@@ -177,7 +177,7 @@ jobs:
       # любое создание отвечает «зона не найдена», и ни один «под Ready» этого
       # не показывает.
       - name: стенд (dev-up, полный)
-        timeout-minutes: 35
+        timeout-minutes: 30
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         working-directory: deploy
         run: make dev-up CLUSTER_NAME="$CLUSTER_NAME"
@@ -223,7 +223,7 @@ jobs:
           exit 1
 
       - name: установка проб
-        timeout-minutes: 8
+        timeout-minutes: 6
         working-directory: ui-future/e2e
         run: npm ci
 
@@ -258,7 +258,7 @@ jobs:
       - name: браузер — сам chromium (только при промахе кэша)
         if: steps.browser-cache.outputs.cache-hit != 'true'
         working-directory: ui-future/e2e
-        timeout-minutes: 5
+        timeout-minutes: 12
         run: npx playwright install chromium
 
       # Промах кэша — не отказ, но и не мелочь: он означает, что прогон заплатил
