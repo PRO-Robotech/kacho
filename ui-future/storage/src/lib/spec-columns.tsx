@@ -156,13 +156,20 @@ function ResourceNameCell({
 }
 
 export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}): Column<Record<string, unknown>>[] {
-  return reorderNameIdFirst(spec.columns).map((c) => ({
+  const ordered = reorderNameIdFirst(spec.columns);
+  // Колонка ИДЕНТИЧНОСТИ — та, по которой пользователь узнаёт ресурс и через
+  // которую в него заходит. Обычно это `name`, но не у всех: у пользователя имени
+  // нет вовсе, его узнают по почте. Правило «поле называется name» оставляло
+  // такие ресурсы без перехода — поэтому при отсутствии `name` идентичностью
+  // считается ПЕРВАЯ колонка, а её порядок уже нормализован выше.
+  const identityPath = ordered.find((c) => c.path === "name")?.path ?? ordered[0]?.path;
+  return ordered.map((c) => ({
     header: c.header,
     className: c.className,
     cell: (row) => {
       const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
       // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
-      return c.path === "name" ? ResourceNameCell({ spec, row, opts, children: inner }) : inner;
+      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, children: inner }) : inner;
     },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
