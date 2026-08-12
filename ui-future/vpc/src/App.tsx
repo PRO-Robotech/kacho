@@ -294,11 +294,16 @@ export function AppRoutes() {
             />
           </Route>
           <Route path="/system/regions/create" element={<ResourceCreatePage spec={REGISTRY.regions} />} />
-          <Route path="/system/regions/:uid" element={<ResourceDetailPage spec={REGISTRY.regions} />} />
-          <Route path="/system/regions/:uid/edit" element={<ResourceEditPage spec={REGISTRY.regions} />} />
+          {/* Каталог размещения — тот же ResourceShell, что у VPC-ресурсов:
+              иконка типа во вкладке, обзор без второго заголовка «Общее»,
+              действия в шапке в общем стиле, а правка разворачивается ПАНЕЛЬЮ в
+              правой части, а не уводит в модалку. Прежде эти карточки жили на
+              старой странице, и все четыре отличия были её следствием. */}
+          <Route path="/system/regions/:uid" element={<ResourceShell spec={REGISTRY.regions} />} />
+          <Route path="/system/regions/:uid/edit" element={<ResourceShell spec={REGISTRY.regions} mode="edit" />} />
           <Route path="/system/zones/create" element={<ResourceCreatePage spec={REGISTRY.zones} />} />
-          <Route path="/system/zones/:uid" element={<ResourceDetailPage spec={REGISTRY.zones} />} />
-          <Route path="/system/zones/:uid/edit" element={<ResourceEditPage spec={REGISTRY.zones} />} />
+          <Route path="/system/zones/:uid" element={<ResourceShell spec={REGISTRY.zones} />} />
+          <Route path="/system/zones/:uid/edit" element={<ResourceShell spec={REGISTRY.zones} mode="edit" />} />
           <Route
             path="/system/address-pools/create"
             element={<ResourceCreatePage spec={REGISTRY["address-pools"]} />}
