@@ -199,7 +199,7 @@ func runServe(cfg config.Config) error {
 	// ── use-cases (repo → use-case → handler). CQRS reader/writer связываются
 	// раздельно (сейчас обе стороны — один pg-adapter). errStatus — transport-
 	// mapper sentinel→gRPC, инжектится из handler-слоя (serviceerr.ToStatus). ──
-	volumeRepo := pg.NewVolumeRepo(pool)
+	volumeRepo := pg.NewVolumeRepo(pool).WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit)
 	snapshotRepo := pg.NewSnapshotRepo(pool)
 	imageRepo := pg.NewImageRepo(pool)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)

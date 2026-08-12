@@ -25,9 +25,47 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
-// seededDiskType — id из seed-миграции 0004 (block-balanced существует; volumes.
-// disk_type_id RESTRICT требует существующий тип).
-const seededDiskType = "block-balanced"
+// seededDiskType — класс, который фикстуры заводят САМИ.
+//
+// Прежде он приходил из посева миграции. Посев снят: класс — регистрация того, что
+// реально даёт провайдер, и выдуманного каталога заранее быть не должно. Фикстуры
+// теперь сеют свой класс, свой бэкенд и действующую ревизию привязки — ровно то, что
+// требуется от арендатора на живом стенде, поэтому проба заодно проверяет достижимость
+// этого пути.
+const seededDiskType = "block-fixture"
+
+// seedFixtureCatalog заводит класс, бэкенд и ДЕЙСТВУЮЩУЮ ревизию привязки на каждую
+// зону, которой пользуются фикстуры пакета.
+//
+// Без действующей ревизии том не создаётся вовсе: вставка требует её, потому что
+// исполнять создание иначе некому. Это не ужесточение ради проб — это тот же
+// инвариант, которым закрыт «создаваемый навсегда».
+func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	zones := []string{"region-1-a", "region-1-b", "ru-central1-a", "ru-central1-b"}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO disk_types (id, name, lifecycle) VALUES ($1, $1, 'ACTIVE')
+		ON CONFLICT (id) DO NOTHING`, seededDiskType)
+	require.NoError(t, err)
+
+	backendID := ids.NewHyphenID("sb")
+	_, err = pool.Exec(ctx, `
+		INSERT INTO storage_backends (id, name, kind, zone_ids, endpoint, credentials_ref)
+		VALUES ($1, $1, 'CEPH_RBD', '[]'::jsonb, 'cfg://fixture', 'vault://fixture')`, backendID)
+	require.NoError(t, err)
+
+	for _, zone := range zones {
+		_, err = pool.Exec(ctx, `
+			INSERT INTO disk_type_bindings
+				(id, disk_type_id, zone_id, backend_id, revision, pool, namespace_template,
+				 cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image, cap_online_grow, status)
+			VALUES ($1, $2, $3, $4, 1, 'kacho-fixture', '{projectId}', true, true, true, true, 'ACTIVE')`,
+			ids.NewHyphenID("dtb"), seededDiskType, zone, backendID)
+		require.NoError(t, err)
+	}
+}
 
 // imageRegionFixture — регион, который фикстуры образов объявляют явно
 // (mkImageFromSnapshot(..., "ru-central1", ...)). Он же передаётся в
@@ -57,6 +95,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
+	seedFixtureCatalog(t, pool)
 	return pool
 }
 

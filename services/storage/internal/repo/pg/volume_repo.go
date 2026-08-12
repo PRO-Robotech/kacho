@@ -36,11 +36,24 @@ import (
 
 // VolumeRepo — реализация volume.Reader/Writer поверх pgxpool.
 type VolumeRepo struct {
-	pool *pgxpool.Pool
+	// projectBytesLimit — предел провизионированного объёма на проект (0 — нет).
+	// Проверяется ВНУТРИ вставки: отдельным чтением две одновременные заявки
+	// прошли бы обе, каждая увидев доквотное состояние.
+	projectBytesLimit int64
+	pool              *pgxpool.Pool
 }
 
 // NewVolumeRepo создаёт VolumeRepo поверх pgxpool.
 func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo { return &VolumeRepo{pool: pool} }
+
+// WithProjectBytesLimit задаёт предел провизионированного объёма на проект.
+// Ноль — предела нет. Опция, а не параметр конструктора: тридцать вызовов
+// конструктора в пробах не должны переписываться ради величины, которая их не
+// касается.
+func (r *VolumeRepo) WithProjectBytesLimit(limit int64) *VolumeRepo {
+	r.projectBytesLimit = limit
+	return r
+}
 
 // volumeSelectCols — общий проекционный список для Get/List: колонки тома +
 // LEFT JOIN volume_attachments (0..1 строка, PK volume_id). Nullable attach-колонки
@@ -268,6 +281,10 @@ const volumeInsertCoherentSQL = `
 		SELECT 1 AS ok
 		  FROM snap_project sp
 		 WHERE sp.state = 'READY' AND sp.zone_id <> '' AND sp.zone_id = $6::text
+	), quota AS (
+		SELECT ($13::bigint = 0
+		        OR COALESCE((SELECT sum(v.size_bytes) FROM volumes v WHERE v.project_id = $2::text), 0)
+		           + $8::bigint <= $13::bigint) AS within
 	), bind AS (
 		SELECT b.id, b.pool,
 		       CASE WHEN b.namespace_template = '' THEN $2::text
@@ -293,15 +310,16 @@ const volumeInsertCoherentSQL = `
 		 WHERE ($9::text IS NULL OR EXISTS (SELECT 1 FROM snap_ok))
 		   AND ($10::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
 		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered AND dt.lifecycle = 'ACTIVE')
+		   AND EXISTS (SELECT 1 FROM quota WHERE quota.within)
 		RETURNING created_at, updated_at
 	)
 	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text,
-	       NULL::text, NULL::text, NULL::text, NULL::text FROM ins
+	       NULL::text, NULL::text, NULL::text, NULL::text, NULL::boolean FROM ins
 	UNION ALL
 	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt),
 	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_project),
 	       (SELECT state FROM src_project), (SELECT state FROM snap_project),
-	       (SELECT lifecycle FROM dt), (SELECT id FROM bind)
+	       (SELECT lifecycle FROM dt), (SELECT id FROM bind), (SELECT within FROM quota)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -351,11 +369,12 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		var dtOffered *bool
 		var ownImageRegion, ownSnapshotZone *string
 		var ownImageState, ownSnapshotState, dtLifecycle, bindingID *string
+		var withinQuota *bool
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, srcSnap, srcImg, zoneRegionID, v.Backend.BackendObject).
+			v.SizeBytes, srcSnap, srcImg, zoneRegionID, v.Backend.BackendObject, r.projectBytesLimit).
 			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone,
-				&ownImageState, &ownSnapshotState, &dtLifecycle, &bindingID)
+				&ownImageState, &ownSnapshotState, &dtLifecycle, &bindingID, &withinQuota)
 		bindingMissing := bindingID == nil
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
@@ -381,6 +400,13 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// на эту пару нет — значит исполнять создание некому. Отказ отдельный:
 			// «класс не предлагается в зоне» отправило бы администратора править
 			// каталог, тогда как чинить надо привязку.
+			// Исчерпание разбирается РАНЬШЕ прочего: тот же запрос пройдёт, как
+			// только освободится место, и отправлять вызывающего чинить ввод, в
+			// котором чинить нечего, было бы ложным следом.
+			if withinQuota != nil && !*withinQuota {
+				return fmt.Errorf("%w: storage quota exceeded for project %s",
+					storageerr.ErrResourceExhausted, v.ProjectID)
+			}
 			if bindingMissing {
 				return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
 					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)

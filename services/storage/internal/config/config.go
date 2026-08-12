@@ -271,6 +271,19 @@ type Config struct {
 	// BlockBackendReconcileBatch — сколько ресурсов сверщик берёт за проход.
 	BlockBackendReconcileBatch int `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH" default:"100"`
 
+	// ProjectProvisionedBytesLimit — верхний предел ПРОВИЗИОНИРОВАННОГО объёма на
+	// один проект. Ноль — предела нет.
+	//
+	// Величина наша, а не бэкенда: хранилище про наши проекты не знает и знать не
+	// должно, поэтому «один арендатор выел ресурс, за который отвечает другая
+	// команда» может остановить только облако. Предел проверяется ВНУТРИ вставки
+	// тома, тем же стейтментом, — иначе две одновременные заявки прошли бы обе.
+	//
+	// Это заведомо грубый инструмент: предел один на все проекты. Он и не
+	// претендует на большее — пределы как РЕСУРС принадлежат платформенному домену,
+	// и заводить их здесь значило бы, что их заведёт у себя каждый сервис.
+	ProjectProvisionedBytesLimit int64 `envconfig:"KACHO_STORAGE_PROJECT_PROVISIONED_BYTES_LIMIT" default:"0"`
+
 	// ===== per-edge mTLS =====
 
 	// GeoClientMTLS — client-creds ребра storage→geo (:9090).
