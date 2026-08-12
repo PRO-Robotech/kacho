@@ -99,10 +99,17 @@ def _poll_op_js(op_id_var: str, result_var: str, max_tries: int = 8):
 # Setup helpers — Network + Subnet для тестов, нуждающихся в parent.
 
 def _setup_net(suffix):
+    # Сеть объявляет план адресов: гонка режет из него подсети (10.250.*), а сеть без
+    # объявленного плана подсеть не принимает вовсе — тогда все три участника гонки
+    # получают синхронный отказ, победителей ноль, и проба состязания проверяет не то,
+    # ради чего написана. Тело burst-запросов строится СКРИПТОМ, поэтому первая
+    # редакция гейта фикстур этого места не видела; ветвь скриптовой нарезки добавлена
+    # тем же изменением.
     return [
         Step(
             name="setup-net", method="POST", path="/vpc/v1/networks",
-            body={"projectId": "{{_suiteProjectId}}", "name": f"conc-{suffix}-net-{{{{runId}}}}"},
+            body={"projectId": "{{_suiteProjectId}}", "name": f"conc-{suffix}-net-{{{{runId}}}}",
+                  "ipv4CidrBlocks": ["10.0.0.0/8"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.networkId", "netId")],
         ),

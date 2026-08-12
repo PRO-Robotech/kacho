@@ -159,7 +159,33 @@ var (
 	reNetworkIDRef = regexp.MustCompile(`"networkId"\s*:\s*"\{\{([^}]+)\}\}"`)
 	reStatusAssert = regexp.MustCompile(`pm\.response\.code[^;\n]*`)
 	reThreeDigit   = regexp.MustCompile(`\b([1-5]\d{2})\b`)
+
+	// Две формы нарезки, которые первая редакция гейта НЕ видела, — обе найдены
+	// не чтением, а прогоном сквозных проб: гейт был зелен, а e2e красен.
+	//
+	//  1. блок добавляется ПОЗЖЕ, отдельным глаголом на самой подсети. Создание
+	//     подсети без адреса законно, поэтому шаг создания проверку проходил, а
+	//     адрес появлялся шагом, которого разбор не рассматривал вовсе;
+	//  2. тело запроса собирается СКРИПТОМ (пачка параллельных созданий в пробе
+	//     состязания): у шага пустое тело и посторонний адрес, а настоящий запрос
+	//     живёт в тексте скрипта.
+	//
+	// Обе формы режут адрес из плана сети ровно так же, как обычное создание, и
+	// на сети без плана получают тот же синхронный отказ.
+	reSubnetAddBlocks  = regexp.MustCompile(`/vpc/v1/subnets/[^/]+:add-cidr-blocks\s*$`)
+	reScriptSubnetPost = regexp.MustCompile(`/vpc/v1/subnets['"` + "`" + `\s]`)
 )
+
+// carvesAddressByScript — тело запроса собрано скриптом шага: адрес подсети
+// задаётся не полем тела, а строкой в тексте. Возвращает true, когда скрипт
+// одновременно называет путь создания подсети и якорный адрес.
+func carvesAddressByScript(it pmItem) bool {
+	script := stepScript(it, "test") + "\n" + stepScript(it, "prerequest")
+	if !reScriptSubnetPost.MatchString(script) {
+		return false
+	}
+	return strings.Contains(script, "ipv4CidrPrimary") || strings.Contains(script, "ipv6CidrPrimary")
+}
 
 func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnetSupernetScan {
 	t.Helper()
@@ -199,6 +225,26 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 			}
 
 			switch {
+			case method == "POST" && carvesAddressByScript(step):
+				// Тело собрано скриптом: адрес шага стоит на ЧУЖОМ пути (пачка
+				// параллельных созданий адресуется на путь сетей), поэтому по
+				// адресу такой шаг не опознаётся вовсе. Ветвь стоит ПЕРВОЙ, иначе
+				// шаг был бы засчитан созданием сети — то есть не нарезкой, а её
+				// родителем, и предмет исчез бы дважды.
+				if refusal {
+					continue
+				}
+				out.subnetFixtures++
+				if planDeclared {
+					continue
+				}
+				if lastPlanless == "" {
+					out.parentOutOfCase++
+					continue
+				}
+				out.hits = append(out.hits, rel+" :: "+c.Name+" :: шаг «"+step.Name+
+					"» режет подсеть скриптом в сети из шага «"+lastPlanless+
+					"», которая плана не объявила")
 			case method == "POST" && reAddBlocks.MatchString(strings.TrimSpace(url)):
 				if strings.Contains(raw, "CidrBlocks") && !refusal {
 					out.declaredPlans++
@@ -217,8 +263,26 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 					planless[v] = step.Name
 				}
 				lastPlanless = step.Name
+			case method == "POST" && reSubnetAddBlocks.MatchString(strings.TrimSpace(url)):
+				// Адрес приходит на подсеть отдельным глаголом — нарезка та же,
+				// и на сети без плана она отвергается так же.
+				if !strings.Contains(raw, "CidrBlocks") || refusal {
+					continue
+				}
+				out.subnetFixtures++
+				if planDeclared {
+					continue
+				}
+				if lastPlanless == "" {
+					out.parentOutOfCase++
+					continue
+				}
+				out.hits = append(out.hits, rel+" :: "+c.Name+" :: шаг «"+step.Name+
+					"» добавляет адрес подсети в сети из шага «"+lastPlanless+
+					"», которая плана не объявила")
 			case method == "POST" && reSubnetCreate.MatchString(strings.TrimSpace(url)):
-				if !strings.Contains(raw, "ipv4CidrPrimary") && !strings.Contains(raw, "ipv6CidrPrimary") {
+				if !strings.Contains(raw, "ipv4CidrPrimary") && !strings.Contains(raw, "ipv6CidrPrimary") &&
+					!carvesAddressByScript(step) {
 					continue
 				}
 				if refusal {
