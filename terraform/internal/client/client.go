@@ -173,3 +173,39 @@ func IdempotencyKey(resourceType, address string, body []byte) string {
 	h.Write(body)
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// DoRaw — вызов с уже готовым телом.
+//
+// Нужен там, где тела у контракта нет отдельным сообщением: суффикс-действия края
+// принимают маленький объект, для которого генерировать тип не из чего. Общий путь
+// остаётся типизированным (Do), и это исключение видно по имени.
+func (c *Client) DoRaw(ctx context.Context, method, path string, body []byte, hdr *Headers) (*Response, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.endpoint+path, reader)
+	if err != nil {
+		return nil, fmt.Errorf("сборка запроса %s %s: %w", method, path, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if hdr != nil && hdr.IdempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", hdr.IdempotencyKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("вызов %s %s: %w", method, path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("чтение ответа %s %s: %w", method, path, err)
+	}
+	return &Response{StatusCode: resp.StatusCode, Body: raw, ContentType: resp.Header.Get("Content-Type")}, nil
+}
