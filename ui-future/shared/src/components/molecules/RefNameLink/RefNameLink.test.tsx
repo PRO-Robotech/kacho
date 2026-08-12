@@ -1,12 +1,10 @@
 // Ссылка на чужой ресурс по идентификатору. Kachō адресует ресурсы по
 // неизменяемому `id` (core #15), а показывать пользователю надо имя — его и
 // резолвит эта ссылка. Существенны: адрес перехода включает сегмент сервиса
-// (без него маршрут не совпадает и клик уводит в пустоту), клик не всплывает до
-// строки таблицы, а нерезолвленный ресурс показывается идентификатором, а не
-// исчезает.
+// (без него маршрут не совпадает и клик уводит в пустоту), а нерезолвленный
+// ресурс показывается идентификатором, а не исчезает.
 
-import { jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { RefNameLink } from "./RefNameLink";
@@ -61,25 +59,10 @@ describe("RefNameLink", () => {
     expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/networks/net-1");
   });
 
-  it("клик по ссылке не всплывает до строки таблицы", async () => {
-    stubList({ networks: [{ id: "net-1", name: "core" }] });
-    const onRowClick = jest.fn();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={["/projects/prj-1/vpc/subnets"]}>
-          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
-          <div onClick={onRowClick}>
-            <RefNameLink specId="networks" refId="net-1" projectId="prj-1" />
-          </div>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole("link", { name: "core" }));
-
-    expect(onRowClick).not.toHaveBeenCalled();
-  });
+  // Пробы «клик не всплывает до строки» здесь НЕТ намеренно: строки таблиц были
+  // кликабельны целиком, и ссылка гасила событие, чтобы клик по ней не уводил на
+  // родителя. Строки перестали быть ссылками (решение владельца 2026-08-12) —
+  // гасить нечего, и проба утверждала бы о механизме, которого в дереве нет.
 
   it("нерезолвленный идентификатор показывает усечённым, а не теряет", async () => {
     // Ресурс мог быть удалён или недоступен вызывающему; пустое место означало

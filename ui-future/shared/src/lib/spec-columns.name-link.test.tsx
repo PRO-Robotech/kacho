@@ -76,16 +76,16 @@ describe("колонка имени ресурса", () => {
     expect(screen.getByRole("link", { name: /a@b\.c/ })).toHaveAttribute("href", "/iam/users/usr-1");
   });
 
-  it("собственная отрисовка колонки сохраняется ВНУТРИ ссылки", () => {
-    // Спека рисует имя по-своему (копируемое имя, бейдж), и ссылка это не
-    // отбирает, а оборачивает: копирование по клику остаётся — оно гасит
-    // событие и до перехода не доходит.
-    const spec = { ...REGISTRY["networks"] };
-    spec.columns = [{ header: "Имя", path: "name", render: () => <span>по-своему</span> }];
-    const col = buildSpecColumns(spec, { projectId: "prj-1" }).find((c) => c.header === "Имя")!;
-    render(<MemoryRouter>{col.cell({ id: "net-1", name: "core" })}</MemoryRouter>);
+  it("кликабельного внутри ссылки НЕТ — копирование стоит рядом", () => {
+    // Прежде собственная отрисовка колонки (кнопка «скопировать имя»)
+    // оборачивалась в ссылку: клик по тексту попадал на кнопку, гасился ею и
+    // копировал вместо перехода. Ссылка была, выглядела рабочей и не работала.
+    cellOf("networks", { id: "net-1", name: "core" }, "prj-1");
 
-    expect(screen.getByText("по-своему")).toBeInTheDocument();
-    expect(screen.getByRole("link")).toHaveAttribute("href", "/projects/prj-1/vpc/networks/net-1");
+    const link = screen.getByRole("link", { name: /core/ });
+    expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/networks/net-1");
+    expect(link.querySelector("button")).toBeNull();
+    // Копирование осталось — отдельной кнопкой ВНЕ ссылки.
+    expect(screen.getByRole("button", { name: /Скопировать|Скопировано/i })).toBeInTheDocument();
   });
 });

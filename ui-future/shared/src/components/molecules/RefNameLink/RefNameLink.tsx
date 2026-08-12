@@ -3,13 +3,13 @@
 // (дедуплицируется TanStack по (specId, projectId)), находит row.name по id.
 // При клике stopPropagation чтобы не триггерить row-click таблицы-родителя.
 
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Tag } from "antd";
 import { api } from "@shared/api/client";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { ResourceLink } from "@shared/components/molecules/ResourceLink";
 import { useProjectStore } from "@shared/lib/context-store";
-import { REGISTRY, resourceProjectPath } from "@shared/lib/resource-registry";
+import { REGISTRY } from "@shared/lib/resource-registry";
 
 interface Props {
   specId: string; // "networks" | "route-tables" | "security-groups" | ...
@@ -50,28 +50,20 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
 
   const items = data?.[spec.payloadKey] ?? [];
   const row = items.find((r) => r.id === refId);
-  const fullName = row?.name || refId.slice(0, 12) + "…";
-  const display = maxChars && fullName.length > maxChars ? fullName.slice(0, maxChars) + "…" : fullName;
-  // KAC-198: include service segment (vpc/compute/nlb) — без него detail-route
-  // в App.tsx не матчился → клик по ссылке шёл в SPA-fallback (blank/404).
-  const basePath = resourceProjectPath(specId, projectId);
-  const href = basePath ? `${basePath}/${refId}` : null;
 
-  // Единый вид ссылки на ресурс: иконка типа ресурса + имя (как в документации).
-  const content = (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <ResourceIcon specId={specId} />
-      {display}
-    </span>
-  );
-  const inner = href ? (
-    <Link to={href} onClick={(e) => e.stopPropagation()} title={fullName} className="text-primary hover:underline">
-      {content}
-    </Link>
-  ) : (
-    <span className="text-foreground" title={fullName}>
-      {content}
-    </span>
+  // Вид ссылки один на всю консоль — `ResourceLink`. Здесь остаётся только то,
+  // чем ссылка на ЧУЖОЙ ресурс отличается: имя приходится резолвить запросом,
+  // потому что в строке его нет.
+  const inner = (
+    <ResourceLink
+      specId={specId}
+      id={refId}
+      name={row?.name ?? ""}
+      projectId={projectId}
+      icon
+      maxChars={maxChars}
+      plain
+    />
   );
 
   if (asTag) {

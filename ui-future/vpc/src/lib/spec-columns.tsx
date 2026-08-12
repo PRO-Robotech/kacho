@@ -10,8 +10,8 @@ import type { Column } from "@shared/components/organisms/ResourceTable";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
-import { getByPath, resourceProjectPath, resourceServicePrefix, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
+import { ResourceLink } from "@/components/molecules/ResourceLink";
+import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 
 // Маппинг kacho.cloud.reference.Reference.referrer.type → registry specId, чтобы
@@ -146,16 +146,6 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
-// detailBase — адрес карточки ресурса для колонки имени.
-//
-// `resourceProjectPath` отдаёт null для IAM: у его ресурсов нет
-// project-scoped пути, они смонтированы под `/iam/<route>`. Для ссылки это
-// означало «адреса нет» — и весь модуль оставался без переходов по имени.
-function detailBase(spec: ResourceSpec, projectId: string | null | undefined): string | null {
-  const own = resourceProjectPath(spec.id, projectId ?? null);
-  if (own) return own;
-  return resourceServicePrefix(spec.id) === "iam" ? `/iam/${spec.route}` : null;
-}
 
 // ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку.
 // Собственная отрисовка колонки сохраняется ВНУТРИ ссылки (копирование имени
@@ -164,30 +154,26 @@ function ResourceNameCell({
   spec,
   row,
   opts,
-  children,
+  identityPath,
 }: {
   spec: ResourceSpec;
   row: Record<string, unknown>;
   opts: FormatCellOpts;
-  children: ReactNode;
+  /** Поле, по которому ресурс узнают: обычно `name`, у пользователя — почта. */
+  identityPath: string;
 }): ReactNode {
-  const id = getByPath(row, "id");
-  const idStr = typeof id === "string" ? id : "";
-  const base = opts.nameBasePath ?? detailBase(spec, opts.projectId);
-  const href = opts.nameHref ? opts.nameHref(row) : base && idStr ? `${base}/${idStr}` : null;
-  const content = opts.nameIcon ? (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-      <ResourceIcon specId={spec.id} />
-      {children}
-    </span>
-  ) : (
-    children
-  );
-  if (!href) return content;
+  const idRaw = getByPath(row, "id");
+  const nameRaw = getByPath(row, identityPath);
   return (
-    <Link to={href} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
-      {content}
-    </Link>
+    <ResourceLink
+      specId={spec.id}
+      id={typeof idRaw === "string" ? idRaw : ""}
+      name={typeof nameRaw === "string" ? nameRaw : ""}
+      href={opts.nameHref ? opts.nameHref(row) : opts.nameBasePath && idRaw ? `${opts.nameBasePath}/${String(idRaw)}` : undefined}
+      projectId={opts.projectId}
+      icon={opts.nameIcon}
+      copy
+    />
   );
 }
 
@@ -205,7 +191,7 @@ export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}):
     cell: (row) => {
       const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
       // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
-      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, children: inner }) : inner;
+      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, identityPath: identityPath ?? "name" }) : inner;
     },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));

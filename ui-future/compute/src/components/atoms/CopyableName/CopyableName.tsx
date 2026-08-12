@@ -11,10 +11,14 @@ interface Props {
   name: string;
   /** Fallback значение, если name пустое (например — id ресурса). */
   fallback?: string;
+  /** Только иконка, без текста. Нужен там, где сам текст уже занят ССЫЛКОЙ на
+   *  карточку: кнопка вокруг текста перехватывала бы клик и вместо перехода
+   *  копировала — при том что ссылка есть и выглядит рабочей. */
+  iconOnly?: boolean;
   className?: string;
 }
 
-export function CopyableName({ name, fallback, className }: Props) {
+export function CopyableName({ name, fallback, className, iconOnly }: Props) {
   const [copied, setCopied] = useState(false);
 
   // Используем name если есть, иначе fallback (id), иначе empty placeholder.
@@ -48,11 +52,16 @@ export function CopyableName({ name, fallback, className }: Props) {
         className,
       )}
     >
-      <span className="break-all">{value}</span>
+      {!iconOnly && <span className="break-all">{value}</span>}
       {copied ? (
         <Check className="h-3 w-3 text-emerald-500 shrink-0" />
       ) : (
-        <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
+        <Copy
+          className={cn(
+            "h-3 w-3 shrink-0 transition-opacity",
+            iconOnly ? "opacity-40 hover:opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+        />
       )}
     </button>
   );

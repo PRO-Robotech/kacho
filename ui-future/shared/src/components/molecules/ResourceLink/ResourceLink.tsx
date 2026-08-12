@@ -1,0 +1,92 @@
+// ResourceLink — ЕДИНСТВЕННЫЙ вид ссылки на ресурс во всей консоли.
+//
+// Одна ссылка — один компонент: прежде их было несколько (ячейка имени в
+// таблице, ссылка на чужой ресурс, ссылка на потребителя), и они разошлись во
+// всём — в том, откуда берётся адрес, показывать ли иконку типа и что делает
+// клик. Самое дорогое расхождение стоило дня: имя в таблице оборачивалось в
+// ссылку ВМЕСТЕ с кнопкой «скопировать имя», клик попадал на кнопку и копировал
+// вместо перехода — ссылка была, выглядела рабочей и не работала.
+//
+// Отсюда правила, которые компонент держит сам:
+//   • текст имени — САМА ссылка, внутрь неё не кладётся ничего кликабельного;
+//   • копирование, если нужно, — отдельной иконкой РЯДОМ, вне ссылки;
+//   • иконка типа — по требованию (`icon`): она нужна там, где в одном окне
+//     соседствуют разные типы, и лишняя там, где тип назван заголовком;
+//   • без адреса ссылка не рисуется: подчёркнутый текст, никуда не ведущий,
+//     обещает переход, которого нет.
+import type { ReactNode } from "react";
+import { Link } from "react-router";
+import { Typography } from "antd";
+import { CopyableName } from "@shared/components/atoms/CopyableName";
+import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { resourceProjectPath, resourceServicePrefix, REGISTRY } from "@shared/lib/resource-registry";
+
+export interface ResourceLinkProps {
+  /** Тип ресурса — из него берутся иконка и, если не задан `href`, адрес. */
+  specId: string;
+  /** Идентификатор ресурса. Без него адреса нет. */
+  id: string | null | undefined;
+  /** Человекочитаемое имя. Пусто → показывается усечённый идентификатор. */
+  name?: string | null;
+  /** Явный адрес карточки. Задаётся, когда путь не «база + идентификатор». */
+  href?: string | null;
+  /** Проект для построения адреса, если `href` не задан. */
+  projectId?: string | null;
+  /** Иконка типа слева от имени. */
+  icon?: boolean;
+  /** Иконка копирования справа от ссылки (вне неё). */
+  copy?: boolean;
+  /** Обрезать имя по N символов; полное остаётся в подсказке. */
+  maxChars?: number;
+  /** Не выделять имя полужирным (в плотных таблицах-списках). */
+  plain?: boolean;
+}
+
+/** Адрес карточки ресурса. IAM смонтирован под `/iam/<route>` и своего
+ *  project-scoped пути не имеет — общая функция отдаёт для него null. */
+export function resourceDetailHref(specId: string, id: string, projectId?: string | null): string | null {
+  const spec = REGISTRY[specId];
+  if (!spec || !id) return null;
+  const own = resourceProjectPath(specId, projectId ?? null);
+  if (own) return `${own}/${id}`;
+  return resourceServicePrefix(specId) === "iam" ? `/iam/${spec.route}/${id}` : null;
+}
+
+export function ResourceLink({
+  specId,
+  id,
+  name,
+  href,
+  projectId,
+  icon = false,
+  copy = false,
+  maxChars,
+  plain = false,
+}: ResourceLinkProps): ReactNode {
+  const rid = typeof id === "string" ? id : "";
+  if (!rid && !name) return <Typography.Text type="secondary">—</Typography.Text>;
+
+  const full = name || (rid.length > 12 ? `${rid.slice(0, 12)}…` : rid);
+  const shown = maxChars && full.length > maxChars ? `${full.slice(0, maxChars)}…` : full;
+  const target = href ?? resourceDetailHref(specId, rid, projectId);
+
+  const label = (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      {icon ? <ResourceIcon specId={specId} /> : null}
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{shown}</span>
+    </span>
+  );
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }} title={full}>
+      {target ? (
+        <Link to={target} className={plain ? "text-primary hover:underline" : "text-primary hover:underline font-medium"}>
+          {label}
+        </Link>
+      ) : (
+        <span className={plain ? "text-foreground" : "text-foreground font-medium"}>{label}</span>
+      )}
+      {copy && full ? <CopyableName name={full} iconOnly /> : null}
+    </span>
+  );
+}
