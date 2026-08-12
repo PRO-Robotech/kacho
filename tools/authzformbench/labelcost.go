@@ -101,12 +101,18 @@ const AttributionRule = `
     без наклона не отличает O(1) от O(N) — а вся разница форм именно в этом.
 `
 
-// QueueFloorPredicate — предикат, которым получена неизмеренная часть окна.
+// QueuePredicate — предикат, которым читается неизмеренная часть окна.
 //
-// Названа предикатом, а не числом: число из памяти устареет молча, а команда
-// пересчитывается. Печатается в отчёт вместе со значением, снятым прогоном.
-const QueueFloorPredicate = `grep -n 'KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS\|PollFallback' ` +
-	`services/iam/cmd/kacho-iam/serve.go services/iam/cmd/kacho-iam/fga_outbox_drainer.go`
+// Предикатом, а не числом: число из памяти устаревает молча, команда — нет.
+//
+// И НИКАКОГО «пола» из этих величин не строится. Обе очереди продукта
+// пробуждаются УВЕДОМЛЕНИЕМ, а перечисленные периоды — запасной путь на
+// пропущенное уведомление. Объявить период опроса нижней границей окна значило бы
+// назвать числом то, что на штатном пути не выполняется, — придуманная величина
+// в отчёте, чей предмет как раз в том, чтобы величины были измеренными.
+const QueuePredicate = `grep -rn 'KACHO_IAM_RECONCILE_DRAIN_INTERVAL_MS|PollFallback|pg_notify' ` +
+	`services/iam/cmd/kacho-iam/serve.go services/iam/cmd/kacho-iam/fga_outbox_drainer.go ` +
+	`services/iam/internal/repo/kacho/pg/reconcile_notify.go`
 
 // ── словарь операций ──────────────────────────────────────────────────────────
 
@@ -897,12 +903,16 @@ func (c *SQLStmtCounter) Verify(ctx context.Context, pool *pgxpool.Pool, place s
 
 // LabelReportInput — всё, что нужно отчёту, кроме самих ячеек.
 type LabelReportInput struct {
-	Prov      Provenance
-	Scenario  LabelScenario
-	Config    LabelConfig
-	Ns        []int
-	QueueMS   int    // период опроса очереди, прочитанный из дерева
-	QueueNote string // чем он получен и что означает
+	Prov     Provenance
+	Scenario LabelScenario
+	Config   LabelConfig
+	Ns       []int
+	// QueueNote — что стоит между коммитом метки и началом пересчёта у продукта,
+	// прочитанное из дерева. ТЕКСТ, а не число: складывать его с измеренным окном
+	// запрещено правилом отнесения п.7.
+	QueueNote string
+	// RunCommand — чем прогон воспроизводится. Замер без него не свидетельство.
+	RunCommand string
 	// RepeatSchedule — сколько повторов снято на каждом N. Печатается строкой, а
 	// не одним числом: расписание, уменьшающееся с ростом N, обязано быть видно,
 	// иначе p95 на одном образце читается как p95 на пяти.
@@ -940,8 +950,17 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 		in.Scenario.LabelKey, in.Scenario.LabelValue, in.Scenario.ProjectID)
 	p("страница договора   %d · часть %d · частей в полёте %d\n",
 		in.Scenario.PageSize, in.Scenario.Partition, in.Scenario.Parallelism)
+	p("                    фактическая страница = min(N, %d); её размер стоит в колонке «строк»,\n",
+		in.Scenario.PageSize)
+	p("                    поэтому на N меньше страницы величина D2 относится к N объектам, а не к %d\n",
+		in.Scenario.PageSize)
 	p("повторов            %s (нулевой повтор прогревочный и в выборку не входит)\n", in.RepeatSchedule)
 	p("бюджет окна         %s, шаг опроса %s\n", in.Config.WindowBudget, in.Config.PollEvery)
+	p("воспроизведение     %s\n", in.RunCommand)
+	p("\nРевизия выше — та, на которой прогон ИСПОЛНЯЛСЯ: правило отнесения и прибор\n")
+	p("приехали своим коммитом РАНЬШЕ, а этот отчёт — отдельным коммитом ПОЗЖЕ. Порядок\n")
+	p("виден по истории, и в этом его смысл: правило, впервые появившееся вместе с\n")
+	p("числами, неотличимо от правила, подобранного под них.\n")
 
 	p("\n\nРАБОТА: мс (p50 / p95), обращений к движку, стейтментов SQL, строк намерения\n")
 	p("---------------------------------------------------------------------------\n")
@@ -992,9 +1011,9 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 				string(c.Op), shortForm(c.Form), c.N, c.Repeats, c.WindowP50, c.WindowP95, c.WindowMax)
 		}
 	}
-	p("\nНИЖНЯЯ ГРАНИЦА, КОТОРОЙ ИЗМЕРЕННОЕ ОКНО ДВИЖКА НЕ СОДЕРЖИТ: %d мс\n", in.QueueMS)
-	p("%s\n", in.QueueNote)
-	p("предикат: %s\n", QueueFloorPredicate)
+	p("\nЧЕГО ИЗМЕРЕННОЕ ОКНО ДВИЖКА НЕ СОДЕРЖИТ\n")
+	p("%s\n", strings.TrimSpace(in.QueueNote))
+	p("предикат: %s\n", QueuePredicate)
 
 	// Категории исхода. Сумма обязана сходиться с числом ячеек — отчёт, полный по
 	// собственному счёту, молчал бы о самых дорогих вопросах.
