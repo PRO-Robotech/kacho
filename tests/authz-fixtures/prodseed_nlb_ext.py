@@ -55,7 +55,13 @@ def create(path, body, key):
 
 
 # --- vpc network + zonal subnets + security group (suite project) ------------
-net = create("/vpc/v1/networks", {"projectId": proj, "name": f"ps-nlb-net-{RID}"}, "networkId")
+# Сеть объявляет адресный план: сеть без него подсеть не принимает (sync 400) —
+# нарезать не из чего. Посев без плана был бы снисходительнее продукта и
+# обрушил бы всё, что стоит на подсети (адрес, интерфейс, балансировщик).
+net = create("/vpc/v1/networks",
+             {"projectId": proj, "name": f"ps-nlb-net-{RID}",
+              "ipv4CidrBlocks": ["10.196.0.0/16"], "ipv6CidrBlocks": ["fd00:196::/48"]},
+             "networkId")
 out["existingNetworkId"] = net
 
 sub = create("/vpc/v1/subnets",
@@ -97,7 +103,10 @@ except Exception:  # noqa: BLE001 — v6 may be unavailable on the subnet; degra
     pass
 
 # cross-project address (jwtProjectEditorA also holds editor on projA2 in the matrix).
-net_x = create("/vpc/v1/networks", {"projectId": proj_cross, "name": f"ps-nlb-netx-{RID}"}, "networkId")
+net_x = create("/vpc/v1/networks",
+               {"projectId": proj_cross, "name": f"ps-nlb-netx-{RID}",
+                "ipv4CidrBlocks": ["10.196.0.0/16"]},
+               "networkId")
 sub_cp = create("/vpc/v1/subnets",
                 {"projectId": proj_cross, "networkId": net_x, "name": f"ps-nlb-sub-cp-{RID}",
                  "zoneId": zone_a, "ipv4CidrPrimary": "10.196.2.0/24"}, "subnetId")

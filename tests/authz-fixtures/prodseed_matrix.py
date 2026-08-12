@@ -444,10 +444,19 @@ def _seed_address_pool(zone_id, name, v4, v6=()):
 def _seed_network(project_id, name):
     """A pre-existing vpc Network in `project_id` (seedNetworkA1Id / seedNetworkB1Id —
     the GET-probe targets of the authz-deny matrix). Best-effort: a failure leaves the
-    key empty and prodseed_all drops empty keys rather than blanking a committed one."""
+    key empty and prodseed_all drops empty keys rather than blanking a committed one.
+
+    The address plan is declared because subnets ARE carved in these two networks by
+    the vpc authz-deny suite: a network that declares no supernet refuses subnets of
+    that family outright (sync 400 — there is nothing to carve from). A planless seed
+    would be more permissive than the product and would take down every probe standing
+    on a subnet, with the failure surfacing far from its cause.
+    """
     try:
         return _await(_curl("POST", "/vpc/v1/networks", boot,
-                            {"projectId": project_id, "name": name}), boot, "networkId")
+                            {"projectId": project_id, "name": name,
+                             "ipv4CidrBlocks": ["10.0.0.0/8"],
+                             "ipv6CidrBlocks": ["fd00::/8"]}), boot, "networkId")
     except RuntimeError:
         return ""
 

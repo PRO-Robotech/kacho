@@ -47,6 +47,12 @@ class Step:
     #   "anonymous"       — Authorization header снимается перед запросом
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (значение из env при выполнении)
     auth: Optional[str] = None
+    # declares_no_supernet=True — сеть создаётся НАМЕРЕННО без объявленного плана
+    # (см. _declare_supernet_where_a_subnet_is_carved ниже). Ставится ТОЛЬКО там,
+    # где предмет кейса — сам отказ подсети в такой сети; во всех прочих местах
+    # план дописывается генератором, потому что иначе фикстура снисходительнее
+    # продукта.
+    declares_no_supernet: bool = False
     # internal=True — запрос идёт на api-gateway cluster-internal REST listener
     # ({{internalBaseUrl}}, :8081), а НЕ на публичный cmux ({{baseUrl}}, :8080).
     #
@@ -1728,11 +1734,17 @@ def pairwise_subnet_pack():
                 #    существующую), поэтому peer-проверка зоны проходит всегда;
                 #  * префикс: v4-валидация отвергает только длиннее /28 — /16, /24, /28
                 #    внутри полосы; сетевой адрес у всех девяти канонический;
-                #  * вложенность в родительскую сеть НЕ ограничивает: обёртка создаёт
-                #    сеть БЕЗ объявленного супернета, а проверка вложенности при пустом
-                #    супернете пропускается by construction. То есть ось префикса здесь
-                #    не взаимодействует с адресным пространством сети — это и был вопрос,
-                #    на который «200 либо 400» позволяло не отвечать;
+                #  * вложенность в родительскую сеть НЕ ограничивает: план сети —
+                #    FIXTURE_NETWORK_SUPERNET (10.0.0.0/8), а все девять якорей лежат
+                #    в 10.170…10.178, то есть внутри него при любом из трёх префиксов.
+                #    Здесь стояло «сеть создаётся БЕЗ супернета, а проверка при пустом
+                #    супернете пропускается by construction» — этого пропуска больше
+                #    нет: сеть без объявленного плана подсеть не принимает вовсе, и
+                #    обоснование, опиравшееся на пропуск, обосновывало бы отказ всех
+                #    девяти. Вывод не изменился, основание заменено на действующее;
+                #    ось префикса по-прежнему не взаимодействует с адресным
+                #    пространством сети — это и был вопрос, на который «200 либо 400»
+                #    позволяло не отвечать;
                 #  * имя и CIDR у каждой комбинации свои, сеть у каждого кейса свежая —
                 #    ни UNIQUE(name), ни EXCLUDE по пересечению не срабатывают.
                 #
@@ -2885,6 +2897,53 @@ def step_to_postman(step: Step) -> Dict:
     return item
 
 
+# ПЛАН ФИКСТУРНОЙ СЕТИ.
+#
+# Сеть, не объявившая супернет семейства, подсеть этого семейства НЕ ПРИНИМАЕТ —
+# синхронный 400: нарезать не из чего. Значит фикстура, которая создаёт сеть телом
+# без блоков и тут же режет в ней подсеть, была бы снисходительнее продукта и
+# прятала бы ровно тот отказ, который продукт теперь даёт.
+#
+# Блоки выбраны широкими намеренно: предмет таких кейсов — подсеть, адрес,
+# интерфейс, балансировщик, а НЕ границы адресного плана. Узкий план заставлял бы
+# держать в фикстуре второй экземпляр знания о том, какие CIDR берут соседние шаги,
+# и разъезжался бы с ними молча. Кейсы, чей предмет — сами границы (подсеть вне
+# супернета, :add-cidr-blocks, :remove-cidr-blocks), объявляют свои блоки САМИ и
+# нормализацией не затрагиваются.
+FIXTURE_NETWORK_SUPERNET = {
+    "ipv4CidrBlocks": ["10.0.0.0/8"],
+    "ipv6CidrBlocks": ["fd00::/8"],
+}
+
+
+def _declare_supernet_where_a_subnet_is_carved(steps: List[Step]) -> List[Step]:
+    """Кейс, режущий подсеть с CIDR, обязан объявить план у своей сети.
+
+    Дописывается ТОЛЬКО там, где кейс действительно режёт подсеть с адресом:
+    негативы про сам Network.Create (пустое тело, отсутствующий projectId,
+    невалидный блок супернета) подсеть не режут и остаются нетронутыми — иначе
+    нормализация правила бы то, о чём кейс спрашивает.
+
+    Шаг, уже назвавший свои блоки, не трогается: у него предмет — границы плана.
+    Шаг с `declares_no_supernet=True` не трогается тоже — там предмет сам отказ.
+    """
+    carves = any(
+        s.method == "POST" and s.path == "/vpc/v1/subnets" and isinstance(s.body, dict)
+        and ("ipv4CidrPrimary" in s.body or "ipv6CidrPrimary" in s.body)
+        for s in steps
+    )
+    if not carves:
+        return steps
+    out = []
+    for s in steps:
+        if (s.method == "POST" and s.path == "/vpc/v1/networks"
+                and isinstance(s.body, dict) and not s.declares_no_supernet
+                and not any(k.endswith("CidrBlocks") for k in s.body)):
+            s = replace(s, body={**s.body, **FIXTURE_NETWORK_SUPERNET})
+        out.append(s)
+    return out
+
+
 def case_to_postman(case: Case) -> Dict:
     tags = [f"class:{c}" for c in case.classes] + [f"priority:{case.priority}"]
     return {
@@ -2892,7 +2951,9 @@ def case_to_postman(case: Case) -> Dict:
         "description": " | ".join(tags),
         "item": [step_to_postman(s) for s in
                  _assert_published_id_outcome(
-                     _assert_delete_operation_outcome(_wrap_own_fresh_reads(case.steps)))],
+                     _assert_delete_operation_outcome(
+                         _declare_supernet_where_a_subnet_is_carved(
+                             _wrap_own_fresh_reads(case.steps))))],
     }
 
 

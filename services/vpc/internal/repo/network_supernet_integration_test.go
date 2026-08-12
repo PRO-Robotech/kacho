@@ -76,7 +76,12 @@ func TestIntegration_Network_VPC_1_06_SupernetRoundTrip(t *testing.T) {
 	assert.Equal(t, []string{"fd00:20::/48"}, got.IPv6CidrBlocks)
 	assert.Equal(t, rtID, got.DefaultRouteTableID)
 
-	// Пустой супернет (legacy-путь) остаётся легальным — []{} , не nil-паника.
+	// Сеть БЕЗ объявленного плана хранится законно — пустой набор приезжает как
+	// `[]{}`, а не nil-паникой. Это про ХРАНЕНИЕ и только: поле не обязательно на
+	// создании сети, поэтому строка валидна. Что такая сеть НЕ ПРИНИМАЕТ подсеть
+	// своего семейства, решает use-case (`validateSubnetWithinSupernet`) — здесь
+	// стояло слово «legacy-путь», и оно читалось как «состояние доживает своё»,
+	// хотя это штатное состояние свежесозданной сети до `:add-cidr-blocks`.
 	net2 := ids.NewID(ids.PrefixNetwork)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Networks().Insert(ctx, &domain.Network{ID: net2, ProjectID: "prj-supernet", Name: domain.RcNameVPC("legacy-empty")})

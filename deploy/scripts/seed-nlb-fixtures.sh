@@ -424,6 +424,13 @@ ZTAG=$(printf '%s' "$ZONE_ID" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-'
 ZOCT=$(ZONE="$ZONE_ID" python3 -c 'import hashlib, os; print(int(hashlib.md5(os.environ["ZONE"].encode()).hexdigest(), 16) % 254 + 1)')
 
 NET_NAME="kac-nlb-seed-net"                    # placement-FREE (a vpc Network carries no zone)
+# Declared address plan of the seed network. Wide on purpose: the subnets carved in it
+# are per-zone (10.130.$ZOCT.0/24 here) and per-case (10.x.y.0/24 / fdXX::/64 drawn from
+# run entropy by the nlb suites), so a narrow plan would hold a second copy of knowledge
+# that lives in those suites and would drift from it silently. The subject of the nlb
+# fixtures is the balancer, not the boundaries of the address plan.
+NET_SUPERNET_V4="10.0.0.0/8"
+NET_SUPERNET_V6="fd00::/8"
 SUBNET_NAME="kac-nlb-seed-subnet-$ZTAG"
 SUBNET_CIDR="10.130.$ZOCT.0/24"                # per-network EXCLUDE (network_id, cidr &&)
 POOL_NAME="kac-nlb-seed-ext-pool"              # GLOBAL default slot — one at a time, reclaimed
@@ -456,13 +463,33 @@ NET_SEL=$(printf '%s' "$NET_LIST" | probe_fixture networks "$NET_NAME" "" "")
 NET_ID=$(printf '%s' "$NET_SEL" | cut -f2)
 if [ -z "$NET_ID" ]; then
   log "2/6 creating Network $NET_NAME"
-  body='{"projectId":"'"$PROJECT_ID"'","name":"'"$NET_NAME"'","description":"KAC-NLB seed fixture"}'
+  body='{"projectId":"'"$PROJECT_ID"'","name":"'"$NET_NAME"'","description":"KAC-NLB seed fixture",'
+  body="$body"'"ipv4CidrBlocks":["'"$NET_SUPERNET_V4"'"],"ipv6CidrBlocks":["'"$NET_SUPERNET_V6"'"]}'
   op=$(curl_json POST "/vpc/v1/networks" "$body")
   op_id=$(printf '%s' "$op" | extract "id")
   NET_ID=$(wait_op "$op_id" | extract "metadata.networkId")
 else
   log "2/6 reusing existing Network $NET_ID (placement-free)"
 fi
+
+# The address plan is asserted on BOTH branches, and by growing it rather than by
+# reading it.
+#
+# A network that declares no supernet of a family refuses subnets of that family
+# outright (sync 400 — there is nothing to carve from). The create branch above now
+# declares one; the REUSE branch would otherwise adopt whatever is already there,
+# including a network seeded before the plan was required — and every subnet, address,
+# NIC and load balancer standing on it would fail far from the cause.
+#
+# :add-cidr-blocks is idempotent by contract (re-adding a declared block is a no-op,
+# not a duplicate), so one unconditional call covers "just created" and "adopted"
+# without branching on state that could change between the read and the write. It is
+# also the exact path the refusal message points the operator at.
+log "2/6 ensuring the address plan on Network $NET_ID ($NET_SUPERNET_V4 + $NET_SUPERNET_V6)"
+plan_body='{"ipv4CidrBlocks":["'"$NET_SUPERNET_V4"'"],"ipv6CidrBlocks":["'"$NET_SUPERNET_V6"'"]}'
+plan_op=$(curl_json POST "/vpc/v1/networks/$NET_ID:add-cidr-blocks" "$plan_body")
+plan_op_id=$(printf '%s' "$plan_op" | extract "id")
+wait_op "$plan_op_id" >/dev/null
 
 # ─── 3) Ensure VPC Subnet ----------------------------------------------------
 SUB_LIST=$(curl_json GET "/vpc/v1/networks/$NET_ID/subnets?pageSize=200")
