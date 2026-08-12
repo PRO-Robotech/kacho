@@ -12,7 +12,13 @@ def _make_net(name_suffix="net"):
             name="pre-create-net",
             method="POST",
             path="/vpc/v1/networks",
-            body={"projectId": "{{_suiteProjectId}}", "name": f"sub-{name_suffix}-{{{{runId}}}}"},
+            # Сеть объявляет план ОБОИХ семейств: подсеть нарезается ИЗ объявленного
+            # плана, а адрес может приходить и позже, отдельным глаголом на подсети —
+            # эту форму первая редакция гейта тоже не видела. Блоки шире всех
+            # диапазонов этого файла (10.x/24 и fd00../fd12../fd34../64); негативов на
+            # вложенность здесь нет, поэтому широкий план ничего не ослабляет.
+            body={"projectId": "{{_suiteProjectId}}", "name": f"sub-{name_suffix}-{{{{runId}}}}",
+                  "ipv4CidrBlocks": ["10.0.0.0/8"], "ipv6CidrBlocks": ["fd00::/8"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.networkId", "netId")],
         ),

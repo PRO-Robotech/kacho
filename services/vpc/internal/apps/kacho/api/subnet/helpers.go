@@ -90,22 +90,54 @@ func validateCIDRPrefix(field, value string) error {
 // семейства (redesign VPC-1 F7: Subnet.ipv4CidrPrimary ⊆ network.ipv4CidrBlocks).
 // Валидируется within-service против network-строки в той же БД.
 //
-// Back-compat: если сеть НЕ объявила супернет данного семейства (legacy/пустой
-// набор) — проверка этого семейства пропускается (существующие сети без
-// объявленного адресного пространства не ломаются). Нарушение → INVALID_ARGUMENT
-// с редизайн-текстом "subnet CIDR %s is not within any network CIDR block".
+// Ограничение БЕЗУСЛОВНО и ни при каком состоянии сети не пропускается. Сеть, не
+// объявившая супернет этого семейства, подсеть семейства не принимает: нарезать не
+// из чего, и отказ называет путь вперёд (`:add-cidr-blocks`). Сеть, чьи объявленные
+// блоки не разбираются, от необъявившей ничем не отличается — плана у неё тоже нет.
+// Нарушение вложенности → INVALID_ARGUMENT с редизайн-текстом
+// "subnet CIDR %s is not within any network CIDR block".
+//
+// Здесь стояла оговорка про совместимость с сетями без объявленного адресного
+// пространства. Она не называла ни того, чья это совместимость, ни предиката
+// снятия, и пережила бы любой повод: поле супернета не обязательно на создании
+// сети, поэтому «пустой набор» — не край, а штатное состояние целого класса сетей,
+// на котором ограничение просто не действовало.
 func validateSubnetWithinSupernet(netV4, netV6, subV4, subV6 []string) error {
-	if err := eachWithinSupernet(netV4, subV4); err != nil {
+	if err := eachWithinSupernet(netV4, subV4, "IPv4", "ipv4CidrBlocks"); err != nil {
 		return err
 	}
-	return eachWithinSupernet(netV6, subV6)
+	return eachWithinSupernet(netV6, subV6, "IPv6", "ipv6CidrBlocks")
 }
 
 // eachWithinSupernet — общая проверка одного семейства: каждый блок из blocks
-// обязан лежать внутри одного из supernet-блоков. Пустой supernet → skip.
-func eachWithinSupernet(supernet, blocks []string) error {
+// обязан лежать внутри одного из supernet-блоков.
+//
+// Ранний выход здесь ровно один и он на ПРЕДМЕТЕ (`blocks`): подсеть этого
+// семейства не просят — отвергать нечего. Раннего выхода по ИСТОЧНИКУ
+// (`supernet`, разобранный `supers`) нет и заводить его нельзя: он делает проверку
+// тождественно-истинной ровно тогда, когда ограничивать и надо. Различие ролей —
+// не стилистическое, оно держится гейтом `TestCheckNeverAcceptsBecauseItsConstraintIsEmpty`
+// в `internal/repohygiene`.
+func eachWithinSupernet(supernet, blocks []string, family, field string) error {
+	if len(blocks) == 0 {
+		// Подсеть этого семейства не просит — отсутствие супернета её не касается,
+		// и отказ был бы про то, чего не спрашивали.
+		return nil
+	}
 	if len(supernet) == 0 {
-		return nil // сеть не объявила супернет этого семейства → не ограничиваем (back-compat)
+		// Здесь стоял пропуск проверки со ссылкой на совместимость. Он не защитим:
+		// поле супернета НЕ обязательно на создании сети, поэтому пустой супернет —
+		// штатное состояние, а не редкость, и ограничение, ради которого поле
+		// существует, не действовало вовсе. Оговорка при этом не называла ни того,
+		// чья это совместимость, ни предиката снятия, — послабление, не истекающее
+		// само.
+		//
+		// Отказ, а не ослабление текста контракта: нарезать не из чего. Без
+		// объявленного блока у сети нет адресного плана, и подсеть перестаёт быть
+		// частью чего-либо. Путь вперёд уже поставлен и назван в самом отказе.
+		return status.Errorf(codes.InvalidArgument,
+			"network declares no %s supernet: add blocks via :add-cidr-blocks (%s) "+
+				"before creating an %s subnet", family, field, family)
 	}
 	supers := make([]netip.Prefix, 0, len(supernet))
 	for _, s := range supernet {
@@ -115,9 +147,10 @@ func eachWithinSupernet(supernet, blocks []string) error {
 		}
 		supers = append(supers, p.Masked())
 	}
-	if len(supers) == 0 {
-		return nil
-	}
+	// Здесь стоял второй ранний выход — по разобранному набору. Он повторял снятый
+	// пропуск на шаг ниже и был невидим: список блоков непуст, а сравнивать не с
+	// чем. Теперь нечитаемый план разбирается тем же циклом, что и невложенный
+	// блок, и вызывающий получает тот же контрактный тон.
 	for _, b := range blocks {
 		inner, perr := netip.ParsePrefix(b)
 		if perr != nil {

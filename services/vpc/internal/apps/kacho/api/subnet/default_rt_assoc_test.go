@@ -42,6 +42,8 @@ func seedNetworkWithDefaultRT(t *testing.T, kr *kachomock.Repository, projectID,
 	_, err = w.Networks().Insert(ctx, &domain.Network{
 		ID: networkID, ProjectID: projectID, Name: domain.RcNameVPC("net-default-rt"),
 		DefaultRouteTableID: rtID,
+		IPv4CidrBlocks:      []string{"10.0.0.0/8"},
+		IPv6CidrBlocks:      []string{"fd00::/48"},
 	})
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())

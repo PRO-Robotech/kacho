@@ -275,7 +275,10 @@ message CreateNetworkRequest {
   // true → создать default-SG для сети; false → сеть без default-SG.
   optional bool create_default_security_group = 5;
 
-  // Declared IPv4 supernet block(s). Each Subnet.ipv4_cidr_primary must fall
+  // Declared IPv4 supernet block(s). Optional here, but a network without them
+  // refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the
+  // constraint is never skipped for an empty list.
+  // Each Subnet.ipv4_cidr_primary must fall
   // within one of these blocks (validated at Subnet.Create). Optional at Create;
   // extended later via NetworkService.AddCidrBlocks.
   repeated string ipv4_cidr_blocks = 6;

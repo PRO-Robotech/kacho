@@ -33,16 +33,28 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
 
-// insertNetworkRow вставляет голый Network напрямую через writer (без use-case),
+// insertNetworkRow вставляет Network напрямую через writer (без use-case),
 // чтобы выполнить FK-precondition Create SG (сеть существует).
+//
+// Сеть объявляет план адресов семейства IPv4. Это не декорация фикстуры, а
+// приведение её к продукту: подсеть нарезается ИЗ объявленного плана, и сеть без
+// плана подсети не принимает. Фикстура, вставлявшая сеть без плана, была
+// снисходительнее продукта и прятала ровно тот отказ, который продукт производит,
+// — а пробы, которые на ней стоят, спрашивают совсем о другом (чужая таблица
+// маршрутов, регистрация прав) и обязаны доходить до своего предмета.
+//
+// Блок выбран так, чтобы вмещать диапазоны, которые нарезают вызывающие
+// (10.0.0.0/24 и 10.9.0.0/24). Пробе, которой нужна сеть БЕЗ плана, следует
+// вставлять её у себя явно — умолчание общего помощника обязано быть рабочим.
 func insertNetworkRow(ctx context.Context, t *testing.T, r kacho.Repository, projectID, name string) string {
 	t.Helper()
 	netID := ids.NewID(ids.PrefixNetwork)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Networks().Insert(ctx, &domain.Network{
-			ID:        netID,
-			ProjectID: projectID,
-			Name:      domain.RcNameVPC(name),
+			ID:             netID,
+			ProjectID:      projectID,
+			Name:           domain.RcNameVPC(name),
+			IPv4CidrBlocks: []string{"10.0.0.0/8"},
 		})
 		return e
 	}))

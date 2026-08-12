@@ -114,8 +114,9 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		// супернета родительской сети (within-service, та же БД). FOR SHARE (не
 		// plain Get): супернет параллельно переписывает Network.Add/RemoveCidrBlocks
 		// под `FOR UPDATE`, и без конфликтующего лока обе стороны решали бы по своим
-		// снимкам — блок коммитился вне итогового супернета (ban #10). Пустой
-		// супернет (legacy-сеть) → skip (back-compat, как в Subnet.Create). Блок вне
+		// снимкам — блок коммитился вне итогового супернета (ban #10). Требование
+		// безусловно, как и в Subnet.Create: сеть, не объявившая супернет этого
+		// семейства, диапазон семейства не принимает — расширять нечего. Блок вне
 		// супернета → InvalidArgument "subnet CIDR <X> is not within any network CIDR block".
 		parentNet, nerr := w.Networks().GetForShare(ctx, sub0.NetworkID)
 		if nerr != nil {
