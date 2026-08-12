@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Каждый ресурс публичного API обязан быть в Terraform-провайдере.
@@ -237,13 +239,26 @@ func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
 	dir := filepath.Join(root, "proto", "kacho", "cloud")
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return err
-		}
-		src, err := os.ReadFile(path) // #nosec G304 -- путь получен обходом дерева репозитория
-		if err != nil {
-			return err
+
+	// Состав берётся у ИНДЕКСА, а не обходом диска.
+	//
+	// Здесь стоял filepath.WalkDir, и общий страж обходов дерева
+	// (TestTreeWalkersAskTheIndex) назвал это место при первом же прогоне. Довод у
+	// стража конкретный: под деревом лежит и то, чего в репозитории нет —
+	// распаковки чартов, сборочные каталоги, node_modules, отчёты прогонов, — и
+	// обход диска либо читает лишнее, либо спотыкается о него. Отказ тогда
+	// приходит не там, где ошибка, и не у того, кто её внёс.
+	//
+	// treecorpus отдаёт отслеживаемые и неигнорируемые файлы, поэтому предмет
+	// переписи совпадает с предметом репозитория на любой машине.
+	files, err := treecorpus.UnderWithSuffix(dir, ".proto")
+	if err != nil {
+		t.Fatalf("состав контрактов: %v", err)
+	}
+	for _, path := range files {
+		src, rerr := os.ReadFile(path) // #nosec G304 -- путь получен из индекса репозитория
+		if rerr != nil {
+			t.Fatalf("чтение %s: %v", path, rerr)
 		}
 		s := string(src)
 		for _, m := range reService.FindAllStringSubmatchIndex(s, -1) {
@@ -256,10 +271,6 @@ func publicCreatingServices(t *testing.T, root string) []string {
 				out = append(out, name)
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход контрактов: %v", err)
 	}
 	sort.Strings(out)
 	return out
