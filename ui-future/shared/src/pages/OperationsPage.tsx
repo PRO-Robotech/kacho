@@ -13,7 +13,8 @@ import { api } from "@shared/api/client";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
-import { OperationsTable, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
+import { OperationsTable, operationColumnTitles, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -86,6 +87,7 @@ export function OperationsPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
   const [kind, setKind] = useState<string>("all");
+  const [hiddenCols, toggleCol] = useHiddenColumns("cols:vpc-operations");
 
   // 1) для каждого VPC-resource type грузим список ресурсов проекта.
   const listQueries = useQueries({
@@ -240,6 +242,12 @@ export function OperationsPage() {
               />
               <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
               <Select value={kind} onChange={setKind} options={KIND_OPTIONS} style={{ width: 180 }} />
+              {/* Где есть фильтр — есть и выбор столбцов. */}
+              <ColumnSettings
+                columns={operationColumnTitles(true).map((t) => ({ key: t, label: t }))}
+                hidden={hiddenCols}
+                onToggle={toggleCol}
+              />
             </>
           }
         />
@@ -249,6 +257,7 @@ export function OperationsPage() {
         <OperationsTable
           rows={filtered}
           loading={isLoading}
+          hiddenColumns={hiddenCols}
           showResourceKind
           empty={allOps.length > 0 && filtered.length === 0}
         />

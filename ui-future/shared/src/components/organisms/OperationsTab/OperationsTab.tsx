@@ -21,8 +21,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Input, Select } from "antd";
 import { api, ApiError } from "@shared/api/client";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import {
   OperationsTable,
+  operationColumnTitles,
   type Op,
   statusOf,
   type OperationStatus,
@@ -48,6 +50,7 @@ const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
 export function OperationsTab({ spec, resourceId, listPath }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
+  const [hiddenCols, toggleCol] = useHiddenColumns("cols:" + spec.id + "-operations");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "operations", resourceId],
@@ -123,9 +126,15 @@ export function OperationsTab({ spec, resourceId, listPath }: Props) {
           style={{ width: 260 }}
         />
         <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
+        {/* Где есть фильтр — есть и выбор столбцов. */}
+        <ColumnSettings
+          columns={operationColumnTitles().map((t) => ({ key: t, label: t }))}
+          hidden={hiddenCols}
+          onToggle={toggleCol}
+        />
       </HeaderSlotPortal>
 
-      <OperationsTable rows={filtered} loading={isLoading} empty={ops.length > 0 && filtered.length === 0} />
+      <OperationsTable rows={filtered} loading={isLoading} hiddenColumns={hiddenCols} empty={ops.length > 0 && filtered.length === 0} />
     </div>
   );
 }

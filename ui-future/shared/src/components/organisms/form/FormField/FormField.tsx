@@ -370,6 +370,10 @@ function ArrayFieldRenderer({
           // `placeholder` есть не у каждого вида подполя — читаем только у строкового.
           placeholder: sub.type === "string" ? (sub.placeholder ?? "") : "",
         }}
+        // Имя поля стоит СЛЕВА (левая колонка формы), поэтому шапка единственной
+        // колонки повторяла бы его вторым словом: «IPv4-адрес» слева и «Address»
+        // в шапке. В форме шапка не нужна — смысл колонки задан меткой поля.
+        hideHeader
         addLabel={`Добавить ${field.itemLabel}`}
         disabled={disabled}
       />

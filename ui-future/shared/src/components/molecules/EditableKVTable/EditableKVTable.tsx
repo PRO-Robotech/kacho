@@ -32,6 +32,10 @@ interface Props {
   colB?: ColDef;
   addLabel: string;
   disabled?: boolean;
+  /** Не рисовать шапку колонок. Нужно в ФОРМЕ: там имя поля уже стоит слева, и
+   *  заголовок единственной колонки повторял бы его вторым словом
+   *  («IPv4-адрес» слева и «Address» в шапке — находка владельца 2026-08-12). */
+  hideHeader?: boolean;
 }
 
 const ROW_H = 38;
@@ -68,7 +72,7 @@ const cellWrapStyle: React.CSSProperties = {
   borderRight: COL_DIVIDER,
 };
 
-export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled }: Props) {
+export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled, hideHeader }: Props) {
   const GRID_COLS = colB ? GRID_COLS_2 : GRID_COLS_1;
   const update = (idx: number, patch: Partial<KVRow>) => {
     onChange(rows.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
@@ -86,11 +90,13 @@ export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled
       }}
     >
       {/* header */}
+      {hideHeader ? null : (
       <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, background: "var(--kc-container)" }}>
         <div style={headCellStyle}>{colA.header}</div>
         {colB ? <div style={headCellStyle}>{colB.header}</div> : null}
         <div />
       </div>
+      )}
 
       {/* rows (пустое состояние не показываем — только кнопка «Добавить» в футере) */}
       {rows.map((r, idx) => (
