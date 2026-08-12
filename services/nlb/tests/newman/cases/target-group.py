@@ -609,12 +609,28 @@ CASES.append(Case(
         retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}", test_script=[])),
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
-        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+        # Утверждение здесь ОБЯЗАТЕЛЬНО, и его отсутствие уже стоило разбора дважды.
+        # Шаг молча принимал ЛЮБОЙ ответ: при отказе слушатель не создавался, `lstId`
+        # оставался пуст, и кейс разваливался ТРЕМЯ шагами позже — удаление группы
+        # проходило вместо отказа, а лог называл виновником `del-blocked`, который
+        # сделал ровно то, что должен был при отсутствующем слушателе. Предмет кейса —
+        # «удаление заблокировано ссылкой» — не может быть проверен, если ссылки нет;
+        # значит её создание обязано быть утверждением, а не пожеланием.
+        # Повтор здесь — не перестраховка, а ЕДИНСТВЕННОЕ, что закрывает окно
+        # материализации прав: шаг создаёт слушателя, ссылаясь на ДВА свежих ресурса,
+        # названных в ТЕЛЕ (`loadBalancerId`, `targetGroupId`), а автообёртка читает
+        # только адрес — коллекционный `/nlb/v1/listeners`, — и поэтому не срабатывает.
+        # Наблюдалось в прогоне 31615607201: ответ 403 «no authorization path to the
+        # resource», при том что соседний кейс с тем же шагом получил 200. Гонка, а не
+        # отказ по существу.
+        retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
+                          "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', "
+                          "() => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"])),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
         # owner-tuple materializes -> retry SELF; the block assertion then runs once the
@@ -742,12 +758,19 @@ CASES.append(Case(
         # Wire the TG to the LB via a listener (default_target_group_id) — a listener
         # referencing the TG is what now blocks the TG Move (attach/detach removed).
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
-        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+        # Тот же класс, что и у кейса удаления выше: ссылки на свежие ресурсы стоят в
+        # ТЕЛЕ, автообёртка их не видит, и в окне материализации прав шаг получает 403.
+        # Здесь он в прогоне 31615607201 прошёл — но именно «прошёл в этот раз»: без
+        # повтора и утверждения его успех держится на удаче, а предмет кейса (перенос
+        # отвергается, пока слушатель ссылается) без слушателя не существует.
+        retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
+                          "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', "
+                          "() => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"])),
         poll_operation_until_done(),
         # Move refuses SYNCHRONOUSLY while a listener still points at the TG
         # (targetgroup/move.go: ReferencingListenerIDs non-empty -> FAILED_PRECONDITION
