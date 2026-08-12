@@ -62,7 +62,11 @@ func (s *SyncRegistrar) Register(ctx context.Context, items []fgaregister.Item, 
 			},
 			Labels:          it.Labels,
 			ParentProjectID: it.ParentProjectID,
-			SourceVersion:   sourceVersion,
+			// Цепь предков — та же, что на пути очереди: обе доставки одного
+			// намерения обязаны нести одно содержание, иначе повтор стирает
+			// то, что записала первая.
+			ParentChain:   ownerregister.ParentChain(nil, it.ParentProjectID, ""),
+			SourceVersion: sourceVersion,
 		})
 	}
 	return s.delivery.Register(ctx, regs)

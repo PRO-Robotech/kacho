@@ -41,6 +41,7 @@ import (
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -127,7 +128,15 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.FGARe
 					Labels:          intent.Labels,
 					ParentProjectId: intent.ParentProjectID,
 					ParentAccountId: intent.ParentAccountID,
-					SourceVersion:   srcVer,
+					// Цепь предков идёт ОБОИМИ путями доставки — этим и синхронным.
+					// Проведи её одним, и повтор из очереди стёр бы её пустой: приёмная
+					// сторона заменяет набор рёбер объекта целиком, поэтому доставки
+					// одного намерения обязаны нести одно содержание.
+					//
+					// Ресурсы nlb лежат под проектом, глубже иерархия не идёт — цепь
+					// выводится из области ЭТОЙ ЖЕ доставки, ничего нового не выдумывая.
+					ParentChain:   ownerregister.ParentChain(nil, intent.ParentProjectID, intent.ParentAccountID),
+					SourceVersion: srcVer,
 				})
 				if cerr := classifyRegisterErr(err); cerr != nil {
 					return cerr

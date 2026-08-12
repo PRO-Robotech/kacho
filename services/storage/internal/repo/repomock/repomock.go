@@ -472,6 +472,9 @@ func mockRegistrations(item fgaregister.Item) []ownerregister.Registration {
 		TraceID:         id,
 		Labels:          item.Labels,
 		ParentProjectID: item.ParentProjectID,
-		SourceVersion:   nextFGAStamp(),
+		// Цепь предков собирается ТЕМ ЖЕ вызовом, что в проде: дублёр обязан
+		// выполнять контракт настоящего, иначе он снисходительнее продукта.
+		ParentChain:   ownerregister.ParentChain(nil, item.ParentProjectID, ""),
+		SourceVersion: nextFGAStamp(),
 	}}
 }
