@@ -55,6 +55,14 @@ type Reconciler struct {
 	cache map[string]blockbackend.Backend
 }
 
+// Умолчания на случай неполной конфигурации. Они НЕ заменяют боевого стража старта:
+// тот отказывает в старте, если ручки не заданы, — здесь лишь защита от нулевых
+// значений, которые превратили бы вызов в мгновенный отказ, а обход в холостой.
+const (
+	defaultCallTimeout = 30 * time.Second
+	defaultBatch       = 100
+)
+
 // Config — настройки сверщика.
 type Config struct {
 	Interval    time.Duration
@@ -67,6 +75,17 @@ type Config struct {
 func New(store *Store, opener Opener, cfg Config) *Reconciler {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
+	}
+	// Неположительный срок вызова даёт УЖЕ ИСТЁКШИЙ контекст: каждое обращение к
+	// бэкенду отказывается мгновенно, сверщик исправно крутится и не двигает ничего.
+	// Боевой страж старта такую конфигурацию не пропускает, но конструктор зовут и
+	// пробы — а проба, молча получившая истёкший контекст, проверяет не то, что
+	// написано в её заголовке.
+	if cfg.CallTimeout <= 0 {
+		cfg.CallTimeout = defaultCallTimeout
+	}
+	if cfg.Batch <= 0 {
+		cfg.Batch = defaultBatch
 	}
 	return &Reconciler{
 		store: store, opener: opener,

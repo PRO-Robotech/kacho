@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/operationresolver"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -262,6 +263,39 @@ func runServe(cfg config.Config) error {
 		Image:    imageRepo,
 	}, logger)
 	go lroReconciler.Run(ctx)
+
+	// ── сверщик плоскости данных ─────────────────────────────────────────────
+	//
+	// Единственный производитель готовности ресурса: операция фиксирует намерение и
+	// завершается, а объявить ресурс готовым вправе только тот, кто УВИДЕЛ объект.
+	// Без него ресурс остаётся создаваемым навсегда — поэтому вид бэкенда, объявленный
+	// без работоспособного адаптера, роняет старт, а не молча заводит петлю, которая
+	// каждый проход берёт работу и ничего не делает.
+	if cfg.BlockBackendKind != "" {
+		opener := clients.NewBackendOpener(blockBackendFactories(),
+			clients.NewDirCredentials(cfg.BlockBackendCredentialsDir))
+		if !opener.Supports(cfg.BlockBackendKind) {
+			return fmt.Errorf("storage backend kind %q is configured but this build carries no "+
+				"adapter for it (adapters present: %v): every volume registered on it would stay "+
+				"in CREATING forever while the service reported itself healthy",
+				cfg.BlockBackendKind, opener.Kinds())
+		}
+		dataPlane := reconciler.New(reconciler.NewStore(pool), opener, reconciler.Config{
+			Interval:    cfg.BlockBackendReconcileInterval,
+			Batch:       cfg.BlockBackendReconcileBatch,
+			CallTimeout: cfg.BlockBackendCallTimeout,
+			Logger:      logger,
+		})
+		go dataPlane.Run(ctx)
+		logger.Info("storage data-plane reconciler started",
+			"kind", cfg.BlockBackendKind, "interval", cfg.BlockBackendReconcileInterval,
+			"batch", cfg.BlockBackendReconcileBatch)
+	} else {
+		// Названо вслух: без плоскости данных ресурсы остаются control-plane-записями.
+		// Создать их при этом нельзя — класс не предлагается без действующей ревизии
+		// привязки, а её нет без бэкенда, — поэтому «создаваемый навсегда» невозможен.
+		logger.Info("storage data-plane reconciler is not started: no block backend configured")
+	}
 
 	// ── cluster-internal diagnostic HTTP (/healthz, /metrics). Пустой addr отключает. ──
 	//
