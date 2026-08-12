@@ -86,7 +86,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -124,7 +124,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -162,7 +162,7 @@ jobs:
         pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -338,7 +338,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
       - name: установка

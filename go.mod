@@ -20,21 +20,20 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.7.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/terraform-plugin-go v0.31.0 // indirect
-	github.com/hashicorp/terraform-plugin-log v0.10.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.4.0 // indirect
 	github.com/hashicorp/terraform-svchost v0.1.1 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
@@ -43,7 +42,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
-	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
+	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
@@ -54,7 +53,7 @@ require (
 	github.com/moby/moby/api v1.55.0 // indirect
 	github.com/moby/moby/client v0.5.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
-	github.com/moby/sys/sequential v0.6.0 // indirect
+	github.com/moby/sys/sequential v0.7.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
@@ -71,15 +70,15 @@ require (
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.16 // indirect
-	github.com/tklauser/numcpus v0.11.0 // indirect
+	github.com/tklauser/go-sysconf v0.4.0 // indirect
+	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -102,6 +101,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
+	github.com/hashicorp/terraform-plugin-log v0.10.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/pressly/goose/v3 v3.27.3
@@ -110,8 +110,8 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
-	github.com/testcontainers/testcontainers-go v0.43.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
+	github.com/testcontainers/testcontainers-go v0.44.0
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	go.uber.org/multierr v1.11.0
 	golang.org/x/net v0.57.0
