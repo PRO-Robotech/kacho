@@ -151,6 +151,7 @@ jobs:
       # каталога — законный ответ (состав образа ранера меняется), и это ОПИСЬ, а
       # не гейт. Чтобы «ноль освобождённого» не сошло за успех, печатаем число.
       - name: освободить диск под стенд
+        timeout-minutes: 6
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         run: |
           echo "=== диск до уборки:"; df -h / | tail -1
@@ -172,6 +173,7 @@ jobs:
       # любое создание отвечает «зона не найдена», и ни один «под Ready» этого
       # не показывает.
       - name: стенд (dev-up, полный)
+        timeout-minutes: 35
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         working-directory: deploy
         run: make dev-up CLUSTER_NAME="$CLUSTER_NAME"
@@ -217,17 +219,39 @@ jobs:
           exit 1
 
       - name: установка проб
+        timeout-minutes: 8
         working-directory: ui-future/e2e
         run: npm ci
 
-      - name: браузер
+      # Установка разбита НА ДВА шага и у каждого свой предел времени.
+      #
+      # Наблюдалось 2026-08-12: `playwright install --with-deps chromium` одним
+      # шагом провисел 24 минуты при норме в одну-две и продолжал бы до предела
+      # ДЖОБЫ (90 минут). Предел джобы — не предел шага: зависание в начале
+      # съедает и прогон проб, и снос стенда, а вердикта не получает НИ ОДНА
+      # проба. Это третий исход, «не выполнилось», и он дороже красного: ранер
+      # занят полтора часа, кластер остаётся поднятым, ответа нет.
+      #
+      # Системные пакеты ставит apt, и без DEBIAN_FRONTEND он ждёт ввода,
+      # которого на ранере не будет никогда, — а по одному общему шагу нельзя
+      # сказать, что именно встало: apt или загрузка браузера. Отсюда два шага.
+      - name: браузер — системные зависимости
         working-directory: ui-future/e2e
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: npx playwright install-deps chromium
+
+      - name: браузер — сам chromium
+        working-directory: ui-future/e2e
+        timeout-minutes: 5
+        run: npx playwright install chromium
 
       # ВЕРДИКТ ПЕРВЫЙ — код возврата прогона. Повторов у проб нет намеренно
       # (см. ui-future/e2e/README.md): повтор скрывает ровно тот класс, ради
       # которого они написаны.
       - name: прогон проб
+        timeout-minutes: 20
         working-directory: ui-future/e2e
         env:
           KACHO_CONSOLE_URL: ${{ steps.console.outputs.url }}
