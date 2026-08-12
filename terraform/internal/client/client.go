@@ -166,6 +166,18 @@ func (c *Client) Do(ctx context.Context, method, path string, body proto.Message
 // Заголовок снижает вероятность дубля, но НЕ является гарантией: его хранилище у края
 // живёт в памяти каждого пода. Настоящая защита — усыновление по имени перед повторным
 // созданием; см. read.go.
+// MarshalBody — тело запроса ровно в том виде, в каком его отправит Do.
+//
+// Существует, чтобы ключ идемпотентности считался по ТОМУ ЖЕ байтам, что уходят на провод.
+// Своя вторая сериализация разошлась бы с первой молча — и разошлась бы именно там, где
+// расхождение не видно: на валидном входе обе дают «валидно».
+func MarshalBody(body proto.Message) ([]byte, error) {
+	if body == nil {
+		return nil, nil
+	}
+	return protojson.Marshal(body)
+}
+
 func IdempotencyKey(resourceType, address string, body []byte) string {
 	h := sha256.New()
 	h.Write([]byte(resourceType))

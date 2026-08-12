@@ -30,7 +30,7 @@ function registryFiles(): string[] {
   const out: string[] = [];
   for (const app of CONSOLE_APPS) {
     const dir = path.join(CONSOLE_ROOT, app, "src", "lib");
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = readdirSync(dir);
     } catch {
