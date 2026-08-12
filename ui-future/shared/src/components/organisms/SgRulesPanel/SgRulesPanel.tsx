@@ -10,10 +10,13 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Dropdown, Modal, Space, Tag, Typography } from "antd";
+import { Button, Checkbox, Dropdown, Modal, Tag, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
 import { ApiError, api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { FormShell } from "@shared/components/organisms/form/FormShell";
+import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
 import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
@@ -175,21 +178,25 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
 
   // ── режим редактора ОДНОГО правила — плоская форма (RuleBody), без Collapse ──
   if (editObj) {
+    // Та же оболочка формы, что у всех форм консоли: единая ширина, шапка
+    // «действие + тип» с иконкой ресурса, подвал с кнопками. Прежде здесь была
+    // своя разметка — отсюда и другая ширина, и другие отступы, и кнопки не на
+    // общем месте.
     return (
-      <div className="kc-surface" style={{ padding: "16px 18px", maxWidth: 760 }}>
-        <Typography.Text strong style={{ display: "block", marginBottom: 12 }}>
-          {editingId ? "Редактирование правила" : "Новое правило"}
-        </Typography.Text>
+      <FormShell
+        specId="security-groups"
+        mode={editingId ? "edit" : "create"}
+        singular="правило"
+        title={editingId ? "Правило" : "Правило"}
+      >
         <RuleBody rule={editObj} onChange={setEditObj} editingNetworkId={networkId || undefined} />
-        <Space style={{ marginTop: 18 }}>
-          <Button type="primary" onClick={saveEdit} loading={mutation.isPending}>
-            Сохранить
-          </Button>
-          <Button onClick={cancelEdit} disabled={mutation.isPending}>
-            Отменить
-          </Button>
-        </Space>
-      </div>
+        <FormFooter
+          submitLabel={editingId ? "Сохранить" : "Добавить правило"}
+          submitting={mutation.isPending}
+          onSubmit={saveEdit}
+          onCancel={cancelEdit}
+        />
+      </FormShell>
     );
   }
 
@@ -200,6 +207,17 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
           здесь убран (дубль). Действия Добавить/Удалить поднимаем в слот шапки
           таба (как фильтры у related-таблиц). */}
       <HeaderSlotPortal>
+        {/* «Выбрать все» — рядом с действиями в шапке: заголовок колонки общей
+            таблицы принимает только текст, и чекбокс в нём не поставить. Место
+            в шапке ему подходит больше: там же живут действия над выбранным. */}
+        <Checkbox
+          checked={allSelected}
+          indeterminate={someSelected && !allSelected}
+          onChange={(e) => toggleAll(e.target.checked)}
+          disabled={selectableIds.length === 0}
+        >
+          Выбрать все
+        </Checkbox>
         <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
           Добавить правило
         </Button>
@@ -212,83 +230,89 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
           Правил нет — трафик блокируется (default-deny).
         </div>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden bg-card">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase tracking-wide">
-              <tr>
-                <th className="px-3 py-2" style={{ width: 36 }}>
-                  <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected && !allSelected}
-                    onChange={(e) => toggleAll(e.target.checked)}
-                    disabled={selectableIds.length === 0}
-                  />
-                </th>
-                <th className="text-left px-3 py-2">Направление</th>
-                <th className="text-left px-3 py-2">Протокол</th>
-                <th className="text-left px-3 py-2">Диапазон портов</th>
-                <th className="text-left px-3 py-2">Тип источника</th>
-                <th className="text-left px-3 py-2">Источник</th>
-                <th className="text-left px-3 py-2">Описание</th>
-                <th className="px-3 py-2" style={{ width: 44 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((r, i) => {
-                const tgt = targetParts(r);
-                const dir = dirOf(r);
+        // Таблица правил — та же `ResourceTable`, что у всех списков консоли.
+        // Прежде здесь стояла СВОЯ разметка с собственными классами: она
+        // отличалась от остальных таблиц шапкой, отступами и поведением
+        // сортировки, то есть один и тот же предмет — список строк ресурса —
+        // выглядел на этой вкладке иначе, чем везде.
+        <ResourceTable
+          rows={rules as unknown as Record<string, unknown>[]}
+          rowKey={(r) => (r.id as string) ?? String(rules.indexOf(r as unknown as SgRule))}
+          columns={[
+            {
+              header: "",
+              cell: (row) => {
+                const r = row as unknown as SgRule;
                 return (
-                  <tr key={r.id ?? i} className="border-t border-border hover:bg-muted/20">
-                    <td className="px-3 py-2">
-                      <Checkbox
-                        checked={!!r.id && selected.has(r.id)}
-                        disabled={!r.id}
-                        onChange={(e) => r.id && toggleOne(r.id, e.target.checked)}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Tag color={dir === "INGRESS" ? "green" : "blue"}>
-                        {dir === "INGRESS" ? "Входящий" : "Исходящий"}
-                      </Tag>
-                    </td>
-                    <td className="px-3 py-2">{protoLabel(r)}</td>
-                    <td className="px-3 py-2">{portsLabel(r)}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">{tgt.kind}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{tgt.value}</td>
-                    <td className="px-3 py-2 text-xs">{r.description || "—"}</td>
-                    <td className="px-3 py-2 text-right">
-                      <Dropdown
-                        trigger={["click"]}
-                        placement="bottomRight"
-                        menu={{
-                          items: [
-                            {
-                              key: "edit",
-                              icon: <EditOutlined />,
-                              label: "Редактировать",
-                              onClick: () => startEdit(r),
-                            },
-                            { type: "divider" as const },
-                            {
-                              key: "delete",
-                              icon: <DeleteOutlined />,
-                              label: "Удалить",
-                              danger: true,
-                              disabled: !r.id,
-                              onClick: () => confirmDelete(r),
-                            },
-                          ],
-                        }}
-                      >
-                        <Button type="text" size="small" icon={<MoreOutlined />} aria-label="Действия" />
-                      </Dropdown>
-                    </td>
-                  </tr>
+                  <Checkbox
+                    checked={!!r.id && selected.has(r.id)}
+                    disabled={!r.id}
+                    onChange={(e) => r.id && toggleOne(r.id, e.target.checked)}
+                  />
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              },
+            },
+            {
+              header: "Направление",
+              cell: (row) => {
+                const dir = dirOf(row as unknown as SgRule);
+                return (
+                  <Tag color={dir === "INGRESS" ? "green" : "blue"}>
+                    {dir === "INGRESS" ? "Входящий" : "Исходящий"}
+                  </Tag>
+                );
+              },
+            },
+            { header: "Протокол", cell: (row) => protoLabel(row as unknown as SgRule) },
+            { header: "Диапазон портов", cell: (row) => portsLabel(row as unknown as SgRule) },
+            {
+              header: "Тип источника",
+              cell: (row) => (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {targetParts(row as unknown as SgRule).kind}
+                </Typography.Text>
+              ),
+            },
+            {
+              header: "Источник",
+              className: "font-mono text-xs",
+              cell: (row) => targetParts(row as unknown as SgRule).value,
+            },
+            {
+              header: "Описание",
+              cell: (row) => (row as unknown as SgRule).description || "—",
+            },
+            {
+              header: "",
+              className: "text-right whitespace-nowrap",
+              cell: (row) => {
+                const r = row as unknown as SgRule;
+                return (
+                  <Dropdown
+                    trigger={["click"]}
+                    placement="bottomRight"
+                    menu={{
+                      items: [
+                        { key: "edit", icon: <EditOutlined />, label: "Редактировать", onClick: () => startEdit(r) },
+                        { type: "divider" as const },
+                        {
+                          key: "delete",
+                          icon: <DeleteOutlined />,
+                          label: "Удалить",
+                          danger: true,
+                          disabled: !r.id,
+                          onClick: () => confirmDelete(r),
+                        },
+                      ],
+                    }}
+                  >
+                    <Button type="text" size="small" icon={<MoreOutlined />} aria-label="Действия" />
+                  </Dropdown>
+                );
+              },
+            },
+          ]}
+        />
       )}
     </div>
   );

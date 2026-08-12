@@ -237,7 +237,10 @@ describe("SgRulesPanel — правка и добавление", () => {
 
     fireEvent.click(headerAction(/Добавить правило/));
 
-    expect(screen.getByText("Новое правило")).toBeInTheDocument();
+    // Форма правила живёт в общей оболочке форм: она называет ДЕЙСТВИЕ и тип
+    // («Создание» · «Правило»), а не собственный заголовок «Новое правило».
+    expect(screen.getByText("Создание")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Добавить правило" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -245,7 +248,7 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(headerAction(/Добавить правило/));
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить правило" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0][1] as Record<string, unknown>;
@@ -257,7 +260,7 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(within(rowOf("http")).getByRole("button", { name: "Редактировать" }));
-    expect(screen.getByText("Редактирование правила")).toBeInTheDocument();
+    expect(screen.getByText("Редактирование")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
