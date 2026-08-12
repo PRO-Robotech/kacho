@@ -18,6 +18,7 @@ import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { BoolFact } from "@/components/atoms/BoolFact";
 
 interface DiskRow {
   volume_id?: string;
@@ -106,7 +107,10 @@ export function InstanceDisksTab({
     { header: "Устройство", cell: (r) => r.device_name || "—" },
     { header: "Роль", cell: (r) => (r.is_boot ? "boot" : "data") },
     { header: "Режим", cell: (r) => r.mode || "—" },
-    { header: "Auto-delete", cell: (r) => (r.auto_delete ? "да" : "нет") },
+    {
+      header: "При удалении машины",
+      cell: (r) => <BoolFact value={r.auto_delete} yes="Том удаляется" no="Том остаётся" />,
+    },
     {
       header: "",
       className: "text-right whitespace-nowrap",

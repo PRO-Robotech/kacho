@@ -19,6 +19,7 @@ import { toast } from "@shared/lib/toast";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
 import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { SgRulesPanel, type SgRule } from "@shared/components/organisms/SgRulesPanel";
 import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
@@ -77,9 +78,6 @@ function mono(v: unknown): ReactNode {
   return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
 }
 
-function boolTag(v: unknown, yes = "Да", no = "Нет"): ReactNode {
-  return v ? <Tag color="green">{yes}</Tag> : <Tag>{no}</Tag>;
-}
 
 // CIDR-блоки — нейтральные (цвет текста) теги, друг под другом, клик = копировать.
 function cidrTags(items: string[] | undefined): ReactNode {
@@ -299,7 +297,17 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             dash
           ),
         },
-        { label: "Default для сети", value: boolTag(getByPath<boolean>(data, "default_for_network")) },
+        {
+          label: "Назначение",
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "default_for_network")}
+              yes="Группа по умолчанию для сети"
+              no="Назначается только явно"
+              accent
+            />
+          ),
+        },
         {
           label: "Потребители",
           value:
@@ -343,7 +351,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "IP-адрес", value: cidrTags(info.ip ? [info.ip] : undefined) },
         { label: "Версия", value: txt(info.family) },
         { label: "Вид", value: txt(info.kind) },
-        { label: "Используется", value: boolTag(used) },
+        { label: "Занятость", value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" /> },
         {
           label: "Потребители",
           value:
@@ -357,7 +365,17 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
               </span>
             ),
         },
-        { label: "Защита от удаления", value: boolTag(getByPath<boolean>(data, "deletion_protection")) },
+        {
+          label: "Защита от удаления",
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "deletion_protection")}
+              yes="Удаление запрещено"
+              no="Удаление разрешено"
+              accent
+            />
+          ),
+        },
       ];
     },
   },

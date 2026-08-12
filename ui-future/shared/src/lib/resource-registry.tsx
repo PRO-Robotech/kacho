@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Tag } from "antd";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { PlacementBadge } from "@shared/components/atoms/PlacementBadge";
 import {
@@ -1304,7 +1305,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Используется",
         path: "used",
-        render: (row) => (row.used ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) => <BoolFact value={row.used} yes="Используется" no="Свободен" />,
       },
       {
         header: "Версия",
@@ -1329,7 +1330,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Защита от удаления",
         path: "deletion_protection",
-        render: (row) => (row.deletion_protection ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) => <BoolFact value={row.deletion_protection} yes="Удаление запрещено" no="Удаление разрешено" accent />,
       },
       {
         // `used_by` — output-only список kacho.cloud.reference.Reference

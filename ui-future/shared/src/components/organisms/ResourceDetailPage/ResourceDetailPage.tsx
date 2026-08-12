@@ -26,6 +26,7 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { InlineResourceEditForm } from "@shared/components/organisms/InlineResourceEditForm";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
@@ -416,13 +417,13 @@ export function ResourceDetailPage({
     typeof getByPath<boolean>(data, "reserved") === "boolean"
       ? {
           label: "Зарезервирован",
-          value: getByPath<boolean>(data, "reserved") ? "Да" : "Нет",
+          value: <BoolFact value={getByPath<boolean>(data, "reserved")} yes="Зарезервирован" no="Не зарезервирован" accent />,
         }
       : null,
     typeof getByPath<boolean>(data, "used") === "boolean"
       ? {
           label: "Используется",
-          value: getByPath<boolean>(data, "used") ? "Да" : "Нет",
+          value: <BoolFact value={getByPath<boolean>(data, "used")} yes="Используется ресурсом" no="Свободен" />,
         }
       : null,
     // Network-specific: declared supernet (VPC-1) — IPv4 then IPv6, multi-line.
