@@ -1077,8 +1077,3 @@ func (r *targetGroupResource) verbTargets(ctx context.Context, id, verb string, 
 func (r *targetGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importByID(ctx, "группа целей", "tgr", req, resp)
 }
-
-func httpProbeEqual(a, b *httpProbe) bool {
-	return a.Port.Equal(b.Port) && a.Path.Equal(b.Path) && a.ExpectedCodes.Equal(b.ExpectedCodes) &&
-		a.Host.Equal(b.Host) && a.Headers.Equal(b.Headers)
-}
