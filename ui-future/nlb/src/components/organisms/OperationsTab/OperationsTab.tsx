@@ -11,20 +11,22 @@
 // он не может: без пути вкладки нет.
 //
 // Фильтры: input по идентификатору + Select по статусу.
+// Второго отбора «по исходу» (тумблер Все/С ошибкой/Успешные) здесь НЕТ: он
+// говорил о том же предмете грубее — «с ошибкой» это статусы «Ошибка» и
+// «Отменена», «успешные» — статус «Выполнена». Два способа задать один отбор
+// заставляют угадывать, который из них сейчас действует.
 // Колонки — см. OperationsTable.
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Input, Segmented, Select } from "antd";
+import { Input, Select } from "antd";
 import { api, ApiError } from "@/api/client";
 import { ErrorResult } from "@/components/molecules/ErrorResult";
 import {
   OperationsTable,
   type Op,
   statusOf,
-  matchesOutcome,
   type OperationStatus,
-  type OutcomeFilter,
 } from "@/components/molecules/OperationsTable";
 import type { ResourceSpec } from "@/lib/resource-registry";
 import { HeaderSlotPortal } from "@/components/organisms/DetailShell";
@@ -47,7 +49,6 @@ const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
 export function OperationsTab({ spec, resourceId, listPath }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
-  const [outcome, setOutcome] = useState<OutcomeFilter>("all");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "operations", resourceId],
@@ -83,11 +84,10 @@ export function OperationsTab({ spec, resourceId, listPath }: Props) {
     const q = query.trim().toLowerCase();
     return ops.filter((o) => {
       if (status !== "all" && statusOf(o) !== status) return false;
-      if (!matchesOutcome(o, outcome)) return false;
       if (!q) return true;
       return (o.id ?? "").toLowerCase().includes(q);
     });
-  }, [ops, query, status, outcome]);
+  }, [ops, query, status]);
 
   if (isError) {
     const st = error instanceof ApiError ? error.status : undefined;
@@ -124,15 +124,6 @@ export function OperationsTab({ spec, resourceId, listPath }: Props) {
           style={{ width: 260 }}
         />
         <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
-        <Segmented
-          value={outcome}
-          onChange={setOutcome}
-          options={[
-            { value: "all", label: "Все" },
-            { value: "error", label: "С ошибкой" },
-            { value: "ok", label: "Успешные" },
-          ]}
-        />
       </HeaderSlotPortal>
 
       <OperationsTable rows={filtered} loading={isLoading} empty={ops.length > 0 && filtered.length === 0} />

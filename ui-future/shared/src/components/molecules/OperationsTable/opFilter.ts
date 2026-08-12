@@ -31,13 +31,3 @@ export function statusLabel(s: OperationStatus): string {
   }
 }
 
-// OutcomeFilter — quick-filter по исходу операции (ортогонален statusOf-фильтру):
-// «all» без фильтра, «error» — только с ошибкой, «ok» — завершённые без ошибки.
-export type OutcomeFilter = "all" | "error" | "ok";
-
-/** matchesOutcome — предикат OutcomeFilter-фильтра над одной операцией. */
-export function matchesOutcome(op: OpLike, outcome: OutcomeFilter): boolean {
-  if (outcome === "error") return !!op.error;
-  if (outcome === "ok") return !!op.done && !op.error;
-  return true;
-}

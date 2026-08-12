@@ -19,12 +19,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { formatDateTime } from "@shared/lib/datetime";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
-import { statusOf, statusLabel, matchesOutcome, type OperationStatus, type OutcomeFilter } from "./opFilter";
+import { statusOf, statusLabel, type OperationStatus } from "./opFilter";
 
 // Пере-экспорт чистой фильтр-логики (opFilter) — потребители импортируют её из
 // OperationsTable как единой точки. Юнит-тесты тянут opFilter напрямую (без antd).
-export { statusOf, statusLabel, matchesOutcome };
-export type { OperationStatus, OutcomeFilter };
+export { statusOf, statusLabel };
+export type { OperationStatus };
 
 export interface Op {
   id: string;
