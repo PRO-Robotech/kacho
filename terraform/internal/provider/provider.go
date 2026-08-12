@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/x509"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -86,16 +87,30 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	var roots *x509.CertPool
 	if caPath != "" {
-		pem, err := os.ReadFile(caPath)
+		// Путь называет САМ оператор в своей конфигурации, и провайдер работает от его
+		// имени: обхода границы тут нет by construction — читать чужое ему нечем, прав
+		// ровно столько же, сколько у запустившего.
+		//
+		// Тем не менее путь нормализуется и проверяется на обычный файл: так каталог или
+		// устройство дают внятный отказ вместо невнятной ошибки чтения, а `..` в записи
+		// не меняет смысла молча.
+		clean := filepath.Clean(caPath)
+		if st, err := os.Stat(clean); err != nil || !st.Mode().IsRegular() {
+			resp.Diagnostics.AddError("Файл корней доверия не читается",
+				"Атрибут ca_bundle указывает на "+clean+", но это не обычный файл. "+
+					"Укажите путь к PEM-файлу с сертификатами.")
+			return
+		}
+		pem, err := os.ReadFile(clean) // #nosec G304 G703 -- путь задан оператором в его же конфигурации; нормализован и проверен на обычный файл строкой выше
 		if err != nil {
 			resp.Diagnostics.AddError("Не читается файл корней доверия",
-				"Атрибут ca_bundle указывает на "+caPath+", но файл не прочитан: "+err.Error())
+				"Атрибут ca_bundle указывает на "+clean+", но файл не прочитан: "+err.Error())
 			return
 		}
 		roots = x509.NewCertPool()
 		if !roots.AppendCertsFromPEM(pem) {
 			resp.Diagnostics.AddError("В файле корней доверия нет сертификатов",
-				"Файл "+caPath+" прочитан, но ни одного сертификата в формате PEM в нём нет. "+
+				"Файл "+clean+" прочитан, но ни одного сертификата в формате PEM в нём нет. "+
 					"Пустой набор корней означал бы, что доверять нечему, и каждое соединение "+
 					"отвергалось бы — это молчаливая поломка, поэтому она названа здесь.")
 			return
