@@ -50,8 +50,23 @@ func importByID(ctx context.Context, kindName, prefix string, req resource.Impor
 // Порядок буквальный: операция завершена → УТВЕРЖДЕНИЕ, что отказа нет → метаданные.
 // Идентификатор присутствует в метаданных даже у операции, завершившейся отказом.
 func awaitCreate(ctx context.Context, c *client.Client, path, idField, resourceType, address string, body proto.Message) (string, error) {
-	raw, _ := json.Marshal(map[string]string{"t": resourceType, "a": address})
-	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(resourceType, address, raw)}
+	// Ключ считается ПО ТЕЛУ ЗАПРОСА, а не только по типу и адресу ресурса.
+	//
+	// Край ключ соблюдает — проверено на живом крае контролем в обе стороны: тот же ключ
+	// возвращает ту же операцию, другой ключ и отсутствие ключа идут обычным путём. Отсюда
+	// следствие, которое стоило отдельной отладки: ключ без тела делает ОТКАЗ ЛИПКИМ.
+	// Создание, отвергнутое по составу запроса, воспроизводилось бы той же операцией и
+	// после исправления настройки — пользователь правит конфигурацию, а получает прежнее
+	// сообщение и уверен, что правка не применилась.
+	//
+	// С телом в ключе оба свойства держатся сразу: повтор ОДНОГО И ТОГО ЖЕ запроса (потерян
+	// ответ, сеть оборвалась) воспроизводит ту же операцию и не создаёт дубль, а
+	// ИЗМЕНЁННЫЙ запрос — это другой запрос, и он отправляется заново.
+	bodyBytes, err := client.MarshalBody(body)
+	if err != nil {
+		return "", err
+	}
+	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(resourceType, address, bodyBytes)}
 
 	resp, err := c.Do(ctx, http.MethodPost, path, body, hdr)
 	if err != nil {
@@ -99,8 +114,14 @@ func awaitMutation(ctx context.Context, c *client.Client, method, path string, b
 // retryAuthz включается ТОЛЬКО на первом обратном чтении после создания: право на
 // собственный свежий ресурс материализуется не мгновенно. В обычном чтении такого ретрая
 // нет — там он замаскировал бы настоящий отзыв доступа.
+//
+// Срок — 60 с, и он взят из наблюдения, а не из круглого числа: при одиночном создании
+// право видно почти сразу, но в одном apply с несколькими ресурсами материализация идёт
+// под конкуренцией и на прежних 20 с чтение отдавало «не найдено» на ТОЛЬКО ЧТО созданной
+// группе целей. Отказ в доступе край прячет под тем же «не найдено», поэтому различить их
+// здесь нечем — остаётся ждать дольше, чем длится окно.
 func readByID(ctx context.Context, c *client.Client, collection, id string, retryAuthz bool) ([]byte, error) {
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for {
 		resp, err := c.Do(ctx, http.MethodGet, collection+"/"+id, nil, nil)
 		if err != nil {

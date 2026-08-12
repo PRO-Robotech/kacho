@@ -161,6 +161,8 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewIAMServiceAccountResource,
 		// nlb
 		NewNLBTargetGroupResource,
+		NewNLBLoadBalancerResource,
+		NewNLBListenerResource,
 	}
 }
 

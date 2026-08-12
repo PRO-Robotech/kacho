@@ -200,6 +200,10 @@ func (r *subnetResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Идентификатор в состояние ДО первого обратного чтения — см. пояснение у сети.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт по сообщению на каждое
+	// поле вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return

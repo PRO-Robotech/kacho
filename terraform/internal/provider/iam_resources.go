@@ -147,6 +147,10 @@ func (r *iamNamedResource) Create(ctx context.Context, req resource.CreateReques
 	// потеря необратима — ресурс создан, apply прерван, состояние пусто, следующий apply
 	// создаёт дубль.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт шесть сообщений об
+	// «invalid result object» вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return

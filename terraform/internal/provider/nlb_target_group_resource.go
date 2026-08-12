@@ -630,6 +630,31 @@ func targetObjectType() attr.Type {
 	}}
 }
 
+// keepTargetsSpelling сохраняет написание состава из настройки, когда край вернул то же
+// самое по СОДЕРЖАНИЮ.
+//
+// Пустой состав и отсутствие состава для края одно и то же — он всегда отвечает массивом,
+// — но для Terraform это РАЗНЫЕ значения, и apply падает «был null, стал пустой набор» на
+// совершенно законной настройке. Сохраняется именно написание вызывающего: он его выбрал,
+// и менять его молча значит спорить с ним ни о чём.
+func keepTargetsSpelling(ctx context.Context, want types.Set, m *targetGroupModel) {
+	a := targetsOf(ctx, want)
+	b := targetsOf(ctx, m.Targets)
+	if len(a) != len(b) {
+		return
+	}
+	keys := map[string]bool{}
+	for _, t := range a {
+		keys[targetKey(t)] = true
+	}
+	for _, t := range b {
+		if !keys[targetKey(t)] {
+			return
+		}
+	}
+	m.Targets = want
+}
+
 // ---- CRUD -------------------------------------------------------------------------
 
 func (r *targetGroupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -684,6 +709,10 @@ func (r *targetGroupResource) Create(ctx context.Context, req resource.CreateReq
 	// Идентификатор записывается ДО обратного чтения: если чтение сорвётся, ресурс уже
 	// создан, и без этой записи Terraform о нём не узнает никогда.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт шесть сообщений об
+	// «invalid result object» вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -694,10 +723,12 @@ func (r *targetGroupResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Группа целей создана, но не прочитана обратно", err.Error())
 		return
 	}
+	wantTargets := plan.Targets
 	if err := applyTargetGroup(ctx, &plan, raw); err != nil {
 		resp.Diagnostics.AddError("Ответ края не разобран", err.Error())
 		return
 	}
+	keepTargetsSpelling(ctx, wantTargets, &plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -709,10 +740,12 @@ func (r *targetGroupResource) Read(ctx context.Context, req resource.ReadRequest
 	}
 	raw, err := readByID(ctx, r.c, targetGroupsPath, state.ID.ValueString(), false)
 	if err == nil {
+		wantTargets := state.Targets
 		if err := applyTargetGroup(ctx, &state, raw); err != nil {
 			resp.Diagnostics.AddError("Ответ края не разобран", err.Error())
 			return
 		}
+		keepTargetsSpelling(ctx, wantTargets, &state)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 		return
 	}
@@ -824,10 +857,12 @@ func (r *targetGroupResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 	plan.ID = state.ID
+	wantTargets := plan.Targets
 	if err := applyTargetGroup(ctx, &plan, raw); err != nil {
 		resp.Diagnostics.AddError("Ответ края не разобран", err.Error())
 		return
 	}
+	keepTargetsSpelling(ctx, wantTargets, &plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
