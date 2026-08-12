@@ -139,9 +139,11 @@ var registryRegistrySpec = flatSpec{
 	fields: withFields(commonFields("project_id", "Проект-владелец."),
 		fieldSpec{name: "region_id", kind: fString, required: true, immutable: true,
 			doc: "Регион реестра."},
-		fieldSpec{name: "default_repository_visibility", kind: fString,
-			doc: "Видимость новых репозиториев по умолчанию: `VISIBILITY_PRIVATE` или " +
-				"`VISIBILITY_PUBLIC`."},
+		fieldSpec{name: "default_repository_visibility", kind: fString, updateOnly: true,
+			doc: "Видимость новых репозиториев по умолчанию: `PRIVATE` или `PUBLIC`.\n\n" +
+				"Контракт СОЗДАНИЯ этого поля не несёт — оно есть только у изменения. " +
+				"Поэтому реестр с заданной видимостью заводится в два шага: создать, потом " +
+				"донастроить. Между шагами существует краткое окно с умолчанием края."},
 	),
 }
 

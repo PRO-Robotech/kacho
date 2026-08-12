@@ -105,6 +105,9 @@ var tfExtraResources = map[string]string{
 	"kacho_registry_repository": "заводится глаголом CreateRepository сервиса RegistryService",
 }
 
+// Под-ресурс обязан БЫТЬ, а не числиться: запись без ресурса — исключение, которому нечего
+// исключать. Проверка стоит ниже, в самом гейте.
+
 func TestEveryPublicAPIResourceHasATerraformResource(t *testing.T) {
 	root := repoRoot(t)
 
@@ -204,7 +207,8 @@ func TestEveryPublicAPIResourceHasATerraformResource(t *testing.T) {
 
 	for tf, why := range tfExtraResources {
 		if !registered[tf] {
-			t.Logf("под-ресурс %s ещё не заведён (%s) — предмет назван в tfPending", tf, why)
+			t.Errorf("под-ресурс %s объявлен исключением (%s), но в провайдере его нет — "+
+				"исключению нечего исключать", tf, why)
 		}
 	}
 

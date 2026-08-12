@@ -168,6 +168,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		newFlatResource(storageImageSpec),
 		// registry
 		newFlatResource(registryRegistrySpec),
+		NewRegistryRepositoryResource,
 		// nlb
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,

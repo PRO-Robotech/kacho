@@ -89,6 +89,14 @@ type fieldSpec struct {
 	immutable bool // задаётся при создании, меняется только пересозданием
 	doc       string
 
+	// updateOnly — поля НЕТ в запросе создания, оно есть только в запросе изменения.
+	//
+	// Так бывает, когда край задумал значение как настройку уже существующего ресурса
+	// (видимость репозиториев по умолчанию у реестра). Тогда создание идёт в два шага:
+	// создать, потом донастроить. Пропустить поле молча нельзя — вызывающий задал его и
+	// вправе получить применённым; отправить в создание тоже нельзя — контракта нет.
+	updateOnly bool
+
 	// sendEmpty — отправлять поле, даже когда оно пусто. По умолчанию пустое не
 	// отправляется: край отличает «не задано» от «задано пустым», и слать пустое вместо
 	// отсутствия значило бы стирать значение при каждом создании.
@@ -379,7 +387,7 @@ func lowerCamel(s string) string {
 func (r *flatResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	body := r.spec.newCreate()
 	for _, f := range r.spec.fields {
-		if f.computed {
+		if f.computed || f.updateOnly {
 			continue
 		}
 		v, ok, err := r.valueOf(ctx, planGetter{req.Plan}, f)
@@ -428,7 +436,57 @@ func (r *flatResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 	if err := r.applyWire(ctx, stateSetter{&resp.State}, raw); err != nil {
 		resp.Diagnostics.AddError("Ответ края не разобран", err.Error())
+		return
 	}
+
+	// Второй шаг создания: поля, которых нет в контракте создания, досылаются изменением.
+	// Иначе заданное вызывающим значение молча не применилось бы, а состояние показало бы
+	// умолчание края — то есть провайдер соврал бы об исходе.
+	if raw2, err := r.applyUpdateOnly(ctx, planGetter{req.Plan}, id); err != nil {
+		resp.Diagnostics.AddError("Ресурс создан, но донастройка не завершилась", err.Error())
+		return
+	} else if raw2 != nil {
+		if err := r.applyWire(ctx, stateSetter{&resp.State}, raw2); err != nil {
+			resp.Diagnostics.AddError("Ответ края не разобран", err.Error())
+		}
+	}
+}
+
+// applyUpdateOnly досылает поля, отсутствующие в контракте создания.
+//
+// Возвращает свежее чтение, если что-то отправлялось, и nil, если досылать было нечего.
+func (r *flatResource) applyUpdateOnly(ctx context.Context, from getter, id string) ([]byte, error) {
+	body := r.spec.newUpdate()
+	if err := setProtoField(body, r.spec.updateIDField, id); err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, f := range r.spec.fields {
+		if !f.updateOnly {
+			continue
+		}
+		v, ok, err := r.valueOf(ctx, from, f)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if err := setProtoField(body, f.name, v); err != nil {
+			return nil, err
+		}
+		paths = append(paths, f.name)
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	if err := setProtoField2(body, "update_mask", &fieldmaskpb.FieldMask{Paths: paths}); err != nil {
+		return nil, err
+	}
+	if err := awaitMutation(ctx, r.c, http.MethodPatch, r.spec.pathCol+"/"+id, body); err != nil {
+		return nil, err
+	}
+	return readByID(ctx, r.c, r.spec.pathCol, id, false)
 }
 
 func (r *flatResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
