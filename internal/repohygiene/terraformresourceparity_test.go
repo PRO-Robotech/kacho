@@ -5,13 +5,12 @@ package repohygiene
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Каждый ресурс публичного API обязан быть в Terraform-провайдере.
@@ -237,18 +236,10 @@ var (
 func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	// Состав берётся у treecorpus (индекс отслеживаемых файлов), а не обходом диска:
-	// под proto/ на машине, где поднимали стенд или собирали фронтенд, лежит
-	// неотслеживаемое, и обход по диску судит о дереве, которого в репозитории нет.
-	// Требование держит гейт TestTreeWalkersAskTheIndex.
-	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto", "kacho", "cloud"), ".proto")
-	if err != nil {
-		t.Fatalf("состав proto-дерева: %v", err)
-	}
-	for _, path := range files {
-		src, rerr := os.ReadFile(path) // #nosec G304 -- путь получен из индекса репозитория
-		if rerr != nil {
-			t.Fatalf("чтение %s: %v", path, rerr)
+	for _, rel := range trackedFilesUnder(t, root, "proto/kacho/cloud", ".proto") {
+		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
+		if err != nil {
+			t.Fatalf("чтение %s: %v", rel, err)
 		}
 		s := string(src)
 		for _, m := range reService.FindAllStringSubmatchIndex(s, -1) {
@@ -256,14 +247,40 @@ func publicCreatingServices(t *testing.T, root string) []string {
 			if strings.HasPrefix(name, "Internal") {
 				continue
 			}
-			body := serviceBody(s, m[1])
-			if reCreating.MatchString(body) {
+			if reCreating.MatchString(serviceBody(s, m[1])) {
 				out = append(out, name)
 			}
 		}
 	}
 	sort.Strings(out)
 	return out
+}
+
+// trackedFilesUnder — ОТСЛЕЖИВАЕМЫЕ файлы поддерева, а не содержимое каталога на диске.
+//
+// Единица счёта здесь — элемент индекса git, и это не формальность: на диске лежат
+// установленные зависимости, сборки сайтов и рабочие каталоги инструментов. Обходчик,
+// читающий диск, судит о дереве, которого в репозитории нет, — и однажды спотыкается о
+// символьную ссылку в чужую рабочую копию. Ровно это и ловит гейт обходчиков.
+func trackedFilesUnder(t *testing.T, root, prefix, suffix string) []string {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "-z", "--", prefix)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("чтение индекса репозитория: %v", err)
+	}
+	var res []string
+	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel != "" && strings.HasSuffix(rel, suffix) {
+			res = append(res, rel)
+		}
+	}
+	if len(res) == 0 {
+		t.Fatalf("под %s не найдено ни одного файла %s — предикат устарел или каталог переехал",
+			prefix, suffix)
+	}
+	return res
 }
 
 // serviceBody — тело сервиса от открывающей скобки до парной закрывающей.
@@ -294,25 +311,20 @@ func serviceBody(s string, open int) string {
 // знающий одну, объявил бы половину дерева отсутствующей.
 func registeredTerraformResources(t *testing.T, root string) map[string]bool {
 	t.Helper()
-	dir := filepath.Join(root, "terraform", "internal", "provider")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("чтение каталога провайдера: %v", err)
-	}
-
 	sources := map[string]string{}
 	var registryBody string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+	for _, rel := range trackedFilesUnder(t, root, "terraform/internal/provider", ".go") {
+		if strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
-		src, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- имя получено обходом каталога
+		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
 		if err != nil {
-			t.Fatalf("чтение %s: %v", e.Name(), err)
+			t.Fatalf("чтение %s: %v", rel, err)
 		}
 		s := string(src)
-		sources[e.Name()] = s
-		if e.Name() == "provider.go" {
+		name := filepath.Base(rel)
+		sources[name] = s
+		if name == "provider.go" {
 			if i := strings.Index(s, "func (p *kachoProvider) Resources("); i >= 0 {
 				registryBody = serviceBody(s, strings.Index(s[i:], "{")+i+1)
 			}
