@@ -64,13 +64,10 @@ jest.unstable_mockModule("antd", () => {
   };
 });
 
-// Слот шапки — портал: вне карточки ресурса он не рисует НИЧЕГО, и действия
-// панели были бы недостижимы. Заменитель рисует их на месте — это тот же
-// контракт «показать в шапке», выполненный доступным пробе способом.
-jest.unstable_mockModule("@shared/components/organisms/DetailShell", () => ({
-  HeaderSlotPortal: ({ children }: React.PropsWithChildren) =>
-    React.createElement("div", { "data-testid": "header-slot" }, children),
-}));
+// Действия панели живут в правом слоте шапки СТРАНИЦЫ — там же, где «Создать»
+// у всех списков. Слот настоящий (не заменитель): на странице его даёт
+// провайдер, и проба обязана давать его тоже, иначе она рендерит панель в
+// условиях, которых на странице не бывает.
 
 const update = jest.fn<(path: string, body: unknown) => Promise<unknown>>();
 const toastError = jest.fn();
@@ -85,6 +82,7 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 }));
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
+const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
 type Rule = Parameters<typeof SgRulesPanel>[0]["rules"][number];
 
 const RULES: Rule[] = [
@@ -108,7 +106,12 @@ function show(rules: Rule[] = RULES) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+      <PageHeaderSlotProvider>
+        <div data-testid="header-slot">
+          <HeaderRightSlot />
+        </div>
+        <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+      </PageHeaderSlotProvider>
     </QueryClientProvider>,
   );
 }

@@ -15,6 +15,10 @@ import { InlineResourceCreateForm } from "@shared/components/organisms/InlineRes
 
 interface Props {
   title: string;
+  /** Не рисовать собственный заголовок: компонент стоит ВНУТРИ поля формы, где
+   *  имя уже названо меткой слева, и заголовок повторял бы его вторым словом
+   *  («IPv4 адрес» слева и «IPv4 Address» в карточке — находка владельца). */
+  titleHidden?: boolean;
   /** ID ресурса в REGISTRY (например, "addresses", "security-groups"). */
   refResource: string;
   /** project_id для ListXxxRequest. */
@@ -48,6 +52,7 @@ interface Props {
 
 export function ResourceRefChips({
   title,
+  titleHidden,
   refResource,
   projectId,
   refFilter,
@@ -159,7 +164,7 @@ export function ResourceRefChips({
       size="small"
       title={
         <Space size={8}>
-          <Typography.Text strong>{title}</Typography.Text>
+          {titleHidden ? null : <Typography.Text strong>{title}</Typography.Text>}
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             {value.length}
             {maxItems !== undefined ? ` / ${maxItems}` : ""}

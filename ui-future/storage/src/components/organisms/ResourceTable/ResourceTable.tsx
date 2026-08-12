@@ -76,11 +76,21 @@ export function ResourceTable<T extends object>({
     if (antColumns.length === 0) return antColumns;
     const last = antColumns.length - 1;
     const actionsLast = columns[last]?.header === "" && last > 0;
-    // Ширина у закреплённой колонки ОБЯЗАТЕЛЬНА: без неё antd закрепление молча
-    // игнорирует — таблица выглядит как обычная, а проба, смотрящая только на
-    // `fixed`, остаётся зелёной. Это знание уже было оплачено в registry.
+
+    // Слева закрепляется НАЧАЛЬНЫЙ ОТРЕЗОК до колонки идентичности включительно,
+    // а не «первая колонка»: перед именем часто стоят служебные колонки (выбор
+    // строки), и antd закрепляет только сплошной префикс — закрепив одну лишь
+    // колонку имени, получаем разъезжающуюся таблицу. Служебной колонке ширину
+    // назначаем узкую: широкая превращается в пустую полосу через пол-экрана
+    // (что и случилось на правилах группы безопасности).
+    const identity = columns.findIndex((c) => c.header !== "");
+    const stickyThrough = identity < 0 || identity > 2 ? 0 : identity;
+
     return antColumns.map((c, i) => {
-      if (i === 0) return { ...c, fixed: "left" as const, width: c.width ?? 260 };
+      if (i <= stickyThrough) {
+        const own = columns[i]?.header === "" ? 48 : 260;
+        return { ...c, fixed: "left" as const, width: c.width ?? own };
+      }
       if (i === last && actionsLast) return { ...c, fixed: "right" as const, width: c.width ?? 64 };
       return c;
     });

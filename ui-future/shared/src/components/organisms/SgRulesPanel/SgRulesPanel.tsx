@@ -8,16 +8,17 @@
 //   • edit   → { deletion_rule_ids: [id], addition_rule_specs: [spec] }
 //   • delete → { deletion_rule_ids: [...] }
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Dropdown, Modal, Tag, Typography } from "antd";
+import { Button, Checkbox, Dropdown, Modal, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
 import { ApiError, api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { DirectionFact } from "@shared/components/atoms/DirectionFact";
 import { ResourceTable } from "@shared/components/organisms/ResourceTable";
-import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
+import { useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
 import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
@@ -177,6 +178,34 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   };
 
   // ── режим редактора ОДНОГО правила — плоская форма (RuleBody), без Collapse ──
+  // Хук зовётся ДО ветки формы: порядок вызовов обязан быть одинаковым на
+  // каждом рендере, поэтому в режиме формы передаётся null, а не пропускается.
+  //
+  // useMemo здесь ОБЯЗАТЕЛЕН, а не «для скорости»: слот кладёт узел в состояние
+  // эффектом с зависимостью от самого узла. Новый JSX на каждом рендере даёт
+  // бесконечный цикл — прогон проб на этом просто съел память и умер.
+  const listActions = useMemo(() => (editObj ? null : (
+    <>
+      {/* «Выбрать все» — рядом с действиями: заголовок колонки общей таблицы
+          принимает только текст, и чекбокс в него не поставить. */}
+      <Checkbox
+        checked={allSelected}
+        indeterminate={someSelected && !allSelected}
+        onChange={(e) => toggleAll(e.target.checked)}
+        disabled={selectableIds.length === 0}
+      >
+        Выбрать все
+      </Checkbox>
+      <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
+        Добавить правило
+      </Button>
+      <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
+        Удалить{selCount > 0 ? ` (${selCount})` : ""}
+      </Button>
+    </>
+  )), [editObj, allSelected, someSelected, selectableIds.length, selCount]);
+  useHeaderRight(listActions);
+
   if (editObj) {
     // Та же оболочка формы, что у всех форм консоли: единая ширина, шапка
     // «действие + тип» с иконкой ресурса, подвал с кнопками. Прежде здесь была
@@ -203,28 +232,8 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   // ── режим списка ──
   return (
     <div>
-      {/* Шапку «Правила» показывает зона-3 (название таба) — свой SectionHeader
-          здесь убран (дубль). Действия Добавить/Удалить поднимаем в слот шапки
-          таба (как фильтры у related-таблиц). */}
-      <HeaderSlotPortal>
-        {/* «Выбрать все» — рядом с действиями в шапке: заголовок колонки общей
-            таблицы принимает только текст, и чекбокс в нём не поставить. Место
-            в шапке ему подходит больше: там же живут действия над выбранным. */}
-        <Checkbox
-          checked={allSelected}
-          indeterminate={someSelected && !allSelected}
-          onChange={(e) => toggleAll(e.target.checked)}
-          disabled={selectableIds.length === 0}
-        >
-          Выбрать все
-        </Checkbox>
-        <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
-          Добавить правило
-        </Button>
-        <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
-          Удалить{selCount > 0 ? ` (${selCount})` : ""}
-        </Button>
-      </HeaderSlotPortal>
+      {/* Шапку «Правила» показывает зона-3 (название таба); действия ушли в
+          правый слот шапки СТРАНИЦЫ — туда же, где «Создать» у всех списков. */}
       {rules.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           Правил нет — трафик блокируется (default-deny).
@@ -254,14 +263,7 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
             },
             {
               header: "Направление",
-              cell: (row) => {
-                const dir = dirOf(row as unknown as SgRule);
-                return (
-                  <Tag color={dir === "INGRESS" ? "green" : "blue"}>
-                    {dir === "INGRESS" ? "Входящий" : "Исходящий"}
-                  </Tag>
-                );
-              },
+              cell: (row) => <DirectionFact value={dirOf(row as unknown as SgRule)} />,
             },
             { header: "Протокол", cell: (row) => protoLabel(row as unknown as SgRule) },
             { header: "Диапазон портов", cell: (row) => portsLabel(row as unknown as SgRule) },

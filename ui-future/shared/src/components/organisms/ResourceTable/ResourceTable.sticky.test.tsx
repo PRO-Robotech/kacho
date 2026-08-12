@@ -28,6 +28,25 @@ function headers() {
 }
 
 describe("ResourceTable — закрепление краёв при прокрутке вбок", () => {
+  it("служебная колонка выбора не получает ширину колонки данных", () => {
+    // Реальный регресс: таблице правил группы безопасности первая колонка —
+    // выбор строки, и ширина 260 превратила её в пустую полосу через пол-экрана.
+    // Закрепляется отрезок до имени включительно, но узкому — узкое.
+    const withSelect: Column<Row>[] = [
+      { header: "", cell: () => "☐" },
+      { header: "Имя", cell: (r) => r.name },
+      { header: "CIDR", cell: (r) => r.cidr },
+      { header: "", cell: () => "⋯" },
+    ];
+    render(<ResourceTable rows={rows} columns={withSelect} rowKey={(r) => r.id} />);
+    const h = headers();
+    expect(h[0]).toHaveAttribute("data-fixed", "left");
+    expect(h[0]).toHaveAttribute("data-width", "48");
+    expect(h[1]).toHaveAttribute("data-fixed", "left");
+    expect(h[1]).toHaveAttribute("data-width", "260");
+    expect(h[2]).not.toHaveAttribute("data-fixed");
+  });
+
   it("колонка идентичности закреплена слева", () => {
     render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} />);
     expect(headers()[0]).toHaveAttribute("data-fixed", "left");
