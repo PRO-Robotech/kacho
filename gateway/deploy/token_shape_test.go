@@ -36,6 +36,7 @@ package deploy_test
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -54,6 +55,35 @@ func umbrellaValues(t *testing.T, profile string) map[string]any {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return tree
+}
+
+// baseProfiles — профили, стоящие ПЕРВЫМИ в цепочках стендов, без повторов и в
+// устойчивом порядке. Выводятся из таблицы стеков, а не выписываются: здесь
+// стояли два имени, и профиль, ставший базой нового стенда, приходил бы под
+// проверку только правкой этого файла.
+//
+// Вопрос этого файла — «объявляет ли ПРОФИЛЬ своё», а не «что получает релиз»
+// (второй задаёт login_console_test.go складыванием цепочки). Поэтому единицей
+// здесь остаётся отдельный файл, и берётся именно база: накладка, молчащая о
+// ключе, ничего не меняет, а база — единственное место, где значение обязано
+// быть объявлено.
+func baseProfiles(t *testing.T) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	var out []string
+	for _, chain := range deployableStacks(t) {
+		if len(chain) == 0 || seen[chain[0]] {
+			continue
+		}
+		seen[chain[0]] = true
+		out = append(out, chain[0])
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		t.Fatal("ни одна цепочка стенда не назвала базового профиля — проверять нечего, " +
+			"и это отказ, а не пустой успех")
+	}
+	return out
 }
 
 // dig walks a path of map keys, reporting the first missing one.
@@ -82,7 +112,7 @@ var tokenStrategyPath = []string{"hydra", "hydra", "config", "strategies", "acce
 // the key is not a neutral default — it selects the opaque handle the gateway
 // cannot verify at all.
 func TestProfiles_DeclareVerifiableAccessToken(t *testing.T) {
-	for _, profile := range []string{"values.prod.yaml", "values.dev.yaml"} {
+	for _, profile := range baseProfiles(t) {
 		got := dig(t, umbrellaValues(t, profile), profile, tokenStrategyPath...)
 		if got != "jwt" {
 			t.Errorf("%s: access-token strategy is %q, want \"jwt\" — the gateway verifies by "+
@@ -96,7 +126,7 @@ func TestProfiles_DeclareVerifiableAccessToken(t *testing.T) {
 // a list. A profile that mints JWTs with the provider's default string encoding
 // verifies fine and then authorizes wrongly, which is worse than failing shut.
 func TestProfiles_DeclareListScopeClaim(t *testing.T) {
-	for _, profile := range []string{"values.prod.yaml", "values.dev.yaml"} {
+	for _, profile := range baseProfiles(t) {
 		got := dig(t, umbrellaValues(t, profile), profile,
 			"hydra", "hydra", "config", "strategies", "jwt", "scope_claim")
 		if got != "list" {

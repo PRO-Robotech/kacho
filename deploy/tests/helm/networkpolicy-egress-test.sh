@@ -32,6 +32,9 @@
 # Офлайновый харнесс над `helm template`, кластер не нужен. Зеркалит tests/helm/*.
 # Самопроверка: --self-test.
 set -uo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -236,9 +239,13 @@ fi
 
 N=0
 # Профили проверяем ВСЕ разворачиваемые: политика включается ровно в одном из них,
-# и именно поэтому дефект прожил незамеченным.
-for prof in values.dev.yaml values.prod.yaml; do
-  r="$(render -f "$UMBRELLA/$prof")" || fail "$prof не рендерится"
+# и именно поэтому дефект прожил незамеченным. Состав каждого стека — из
+# единственной таблицы дерева: здесь стояли два имени файлов, и стенд, чья
+# цепочка длиннее одного слоя, рендерился бы не тем составом.
+for stack in $(stacks_names); do
+  prof="$(stacks_chain "$stack" ' ')"
+  # shellcheck disable=SC2046,SC2086
+  r="$(render $(stacks_args "$stack" "$UMBRELLA"))" || fail "$stack не рендерится"
   out="$(check "$r")"
   rm -f "$r"
   if [ -n "$out" ]; then

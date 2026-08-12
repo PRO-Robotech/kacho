@@ -70,8 +70,10 @@ kacho-nlb:
 # ImagePullBackOff — при том что их образы CI публикует наравне с остальными.
 #
 # Пропуск был невидим по построению: накладка описывает образы, и «компонента здесь
-# нет» неотличимо от «компонент не разворачивается». Разницу теперь держит
-# TestProrobotechOverlayCoversEveryEnabledComponent.
+# нет» неотличимо от «компонент не разворачивается». Разницу держит
+# TestRegistryPulledStacksLeaveNoStandLocalImage — он судит СЛОЖЕННЫЙ стенд, а не
+# отдельный файл, и потому осматривает каждую накладку дерева, а не названную
+# константой.
 storage:
   image:
     repository: docker.io/prorobotech/kacho-storage

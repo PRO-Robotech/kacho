@@ -112,11 +112,11 @@ func findSymmetricSecret(merged map[string]any) []string {
 // examined is stated, because "0 findings" must be distinguishable from "0 files read".
 
 func TestPremise_EveryStackProfileExists(t *testing.T) {
-	if len(deployableStacks) == 0 {
+	if len(deployableStacks(t)) == 0 {
 		t.Fatal("deployableStacks is empty — this file would examine nothing and report success")
 	}
 	seen := map[string]bool{}
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		if len(stack) == 0 {
 			t.Errorf("stack %q names no profile — it cannot be checked", name)
 		}
@@ -129,7 +129,7 @@ func TestPremise_EveryStackProfileExists(t *testing.T) {
 			seen[profile] = true
 		}
 	}
-	t.Logf("premise: %d stacks naming %d distinct profiles, all resolved", len(deployableStacks), len(seen))
+	t.Logf("premise: %d stacks naming %d distinct profiles, all resolved", len(deployableStacks(t)), len(seen))
 }
 
 // ── the positive half ────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ func TestPremise_EveryStackProfileExists(t *testing.T) {
 // visible instead of green.
 
 func TestStacks_DeclareAnAsymmetricAuthnPosture(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			merged := mergedStack(t, stack)
 			gw := gatewayValues(merged)
@@ -167,7 +167,7 @@ func TestStacks_DeclareAnAsymmetricAuthnPosture(t *testing.T) {
 // ── the absence half ─────────────────────────────────────────────────────────
 
 func TestStacks_DeclareNoSymmetricSecret(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			found := findSymmetricSecret(mergedStack(t, stack))
 			if len(found) > 0 {
