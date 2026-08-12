@@ -40,8 +40,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 )
@@ -617,7 +619,8 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
-		registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler)
+		registerInternal(r, volumeUC, imageUC, diskTypeUC,
+			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
 	})
 
 	if len(public) == 0 || len(internal) == 0 {

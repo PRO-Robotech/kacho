@@ -31,8 +31,10 @@ import (
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
@@ -211,6 +213,10 @@ func runServe(cfg config.Config) error {
 	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
 	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	diskTypeUC := disktype.New(diskTypeRepo)
+	storageBackendRepo := pg.NewStorageBackendRepo(pool)
+	diskTypeBindingRepo := pg.NewDiskTypeBindingRepo(pool)
+	storageBackendUC := storagebackend.New(storageBackendRepo)
+	diskTypeBindingUC := disktypebinding.New(diskTypeBindingRepo, storageBackendRepo)
 
 	volumeUC.WithListFilter(narrower).WithInstanceGate(narrower)
 	snapshotUC.WithListFilter(narrower)
@@ -324,7 +330,7 @@ func runServe(cfg config.Config) error {
 			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 		},
 		func(reg grpc.ServiceRegistrar) {
-			registerInternal(reg, volumeUC, imageUC, diskTypeUC, opHandler)
+			registerInternal(reg, volumeUC, imageUC, diskTypeUC, storageBackendUC, diskTypeBindingUC, opHandler)
 		},
 	)
 
@@ -576,11 +582,17 @@ func registerInternal(
 	volumeUC *volume.UseCase,
 	imageUC *image.UseCase,
 	diskTypeUC *disktype.UseCase,
+	storageBackendUC *storagebackend.UseCase,
+	diskTypeBindingUC *disktypebinding.UseCase,
 	opHandler operationpb.OperationServiceServer,
 ) {
 	storagev1.RegisterInternalVolumeServiceServer(reg, handler.NewInternalVolumeHandler(volumeUC))
 	storagev1.RegisterInternalImageServiceServer(reg, handler.NewInternalImageHandler(imageUC))
 	storagev1.RegisterInternalDiskTypeServiceServer(reg, handler.NewInternalDiskTypeHandler(diskTypeUC))
+	storagev1.RegisterInternalStorageBackendServiceServer(reg,
+		handler.NewInternalStorageBackendHandler(storageBackendUC))
+	storagev1.RegisterInternalDiskTypeBindingServiceServer(reg,
+		handler.NewInternalDiskTypeBindingHandler(diskTypeBindingUC))
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 

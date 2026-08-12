@@ -321,3 +321,93 @@ func SizeLimitsFromProto(l *storagev1.DiskType_SizeLimits) domain.SizeLimits {
 		SizeStepBytes: l.GetSizeStepBytes(),
 	}
 }
+
+// StorageBackend конвертирует domain.StorageBackend → storagev1.StorageBackend.
+//
+// Ресурс инфра-чувствителен ЦЕЛИКОМ и живёт только на внутреннем листенере, поэтому
+// «lean-проекции» у него нет: скрывать от администратора координату бэкенда, которой
+// он же и управляет, было бы не защитой, а помехой. Учётный материал при этом не
+// проходит и здесь — поле несёт ССЫЛКУ.
+func StorageBackend(b *domain.StorageBackend) *storagev1.StorageBackend {
+	if b == nil {
+		return nil
+	}
+	return &storagev1.StorageBackend{
+		Id:             b.ID,
+		Name:           b.Name,
+		Kind:           backendKind(b.Kind),
+		Description:    b.Description,
+		ZoneIds:        b.ZoneIDs,
+		Endpoint:       b.Endpoint,
+		CredentialsRef: string(b.CredentialsRef),
+		Status:         backendStatus(b.Status),
+		CreatedAt:      ts(b.CreatedAt),
+		UpdatedAt:      ts(b.UpdatedAt),
+	}
+}
+
+func backendKind(k domain.BackendKind) storagev1.StorageBackend_BackendKind {
+	if k == domain.BackendKindCephRBD {
+		return storagev1.StorageBackend_CEPH_RBD
+	}
+	return storagev1.StorageBackend_BACKEND_KIND_UNSPECIFIED
+}
+
+func backendStatus(s domain.BackendStatus) storagev1.StorageBackend_Status {
+	switch s {
+	case domain.BackendStatusActive:
+		return storagev1.StorageBackend_ACTIVE
+	case domain.BackendStatusDraining:
+		return storagev1.StorageBackend_DRAINING
+	case domain.BackendStatusDisabled:
+		return storagev1.StorageBackend_DISABLED
+	default:
+		return storagev1.StorageBackend_STATUS_UNSPECIFIED
+	}
+}
+
+// DiskTypeBinding конвертирует domain.DiskTypeBinding → storagev1.DiskTypeBinding.
+func DiskTypeBinding(b *domain.DiskTypeBinding) *storagev1.DiskTypeBinding {
+	if b == nil {
+		return nil
+	}
+	return &storagev1.DiskTypeBinding{
+		Id:         b.ID,
+		DiskTypeId: b.DiskTypeID,
+		ZoneId:     b.ZoneID,
+		BackendId:  b.BackendID,
+		Revision:   int32(b.Revision), //nolint:gosec // номер ревизии ограничен CHECK > 0 и растёт по одному
+		Locator:    &storagev1.BackendLocator{Pool: b.Locator.Pool, NamespaceTemplate: b.Locator.NamespaceTemplate},
+		Status:     bindingStatus(b.Status),
+		CreatedAt:  ts(b.CreatedAt),
+		Capabilities: &storagev1.BindingCapabilities{
+			Snapshots:         b.Capabilities.Snapshots,
+			CloneFromSnapshot: b.Capabilities.CloneFromSnapshot,
+			CloneFromImage:    b.Capabilities.CloneFromImage,
+			CloneKeepsParent:  b.Capabilities.CloneKeepsParent,
+			OnlineGrow:        b.Capabilities.OnlineGrow,
+			MultiAttach:       b.Capabilities.MultiAttach,
+			EncryptionAtRest:  b.Capabilities.EncryptionAtRest,
+			TrashTtlSeconds:   b.Capabilities.TrashTTLSeconds,
+		},
+		Qos: &storagev1.BindingQoS{
+			BaselineIops:            b.QoS.BaselineIOPS,
+			IopsPerGib:              b.QoS.IOPSPerGiB,
+			MaxIops:                 b.QoS.MaxIOPS,
+			BaselineThroughputMibps: b.QoS.BaselineThroughputMiBps,
+			ThroughputPerGibMibps:   b.QoS.ThroughputPerGiBMiBps,
+			MaxThroughputMibps:      b.QoS.MaxThroughputMiBps,
+		},
+	}
+}
+
+func bindingStatus(s domain.BindingStatus) storagev1.DiskTypeBinding_Status {
+	switch s {
+	case domain.BindingStatusActive:
+		return storagev1.DiskTypeBinding_ACTIVE
+	case domain.BindingStatusSuperseded:
+		return storagev1.DiskTypeBinding_SUPERSEDED
+	default:
+		return storagev1.DiskTypeBinding_STATUS_UNSPECIFIED
+	}
+}

@@ -507,7 +507,8 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 				labels      = COALESCE($4::jsonb, labels),
 				size_bytes  = COALESCE($5, size_bytes),
 				updated_at  = now()
-			WHERE id = $1 AND ($5::bigint IS NULL OR $5 > size_bytes)
+			WHERE id = $1
+			  AND ($5::bigint IS NULL OR ($5 > size_bytes AND state = 'READY'))
 			RETURNING id, project_id, labels`,
 			id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
@@ -574,16 +575,30 @@ func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
 // (TOCTOU, ban #10). Self-describing payload (instance zone/project) сверяется со
 // СВОЕЙ строкой volumes — storage НЕ зовёт compute (ацикличность, INV-1).
 
-// attachCASSQL — атомарная вставка-если-можно: том READY, та же зона/проект. Свободен
-// (нет строки) — вставляет; конфликт по PK volume_id → DO NOTHING (0 rows). device/boot
-// UNIQUE/EXCLUDE НЕ поглощаются arbiter'ом volume_id → всплывают 23505/23P01.
+// attachCASSQL — атомарная вставка-если-можно: том READY, та же зона/проект, и
+// множественная привязка ЛИБО разрешена способностью действующей ревизии, ЛИБО
+// привязок ещё нет.
+//
+// Инвариант «не более одной привязки» больше НЕ выражен формой ключа: ключ описывает
+// форму факта (эта привязка — про этот том и этот инстанс), а допустимость второй —
+// свойство БЭКЕНДА, и разные бэкенды отвечают на него по-разному. Ограничение
+// осталось на уровне БД: оно исполняется тем же единственным стейтментом, что и
+// запись, поэтому обойти его гонкой нельзя — второй писатель ждёт коммита первого и
+// видит уже вставленную строку.
+//
+// Конфликт по составному ключу → DO NOTHING (0 rows) — идемпотентный повтор той же
+// привязки. device/boot UNIQUE/EXCLUDE НЕ поглощаются arbiter'ом ключа → всплывают
+// 23505/23P01 и разбираются вызывающим.
 const attachCASSQL = `
 	INSERT INTO volume_attachments
 		(volume_id, instance_id, instance_name, project_id, zone_id, device_name, is_boot, mode, auto_delete)
 	SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
 	  FROM volumes v
+	  LEFT JOIN disk_type_bindings b ON b.id = v.binding_id
 	 WHERE v.id = $1 AND v.state = 'READY' AND v.zone_id = $5 AND v.project_id = $4
-	ON CONFLICT (volume_id) DO NOTHING
+	   AND (COALESCE(b.cap_multi_attach, false)
+	        OR NOT EXISTS (SELECT 1 FROM volume_attachments a WHERE a.volume_id = $1))
+	ON CONFLICT (volume_id, instance_id) DO NOTHING
 	RETURNING volume_id`
 
 // maxAutoDeviceAttempts — верхняя граница retry авто-назначения device_name.
@@ -664,16 +679,33 @@ func isDeviceCollision(err error) bool {
 // same zone"; расходится проект → ОТДЕЛЬНЫЙ "Volume and Instance must be in the same
 // project" (zone-текст не переиспользуется — исправление относительно companion S2-04).
 func disambiguateAttach(ctx context.Context, tx pgx.Tx, a *domain.VolumeAttachment) error {
-	var owner string
-	oerr := tx.QueryRow(ctx, `SELECT instance_id FROM volume_attachments WHERE volume_id = $1`, a.VolumeID).Scan(&owner)
+	// Вопрос задаётся про НАШУ привязку, а не про «единственную»: с разрешённой
+	// множественной привязкой строк у тома может быть больше одной, и чтение
+	// «первой попавшейся» отвечало бы про чужую.
+	var mine bool
+	oerr := tx.QueryRow(ctx,
+		`SELECT true FROM volume_attachments WHERE volume_id = $1 AND instance_id = $2`,
+		a.VolumeID, a.InstanceID).Scan(&mine)
 	if oerr == nil {
-		if owner == a.InstanceID {
-			return nil // идемпотентный replay (уже наш)
-		}
-		return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, a.VolumeID)
+		return nil // идемпотентный replay (уже наш)
 	}
 	if !errors.Is(oerr, pgx.ErrNoRows) {
 		return oerr
+	}
+	// Нашей привязки нет. Если у тома есть ЧУЖАЯ и множественная не разрешена —
+	// это и есть занятость.
+	var occupied bool
+	cerr := tx.QueryRow(ctx, `
+		SELECT true FROM volume_attachments a
+		  JOIN volumes v ON v.id = a.volume_id
+		  LEFT JOIN disk_type_bindings b ON b.id = v.binding_id
+		 WHERE a.volume_id = $1 AND NOT COALESCE(b.cap_multi_attach, false)
+		 LIMIT 1`, a.VolumeID).Scan(&occupied)
+	if cerr == nil {
+		return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, a.VolumeID)
+	}
+	if !errors.Is(cerr, pgx.ErrNoRows) {
+		return cerr
 	}
 	// нет привязки → причина в volumes-предикате (state / zone / project).
 	var state, zoneID, projectID string
