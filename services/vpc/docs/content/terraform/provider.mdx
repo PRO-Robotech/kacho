@@ -111,8 +111,12 @@ terraform state rm <адрес ресурса>
 
 - [`kacho_vpc_network`](../api/network.mdx) — сеть
 - [`kacho_vpc_subnet`](../api/subnet.mdx) — подсеть
+- `kacho_vpc_network_interface` — сетевой интерфейс
+- `kacho_vpc_gateway` — шлюз общего исхода
 
-Остальные ресурсы VPC добавляются следующими под-фазами.
+Ещё не заведены: адрес, таблица маршрутизации, группа безопасности. У всех трёх запрос
+создания несёт вложенные объекты, которые общий каркас ресурсов не выражает; предмет
+назван гейтом паритета и тикетом, а не оставлен умолчанием.
 
 ### Другие домены — тот же провайдер
 
@@ -120,8 +124,10 @@ terraform state rm <адрес ресурса>
 
 | Домен | Ресурсы |
 |---|---|
-| IAM | `kacho_iam_project`, `kacho_iam_group`, `kacho_iam_service_account` |
+| IAM | `kacho_iam_project`, `kacho_iam_group`, `kacho_iam_service_account`, `kacho_iam_service_account_key`, `kacho_iam_account` |
 | Балансировщик | `kacho_nlb_target_group`, `kacho_nlb_load_balancer`, `kacho_nlb_listener` |
+| Хранилище | `kacho_storage_volume`, `kacho_storage_snapshot`, `kacho_storage_image` |
+| Реестр | `kacho_registry_registry`, `kacho_registry_repository` |
 
 ## Модули
 
@@ -130,3 +136,4 @@ terraform state rm <адрес ресурса>
 | `terraform/modules/vpc-network` | Сеть вместе с подсетями |
 | `terraform/modules/nlb-service` | Группа целей, балансировщик и слушатели одной единицей |
 | `terraform/modules/iam-project` | Проект вместе с группами и служебными учётками |
+| `terraform/modules/registry-space` | Реестр вместе с репозиториями |
