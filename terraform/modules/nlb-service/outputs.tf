@@ -18,7 +18,7 @@ output "v4_address_id" {
     Адресация в Kachō идёт по неизменяемому идентификатору; сам адрес читается у ресурса
     адреса в vpc.
   EOT
-  value = kacho_nlb_load_balancer.this.v4_address_id
+  value       = kacho_nlb_load_balancer.this.v4_address_id
 }
 
 output "v6_address_id" {
@@ -38,5 +38,5 @@ output "listener_substatus" {
     Выведен наружу намеренно: `MISCONFIGURED` означает, что слушатель создан, но раздавать
     ему некуда, — и это единственное место, где такое видно без обращения к краю.
   EOT
-  value = { for k, l in kacho_nlb_listener.this : k => l.substatus }
+  value       = { for k, l in kacho_nlb_listener.this : k => l.substatus }
 }
