@@ -114,6 +114,13 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+// detailBase — адрес карточки ресурса для колонки имени. В реестре этого модуля
+// IAM-ресурсов нет (их адресация `/iam/<route>` живёт в общем реестре), поэтому
+// здесь путь ровно один.
+function detailBase(spec: ResourceSpec, projectId: string | null | undefined): string | null {
+  return resourceProjectPath(spec.id, projectId ?? null);
+}
+
 // ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку.
 // Собственная отрисовка колонки сохраняется ВНУТРИ ссылки (копирование имени
 // гасит событие само). Ресурс без карточки ссылкой не притворяется.
@@ -130,7 +137,7 @@ function ResourceNameCell({
 }): ReactNode {
   const id = getByPath(row, "id");
   const idStr = typeof id === "string" ? id : "";
-  const base = opts.nameBasePath ?? resourceProjectPath(spec.id, opts.projectId ?? null);
+  const base = opts.nameBasePath ?? detailBase(spec, opts.projectId);
   const href = opts.nameHref ? opts.nameHref(row) : base && idStr ? `${base}/${idStr}` : null;
   const content = opts.nameIcon ? (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>

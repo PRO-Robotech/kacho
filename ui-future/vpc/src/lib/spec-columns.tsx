@@ -11,7 +11,7 @@ import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
-import { getByPath, resourceProjectPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, resourceProjectPath, resourceServicePrefix, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 
 // Маппинг kacho.cloud.reference.Reference.referrer.type → registry specId, чтобы
@@ -146,6 +146,17 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+// detailBase — адрес карточки ресурса для колонки имени.
+//
+// `resourceProjectPath` отдаёт null для IAM: у его ресурсов нет
+// project-scoped пути, они смонтированы под `/iam/<route>`. Для ссылки это
+// означало «адреса нет» — и весь модуль оставался без переходов по имени.
+function detailBase(spec: ResourceSpec, projectId: string | null | undefined): string | null {
+  const own = resourceProjectPath(spec.id, projectId ?? null);
+  if (own) return own;
+  return resourceServicePrefix(spec.id) === "iam" ? `/iam/${spec.route}` : null;
+}
+
 // ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку.
 // Собственная отрисовка колонки сохраняется ВНУТРИ ссылки (копирование имени
 // гасит событие само). Ресурс без карточки ссылкой не притворяется.
@@ -162,7 +173,7 @@ function ResourceNameCell({
 }): ReactNode {
   const id = getByPath(row, "id");
   const idStr = typeof id === "string" ? id : "";
-  const base = opts.nameBasePath ?? resourceProjectPath(spec.id, opts.projectId ?? null);
+  const base = opts.nameBasePath ?? detailBase(spec, opts.projectId);
   const href = opts.nameHref ? opts.nameHref(row) : base && idStr ? `${base}/${idStr}` : null;
   const content = opts.nameIcon ? (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
