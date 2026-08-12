@@ -106,6 +106,11 @@ type Writer interface {
 	Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error)
 	Update(ctx context.Context, id string, u ImageUpdate) (*domain.Image, []ownerregister.Registration, error)
 	Delete(ctx context.Context, id string) error
+	// Copy заводит КОПИЮ образа в другом регионе. targetZones — зоны целевого
+	// региона по данным владельца географии: образ региональный, привязка
+	// зональная, и адресатом годится любая действующая ревизия нужного класса
+	// внутри региона.
+	Copy(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error)
 	// Register вносит строку об образе, объект которого у бэкенда УЖЕ существует:
 	// состояние READY и наблюдение READY выставляет сама запись (см. её godoc),
 	// потому что «создавать существующее» сверщику поручить нельзя.
@@ -617,4 +622,84 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 // protoconv.Image (та же проекция, что handler и LRO-recovery — без дрейфа полей).
 func marshalImage(i *domain.Image) (*anypb.Any, error) {
 	return anypb.New(protoconv.Image(i))
+}
+
+// CopyInput — вход копирования образа в другой регион.
+type CopyInput struct {
+	ImageID        string
+	TargetRegionID string
+	Name           string
+	Description    string
+	Labels         map[string]string
+}
+
+// Copy копирует образ в другой регион.
+//
+// Регион образа неизменяем — как и зона тома, — поэтому распространение образа по
+// регионам выражается копией, а не правкой. Создаётся НОВЫЙ образ; исходный не
+// меняется ни одним полем.
+//
+// Зоны целевого региона резолвятся у ВЛАДЕЛЬЦА географии и никогда не выводятся
+// разбором имени: имена региона и зоны — произвольные строки, а деривация разбором
+// молча даёт пустой набор и превращает поиск адресата в отказ без причины.
+func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation, error) {
+	if err := idInvalid(in.ImageID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if in.TargetRegionID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: target_region_id: required", storageerr.ErrInvalidArg))
+	}
+	if u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
+	}
+	if err := validate.Description("description", in.Description); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := validate.Labels("labels", in.Labels); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := u.geo.EnsureRegionExists(ctx, in.TargetRegionID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	zones, zerr := u.geo.ZonesOfRegion(ctx, in.TargetRegionID)
+	if zerr != nil {
+		return nil, u.errStatus(zerr)
+	}
+
+	src, gerr := u.reader.Get(ctx, in.ImageID)
+	if gerr != nil {
+		return nil, u.errStatus(gerr)
+	}
+
+	copyItem := &domain.Image{
+		ID:          ids.NewID(domain.PrefixImage),
+		ProjectID:   src.ProjectID,
+		RegionID:    in.TargetRegionID,
+		Placement:   domain.ImagePlacementRegional,
+		Name:        in.Name,
+		Description: in.Description,
+		Labels:      in.Labels,
+		Format:      src.Format,
+	}
+	copyItem.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, copyItem.ID)
+
+	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
+		fmt.Sprintf("Copy image %s to region %s", in.ImageID, in.TargetRegionID),
+		&storagev1.CopyImageMetadata{ImageId: copyItem.ID})
+	if err != nil {
+		return nil, err
+	}
+	op.ResourceID = copyItem.ID
+	if err := u.ops.Create(ctx, op); err != nil {
+		return nil, err
+	}
+	source := in.ImageID
+	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+		res, derr := u.writer.Copy(ctx, copyItem, source, zones)
+		if derr != nil {
+			return nil, u.errStatus(derr)
+		}
+		return marshalImage(res)
+	})
+	return &op, nil
 }

@@ -566,3 +566,87 @@ var (
 	_ image.Reader = (*ImageRepo)(nil)
 	_ image.Writer = (*ImageRepo)(nil)
 )
+
+// copyImageSQL — копия образа в ДРУГОЙ регион одним стейтментом.
+//
+// Целевая привязка ищется среди зон целевого региона ($7) по классу ИСТОЧНИКА: образ
+// региональный, привязка зональная, и любая действующая ревизия нужного класса внутри
+// региона — законный адресат. Класс берётся у источника, а не у вызывающего: копия,
+// молча легшая на другой класс, сменила бы арендатору гарантии без единого слова в
+// ответе.
+//
+// Источник обязан лежать в проекте вызывающего и быть ГОТОВЫМ. Чужой проект не
+// матчится и остаётся неотличим от промаха — подтверждать существование чужого образа
+// отдельным текстом значило бы отвечать на незаданный вопрос.
+const copyImageSQL = `
+	WITH src AS (
+		SELECT i.id, i.size_bytes, i.min_disk_bytes, i.state, i.format, b.disk_type_id
+		  FROM images i
+		  LEFT JOIN disk_type_bindings b ON b.id = i.binding_id
+		 WHERE i.id = $6 AND i.project_id = $2
+	), target AS (
+		SELECT tb.id,
+		       CASE WHEN tb.namespace_template = '' THEN $2::text
+		            ELSE replace(tb.namespace_template, '{projectId}', $2::text) END AS ns
+		  FROM disk_type_bindings tb, src
+		 WHERE tb.disk_type_id = src.disk_type_id AND tb.zone_id = ANY($7::text[])
+		   AND tb.status = 'ACTIVE'
+		 LIMIT 1
+	)
+	INSERT INTO images
+		(id, project_id, name, description, labels, region_id, source_image_id,
+		 size_bytes, min_disk_bytes, format, state, binding_id, backend_object, backend_namespace)
+	SELECT $1, $2, $3, $4, $5::jsonb, $8, src.id,
+	       src.size_bytes, src.min_disk_bytes, src.format, 'CREATING',
+	       target.id, $9, target.ns
+	  FROM src, target
+	 WHERE src.state = 'READY'
+	RETURNING created_at, updated_at, size_bytes, min_disk_bytes`
+
+// Copy реализует image.Writer: копия образа в другой регион. Копия рождается
+// СОЗДАВАЕМОЙ — материализует её сверщик.
+func (r *ImageRepo) Copy(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error) {
+	labels, err := json.Marshal(nonNilLabels(i.Labels))
+	if err != nil {
+		return nil, storageerr.ErrInternal
+	}
+	created := *i
+	err = r.pool.QueryRow(ctx, copyImageSQL,
+		i.ID, i.ProjectID, i.Name, i.Description, labels, sourceID, targetZones,
+		i.RegionID, i.Backend.BackendObject).
+		Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)
+	if err == nil {
+		created.SourceImageID = sourceID
+		created.Status = domain.ImageStatusCreating
+		return &created, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapImageErr(err, imgErrCtx{imageID: i.ID, imageName: i.Name})
+	}
+	return nil, r.copyUnavailable(ctx, sourceID, i.RegionID)
+}
+
+// copyUnavailable разбирает нулевую выборку копии образа: каждая причина — своим
+// текстом, чтобы вызывающий чинил то, что сломано, а не гадал.
+func (r *ImageRepo) copyUnavailable(ctx context.Context, sourceID, targetRegion string) error {
+	var state, diskType string
+	err := r.pool.QueryRow(ctx, `
+		SELECT i.state, COALESCE(b.disk_type_id, '')
+		  FROM images i LEFT JOIN disk_type_bindings b ON b.id = i.binding_id
+		 WHERE i.id = $1`, sourceID).Scan(&state, &diskType)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Image %s not found", storageerr.ErrFailedPrecondition, sourceID)
+		}
+		return mapImageErr(err, imgErrCtx{imageID: sourceID})
+	}
+	if state != "READY" {
+		return fmt.Errorf("%w: Image %s is not ready", storageerr.ErrFailedPrecondition, sourceID)
+	}
+	if diskType == "" {
+		return fmt.Errorf("%w: Image %s has no placement and cannot be copied",
+			storageerr.ErrFailedPrecondition, sourceID)
+	}
+	return fmt.Errorf("%w: DiskType %s has no active binding in region %s",
+		storageerr.ErrFailedPrecondition, diskType, targetRegion)
+}

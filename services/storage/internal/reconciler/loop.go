@@ -188,6 +188,16 @@ func (r *Reconciler) step(ctx context.Context, row Row, c *Counts) {
 			}
 			row.SourceIsSnapshot = fromSnapshot
 		}
+		if row.Kind == KindImage {
+			fromImage, ferr := r.store.SourceIsImageCopy(ctx, row.ID)
+			if ferr != nil {
+				r.logger.ErrorContext(ctx, "storage reconcile: source kind lookup failed",
+					"kind", string(row.Kind), "id", row.ID, "err", ferr)
+				c.Failed++
+				return
+			}
+			row.SourceIsCopy = fromImage
+		}
 	}
 
 	item := Item{
@@ -281,6 +291,12 @@ func (r *Reconciler) provision(ctx context.Context, backend blockbackend.Backend
 	if row.SourceObject != "" {
 		src := row.Ref
 		src.Name = row.SourceObject
+		// Копия образа переносится между локаторами — тем же глаголом, что копия
+		// снимка: клонирование предполагает общий локатор с родителем, а у копии
+		// его нет by construction.
+		if row.SourceIsCopy {
+			return backend.CopySnapshot(ctx, src, row.Ref)
+		}
 		return backend.CloneVolume(ctx, blockbackend.CloneSpec{
 			Source: src, Target: row.Ref, SizeBytes: row.SizeBytes,
 			Detached: !backend.Capabilities().CloneKeepsParent,

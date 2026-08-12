@@ -149,6 +149,7 @@ func (m *ImageReader) GetInternal(ctx context.Context, id string) (*domain.Image
 
 // ImageWriter — мок image.Writer на функциях-полях.
 type ImageWriter struct {
+	CopyFn       func(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error)
 	InsertFunc   func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
 	UpdateFunc   func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
 	DeleteFunc   func(ctx context.Context, id string) error
@@ -442,6 +443,14 @@ func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, t
 		return r.CopyFn(ctx, s, sourceID, targetZone)
 	}
 	return nil, errors.New("repomock: CopyFn is not set")
+}
+
+// Copy — подстановка копирования образа. Незаданная функция ОТКАЗЫВАЕТ.
+func (w *ImageWriter) Copy(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error) {
+	if w.CopyFn != nil {
+		return w.CopyFn(ctx, i, sourceID, targetZones)
+	}
+	return nil, errors.New("repomock: image CopyFn is not set")
 }
 
 // Compile-time проверки соответствия портам.

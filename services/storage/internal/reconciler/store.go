@@ -68,6 +68,10 @@ type Row struct {
 	// снимка, снятие — с тома, и перепутать их значит звать операцию, у которой
 	// нет предмета.
 	SourceIsSnapshot bool
+	// SourceIsCopy — ресурс создаётся КОПИЕЙ с однородного источника в другом
+	// локаторе (образ с образа). Клонирование здесь неприменимо: оно предполагает
+	// общий локатор с родителем.
+	SourceIsCopy bool
 }
 
 // Store — доступ сверщика к нашим строкам.
@@ -323,8 +327,12 @@ func (s *Store) SourceObject(ctx context.Context, kind Kind, id string) (string,
 		       LEFT JOIN snapshots sn ON sn.id = s.source_snapshot_id
 		      WHERE s.id = $1`
 	case KindImage:
-		q = `SELECT COALESCE(sn.backend_object, v.backend_object, '')
+		// Образ бывает снят с тома либо снимка — и бывает СКОПИРОВАН с другого
+		// образа. Копия лежит в чужом локаторе (перенос между регионами и есть её
+		// смысл), поэтому глагол у неё другой.
+		q = `SELECT COALESCE(im.backend_object, sn.backend_object, v.backend_object, '')
 		       FROM images i
+		       LEFT JOIN images    im ON im.id = i.source_image_id
 		       LEFT JOIN snapshots sn ON sn.id = i.source_snapshot_id
 		       LEFT JOIN volumes   v  ON v.id  = i.source_volume_id
 		      WHERE i.id = $1`
@@ -347,11 +355,22 @@ func (s *Store) SourceIsSnapshot(ctx context.Context, id string) (bool, error) {
 	var fromSnapshot bool
 	err := s.pool.QueryRow(ctx,
 		`SELECT source_snapshot_id IS NOT NULL FROM snapshots WHERE id = $1`, id).Scan(&fromSnapshot)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
+	return fromSnapshot, wrapNoRows(err)
+}
+
+// SourceIsImageCopy отвечает, скопирован ли образ с другого образа. Копия переносится
+// между локаторами, снятие — берёт источник в своём: глагол у них разный.
+func (s *Store) SourceIsImageCopy(ctx context.Context, id string) (bool, error) {
+	var fromImage bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT source_image_id IS NOT NULL FROM images WHERE id = $1`, id).Scan(&fromImage)
+	return fromImage, wrapNoRows(err)
+}
+
+// wrapNoRows: строки нет — значит и источника нет; это не ошибка чтения.
+func wrapNoRows(err error) error {
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
 	}
-	return fromSnapshot, nil
+	return nil
 }

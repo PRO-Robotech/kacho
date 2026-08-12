@@ -119,6 +119,11 @@ type Image struct {
 
 	StatusReason StatusReason
 
+	// SourceImageID — образ, с которого этот СКОПИРОВАН. Отличается от источников
+	// снятия (том либо снимок): копия переносит образ между регионами, и по этой
+	// координате сверщик выбирает глагол материализации.
+	SourceImageID string
+
 	// SeededVolumeIDs — тома, засеянные из этого источника. Output-only,
 	// выводится на чтении, на вход не принимается.
 	SeededVolumeIDs []string

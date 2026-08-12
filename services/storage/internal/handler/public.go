@@ -316,6 +316,21 @@ func (h *ImageHandler) ListOperations(ctx context.Context, req *storagev1.ListIm
 	return resp, nil
 }
 
+// Copy копирует образ в другой регион (async Operation).
+func (h *ImageHandler) Copy(ctx context.Context, req *storagev1.CopyImageRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Copy(ctx, image.CopyInput{
+		ImageID:        req.GetImageId(),
+		TargetRegionID: req.GetTargetRegionId(),
+		Name:           req.GetName(),
+		Description:    req.GetDescription(),
+		Labels:         req.GetLabels(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
 // ── DiskTypeService (public :9090, read-only) ─────────────────────────────
 
 // DiskTypeHandler реализует storagev1.DiskTypeServiceServer (public read-only;
