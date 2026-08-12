@@ -16,6 +16,8 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 )
 
 // scopeFilteredRPCs — методы карты прав, с которых снят per-RPC Check: их
@@ -178,6 +180,52 @@ func (c Config) Validate() error {
 			"verified transport required on the storage→geo edge: set KACHO_STORAGE_GEO_CLIENT_MTLS_ENABLE=true "+
 				"(with cert/key/CA) — zone existence and the volume/image placement coherence check are decided on "+
 				"this connection, and unarmed client credentials degrade to cleartext silently")
+	}
+
+	// ── плоскость данных блочного хранения ──────────────────────────────────
+	//
+	// Предикат активности — тот же, что читает проводка: композиционный корень
+	// поднимает адаптер и сверщик ровно при непустом виде бэкенда. Поэтому
+	// «страж увидел плоскость данных» ⟺ «она провязана»: незаданный вид не
+	// порождает требований, заданный — порождает всегда.
+	//
+	// Чего здесь НЕТ и почему. Соотношения со сроком исполнителя операций здесь
+	// нет намеренно: обращение к бэкенду происходит ВНЕ функции операции —
+	// операция фиксирует намерение и завершается, а доводит сверщик. Именно это
+	// и снимает класс «ложное готово», при котором длинное обращение убивалось
+	// потолком исполнителя, а разрешитель осиротевших операций затем признавал
+	// строку завершённой, читая нашу БД. Читателю, помнящему прежнюю схему,
+	// связь между этими величинами покажется пропущенной — её нет by design.
+	if c.BlockBackendKind != "" {
+		if err := blockbackend.ValidateInstallPrefix(c.BlockBackendInstallPrefix); err != nil {
+			problems = append(problems, fmt.Sprintf(
+				"install prefix required with a block backend: set KACHO_STORAGE_BLOCK_BACKEND_INSTALL_PREFIX (%v) "+
+					"— object names are derived from immutable resource ids, so two deployments pointed at one "+
+					"backend cluster would derive the SAME names and adopt each other's objects: each reconciler "+
+					"would count the other's objects as its own leak, and a delete in one cloud would destroy data "+
+					"in the other", err))
+		}
+		if c.BlockBackendCredentialsDir == "" {
+			problems = append(problems,
+				"credentials directory required with a block backend: set KACHO_STORAGE_BLOCK_BACKEND_CREDENTIALS_DIR "+
+					"— StorageBackend carries a REFERENCE to credential material, never the material itself, and an "+
+					"unresolvable reference makes every provisioning call fail in a way that looks like backend "+
+					"unavailability rather than misconfiguration")
+		}
+		if c.BlockBackendCallTimeout <= 0 {
+			problems = append(problems,
+				"per-call timeout required with a block backend: set KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT > 0 "+
+					"— an unbounded call to an unresponsive backend parks the reconciler slot forever, and the "+
+					"backlog it holds is invisible")
+		}
+		if c.BlockBackendReconcileInterval <= 0 || c.BlockBackendReconcileBatch <= 0 {
+			problems = append(problems,
+				"reconciler cadence required with a block backend: set "+
+					"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL > 0 and "+
+					"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH > 0 — without the reconciler nothing ever moves "+
+					"a resource from CREATING to READY, and every volume stays pending forever while the service "+
+					"reports itself healthy")
+		}
 	}
 
 	if len(problems) > 0 {

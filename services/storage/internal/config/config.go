@@ -217,6 +217,60 @@ type Config struct {
 	// называется (`listnarrow.Counts`).
 	ListFilterBreakglass bool `envconfig:"KACHO_STORAGE_LIST_FILTER_BREAKGLASS" default:"false"`
 
+	// ===== плоскость данных блочного хранения =====
+	//
+	// Что живёт ЗДЕСЬ, а что в БД, и почему граница проходит именно так. Какие
+	// бэкенды существуют, где у них пулы и какие классы на них отображены — это
+	// ДАННЫЕ: они меняются администратором в рантайме и хранятся ресурсами
+	// StorageBackend и DiskTypeBinding. В конфигурации процесса остаётся то, что
+	// принадлежит РАЗВЁРТЫВАНИЮ и не может приехать из БД: чем этот экземпляр
+	// облака отличается от соседнего и откуда он берёт учётный материал по
+	// ссылке, записанной в ресурсе.
+
+	// BlockBackendKind — вид плоскости данных, которую обслуживает ЭТОТ процесс.
+	// Пусто — плоскости данных нет: ресурсы остаются control-plane-записями, и
+	// сверщик не запускается.
+	//
+	// Значение по умолчанию пусто НАМЕРЕННО и не выводится ни из какого другого
+	// адреса. Умолчание, собранное из чужой координаты, всегда непусто, поэтому
+	// контроль выглядит включённым и ведёт в никуда, а ни один профиль
+	// развёртывания не обязан ничего задавать, чтобы это заметить.
+	BlockBackendKind string `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_KIND" default:""`
+
+	// BlockBackendInstallPrefix — префикс имени объектов ЭТОГО развёртывания у
+	// бэкенда.
+	//
+	// Имя объекта выводится из неизменяемого идентификатора ресурса, поэтому два
+	// облака, нацеленные на один кластер хранилища, выведут одинаковые имена и
+	// «усыновят» объекты друг друга: сверщик каждого посчитает чужие объекты
+	// своей утечкой, а удаление в одном снесёт данные в другом. Префикс —
+	// единственное, что отличает наши объекты от чужих в общем пространстве.
+	BlockBackendInstallPrefix string `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_INSTALL_PREFIX" default:""`
+
+	// BlockBackendCredentialsDir — каталог, в котором разрешаются ССЫЛКИ на
+	// учётный материал из StorageBackend.credentials_ref.
+	//
+	// Сам секрет через API не проходит и в БД не ложится: строка таблицы
+	// переживает ротацию и уезжает в резервные копии. Ресурс несёт ссылку,
+	// процесс — способ её разрешить.
+	BlockBackendCredentialsDir string `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_CREDENTIALS_DIR" default:""`
+
+	// BlockBackendCallTimeout — срок ОДНОГО обращения к бэкенду.
+	//
+	// Он обязан помещаться внутрь бюджета операции вместе со всеми повторами:
+	// исполнитель операций убивает функцию по своему потолку, а разрешитель
+	// осиротевших операций затем признаёт строку завершённой, читая нашу БД. Не
+	// уместившись, длинное обращение превращается в ЛОЖНОЕ «готово» при
+	// отсутствующем объекте. Соотношение проверяется стражем старта.
+	BlockBackendCallTimeout time.Duration `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT" default:"30s"`
+
+	// BlockBackendReconcileInterval — период обхода расхождений между желаемым и
+	// наблюдённым.
+	BlockBackendReconcileInterval time.Duration `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL" default:"15s"`
+
+	// BlockBackendReconcileBatch — сколько ресурсов сверщик берёт за проход.
+	BlockBackendReconcileBatch int `envconfig:"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH" default:"100"`
+
 	// ===== per-edge mTLS =====
 
 	// GeoClientMTLS — client-creds ребра storage→geo (:9090).

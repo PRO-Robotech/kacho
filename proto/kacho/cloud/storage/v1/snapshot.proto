@@ -6,6 +6,8 @@ syntax = "proto3";
 package kacho.cloud.storage.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/reference/reference.proto";
+import "kacho/cloud/storage/v1/status_reason.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -37,6 +39,13 @@ message Snapshot {
   // Creation timestamp. Truncated to seconds on the wire.
   google.protobuf.Timestamp created_at = 3;
 
+  // Отметка последнего изменения. Усечена до секунд на проводе.
+  //
+  // Колонка в БД была с самого начала, а в контракте поля не было — при живом
+  // Update. Арендатор видел ресурс, у которого правка не оставляет следа: отличить
+  // «снимок не менялся» от «менялся, но мы не показываем» по ответу невозможно.
+  google.protobuf.Timestamp updated_at = 11;
+
   // Name of the snapshot. 1-63 characters long.
   string name = 4;
 
@@ -45,6 +54,20 @@ message Snapshot {
 
   // Resource labels as `key:value` pairs. Maximum of 64 per resource.
   map<string, string> labels = 6;
+
+  // Зона размещения снимка. TEXT-ссылка на kacho-geo (peer-валидация, без FK).
+  // Output-only (снимается с зоны исходного тома на Create) и НЕИЗМЕНЯЕМАЯ.
+  //
+  // # Почему у снимка собственный якорь, а не «зона исходного тома»
+  //
+  // Ссылка на источник обнуляется при удалении тома (ON DELETE SET NULL —
+  // снимок обязан пережить свой том). Значит зона, добираемая через источник,
+  // однажды становится пустой строкой, и проверка когерентности «зона тома ==
+  // зона снимка» вырождается в тождественно-истинную: сравнивать не с чем,
+  // предикат проходит всегда. Восстановление в чужую зону отвергается ровно до
+  // того дня, когда исходный том удалили, — то есть защита отказывает именно в
+  // том случае, ради которого писалась, и отказывает молча.
+  string zone_id = 10;
 
   // ID of the source volume used to create this snapshot. Same-DB reference to
   // Volume. Immutable.
@@ -55,4 +78,17 @@ message Snapshot {
 
   // Current status of the snapshot.
   Status status = 9;
+
+  // Почему снимок оказался в своём состоянии. Закрытый словарь наших полос —
+  // текст бэкенда наружу не выходит ни при каком отказе (см. status_reason.proto).
+  StatusReason status_reason = 12;
+
+  // Кто засеян этим снимком: тома, созданные из него. Output-only, не принимается
+  // на Create/Update; источник истины — сами тома (`volumes.source_snapshot_id`).
+  //
+  // Перечень нужен арендатору ДО удаления, а не после отказа: удаление снимка
+  // обнуляет происхождение засеянных томов, а при бэкенде, у которого клон
+  // удерживает родителя, снимок с потомками не удаляется вовсе. Без этого поля
+  // единственный способ узнать состав зависимостей — попробовать удалить.
+  repeated kacho.cloud.reference.Reference used_by = 13;
 }

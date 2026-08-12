@@ -160,7 +160,9 @@ func (h *InternalDiskTypeHandler) Create(ctx context.Context, req *storagev1.Cre
 		Name:            req.GetName(),
 		Description:     req.GetDescription(),
 		ZoneIDs:         req.GetZoneIds(),
-		PerformanceTier: domain.PerformanceTier(req.GetPerformanceTier()),
+		PerformanceTier: protoconv.TierFromProto(req.GetTier()),
+		Lifecycle:       protoconv.LifecycleFromProto(req.GetLifecycle()),
+		Limits:          protoconv.SizeLimitsFromProto(req.GetLimits()),
 	}
 	created, err := h.uc.CreateAdmin(ctx, d)
 	if err != nil {
@@ -173,7 +175,7 @@ func (h *InternalDiskTypeHandler) Create(ctx context.Context, req *storagev1.Cre
 // FieldMask). id immutable (path-param).
 func (h *InternalDiskTypeHandler) Update(ctx context.Context, req *storagev1.UpdateDiskTypeRequest) (*storagev1.DiskType, error) {
 	updated, err := h.uc.UpdateAdmin(ctx, req.GetDiskTypeId(), req.GetName(), req.GetDescription(),
-		req.GetZoneIds(), req.GetPerformanceTier())
+		req.GetZoneIds(), string(protoconv.TierFromProto(req.GetTier())))
 	if err != nil {
 		return nil, serviceerr.ToStatus(err)
 	}

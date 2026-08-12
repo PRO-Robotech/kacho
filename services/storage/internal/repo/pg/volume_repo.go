@@ -28,8 +28,11 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 )
 
-// defaultBlockSize — дефолтный block_size тома (§1.1), если не задан на Create.
-const defaultBlockSize = 4096
+// Колонка block_size остаётся в схеме со своим прежним умолчанием, но контрактом
+// больше не адресуется: у поля не было ни одного читателя, меняющего поведение, —
+// оно только хранилось и возвращалось. Ручка, ничего не меняющая, но объявленная
+// неизменяемой, закрепляет за арендатором ошибку навсегда; в контракте её номер и
+// имя зарезервированы. Значение колонки задаётся умолчанием схемы.
 
 // VolumeRepo — реализация volume.Reader/Writer поверх pgxpool.
 type VolumeRepo struct {
@@ -44,7 +47,7 @@ func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo { return &VolumeRepo{pool: po
 // сканируются в указатели → nil == нет привязки (status derived AVAILABLE).
 const volumeSelectCols = `
 	v.id, v.project_id, v.created_at, v.updated_at, v.name, v.description, v.labels,
-	v.zone_id, v.disk_type_id, v.size_bytes, v.block_size,
+	v.zone_id, v.disk_type_id, v.size_bytes,
 	COALESCE(v.source_snapshot_id, ''), COALESCE(v.source_image_id, ''), v.state,
 	va.instance_id, va.instance_name, va.device_name, va.is_boot, va.mode, va.auto_delete, va.attached_at`
 
@@ -66,7 +69,7 @@ func scanVolume(row pgx.Row) (*domain.Volume, error) {
 	)
 	if err := row.Scan(
 		&v.ID, &v.ProjectID, &v.CreatedAt, &v.UpdatedAt, &v.Name, &v.Description, &labelsJSON,
-		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.BlockSize, &v.SourceSnapshot, &v.SourceImage, &state,
+		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.SourceSnapshot, &v.SourceImage, &state,
 		&instanceID, &instanceName, &deviceName, &isBoot, &mode, &autoDelete, &attachedAt,
 	); err != nil {
 		return nil, err
@@ -252,15 +255,15 @@ const volumeInsertCoherentSQL = `
 	WITH src_project AS (
 		SELECT i.region_id, i.min_disk_bytes
 		  FROM images i
-		 WHERE i.id = $11::text AND i.project_id = $2::text
+		 WHERE i.id = $10::text AND i.project_id = $2::text
 	), src AS (
 		SELECT sp.min_disk_bytes
 		  FROM src_project sp
-		 WHERE $12::text <> '' AND sp.region_id = $12::text
+		 WHERE $11::text <> '' AND sp.region_id = $11::text
 	), snap_project AS (
 		SELECT s.source_volume_id
 		  FROM snapshots s
-		 WHERE s.id = $10::text AND s.project_id = $2::text
+		 WHERE s.id = $9::text AND s.project_id = $2::text
 	), snap_zone AS (
 		SELECT lv.zone_id
 		  FROM snap_project sp
@@ -273,14 +276,14 @@ const volumeInsertCoherentSQL = `
 	), ins AS (
 		INSERT INTO volumes
 			(id, project_id, name, description, labels, zone_id, disk_type_id,
-			 size_bytes, block_size, source_snapshot_id, source_image_id, state)
+			 size_bytes, source_snapshot_id, source_image_id, state)
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
-		       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
-		 WHERE ($10::text IS NULL OR EXISTS (
+		       $8::bigint,$9::text,$10::text,'READY'
+		 WHERE ($9::text IS NULL OR EXISTS (
 		            SELECT 1 FROM snap_project sp
 		             WHERE sp.source_volume_id IS NULL
 		                OR EXISTS (SELECT 1 FROM snap_zone z WHERE z.zone_id = $6::text)))
-		   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
+		   AND ($10::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
 		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
 		RETURNING created_at, updated_at
 	)
@@ -313,10 +316,6 @@ const volumeInsertCoherentSQL = `
 // (FK-текст, который теперь выдаёт сам стейтмент — до FK он не доходит).
 func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, []ownerregister.Registration, error) {
 	var regs []ownerregister.Registration
-	blockSize := v.BlockSize
-	if blockSize == 0 {
-		blockSize = defaultBlockSize
-	}
 	labels, err := json.Marshal(nonNilLabels(v.Labels))
 	if err != nil {
 		return nil, nil, storageerr.ErrInternal
@@ -332,7 +331,6 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		srcImg = &v.SourceImage
 	}
 	created := *v
-	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
 		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта,
@@ -343,7 +341,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		var ownImageRegion, ownSnapshotZone *string
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
+			v.SizeBytes, srcSnap, srcImg, zoneRegionID).
 			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {

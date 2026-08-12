@@ -10,6 +10,7 @@
 package storagev1
 
 import (
+	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -227,6 +228,10 @@ type Image struct {
 	// Immutable.
 	SourceVolumeId string `protobuf:"bytes,11,opt,name=source_volume_id,json=sourceVolumeId,proto3" json:"source_volume_id,omitempty"`
 	// Virtual disk size of the image, in bytes. Output-only (derived from the source).
+	//
+	// У зарегистрированного образа (InternalImageService.Register) источника внутри
+	// облака нет вовсе, и число приходит от регистрации. Output-only это не отменяет:
+	// публичные Create/Update его по-прежнему не принимают.
 	SizeBytes int64 `protobuf:"varint,12,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	// Minimum size (in bytes) of a receiving boot Volume. Output-only (derived from
 	// the source). Enforced by kacho-storage itself, inside the Volume insert: a
@@ -234,11 +239,28 @@ type Image struct {
 	// INVALID_ARGUMENT "Volume size %d is less than image min_disk_bytes %d". The
 	// bound is inclusive. An image the caller cannot reach never reports its minimum —
 	// it answers with the same "Image <id> not found" a real miss produces.
+	//
+	// У зарегистрированного образа число приходит от регистрации — по той же причине,
+	// что и size_bytes: выводить его не из чего.
 	MinDiskBytes int64 `protobuf:"varint,13,opt,name=min_disk_bytes,json=minDiskBytes,proto3" json:"min_disk_bytes,omitempty"`
 	// Image disk format. Output-only native Kachō enum.
 	Format Image_Format `protobuf:"varint,14,opt,name=format,proto3,enum=kacho.cloud.storage.v1.Image_Format" json:"format,omitempty"`
 	// Current status of the image.
-	Status        Image_Status `protobuf:"varint,15,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Image_Status" json:"status,omitempty"`
+	Status Image_Status `protobuf:"varint,15,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Image_Status" json:"status,omitempty"`
+	// Почему образ оказался в этом состоянии. Закрытый словарь НАШИХ полос, output-only.
+	//
+	// Один status на это не отвечает: ERROR не различает «бэкенд не ответил, сверщик
+	// вернётся» и «отказал по существу, идентичный повтор не пройдёт», — а арендатор
+	// решает по этой разнице, ждать ему или звать оператора. В штатном состоянии
+	// значение STATUS_REASON_UNSPECIFIED: причины нет.
+	StatusReason StatusReason `protobuf:"varint,16,opt,name=status_reason,json=statusReason,proto3,enum=kacho.cloud.storage.v1.StatusReason" json:"status_reason,omitempty"`
+	// Тома, засеянные этим образом. Output-only обобщённая проекция; на вход Create /
+	// Update не принимается.
+	//
+	// Нужна ДО удаления, а не после: удаление образа проходит и очищает происхождение
+	// засеянных томов (FK ON DELETE SET NULL — блочные данные живут, родословная
+	// теряется). Без этого списка арендатор стирает связь, не видя, у скольких томов.
+	UsedBy        []*reference.Reference `protobuf:"bytes,17,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -378,11 +400,25 @@ func (x *Image) GetStatus() Image_Status {
 	return Image_STATUS_UNSPECIFIED
 }
 
+func (x *Image) GetStatusReason() StatusReason {
+	if x != nil {
+		return x.StatusReason
+	}
+	return StatusReason_STATUS_REASON_UNSPECIFIED
+}
+
+func (x *Image) GetUsedBy() []*reference.Reference {
+	if x != nil {
+		return x.UsedBy
+	}
+	return nil
+}
+
 var File_kacho_cloud_storage_v1_image_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_image_proto_rawDesc = "" +
 	"\n" +
-	"\"kacho/cloud/storage/v1/image.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xad\a\n" +
+	"\"kacho/cloud/storage/v1/image.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\xb3\b\n" +
 	"\x05Image\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -403,7 +439,9 @@ const file_kacho_cloud_storage_v1_image_proto_rawDesc = "" +
 	"size_bytes\x18\f \x01(\x03R\tsizeBytes\x12$\n" +
 	"\x0emin_disk_bytes\x18\r \x01(\x03R\fminDiskBytes\x12<\n" +
 	"\x06format\x18\x0e \x01(\x0e2$.kacho.cloud.storage.v1.Image.FormatR\x06format\x12<\n" +
-	"\x06status\x18\x0f \x01(\x0e2$.kacho.cloud.storage.v1.Image.StatusR\x06status\x1a9\n" +
+	"\x06status\x18\x0f \x01(\x0e2$.kacho.cloud.storage.v1.Image.StatusR\x06status\x12I\n" +
+	"\rstatus_reason\x18\x10 \x01(\x0e2$.kacho.cloud.storage.v1.StatusReasonR\fstatusReason\x129\n" +
+	"\aused_by\x18\x11 \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"R\n" +
@@ -441,6 +479,8 @@ var file_kacho_cloud_storage_v1_image_proto_goTypes = []any{
 	(*Image)(nil),                 // 3: kacho.cloud.storage.v1.Image
 	nil,                           // 4: kacho.cloud.storage.v1.Image.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(StatusReason)(0),             // 6: kacho.cloud.storage.v1.StatusReason
+	(*reference.Reference)(nil),   // 7: kacho.cloud.reference.Reference
 }
 var file_kacho_cloud_storage_v1_image_proto_depIdxs = []int32{
 	5, // 0: kacho.cloud.storage.v1.Image.created_at:type_name -> google.protobuf.Timestamp
@@ -449,11 +489,13 @@ var file_kacho_cloud_storage_v1_image_proto_depIdxs = []int32{
 	1, // 3: kacho.cloud.storage.v1.Image.placement_type:type_name -> kacho.cloud.storage.v1.Image.PlacementType
 	2, // 4: kacho.cloud.storage.v1.Image.format:type_name -> kacho.cloud.storage.v1.Image.Format
 	0, // 5: kacho.cloud.storage.v1.Image.status:type_name -> kacho.cloud.storage.v1.Image.Status
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6, // 6: kacho.cloud.storage.v1.Image.status_reason:type_name -> kacho.cloud.storage.v1.StatusReason
+	7, // 7: kacho.cloud.storage.v1.Image.used_by:type_name -> kacho.cloud.reference.Reference
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_image_proto_init() }
@@ -461,6 +503,7 @@ func file_kacho_cloud_storage_v1_image_proto_init() {
 	if File_kacho_cloud_storage_v1_image_proto != nil {
 		return
 	}
+	file_kacho_cloud_storage_v1_status_reason_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

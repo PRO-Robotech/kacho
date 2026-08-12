@@ -85,8 +85,12 @@ func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
 	require.NoError(t, err)
 }
 
-// TestVolumeCreateGetDerivedStatus — Insert (state READY, block_size default) → Get
-// (AVAILABLE, поля); привязка → derived IN_USE + attachments/usedBy (S1-01, §1.3/1.5).
+// TestVolumeCreateGetDerivedStatus — Insert (state READY) → Get (AVAILABLE, поля);
+// привязка → derived IN_USE + attachments/usedBy (S1-01, §1.3/1.5).
+//
+// Утверждение про block_size снято вместе с полем: у него не было читателя,
+// меняющего поведение, поэтому проба закрепляла умолчание схемы, а не свойство
+// продукта. Колонка живёт в схеме со своим умолчанием и контрактом не адресуется.
 func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
@@ -94,7 +98,6 @@ func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 
 	v := mkVolume(t, r, "prj-1", "vol-data-1", 10<<30)
 	require.Equal(t, domain.PrefixVolume, v.ID[:3])
-	require.EqualValues(t, 4096, v.BlockSize, "block_size default")
 	require.Equal(t, domain.VolumeStatusAvailable, v.Status)
 
 	got, err := r.Get(ctx, v.ID)

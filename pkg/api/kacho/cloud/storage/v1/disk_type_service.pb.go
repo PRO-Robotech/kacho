@@ -15,6 +15,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -191,10 +192,18 @@ type CreateDiskTypeRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Availability zones where this disk type is offered.
 	ZoneIds []string `protobuf:"bytes,4,rep,name=zone_ids,json=zoneIds,proto3" json:"zone_ids,omitempty"`
-	// Performance tier of the disk type.
-	PerformanceTier string `protobuf:"bytes,5,opt,name=performance_tier,json=performanceTier,proto3" json:"performance_tier,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Ярус класса. Омит законен (класс вправе не называть ярус); значение вне
+	// словаря — INVALID_ARGUMENT.
+	Tier DiskType_PerformanceTier `protobuf:"varint,6,opt,name=tier,proto3,enum=kacho.cloud.storage.v1.DiskType_PerformanceTier" json:"tier,omitempty"`
+	// Состояние обращения регистрируемого класса. Омит означает ACTIVE — умолчание
+	// проставляет край в одном названном месте; домен незаполненное состояние
+	// отвергает, чтобы не принять опечатку за намерение.
+	Lifecycle DiskType_Lifecycle `protobuf:"varint,7,opt,name=lifecycle,proto3,enum=kacho.cloud.storage.v1.DiskType_Lifecycle" json:"lifecycle,omitempty"`
+	// Границы размера тома, объявляемые классом. Ноль в любом из полей означает
+	// «класс не сужает» с этой стороны.
+	Limits        *DiskType_SizeLimits `protobuf:"bytes,8,opt,name=limits,proto3" json:"limits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateDiskTypeRequest) Reset() {
@@ -255,22 +264,51 @@ func (x *CreateDiskTypeRequest) GetZoneIds() []string {
 	return nil
 }
 
-func (x *CreateDiskTypeRequest) GetPerformanceTier() string {
+func (x *CreateDiskTypeRequest) GetTier() DiskType_PerformanceTier {
 	if x != nil {
-		return x.PerformanceTier
+		return x.Tier
 	}
-	return ""
+	return DiskType_PERFORMANCE_TIER_UNSPECIFIED
+}
+
+func (x *CreateDiskTypeRequest) GetLifecycle() DiskType_Lifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return DiskType_LIFECYCLE_UNSPECIFIED
+}
+
+func (x *CreateDiskTypeRequest) GetLimits() *DiskType_SizeLimits {
+	if x != nil {
+		return x.Limits
+	}
+	return nil
 }
 
 type UpdateDiskTypeRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	DiskTypeId      string                 `protobuf:"bytes,1,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
-	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description     string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	ZoneIds         []string               `protobuf:"bytes,4,rep,name=zone_ids,json=zoneIds,proto3" json:"zone_ids,omitempty"`
-	PerformanceTier string                 `protobuf:"bytes,5,opt,name=performance_tier,json=performanceTier,proto3" json:"performance_tier,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID изменяемого класса. Неизменяем: адресация идёт по нему.
+	DiskTypeId  string `protobuf:"bytes,1,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
+	Name        string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// Список зон, в которых предлагается класс. Замещается целиком, когда назван
+	// маской (или когда маска пуста) — частичного добавления зоны у этого поля нет.
+	ZoneIds []string `protobuf:"bytes,4,rep,name=zone_ids,json=zoneIds,proto3" json:"zone_ids,omitempty"`
+	// Маска изменяемых полей. Заведена потому, что без неё правка была полной
+	// заменой: тело без `zone_ids` обнуляло список у справочника, от которого
+	// зависит размещение данных, — и запрос, менявший одно имя, снимал класс со
+	// всех зон, ничего об этом не сказав.
+	//
+	// Пустая маска остаётся полной заменой изменяемых полей (единая дисциплина
+	// платформы), неизвестное поле в маске — INVALID_ARGUMENT, неизменяемое —
+	// "<field> is immutable after DiskType.Create".
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,6,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// Ярус класса.
+	Tier DiskType_PerformanceTier `protobuf:"varint,7,opt,name=tier,proto3,enum=kacho.cloud.storage.v1.DiskType_PerformanceTier" json:"tier,omitempty"`
+	// Границы размера тома.
+	Limits        *DiskType_SizeLimits `protobuf:"bytes,8,opt,name=limits,proto3" json:"limits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateDiskTypeRequest) Reset() {
@@ -331,11 +369,81 @@ func (x *UpdateDiskTypeRequest) GetZoneIds() []string {
 	return nil
 }
 
-func (x *UpdateDiskTypeRequest) GetPerformanceTier() string {
+func (x *UpdateDiskTypeRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 	if x != nil {
-		return x.PerformanceTier
+		return x.UpdateMask
+	}
+	return nil
+}
+
+func (x *UpdateDiskTypeRequest) GetTier() DiskType_PerformanceTier {
+	if x != nil {
+		return x.Tier
+	}
+	return DiskType_PERFORMANCE_TIER_UNSPECIFIED
+}
+
+func (x *UpdateDiskTypeRequest) GetLimits() *DiskType_SizeLimits {
+	if x != nil {
+		return x.Limits
+	}
+	return nil
+}
+
+type SetDiskTypeLifecycleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID класса, состояние обращения которого меняется.
+	DiskTypeId string `protobuf:"bytes,1,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
+	// Новое состояние обращения. Обязательно и называется явно: у этого запроса нет
+	// умолчания — «не указано» здесь неотличимо от «верни в обращение», а такой
+	// исход обязан быть выбран, а не получен по недосмотру.
+	Lifecycle     DiskType_Lifecycle `protobuf:"varint,2,opt,name=lifecycle,proto3,enum=kacho.cloud.storage.v1.DiskType_Lifecycle" json:"lifecycle,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDiskTypeLifecycleRequest) Reset() {
+	*x = SetDiskTypeLifecycleRequest{}
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDiskTypeLifecycleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDiskTypeLifecycleRequest) ProtoMessage() {}
+
+func (x *SetDiskTypeLifecycleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDiskTypeLifecycleRequest.ProtoReflect.Descriptor instead.
+func (*SetDiskTypeLifecycleRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SetDiskTypeLifecycleRequest) GetDiskTypeId() string {
+	if x != nil {
+		return x.DiskTypeId
 	}
 	return ""
+}
+
+func (x *SetDiskTypeLifecycleRequest) GetLifecycle() DiskType_Lifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return DiskType_LIFECYCLE_UNSPECIFIED
 }
 
 type DeleteDiskTypeRequest struct {
@@ -347,7 +455,7 @@ type DeleteDiskTypeRequest struct {
 
 func (x *DeleteDiskTypeRequest) Reset() {
 	*x = DeleteDiskTypeRequest{}
-	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +467,7 @@ func (x *DeleteDiskTypeRequest) String() string {
 func (*DeleteDiskTypeRequest) ProtoMessage() {}
 
 func (x *DeleteDiskTypeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +480,7 @@ func (x *DeleteDiskTypeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDiskTypeRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDiskTypeRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteDiskTypeRequest) GetDiskTypeId() string {
@@ -390,7 +498,7 @@ type DeleteDiskTypeResponse struct {
 
 func (x *DeleteDiskTypeResponse) Reset() {
 	*x = DeleteDiskTypeResponse{}
-	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -402,7 +510,7 @@ func (x *DeleteDiskTypeResponse) String() string {
 func (*DeleteDiskTypeResponse) ProtoMessage() {}
 
 func (x *DeleteDiskTypeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -415,14 +523,14 @@ func (x *DeleteDiskTypeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDiskTypeResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDiskTypeResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP(), []int{7}
 }
 
 var File_kacho_cloud_storage_v1_disk_type_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/storage/v1/disk_type_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a&kacho/cloud/storage/v1/disk_type.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"<\n" +
+	".kacho/cloud/storage/v1/disk_type_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a&kacho/cloud/storage/v1/disk_type.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"<\n" +
 	"\x12GetDiskTypeRequest\x12&\n" +
 	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
 	"diskTypeId\"i\n" +
@@ -434,20 +542,29 @@ const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\x15ListDiskTypesResponse\x12?\n" +
 	"\n" +
 	"disk_types\x18\x01 \x03(\v2 .kacho.cloud.storage.v1.DiskTypeR\tdiskTypes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa9\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xeb\x02\n" +
 	"\x15CreateDiskTypeRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
-	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12)\n" +
-	"\x10performance_tier\x18\x05 \x01(\tR\x0fperformanceTier\"\xbb\x01\n" +
+	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12D\n" +
+	"\x04tier\x18\x06 \x01(\x0e20.kacho.cloud.storage.v1.DiskType.PerformanceTierR\x04tier\x12H\n" +
+	"\tlifecycle\x18\a \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleR\tlifecycle\x12C\n" +
+	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\xf0\x02\n" +
 	"\x15UpdateDiskTypeRequest\x12&\n" +
 	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
 	"diskTypeId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
-	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12)\n" +
-	"\x10performance_tier\x18\x05 \x01(\tR\x0fperformanceTier\"?\n" +
+	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12;\n" +
+	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
+	"updateMask\x12D\n" +
+	"\x04tier\x18\a \x01(\x0e20.kacho.cloud.storage.v1.DiskType.PerformanceTierR\x04tier\x12C\n" +
+	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\x95\x01\n" +
+	"\x1bSetDiskTypeLifecycleRequest\x12&\n" +
+	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
+	"diskTypeId\x12N\n" +
+	"\tlifecycle\x18\x02 \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleB\x04\xe8\xc71\x01R\tlifecycle\"?\n" +
 	"\x15DeleteDiskTypeRequest\x12&\n" +
 	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
 	"diskTypeId\"\x18\n" +
@@ -456,14 +573,16 @@ const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"e\x8a\xb5\x18\x16storage.disk_types.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/storage/v1/diskTypes/{disk_type_id}\x12\xbc\x01\n" +
 	"\x04List\x12,.kacho.cloud.storage.v1.ListDiskTypesRequest\x1a-.kacho.cloud.storage.v1.ListDiskTypesResponse\"W\x8a\xb5\x18\x17storage.disk_types.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\x82\x05\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\xf1\x06\n" +
 	"\x17InternalDiskTypeService\x12\xbd\x01\n" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"b\x8a\xb5\x18\x19storage.disk_types.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/diskTypes\x12\xcc\x01\n" +
 	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"q\x8a\xb5\x18\x19storage.disk_types.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02):\x01*2$/storage/v1/diskTypes/{disk_type_id}\x12\xd7\x01\n" +
 	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteDiskTypeRequest\x1a..kacho.cloud.storage.v1.DeleteDiskTypeResponse\"n\x8a\xb5\x18\x19storage.disk_types.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&*$/storage/v1/diskTypes/{disk_type_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&*$/storage/v1/diskTypes/{disk_type_id}\x12\xec\x01\n" +
+	"\fSetLifecycle\x123.kacho.cloud.storage.v1.SetDiskTypeLifecycleRequest\x1a .kacho.cloud.storage.v1.DiskType\"\x84\x01\x8a\xb5\x18\x1fstorage.disk_types.setLifecycle\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x026:\x01*21/storage/v1/diskTypes/{disk_type_id}:setLifecycleBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescOnce sync.Once
@@ -477,34 +596,48 @@ func file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_storage_v1_disk_type_service_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kacho_cloud_storage_v1_disk_type_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_storage_v1_disk_type_service_proto_goTypes = []any{
-	(*GetDiskTypeRequest)(nil),     // 0: kacho.cloud.storage.v1.GetDiskTypeRequest
-	(*ListDiskTypesRequest)(nil),   // 1: kacho.cloud.storage.v1.ListDiskTypesRequest
-	(*ListDiskTypesResponse)(nil),  // 2: kacho.cloud.storage.v1.ListDiskTypesResponse
-	(*CreateDiskTypeRequest)(nil),  // 3: kacho.cloud.storage.v1.CreateDiskTypeRequest
-	(*UpdateDiskTypeRequest)(nil),  // 4: kacho.cloud.storage.v1.UpdateDiskTypeRequest
-	(*DeleteDiskTypeRequest)(nil),  // 5: kacho.cloud.storage.v1.DeleteDiskTypeRequest
-	(*DeleteDiskTypeResponse)(nil), // 6: kacho.cloud.storage.v1.DeleteDiskTypeResponse
-	(*DiskType)(nil),               // 7: kacho.cloud.storage.v1.DiskType
+	(*GetDiskTypeRequest)(nil),          // 0: kacho.cloud.storage.v1.GetDiskTypeRequest
+	(*ListDiskTypesRequest)(nil),        // 1: kacho.cloud.storage.v1.ListDiskTypesRequest
+	(*ListDiskTypesResponse)(nil),       // 2: kacho.cloud.storage.v1.ListDiskTypesResponse
+	(*CreateDiskTypeRequest)(nil),       // 3: kacho.cloud.storage.v1.CreateDiskTypeRequest
+	(*UpdateDiskTypeRequest)(nil),       // 4: kacho.cloud.storage.v1.UpdateDiskTypeRequest
+	(*SetDiskTypeLifecycleRequest)(nil), // 5: kacho.cloud.storage.v1.SetDiskTypeLifecycleRequest
+	(*DeleteDiskTypeRequest)(nil),       // 6: kacho.cloud.storage.v1.DeleteDiskTypeRequest
+	(*DeleteDiskTypeResponse)(nil),      // 7: kacho.cloud.storage.v1.DeleteDiskTypeResponse
+	(*DiskType)(nil),                    // 8: kacho.cloud.storage.v1.DiskType
+	(DiskType_PerformanceTier)(0),       // 9: kacho.cloud.storage.v1.DiskType.PerformanceTier
+	(DiskType_Lifecycle)(0),             // 10: kacho.cloud.storage.v1.DiskType.Lifecycle
+	(*DiskType_SizeLimits)(nil),         // 11: kacho.cloud.storage.v1.DiskType.SizeLimits
+	(*fieldmaskpb.FieldMask)(nil),       // 12: google.protobuf.FieldMask
 }
 var file_kacho_cloud_storage_v1_disk_type_service_proto_depIdxs = []int32{
-	7, // 0: kacho.cloud.storage.v1.ListDiskTypesResponse.disk_types:type_name -> kacho.cloud.storage.v1.DiskType
-	0, // 1: kacho.cloud.storage.v1.DiskTypeService.Get:input_type -> kacho.cloud.storage.v1.GetDiskTypeRequest
-	1, // 2: kacho.cloud.storage.v1.DiskTypeService.List:input_type -> kacho.cloud.storage.v1.ListDiskTypesRequest
-	3, // 3: kacho.cloud.storage.v1.InternalDiskTypeService.Create:input_type -> kacho.cloud.storage.v1.CreateDiskTypeRequest
-	4, // 4: kacho.cloud.storage.v1.InternalDiskTypeService.Update:input_type -> kacho.cloud.storage.v1.UpdateDiskTypeRequest
-	5, // 5: kacho.cloud.storage.v1.InternalDiskTypeService.Delete:input_type -> kacho.cloud.storage.v1.DeleteDiskTypeRequest
-	7, // 6: kacho.cloud.storage.v1.DiskTypeService.Get:output_type -> kacho.cloud.storage.v1.DiskType
-	2, // 7: kacho.cloud.storage.v1.DiskTypeService.List:output_type -> kacho.cloud.storage.v1.ListDiskTypesResponse
-	7, // 8: kacho.cloud.storage.v1.InternalDiskTypeService.Create:output_type -> kacho.cloud.storage.v1.DiskType
-	7, // 9: kacho.cloud.storage.v1.InternalDiskTypeService.Update:output_type -> kacho.cloud.storage.v1.DiskType
-	6, // 10: kacho.cloud.storage.v1.InternalDiskTypeService.Delete:output_type -> kacho.cloud.storage.v1.DeleteDiskTypeResponse
-	6, // [6:11] is the sub-list for method output_type
-	1, // [1:6] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	8,  // 0: kacho.cloud.storage.v1.ListDiskTypesResponse.disk_types:type_name -> kacho.cloud.storage.v1.DiskType
+	9,  // 1: kacho.cloud.storage.v1.CreateDiskTypeRequest.tier:type_name -> kacho.cloud.storage.v1.DiskType.PerformanceTier
+	10, // 2: kacho.cloud.storage.v1.CreateDiskTypeRequest.lifecycle:type_name -> kacho.cloud.storage.v1.DiskType.Lifecycle
+	11, // 3: kacho.cloud.storage.v1.CreateDiskTypeRequest.limits:type_name -> kacho.cloud.storage.v1.DiskType.SizeLimits
+	12, // 4: kacho.cloud.storage.v1.UpdateDiskTypeRequest.update_mask:type_name -> google.protobuf.FieldMask
+	9,  // 5: kacho.cloud.storage.v1.UpdateDiskTypeRequest.tier:type_name -> kacho.cloud.storage.v1.DiskType.PerformanceTier
+	11, // 6: kacho.cloud.storage.v1.UpdateDiskTypeRequest.limits:type_name -> kacho.cloud.storage.v1.DiskType.SizeLimits
+	10, // 7: kacho.cloud.storage.v1.SetDiskTypeLifecycleRequest.lifecycle:type_name -> kacho.cloud.storage.v1.DiskType.Lifecycle
+	0,  // 8: kacho.cloud.storage.v1.DiskTypeService.Get:input_type -> kacho.cloud.storage.v1.GetDiskTypeRequest
+	1,  // 9: kacho.cloud.storage.v1.DiskTypeService.List:input_type -> kacho.cloud.storage.v1.ListDiskTypesRequest
+	3,  // 10: kacho.cloud.storage.v1.InternalDiskTypeService.Create:input_type -> kacho.cloud.storage.v1.CreateDiskTypeRequest
+	4,  // 11: kacho.cloud.storage.v1.InternalDiskTypeService.Update:input_type -> kacho.cloud.storage.v1.UpdateDiskTypeRequest
+	6,  // 12: kacho.cloud.storage.v1.InternalDiskTypeService.Delete:input_type -> kacho.cloud.storage.v1.DeleteDiskTypeRequest
+	5,  // 13: kacho.cloud.storage.v1.InternalDiskTypeService.SetLifecycle:input_type -> kacho.cloud.storage.v1.SetDiskTypeLifecycleRequest
+	8,  // 14: kacho.cloud.storage.v1.DiskTypeService.Get:output_type -> kacho.cloud.storage.v1.DiskType
+	2,  // 15: kacho.cloud.storage.v1.DiskTypeService.List:output_type -> kacho.cloud.storage.v1.ListDiskTypesResponse
+	8,  // 16: kacho.cloud.storage.v1.InternalDiskTypeService.Create:output_type -> kacho.cloud.storage.v1.DiskType
+	8,  // 17: kacho.cloud.storage.v1.InternalDiskTypeService.Update:output_type -> kacho.cloud.storage.v1.DiskType
+	7,  // 18: kacho.cloud.storage.v1.InternalDiskTypeService.Delete:output_type -> kacho.cloud.storage.v1.DeleteDiskTypeResponse
+	8,  // 19: kacho.cloud.storage.v1.InternalDiskTypeService.SetLifecycle:output_type -> kacho.cloud.storage.v1.DiskType
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_disk_type_service_proto_init() }
@@ -519,7 +652,7 @@ func file_kacho_cloud_storage_v1_disk_type_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

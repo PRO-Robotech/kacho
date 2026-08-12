@@ -342,6 +342,146 @@ func (x *CreateSnapshotMetadata) GetSourceVolumeId() string {
 	return ""
 }
 
+type CopySnapshotRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID снимка-источника. Копия читает его данные; сам он не меняется.
+	SnapshotId string `protobuf:"bytes,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	// Зона, в которой создаётся копия. Обязательна и называется вызывающим явно:
+	// умолчание «та же зона» превратило бы глагол переноса в дубликатор без
+	// предмета, а угадывать целевое размещение за арендатора не наше дело.
+	// Существование зоны проверяется у kacho-geo на пути запроса.
+	TargetZoneId string `protobuf:"bytes,2,opt,name=target_zone_id,json=targetZoneId,proto3" json:"target_zone_id,omitempty"`
+	// Имя копии. Своё, а не унаследованное: имя уникально в пределах проекта, и
+	// копия с именем источника не создалась бы вовсе.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Описание копии.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Метки копии. Метки источника не наследуются: перенос данных не переносит
+	// смысл, который арендатор вложил в метки исходного снимка.
+	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CopySnapshotRequest) Reset() {
+	*x = CopySnapshotRequest{}
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CopySnapshotRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CopySnapshotRequest) ProtoMessage() {}
+
+func (x *CopySnapshotRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CopySnapshotRequest.ProtoReflect.Descriptor instead.
+func (*CopySnapshotRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CopySnapshotRequest) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *CopySnapshotRequest) GetTargetZoneId() string {
+	if x != nil {
+		return x.TargetZoneId
+	}
+	return ""
+}
+
+func (x *CopySnapshotRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CopySnapshotRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CopySnapshotRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+type CopySnapshotMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID НОВОГО снимка — того, который создаётся копированием.
+	SnapshotId string `protobuf:"bytes,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	// ID снимка-источника.
+	SourceSnapshotId string `protobuf:"bytes,2,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *CopySnapshotMetadata) Reset() {
+	*x = CopySnapshotMetadata{}
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CopySnapshotMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CopySnapshotMetadata) ProtoMessage() {}
+
+func (x *CopySnapshotMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CopySnapshotMetadata.ProtoReflect.Descriptor instead.
+func (*CopySnapshotMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *CopySnapshotMetadata) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *CopySnapshotMetadata) GetSourceSnapshotId() string {
+	if x != nil {
+		return x.SourceSnapshotId
+	}
+	return ""
+}
+
 type UpdateSnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Snapshot resource to update.
@@ -364,7 +504,7 @@ type UpdateSnapshotRequest struct {
 
 func (x *UpdateSnapshotRequest) Reset() {
 	*x = UpdateSnapshotRequest{}
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -376,7 +516,7 @@ func (x *UpdateSnapshotRequest) String() string {
 func (*UpdateSnapshotRequest) ProtoMessage() {}
 
 func (x *UpdateSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -389,7 +529,7 @@ func (x *UpdateSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpdateSnapshotRequest) GetSnapshotId() string {
@@ -437,7 +577,7 @@ type UpdateSnapshotMetadata struct {
 
 func (x *UpdateSnapshotMetadata) Reset() {
 	*x = UpdateSnapshotMetadata{}
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +589,7 @@ func (x *UpdateSnapshotMetadata) String() string {
 func (*UpdateSnapshotMetadata) ProtoMessage() {}
 
 func (x *UpdateSnapshotMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +602,7 @@ func (x *UpdateSnapshotMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSnapshotMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateSnapshotMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateSnapshotMetadata) GetSnapshotId() string {
@@ -483,7 +623,7 @@ type DeleteSnapshotRequest struct {
 
 func (x *DeleteSnapshotRequest) Reset() {
 	*x = DeleteSnapshotRequest{}
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -495,7 +635,7 @@ func (x *DeleteSnapshotRequest) String() string {
 func (*DeleteSnapshotRequest) ProtoMessage() {}
 
 func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -508,7 +648,7 @@ func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteSnapshotRequest) GetSnapshotId() string {
@@ -528,7 +668,7 @@ type DeleteSnapshotMetadata struct {
 
 func (x *DeleteSnapshotMetadata) Reset() {
 	*x = DeleteSnapshotMetadata{}
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -540,7 +680,7 @@ func (x *DeleteSnapshotMetadata) String() string {
 func (*DeleteSnapshotMetadata) ProtoMessage() {}
 
 func (x *DeleteSnapshotMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -553,12 +693,130 @@ func (x *DeleteSnapshotMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSnapshotMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteSnapshotMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteSnapshotMetadata) GetSnapshotId() string {
 	if x != nil {
 		return x.SnapshotId
+	}
+	return ""
+}
+
+type ListSnapshotOperationsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID снимка, чьи операции перечисляются.
+	SnapshotId string `protobuf:"bytes,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
+	// The maximum number of results per page to return.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListSnapshotOperationsResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSnapshotOperationsRequest) Reset() {
+	*x = ListSnapshotOperationsRequest{}
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSnapshotOperationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSnapshotOperationsRequest) ProtoMessage() {}
+
+func (x *ListSnapshotOperationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSnapshotOperationsRequest.ProtoReflect.Descriptor instead.
+func (*ListSnapshotOperationsRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListSnapshotOperationsRequest) GetSnapshotId() string {
+	if x != nil {
+		return x.SnapshotId
+	}
+	return ""
+}
+
+func (x *ListSnapshotOperationsRequest) GetPageSize() int64 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListSnapshotOperationsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListSnapshotOperationsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// List of operations for the specified snapshot.
+	Operations []*operation.Operation `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"`
+	// This token allows you to get the next page of results for list requests.
+	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSnapshotOperationsResponse) Reset() {
+	*x = ListSnapshotOperationsResponse{}
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSnapshotOperationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSnapshotOperationsResponse) ProtoMessage() {}
+
+func (x *ListSnapshotOperationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSnapshotOperationsResponse.ProtoReflect.Descriptor instead.
+func (*ListSnapshotOperationsResponse) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListSnapshotOperationsResponse) GetOperations() []*operation.Operation {
+	if x != nil {
+		return x.Operations
+	}
+	return nil
+}
+
+func (x *ListSnapshotOperationsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
 	}
 	return ""
 }
@@ -596,7 +854,21 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\x16CreateSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12(\n" +
-	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xbf\x03\n" +
+	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xb2\x03\n" +
+	"\x13CopySnapshotRequest\x12-\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"snapshotId\x122\n" +
+	"\x0etarget_zone_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\ftargetZoneId\x129\n" +
+	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
+	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x94\x01\n" +
+	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"e\n" +
+	"\x14CopySnapshotMetadata\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
+	"snapshotId\x12,\n" +
+	"\x12source_snapshot_id\x18\x02 \x01(\tR\x10sourceSnapshotId\"\xbf\x03\n" +
 	"\x15UpdateSnapshotRequest\x12-\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"snapshotId\x12;\n" +
@@ -616,7 +888,19 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"snapshotId\"9\n" +
 	"\x16DeleteSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
-	"snapshotId2\x9e\t\n" +
+	"snapshotId\"\xa1\x01\n" +
+	"\x1dListSnapshotOperationsRequest\x12-\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"snapshotId\x12'\n" +
+	"\tpage_size\x18\x02 \x01(\x03B\n" +
+	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8a\x01\n" +
+	"\x1eListSnapshotOperationsResponse\x12@\n" +
+	"\n" +
+	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
+	"operations\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xac\r\n" +
 	"\x0fSnapshotService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetSnapshotRequest\x1a .kacho.cloud.storage.v1.Snapshot\"u\x8a\xb5\x18\x15storage.snapshots.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/storage/v1/snapshots/{snapshot_id}\x12\xc4\x01\n" +
@@ -626,13 +910,18 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18storage.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\x80\x02\n" +
+	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xfa\x01\n" +
+	"\x04Copy\x12+.kacho.cloud.storage.v1.CopySnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa2\x01\x8a\xb5\x18\x16storage.snapshots.copy\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
+	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
+	"\x14CopySnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02-:\x01*\"(/storage/v1/snapshots/{snapshot_id}:copy\x12\x80\x02\n" +
 	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18storage.snapshots.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
 	"\x16UpdateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02(:\x01*2#/storage/v1/snapshots/{snapshot_id}\x12\x8a\x02\n" +
 	"\x06Delete\x12-.kacho.cloud.storage.v1.DeleteSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18\x18storage.snapshots.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*/\n" +
-	"\x16DeleteSnapshotMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/storage/v1/snapshots/{snapshot_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x16DeleteSnapshotMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02%*#/storage/v1/snapshots/{snapshot_id}\x12\x8e\x02\n" +
+	"\x0eListOperations\x125.kacho.cloud.storage.v1.ListSnapshotOperationsRequest\x1a6.kacho.cloud.storage.v1.ListSnapshotOperationsResponse\"\x8c\x01\x8a\xb5\x18 storage.snapshots.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1f\n" +
+	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x020\x12./storage/v1/snapshots/{snapshot_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescOnce sync.Once
@@ -646,43 +935,54 @@ func file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_kacho_cloud_storage_v1_snapshot_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_kacho_cloud_storage_v1_snapshot_service_proto_goTypes = []any{
-	(*GetSnapshotRequest)(nil),     // 0: kacho.cloud.storage.v1.GetSnapshotRequest
-	(*ListSnapshotsRequest)(nil),   // 1: kacho.cloud.storage.v1.ListSnapshotsRequest
-	(*ListSnapshotsResponse)(nil),  // 2: kacho.cloud.storage.v1.ListSnapshotsResponse
-	(*CreateSnapshotRequest)(nil),  // 3: kacho.cloud.storage.v1.CreateSnapshotRequest
-	(*CreateSnapshotMetadata)(nil), // 4: kacho.cloud.storage.v1.CreateSnapshotMetadata
-	(*UpdateSnapshotRequest)(nil),  // 5: kacho.cloud.storage.v1.UpdateSnapshotRequest
-	(*UpdateSnapshotMetadata)(nil), // 6: kacho.cloud.storage.v1.UpdateSnapshotMetadata
-	(*DeleteSnapshotRequest)(nil),  // 7: kacho.cloud.storage.v1.DeleteSnapshotRequest
-	(*DeleteSnapshotMetadata)(nil), // 8: kacho.cloud.storage.v1.DeleteSnapshotMetadata
-	nil,                            // 9: kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntry
-	nil,                            // 10: kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
-	(*Snapshot)(nil),               // 11: kacho.cloud.storage.v1.Snapshot
-	(*fieldmaskpb.FieldMask)(nil),  // 12: google.protobuf.FieldMask
-	(*operation.Operation)(nil),    // 13: kacho.cloud.operation.Operation
+	(*GetSnapshotRequest)(nil),             // 0: kacho.cloud.storage.v1.GetSnapshotRequest
+	(*ListSnapshotsRequest)(nil),           // 1: kacho.cloud.storage.v1.ListSnapshotsRequest
+	(*ListSnapshotsResponse)(nil),          // 2: kacho.cloud.storage.v1.ListSnapshotsResponse
+	(*CreateSnapshotRequest)(nil),          // 3: kacho.cloud.storage.v1.CreateSnapshotRequest
+	(*CreateSnapshotMetadata)(nil),         // 4: kacho.cloud.storage.v1.CreateSnapshotMetadata
+	(*CopySnapshotRequest)(nil),            // 5: kacho.cloud.storage.v1.CopySnapshotRequest
+	(*CopySnapshotMetadata)(nil),           // 6: kacho.cloud.storage.v1.CopySnapshotMetadata
+	(*UpdateSnapshotRequest)(nil),          // 7: kacho.cloud.storage.v1.UpdateSnapshotRequest
+	(*UpdateSnapshotMetadata)(nil),         // 8: kacho.cloud.storage.v1.UpdateSnapshotMetadata
+	(*DeleteSnapshotRequest)(nil),          // 9: kacho.cloud.storage.v1.DeleteSnapshotRequest
+	(*DeleteSnapshotMetadata)(nil),         // 10: kacho.cloud.storage.v1.DeleteSnapshotMetadata
+	(*ListSnapshotOperationsRequest)(nil),  // 11: kacho.cloud.storage.v1.ListSnapshotOperationsRequest
+	(*ListSnapshotOperationsResponse)(nil), // 12: kacho.cloud.storage.v1.ListSnapshotOperationsResponse
+	nil,                                    // 13: kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntry
+	nil,                                    // 14: kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntry
+	nil,                                    // 15: kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
+	(*Snapshot)(nil),                       // 16: kacho.cloud.storage.v1.Snapshot
+	(*fieldmaskpb.FieldMask)(nil),          // 17: google.protobuf.FieldMask
+	(*operation.Operation)(nil),            // 18: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_storage_v1_snapshot_service_proto_depIdxs = []int32{
-	11, // 0: kacho.cloud.storage.v1.ListSnapshotsResponse.snapshots:type_name -> kacho.cloud.storage.v1.Snapshot
-	9,  // 1: kacho.cloud.storage.v1.CreateSnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntry
-	12, // 2: kacho.cloud.storage.v1.UpdateSnapshotRequest.update_mask:type_name -> google.protobuf.FieldMask
-	10, // 3: kacho.cloud.storage.v1.UpdateSnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
-	0,  // 4: kacho.cloud.storage.v1.SnapshotService.Get:input_type -> kacho.cloud.storage.v1.GetSnapshotRequest
-	1,  // 5: kacho.cloud.storage.v1.SnapshotService.List:input_type -> kacho.cloud.storage.v1.ListSnapshotsRequest
-	3,  // 6: kacho.cloud.storage.v1.SnapshotService.Create:input_type -> kacho.cloud.storage.v1.CreateSnapshotRequest
-	5,  // 7: kacho.cloud.storage.v1.SnapshotService.Update:input_type -> kacho.cloud.storage.v1.UpdateSnapshotRequest
-	7,  // 8: kacho.cloud.storage.v1.SnapshotService.Delete:input_type -> kacho.cloud.storage.v1.DeleteSnapshotRequest
-	11, // 9: kacho.cloud.storage.v1.SnapshotService.Get:output_type -> kacho.cloud.storage.v1.Snapshot
-	2,  // 10: kacho.cloud.storage.v1.SnapshotService.List:output_type -> kacho.cloud.storage.v1.ListSnapshotsResponse
-	13, // 11: kacho.cloud.storage.v1.SnapshotService.Create:output_type -> kacho.cloud.operation.Operation
-	13, // 12: kacho.cloud.storage.v1.SnapshotService.Update:output_type -> kacho.cloud.operation.Operation
-	13, // 13: kacho.cloud.storage.v1.SnapshotService.Delete:output_type -> kacho.cloud.operation.Operation
-	9,  // [9:14] is the sub-list for method output_type
-	4,  // [4:9] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	16, // 0: kacho.cloud.storage.v1.ListSnapshotsResponse.snapshots:type_name -> kacho.cloud.storage.v1.Snapshot
+	13, // 1: kacho.cloud.storage.v1.CreateSnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntry
+	14, // 2: kacho.cloud.storage.v1.CopySnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntry
+	17, // 3: kacho.cloud.storage.v1.UpdateSnapshotRequest.update_mask:type_name -> google.protobuf.FieldMask
+	15, // 4: kacho.cloud.storage.v1.UpdateSnapshotRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntry
+	18, // 5: kacho.cloud.storage.v1.ListSnapshotOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 6: kacho.cloud.storage.v1.SnapshotService.Get:input_type -> kacho.cloud.storage.v1.GetSnapshotRequest
+	1,  // 7: kacho.cloud.storage.v1.SnapshotService.List:input_type -> kacho.cloud.storage.v1.ListSnapshotsRequest
+	3,  // 8: kacho.cloud.storage.v1.SnapshotService.Create:input_type -> kacho.cloud.storage.v1.CreateSnapshotRequest
+	5,  // 9: kacho.cloud.storage.v1.SnapshotService.Copy:input_type -> kacho.cloud.storage.v1.CopySnapshotRequest
+	7,  // 10: kacho.cloud.storage.v1.SnapshotService.Update:input_type -> kacho.cloud.storage.v1.UpdateSnapshotRequest
+	9,  // 11: kacho.cloud.storage.v1.SnapshotService.Delete:input_type -> kacho.cloud.storage.v1.DeleteSnapshotRequest
+	11, // 12: kacho.cloud.storage.v1.SnapshotService.ListOperations:input_type -> kacho.cloud.storage.v1.ListSnapshotOperationsRequest
+	16, // 13: kacho.cloud.storage.v1.SnapshotService.Get:output_type -> kacho.cloud.storage.v1.Snapshot
+	2,  // 14: kacho.cloud.storage.v1.SnapshotService.List:output_type -> kacho.cloud.storage.v1.ListSnapshotsResponse
+	18, // 15: kacho.cloud.storage.v1.SnapshotService.Create:output_type -> kacho.cloud.operation.Operation
+	18, // 16: kacho.cloud.storage.v1.SnapshotService.Copy:output_type -> kacho.cloud.operation.Operation
+	18, // 17: kacho.cloud.storage.v1.SnapshotService.Update:output_type -> kacho.cloud.operation.Operation
+	18, // 18: kacho.cloud.storage.v1.SnapshotService.Delete:output_type -> kacho.cloud.operation.Operation
+	12, // 19: kacho.cloud.storage.v1.SnapshotService.ListOperations:output_type -> kacho.cloud.storage.v1.ListSnapshotOperationsResponse
+	13, // [13:20] is the sub-list for method output_type
+	6,  // [6:13] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_snapshot_service_proto_init() }
@@ -697,7 +997,7 @@ func file_kacho_cloud_storage_v1_snapshot_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

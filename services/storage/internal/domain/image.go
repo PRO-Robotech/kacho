@@ -116,6 +116,17 @@ type Image struct {
 	Status         ImageStatus
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+
+	StatusReason StatusReason
+
+	// SeededVolumeIDs — тома, засеянные из этого источника. Output-only,
+	// выводится на чтении, на вход не принимается.
+	SeededVolumeIDs []string
+	// Backend — где образ материализован. Имя отличается от Placement выше:
+	// то — ПУБЛИЧНАЯ ось размещения (региональный/зональный), это — инфра-адрес
+	// у бэкенда. Две разные величины, и совпадение слов их бы склеило.
+	Backend     Placement
+	Observation Observation
 }
 
 // Validate проверяет domain-инварианты Image перед созданием. Порядок выдаёт

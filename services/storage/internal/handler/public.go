@@ -74,7 +74,6 @@ func (h *VolumeHandler) Create(ctx context.Context, req *storagev1.CreateVolumeR
 		ZoneID:         req.GetZoneId(),
 		DiskTypeID:     req.GetDiskTypeId(),
 		SizeBytes:      req.GetSizeBytes(),
-		BlockSize:      req.GetBlockSize(),
 		SourceSnapshot: req.GetSourceSnapshotId(),
 		SourceImage:    req.GetSourceImageId(),
 	}

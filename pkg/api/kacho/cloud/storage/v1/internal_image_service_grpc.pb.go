@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	InternalImageService_GetInternal_FullMethodName = "/kacho.cloud.storage.v1.InternalImageService/GetInternal"
+	InternalImageService_Register_FullMethodName    = "/kacho.cloud.storage.v1.InternalImageService/Register"
 )
 
 // InternalImageServiceClient is the client API for InternalImageService service.
@@ -32,17 +33,33 @@ const (
 // InternalImageService — cluster-internal RPC (port 9091; ban #6), reachable ONLY on
 // the internal listener over mTLS, NOT on the external TLS endpoint.
 //
-// It carries the internal (infra) projection of an Image. AuthN (mTLS) + AuthZ
-// (per-RPC Check) apply on this listener as well.
+// Несёт две вещи, которых на публичной поверхности нет и не будет: инфра-проекцию
+// образа и регистрацию образа, внесённого в хранилище провайдером.
+//
+// Сервис gRPC-only: google.api.http не объявляется НИ У ОДНОГО его RPC, поэтому на
+// краю у него нет маршрута — ни на публичном мультиплексоре, ни на внутреннем. AuthN
+// (mTLS) и per-RPC authZ действуют и здесь: внутренний периметр не доверенный.
 type InternalImageServiceClient interface {
-	// GetInternal — full (infra) projection of an Image, internal-only.
-	//
-	// NOTE: the infra fields (blob-layout / bucket / engine-namespace / storage-node)
-	// are a FUTURE data-plane increment and are out-of-scope here: the response
-	// message is a skeleton that embeds the public Image; infra fields are declared as
-	// a reserved range and are never populated on the public Image (ban #6 +
-	// infra-sensitive).
+	// GetInternal — полная (инфра) проекция образа, только внутри кластера.
 	GetInternal(ctx context.Context, in *GetInternalImageRequest, opts ...grpc.CallOption) (*ImageInternal, error)
+	// Register — регистрация образа, внесённого в хранилище командой провайдера.
+	//
+	// Метод обязан существовать, и причина не в удобстве. Единственный источник ОС для
+	// машины — storage-образ, а публичный ImageService.Create делает образ ТОЛЬКО из
+	// тома или снимка. На чистой установке нет ни того, ни другого, поэтому без
+	// регистрации первая машина не запускается by construction.
+	//
+	// Блоб-конвейера у нас нет и он не проектируется: байты вносит команда провайдера
+	// вне облака, облако регистрирует handle уже лежащего объекта.
+	//
+	// Синхронный и отдаёт ресурс, а не Operation: за регистрацией нет длящейся работы —
+	// это запись строки о том, что у бэкенда уже есть. Оборачивать её в операцию значило
+	// бы заставить администратора поллить готовое.
+	//
+	// system_admin @ cluster: образ вносит оператор установки, а не арендатор. Отношение
+	// взято уровнем кластера намеренно — предмет регистрации появляется ДО того, как у
+	// него есть собственный объект, про который можно спросить.
+	Register(ctx context.Context, in *RegisterImageRequest, opts ...grpc.CallOption) (*Image, error)
 }
 
 type internalImageServiceClient struct {
@@ -63,6 +80,16 @@ func (c *internalImageServiceClient) GetInternal(ctx context.Context, in *GetInt
 	return out, nil
 }
 
+func (c *internalImageServiceClient) Register(ctx context.Context, in *RegisterImageRequest, opts ...grpc.CallOption) (*Image, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Image)
+	err := c.cc.Invoke(ctx, InternalImageService_Register_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalImageServiceServer is the server API for InternalImageService service.
 // All implementations must embed UnimplementedInternalImageServiceServer
 // for forward compatibility.
@@ -70,17 +97,33 @@ func (c *internalImageServiceClient) GetInternal(ctx context.Context, in *GetInt
 // InternalImageService — cluster-internal RPC (port 9091; ban #6), reachable ONLY on
 // the internal listener over mTLS, NOT on the external TLS endpoint.
 //
-// It carries the internal (infra) projection of an Image. AuthN (mTLS) + AuthZ
-// (per-RPC Check) apply on this listener as well.
+// Несёт две вещи, которых на публичной поверхности нет и не будет: инфра-проекцию
+// образа и регистрацию образа, внесённого в хранилище провайдером.
+//
+// Сервис gRPC-only: google.api.http не объявляется НИ У ОДНОГО его RPC, поэтому на
+// краю у него нет маршрута — ни на публичном мультиплексоре, ни на внутреннем. AuthN
+// (mTLS) и per-RPC authZ действуют и здесь: внутренний периметр не доверенный.
 type InternalImageServiceServer interface {
-	// GetInternal — full (infra) projection of an Image, internal-only.
-	//
-	// NOTE: the infra fields (blob-layout / bucket / engine-namespace / storage-node)
-	// are a FUTURE data-plane increment and are out-of-scope here: the response
-	// message is a skeleton that embeds the public Image; infra fields are declared as
-	// a reserved range and are never populated on the public Image (ban #6 +
-	// infra-sensitive).
+	// GetInternal — полная (инфра) проекция образа, только внутри кластера.
 	GetInternal(context.Context, *GetInternalImageRequest) (*ImageInternal, error)
+	// Register — регистрация образа, внесённого в хранилище командой провайдера.
+	//
+	// Метод обязан существовать, и причина не в удобстве. Единственный источник ОС для
+	// машины — storage-образ, а публичный ImageService.Create делает образ ТОЛЬКО из
+	// тома или снимка. На чистой установке нет ни того, ни другого, поэтому без
+	// регистрации первая машина не запускается by construction.
+	//
+	// Блоб-конвейера у нас нет и он не проектируется: байты вносит команда провайдера
+	// вне облака, облако регистрирует handle уже лежащего объекта.
+	//
+	// Синхронный и отдаёт ресурс, а не Operation: за регистрацией нет длящейся работы —
+	// это запись строки о том, что у бэкенда уже есть. Оборачивать её в операцию значило
+	// бы заставить администратора поллить готовое.
+	//
+	// system_admin @ cluster: образ вносит оператор установки, а не арендатор. Отношение
+	// взято уровнем кластера намеренно — предмет регистрации появляется ДО того, как у
+	// него есть собственный объект, про который можно спросить.
+	Register(context.Context, *RegisterImageRequest) (*Image, error)
 	mustEmbedUnimplementedInternalImageServiceServer()
 }
 
@@ -93,6 +136,9 @@ type UnimplementedInternalImageServiceServer struct{}
 
 func (UnimplementedInternalImageServiceServer) GetInternal(context.Context, *GetInternalImageRequest) (*ImageInternal, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetInternal not implemented")
+}
+func (UnimplementedInternalImageServiceServer) Register(context.Context, *RegisterImageRequest) (*Image, error) {
+	return nil, status.Error(codes.Unimplemented, "method Register not implemented")
 }
 func (UnimplementedInternalImageServiceServer) mustEmbedUnimplementedInternalImageServiceServer() {}
 func (UnimplementedInternalImageServiceServer) testEmbeddedByValue()                              {}
@@ -133,6 +179,24 @@ func _InternalImageService_GetInternal_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalImageService_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalImageServiceServer).Register(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalImageService_Register_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalImageServiceServer).Register(ctx, req.(*RegisterImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalImageService_ServiceDesc is the grpc.ServiceDesc for InternalImageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -143,6 +207,10 @@ var InternalImageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetInternal",
 			Handler:    _InternalImageService_GetInternal_Handler,
+		},
+		{
+			MethodName: "Register",
+			Handler:    _InternalImageService_Register_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

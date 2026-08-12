@@ -6,6 +6,8 @@ syntax = "proto3";
 package kacho.cloud.storage.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/reference/reference.proto";
+import "kacho/cloud/storage/v1/status_reason.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -99,6 +101,10 @@ message Image {
   string source_volume_id = 11;
 
   // Virtual disk size of the image, in bytes. Output-only (derived from the source).
+  //
+  // У зарегистрированного образа (InternalImageService.Register) источника внутри
+  // облака нет вовсе, и число приходит от регистрации. Output-only это не отменяет:
+  // публичные Create/Update его по-прежнему не принимают.
   int64 size_bytes = 12;
 
   // Minimum size (in bytes) of a receiving boot Volume. Output-only (derived from
@@ -107,6 +113,9 @@ message Image {
   // INVALID_ARGUMENT "Volume size %d is less than image min_disk_bytes %d". The
   // bound is inclusive. An image the caller cannot reach never reports its minimum —
   // it answers with the same "Image <id> not found" a real miss produces.
+  //
+  // У зарегистрированного образа число приходит от регистрации — по той же причине,
+  // что и size_bytes: выводить его не из чего.
   int64 min_disk_bytes = 13;
 
   // Image disk format. Output-only native Kachō enum.
@@ -114,4 +123,20 @@ message Image {
 
   // Current status of the image.
   Status status = 15;
+
+  // Почему образ оказался в этом состоянии. Закрытый словарь НАШИХ полос, output-only.
+  //
+  // Один status на это не отвечает: ERROR не различает «бэкенд не ответил, сверщик
+  // вернётся» и «отказал по существу, идентичный повтор не пройдёт», — а арендатор
+  // решает по этой разнице, ждать ему или звать оператора. В штатном состоянии
+  // значение STATUS_REASON_UNSPECIFIED: причины нет.
+  StatusReason status_reason = 16;
+
+  // Тома, засеянные этим образом. Output-only обобщённая проекция; на вход Create /
+  // Update не принимается.
+  //
+  // Нужна ДО удаления, а не после: удаление образа проходит и очищает происхождение
+  // засеянных томов (FK ON DELETE SET NULL — блочные данные живут, родословная
+  // теряется). Без этого списка арендатор стирает связь, не видя, у скольких томов.
+  repeated kacho.cloud.reference.Reference used_by = 17;
 }
