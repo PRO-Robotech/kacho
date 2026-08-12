@@ -37,6 +37,18 @@ const REFERRER_SPEC: Record<string, string> = {
 // "references" (used_by → /projects/<projectId>/compute/instances/<id> и т.п.).
 export interface FormatCellOpts {
   projectId?: string | null;
+  /** База пути карточки для колонки имени. Нужна вложенным таблицам, где
+   *  ресурс адресуется через родителя (`/networks/<id>/route-tables/<id>`). */
+  nameBasePath?: string | null;
+  /** Полный адрес карточки для строки — когда путь не «база + идентификатор»
+   *  (список со своим `childRoute`). Задаётся ТЕМ ЖЕ выражением, каким прежде
+   *  считался переход по клику на строку: иначе ссылка повела бы в другое место,
+   *  чем вёл клик, и подмена одного другим молча сменила бы адресацию. */
+  nameHref?: (row: Record<string, unknown>) => string | null;
+  /** Иконка типа рядом с именем — только во ВЛОЖЕННЫХ таблицах, где в одном
+   *  окне соседствуют разные типы. В списке самого ресурса тип и так назван
+   *  заголовком страницы, и колонка иконок была бы столбцом одинаковых значков. */
+  nameIcon?: boolean;
 }
 
 // ReferrerLink — общий рендер одного referrer'а как «{label} {id}» (plain text,
@@ -120,27 +132,30 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
 function ResourceNameCell({
   spec,
   row,
-  projectId,
+  opts,
   children,
 }: {
   spec: ResourceSpec;
   row: Record<string, unknown>;
-  projectId?: string | null;
+  opts: FormatCellOpts;
   children: ReactNode;
 }): ReactNode {
   const id = displayText(getByPath(row, "id"));
-  const base = resourceProjectPath(spec.id, projectId ?? null);
-  const content = (
+  const base = opts.nameBasePath ?? resourceProjectPath(spec.id, opts.projectId ?? null);
+  const href = opts.nameHref ? opts.nameHref(row) : base && id ? `${base}/${id}` : null;
+  const content = opts.nameIcon ? (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
       <ResourceIcon specId={spec.id} />
       {children}
     </span>
+  ) : (
+    children
   );
   // Без пути (ресурс без карточки в консоли) ссылка не рисуется: подчёркнутый
   // текст, никуда не ведущий, обещает переход, которого нет.
-  if (!base || !id) return content;
+  if (!href) return content;
   return (
-    <Link to={`${base}/${id}`} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
+    <Link to={href} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
       {content}
     </Link>
   );
@@ -153,9 +168,7 @@ export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}):
     cell: (row) => {
       const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
       // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
-      return c.path === "name"
-        ? ResourceNameCell({ spec, row, projectId: opts.projectId, children: inner })
-        : inner;
+      return c.path === "name" ? ResourceNameCell({ spec, row, opts, children: inner }) : inner;
     },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));

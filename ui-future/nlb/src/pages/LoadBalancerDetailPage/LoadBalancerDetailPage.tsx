@@ -91,7 +91,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
   }, [rows, query]);
 
   const columns = useMemo<Column<Record<string, unknown>>[]>(() => {
-    const cols = buildSpecColumns(TG_SPEC, { projectId: projectId ?? undefined });
+    const cols = buildSpecColumns(TG_SPEC, { projectId: projectId ?? undefined, nameIcon: true });
     cols.push({
       header: "Через листенер",
       className: "whitespace-nowrap",
@@ -139,10 +139,6 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
           rows={filtered}
           columns={columns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-          onRowClick={(r) => {
-            const id = getByPath<string>(r, "id");
-            if (id && projectId) navigate(`/projects/${projectId}/nlb/target-groups/${id}`);
-          }}
         />
       )}
     </Space>

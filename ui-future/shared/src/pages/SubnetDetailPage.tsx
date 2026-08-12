@@ -76,7 +76,7 @@ export function SubnetDetailPage() {
 
   // Колонки = те же, что у Addresses list, плюс actions.
   const addrColumns = useMemo<Column<Record<string, unknown>>[]>(() => {
-    const cols = buildSpecColumns(addrSpec, { projectId });
+    const cols = buildSpecColumns(addrSpec, { projectId, nameIcon: true });
     if (addressesBasePath) {
       cols.push({
         header: "",

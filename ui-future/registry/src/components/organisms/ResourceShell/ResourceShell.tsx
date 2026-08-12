@@ -127,7 +127,15 @@ function RelatedTable({
     columns: childSpec.columns.filter((c) => !filterFields.includes(c.path)),
   };
   const toggleCols: ToggleCol[] = specNoParent.columns.map((c) => ({ key: c.header, label: c.header }));
-  const columns = buildSpecColumns(specNoParent, { projectId }).filter((c) => !hidden.has(c.header));
+  const columns = buildSpecColumns(specNoParent, {
+    projectId,
+    nameIcon: true,
+    // Тот же адрес, каким прежде был переход по клику на строку.
+    nameHref: (r) => {
+      const rid = getByPath<string>(r, "id");
+      return rid ? `${flatChildBase}/${rid}` : null;
+    },
+  }).filter((c) => !hidden.has(c.header));
   // Столбец действий — только когда у ресурса есть строчные действия. Для read-only
   // (напр. образы) не рисуем пустой столбец.
   if (resourceHasRowActions(childSpec)) {
@@ -182,17 +190,6 @@ function RelatedTable({
             selectedRowKey={tagsRepo}
             rowKey={(r) => getByPath<string>(r, "id") ?? getByPath<string>(r, "name") ?? Math.random().toString()}
             empty={q || facetVal ? "По запросу ничего не найдено." : undefined}
-            onRowClick={(r) => {
-              // Репозиторий адресуется ИМЕНЕМ (нет `id`) — клик выдвигает боковую
-              // панель тегов В ЛАЙАУТЕ (раздвигает таблицу), без перехода на страницу.
-              if (childSpec.id === "repositories") {
-                const repo = getByPath<string>(r, "name");
-                if (repo) setTagsRepo(repo);
-                return;
-              }
-              const id = getByPath<string>(r, "id");
-              if (id) navigate(`${flatChildBase}/${id}`);
-            }}
           />
         </div>
         {childSpec.id === "repositories" && (

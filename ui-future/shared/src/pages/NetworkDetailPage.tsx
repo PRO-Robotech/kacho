@@ -144,9 +144,6 @@ export function NetworkDetailPage() {
             rows={networkSubnets}
             columns={subnetColumns}
             emptyText="В сети нет подсетей."
-            onClick={(id) =>
-              projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/subnets/${id}`)
-            }
           />
         </Space>
       );
@@ -166,9 +163,6 @@ export function NetworkDetailPage() {
             rows={networkRouteTables}
             columns={rtColumns}
             emptyText="К сети не привязано ни одной таблицы маршрутизации."
-            onClick={(id) =>
-              projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/route-tables/${id}`)
-            }
           />
         ),
       },
@@ -182,11 +176,6 @@ export function NetworkDetailPage() {
             rows={networkSGs}
             columns={sgColumns}
             emptyText="В сети нет групп безопасности."
-            onClick={(id) =>
-              projectId &&
-              networkId &&
-              navigate(`/projects/${projectId}/vpc/networks/${networkId}/security-groups/${id}`)
-            }
           />
         ),
       },
@@ -222,7 +211,6 @@ export function NetworkDetailPage() {
             type="primary"
             size="small"
             icon={<PlusOutlined />}
-            onClick={() => openCreateModal("security-groups")}
           >
             Создать группу безопасности
           </Button>
@@ -269,10 +257,12 @@ function useChildColumns(
   basePathOverride?: string | null,
 ): Column<Record<string, unknown>>[] {
   return useMemo(() => {
-    const cols = buildSpecColumns(spec, { projectId });
+    const basePath = basePathOverride ?? resourceProjectPath(spec.id, projectId);
+    // Вложенная таблица: имя ведёт на карточку ЧЕРЕЗ родителя и несёт иконку
+    // типа — в одном окне соседствуют подсети, таблицы маршрутов и группы.
+    const cols = buildSpecColumns(spec, { projectId, nameBasePath: basePath, nameIcon: true });
     // KAC-198: include service segment (vpc/compute/nlb) so Subnet/SG/RT
     // child-table links под NetworkDetailPage ведут на actual route в App.tsx.
-    const basePath = basePathOverride ?? resourceProjectPath(spec.id, projectId);
     if (basePath) {
       cols.push({
         header: "",
@@ -291,13 +281,11 @@ function ChildSection({
   rows,
   columns,
   emptyText,
-  onClick,
 }: {
   title: string;
   rows: Array<Record<string, unknown>>;
   columns: Column<Record<string, unknown>>[];
   emptyText: string;
-  onClick: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
@@ -331,10 +319,6 @@ function ChildSection({
           rows={filtered}
           columns={columns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-          onRowClick={(r) => {
-            const id = getByPath<string>(r, "id");
-            if (id) onClick(id);
-          }}
         />
       )}
     </Space>

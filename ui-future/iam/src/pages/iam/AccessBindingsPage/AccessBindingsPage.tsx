@@ -182,10 +182,6 @@ export function AccessBindingsPage() {
           columns={columns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
           loading={bindingsQ.isLoading}
-          onRowClick={(row) => {
-            const id = getByPath<string>(row, "id");
-            if (id) navigate(`/iam/access-bindings/${id}`);
-          }}
         />
       </div>
     </IamListShell>

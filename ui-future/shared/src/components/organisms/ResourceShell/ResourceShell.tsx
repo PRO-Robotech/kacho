@@ -119,7 +119,15 @@ function RelatedTable({
     columns: childSpec.columns.filter((c) => !filterFields.includes(c.path)),
   };
   const toggleCols: ToggleCol[] = specNoParent.columns.map((c) => ({ key: c.header, label: c.header }));
-  const columns = buildSpecColumns(specNoParent, { projectId }).filter((c) => !hidden.has(c.header));
+  const columns = buildSpecColumns(specNoParent, {
+    projectId,
+    nameIcon: true,
+    // Тот же адрес, каким прежде был переход по клику на строку.
+    nameHref: (r) => {
+      const rid = getByPath<string>(r, "id");
+      return rid ? `${flatChildBase}/${rid}` : null;
+    },
+  }).filter((c) => !hidden.has(c.header));
   columns.push({
     header: "",
     className: "text-right whitespace-nowrap",
@@ -150,10 +158,6 @@ function RelatedTable({
         loading={isLoading}
         rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
         empty={q ? "По запросу ничего не найдено." : undefined}
-        onRowClick={(r) => {
-          const id = getByPath<string>(r, "id");
-          if (id) void navigate(`${flatChildBase}/${id}`);
-        }}
       />
     </div>
   );

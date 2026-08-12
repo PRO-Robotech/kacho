@@ -10,7 +10,8 @@ import type { Column } from "@/components/organisms/ResourceTable";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
-import { getByPath, type ResourceColumn, type ResourceSpec } from "@/lib/resource-registry";
+import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
+import { getByPath, resourceProjectPath, type ResourceColumn, type ResourceSpec } from "@/lib/resource-registry";
 import { formatDateTime } from "@/lib/datetime";
 import { referrerHref, referrerMeta } from "@/lib/referrer";
 
@@ -35,6 +36,16 @@ const REFERRER_SPEC: Record<string, string> = {
 // "references" (used_by → /projects/<projectId>/compute/instances/<id> и т.п.).
 export interface FormatCellOpts {
   projectId?: string | null;
+  /** База пути карточки для колонки имени (вложенные таблицы адресуют ресурс
+   *  через родителя). */
+  nameBasePath?: string | null;
+  /** Полный адрес карточки для строки — когда путь не «база + идентификатор».
+   *  Задаётся ТЕМ ЖЕ выражением, каким прежде считался переход по клику на
+   *  строку: иначе ссылка повела бы не туда, куда вёл клик. */
+  nameHref?: (row: Record<string, unknown>) => string | null;
+  /** Иконка типа рядом с именем — только во ВЛОЖЕННЫХ таблицах, где соседствуют
+   *  разные типы. В списке самого ресурса тип назван заголовком страницы. */
+  nameIcon?: boolean;
 }
 
 // ReferrerLink — общий рендер одного referrer'а как «{label} {id}» (plain text,
@@ -103,11 +114,49 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+// ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку.
+// Собственная отрисовка колонки сохраняется ВНУТРИ ссылки (копирование имени
+// гасит событие само). Ресурс без карточки ссылкой не притворяется.
+function ResourceNameCell({
+  spec,
+  row,
+  opts,
+  children,
+}: {
+  spec: ResourceSpec;
+  row: Record<string, unknown>;
+  opts: FormatCellOpts;
+  children: ReactNode;
+}): ReactNode {
+  const id = getByPath(row, "id");
+  const idStr = typeof id === "string" ? id : "";
+  const base = opts.nameBasePath ?? resourceProjectPath(spec.id, opts.projectId ?? null);
+  const href = opts.nameHref ? opts.nameHref(row) : base && idStr ? `${base}/${idStr}` : null;
+  const content = opts.nameIcon ? (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <ResourceIcon specId={spec.id} />
+      {children}
+    </span>
+  ) : (
+    children
+  );
+  if (!href) return content;
+  return (
+    <Link to={href} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
+      {content}
+    </Link>
+  );
+}
+
 export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}): Column<Record<string, unknown>>[] {
   return reorderNameIdFirst(spec.columns).map((c) => ({
     header: c.header,
     className: c.className,
-    cell: (row) => (c.render ? c.render(row) : formatCellByFormat(c, row, opts)),
+    cell: (row) => {
+      const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
+      // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
+      return c.path === "name" ? ResourceNameCell({ spec, row, opts, children: inner }) : inner;
+    },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
 }
