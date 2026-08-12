@@ -69,6 +69,7 @@ cd "$REPO_ROOT" || exit 2
 # находкой ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
+.github/scripts/assert-console-probes-verdict.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
@@ -92,8 +93,8 @@ deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
 deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
-deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/assert-waiters-name-their-target.sh
+deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
@@ -101,8 +102,8 @@ deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/bootstrap-refusal-classified-test.sh
-deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
+deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
