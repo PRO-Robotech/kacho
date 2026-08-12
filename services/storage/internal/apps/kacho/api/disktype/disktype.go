@@ -63,6 +63,12 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.DiskType, s
 // CreateAdmin создаёт DiskType (Internal :9091, sync). Self-validating domain: пустой
 // id / слишком длинный name → InvalidArgument ДО repo (иначе ” — валидный PK-slug).
 func (u *UseCase) CreateAdmin(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error) {
+	// Умолчание состояния обращения проставляется ЗДЕСЬ — в одном названном месте
+	// на краю, а не в домене: домен, угадывающий незаполненное поле, принял бы
+	// опечатку админа за намерение и завёл класс принимающим новые тома.
+	if d.Lifecycle == "" {
+		d.Lifecycle = domain.LifecycleActive
+	}
 	if err := d.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 	}
@@ -73,7 +79,15 @@ func (u *UseCase) CreateAdmin(ctx context.Context, d *domain.DiskType) (*domain.
 // Self-validating domain (парити с CreateAdmin): пустой id / over-long name →
 // InvalidArgument ДО repo, а не только через DB-CHECK.
 func (u *UseCase) UpdateAdmin(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
-	d := domain.DiskType{ID: id, Name: name, Description: description, ZoneIDs: zoneIDs, PerformanceTier: performanceTier}
+	d := domain.DiskType{
+		ID: id, Name: name, Description: description, ZoneIDs: zoneIDs,
+		PerformanceTier: domain.PerformanceTier(performanceTier),
+		// Состояние обращения не приходит этим путём: у запроса правки его пока нет.
+		// Домен требует названного состояния, поэтому здесь стоит то, которое правка
+		// не меняет. Полная форма (маска + жизненный цикл) приезжает вместе с
+		// правкой контракта — сценарии STOR-P-06 и STOR-P-07.
+		Lifecycle: domain.LifecycleActive,
+	}
 	if err := d.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 	}

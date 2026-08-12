@@ -30,7 +30,10 @@ func NewDiskTypeRepo(pool *pgxpool.Pool) *DiskTypeRepo { return &DiskTypeRepo{po
 // scanDiskType читает id/name/description/zone_ids/performance_tier в domain.DiskType.
 // zone_ids — jsonb-массив → []string.
 func scanDiskType(id, name, description, performanceTier string, zoneIDsJSON []byte) (*domain.DiskType, error) {
-	d := domain.DiskType{ID: id, Name: name, Description: description, PerformanceTier: performanceTier}
+	d := domain.DiskType{
+		ID: id, Name: name, Description: description,
+		PerformanceTier: domain.PerformanceTier(performanceTier),
+	}
 	if len(zoneIDsJSON) > 0 {
 		if err := json.Unmarshal(zoneIDsJSON, &d.ZoneIDs); err != nil {
 			return nil, err

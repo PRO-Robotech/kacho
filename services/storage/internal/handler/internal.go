@@ -160,7 +160,7 @@ func (h *InternalDiskTypeHandler) Create(ctx context.Context, req *storagev1.Cre
 		Name:            req.GetName(),
 		Description:     req.GetDescription(),
 		ZoneIDs:         req.GetZoneIds(),
-		PerformanceTier: req.GetPerformanceTier(),
+		PerformanceTier: domain.PerformanceTier(req.GetPerformanceTier()),
 	}
 	created, err := h.uc.CreateAdmin(ctx, d)
 	if err != nil {

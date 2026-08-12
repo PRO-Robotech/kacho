@@ -156,7 +156,7 @@ func DiskType(d *domain.DiskType) *storagev1.DiskType {
 		Name:            d.Name,
 		Description:     d.Description,
 		ZoneIds:         d.ZoneIDs,
-		PerformanceTier: d.PerformanceTier,
+		PerformanceTier: string(d.PerformanceTier),
 	}
 }
 
