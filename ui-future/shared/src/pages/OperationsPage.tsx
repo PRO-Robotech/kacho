@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, Space, Tag, Typography } from "antd";
+import { Button, Input, Select, Tag, Typography } from "antd";
 import { ReloadOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
@@ -198,10 +198,13 @@ export function OperationsPage() {
       className="kc-surface"
       style={{ padding: 20, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
     >
-      <Space direction="vertical" size={0} style={{ width: "100%", flex: 1, minHeight: 0 }}>
-        {/* Единая шапка: общая VPC-иконка модуля (DeploymentUnitOutlined,
-            отличная от network) + действие «Операции» + название «VPC» +
-            счётчик; фильтры — справа. */}
+      {/* Без `Space`: его элементы получают `flex: 0 1 auto` и НЕ растягиваются,
+          поэтому таблица внутри оставалась высотой в собственную шапку (182px
+          при окне 900) — измерено на живой странице. Колонка строится явно. */}
+      {/* Шапка не сжимается: остаток высоты забирает таблица.
+          Единая шапка: общая VPC-иконка модуля + действие «Операции» +
+          название «VPC» + счётчик; фильтры — справа. */}
+      <div style={{ flexShrink: 0 }}>
         <PanelHeader
           icon={<DeploymentUnitOutlined />}
           eyebrow="Операции"
@@ -240,16 +243,16 @@ export function OperationsPage() {
             </>
           }
         />
+      </div>
 
-        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-          <OperationsTable
-            rows={filtered}
-            loading={isLoading}
-            showResourceKind
-            empty={allOps.length > 0 && filtered.length === 0}
-          />
-        </div>
-      </Space>
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <OperationsTable
+          rows={filtered}
+          loading={isLoading}
+          showResourceKind
+          empty={allOps.length > 0 && filtered.length === 0}
+        />
+      </div>
     </div>
   );
 }
