@@ -52,8 +52,17 @@ func TestApplyTargetGroupMapsEdgeZeroesToNull(t *testing.T) {
 	}
 	// Порог приезжает строкой (protojson кодирует 64-разрядные целые строкой) и обязан
 	// стать числом: иначе состояние не соберётся.
-	if m.HealthCheck.UnhealthyThreshold.ValueInt64() != 3 {
-		t.Errorf("порог из строки не разобран: %v", m.HealthCheck.UnhealthyThreshold)
+	hc := healthOf(context.Background(), m.HealthCheck)
+	if hc == nil {
+		t.Fatal("проверка живости не собралась в объект — она исчезла бы из состояния")
+	}
+	if hc.UnhealthyThreshold.ValueInt64() != 3 {
+		t.Errorf("порог из строки не разобран: %v", hc.UnhealthyThreshold)
+	}
+	// Проба живости приезжает ОБЪЕКТОМ, а не указателем: указатель не удержал бы
+	// неизвестное значение, а вызывающий вправе собрать её из ещё не вычисленной переменной.
+	if hc.HTTP == nil || hc.HTTP.Path.ValueString() != "" {
+		t.Errorf("выбранная проба потеряна: %+v", hc.HTTP)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	nlbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
@@ -29,26 +30,26 @@ const loadBalancersPath = "/nlb/v1/networkLoadBalancers"
 // поля со списком слушателей не несёт вовсе (номер зарезервирован), поэтому описывать их
 // здесь было бы обещанием возможности, которой нет.
 type loadBalancerModel struct {
-	ID                    types.String    `tfsdk:"id"`
-	ProjectID             types.String    `tfsdk:"project_id"`
-	RegionID              types.String    `tfsdk:"region_id"`
-	Name                  types.String    `tfsdk:"name"`
-	Description           types.String    `tfsdk:"description"`
-	Labels                types.Map       `tfsdk:"labels"`
-	Placement             types.String    `tfsdk:"placement"`
-	SessionAffinity       types.String    `tfsdk:"session_affinity"`
-	AdminState            types.String    `tfsdk:"admin_state"`
-	DeletionProtection    types.Bool      `tfsdk:"deletion_protection"`
-	CrossZoneEnabled      types.Bool      `tfsdk:"cross_zone_enabled"`
-	SecurityGroupIDs      types.List      `tfsdk:"security_group_ids"`
-	DisabledAnnounceZones types.List      `tfsdk:"disabled_announce_zones"`
-	V4Source              *vipSourceModel `tfsdk:"v4_source"`
-	V6Source              *vipSourceModel `tfsdk:"v6_source"`
-	V4AddressID           types.String    `tfsdk:"v4_address_id"`
-	V6AddressID           types.String    `tfsdk:"v6_address_id"`
-	Type                  types.String    `tfsdk:"type"`
-	Status                types.String    `tfsdk:"status"`
-	CreatedAt             types.String    `tfsdk:"created_at"`
+	ID                    types.String `tfsdk:"id"`
+	ProjectID             types.String `tfsdk:"project_id"`
+	RegionID              types.String `tfsdk:"region_id"`
+	Name                  types.String `tfsdk:"name"`
+	Description           types.String `tfsdk:"description"`
+	Labels                types.Map    `tfsdk:"labels"`
+	Placement             types.String `tfsdk:"placement"`
+	SessionAffinity       types.String `tfsdk:"session_affinity"`
+	AdminState            types.String `tfsdk:"admin_state"`
+	DeletionProtection    types.Bool   `tfsdk:"deletion_protection"`
+	CrossZoneEnabled      types.Bool   `tfsdk:"cross_zone_enabled"`
+	SecurityGroupIDs      types.List   `tfsdk:"security_group_ids"`
+	DisabledAnnounceZones types.List   `tfsdk:"disabled_announce_zones"`
+	V4Source              types.Object `tfsdk:"v4_source"`
+	V6Source              types.Object `tfsdk:"v6_source"`
+	V4AddressID           types.String `tfsdk:"v4_address_id"`
+	V6AddressID           types.String `tfsdk:"v6_address_id"`
+	Type                  types.String `tfsdk:"type"`
+	Status                types.String `tfsdk:"status"`
+	CreatedAt             types.String `tfsdk:"created_at"`
 }
 
 // vipSourceModel — ОТКУДА берётся адрес. Это ВВОД, и он отделён от вывода намеренно.
@@ -61,6 +62,24 @@ type loadBalancerModel struct {
 type vipSourceModel struct {
 	AddressID types.String `tfsdk:"address_id"`
 	SubnetID  types.String `tfsdk:"subnet_id"`
+}
+
+// vipSourceOf — источник из значения Terraform.
+//
+// Поле модели объявлено types.Object, а НЕ указателем на структуру, и это не стиль:
+// указатель неспособен держать НЕИЗВЕСТНОЕ значение, а источник адреса ссылается на
+// подсеть, которой в момент плана ещё нет. Провайдер отвечал на это «Value Conversion
+// Error… target type cannot handle unknown values» — отказом, из которого вызывающий не
+// узнаёт ни поля, ни причины.
+func vipSourceOf(ctx context.Context, o types.Object) *vipSourceModel {
+	if o.IsNull() || o.IsUnknown() {
+		return nil
+	}
+	var m vipSourceModel
+	if diags := o.As(ctx, &m, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil
+	}
+	return &m
 }
 
 type loadBalancerResource struct{ c *client.Client }
@@ -174,7 +193,10 @@ func (r *loadBalancerResource) ValidateConfig(ctx context.Context, req resource.
 		family string
 		src    *vipSourceModel
 		attr   string
-	}{{"IPv4", cfg.V4Source, "v4_source"}, {"IPv6", cfg.V6Source, "v6_source"}} {
+	}{
+		{"IPv4", vipSourceOf(ctx, cfg.V4Source), "v4_source"},
+		{"IPv6", vipSourceOf(ctx, cfg.V6Source), "v6_source"},
+	} {
 		if p.src == nil {
 			continue
 		}
@@ -280,8 +302,8 @@ func (r *loadBalancerResource) Create(ctx context.Context, req resource.CreateRe
 		CrossZoneEnabled:      plan.CrossZoneEnabled.ValueBool(),
 		SecurityGroupIds:      stringsFromTF(ctx, plan.SecurityGroupIDs),
 		DisabledAnnounceZones: stringsFromTF(ctx, plan.DisabledAnnounceZones),
-		V4Source:              vipSource(plan.V4Source),
-		V6Source:              vipSource(plan.V6Source),
+		V4Source:              vipSource(vipSourceOf(ctx, plan.V4Source)),
+		V6Source:              vipSource(vipSourceOf(ctx, plan.V6Source)),
 	}
 
 	id, err := awaitCreate(ctx, r.c, loadBalancersPath, "networkLoadBalancerId", "kacho_nlb_load_balancer",

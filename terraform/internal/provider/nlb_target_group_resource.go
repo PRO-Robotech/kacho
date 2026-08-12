@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	nlbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -43,7 +44,7 @@ type targetGroupModel struct {
 	Port                types.Int64  `tfsdk:"port"`
 	DeregistrationDelay types.String `tfsdk:"deregistration_delay"`
 	SlowStart           types.String `tfsdk:"slow_start"`
-	HealthCheck         *healthModel `tfsdk:"health_check"`
+	HealthCheck         types.Object `tfsdk:"health_check"`
 	Targets             types.Set    `tfsdk:"targets"`
 	Status              types.String `tfsdk:"status"`
 	CreatedAt           types.String `tfsdk:"created_at"`
@@ -272,6 +273,44 @@ func (r *targetGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 	}
 }
 
+// healthOf — проверка живости из значения Terraform.
+//
+// Поле модели объявлено types.Object, а НЕ указателем на структуру: указатель неспособен
+// держать НЕИЗВЕСТНОЕ значение, а проверку живости вызывающий вправе собрать из переменной,
+// которая в момент плана ещё не вычислена. На указателе провайдер отвечал бы «Value
+// Conversion Error… target type cannot handle unknown values» — отказом, из которого не
+// видно ни поля, ни причины.
+func healthOf(ctx context.Context, o types.Object) *healthModel {
+	if o.IsNull() || o.IsUnknown() {
+		return nil
+	}
+	var m healthModel
+	if diags := o.As(ctx, &m, basetypes.ObjectAsOptions{}); diags.HasError() {
+		return nil
+	}
+	return &m
+}
+
+// healthObjectType — тип значения проверки живости. Объявлен ОДИН раз: разойдись он со
+// схемой хоть одним полем, объект молча не собрался бы, и проверка исчезла бы из состояния.
+func healthObjectType() attr.Type {
+	probe := func(attrs map[string]attr.Type) attr.Type { return types.ObjectType{AttrTypes: attrs} }
+	httpAttrs := map[string]attr.Type{
+		"port": types.Int64Type, "path": types.StringType,
+		"expected_codes": types.StringType, "host": types.StringType,
+		"headers": types.MapType{ElemType: types.StringType},
+	}
+	return types.ObjectType{AttrTypes: map[string]attr.Type{
+		"interval": types.StringType, "timeout": types.StringType,
+		"healthy_threshold": types.Int64Type, "unhealthy_threshold": types.Int64Type,
+		"effective_port": types.Int64Type,
+		"tcp":            probe(map[string]attr.Type{"port": types.Int64Type}),
+		"http":           probe(httpAttrs),
+		"https":          probe(httpAttrs),
+		"grpc":           probe(map[string]attr.Type{"port": types.Int64Type, "service_name": types.StringType}),
+	}}
+}
+
 // probeOf — какая проба задана и сколько их. Число нужно, чтобы отличить «ни одной» от
 // «двух», имя — чтобы сравнивать выбор между планом и состоянием.
 func (h *healthModel) probeOf() (name string, count int) {
@@ -318,8 +357,8 @@ func (r *targetGroupResource) ValidateConfig(ctx context.Context, req resource.V
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if cfg.HealthCheck != nil {
-		if _, n := cfg.HealthCheck.probeOf(); n != 1 {
+	if hc := healthOf(ctx, cfg.HealthCheck); hc != nil {
+		if _, n := hc.probeOf(); n != 1 {
 			resp.Diagnostics.AddError("Проба живости задана не однозначно",
 				fmt.Sprintf("В health_check задано проб: %d. Ровно одна из tcp, http, https, grpc "+
 					"обязана присутствовать — край требует этого и отвергнет запрос.", n))
@@ -567,7 +606,11 @@ func applyTargetGroup(ctx context.Context, m *targetGroupModel, raw []byte) erro
 		h.GRPC = &grpcProbe{Port: types.Int64Value(numOf(w.HealthCheck.GRPC.Port)),
 			ServiceName: types.StringValue(w.HealthCheck.GRPC.ServiceName)}
 	}
-	m.HealthCheck = h
+	hcObj, diags := types.ObjectValueFrom(ctx, healthObjectType().(types.ObjectType).AttrTypes, h)
+	if diags.HasError() {
+		return fmt.Errorf("проверка живости края не укладывается в объект: %v", diags.Errors())
+	}
+	m.HealthCheck = hcObj
 
 	if w.Targets == nil {
 		m.Targets = types.SetNull(targetObjectType())
@@ -663,13 +706,14 @@ func (r *targetGroupResource) Create(ctx context.Context, req resource.CreateReq
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if plan.HealthCheck == nil {
+	planHealth := healthOf(ctx, plan.HealthCheck)
+	if planHealth == nil {
 		resp.Diagnostics.AddError("Проверка живости не задана",
 			"health_check обязателен: край не создаёт группу без пробы.")
 		return
 	}
 
-	hc, err := plan.HealthCheck.toProto(ctx)
+	hc, err := planHealth.toProto(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Негодная проверка живости", err.Error())
 		return
@@ -810,8 +854,8 @@ func (r *targetGroupResource) Update(ctx context.Context, req resource.UpdateReq
 		body.SlowStart = d
 		paths = append(paths, "slow_start")
 	}
-	if !healthEqual(plan.HealthCheck, state.HealthCheck) {
-		hc, err := plan.HealthCheck.toProto(ctx)
+	if !plan.HealthCheck.Equal(state.HealthCheck) {
+		hc, err := healthOf(ctx, plan.HealthCheck).toProto(ctx)
 		if err != nil {
 			resp.Diagnostics.AddError("Негодная проверка живости", err.Error())
 			return
@@ -1032,35 +1076,6 @@ func (r *targetGroupResource) verbTargets(ctx context.Context, id, verb string, 
 
 func (r *targetGroupResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importByID(ctx, "группа целей", "tgr", req, resp)
-}
-
-// healthEqual — сравнение проверок живости ПО ЗНАЧЕНИЮ. Указатели сравнивать нельзя: план
-// и состояние — всегда разные объекты.
-func healthEqual(a, b *healthModel) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	if !a.Interval.Equal(b.Interval) || !a.Timeout.Equal(b.Timeout) ||
-		!a.HealthyThreshold.Equal(b.HealthyThreshold) ||
-		!a.UnhealthyThreshold.Equal(b.UnhealthyThreshold) {
-		return false
-	}
-	an, _ := a.probeOf()
-	bn, _ := b.probeOf()
-	if an != bn {
-		return false
-	}
-	switch {
-	case a.TCP != nil:
-		return a.TCP.Port.Equal(b.TCP.Port)
-	case a.HTTP != nil:
-		return httpProbeEqual(a.HTTP, b.HTTP)
-	case a.HTTPS != nil:
-		return httpProbeEqual(a.HTTPS, b.HTTPS)
-	case a.GRPC != nil:
-		return a.GRPC.Port.Equal(b.GRPC.Port) && a.GRPC.ServiceName.Equal(b.GRPC.ServiceName)
-	}
-	return true
 }
 
 func httpProbeEqual(a, b *httpProbe) bool {
