@@ -64,7 +64,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Приватные ресурсы «жертвы».
-	victimVol := mkVolume(t, vr, projVictim, "victim-vol", 8<<30)
+	victimVol := mkVolume(t, pool, vr, projVictim, "victim-vol", 8<<30)
 	victimSnapID := mkSnapshotRow(t, pool, projVictim, "victim-snap", 8<<30)
 	victimImg := mkImageFromSnapshot(t, pool, ir, projVictim, "victim-img", "ru-central1", victimSnapID)
 
@@ -140,7 +140,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	// Состояние ЧУЖОГО тома не должно просвечивать: не-READY чужой том обязан
 	// отдавать тот же "not found", а не "is not ready" (иначе state-oracle).
 	t.Run("snapshot from foreign non-ready volume leaks no state", func(t *testing.T) {
-		notReady := mkVolume(t, vr, projVictim, "victim-vol-creating", 2<<30)
+		notReady := mkVolume(t, pool, vr, projVictim, "victim-vol-creating", 2<<30)
 		_, uerr := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, notReady.ID)
 		require.NoError(t, uerr)
 
@@ -153,7 +153,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 
 	// Happy-path не задет: свой источник в СВОЁМ проекте по-прежнему сеет ресурс.
 	t.Run("same-project sources still seed", func(t *testing.T) {
-		ownVol := mkVolume(t, vr, projAttacker, "own-vol", 4<<30)
+		ownVol := mkVolume(t, pool, vr, projAttacker, "own-vol", 4<<30)
 		ownSnap := mkSnapshot(t, sr, projAttacker, "own-snap", ownVol.ID)
 		require.EqualValues(t, 4<<30, ownSnap.SizeBytes, "size snapshotted from own volume")
 

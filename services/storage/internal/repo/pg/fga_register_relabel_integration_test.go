@@ -55,7 +55,7 @@ func TestVolumeUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	v := mkVolume(t, r, "prj-relabel-v", "vol-relabel", 10<<30)
+	v := mkVolume(t, pool, r, "prj-relabel-v", "vol-relabel", 10<<30)
 
 	newLabels := map[string]string{"team": "storage"}
 	_, _, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{LabelsSet: true, Labels: newLabels})
@@ -81,7 +81,7 @@ func TestVolumeUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	v := mkVolume(t, r, "prj-relabel-c", "vol-clear", 10<<30)
+	v := mkVolume(t, pool, r, "prj-relabel-c", "vol-clear", 10<<30)
 	_, _, err := r.Update(t.Context(), v.ID, volume.VolumeUpdate{
 		LabelsSet: true, Labels: map[string]string{"team": "storage"},
 	})
@@ -111,7 +111,7 @@ func TestVolumeUpdate_WithoutLabels_EmitsNothing(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	v := mkVolume(t, r, "prj-relabel-n", "vol-noop", 10<<30)
+	v := mkVolume(t, pool, r, "prj-relabel-n", "vol-noop", 10<<30)
 	before := len(selectFGARows(t, pool))
 
 	newName := "vol-noop-renamed"
@@ -129,7 +129,7 @@ func TestSnapshotUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testin
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 
-	v := mkVolume(t, vr, "prj-relabel-s", "vol-for-snap", 10<<30)
+	v := mkVolume(t, pool, vr, "prj-relabel-s", "vol-for-snap", 10<<30)
 	s := mkSnapshot(t, sr, "prj-relabel-s", "snap-relabel", v.ID)
 
 	newLabels := map[string]string{"tier": "cold"}
@@ -179,7 +179,7 @@ func TestSnapshotUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 
-	v := mkVolume(t, vr, "prj-relabel-sc", "vol-for-snap-clear", 10<<30)
+	v := mkVolume(t, pool, vr, "prj-relabel-sc", "vol-for-snap-clear", 10<<30)
 	s := mkSnapshot(t, sr, "prj-relabel-sc", "snap-clear", v.ID)
 
 	_, _, err := sr.Update(t.Context(), s.ID, snapshot.SnapshotUpdate{

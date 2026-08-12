@@ -20,8 +20,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -99,8 +101,25 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// mkVolume вставляет том через репо (state=READY) и возвращает его.
-func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
+// mkVolume заводит том и доводит его до готовности ТЕМ ЖЕ путём, что и бой.
+//
+// Вставка фиксирует НАМЕРЕНИЕ (state=CREATING) — готовность производит сверщик,
+// увидевший объект у бэкенда. Поэтому фикстура не пишет 'READY' руками: она
+// зовёт то же подтверждение, которое зовёт сверщик. Рукописное состояние сделало
+// бы фикстуру снисходительнее продукта — том оказывался бы готов там, где
+// продукт этого не умеет, и проба привязки зеленела бы на состоянии, которого в
+// бою не бывает.
+func mkVolume(t *testing.T, pool *pgxpool.Pool, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
+	t.Helper()
+	v := mkVolumeCreating(t, r, project, name, size)
+	confirmReady(t, pool, reconciler.KindVolume, v.ID, size)
+	v.Status = domain.VolumeStatusAvailable
+	return v
+}
+
+// mkVolumeCreating заводит том и ОСТАВЛЯЕТ его в намерении — для проб, чей
+// предмет и есть неподтверждённое состояние.
+func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
 	t.Helper()
 	v, _, err := r.Insert(context.Background(), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
@@ -112,6 +131,15 @@ func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) 
 	}, "")
 	require.NoError(t, err)
 	return v
+}
+
+// confirmReady — подтверждение ресурса тем же вызовом, которым его подтверждает
+// сверщик, увидев объект у бэкенда.
+func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id string, size int64) {
+	t.Helper()
+	require.NoError(t, reconciler.NewStore(pool).Confirm(
+		context.Background(), kind, id,
+		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size}))
 }
 
 // attach вставляет строку volume_attachments напрямую (attach-CAS — S2; здесь тест
@@ -135,7 +163,7 @@ func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, r, "prj-1", "vol-data-1", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-data-1", 10<<30)
 	require.Equal(t, domain.PrefixVolume, v.ID[:3])
 	require.Equal(t, domain.VolumeStatusAvailable, v.Status)
 
@@ -205,7 +233,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	v := mkVolume(t, r, "prj-1", "vol-resize", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-resize", 10<<30)
 
 	big := int64(20 << 30)
 	up, _, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &big})
@@ -220,7 +248,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	}
 
 	// size-CAS race: N goroutines одинаково 20→40; ровно одна выигрывает.
-	v2 := mkVolume(t, r, "prj-1", "vol-race", 20<<30)
+	v2 := mkVolume(t, pool, r, "prj-1", "vol-race", 20<<30)
 	const n = 6
 	var ok, rej atomic.Int32
 	var wg sync.WaitGroup
@@ -254,7 +282,7 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	v := mkVolume(t, r, "prj-1", "vol-attached", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-attached", 10<<30)
 	attach(t, pool, v.ID, "epd00000000000000009")
 
 	err := r.Delete(ctx, v.ID)
@@ -312,9 +340,9 @@ func TestVolumeListCursorFilter(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 	for _, n := range []string{"vol-a", "vol-b", "vol-c"} {
-		mkVolume(t, r, "prj-1", n, 1<<30)
+		mkVolume(t, pool, r, "prj-1", n, 1<<30)
 	}
-	mkVolume(t, r, "prj-2", "vol-other", 1<<30)
+	mkVolume(t, pool, r, "prj-2", "vol-other", 1<<30)
 
 	page1, next, err := r.List(ctx, volume.Pagination{PageSize: 2, ProjectID: "prj-1"})
 	require.NoError(t, err)
@@ -345,8 +373,8 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	_ = mkVolume(t, r, "prj-1", "alpha", 1<<30)
-	vb := mkVolume(t, r, "prj-1", "beta", 1<<30)
+	_ = mkVolume(t, pool, r, "prj-1", "alpha", 1<<30)
+	vb := mkVolume(t, pool, r, "prj-1", "beta", 1<<30)
 
 	name := "alpha"
 	_, _, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
