@@ -5,6 +5,7 @@ import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { SgRulesEditor } from "@shared/components/organisms/form/SgRulesEditor";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+import { EditableKVTable } from "@shared/components/molecules/EditableKVTable";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import type { FormField as FF, ArrayField } from "@shared/lib/form-schema";
 import { displayText } from "@shared/lib/display-text";
@@ -349,6 +350,31 @@ function ArrayFieldRenderer({
       ))}
     </>
   );
+
+  // Список из ОДНОГО текстового подполя — таблицей значений: заголовок
+  // колонки, строки со значением, действие на строке и «Добавить» снизу. Тот же
+  // вид, что у меток и статических маршрутов, поэтому набор CIDR читается как
+  // набор, а не как россыпь отдельных полей (решение владельца 2026-08-12).
+  const plainListField =
+    hideLabel && field.itemFields.length === 1 && (field.itemFields[0]?.type ?? "string") === "string";
+
+  if (plainListField) {
+    const sub = field.itemFields[0];
+    const values = items.map((it) => ({ a: typeof it?.value === "string" ? it.value : "", b: "" }));
+    return (
+      <EditableKVTable
+        rows={values}
+        onChange={(next) => onChange(setByPath(value, path, next.map((r) => ({ value: r.a }))))}
+        colA={{
+          header: sub.label || field.itemLabel,
+          // `placeholder` есть не у каждого вида подполя — читаем только у строкового.
+          placeholder: sub.type === "string" ? (sub.placeholder ?? "") : "",
+        }}
+        addLabel={`Добавить ${field.itemLabel}`}
+        disabled={disabled}
+      />
+    );
+  }
 
   if (hideLabel) {
     // Имя и пояснение поля несёт левая колонка формы (`Form.Item label`).

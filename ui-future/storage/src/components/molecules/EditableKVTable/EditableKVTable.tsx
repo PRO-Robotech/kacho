@@ -27,13 +27,16 @@ interface Props {
   rows: KVRow[];
   onChange: (rows: KVRow[]) => void;
   colA: ColDef;
-  colB: ColDef;
+  /** Вторая колонка. Не задана — таблица одноколоночная: значение + действие.
+   *  Нужна спискам, где у элемента ровно одно поле (CIDR сети, CIDR подсети). */
+  colB?: ColDef;
   addLabel: string;
   disabled?: boolean;
 }
 
 const ROW_H = 38;
-const GRID_COLS = "minmax(0, 1fr) minmax(0, 1fr) 40px";
+const GRID_COLS_2 = "minmax(0, 1fr) minmax(0, 1fr) 40px";
+const GRID_COLS_1 = "minmax(0, 1fr) 40px";
 
 const cellInputStyle: React.CSSProperties = {
   width: "100%",
@@ -66,6 +69,7 @@ const cellWrapStyle: React.CSSProperties = {
 };
 
 export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled }: Props) {
+  const GRID_COLS = colB ? GRID_COLS_2 : GRID_COLS_1;
   const update = (idx: number, patch: Partial<KVRow>) => {
     onChange(rows.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   };
@@ -84,7 +88,7 @@ export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled
       {/* header */}
       <div style={{ display: "grid", gridTemplateColumns: GRID_COLS, background: "var(--kc-container)" }}>
         <div style={headCellStyle}>{colA.header}</div>
-        <div style={headCellStyle}>{colB.header}</div>
+        {colB ? <div style={headCellStyle}>{colB.header}</div> : null}
         <div />
       </div>
 
@@ -111,16 +115,18 @@ export function EditableKVTable({ rows, onChange, colA, colB, addLabel, disabled
               style={cellInputStyle}
             />
           </div>
-          <div style={cellWrapStyle}>
-            <Input
-              variant="borderless"
-              placeholder={colB.placeholder}
-              value={r.b}
-              onChange={(e) => update(idx, { b: e.target.value })}
-              disabled={disabled}
-              style={cellInputStyle}
-            />
-          </div>
+          {colB ? (
+            <div style={cellWrapStyle}>
+              <Input
+                variant="borderless"
+                placeholder={colB.placeholder}
+                value={r.b}
+                onChange={(e) => update(idx, { b: e.target.value })}
+                disabled={disabled}
+                style={cellInputStyle}
+              />
+            </div>
+          ) : null}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Button
               type="text"
