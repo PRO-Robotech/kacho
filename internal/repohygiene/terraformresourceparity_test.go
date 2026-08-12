@@ -90,7 +90,6 @@ var tfCoverage = map[string]string{
 // значило бы сделать каркас условным — то есть перестать понимать, что он делает.
 var tfPending = map[string]string{
 	"AddressService":       "PRO-Robotech/kacho#235",
-	"GatewayService":       "PRO-Robotech/kacho#235",
 	"RouteTableService":    "PRO-Robotech/kacho#235",
 	"SecurityGroupService": "PRO-Robotech/kacho#235",
 	"RoleService":          "PRO-Robotech/kacho#235",
@@ -238,27 +237,10 @@ var (
 func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	dir := filepath.Join(root, "proto", "kacho", "cloud")
-
-	// Состав берётся у ИНДЕКСА, а не обходом диска.
-	//
-	// Здесь стоял filepath.WalkDir, и общий страж обходов дерева
-	// (TestTreeWalkersAskTheIndex) назвал это место при первом же прогоне. Довод у
-	// стража конкретный: под деревом лежит и то, чего в репозитории нет —
-	// распаковки чартов, сборочные каталоги, node_modules, отчёты прогонов, — и
-	// обход диска либо читает лишнее, либо спотыкается о него. Отказ тогда
-	// приходит не там, где ошибка, и не у того, кто её внёс.
-	//
-	// treecorpus отдаёт отслеживаемые и неигнорируемые файлы, поэтому предмет
-	// переписи совпадает с предметом репозитория на любой машине.
-	files, err := treecorpus.UnderWithSuffix(dir, ".proto")
-	if err != nil {
-		t.Fatalf("состав контрактов: %v", err)
-	}
-	for _, path := range files {
-		src, rerr := os.ReadFile(path) // #nosec G304 -- путь получен из индекса репозитория
-		if rerr != nil {
-			t.Fatalf("чтение %s: %v", path, rerr)
+	for _, rel := range trackedFilesUnder(t, root, "proto/kacho/cloud", ".proto") {
+		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
+		if err != nil {
+			t.Fatalf("чтение %s: %v", rel, err)
 		}
 		s := string(src)
 		for _, m := range reService.FindAllStringSubmatchIndex(s, -1) {
@@ -266,14 +248,53 @@ func publicCreatingServices(t *testing.T, root string) []string {
 			if strings.HasPrefix(name, "Internal") {
 				continue
 			}
-			body := serviceBody(s, m[1])
-			if reCreating.MatchString(body) {
+			if reCreating.MatchString(serviceBody(s, m[1])) {
 				out = append(out, name)
 			}
 		}
 	}
 	sort.Strings(out)
 	return out
+}
+
+// trackedFilesUnder — ОТСЛЕЖИВАЕМЫЕ файлы поддерева, а не содержимое каталога на диске.
+//
+// Единица счёта здесь — элемент индекса git, и это не формальность: на диске лежат
+// установленные зависимости, сборки сайтов и рабочие каталоги инструментов. Обходчик,
+// читающий диск, судит о дереве, которого в репозитории нет, — и однажды спотыкается о
+// символьную ссылку в чужую рабочую копию. Ровно это и ловит гейт обходчиков.
+func trackedFilesUnder(t *testing.T, root, prefix, suffix string) []string {
+	t.Helper()
+	// Состав спрашивается у ОБЩЕГО источника, а не своим вызовом git.
+	//
+	// Здесь стоял собственный `git ls-files`. Он давал верный ответ и был ВТОРОЙ
+	// реализацией того, что уже есть в дереве, — а гейт, назвавший это место,
+	// прямо велит брать состав у internal/treecorpus. Разница между двумя
+	// реализациями не умозрительная: `ls-files` отдаёт ОТСЛЕЖИВАЕМОЕ, включая то,
+	// что правила игнорирования отвергли бы, — и ровно на такой записи (ссылка на
+	// каталог зависимостей консоли, уехавшая в индекс) сегодня покраснели четыре
+	// обхода. Один источник состава закрывает этот класс для всех вызывающих
+	// сразу, а не для того, кто вспомнит.
+	abs, err := treecorpus.UnderWithSuffix(filepath.Join(root, prefix), suffix)
+	if err != nil {
+		t.Fatalf("состав дерева под %s: %v", prefix, err)
+	}
+	res := make([]string, 0, len(abs))
+	for _, p := range abs {
+		rel, rerr := filepath.Rel(root, p)
+		if rerr != nil {
+			t.Fatalf("путь %s вне дерева %s: %v", p, root, rerr)
+		}
+		res = append(res, filepath.ToSlash(rel))
+	}
+	// Отказ на пустом наборе остаётся ЗДЕСЬ: общий источник отвергает пустой
+	// корпус, но не пустой результат ОТБОРА по суффиксу — а «ноль файлов .proto»
+	// означает переехавший каталог, а не чистое дерево.
+	if len(res) == 0 {
+		t.Fatalf("под %s не найдено ни одного файла %s — предикат устарел или каталог переехал",
+			prefix, suffix)
+	}
+	return res
 }
 
 // serviceBody — тело сервиса от открывающей скобки до парной закрывающей.
@@ -304,25 +325,20 @@ func serviceBody(s string, open int) string {
 // знающий одну, объявил бы половину дерева отсутствующей.
 func registeredTerraformResources(t *testing.T, root string) map[string]bool {
 	t.Helper()
-	dir := filepath.Join(root, "terraform", "internal", "provider")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("чтение каталога провайдера: %v", err)
-	}
-
 	sources := map[string]string{}
 	var registryBody string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+	for _, rel := range trackedFilesUnder(t, root, "terraform/internal/provider", ".go") {
+		if strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
-		src, err := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 -- имя получено обходом каталога
+		src, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса репозитория
 		if err != nil {
-			t.Fatalf("чтение %s: %v", e.Name(), err)
+			t.Fatalf("чтение %s: %v", rel, err)
 		}
 		s := string(src)
-		sources[e.Name()] = s
-		if e.Name() == "provider.go" {
+		name := filepath.Base(rel)
+		sources[name] = s
+		if name == "provider.go" {
 			if i := strings.Index(s, "func (p *kachoProvider) Resources("); i >= 0 {
 				registryBody = serviceBody(s, strings.Index(s[i:], "{")+i+1)
 			}

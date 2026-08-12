@@ -156,6 +156,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewNetworkResource,
 		NewSubnetResource,
 		newFlatResource(vpcNetworkInterfaceSpec),
+		newFlatResource(vpcGatewaySpec),
 		// iam
 		NewIAMProjectResource,
 		NewIAMGroupResource,

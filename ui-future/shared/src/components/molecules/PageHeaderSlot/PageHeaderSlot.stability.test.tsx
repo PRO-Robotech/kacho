@@ -18,13 +18,14 @@ const accepted: unknown[] = [];
 
 function Consumer({ stable }: { stable: boolean }) {
   const [, force] = useState(0);
-  // Стабильный узел — как это обязан делать вызывающий; нестабильный — как это
-  // было в дефекте: новый JSX на каждом рендере.
-  const node = useMemo(
-    () => <button type="button">Действие</button>,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ветка «как в дефекте» намеренно пересоздаёт узел
-    stable ? [] : [Math.random()],
-  );
+  // Стабильный узел — как обязан делать вызывающий. Нестабильный строится ровно
+  // так, как было в дефекте: новый JSX прямо в теле, без мемоизации. Имитировать
+  // нестабильность случайным числом в списке зависимостей нельзя — это и не то,
+  // что происходило, и запрещено правилами хуков (вызов нечистой функции на
+  // рендере), то есть проба сама стала бы находкой.
+  const memoized = useMemo(() => <button type="button">Действие</button>, []);
+  const fresh = <button type="button">Действие</button>;
+  const node = stable ? memoized : fresh;
   if (!accepted.includes(node)) accepted.push(node);
   return (
     <>
