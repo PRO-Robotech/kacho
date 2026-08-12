@@ -71,6 +71,7 @@ DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
+.github/scripts/assert-console-probes-verdict.py
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py

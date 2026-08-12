@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Каждый ресурс публичного API обязан быть в Terraform-провайдере.
@@ -235,14 +237,18 @@ var (
 func publicCreatingServices(t *testing.T, root string) []string {
 	t.Helper()
 	var out []string
-	dir := filepath.Join(root, "proto", "kacho", "cloud")
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return err
-		}
-		src, err := os.ReadFile(path) // #nosec G304 -- путь получен обходом дерева репозитория
-		if err != nil {
-			return err
+	// Состав берётся у treecorpus (индекс отслеживаемых файлов), а не обходом диска:
+	// под proto/ на машине, где поднимали стенд или собирали фронтенд, лежит
+	// неотслеживаемое, и обход по диску судит о дереве, которого в репозитории нет.
+	// Требование держит гейт TestTreeWalkersAskTheIndex.
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto", "kacho", "cloud"), ".proto")
+	if err != nil {
+		t.Fatalf("состав proto-дерева: %v", err)
+	}
+	for _, path := range files {
+		src, rerr := os.ReadFile(path) // #nosec G304 -- путь получен из индекса репозитория
+		if rerr != nil {
+			t.Fatalf("чтение %s: %v", path, rerr)
 		}
 		s := string(src)
 		for _, m := range reService.FindAllStringSubmatchIndex(s, -1) {
@@ -255,10 +261,6 @@ func publicCreatingServices(t *testing.T, root string) []string {
 				out = append(out, name)
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход контрактов: %v", err)
 	}
 	sort.Strings(out)
 	return out

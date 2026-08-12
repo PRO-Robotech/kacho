@@ -924,13 +924,20 @@ type LabelReportInput struct {
 	Unmeasured     []string
 }
 
-// ReportLabelPath печатает отчёт пути меток.
+// ReportLabelPath печатает отчёт пути меток. Возвращает ошибку записи: отчёт,
+// который не доехал до получателя, — это отсутствие отчёта, а не «напечатали».
 //
 // Порядок разделов: правило отнесения → провенанс → величины → окна → окна
 // отзыва отдельно → неизмеренное. Правило первым потому, что число, прочитанное
 // раньше правила, читатель отнесёт по своему.
-func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
-	p := func(f string, a ...any) { fmt.Fprintf(w, f, a...) }
+func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) error {
+	var werr error
+	p := func(f string, a ...any) {
+		if werr != nil {
+			return
+		}
+		_, werr = fmt.Fprintf(w, f, a...)
+	}
 
 	p("XC-12, Ф5: ПЕРЕЗАМЕР СТОИМОСТИ ПОЛНОМОДЕЛЬНОЙ ФОРМЫ — ПУТЬ МЕТОК\n")
 	p("================================================================\n\n")
@@ -1058,6 +1065,7 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 			p("%d. %s\n", i+1, u)
 		}
 	}
+	return werr
 }
 
 func sortedCells(cells []LabelCell, op LabelOp, ns []int) []LabelCell {
