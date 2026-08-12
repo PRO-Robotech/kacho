@@ -96,13 +96,13 @@ describe("дополнения обзора показывают доменны�
   // Зона и регион — ресурсы каталога geo, поэтому якорь размещения не просто
   // подписан, а ВЕДЁТ на свой ресурс. Прежде обе пробы утверждали присутствие
   // текста — и остались бы зелёными на плоском идентификаторе, из которого
-  // пользователю некуда пойти.
+  // пользователю некуда пойти. Подпись вида («ZONAL»/«REGIONAL») снята решением
+  // владельца: её несёт тип ресурса, на который ведёт ссылка, и его глиф.
   it("зональная подсеть ведёт на карточку своей зоны", () => {
     drawOverviewExtra("subnets", { id: "sub-1", zone_id: "zone-a", placement_type: "ZONAL", network_id: "net-1" });
 
-    expect(screen.getByText("ZONAL")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /zone-a/ })).toHaveAttribute("href", "/system/zones/zone-a");
-    expect(screen.queryByText("REGIONAL")).not.toBeInTheDocument();
+    expect(screen.queryByText("ZONAL")).not.toBeInTheDocument();
   });
 
   it("региональная подсеть ведёт на карточку своего региона, а не на пустую зону", () => {
@@ -113,17 +113,22 @@ describe("дополнения обзора показывают доменны�
       network_id: "net-1",
     });
 
-    expect(screen.getByText("REGIONAL")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /ru-central1/ })).toHaveAttribute(
       "href",
       "/system/regions/ru-central1",
     );
+    expect(screen.queryByText("REGIONAL")).not.toBeInTheDocument();
   });
 
   it("подсеть без объявленного типа размещения, но с регионом, читается региональной", () => {
+    // Наружу это видно по тому, на КАКОЙ ресурс каталога ведёт ссылка: зоны у
+    // такой подсети нет, и якорь обязан указывать на регион, а не молчать.
     drawOverviewExtra("subnets", { id: "sub-1", region_id: "ru-central1", network_id: "net-1" });
 
-    expect(screen.getByText("REGIONAL")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ru-central1/ })).toHaveAttribute(
+      "href",
+      "/system/regions/ru-central1",
+    );
   });
 
   it("таблица маршрутизации называет свою сеть", () => {

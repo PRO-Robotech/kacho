@@ -53,22 +53,27 @@ describe("PlacementAnchor", () => {
     expect(link).toHaveAttribute("href", "/system/regions/reg-1");
   });
 
-  it("вид размещения назван словом, а не только ссылкой", async () => {
-    // Тег несёт то, чего в имени якоря нет: anycast-подсеть от зональной по
-    // имени региона не отличить.
+  it("вид размещения СЛОВОМ не называется — его несёт тип ресурса ссылки", async () => {
+    // Решение владельца 2026-08-12: тег «REGIONAL»/«ZONAL» рядом с именем зоны
+    // повторял машинным словарём то, что уже сказано иконкой и адресом
+    // перехода. Различие видов держится глифом (см. пробу карты иконок).
     stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
     show({ placement_type: "REGIONAL", zone_id: "", region_id: "reg-1" });
 
-    expect(await screen.findByText("REGIONAL")).toBeInTheDocument();
+    await screen.findByRole("link", { name: "ru-central1" });
+    expect(screen.queryByText("REGIONAL")).not.toBeInTheDocument();
+    expect(screen.queryByText("ZONAL")).not.toBeInTheDocument();
   });
 
   it("вид выводится из якоря, когда сервер его не назвал", async () => {
     // `placement_type` — производное поле; на старых записях его может не быть,
-    // и тогда единственный признак — какой из двух якорей заполнен.
+    // и тогда единственный признак — какой из двух якорей заполнен. Наружу это
+    // видно по тому, на КАКОЙ ресурс ведёт ссылка.
     stubList({ zones: [{ id: "zone-a", name: "ru-central1-a" }] });
     show({ zone_id: "zone-a", region_id: "" });
 
-    expect(await screen.findByText("ZONAL")).toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: "ru-central1-a" });
+    expect(link).toHaveAttribute("href", "/system/zones/zone-a");
   });
 
   it("без якоря рисует прочерк, а не пустое место", () => {

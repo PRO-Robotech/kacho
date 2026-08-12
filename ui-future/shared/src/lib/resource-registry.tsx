@@ -20,6 +20,7 @@ import {
 } from "@shared/api/geo";
 import { RoutesEditor, type RouteEntry } from "@shared/components/organisms/RoutesEditor";
 import { CopyableName } from "@shared/components/atoms/CopyableName";
+import { CidrListCell } from "@shared/components/molecules/CidrListCell";
 import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
@@ -284,38 +285,18 @@ function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
 
 // VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
 // hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
+// Основной блок семейства и дополнительные диапазоны — одним списком, каждый
+// своей строкой. Прежде видимым оставался ТОЛЬКО основной, а дополнительные
+// сворачивались в «+N»: число, из которого не узнать ни одного адреса.
 function CidrPrimaryCell({ primary, extra }: { primary: unknown; extra: unknown }): ReactNode {
-  const p = typeof primary === "string" ? primary : "";
-  const more = Array.isArray(extra) ? extra.length : 0;
-  if (!p) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="font-mono text-xs">
-      {p}
-      {more > 0 && <span className="text-muted-foreground"> +{more}</span>}
-    </span>
-  );
+  return <CidrListCell items={[primary, extra]} />;
 }
 
-// VPC-1 Network cell: declared supernet blocks (IPv4 first, then IPv6), each on
-// its own line; "+N" collapses long lists. Empty → dash.
+// VPC-1 Network cell: объявленный супернет (IPv4, затем IPv6) — каждый блок
+// своей строкой. Свёртка хвоста в «+N» снята: она показывала два блока из
+// скольких угодно.
 function SupernetCell({ v4, v6 }: { v4: unknown; v6: unknown }): ReactNode {
-  const list = [
-    ...(Array.isArray(v4) ? (v4 as unknown[]) : []),
-    ...(Array.isArray(v6) ? (v6 as unknown[]) : []),
-  ].filter((x): x is string => typeof x === "string" && x !== "");
-  if (list.length === 0) return <span className="text-muted-foreground">—</span>;
-  const head = list.slice(0, 2);
-  const more = list.length - head.length;
-  return (
-    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
-      {head.map((c) => (
-        <span key={c} className="font-mono text-xs">
-          {c}
-        </span>
-      ))}
-      {more > 0 && <span className="text-muted-foreground text-xs">+{more}</span>}
-    </span>
-  );
+  return <CidrListCell items={[v4, v6]} />;
 }
 
 // Размещение (ZONAL zone | REGIONAL region, anycast) рисует `PlacementAnchor` —

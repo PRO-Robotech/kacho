@@ -1,4 +1,4 @@
-// PlacementAnchor — вид размещения ресурса и ССЫЛКА на его якорь.
+// PlacementAnchor — ССЫЛКА на якорь размещения ресурса.
 //
 // Якорь — зона (ZONAL) либо регион (REGIONAL, anycast). И то и другое — ресурсы
 // каталога geo со своими карточками, поэтому якорь показывается как всякая
@@ -11,7 +11,6 @@
 // ZONAL/REGIONAL прежде жила тремя копиями — в ячейке списка, в карточке
 // ресурса и в её расширениях, — и правка одной копии молча не доезжала до
 // остальных.
-import { Tag } from "antd";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { getByPath } from "@shared/lib/path";
 
@@ -33,23 +32,18 @@ export function PlacementAnchor({ row, maxChars }: Props) {
   const declared = str(row, "placement_type");
 
   // `placement_type` — производное поле сервера; когда его нет, вид определяет
-  // сам якорь: заполненный регион без зоны и есть REGIONAL.
+  // сам якорь: заполненный регион без зоны и есть REGIONAL. Само поле наружу
+  // не выводится — оно лишь выбирает, на КАКОЙ ресурс вести.
   const isRegional = declared === "REGIONAL" || (!zone && !!region);
   const anchorId = isRegional ? region : zone;
   const specId = isRegional ? "regions" : "zones";
 
-  if (!declared && !anchorId) return <span className="text-muted-foreground">—</span>;
+  if (!anchorId) return <span className="text-muted-foreground">—</span>;
 
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-      <Tag color={isRegional ? "geekblue" : "blue"} style={{ margin: 0 }}>
-        {isRegional ? "REGIONAL" : "ZONAL"}
-      </Tag>
-      {anchorId ? (
-        <RefNameLink specId={specId} refId={anchorId} maxChars={maxChars} />
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      )}
-    </span>
-  );
+  // Вид размещения ОТДЕЛЬНЫМ СЛОВОМ не называется: он и есть тип ресурса, на
+  // который ведёт ссылка. Тег «REGIONAL»/«ZONAL» рядом с именем зоны повторял
+  // машинным словарём то, что уже сказано иконкой и адресом перехода, — а на
+  // экране это лишний столбец шума. Различает их глиф: регион — совокупность
+  // площадок, зона — одна площадка.
+  return <RefNameLink specId={specId} refId={anchorId} maxChars={maxChars} />;
 }
