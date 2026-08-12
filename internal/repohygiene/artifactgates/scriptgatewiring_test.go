@@ -26,7 +26,7 @@
 // ДОСТИЖИМОСТЬ СЧИТАЕТСЯ ТРАНЗИТИВНО через Makefile — тем же обходом, что у
 // renderguard_test.go (reachableFromWorkflows/anyMentions): вызов из рецепта цели,
 // которую зовёт workflow, считается вызовом.
-package repohygiene
+package artifactgates
 
 import (
 	"os"

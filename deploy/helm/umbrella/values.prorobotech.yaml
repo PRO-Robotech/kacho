@@ -25,9 +25,13 @@
 #   kacho-api-gateway  main-1adc9d12   (PR #70)
 #   kacho-nlb          main-ab61eff3   (PR #24)
 #   kacho-iam          main-a1b28f4c   (PR #104 — cross-compile Dockerfile)
-#   kacho-ui           main-75d27127   (no source change; current main image)
 #
-# Image-shape: sibling sub-charts (vpc/compute/api-gateway/ui) take a flat `image:`
+# Здесь стоял блок `ui:` — чарта с таким именем в дереве нет: консоль называется
+# `uif` и держит образ ПОМОДУЛЬНО (`uif.host.image`, `uif.dashboard.image`, …),
+# одной строкой её не закрепить. Блок не читал никто, и накладка выглядела
+# закрепляющей образ, которого она не касалась.
+#
+# Image-shape: sibling sub-charts (vpc/compute/api-gateway) take a flat `image:`
 # string; the vendored sub-charts (kacho-iam/kacho-nlb) take map {repository,tag,pullPolicy}.
 # NB: the sub-chart values KEY must equal the Chart.yaml dependency name — `api-gateway`
 # (hyphen), NOT `apiGateway`.
@@ -45,10 +49,6 @@ compute:
 
 api-gateway:
   image: docker.io/prorobotech/kacho-api-gateway:main-1adc9d12
-  imagePullPolicy: IfNotPresent
-
-ui:
-  image: docker.io/prorobotech/kacho-ui:main-75d27127
   imagePullPolicy: IfNotPresent
 
 kacho-iam:

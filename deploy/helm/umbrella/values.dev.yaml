@@ -1241,10 +1241,6 @@ kacho-iam:
       level: INFO
     apiServer:
       gracefulShutdown: 10s
-    metrics:
-      enable: true
-    healthcheck:
-      enable: true
     repository:
       postgres:
         maxConns: 100
@@ -1272,14 +1268,12 @@ kacho-iam:
     extapi:
       # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
       openfga:
-        # KAC-127 Phase 3: REBAC authorization Check is ON for dev. Without
-        # `enabled: true` the kacho-iam config-validate logs
-        # `extapi.openfga.enabled=false — authorization Check disabled` and
-        # the config is inconsistent with the runtime (the FGA client *is*
-        # wired whenever KACHO_IAM_OPENFGA_STORE_ID is populated by the
-        # openfga-bootstrap-job). Set it true so config matches reality.
-        enabled: true
-        endpoint: openfga:8081
+        # ЗДЕСЬ ТОЛЬКО ТО, ЧТО ЧИТАЕТ ШАБЛОН. Клиент OpenFGA собирается в
+        # композиционном корне из переменных окружения, а не из этой секции:
+        # адрес — KACHO_IAM_OPENFGA_ENDPOINT (умолчание в самом коде),
+        # включённость — наличие store-id. Стоявшие здесь `enabled`/`endpoint`
+        # не читал никто, и второй из них называл адрес, отличный от
+        # действующего умолчания, — оператор правил бы строку, ничего не меняя.
         # store-id заполняется bootstrap-job'ом в Secret kacho-iam-openfga-store
         storeIdSecretName: kacho-iam-openfga-store
         storeIdSecretKey: store_id
@@ -1300,14 +1294,6 @@ kacho-iam:
     # ListObjects to resolve the caller's allowed-id set; without this the RPC
     # returns Unimplemented and the handler-side scope-filter fails 503.
     KACHO_AUTHZ_LISTOBJECTS: "on"
-    # KAC-132: reduce compliance worker interval for newman e2e (default 10s → 1s)
-    KACHO_IAM_GOVERNANCE__COMPLIANCE_REPORT_WORKER_INTERVAL_SECONDS: "1"
-    # KAC-132: MinIO dev instance for compliance report S3 upload in newman e2e
-    KACHO_IAM_COMPLIANCE__S3__ENDPOINT: "http://minio-dev:9000"
-    KACHO_IAM_COMPLIANCE__S3__BUCKET: "kacho-compliance-reports"
-    KACHO_IAM_COMPLIANCE__S3__PATH_STYLE: "true"
-    KACHO_IAM_COMPLIANCE__S3__ACCESS_KEY: "changeme-dev-minio-access"
-    KACHO_IAM_COMPLIANCE__S3__SECRET_KEY: "changeme-dev-minio-secret"
     # Bug B fix: bootstrap cluster-admin. kacho-iam's startup reconciler grants
     # `system_admin@cluster_kacho_root` to this user and enqueues the FGA tuple
     # via the transactional fga_outbox (replacing the former setup.sh SQL-seed
@@ -1332,7 +1318,9 @@ kacho-iam:
     # OPA pulls the bundle from kacho-iam IN THE SAME pod via loopback
     # (127.0.0.1:9092 HTTP) — not via Service (Service routes only to Ready pods,
     # but the pod is Ready only after the bundle loads → rollout deadlock).
-    iamInternalHost: kacho-iam-internal
+    # Отсюда и отсутствие имени хоста: шаблон подставляет петлю, а стоявший
+    # здесь `iamInternalHost` называл Service — то есть противоречил соседней
+    # строке и не читался ничем.
     iamInternalPort: 9092
     bundleResource: bundle.tar.gz
     # kacho-iam OpaBundleService currently produces an UNSIGNED tarball, so OPA
@@ -1342,13 +1330,6 @@ kacho-iam:
     bundlePollMinSec: 60   # ~1min
     bundlePollMaxSec: 90
     signingKeyId: kacho-iam-signing-key-current
-    bundle:
-      ttlSeconds: 60          # dev: also short
-      signingAlgorithm: ES256
-      signingKeyKid: kacho-iam-signing-key-current
-      buildShaEnvVar: KACHO_BUILD_SHA
-      cacheStaleAfterSeconds: 600
-      keyRotationGraceSeconds: 600
     jwks:
       configMapName: kacho-iam-jwks
       bootstrapKeyPem: ""
@@ -1363,16 +1344,6 @@ kacho-iam:
         memory: 256Mi
   openfgaBootstrap:
     modelIdSecretName: openfga-model-id
-  # KAC-132: compliance report S3 config via config.yaml (env var binding for
-  # path-style bool is unreliable with viper key replacer hyphens; use YAML instead).
-  compliance:
-    s3:
-      endpoint: "http://minio-dev:9000"
-      region: "us-east-1"
-      bucket: "kacho-compliance-reports"
-      pathStyle: true
-      accessKey: "changeme-dev-minio-access"
-      secretKey: "changeme-dev-minio-secret"
   # ─── Phase 3b — Federation IN (external IdP → kacho via Hydra jwt-bearer) ──
   # Hydra v26.2.0 does NOT load trusted issuers from `hydra.config.*` — they
   # are registered at runtime via the admin trust-grant API
@@ -1423,7 +1394,6 @@ openfga-bootstrap:
     enabled: true
     # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root.
     image: alpine/k8s:1.36.2
-    cliImage: ""
     storeName: kacho-store
     authorizationModelConfigMap: openfga-model-stub
     modelIdSecretName: openfga-model-id

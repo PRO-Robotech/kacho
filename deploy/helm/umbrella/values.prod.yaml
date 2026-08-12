@@ -528,9 +528,9 @@ kacho-iam:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
     extapi:
       openfga:
-        # ReBAC Check ON — store id injected by the openfga-bootstrap-job Secret.
-        enabled: true
-        endpoint: openfga:8081
+        # Только то, что читает шаблон: адрес и включённость клиента OpenFGA
+        # приходят из окружения (KACHO_IAM_OPENFGA_ENDPOINT + наличие store-id),
+        # а не из этой секции — стоявшие здесь `enabled`/`endpoint` не читал никто.
         storeIdSecretName: kacho-iam-openfga-store
         storeIdSecretKey: store_id
 

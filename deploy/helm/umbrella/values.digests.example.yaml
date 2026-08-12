@@ -55,9 +55,6 @@ compute:
 api-gateway:
   image:
     tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
-ui:
-  image:
-    tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"
 kacho-nlb:
   image:
     tag: "main-<sha>@sha256:REPLACE_WITH_REAL_DIGEST"

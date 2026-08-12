@@ -59,7 +59,7 @@
 // Второй предел — `censusSelfReference`: сам реестр и артефакт переписи цитируют
 // маркеры по своему назначению и из счёта исключены; у исключения есть проверка
 // предмета (см. TestStaleClaimSelfReferenceStillHasSubject).
-package repohygiene
+package artifactgates
 
 import (
 	"bytes"
@@ -177,7 +177,7 @@ var staleClaimMarkers = []staleClaimMarker{
 // никто не цитирует маркеры, обязан уйти, иначе он останется слепой зоной.
 // Предел объявлен: всё, что положат под эти префиксы, гейт не читает.
 var censusSelfReference = []string{
-	"internal/repohygiene/staleclaimsweep_test.go",
+	"internal/repohygiene/artifactgates/staleclaimsweep_test.go",
 	"docs/plans/xc-3/",
 }
 

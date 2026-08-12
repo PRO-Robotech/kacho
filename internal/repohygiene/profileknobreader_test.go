@@ -10,98 +10,80 @@ import (
 	"testing"
 )
 
-// knobDebtEntry — ключ, объявленный без читателя ДО заведения этой проверки.
+// knobDebtEntry — ключ, объявленный в профиле без читателя, которого ещё не
+// закрыли фиксом.
 //
-// # Почему перечень, а не «починить все и не заводить перечень»
+// # Ведомость ПУСТА, и это состояние, а не предпосылка
 //
-// Перепись нашла класс сразу в нескольких чартах. Решать за чужой чарт, «мёртв
-// ключ или его забыли провязать», — значит либо снести настройку, которую
-// собирались подключить, либо оставить дефект под видом решения. Такое решение
-// принимает владелец чарта, по одному, со своим предикатом.
+// Заведённая проверкой ведомость несла 52 записи. Все они закрыты фиксом: у
+// двенадцати ключей появился читатель (модули консоли получили автоскейлер,
+// границы которого объявлялись и не читались), сорок были сняты из профилей как
+// объявления настроек, которых в продукте нет — подсистема отчётов, секции
+// конфигурации, отброшенные разбором, копия ветки родителя, которую helm внутрь
+// сабчарта не пропагирует, и адресация чарта, переименованного два релиза назад.
 //
-// Поэтому долг не прячется, а НАЗЫВАЕТСЯ и СЧИТАЕТСЯ: число печатается каждым
-// прогоном, новая запись роняет прогон немедленно, а запись, которой больше
-// нечего исключать, — тоже находка (проба самоистечения ниже). Так перечень не
-// может пережить свой предмет: он истекает сам, а не по чьей-то памяти.
+// Пустая ведомость НЕ делает проверку вакуумной: предмет у неё — дерево, а не
+// перечень. Способность обеих половин упасть доказана инъекцией на синтетике
+// (TestKnobDebtRulesCatchABareEntry), а не тем, что когда-то падало.
 //
-// Пустой перечень — законное будущее состояние: он не является предпосылкой
-// проверки, только её долговой ведомостью.
+// # Что обязана нести запись, если она понадобится снова
+//
+// Координату (File+Key), ПИСЬМЕННОЕ ОБОСНОВАНИЕ (Why) и ПРЕДИКАТ СНЯТИЯ (Until)
+// — наблюдаемое условие, при котором запись уходит. Без обоснования запись
+// неотличима от упущения; без предиката снимать её будет некому, и она переживёт
+// свой предмет — тот самый класс, который проверка и ловит.
+//
+// Решать за чужой чарт, «мёртв ключ или его забыли провязать», вправе владелец
+// чарта. Ведомость существует ради этого случая: долг не прячется, а называется
+// и считается — новая находка роняет прогон немедленно, запись без предмета
+// роняет его тоже.
 type knobDebtEntry struct {
+	// File — путь профиля относительно корня дерева.
 	File string
-	Key  string
+	// Key — путь ключа в том виде, в каком он объявлен.
+	Key string
+	// Why — почему ключ ещё не закрыт: чего не хватает и кто это решает.
+	Why string
+	// Until — предикат снятия: наблюдаемое условие, при котором записи здесь
+	// больше не место. «Когда дойдут руки» предикатом не является.
+	Until string
 }
 
-// knobDebt — закрытая ведомость. Отсортирована по файлу и ключу.
-//
-// Ни одна запись НЕ относится к `kacho-nlb`: ключи этого чарта сняты тем же
-// изменением, которым заведена проверка, — иначе она объявляла бы долгом ровно
-// тот дефект, ради которого написана.
-var knobDebt = []knobDebtEntry{
-	// ─── kacho-iam ───────────────────────────────────────────────────────
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.accessKey"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.bucket"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.endpoint"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.pathStyle"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.region"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.compliance.s3.secretKey"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.config.extapi.openfga.enabled"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.config.extapi.openfga.endpoint"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.config.healthcheck.enable"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.config.metrics.enable"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.buildShaEnvVar"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.cacheStaleAfterSeconds"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.keyRotationGraceSeconds"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.signingAlgorithm"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.signingKeyKid"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.bundle.ttlSeconds"},
-	{"deploy/helm/umbrella/values.dev.yaml", "kacho-iam.opaSidecar.iamInternalHost"},
-	{"deploy/helm/umbrella/values.prod.yaml", "kacho-iam.config.extapi.openfga.enabled"},
-	{"deploy/helm/umbrella/values.prod.yaml", "kacho-iam.config.extapi.openfga.endpoint"},
-	{"deploy/helm/umbrella/values.yaml", "kacho-iam.kacho.iam.dpopReplay.cacheSize"},
-	{"deploy/helm/umbrella/values.yaml", "kacho-iam.kacho.iam.dpopReplay.cacheTTLSeconds"},
-	{"deploy/helm/umbrella/values.yaml", "kacho-iam.kacho.iam.sessionRevocations.cacheTTLSeconds"},
-	{"deploy/helm/umbrella/values.yaml", "kacho-iam.kacho.subdomains.api"},
-
-	// ─── openfga-bootstrap ───────────────────────────────────────────────
-	{"deploy/helm/umbrella/charts/openfga-bootstrap/values.yaml", "openfgaBootstrap.cliImage"},
-	{"deploy/helm/umbrella/values.dev.yaml", "openfga-bootstrap.openfgaBootstrap.cliImage"},
-	{"deploy/helm/umbrella/values.yaml", "openfga-bootstrap.openfgaBootstrap.cliImage"},
-
-	// ─── uif (федеративная консоль): у четырёх удалённых модулей объявлены
-	// границы масштабирования, а HorizontalPodAutoscaler для них не рендерится ─
-	{"ui-future/deploy/values.yaml", "compute.autoscaling.maxReplicas"},
-	{"ui-future/deploy/values.yaml", "compute.autoscaling.minReplicas"},
-	{"ui-future/deploy/values.yaml", "compute.autoscaling.targetCPUUtilizationPercentage"},
-	{"ui-future/deploy/values.yaml", "nlb.autoscaling.maxReplicas"},
-	{"ui-future/deploy/values.yaml", "nlb.autoscaling.minReplicas"},
-	{"ui-future/deploy/values.yaml", "nlb.autoscaling.targetCPUUtilizationPercentage"},
-	{"ui-future/deploy/values.yaml", "registry.autoscaling.maxReplicas"},
-	{"ui-future/deploy/values.yaml", "registry.autoscaling.minReplicas"},
-	{"ui-future/deploy/values.yaml", "registry.autoscaling.targetCPUUtilizationPercentage"},
-	{"ui-future/deploy/values.yaml", "storage.autoscaling.maxReplicas"},
-	{"ui-future/deploy/values.yaml", "storage.autoscaling.minReplicas"},
-	{"ui-future/deploy/values.yaml", "storage.autoscaling.targetCPUUtilizationPercentage"},
-
-	// ─── зонтичный чарт: адресация чарта `ui`, которого в дереве нет
-	// (переименован в `uif`), и собственный блок `kacho:`, из которого шаблоны
-	// родителя читают только домен ───────────────────────────────────────
-	{"deploy/helm/umbrella/values.digests.example.yaml", "ui.image.tag"},
-	{"deploy/helm/umbrella/values.prorobotech.yaml", "ui.image"},
-	{"deploy/helm/umbrella/values.prorobotech.yaml", "ui.imagePullPolicy"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.hooks.tokenHookSecretKey"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.hooks.tokenHookSecretName"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.iam.dpopReplay.cacheSize"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.iam.dpopReplay.cacheTTLSeconds"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.iam.jwks.encKeySecretKey"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.iam.jwks.encKeySecretName"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.iam.sessionRevocations.cacheTTLSeconds"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.subdomains.api"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.subdomains.app"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.subdomains.hydra"},
-	{"deploy/helm/umbrella/values.yaml", "kacho.subdomains.kratos"},
-}
+// knobDebt — ведомость. Отсортирована по файлу и ключу.
+var knobDebt = []knobDebtEntry{}
 
 func knobDebtKey(file, key string) string { return file + "\x00" + key }
+
+// knobDebtDefects — что не так с самой ведомостью, безотносительно дерева.
+//
+// Отдельная функция, а не тело теста: с пустой ведомостью тело утверждало бы
+// свойство ни о чём, и его способность упасть нечем было бы показать. Здесь она
+// показывается инъекцией синтетических записей — тем же кодом, что судит дерево.
+func knobDebtDefects(entries []knobDebtEntry) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, d := range entries {
+		if d.File == "" || d.Key == "" {
+			out = append(out, fmt.Sprintf("запись без координаты: %+v", d))
+			continue
+		}
+		k := knobDebtKey(d.File, d.Key)
+		if seen[k] {
+			out = append(out, fmt.Sprintf("дубль в ведомости: %s / %s", d.File, d.Key))
+		}
+		seen[k] = true
+		if strings.TrimSpace(d.Why) == "" {
+			out = append(out, fmt.Sprintf("%s: %s — запись без письменного обоснования: "+
+				"неотличима от упущения, и снять её потом будет не по чему", d.File, d.Key))
+		}
+		if strings.TrimSpace(d.Until) == "" {
+			out = append(out, fmt.Sprintf("%s: %s — запись без предиката снятия: послабление, "+
+				"которое не умеет истечь, переживает свой предмет", d.File, d.Key))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // TestDeclaredKnobHasAReader — ключ, объявленный в профиле развёртывания,
 // обязан иметь читателя в шаблоне чарта либо в шаблоне его родителя.
@@ -125,11 +107,7 @@ func TestDeclaredKnobHasAReader(t *testing.T) {
 			"поэтому «читателя нет» сказано обо всём дереве сразу")
 	}
 
-	seen := map[string]bool{}
 	var fresh []string
-	for _, f := range findings {
-		seen[knobDebtKey(f.File, f.Key)] = true
-	}
 	debt := map[string]bool{}
 	for _, d := range knobDebt {
 		debt[knobDebtKey(d.File, d.Key)] = true
@@ -153,6 +131,23 @@ func TestDeclaredKnobHasAReader(t *testing.T) {
 	}
 }
 
+// knobDebtStale — записи, которым больше нечего исключать: находки с такой
+// координатой в дереве нет.
+//
+// Отдельная функция по той же причине, что и knobDebtDefects: на пустой
+// ведомости тело теста молчит по построению, и показать его способность упасть
+// можно только инъекцией в ТУ ЖЕ функцию.
+func knobDebtStale(entries []knobDebtEntry, live map[string]bool) []string {
+	var stale []string
+	for _, d := range entries {
+		if !live[knobDebtKey(d.File, d.Key)] {
+			stale = append(stale, fmt.Sprintf("%s: %s", d.File, d.Key))
+		}
+	}
+	sort.Strings(stale)
+	return stale
+}
+
 // TestKnobDebtExpiresOnItsOwn — запись ведомости, которой больше нечего
 // исключать, роняет прогон.
 //
@@ -170,13 +165,7 @@ func TestKnobDebtExpiresOnItsOwn(t *testing.T) {
 	for _, f := range findings {
 		live[knobDebtKey(f.File, f.Key)] = true
 	}
-	var stale []string
-	for _, d := range knobDebt {
-		if !live[knobDebtKey(d.File, d.Key)] {
-			stale = append(stale, fmt.Sprintf("%s: %s", d.File, d.Key))
-		}
-	}
-	sort.Strings(stale)
+	stale := knobDebtStale(knobDebt, live)
 	if len(stale) > 0 {
 		t.Fatalf("в ведомости %d записей, которым больше нечего исключать:\n%s\n\n"+
 			"Ключ провязан или снят — запись обязана уйти из ведомости тем же изменением. "+
@@ -185,20 +174,65 @@ func TestKnobDebtExpiresOnItsOwn(t *testing.T) {
 	}
 }
 
-// TestKnobDebtIsWellFormed — ведомость не содержит дублей и отсортирована по
-// файлу: перечень, который читают глазами при каждой находке, обязан быть
-// читаемым, а дубль скрывает, что записей на одну меньше, чем кажется.
+// TestKnobDebtIsWellFormed — каждая запись ведомости несёт координату, письменное
+// обоснование и предикат снятия, и ни одна не повторяется.
+//
+// Дубль скрывает, что записей на одну меньше, чем кажется; запись без
+// обоснования неотличима от упущения; запись без предиката снятия не умеет
+// истечь. Сегодня ведомость пуста, поэтому тест ничего не находит — его
+// способность находить показана инъекцией ниже, а не этим прогоном.
 func TestKnobDebtIsWellFormed(t *testing.T) {
-	seen := map[string]bool{}
-	for _, d := range knobDebt {
-		k := knobDebtKey(d.File, d.Key)
-		if seen[k] {
-			t.Errorf("дубль в ведомости: %s / %s", d.File, d.Key)
-		}
-		seen[k] = true
-		if d.File == "" || d.Key == "" {
-			t.Errorf("запись ведомости без координаты: %+v", d)
+	t.Logf("ведомость: %d записей", len(knobDebt))
+	for _, bad := range knobDebtDefects(knobDebt) {
+		t.Error(bad)
+	}
+}
+
+// TestKnobDebtRulesCatchABareEntry — правила ведомости обязаны краснеть на
+// голой записи и МОЛЧАТЬ на полной.
+//
+// Инъекция здесь не украшение: ведомость пуста, значит обе проверки над ней
+// молчат по построению, и «зелено» ничего о них не говорит. Синтетика подаётся
+// в ТУ ЖЕ функцию, которая судит дерево, — иначе проверялась бы копия правил, а
+// не они сами.
+func TestKnobDebtRulesCatchABareEntry(t *testing.T) {
+	lawful := knobDebtEntry{
+		File:  "deploy/helm/example/values.yaml",
+		Key:   "sub.knob",
+		Why:   "чарт-владелец решает сам: ручка объявлена под будущий шаблон",
+		Until: "шаблон чарта читает .Values.knob либо ключ снят из профиля",
+	}
+	// (б) МОЛЧАЛИВОЕ НАПРАВЛЕНИЕ — полная запись претензий не вызывает.
+	if got := knobDebtDefects([]knobDebtEntry{lawful}); len(got) != 0 {
+		t.Errorf("полная запись объявлена дефектной: %v", got)
+	}
+
+	// (а) КРАСНОЕ НАПРАВЛЕНИЕ — каждая нехватка называется отдельно.
+	noWhy, noUntil, noCoord := lawful, lawful, lawful
+	noWhy.Why, noUntil.Until = "", "   "
+	noCoord.Key = ""
+	cases := map[string]knobDebtEntry{
+		"без обоснования": noWhy,
+		"без предиката":   noUntil,
+		"без координаты":  noCoord,
+	}
+	for name, e := range cases {
+		if got := knobDebtDefects([]knobDebtEntry{e}); len(got) == 0 {
+			t.Errorf("запись %s принята: %+v", name, e)
 		}
 	}
-	t.Logf("ведомость: %d записей", len(knobDebt))
+	if got := knobDebtDefects([]knobDebtEntry{lawful, lawful}); len(got) == 0 {
+		t.Error("дубль принят — ведомость может объявлять больше записей, чем в ней предметов")
+	}
+
+	// Самоистечение — та же пара направлений. Живая находка запись оправдывает;
+	// исчезнувшая обязана её обнулить.
+	liveKey := map[string]bool{knobDebtKey(lawful.File, lawful.Key): true}
+	if got := knobDebtStale([]knobDebtEntry{lawful}, liveKey); len(got) != 0 {
+		t.Errorf("запись с живой находкой объявлена просроченной: %v", got)
+	}
+	if got := knobDebtStale([]knobDebtEntry{lawful}, map[string]bool{}); len(got) == 0 {
+		t.Error("запись, которой нечего исключать, принята: послабление переживает свой " +
+			"предмет, а освободившееся место унаследует новый дефект с тем же путём")
+	}
 }
