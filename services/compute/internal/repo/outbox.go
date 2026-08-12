@@ -111,7 +111,11 @@ func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resource
 		TraceID:         resourceID,
 		Labels:          labels,
 		ParentProjectID: projectID,
-		SourceVersion:   stamped,
+		// Цепь предков — та же, что на пути очереди: обе доставки одного
+		// намерения обязаны нести одно содержание, иначе повтор стирает то,
+		// что записала первая.
+		ParentChain:   ownerregister.ParentChain(nil, projectID, ""),
+		SourceVersion: stamped,
 	}, nil
 }
 

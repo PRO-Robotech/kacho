@@ -150,8 +150,10 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 		return nil, status.Errorf(codes.NotFound, "Network %s not found", s.NetworkID)
 	}
 	// F7: каждый CIDR подсети обязан лежать в объявленном супернете сети
-	// (within-service, против только что прочитанной network-строки). Пустой
-	// супернет (legacy) → skip. Нарушение → InvalidArgument (format-класс), sync.
+	// (within-service, против только что прочитанной network-строки). Требование
+	// безусловно: сеть, не объявившая супернет этого семейства, подсеть семейства
+	// не принимает — нарезать не из чего, и отказ называет путь вперёд
+	// (`:add-cidr-blocks`). Нарушение → InvalidArgument (format-класс), sync.
 	if err := validateSubnetWithinSupernet(parentNet.IPv4CidrBlocks, parentNet.IPv6CidrBlocks, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
 		_ = rd.Close()
 		return nil, err

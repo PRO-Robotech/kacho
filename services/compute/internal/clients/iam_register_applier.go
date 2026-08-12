@@ -36,6 +36,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 )
@@ -92,7 +93,17 @@ func (a *IAMRegisterApplier) Apply(ctx context.Context, eventType string, p fgai
 				Labels:          p.Labels,
 				ParentProjectId: p.ParentProjectID,
 				ParentAccountId: p.ParentAccountID,
-				SourceVersion:   srcVer,
+				// Цепь предков идёт ОБОИМИ путями доставки — этим и синхронным.
+				// Проведи её одним, и повтор из очереди стёр бы её пустой: приёмная
+				// сторона заменяет набор рёбер объекта целиком, поэтому доставки
+				// одного намерения обязаны нести одно содержание.
+				//
+				// Ресурсы compute лежат под проектом, глубже иерархия не идёт —
+				// цепь выводится из области ЭТОЙ ЖЕ доставки, ничего нового не
+				// выдумывая. Строка, поставленная в очередь до появления цепи,
+				// получает её на доставке по тем же двум полям, что уже несёт.
+				ParentChain:   ownerregister.ParentChain(nil, p.ParentProjectID, p.ParentAccountID),
+				SourceVersion: srcVer,
 			}); err != nil {
 				return classifyApplyErr(err)
 			}

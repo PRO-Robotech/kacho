@@ -29,9 +29,9 @@
 #   -f values.fe3455-ory-posture.yaml -f values.fe3455-ory.yaml
 #
 # ── Что теперь читают гейты ──
-#   - таблица стеков tests/helm/admin-hop-address-census-test.sh (цепочка fe3455)
-#     → её выводят все шесть shell-стражей и объявленческие проверки deploy/;
-#   - шаг рендера боевого профиля в .github/workflows/ci.yaml;
+#   - таблица стеков deploy/stacks.txt (строка fe3455) — ЕДИНСТВЕННОЕ место, где
+#     цепочка объявлена; её читают все shell-стражи, объявленческие проверки
+#     deploy/ и gateway/deploy/, шаг рендера в конвейере и скрипт раскатки;
 #   - deploy/identity_dev_flag_declaration_test.go — режим разработки провайдера
 #     личности на стеке, объявившем боевую посадку.
 

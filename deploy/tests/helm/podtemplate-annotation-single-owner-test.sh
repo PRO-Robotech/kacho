@@ -77,6 +77,9 @@
 # kubectl-SSA выше. Собравшемуся заменить её на «helm --dry-run в CI»: замер выше
 # уже прогонялся, этот путь не краснеет на дефекте.
 set -uo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -86,15 +89,11 @@ fatal() { echo "FATAL: $1"; exit 2; }
 command -v helm >/dev/null 2>&1 || fatal "helm не найден"
 python3 -c 'import yaml' 2>/dev/null || fatal "нужен python3 с PyYAML"
 
-# fe3455 несёт ЧЕТВЁРТЫЙ слой — values.fe3455-ory-posture.yaml (посадка
-# провайдеров личности). Он включает kratos/hydra, то есть добавляет шаблоны
-# подов, которые эта проверка обязана рассматривать.
-PROFILES="
-dev|values.dev.yaml
-dev-prod|values.dev.yaml,values.dev-prod.yaml
-prod|values.prod.yaml
-fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
-"
+# Профили — из единственной таблицы дерева (deploy/stacks.txt). Слой посадки
+# провайдеров личности включает kratos/hydra, то есть добавляет шаблоны подов,
+# которые эта проверка обязана рассматривать: цепочка, знающая на слой меньше,
+# осматривала бы меньше подов и молчала бы ровно так же.
+PROFILES="$(stacks_table | tr ':' '|')"
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 

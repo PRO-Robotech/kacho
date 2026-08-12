@@ -1,7 +1,16 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// dbhba_tls_required_test.go — база, которая ОТДАЁТ TLS, обязана его ТРЕБОВАТЬ.
+// dbhba_tls_required_test.go — ДВА требования к одному артефакту, `pg_hba` базы:
+//
+//  1. база, которая ОТДАЁТ TLS, обязана его ТРЕБОВАТЬ по сети;
+//  2. база обязана уметь ПОДНЯТЬСЯ С НУЛЯ — то есть локальный путь и петля не
+//     вправе требовать пароль, которого при первичной настройке ещё нет.
+//
+// Требования живут в одном файле, потому что предмет у них один: тело `pg_hba`
+// разбирается один раз, и обе стороны спрашиваются у одних и тех же правил.
+// Разъедутся они только вместе с самим телом. У каждого требования свой тест,
+// поэтому имя падения по-прежнему называет ровно то свойство, которое сломано.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // ПРЕДМЕТ, И ЧЕМ ОН ОТЛИЧАЕТСЯ ОТ СОСЕДНЕГО dbtls_declaration_test.go
@@ -38,6 +47,31 @@
 // потребителя), а не тихим открытым каналом, который надо ловить выборкой.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ОТКУДА ВЫВЕДЕНО ВТОРОЕ ТРЕБОВАНИЕ — ПОДЪЁМ С НУЛЯ (#195)
+//
+// Первичная настройка Postgres обязана подключиться к своей же базе по
+// локальному пути (unix-сокет и петля), чтобы ЗАДАТЬ пароль. Правило доступа,
+// требующее пароль на этом пути, замыкает круг: пароля ещё нет, потому что его
+// как раз собираются задать. Круг разрешается отказом — база не поднимается.
+//
+// Почему это переживало любую проверку стенда. На кластере с сохранённым томом
+// каталог данных переживает переустановку, и первичная настройка ПРОПУСКАЕТСЯ
+// целиком: профиль выглядит рабочим ровно до кластера, где каждый запуск
+// первичный. То есть зелёное относилось к стенду, который однажды поднялся
+// другим способом, а не к профилю.
+//
+// Симптом при этом НЕМОЙ: вывод первичной настройки уходит в никуда, пока не
+// включена отладка образа, поэтому контейнер завершается кодом 2 без единой
+// строки о причине. Проверка объявления — единственное место, где этот класс
+// виден до кластера.
+//
+// Почему `trust` на локальном пути не послабление: сокет и петля живут в сетевом
+// пространстве САМОГО пода, снаружи к ним не подключиться, а внутри пода нет
+// никого, кроме сервера и его проб. Граница безопасности проходит по сети, и её
+// держит первое требование этого же файла — по сети принимается только
+// шифрованное соединение с паролем, нешифрованное отвергается явно.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
 //
 //   - Проверяются ВСЕ инстансы Postgres умбреллы (включая хранилища Ory и
@@ -55,6 +89,14 @@
 //     (`pg_isready -h 127.0.0.1`). Запрет на них сломал бы готовность пода,
 //     ничего не защитив. Ровно ту же границу проводит гейт посадки, считая
 //     законными соединения с `client_addr IS NULL`.
+//   - Второе требование обращено ТОЛЬКО к локальному пути и петле; сетевые
+//     строки оно не рассматривает вовсе. Пароль на сетевой строке — норма, и
+//     проверка обязана на ней молчать: ослабление сети этим гейтом не
+//     подпирается, оно запрещено первым требованием.
+//   - Второе требование НЕ спрашивает про TLS: круг первичной настройки
+//     замыкается независимо от того, отдаёт база TLS или нет. Поэтому оно
+//     применяется к КАЖДОМУ непустому объявлению, а не только к тем, что попали
+//     под первое.
 //   - Проверяется ОБЪЯВЛЕНИЕ профиля, а не рендер: значение, приехавшее из
 //     умолчания чарта, в манифесте выглядит точно так же, как объявленное.
 //     Проверке не нужны ни `helm`, ни скачанные зависимости — она не умеет
@@ -135,6 +177,37 @@ func (r hbaRule) requiresNetworkTLS() bool {
 	return r.typ == "hostssl" && !loopbackAddrs[r.address] && strings.ToLower(r.method) != "reject"
 }
 
+// isLocalLane — правило обслуживает путь, по которому идёт ПЕРВИЧНАЯ НАСТРОЙКА:
+// unix-сокет (`local`) либо петля любого семейства.
+func (r hbaRule) isLocalLane() bool {
+	return r.typ == "local" || loopbackAddrs[r.address]
+}
+
+// socketPasswordless / loopbackPasswordless — методы, которыми первичная
+// настройка подключается, НЕ имея пароля.
+//
+// Перечисляется разрешённое, а не запрещённое, и это не стиль. Список запретов
+// молча пропускает метод, которого в нём нет: следующий сюда приедет очередной
+// внешний способ проверки (их семейство растёт), и «не знаю» превратится в
+// «претензий нет» — ровно та форма без содержания, которую этот файл и ловит.
+//
+// Наборы РАЗНЫЕ, потому что путей два. `peer`/`ident` сверяют учётную запись
+// операционной системы и существуют только у unix-сокета: на петле их нет как
+// механизма (`ident` там требует отдельную службу, которой в поде никто не
+// поднимает). Поэтому на петле беспарольным остаётся ровно `trust`.
+var socketPasswordless = map[string]bool{"trust": true, "peer": true, "ident": true}
+var loopbackPasswordless = map[string]bool{"trust": true}
+
+// bootstrapCanConnect — по этому правилу первичная настройка подключится, ещё не
+// имея пароля. Вызывается ТОЛЬКО на правилах локального пути.
+func (r hbaRule) bootstrapCanConnect() bool {
+	m := strings.ToLower(r.method)
+	if r.typ == "local" {
+		return socketPasswordless[m]
+	}
+	return loopbackPasswordless[m]
+}
+
 type hbaFinding struct {
 	stack  string
 	pg     string
@@ -148,17 +221,45 @@ const (
 	hbaNoTLSRule    = "нет ни одного правила hostssl"
 	hbaUnparsed     = "строка не разобрана"
 	hbaNarrowNoTLS  = "сужение без TLS"
+	// Второе требование файла — подъём с нуля.
+	hbaLocalNeedsPassword = "локальный путь требует пароль"
+	hbaNoLocalLane        = "нет ни одной строки локального пути"
 )
 
+// hbaKindsTLS / hbaKindsBootstrap — какие виды находок принадлежат какому
+// требованию. Разделение явное, чтобы падение называло сломанное свойство, а не
+// «что-то в pg_hba»; вид, не попавший ни в один набор, ловится самопроверкой.
+var hbaKindsTLS = map[string]bool{
+	hbaNotDeclared: true, hbaAcceptsPlain: true, hbaNoTLSRule: true,
+	hbaUnparsed: true, hbaNarrowNoTLS: true,
+}
+var hbaKindsBootstrap = map[string]bool{
+	hbaLocalNeedsPassword: true, hbaNoLocalLane: true,
+}
+
+// hbaVolume — объём осмотренного. Возвращается тем же обходом, который ищет
+// находки, поэтому «ноль находок» и «ноль прочитанного» не могут совпасть
+// молча, а перепись не может разойтись со сканированием.
+type hbaVolume struct {
+	stacks       int // стеков осмотрено
+	instances    int // пар (стек × инстанс) рассмотрено
+	declarations int // из них с непустым объявлением pg_hba
+	lines        int // строк pg_hba разобрано
+	localLanes   int // из них строк локального пути и петли
+}
+
 // scanHBA — ядро проверки: чистая функция над фактами стеков, чтобы самопроверка
-// ниже подавала ей синтетический вход, а не подделывала дерево.
+// ниже подавала ей синтетический вход, а не подделывала дерево. Возвращает
+// находки И объём осмотренного — одним обходом, чтобы перепись не могла
+// разойтись со сканированием.
 //
 // Две стороны, и вторая обязательна. Прямая: база отдаёт TLS — обязана требовать.
 // Зеркальная: база TLS НЕ отдаёт, а сужение объявлено — это не «строже, чем
 // надо», это стенд, который не поднимется, и упадёт он не здесь, а в рантайме
 // на каждом клиенте сразу.
-func scanHBA(stacks map[string]hbaStack, aliases []string) []hbaFinding {
+func scanHBA(stacks map[string]hbaStack, aliases []string) ([]hbaFinding, hbaVolume) {
 	var out []hbaFinding
+	vol := hbaVolume{stacks: len(stacks)}
 	names := make([]string, 0, len(stacks))
 	for n := range stacks {
 		names = append(names, n)
@@ -173,26 +274,58 @@ func scanHBA(stacks map[string]hbaStack, aliases []string) []hbaFinding {
 		}
 
 		for _, pg := range aliases {
+			vol.instances++
 			v, declared := lookup(f.declared, append([]string{pg}, hbaPath...)...)
 			body := ""
 			if declared {
 				body = fmt.Sprint(v)
 			}
+			hasBody := declared && strings.TrimSpace(body) != ""
+
+			var rules []hbaRule
+			if hasBody {
+				vol.declarations++
+				var unparsed []string
+				rules, unparsed = parseHBA(body)
+				vol.lines += len(rules) + len(unparsed)
+				for _, u := range unparsed {
+					out = append(out, hbaFinding{name, pg, hbaUnparsed, u})
+				}
+
+				// ── ТРЕБОВАНИЕ 2: подъём с нуля ────────────────────────────
+				// Спрашивается у КАЖДОГО непустого объявления и не зависит от
+				// TLS: круг первичной настройки замыкается одинаково у базы,
+				// которая шифрует, и у той, которая нет.
+				lanes := 0
+				for _, r := range rules {
+					if !r.isLocalLane() {
+						continue
+					}
+					lanes++
+					vol.localLanes++
+					if !r.bootstrapCanConnect() {
+						out = append(out, hbaFinding{name, pg, hbaLocalNeedsPassword,
+							fmt.Sprintf("%s … %s %s", r.typ, r.address, r.method)})
+					}
+				}
+				if lanes == 0 {
+					out = append(out, hbaFinding{name, pg, hbaNoLocalLane,
+						"объявление забрало правила у чарта и не оставило пути, по которому идёт первичная настройка"})
+				}
+			}
+
+			// ── ТРЕБОВАНИЕ 1: отдаёшь TLS — требуй его ─────────────────────
 			if !tlsOn[pg] {
-				if declared && strings.TrimSpace(body) != "" {
+				if hasBody {
 					out = append(out, hbaFinding{name, pg, hbaNarrowNoTLS,
 						"инстанс не отдаёт TLS, а правила требуют его — соединиться не сможет никто"})
 				}
 				continue
 			}
-			if !declared || strings.TrimSpace(body) == "" {
+			if !hasBody {
 				out = append(out, hbaFinding{name, pg, hbaNotDeclared,
 					"умолчание чарта — правила вида `host`, принимающие и открытый текст"})
 				continue
-			}
-			rules, unparsed := parseHBA(body)
-			for _, u := range unparsed {
-				out = append(out, hbaFinding{name, pg, hbaUnparsed, u})
 			}
 			tlsRule := false
 			for _, r := range rules {
@@ -210,7 +343,19 @@ func scanHBA(stacks map[string]hbaStack, aliases []string) []hbaFinding {
 			}
 		}
 	}
-	return out
+	return out, vol
+}
+
+// report — печать объёма и находок ОДНОГО требования.
+//
+// Виды делятся по требованиям, поэтому падение называет сломанное свойство. Вид,
+// не попавший ни в один набор, обязан упасть здесь, а не потеряться: «проверка
+// не знает, что с этим делать» — это находка, а не тишина.
+func (v hbaVolume) log(t *testing.T, subject string) {
+	t.Helper()
+	t.Logf("осмотрено (%s): стеков=%d, пар (стек × инстанс)=%d, объявлений pg_hba=%d, "+
+		"строк pg_hba разобрано=%d, из них строк локального пути и петли=%d",
+		subject, v.stacks, v.instances, v.declarations, v.lines, v.localLanes)
 }
 
 // hbaStacks — факты, которые нужны ИМЕННО этой проверке, по каждому стеку.
@@ -303,7 +448,13 @@ func TestProductionStacks_DatabasesRequireTLS_NotMerelyOfferIt(t *testing.T) {
 	t.Logf("осмотрено: стеков=%d, инстансов Postgres в умбрелле=%d, стеков с TLS=%d, "+
 		"инстанс-объявлений с TLS=%d", len(stacks), len(aliases), tlsStacks, tlsInstances)
 
-	for _, f := range scanHBA(stacks, aliases) {
+	findings, vol := scanHBA(stacks, aliases)
+	vol.log(t, "требование TLS")
+
+	for _, f := range findings {
+		if !hbaKindsTLS[f.kind] {
+			continue // предмет другого требования — у него свой тест ниже
+		}
 		switch f.kind {
 		case hbaNotDeclared:
 			t.Errorf("%s/%s: база отдаёт TLS, но НЕ ТРЕБУЕТ его — %s.\n"+
@@ -329,6 +480,55 @@ func TestProductionStacks_DatabasesRequireTLS_NotMerelyOfferIt(t *testing.T) {
 	}
 }
 
+// TestProductionStacks_DatabasesCanBootstrapWithoutAPreexistingPassword — база
+// обязана подняться на кластере, где сохранённого тома нет и КАЖДЫЙ запуск
+// первичный.
+//
+// Профиль, забравший правила доступа у чарта, обязан оставить первичной
+// настройке путь, по которому она подключится, ещё НЕ имея пароля: иначе пароль
+// нельзя задать, потому что для этого нужен пароль. Отказ при этом немой —
+// вывод первичной настройки уходит в никуда, — поэтому объявление профиля
+// единственное место, где класс виден до кластера.
+func TestProductionStacks_DatabasesCanBootstrapWithoutAPreexistingPassword(t *testing.T) {
+	stacks, aliases := hbaStacks(t)
+
+	findings, vol := scanHBA(stacks, aliases)
+
+	// Проверка СВОЕЙ предпосылки. Требование обосновано фактом о дереве: есть
+	// профили, забравшие правила у чарта, и в них есть строки локального пути.
+	// Исчезнет факт — требование станет ложью, а обход объявит дерево чистым,
+	// ничего не осмотрев. Именно так этот класс и прожил незамеченным.
+	if vol.declarations == 0 || vol.localLanes == 0 {
+		t.Fatalf("обход ничего не прочитал: объявлений pg_hba=%d, строк локального пути=%d — "+
+			"предикат перестал узнавать дерево, а не дерево стало чистым",
+			vol.declarations, vol.localLanes)
+	}
+	vol.log(t, "требование подъёма с нуля")
+
+	for _, f := range findings {
+		if !hbaKindsBootstrap[f.kind] {
+			continue // предмет требования TLS — у него свой тест выше
+		}
+		switch f.kind {
+		case hbaLocalNeedsPassword:
+			t.Errorf("%s/%s: локальный путь требует пароль, которого при первичной настройке ЕЩЁ НЕТ: %q.\n"+
+				"    Первичная настройка подключается к своей же базе по сокету и петле, чтобы ЗАДАТЬ\n"+
+				"    пароль. Требование пароля в этот момент замыкает круг: база не поднимется НИ РАЗУ\n"+
+				"    на кластере без сохранённого тома, и откажет она молча — вывод первичной настройки\n"+
+				"    уходит в никуда, контейнер завершается без строки о причине.\n"+
+				"    Ставь на строках `local` и петли метод, не требующий пароля (`trust`; на сокете\n"+
+				"    годится и `peer`). Сетевые строки НЕ трогай — их закрывает требование TLS выше.",
+				f.stack, f.pg, f.detail)
+		case hbaNoLocalLane:
+			t.Errorf("%s/%s: %s.\n"+
+				"    Объявление `%s` ЗАМЕЩАЕТ правила чарта целиком, а не дополняет их: не названный\n"+
+				"    здесь путь не остаётся разрешённым, он перестаёт существовать. Без строки `local`\n"+
+				"    и петли первичная настройка не подключится вовсе — тот же немой отказ.",
+				f.stack, f.pg, f.detail, strings.Join(hbaPath, "."))
+		}
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // САМОПРОВЕРКА — доказательство в ОБЕ стороны на синтетическом входе.
 //
@@ -337,8 +537,17 @@ func TestProductionStacks_DatabasesRequireTLS_NotMerelyOfferIt(t *testing.T) {
 // ничего не читает.
 
 func TestScanHBA_SelfTest(t *testing.T) {
-	const good = "local all all md5\n" +
-		"host all all 127.0.0.1/32 md5\n" +
+	// good — эталон ЗАКОННОГО тела: локальный путь беспарольный, сеть закрыта.
+	//
+	// ЗДЕСЬ СТОЯЛО `local all all md5` И `host all all 127.0.0.1/32 md5` — то есть
+	// положительная фикстура дословно несла дефект, который проверка обязана
+	// ловить. Пока она его несёт, требование о подъёме с нуля нельзя даже
+	// написать: любой предикат, краснеющий на дефекте, покраснел бы на самом
+	// эталоне, и его сняли бы как ложный срабат. Фикстура, снисходительнее
+	// продукта, делает невидимым ровно тот класс, ради которого её пишут.
+	const good = "local all all trust\n" +
+		"host all all 127.0.0.1/32 trust\n" +
+		"host all all ::1/128 trust\n" +
 		"hostssl all all 0.0.0.0/0 md5\n" +
 		"hostnossl all all 0.0.0.0/0 reject\n"
 
@@ -373,21 +582,58 @@ func TestScanHBA_SelfTest(t *testing.T) {
 			map[string]string{"pg-iam": good + "hostnossl all all 10.0.0.0/8 md5\n"}),
 			[]string{"pg-iam"}, []string{hbaAcceptsPlain}},
 		{"дефект: сужение без единого hostssl", facts([]string{"pg-iam"},
-			map[string]string{"pg-iam": "local all all md5\nhostnossl all all 0.0.0.0/0 reject\n"}),
+			map[string]string{"pg-iam": "local all all trust\nhostnossl all all 0.0.0.0/0 reject\n"}),
 			[]string{"pg-iam"}, []string{hbaNoTLSRule}},
 		{"дефект: сужение там, где TLS не отдаётся", facts(nil,
 			map[string]string{"pg-iam": good}), []string{"pg-iam"}, []string{hbaNarrowNoTLS}},
 		{"дефект: нераспознанная строка не считается безопасной", facts([]string{"pg-iam"},
 			map[string]string{"pg-iam": good + "hostssl all\n"}),
 			[]string{"pg-iam"}, []string{hbaUnparsed}},
+
+		// ── ТРЕБОВАНИЕ 2: подъём с нуля ───────────────────────────────────────
+		// Инъекция настоящей формой дефекта: ровно так и было записано в двух
+		// боевых профилях.
+		{"дефект: пароль на unix-сокете", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "local all all trust", "local all all md5", 1)}),
+			[]string{"pg-iam"}, []string{hbaLocalNeedsPassword}},
+		{"дефект: пароль на петле v4", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "host all all 127.0.0.1/32 trust", "host all all 127.0.0.1/32 md5", 1)}),
+			[]string{"pg-iam"}, []string{hbaLocalNeedsPassword}},
+		{"дефект: пароль на петле v6", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "host all all ::1/128 trust", "host all all ::1/128 scram-sha-256", 1)}),
+			[]string{"pg-iam"}, []string{hbaLocalNeedsPassword}},
+		{"дефект: метод, не требующий пароля, но и не дающий подключиться", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "local all all trust", "local all all reject", 1)}),
+			[]string{"pg-iam"}, []string{hbaLocalNeedsPassword}},
+		{"дефект: объявление забрало правила и не оставило локального пути", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": "hostssl all all 0.0.0.0/0 md5\nhostnossl all all 0.0.0.0/0 reject\n"}),
+			[]string{"pg-iam"}, []string{hbaNoLocalLane}},
+
+		// ── ЗАКОННЫЕ БЛИЗНЕЦЫ ТОЙ ЖЕ ФОРМЫ ────────────────────────────────────
+		// Без них предикат ловил бы «где-то написано md5», а не существо.
+		{"законный близнец: пароль на СЕТЕВОЙ строке — это норма", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": good + "hostssl all all 10.0.0.0/8 scram-sha-256\n"}),
+			[]string{"pg-iam"}, nil},
+		{"законный близнец: `peer` на сокете", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "local all all trust", "local all all peer", 1)}),
+			[]string{"pg-iam"}, nil},
+		{"законный близнец: метод записан заглавными", facts([]string{"pg-iam"},
+			map[string]string{"pg-iam": strings.Replace(good, "local all all trust", "local all all TRUST", 1)}),
+			[]string{"pg-iam"}, nil},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := scanHBA(map[string]hbaStack{"проба": tc.facts}, tc.ourPG)
+			got, _ := scanHBA(map[string]hbaStack{"проба": tc.facts}, tc.ourPG)
 			var kinds []string
 			for _, f := range got {
 				kinds = append(kinds, f.kind)
+				// Вид, не принадлежащий ни одному требованию, не печатается ни
+				// одним тестом — то есть находка исчезает молча. Ловится здесь.
+				if !hbaKindsTLS[f.kind] && !hbaKindsBootstrap[f.kind] {
+					t.Fatalf("вид находки %q не отнесён ни к требованию TLS, ни к требованию подъёма — "+
+						"такая находка не будет напечатана ни одним тестом", f.kind)
+				}
 			}
 			if len(tc.want) == 0 {
 				if len(kinds) != 0 {
@@ -419,7 +665,7 @@ func TestScanHBA_SelfTest(t *testing.T) {
 func TestHBAPredicates_RecogniseTheRealTree(t *testing.T) {
 	stacks, aliases := hbaStacks(t)
 
-	seen, withTLSRule := 0, 0
+	seen, withTLSRule, withLocalLane, localLaneRules := 0, 0, 0, 0
 	for name, f := range stacks {
 		for _, pg := range aliases {
 			v, ok := lookup(f.declared, append([]string{pg}, hbaPath...)...)
@@ -434,17 +680,33 @@ func TestHBAPredicates_RecogniseTheRealTree(t *testing.T) {
 			if len(rules) == 0 {
 				t.Errorf("%s/%s: разбор не извлёк НИ ОДНОГО правила из непустого тела", name, pg)
 			}
+			lane := false
 			for _, r := range rules {
 				if r.requiresNetworkTLS() {
 					withTLSRule++
 					break
 				}
 			}
+			for _, r := range rules {
+				if r.isLocalLane() {
+					localLaneRules++
+					lane = true
+				}
+			}
+			if lane {
+				withLocalLane++
+			}
 		}
 	}
-	if seen == 0 || withTLSRule == 0 {
-		t.Fatalf("в дереве не нашлось ни одного объявленного pg_hba (%d) или ни одного с hostssl (%d) — "+
-			"предикат перестал узнавать дерево", seen, withTLSRule)
+	// Предпосылка обоих требований разом. Второе слагаемое добавлено потому, что
+	// предикат локального пути можно сломать так, что он перестанет узнавать
+	// настоящие строки, оставаясь зелёным на синтетике самопроверки.
+	if seen == 0 || withTLSRule == 0 || withLocalLane == 0 || localLaneRules == 0 {
+		t.Fatalf("предикат перестал узнавать дерево, а не дерево стало чистым: объявлений pg_hba=%d, "+
+			"с сетевым hostssl=%d, со строками локального пути=%d, самих таких строк=%d",
+			seen, withTLSRule, withLocalLane, localLaneRules)
 	}
-	t.Logf("настоящих объявлений pg_hba прочитано=%d, из них с сетевым hostssl=%d", seen, withTLSRule)
+	t.Logf("настоящих объявлений pg_hba прочитано=%d, из них с сетевым hostssl=%d, "+
+		"со строками локального пути=%d; строк локального пути и петли распознано=%d",
+		seen, withTLSRule, withLocalLane, localLaneRules)
 }

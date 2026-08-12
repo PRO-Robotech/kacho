@@ -109,9 +109,16 @@ def _seed_nic(suffix):
     кейс идёт по фантому. Каждый шаг здесь дожидается операции и утверждает её ИСХОД.
     """
     return [
+        # Сеть объявляет адресный план НАМЕРЕННО: сеть без него подсети не
+        # принимает — нарезать не из чего (sync 400). Фикстура без плана была бы
+        # снисходительнее продукта и обрушила бы весь посев интерфейса: подсети
+        # нет → NIC не на чем строить → упал бы не тот шаг, который ошибся.
+        # `10.0.0.0/8` покрывает любой блок, который выдаёт _cidr_prescript
+        # (10.64…10.191), поэтому план и посев не разъедутся при смене энтропии.
         Step(name=f"seed-net-{suffix}", method="POST", path=NETS,
              pre_script=_cidr_prescript("nicSubCidr"),
-             body={"projectId": "{{_suiteProjectId}}", "name": f"nicnet{suffix}{{{{runId}}}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": f"nicnet{suffix}{{{{runId}}}}",
+                   "ipv4CidrBlocks": ["10.0.0.0/8"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),

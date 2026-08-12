@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -42,14 +43,36 @@ type profileStack struct {
 	files []string
 }
 
-var deployedStacks = []profileStack{
-	{"dev", []string{"values.dev.yaml"}},
-	{"dev-prod", []string{"values.dev.yaml", "values.dev-prod.yaml"}},
-	{"prod", []string{"values.prod.yaml"}},
-	// values.fe3455-ory.yaml из стека опущен намеренно: он git-ignored (секреты
-	// площадки) и рёбер не касается. Остальные три — те же файлы и тот же
-	// порядок, что в cutover-fe3455.sh.
-	{"fe3455", []string{"values.prod.yaml", "values.fe3455.yaml", "values.fe3455-prod.yaml"}},
+// stacksTable — ЕДИНСТВЕННОЕ место в дереве, где объявлены цепочки `-f`.
+// Здесь стояла своя копия, и она знала о боевой цепочке на слой меньше: гейт
+// честно проверял стенд, которого никто не поднимает, и оставался зелёным.
+const stacksTable = "../../stacks.txt"
+
+var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
+
+// deployedStacks — цепочки, прочитанные из таблицы, в порядке наложения.
+// Слой учётных данных площадки в таблицу не входит: он вне git и рёбер не
+// касается; скрипт раскатки добавляет его сам.
+func deployedStacks(t *testing.T) []profileStack {
+	t.Helper()
+	raw, err := os.ReadFile(stacksTable)
+	if err != nil {
+		t.Fatalf("таблица стеков %s не читается (%v) — предпосылка гейта исчезла, "+
+			"а не дерево стало чистым", stacksTable, err)
+	}
+	var out []profileStack
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		m := stackTableLine.FindStringSubmatch(line)
+		if m == nil {
+			t.Fatalf("строка таблицы стеков не разобрана: %q (%s)", line, stacksTable)
+		}
+		out = append(out, profileStack{m[1], strings.Split(m[2], ",")})
+	}
+	return out
 }
 
 // guardedService — сервис, чья загрузочная стража требует проверяемого транспорта
@@ -136,7 +159,8 @@ func isProductionMode(v any) bool {
 
 // TestProductionProfiles_ArmEveryDialledPeerEdge — ядро гейта.
 func TestProductionProfiles_ArmEveryDialledPeerEdge(t *testing.T) {
-	if len(deployedStacks) == 0 || len(guardedServices) == 0 {
+	stacks := deployedStacks(t)
+	if len(stacks) == 0 || len(guardedServices) == 0 {
 		t.Fatal("the gate's own census is empty — a check that inspects nothing must fail, not pass")
 	}
 	base := loadTree(t, "values.yaml")
@@ -158,7 +182,7 @@ func TestProductionProfiles_ArmEveryDialledPeerEdge(t *testing.T) {
 			}
 		}
 
-		for _, stack := range deployedStacks {
+		for _, stack := range stacks {
 			layers := []map[string]any{chartDefaults}
 			if sub, ok := lookup(base, svc.key); ok {
 				if m, ok := sub.(map[string]any); ok {

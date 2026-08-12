@@ -89,8 +89,11 @@ ok "гейт перехода зелен до инъекции (значит п�
 
 CM_NAME="kacho-umbrella-hydra-admin-tls-nginx"
 restore_cm() {
+  # Цепочка стенда — из единственной таблицы дерева: восстанавливать надо ровно
+  # тот состав, которым стенд поднят, а копия цепочки стареет молча.
+  # shellcheck disable=SC2046,SC2086
   helm template kacho-umbrella "$UMBRELLA" \
-    -f "$UMBRELLA/values.dev.yaml" -f "$UMBRELLA/values.dev-prod.yaml" \
+    $(bash "$DEPLOY_ROOT/tests/helm/stacks.sh" --args dev-prod "$UMBRELLA") \
     ${IMAGE_IDS:+-f "$IMAGE_IDS"} --namespace "$NS" 2>/dev/null \
     | awk '/^# Source: kacho-umbrella\/templates\/hydra-admin-tls-configmap.yaml/,/^---/' \
     | kubectl -n "$NS" apply -f - >/dev/null 2>&1

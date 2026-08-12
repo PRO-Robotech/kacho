@@ -13,7 +13,9 @@ import (
 // TestValidateSubnetWithinSupernet — behaviour-level lock редизайна VPC-1 F7:
 // Subnet CIDR обязан быть подмножеством объявленного супернета сети; иначе —
 // INVALID_ARGUMENT с точным текстом (VPC-1-29 happy / VPC-1-30 reject / VPC-1-34
-// add-block / v6). Пустой супернет (legacy) → skip (back-compat).
+// add-block / v6). Требование безусловно: сеть без объявленного супернета
+// семейства подсеть этого семейства не принимает (случай ниже), и это же держат
+// пробы в supernet_required_test.go.
 func TestValidateSubnetWithinSupernet(t *testing.T) {
 	tests := []struct {
 		name              string

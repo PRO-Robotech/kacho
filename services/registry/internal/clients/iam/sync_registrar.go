@@ -82,8 +82,10 @@ func (s *SyncRegistrar) Register(ctx context.Context, intents []domain.RegisterI
 				TraceID:         intent.ResourceID,
 				Labels:          intent.Labels,
 				ParentProjectID: intent.ParentProjectID,
-				ParentChain:     intent.ParentChain,
-				SourceVersion:   intent.SourceVersion.Time.Add(time.Duration(seq) * sourceVersionStep),
+				// Цепь — та же, что на пути очереди: названная владельцем едет
+				// как есть, не названная выводится из области этой же доставки.
+				ParentChain:   ownerregister.ParentChain(intent.ParentChain, intent.ParentProjectID, ""),
+				SourceVersion: intent.SourceVersion.Time.Add(time.Duration(seq) * sourceVersionStep),
 			})
 		}
 	}

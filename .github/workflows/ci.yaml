@@ -289,6 +289,7 @@ jobs:
             exit 1
           fi
 
+
   authz-artifacts:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
     runs-on: ubuntu-latest
@@ -931,6 +932,19 @@ jobs:
         working-directory: services/vpc/tests/newman
         run: python3 scripts/selftest_autowrap.py
 
+  tofu-fmt:
+    name: конфигурации terraform отформатированы
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Провайдер живёт в общем модуле, поэтому его Go-код проверяют те же джобы, что и
+      # весь продукт. Отдельного внимания требует только HCL: `go vet` его не читает.
+      - name: tofu fmt
+        run: |
+          curl -sL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.12.5/tofu_1.12.5_linux_amd64.zip
+          unzip -oq /tmp/tofu.zip -d /tmp/tofubin
+          /tmp/tofubin/tofu fmt -check -recursive terraform/modules terraform/examples
+
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
@@ -1025,13 +1039,11 @@ jobs:
       # `helm dependency build` без sibling-чекаута не проходил. После переезда ui-future
       # в монорепу гейт вернулся.
       #
-      # Боевой набор — ЧЕТЫРЕ слоя. Четвёртый (values.fe3455-ory-posture.yaml,
-      # посадка провайдеров личности) с 2026-08-11 отслеживается git и рендерится
-      # здесь. Раньше посадка лежала в одном файле с кредами Ory, файл был
-      # gitignored, и «рендерим prod-БЕЗ-ory» звучало как решение про секрет, хотя
-      # заодно выводило из-под всех гейтов посадку боевого кластера.
-      # Вне репозитория остаётся ТОЛЬКО слой кредов (values.fe3455-ory.yaml) —
-      # посадки он не несёт, и это проверяет cutover-fe3455.sh перед раскаткой.
+      # СОСТАВ БОЕВОГО НАБОРА ЧИТАЕТСЯ ИЗ ЕДИНСТВЕННОЙ ТАБЛИЦЫ (deploy/stacks.txt),
+      # а не выписан здесь: пока он был выписан, шаг рендера знал о цепочке на слой
+      # меньше, чем раскатывает скрипт, и его зелёное относилось к другому стенду.
+      # Вне репозитория остаётся ТОЛЬКО слой кредов площадки — посадки он не несёт,
+      # и это проверяет cutover-fe3455.sh перед раскаткой.
       - name: umbrella dependency build (без sibling-чекаутов)
         working-directory: deploy/helm/umbrella
         run: helm dependency build
@@ -1046,13 +1058,21 @@ jobs:
       - name: умолчания чартов личности всё ещё безопасны
         run: go test -tags helmcharts ./deploy/ -run 'TestIdentityDevFlags_ChartDefaultsAreStillSecure' -count=1 -v
 
-      - name: umbrella template — dev-профиль
+      - name: umbrella template — каждый стек таблицы
         working-directory: deploy/helm/umbrella
-        run: helm template ci . -f values.dev.yaml > /dev/null
-
-      - name: umbrella template — prod-профиль
-        working-directory: deploy/helm/umbrella
-        run: helm template ci . -f values.prod.yaml -f values.fe3455.yaml -f values.fe3455-prod.yaml -f values.fe3455-ory-posture.yaml > /dev/null
+        run: |
+          set -euo pipefail
+          n=0
+          for stack in $(bash ../../tests/helm/stacks.sh --names); do
+            args="$(bash ../../tests/helm/stacks.sh --args "$stack")"
+            echo "=== $stack: helm template $args ==="
+            # shellcheck disable=SC2086
+            helm template ci . $args > /dev/null
+            n=$((n + 1))
+          done
+          # «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+          [ "$n" -ge 1 ] || { echo "не отрендерено НИ ОДНОГО стека"; exit 1; }
+          echo "осмотрено: стеков $n"
 
       # helm template/lint НЕ ловят монт на несуществующий том — манифест рендерится, а
       # валится только на apiserver, уже при деплое. Проверяем МАТРИЦУ тумблеров, потому

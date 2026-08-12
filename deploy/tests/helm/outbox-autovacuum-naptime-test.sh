@@ -39,6 +39,9 @@
 #
 # Офлайновая manifest-проверка (kind-кластер не нужен), как остальные tests/helm/*.
 set -euo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -72,22 +75,12 @@ pg-registry|kacho_registry.registry_outbox
 # дренажа; openfga/kratos/hydra — сторонние хранилища без очередей Kacho.
 NON_QUEUE_INSTANCES="pg-geo pg-openfga pg-kratos pg-hydra"
 
-# Профили, которыми стенды реально разворачивают (см. deploy/Makefile dev-up /
-# dev-prod-up и helm/umbrella/cutover-fe3455.sh).
-#
-# values.fe3455-ory-posture.yaml — четвёртый слой боевой цепочки (посадка
-# провайдеров личности), отслеживается git и перечислен здесь. Слой КРЕДОВ
-# values.fe3455-ory.yaml намеренно отсутствует: он gitignored (секреты Ory) и
-# на набор pg-* не влияет. Раньше эта оговорка покрывала ОБА, потому что оба
-# лежали в одном файле, — то есть отсутствие посадки в перечне выглядело
-# осознанным решением, хотя было следствием слипшихся слоёв.
-PROFILES="
-dev|values.dev.yaml
-dev-prod|values.dev.yaml values.dev-prod.yaml
-prod|values.prod.yaml
-fe3455|values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml values.fe3455-ory-posture.yaml
-prorobotech|values.dev.yaml values.prorobotech.yaml
-"
+# Профили, которыми стенды реально разворачивают, — из ЕДИНСТВЕННОЙ таблицы
+# дерева (deploy/stacks.txt). Своей копии здесь нет: копия знала о боевой
+# цепочке на слой меньше, и её «ноль находок» по этому слою означало «ноль
+# прочитанного». Слой КРЕДОВ боевой площадки в таблицу не входит и входить не
+# может (он вне git), но набора pg-* не касается.
+PROFILES="$(stacks_table | tr ':,' '| ')"
 
 fail() { echo "FAIL: $1"; FAILED=1; }
 FAILED=0
