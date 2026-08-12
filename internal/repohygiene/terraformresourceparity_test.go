@@ -33,6 +33,37 @@ import (
 // Пустая строка справа означает ОСОЗНАННОЕ отсутствие ресурса, и такая запись обязана
 // нести причину в комментарии рядом. Причина проверяется человеком; гейт проверяет, что
 // запись вообще существует и что её сервис ещё жив.
+// creatingVerbs — глаголы, ЗАВОДЯЩИЕ ресурс.
+//
+// Перечень явный, потому что имя глагола угадать нельзя: пользователь заводится не
+// `Create`, а `Invite`, и первая редакция этого гейта его не увидела вовсе — то есть
+// объявляла «покрыт каждый ресурс API», не прочитав целый вид предмета.
+var creatingVerbs = map[string]bool{
+	"Create": true, "Issue": true, "Invite": true, "CreateRepository": true,
+}
+
+// nonCreatingVerbs — все остальные глаголы публичного API, перечисленные ПОИМЁННО.
+//
+// Перечень существует ради одного свойства: новый глагол, не попавший ни в один из двух
+// списков, роняет гейт. Без него слепое пятно повторится молча — ровно так, как повторилось
+// с `Invite`. Список механически выведен из дерева и обязан за ним следовать.
+var nonCreatingVerbs = map[string]bool{
+	"AddCidrBlocks": true, "AddMember": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
+	"AttachNetworkInterface": true, "BatchCheck": true, "Block": true, "Cancel": true, "Check": true, "Delete": true,
+	"DeleteRepository": true, "DeleteTag": true, "DetachDisk": true, "DetachNetworkInterface": true, "Disable": true,
+	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByValue": true, "GetRepository": true,
+	"GetSerialPortOutput": true, "GetTargetStates": true, "List": true, "ListAccessBindings": true, "ListAllOperations": true,
+	"ListAssignableRoles": true, "ListByAccount": true, "ListByRole": true, "ListByScope": true, "ListBySubject": true,
+	"ListBySubnet": true, "ListMembers": true, "ListObjects": true, "ListOperations": true, "ListPermissionCatalog": true,
+	"ListReferrers": true, "ListRepositories": true, "ListRouteTables": true, "ListSecurityGroups": true,
+	"ListSubjectPrivileges": true, "ListSubjects": true, "ListSubnets": true, "ListTags": true, "ListUsedAddresses": true,
+	"Move": true, "Relocate": true, "RemoveCidrBlocks": true, "RemoveMember": true, "RemoveOneToOneNat": true, "RemoveRoutes": true,
+	"RemoveTargets": true, "RenameRepository": true, "Restart": true, "Revoke": true, "SetAccessBindings": true,
+	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
+	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
+	"UpdateRules": true, "WhoAmI": true,
+}
+
 var tfCoverage = map[string]string{
 	// vpc
 	"NetworkService":          "kacho_vpc_network",
@@ -51,12 +82,9 @@ var tfCoverage = map[string]string{
 	"AccountService":        "kacho_iam_account",
 	"RoleService":           "kacho_iam_role",
 	"AccessBindingService":  "kacho_iam_access_binding",
+	"UserService":           "kacho_iam_user_invitation",
 
-	// Токен ЧЕЛОВЕКА — не инфраструктура, а сессия: он живёт минуты, привязан к личности,
-	// прошедшей вход, и его место — в руках этого человека, а не в файле состояния, который
-	// читают все участники проекта. Машинный доступ выражается ключом служебной учётки, и
-	// он в провайдере есть.
-	"UserTokenService": "",
+	"UserTokenService": "kacho_iam_user_token",
 
 	// nlb
 	"TargetGroupService":         "kacho_nlb_target_group",
@@ -88,12 +116,7 @@ var tfCoverage = map[string]string{
 // спецификации машины). Общий каркас плоских ресурсов их не выражает, и втискивать их туда
 // значило бы сделать каркас условным — то есть перестать понимать, что он делает.
 var tfPending = map[string]string{
-	"AddressService":       "PRO-Robotech/kacho#235",
-	"RouteTableService":    "PRO-Robotech/kacho#235",
-	"SecurityGroupService": "PRO-Robotech/kacho#235",
-	"RoleService":          "PRO-Robotech/kacho#235",
-	"AccessBindingService": "PRO-Robotech/kacho#235",
-	"InstanceService":      "PRO-Robotech/kacho#235",
+	"InstanceService": "PRO-Robotech/kacho#235",
 }
 
 // tfExtraResources — ресурсы провайдера, у которых НЕТ своего создающего сервиса.
@@ -217,8 +240,8 @@ func TestEveryPublicAPIResourceHasATerraformResource(t *testing.T) {
 }
 
 var (
-	reService  = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
-	reCreating = regexp.MustCompile(`\brpc\s+(Create|Issue)\s*\(`)
+	reService = regexp.MustCompile(`(?m)^service\s+(\w+)\s*\{`)
+	reAnyRPC  = regexp.MustCompile(`\brpc\s+(\w+)\s*\(`)
 	// Две формы объявления имени, и обе настоящие: обычный ресурс склеивает имя с
 	// префиксом провайдера, а виды iam берут его из своей таблицы целиком. Предикат,
 	// знающий одну форму, объявил бы три существующих ресурса отсутствующими — что он и
@@ -247,7 +270,19 @@ func publicCreatingServices(t *testing.T, root string) []string {
 			if strings.HasPrefix(name, "Internal") {
 				continue
 			}
-			if reCreating.MatchString(serviceBody(s, m[1])) {
+			creating := false
+			for _, v := range reAnyRPC.FindAllStringSubmatch(serviceBody(s, m[1]), -1) {
+				switch {
+				case creatingVerbs[v[1]]:
+					creating = true
+				case nonCreatingVerbs[v[1]]:
+				default:
+					t.Errorf("сервис %s несёт глагол %s, не отнесённый ни к заводящим, ни к "+
+						"остальным — классифицируйте его, иначе новый вид ресурса проедет молча",
+						name, v[1])
+				}
+			}
+			if creating {
 				out = append(out, name)
 			}
 		}

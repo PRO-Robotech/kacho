@@ -165,10 +165,20 @@ func (r *subnetResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 	// placement_type НЕ отправляется: край выводит его сам и отвергает попытку задать.
 
-	raw, _ := json.Marshal(map[string]any{
-		"projectId": body.ProjectId, "networkId": body.NetworkId, "name": body.Name,
-		"zoneId": body.ZoneId, "regionId": body.RegionId, "ipv4CidrPrimary": body.Ipv4CidrPrimary,
-	})
+	// Ключ идемпотентности считается по ТЕЛУ ЗАПРОСА ЦЕЛИКОМ, а не по рукописной выборке
+	// полей. Здесь стояла карта из шести полей, и это делало ОТКАЗ ЛИПКИМ по всем
+	// остальным: край ключ соблюдает и на повтор с тем же ключом возвращает ту же
+	// операцию, поэтому правка метки или описания после отвергнутого создания
+	// воспроизводила прежний отказ — пользователь правит настройку и уверен, что правка
+	// не применилась.
+	//
+	// Байты берутся ТОЙ ЖЕ функцией, что и отправка: вторая сериализация разошлась бы с
+	// первой молча, и разошлась бы именно там, где расхождение не видно.
+	raw, err := client.MarshalBody(body)
+	if err != nil {
+		resp.Diagnostics.AddError("Тело запроса не собрано", err.Error())
+		return
+	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
 		"kacho_vpc_subnet", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
