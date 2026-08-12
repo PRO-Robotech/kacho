@@ -20,6 +20,7 @@ import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 
 export function SubnetDetailPage() {
   const { uid: subnetId, projectId, networkId } = useParams();
@@ -100,7 +101,6 @@ export function SubnetDetailPage() {
             rows={subnetAddresses}
             columns={addrColumns}
             onReserve={subnetId ? openReserveModal : null}
-            onClick={(id) => addressesBasePath && navigate(`${addressesBasePath}/${id}`)}
           />
         ),
       },
@@ -152,14 +152,19 @@ function AddressesSection({
   rows,
   columns,
   onReserve,
-  onClick,
 }: {
   rows: Array<Record<string, unknown>>;
   columns: Column<Record<string, unknown>>[];
   onReserve: (() => void) | null;
-  onClick: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  // Где есть фильтр — есть и выбор столбцов (требование владельца 2026-08-12).
+  const [hidden, toggleHidden] = useHiddenColumns("cols:subnet-addresses");
+  const shownColumns = useMemo(() => columns.filter((c) => !hidden.has(c.header)), [columns, hidden]);
+  const toggleCols = useMemo(
+    () => columns.filter((c) => c.header).map((c) => ({ key: c.header, label: c.header })),
+    [columns],
+  );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
@@ -178,13 +183,16 @@ function AddressesSection({
       <Typography.Title level={4} style={{ margin: 0 }}>
         IP-адреса
       </Typography.Title>
-      <Input.Search
-        placeholder="Фильтр по имени, идентификатору или IP"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ maxWidth: 360 }}
-        allowClear
-      />
+      <Space size={8}>
+        <Input.Search
+          placeholder="Фильтр по имени, идентификатору или IP"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{ width: 360 }}
+          allowClear
+        />
+        <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
+      </Space>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center space-y-3">
           <div className="text-base font-medium">
@@ -204,12 +212,8 @@ function AddressesSection({
       ) : (
         <ResourceTable
           rows={filtered}
-          columns={columns}
+          columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-          onRowClick={(r) => {
-            const id = getByPath<string>(r, "id");
-            if (id) onClick(id);
-          }}
         />
       )}
     </Space>

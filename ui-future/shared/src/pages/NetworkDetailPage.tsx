@@ -20,6 +20,7 @@ import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
 export function NetworkDetailPage() {
@@ -144,6 +145,7 @@ export function NetworkDetailPage() {
             rows={networkSubnets}
             columns={subnetColumns}
             emptyText="В сети нет подсетей."
+            storageKey="network-subnets"
           />
         </Space>
       );
@@ -163,6 +165,7 @@ export function NetworkDetailPage() {
             rows={networkRouteTables}
             columns={rtColumns}
             emptyText="К сети не привязано ни одной таблицы маршрутизации."
+            storageKey="network-route-tables"
           />
         ),
       },
@@ -176,6 +179,7 @@ export function NetworkDetailPage() {
             rows={networkSGs}
             columns={sgColumns}
             emptyText="В сети нет групп безопасности."
+            storageKey="network-security-groups"
           />
         ),
       },
@@ -281,13 +285,25 @@ function ChildSection({
   rows,
   columns,
   emptyText,
+  storageKey,
 }: {
   title: string;
   rows: Array<Record<string, unknown>>;
   columns: Column<Record<string, unknown>>[];
   emptyText: string;
+  /** Ключ, под которым запоминается выбор столбцов этой таблицы. */
+  storageKey: string;
 }) {
   const [query, setQuery] = useState("");
+  // Где есть фильтр — есть и выбор столбцов: обе ручки про то, что показывать,
+  // и наличие одной без другой читается как недоделка (требование владельца
+  // 2026-08-12).
+  const [hidden, toggleHidden] = useHiddenColumns(`cols:${storageKey}`);
+  const shown = useMemo(() => columns.filter((c) => !hidden.has(c.header)), [columns, hidden]);
+  const toggleCols = useMemo(
+    () => columns.filter((c) => c.header).map((c) => ({ key: c.header, label: c.header })),
+    [columns],
+  );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
@@ -303,13 +319,16 @@ function ChildSection({
       <Typography.Title level={4} style={{ margin: 0 }}>
         {title}
       </Typography.Title>
-      <Input.Search
-        placeholder="Фильтр по имени или идентификатору"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ maxWidth: 360 }}
-        allowClear
-      />
+      <Space size={8} style={{ width: "100%" }}>
+        <Input.Search
+          placeholder="Фильтр по имени или идентификатору"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{ width: 360 }}
+          allowClear
+        />
+        <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
+      </Space>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {query ? "По фильтру ничего не найдено." : emptyText}
@@ -317,7 +336,7 @@ function ChildSection({
       ) : (
         <ResourceTable
           rows={filtered}
-          columns={columns}
+          columns={shown}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
         />
       )}
