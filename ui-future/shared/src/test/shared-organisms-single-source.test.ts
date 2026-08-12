@@ -41,7 +41,33 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-const COMPONENTS = ["ResourceListPage", "ResourceCreatePage", "ResourceEditPage"] as const;
+// Компонент описывается ТРЕМЯ фактами, а не одним именем: каталог в дереве,
+// имя файла и экспортируемый символ. Прежняя редакция считала их совпадающими —
+// верно ровно для трёх страниц ресурса и неверно для тела формы (лежит в
+// `organisms/form/`) и рендерера поля (файл `FormField`, символ
+// `FormFieldRenderer`, потому что `FormField` — это ТИП поля, а не компонент).
+//
+// ResourceFormBody и FormField добавлены 2026-08-12: их форки жили в четырёх
+// модулях и УЖЕ разошлись с оригиналом — без ветки правил группы безопасности и
+// со своим приведением значения к строке. Расхождение читалось пользователем как
+// «другое место продукта», а правка тела формы доезжала не всюду. Реализация
+// сведена в shared, копии стали ре-экспортом; гейт держит это состояние.
+interface Organism {
+  /** Каталог под `components/organisms/` — и в shared, и в приложениях. */
+  dir: string;
+  /** Имя файла реализации внутри каталога (без расширения). */
+  file: string;
+  /** Экспортируемый символ, по которому узнаётся объявление. */
+  symbol: string;
+}
+
+const COMPONENTS: readonly Organism[] = [
+  { dir: "ResourceListPage", file: "ResourceListPage", symbol: "ResourceListPage" },
+  { dir: "ResourceCreatePage", file: "ResourceCreatePage", symbol: "ResourceCreatePage" },
+  { dir: "ResourceEditPage", file: "ResourceEditPage", symbol: "ResourceEditPage" },
+  { dir: "form/ResourceFormBody", file: "ResourceFormBody", symbol: "ResourceFormBody" },
+  { dir: "form/FormField", file: "FormField", symbol: "FormFieldRenderer" },
+] as const;
 
 /** Top-level directories that are not apps of this tree. */
 const NOT_APPS = new Set(["node_modules", "shared", "deploy", "docs", "scripts", ".git"]);
@@ -119,27 +145,27 @@ describe("shared resource CRUD organisms are single-source", () => {
     const sharedSources = sourceFiles(path.join(repoRoot, "shared/src"));
     expect(sharedSources.length).toBeGreaterThan(0);
     for (const comp of COMPONENTS) {
-      const hits = sharedSources.filter((f) => declaresComponent(readFileSync(f, "utf8"), comp));
+      const hits = sharedSources.filter((f) => declaresComponent(readFileSync(f, "utf8"), comp.symbol));
       expect(hits.map((f) => path.relative(repoRoot, f))).toEqual([
-        `shared/src/components/organisms/${comp}/${comp}.tsx`,
+        `shared/src/components/organisms/${comp.dir}/${comp.file}.tsx`,
       ]);
     }
   });
 
   for (const comp of COMPONENTS) {
-    const sharedFile = path.join(repoRoot, "shared/src/components/organisms", comp, `${comp}.tsx`);
+    const sharedFile = path.join(repoRoot, "shared/src/components/organisms", comp.dir, `${comp.file}.tsx`);
 
-    it(`${comp} has a real implementation in shared/`, () => {
+    it(`${comp.symbol} has a real implementation in shared/`, () => {
       expect(existsSync(sharedFile)).toBe(true);
       const src = readFileSync(sharedFile, "utf8");
-      expect(src).toContain(`export function ${comp}`);
+      expect(src).toContain(`export function ${comp.symbol}`);
     });
 
-    it(`${comp} is not forked anywhere outside shared/`, () => {
+    it(`${comp.symbol} is not forked anywhere outside shared/`, () => {
       const forks: string[] = [];
       for (const app of APPS) {
         for (const file of APP_FILES.get(app) ?? []) {
-          if (declaresComponent(readFileSync(file, "utf8"), comp)) forks.push(path.relative(repoRoot, file));
+          if (declaresComponent(readFileSync(file, "utf8"), comp.symbol)) forks.push(path.relative(repoRoot, file));
         }
       }
       // Coordinates, not a count — a red gate must say where.
@@ -147,17 +173,17 @@ describe("shared resource CRUD organisms are single-source", () => {
     });
 
     for (const app of APPS) {
-      const appDir = path.join(repoRoot, app, "src/components/organisms", comp);
+      const appDir = path.join(repoRoot, app, "src/components/organisms", comp.dir);
 
-      it(`${app}/${comp}: only a thin @shared re-export may live in the app`, () => {
+      it(`${app}/${comp.dir}: only a thin @shared re-export may live in the app`, () => {
         if (!existsSync(appDir)) return; // this app does not surface the component at all
         const indexFile = path.join(appDir, "index.ts");
-        expect({ app, comp, hasIndex: existsSync(indexFile) }).toEqual({ app, comp, hasIndex: true });
+        expect({ app, comp: comp.dir, hasIndex: existsSync(indexFile) }).toEqual({ app, comp: comp.dir, hasIndex: true });
         const idx = readFileSync(indexFile, "utf8");
-        expect(idx).toContain("@shared/components/organisms/" + comp);
+        expect(idx).toContain("@shared/components/organisms/" + comp.dir);
         // Anything besides the shim is a fork in disguise.
         const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
-        expect({ app, comp, stray }).toEqual({ app, comp, stray: [] });
+        expect({ app, comp: comp.dir, stray }).toEqual({ app, comp: comp.dir, stray: [] });
       });
     }
   }
