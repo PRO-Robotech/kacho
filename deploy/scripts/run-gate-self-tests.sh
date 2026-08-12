@@ -110,6 +110,7 @@ deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/podtemplate-annotation-single-owner-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
+gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
 services/iam/tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/ceremony_credentials.py
