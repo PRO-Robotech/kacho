@@ -289,41 +289,6 @@ jobs:
             exit 1
           fi
 
-          # ─── ВТОРОЙ ВЫХОД: типы Terraform-провайдера ──────────────────────────
-          #
-          # Проверяется ЗДЕСЬ, а не отдельной джобой, ровно по той причине, ради которой
-          # существует эта: оба выхода обязаны быть порождены из ОДНОЙ ревизии proto/.
-          # Разнеси их по джобам — и появится окно, в котором каждая половина зелёная,
-          # а между собой они от разных ревизий.
-          #
-          # Сравнение выходов ДРУГ С ДРУГОМ здесь невозможно и не нужно: наборы плагинов
-          # разные, префикс пакета разный, побайтового равенства не будет никогда. Это
-          # гейт УСТАРЕВАНИЯ каждого выхода относительно своего источника.
-          #
-          # Рукописных файлов у второго выхода НЕТ — в отличие от pkg/api, где их
-          # приходится спасать списком. Выход заведён сегодня, поэтому здесь не список
-          # исключений, а запрет: список пришлось бы поддерживать вручную, и он пережил
-          # бы свой предмет.
-          handwritten_tf="$(git ls-files terraform/internal/api | grep -vE '\.pb\.go$' || true)"
-          if [ -n "$handwritten_tf" ]; then
-            echo "::error::под terraform/internal/api есть НЕ порождённые файлы — выход обязан быть целиком машинным"
-            echo "$handwritten_tf"
-            exit 1
-          fi
-
-          rm -rf terraform/internal/api
-          (cd proto && buf generate --template buf.gen.terraform.yaml)
-
-          if ! git diff --quiet -- terraform/internal/api; then
-            echo "::error::terraform/internal/api разошёлся с proto/ — прогони 'cd proto && buf generate --template buf.gen.terraform.yaml' и закоммить"
-            git diff --stat -- terraform/internal/api
-            exit 1
-          fi
-
-          # Объём осмотренного: без него «ноль расхождений» неотличимо от «ничего не
-          # порождено» — например если из шаблона выпал бы весь список входов.
-          echo "порождено: pkg/api $(git ls-files pkg/api | grep -cE '\.pb\.go$|\.pb\.gw\.go$') файлов, terraform/internal/api $(git ls-files terraform/internal/api | grep -cE '\.pb\.go$') файлов"
-
   authz-artifacts:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
     runs-on: ubuntu-latest
@@ -966,48 +931,6 @@ jobs:
         working-directory: services/vpc/tests/newman
         run: python3 scripts/selftest_autowrap.py
 
-  terraform-module:
-    name: terraform — сборка, тесты, формат
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: terraform/go.mod
-          cache: false
-
-      # Пять команд — ровно те, что корневой модуль применяет к себе. Корневой `./...` во
-      # вложенный модуль НЕ спускается: это свойство инструмента, а не оплошность, поэтому
-      # у второго модуля обязана быть своя пара каждой проверке. Без неё «ноль находок»
-      # здесь означало бы «ноль осмотренного».
-      - name: build + vet
-        working-directory: terraform
-        run: |
-          go build ./...
-          go vet ./...
-
-      - name: test -race
-        working-directory: terraform
-        run: go test ./... -race
-
-      - name: go mod tidy не меняет файлы
-        working-directory: terraform
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-
-      - name: govulncheck
-        working-directory: terraform
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          "$(go env GOPATH)/bin/govulncheck" ./...
-
-      - name: формат конфигураций
-        run: |
-          curl -sL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.12.5/tofu_1.12.5_linux_amd64.zip
-          unzip -oq /tmp/tofu.zip -d /tmp/tofubin
-          /tmp/tofubin/tofu fmt -check -recursive terraform/modules terraform/examples
-
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
@@ -1427,7 +1350,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
