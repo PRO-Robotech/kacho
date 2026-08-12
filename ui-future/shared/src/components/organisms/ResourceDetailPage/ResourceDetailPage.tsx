@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Dropdown, Space, Spin, Tag, Typography } from "antd";
+import { Button, Descriptions, Dropdown, Space, Spin, Typography } from "antd";
 import type { MenuProps } from "antd";
 import {
   ArrowLeftOutlined,
@@ -21,10 +21,12 @@ import {
 import { LazyJsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
 import { formatDateTime } from "@shared/lib/datetime";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { InlineResourceEditForm } from "@shared/components/organisms/InlineResourceEditForm";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
@@ -415,19 +417,19 @@ export function ResourceDetailPage({
     typeof getByPath<boolean>(data, "reserved") === "boolean"
       ? {
           label: "Зарезервирован",
-          value: getByPath<boolean>(data, "reserved") ? "Да" : "Нет",
+          value: <BoolFact value={getByPath<boolean>(data, "reserved")} yes="Зарезервирован" no="Не зарезервирован" accent />,
         }
       : null,
     typeof getByPath<boolean>(data, "used") === "boolean"
       ? {
           label: "Используется",
-          value: getByPath<boolean>(data, "used") ? "Да" : "Нет",
+          value: <BoolFact value={getByPath<boolean>(data, "used")} yes="Используется ресурсом" no="Свободен" />,
         }
       : null,
     // Network-specific: declared supernet (VPC-1) — IPv4 then IPv6, multi-line.
     spec.id === "networks"
       ? {
-          label: "Супернет",
+          label: "CIDR",
           value: (() => {
             const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
             const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
@@ -481,28 +483,13 @@ export function ResourceDetailPage({
         }
       : null,
     // Subnet-specific: derived placement (ZONAL zone / REGIONAL region).
+    // Якорь — ресурс каталога geo, поэтому он ССЫЛКА, как соседние «Сеть» и
+    // «Таблица маршрутизации». Ветку рисует единственный `PlacementAnchor`:
+    // прежде она стояла здесь своей копией и расходилась с двумя другими.
     spec.id === "subnets"
       ? {
           label: "Размещение",
-          value: (() => {
-            const region = getByPath<string>(data, "region_id") ?? "";
-            const zone = getByPath<string>(data, "zone_id") ?? "";
-            const pt = getByPath<string>(data, "placement_type") ?? "";
-            const isRegional = pt === "REGIONAL" || (!zone && !!region);
-            const anchor = isRegional ? region : zone;
-            return (
-              <Space size={8}>
-                <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-                {anchor ? (
-                  <Typography.Text code style={{ fontFamily: "monospace" }}>
-                    {anchor}
-                  </Typography.Text>
-                ) : (
-                  <Typography.Text type="secondary">—</Typography.Text>
-                )}
-              </Space>
-            );
-          })(),
+          value: <PlacementAnchor row={data} maxChars={42} />,
         }
       : null,
     // Subnet-specific: IPv4 CIDR — immutable primary anchor + additional ranges

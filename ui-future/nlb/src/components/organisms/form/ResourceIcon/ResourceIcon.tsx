@@ -7,7 +7,9 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   CameraOutlined,
+  CloudServerOutlined,
   ClusterOutlined,
+  DeploymentUnitOutlined,
   DesktopOutlined,
   FileImageOutlined,
   GatewayOutlined,
@@ -45,8 +47,13 @@ const ICONS: Record<string, ReactNode> = {
   snapshots: <CameraOutlined />,
   // admin / system
   "address-pools": <AppstoreOutlined />,
-  regions: <AppstoreOutlined />,
-  zones: <AppstoreOutlined />,
+  // Регион и зона — РАЗНЫЕ координаты размещения, поэтому и глифы разные:
+  // прежде оба несли AppstoreOutlined, который вдобавок служит умолчанием
+  // для незнакомого ресурса — то есть по иконке они не отличались ни друг
+  // от друга, ни от «иконки нет». Регион — совокупность площадок,
+  // зона — одна площадка внутри него.
+  regions: <DeploymentUnitOutlined />,
+  zones: <CloudServerOutlined />,
   // nlb (сайдбар: ApartmentOutlined / ApiOutlined / ClusterOutlined)
   "load-balancers": <ApartmentOutlined />,
   listeners: <ApiOutlined />,

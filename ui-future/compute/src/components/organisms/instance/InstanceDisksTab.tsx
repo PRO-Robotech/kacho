@@ -10,7 +10,7 @@ import { Button, Checkbox, Input, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
 import { ResourceTable, type Column } from "@/components/organisms/ResourceTable";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { CopyableId } from "@/components/atoms/CopyableId";
+import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ApiError } from "@/api/client";
@@ -18,6 +18,7 @@ import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { BoolFact } from "@/components/atoms/BoolFact";
 
 interface DiskRow {
   volume_id?: string;
@@ -95,12 +96,21 @@ export function InstanceDisksTab({
   const columns: Column<DiskRow>[] = [
     {
       header: "Том",
-      cell: (r) => (r.volume_id ? <CopyableId id={r.volume_id} /> : <Typography.Text type="secondary">—</Typography.Text>),
+      // Том — ресурс со своей карточкой: ссылка «иконка + имя».
+      cell: (r) =>
+        r.volume_id ? (
+          <RefNameLink specId="volumes" refId={r.volume_id} maxChars={28} />
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
     },
     { header: "Устройство", cell: (r) => r.device_name || "—" },
     { header: "Роль", cell: (r) => (r.is_boot ? "boot" : "data") },
     { header: "Режим", cell: (r) => r.mode || "—" },
-    { header: "Auto-delete", cell: (r) => (r.auto_delete ? "да" : "нет") },
+    {
+      header: "При удалении машины",
+      cell: (r) => <BoolFact value={r.auto_delete} yes="Том удаляется" no="Том остаётся" />,
+    },
     {
       header: "",
       className: "text-right whitespace-nowrap",

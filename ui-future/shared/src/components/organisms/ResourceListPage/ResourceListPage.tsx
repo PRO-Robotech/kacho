@@ -208,6 +208,16 @@ export function ResourceListPage({
   // отрендерить ссылку на /projects/<projectId>/compute/instances/<id> и т.п.
   const columns: Column<Record<string, unknown>>[] = buildSpecColumns(spec, {
     projectId: params.projectId,
+    // Адрес карточки считается ТЕМ ЖЕ выражением, каким прежде считался переход
+    // по клику на строку: клик снят (строка перестала быть ссылкой), и ссылка
+    // обязана вести ровно туда же, иначе подмена сменила бы адресацию молча.
+    // Иконка здесь не нужна: это список одного типа, и колонка иконок была бы
+    // столбцом одинаковых значков — тип назван заголовком страницы.
+    nameHref: (row) => {
+      const id = getByPath<string>(row, "id");
+      if (!id) return null;
+      return spec.childRoute && !disableChildRoute ? spec.childRoute.replace(":id", id) : `${basePath}/${id}`;
+    },
   }).filter((c) => !hidden.has(c.header));
 
   // Столбец действий — только когда у ресурса есть строчные действия: иначе
@@ -356,15 +366,6 @@ export function ResourceListPage({
             loading={isLoading && items.length === 0}
             rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
             columns={columns}
-            onRowClick={(row) => {
-              const id = getByPath<string>(row, "id");
-              if (!id) return;
-              // childRoute шаблон: /projects/:id, ...; disableChildRoute → detail
-              // в текущей секции (`${basePath}/${id}`).
-              const target =
-                spec.childRoute && !disableChildRoute ? spec.childRoute.replace(":id", id) : `${basePath}/${id}`;
-              void navigate(target);
-            }}
           />
         )}
       </div>

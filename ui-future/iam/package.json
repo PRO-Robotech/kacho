@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port 5177 --host 0.0.0.0 --strictPort",
     "dev:remote:watch": "vite build --watch",
+    "prebuild": "node ../scripts/copy-monaco.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4177 --strictPort",
     "test": "node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci",

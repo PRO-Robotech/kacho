@@ -11,3 +11,6 @@ CLAUDE.md
 AGENTS.md
 .codex/
 .agents/
+
+# Редактор JSON кладётся в public при сборке (scripts/copy-monaco.mjs) — произведённое
+*/public/monaco/

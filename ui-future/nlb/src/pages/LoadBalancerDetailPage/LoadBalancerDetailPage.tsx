@@ -29,6 +29,7 @@ import { api } from "@/api/client";
 import { targetGroupWiring, type TargetGroupWiring } from "@/api/resources";
 import { REGISTRY, getByPath } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
+import { ColumnSettings, useHiddenColumns } from "@/components/molecules/TableToolbar";
 
 const LB_SPEC = REGISTRY["load-balancers"];
 const TG_SPEC = REGISTRY["target-groups"];
@@ -91,7 +92,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
   }, [rows, query]);
 
   const columns = useMemo<Column<Record<string, unknown>>[]>(() => {
-    const cols = buildSpecColumns(TG_SPEC, { projectId: projectId ?? undefined });
+    const cols = buildSpecColumns(TG_SPEC, { projectId: projectId ?? undefined, nameIcon: true });
     cols.push({
       header: "Через листенер",
       className: "whitespace-nowrap",
@@ -117,6 +118,13 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
     return cols;
   }, [projectId, wiredBy, navigate]);
 
+  const [hidden, toggleHidden] = useHiddenColumns("cols:lb-target-groups");
+  const shownColumns = useMemo(() => columns.filter((c) => !hidden.has(c.header)), [columns, hidden]);
+  const toggleCols = useMemo(
+    () => columns.filter((c) => c.header).map((c) => ({ key: c.header, label: c.header })),
+    [columns],
+  );
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -127,6 +135,8 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
           style={{ width: 320 }}
           allowClear
         />
+        {/* Где есть фильтр — есть и выбор столбцов (требование владельца). */}
+        <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </div>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
@@ -137,12 +147,8 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
       ) : (
         <ResourceTable
           rows={filtered}
-          columns={columns}
+          columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-          onRowClick={(r) => {
-            const id = getByPath<string>(r, "id");
-            if (id && projectId) navigate(`/projects/${projectId}/nlb/target-groups/${id}`);
-          }}
         />
       )}
     </Space>

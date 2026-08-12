@@ -395,14 +395,20 @@ describe("составные пути — объём осмотренного", 
     // Их проверяет не эта проба: имя действия статически неизвестно ни здесь, ни
     // у соседа (`console-verb-routes-exist`), который такую форму тоже пропускает.
     // Число обязано меняться вместе с кодом — молчаливый рост остатка виден здесь.
+    // Вид секции CIDR общий (`CidrTableSection`), но ПУТЬ строит владелец
+    // ресурса — иначе голова литерала стала бы пропом, статически не
+    // резолвимым, и оба ресурса ушли бы из-под наблюдения этой пробы вовсе.
+    // У сети таких мест два: секции v4 и v6 адресуются каждая своей.
     expect(dynamicVerb.map((c) => `${c.file} ${c.literal}`).sort()).toEqual([
       "components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx " +
         "${POOLS_API}/${poolId}:${params.verb}CidrBlocks",
       "components/organisms/NetworkCidrManager/NetworkCidrManager.tsx " +
-        "${NETWORKS_API}/${networkId}:${params.verb}-cidr-blocks",
+        "${NETWORKS_API}/${networkId}:${verb}-cidr-blocks",
+      "components/organisms/NetworkCidrManager/NetworkCidrManager.tsx " +
+        "${NETWORKS_API}/${networkId}:${verb}-cidr-blocks",
       "components/organisms/ResourceDetailPage/ResourceDetailPage.tsx ${spec.apiPath}/${uid}:${verb}",
       "components/organisms/SubnetCidrManager/SubnetCidrManager.tsx " +
-        "${SUBNETS_API}/${subnetId}:${params.verb}-cidr-blocks",
+        "${SUBNETS_API}/${subnetId}:${verb}-cidr-blocks",
     ]);
   });
 });
