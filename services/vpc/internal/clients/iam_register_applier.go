@@ -39,6 +39,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 )
 
@@ -91,7 +92,18 @@ func NewIAMRegisterApplier(c IAMRegisterRPC) drainer.Applier[FGARegisterPayload]
 				Object:          p.Object,
 				Labels:          p.Labels,
 				ParentProjectId: p.ParentProjectID,
-				SourceVersion:   sourceVersionPB(p.SourceVersion),
+				// Цепь предков идёт ОБОИМИ путями доставки — этим и синхронным.
+				// Проведи её одним, и повтор из очереди стёр бы её пустой: приёмная
+				// сторона заменяет набор рёбер объекта целиком, поэтому доставки
+				// одного намерения обязаны нести одно содержание.
+				//
+				// Ресурсы vpc лежат под проектом, и глубже их иерархия не идёт —
+				// цепь выводится из области ЭТОЙ ЖЕ доставки, ничего нового не
+				// выдумывая. Аккаунт vpc на горячем пути не резолвит; цепь из
+				// одного проекта полноценна — аккаунт достигается с самого проекта
+				// его собственным ребром.
+				ParentChain:   ownerregister.ParentChain(nil, p.ParentProjectID, ""),
+				SourceVersion: sourceVersionPB(p.SourceVersion),
 			})
 			return classifyRegisterErr(err)
 		case fgaregister.EventUnregister:

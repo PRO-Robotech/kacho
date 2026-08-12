@@ -73,7 +73,11 @@ func emitFGARegister(ctx context.Context, tx pgx.Tx, eventType string, item fgar
 		TraceID:         id,
 		Labels:          item.Labels,
 		ParentProjectID: item.ParentProjectID,
-		SourceVersion:   stamped,
+		// Цепь предков — та же, что на пути очереди: обе доставки одного
+		// намерения обязаны нести одно содержание, иначе повтор стирает то,
+		// что записала первая.
+		ParentChain:   ownerregister.ParentChain(nil, item.ParentProjectID, ""),
+		SourceVersion: stamped,
 	}, nil
 }
 

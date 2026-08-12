@@ -150,7 +150,12 @@ func mockRegistrations(in *domain.Instance) []ownerregister.Registration {
 		TraceID:         in.ID,
 		Labels:          in.Labels,
 		ParentProjectID: in.ProjectID,
-		SourceVersion:   time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(seq) * time.Millisecond),
+		// Цепь предков собирается ТЕМ ЖЕ вызовом, что в проде. Дублёр, молча
+		// отдающий доставку без предков, снисходительнее настоящего ровно в том,
+		// ради чего его подставляют: проба зеленела бы на форме, которой в
+		// writer-транзакции не бывает.
+		ParentChain:   ownerregister.ParentChain(nil, in.ProjectID, ""),
+		SourceVersion: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(seq) * time.Millisecond),
 	}}
 }
 

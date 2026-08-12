@@ -28,6 +28,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
@@ -134,7 +135,14 @@ func NewRegisterApplier(cli RegisterResourceClient) drainer.Applier[domain.Regis
 					// Цепь идёт ОБОИМИ путями доставки — синхронным и очередным.
 					// Проведи её одним, и повтор из очереди затёр бы цепь пустой:
 					// доставки одного намерения обязаны нести одно содержание.
-					ParentChain:   intent.ParentChain,
+					//
+					// Названная владельцем цепь едет как есть: у репозитория
+					// иерархия глубже проекта (репозиторий → реестр → проект), и
+					// из области её не вывести. Не названная — выводится из
+					// области ЭТОЙ ЖЕ доставки: у самого реестра предок один,
+					// проект, и он до сих пор ехал только полем области, из-за
+					// чего перерегистрация реестра стирала его ребро.
+					ParentChain:   ownerregister.ParentChain(intent.ParentChain, intent.ParentProjectID, ""),
 					SourceVersion: stepSourceVersion(intent.SourceVersion.Time, seq),
 				})
 				return err
