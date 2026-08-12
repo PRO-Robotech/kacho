@@ -278,6 +278,18 @@ data:
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             try_files $uri =404;
             expires 1y;
@@ -320,6 +332,18 @@ data:
 
         location = /index.html {
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
@@ -368,6 +392,18 @@ data:
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             try_files $uri =404;
             expires 1y;
@@ -413,6 +449,18 @@ data:
             {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             try_files $uri =404;
             expires 1y;
@@ -453,6 +501,18 @@ data:
 
         location = /index.html {
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
@@ -496,6 +556,18 @@ data:
             add_header Cache-Control "no-store, no-cache, must-revalidate";
         }
 
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             try_files $uri =404;
             expires 1y;
@@ -537,6 +609,18 @@ data:
             add_header Cache-Control "no-store, no-cache, must-revalidate";
         }
 
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
+        }
+
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             try_files $uri =404;
             expires 1y;
@@ -576,6 +660,18 @@ data:
 
         location = /index.html {
             add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        # Точка входа федеративного модуля — ЕДИНСТВЕННЫЙ ассет, чьё имя не
+        # меняется от сборки к сборке (у остальных в имени хэш содержимого).
+        # Общее правило ниже пометило бы её `immutable`, то есть «не
+        # перепроверяй никогда», и обновление страницы этого не сбрасывает:
+        # клиент федерации продолжал бы грузить куски прежней сборки. Правило
+        # обязано стоять ДО общего — nginx берёт первый совпавший location.
+        location ~* /remoteEntry\.js$ {
+            try_files $uri =404;
+            add_header Cache-Control "no-cache" always;
+            {{- include "ui.securityHeaders" . | nindent 12 }}
         }
 
         location ~* \.(?:js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {

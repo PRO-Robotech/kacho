@@ -183,6 +183,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
 
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>
           <ResourceRefChips
+            titleHidden
             title="IPv4 Address"
             refResource="addresses"
             projectId={projectId}
@@ -206,6 +207,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
           label={labelWithInfo("IPv6 адрес", "Internal или external IPv6 Address-ресурс. KAC-55: максимум один.")}
         >
           <ResourceRefChips
+            titleHidden
             title="IPv6 Address"
             refResource="addresses"
             projectId={projectId}
@@ -225,6 +227,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
 
         <Form.Item label={labelWithInfo("Группы безопасности", "Security Groups, прилинкованные к NIC.")}>
           <ResourceRefChips
+            titleHidden
             title="Security Group"
             refResource="security-groups"
             projectId={projectId}

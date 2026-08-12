@@ -18,6 +18,8 @@ import { Tag, Typography } from "antd";
 import { toast } from "@shared/lib/toast";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { SgRulesPanel, type SgRule } from "@shared/components/organisms/SgRulesPanel";
 import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
@@ -76,9 +78,6 @@ function mono(v: unknown): ReactNode {
   return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
 }
 
-function boolTag(v: unknown, yes = "Да", no = "Нет"): ReactNode {
-  return v ? <Tag color="green">{yes}</Tag> : <Tag>{no}</Tag>;
-}
 
 // CIDR-блоки — нейтральные (цвет текста) теги, друг под другом, клик = копировать.
 function cidrTags(items: string[] | undefined): ReactNode {
@@ -223,19 +222,13 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   subnets: {
     // VPC-1: derived placement (ZONAL zone / REGIONAL region) + primary anchor.
     overviewExtra: ({ data }) => {
-      const region = getByPath<string>(data, "region_id") ?? "";
-      const zone = getByPath<string>(data, "zone_id") ?? "";
-      const pt = getByPath<string>(data, "placement_type") ?? "";
-      const isRegional = pt === "REGIONAL" || (!zone && !!region);
       return [
         {
+          // Якорь размещения — ресурс geo, поэтому ссылка (как «Сеть» ниже), а
+          // не моноширинный идентификатор. Ветку рисует единственный
+          // `PlacementAnchor` — здесь стояла третья её копия.
           label: "Размещение",
-          value: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-              {mono(isRegional ? region : zone)}
-            </span>
-          ),
+          value: <PlacementAnchor row={data} maxChars={42} />,
         },
         {
           label: "Сеть",
@@ -292,9 +285,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   },
 
   "security-groups": {
-    overviewExtra: ({ data, projectId }) => {
-      // KAC-239 S2: потребители SG (used_by) — к кому подключена группа.
-      const usedBy = getByPath<{ referrer?: { type?: string; id?: string } }[]>(data, "used_by") ?? [];
+    overviewExtra: ({ data }) => {
       return [
         {
           label: "Сеть",
@@ -304,20 +295,23 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             dash
           ),
         },
-        { label: "Default для сети", value: boolTag(getByPath<boolean>(data, "default_for_network")) },
         {
-          label: "Потребители",
-          value:
-            usedBy.length === 0 ? (
-              dash
-            ) : (
-              <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-                {usedBy.map((u, i) => (
-                  <ReferrerLink key={i} projectId={projectId} referrer={u.referrer} />
-                ))}
-              </span>
-            ),
+          label: "Назначение",
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "default_for_network")}
+              yes="Группа по умолчанию для сети"
+              no="Назначается только явно"
+              accent
+            />
+          ),
         },
+        // Поля «Потребители» здесь НЕТ (решение владельца 2026-08-12).
+        // Контракт группы несёт `used_by`, но сервер его не заполняет: механизм
+        // «кто меня использует» реализован только у сетевого интерфейса. Поле
+        // показывало прочерк при живых потребителях, то есть утверждало
+        // неправду о ресурсе. Из двух исходов — научить сервер отвечать или
+        // снять показ — владелец выбрал снять; вернётся вместе с источником.
       ];
     },
     // req: правила — ОТДЕЛЬНЫМ табом «Правила» (таблица + «Добавить» + чекбоксы +
@@ -348,7 +342,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "IP-адрес", value: cidrTags(info.ip ? [info.ip] : undefined) },
         { label: "Версия", value: txt(info.family) },
         { label: "Вид", value: txt(info.kind) },
-        { label: "Используется", value: boolTag(used) },
+        { label: "Занятость", value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" /> },
         {
           label: "Потребители",
           value:
@@ -362,7 +356,17 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
               </span>
             ),
         },
-        { label: "Защита от удаления", value: boolTag(getByPath<boolean>(data, "deletion_protection")) },
+        {
+          label: "Защита от удаления",
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "deletion_protection")}
+              yes="Удаление запрещено"
+              no="Удаление разрешено"
+              accent
+            />
+          ),
+        },
       ];
     },
   },

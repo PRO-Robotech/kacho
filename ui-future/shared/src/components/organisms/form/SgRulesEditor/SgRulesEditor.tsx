@@ -9,12 +9,13 @@
 //   - ports: PortRange { from_port, to_port }  (отсутствие = any)
 //   - oneof target { cidr_blocks | security_group_id | predefined_target }
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import {
   Button as AntButton,
   Card,
   Checkbox,
   Collapse,
+  Form,
   Input as AntInput,
   InputNumber,
   Select as AntSelect,
@@ -23,7 +24,6 @@ import {
   Typography,
 } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import { hasProtocolNumber } from "@shared/lib/resource-registry";
@@ -277,11 +277,18 @@ export function RuleBody({
   const set = (patch: Partial<RuleExt>) => onChange({ ...rule, ...patch });
 
   return (
-    <Space direction="vertical" size={10} style={{ width: "100%" }}>
+    <Form
+      layout="horizontal"
+      labelCol={{ flex: "200px" }}
+      wrapperCol={{ flex: "1 1 0" }}
+      labelAlign="left"
+      colon={false}
+      size="middle"
+    >
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 2fr",
+          gridTemplateColumns: "1fr",
           gap: 8,
         }}
       >
@@ -304,7 +311,7 @@ export function RuleBody({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 2fr",
+          gridTemplateColumns: "1fr",
           gap: 8,
         }}
       >
@@ -410,7 +417,7 @@ export function RuleBody({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 2fr",
+          gridTemplateColumns: "1fr",
           gap: 8,
         }}
       >
@@ -487,7 +494,7 @@ export function RuleBody({
           }
         />
       )}
-    </Space>
+    </Form>
   );
 }
 
@@ -594,14 +601,13 @@ function CidrChipList({
   );
 }
 
+// Строка формы правила — тем же каноном, что и все формы консоли: подпись слева
+// колонкой в 200px, поле справа. Прежде здесь была своя раскладка (подпись НАД
+// полем, два поля в ряд), из-за чего форма правила выглядела чужой среди прочих.
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  const id = useId();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <Label htmlFor={id} required={required}>
-        {label}
-      </Label>
+    <Form.Item label={label} required={required} style={{ marginBottom: 0 }}>
       {children}
-    </div>
+    </Form.Item>
   );
 }

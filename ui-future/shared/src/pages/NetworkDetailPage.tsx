@@ -6,7 +6,7 @@
 // Каждый child-tab имеет Title + filter (имя или id substring) над таблицей.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Space, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
@@ -20,11 +20,11 @@ import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
 export function NetworkDetailPage() {
   const { uid: networkId, projectId } = useParams();
-  const navigate = useNavigate();
   const networkSpec = REGISTRY["networks"];
   const rtSpec = REGISTRY["route-tables"];
   const sgSpec = REGISTRY["security-groups"];
@@ -135,7 +135,7 @@ export function NetworkDetailPage() {
         <Space direction="vertical" size={24} style={{ width: "100%" }}>
           {networkId && (
             <div style={{ maxWidth: 760 }}>
-              <SectionHeader eyebrow="Адресное пространство" title="Супернет" />
+              <SectionHeader eyebrow="Адресное пространство" title="CIDR" />
               <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
             </div>
           )}
@@ -144,14 +144,12 @@ export function NetworkDetailPage() {
             rows={networkSubnets}
             columns={subnetColumns}
             emptyText="В сети нет подсетей."
-            onClick={(id) =>
-              projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/subnets/${id}`)
-            }
+            storageKey="network-subnets"
           />
         </Space>
       );
     },
-    [networkSubnets, subnetColumns, projectId, networkId, navigate],
+    [networkSubnets, subnetColumns, networkId],
   );
 
   const extraTabs = useMemo(
@@ -166,9 +164,7 @@ export function NetworkDetailPage() {
             rows={networkRouteTables}
             columns={rtColumns}
             emptyText="К сети не привязано ни одной таблицы маршрутизации."
-            onClick={(id) =>
-              projectId && networkId && navigate(`/projects/${projectId}/vpc/networks/${networkId}/route-tables/${id}`)
-            }
+            storageKey="network-route-tables"
           />
         ),
       },
@@ -182,11 +178,7 @@ export function NetworkDetailPage() {
             rows={networkSGs}
             columns={sgColumns}
             emptyText="В сети нет групп безопасности."
-            onClick={(id) =>
-              projectId &&
-              networkId &&
-              navigate(`/projects/${projectId}/vpc/networks/${networkId}/security-groups/${id}`)
-            }
+            storageKey="network-security-groups"
           />
         ),
       },
@@ -203,7 +195,7 @@ export function NetworkDetailPage() {
       // tab "Операции" автоматически добавляется ResourceDetailPage —
       // не дублируем здесь.
     ],
-    [networkRouteTables, networkSGs, rtColumns, sgColumns, projectId, networkId, navigate],
+    [networkRouteTables, networkSGs, rtColumns, sgColumns],
   );
 
   const headerActionsByTab = useCallback(
@@ -222,7 +214,6 @@ export function NetworkDetailPage() {
             type="primary"
             size="small"
             icon={<PlusOutlined />}
-            onClick={() => openCreateModal("security-groups")}
           >
             Создать группу безопасности
           </Button>
@@ -269,10 +260,12 @@ function useChildColumns(
   basePathOverride?: string | null,
 ): Column<Record<string, unknown>>[] {
   return useMemo(() => {
-    const cols = buildSpecColumns(spec, { projectId });
+    const basePath = basePathOverride ?? resourceProjectPath(spec.id, projectId);
+    // Вложенная таблица: имя ведёт на карточку ЧЕРЕЗ родителя и несёт иконку
+    // типа — в одном окне соседствуют подсети, таблицы маршрутов и группы.
+    const cols = buildSpecColumns(spec, { projectId, nameBasePath: basePath, nameIcon: true });
     // KAC-198: include service segment (vpc/compute/nlb) so Subnet/SG/RT
     // child-table links под NetworkDetailPage ведут на actual route в App.tsx.
-    const basePath = basePathOverride ?? resourceProjectPath(spec.id, projectId);
     if (basePath) {
       cols.push({
         header: "",
@@ -291,15 +284,25 @@ function ChildSection({
   rows,
   columns,
   emptyText,
-  onClick,
+  storageKey,
 }: {
   title: string;
   rows: Array<Record<string, unknown>>;
   columns: Column<Record<string, unknown>>[];
   emptyText: string;
-  onClick: (id: string) => void;
+  /** Ключ, под которым запоминается выбор столбцов этой таблицы. */
+  storageKey: string;
 }) {
   const [query, setQuery] = useState("");
+  // Где есть фильтр — есть и выбор столбцов: обе ручки про то, что показывать,
+  // и наличие одной без другой читается как недоделка (требование владельца
+  // 2026-08-12).
+  const [hidden, toggleHidden] = useHiddenColumns(`cols:${storageKey}`);
+  const shown = useMemo(() => columns.filter((c) => !hidden.has(c.header)), [columns, hidden]);
+  const toggleCols = useMemo(
+    () => columns.filter((c) => c.header).map((c) => ({ key: c.header, label: c.header })),
+    [columns],
+  );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
@@ -315,13 +318,16 @@ function ChildSection({
       <Typography.Title level={4} style={{ margin: 0 }}>
         {title}
       </Typography.Title>
-      <Input.Search
-        placeholder="Фильтр по имени или идентификатору"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{ maxWidth: 360 }}
-        allowClear
-      />
+      <Space size={8} style={{ width: "100%" }}>
+        <Input.Search
+          placeholder="Фильтр по имени или идентификатору"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{ width: 360 }}
+          allowClear
+        />
+        <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
+      </Space>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {query ? "По фильтру ничего не найдено." : emptyText}
@@ -329,12 +335,8 @@ function ChildSection({
       ) : (
         <ResourceTable
           rows={filtered}
-          columns={columns}
+          columns={shown}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-          onRowClick={(r) => {
-            const id = getByPath<string>(r, "id");
-            if (id) onClick(id);
-          }}
         />
       )}
     </Space>

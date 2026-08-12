@@ -5,6 +5,7 @@ import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { SgRulesEditor } from "@shared/components/organisms/form/SgRulesEditor";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+import { EditableKVTable } from "@shared/components/molecules/EditableKVTable";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import type { FormField as FF, ArrayField } from "@shared/lib/form-schema";
 import { displayText } from "@shared/lib/display-text";
@@ -256,6 +257,7 @@ function ArrayFieldRenderer({
   onChange,
   editMode,
   disabled,
+  hideLabel,
 }: { field: ArrayField; disabled?: boolean } & Omit<Props, "field">) {
   const path = fullPath(pathPrefix, field.name);
   const items = (getByPath(value, path) as Record<string, unknown>[] | undefined) ?? [];
@@ -271,6 +273,135 @@ function ArrayFieldRenderer({
   const removeAt = (idx: number) => {
     onChange(deleteByPath(value, `${path}[${idx}]`));
   };
+
+  // Список из ОДНОГО подполя, стоящий в правой колонке: имя поля уже названо
+  // левой колонкой, а подпись подполя ("CIDR" под меткой "CIDR IPv4")
+  // повторяет её же и ничего не добавляет.
+  const soleItemField = hideLabel && field.itemFields.length === 1;
+
+  const rows = (
+    <>
+      {items.length === 0 && (
+        <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
+          — пусто —
+        </Typography.Text>
+      )}
+      {items.map((_, idx) => (
+        <div
+          key={idx}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            padding: 8,
+            borderRadius: 6,
+            background: "var(--kc-hover-fill)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                field.itemFields.length > 1 ? `repeat(${field.itemFields.length}, minmax(0, 1fr))` : "1fr",
+              gap: 8,
+              flex: 1,
+            }}
+          >
+            {field.itemFields.map((sub) => {
+              // visibleWhen — резолвится FormFieldRenderer'ом; здесь
+              // фильтруем чтобы не оставить пустую mini-label-обёртку.
+              if (sub.visibleWhen) {
+                const rel = sub.visibleWhen.field;
+                const relPath = `${path}[${idx}].${rel}`;
+                const cur =
+                  (getByPath(value, relPath) as string | undefined) ?? (getByPath(value, rel) as string | undefined);
+                const want = sub.visibleWhen.equals;
+                const matched = Array.isArray(want) ? want.includes(cur ?? "") : cur === want;
+                if (!matched) return null;
+              }
+              const input = (
+                <FormFieldRenderer
+                  field={sub}
+                  pathPrefix={`${path}[${idx}]`}
+                  value={value}
+                  onChange={onChange}
+                  editMode={editMode}
+                  hideLabel
+                />
+              );
+              if (soleItemField) return <div key={sub.name}>{input}</div>;
+              return (
+                <ArrayItemField key={sub.name} label={sub.label} required={!!sub.required} description={sub.description}>
+                  {input}
+                </ArrayItemField>
+              );
+            })}
+          </div>
+          <AntButton
+            type="text"
+            size="small"
+            icon={<DeleteOutlined />}
+            onClick={() => removeAt(idx)}
+            disabled={disabled}
+            danger
+            style={{ flexShrink: 0, marginTop: 2 }}
+          />
+        </div>
+      ))}
+    </>
+  );
+
+  // Список из ОДНОГО текстового подполя — таблицей значений: заголовок
+  // колонки, строки со значением, действие на строке и «Добавить» снизу. Тот же
+  // вид, что у меток и статических маршрутов, поэтому набор CIDR читается как
+  // набор, а не как россыпь отдельных полей (решение владельца 2026-08-12).
+  const plainListField =
+    hideLabel && field.itemFields.length === 1 && (field.itemFields[0]?.type ?? "string") === "string";
+
+  if (plainListField) {
+    const sub = field.itemFields[0];
+    const values = items.map((it) => ({ a: typeof it?.value === "string" ? it.value : "", b: "" }));
+    return (
+      <EditableKVTable
+        rows={values}
+        onChange={(next) => onChange(setByPath(value, path, next.map((r) => ({ value: r.a }))))}
+        colA={{
+          header: sub.label || field.itemLabel,
+          // `placeholder` есть не у каждого вида подполя — читаем только у строкового.
+          placeholder: sub.type === "string" ? (sub.placeholder ?? "") : "",
+        }}
+        // Имя поля стоит СЛЕВА (левая колонка формы), поэтому шапка единственной
+        // колонки повторяла бы его вторым словом: «IPv4-адрес» слева и «Address»
+        // в шапке. В форме шапка не нужна — смысл колонки задан меткой поля.
+        hideHeader
+        addLabel={`Добавить ${field.itemLabel}`}
+        disabled={disabled}
+      />
+    );
+  }
+
+  if (hideLabel) {
+    // Имя и пояснение поля несёт левая колонка формы (`Form.Item label`).
+    // Своя рамка с заголовком повторила бы имя второй раз и вывела бы поле из
+    // общей сетки — ровно то, из-за чего список читался как чужеродный блок.
+    return (
+      <div style={disabled ? { opacity: 0.6, pointerEvents: "none" } : undefined}>
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+          {rows}
+        </Space>
+        <AntButton
+          type="dashed"
+          block
+          icon={<PlusOutlined />}
+          onClick={add}
+          disabled={disabled || atCap}
+          style={{ marginTop: 8 }}
+        >
+          Добавить {field.itemLabel}
+        </AntButton>
+      </div>
+    );
+  }
 
   return (
     <Card
@@ -293,74 +424,7 @@ function ArrayFieldRenderer({
       style={disabled ? { opacity: 0.6, pointerEvents: "none" } : undefined}
     >
       <Space direction="vertical" size={8} style={{ width: "100%" }}>
-        {items.length === 0 && (
-          <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
-            — пусто —
-          </Typography.Text>
-        )}
-        {items.map((_, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 8,
-              padding: 8,
-              borderRadius: 6,
-              background: "var(--kc-hover-fill)",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  field.itemFields.length > 1 ? `repeat(${field.itemFields.length}, minmax(0, 1fr))` : "1fr",
-                gap: 8,
-                flex: 1,
-              }}
-            >
-              {field.itemFields.map((sub) => {
-                // visibleWhen — резолвится FormFieldRenderer'ом; здесь
-                // фильтруем чтобы не оставить пустую mini-label-обёртку.
-                if (sub.visibleWhen) {
-                  const rel = sub.visibleWhen.field;
-                  const relPath = `${path}[${idx}].${rel}`;
-                  const cur =
-                    (getByPath(value, relPath) as string | undefined) ?? (getByPath(value, rel) as string | undefined);
-                  const want = sub.visibleWhen.equals;
-                  const matched = Array.isArray(want) ? want.includes(cur ?? "") : cur === want;
-                  if (!matched) return null;
-                }
-                return (
-                  <ArrayItemField
-                    key={sub.name}
-                    label={sub.label}
-                    required={!!sub.required}
-                    description={sub.description}
-                  >
-                    <FormFieldRenderer
-                      field={sub}
-                      pathPrefix={`${path}[${idx}]`}
-                      value={value}
-                      onChange={onChange}
-                      editMode={editMode}
-                      hideLabel
-                    />
-                  </ArrayItemField>
-                );
-              })}
-            </div>
-            <AntButton
-              type="text"
-              size="small"
-              icon={<DeleteOutlined />}
-              onClick={() => removeAt(idx)}
-              disabled={disabled}
-              danger
-              style={{ flexShrink: 0, marginTop: 2 }}
-            />
-          </div>
-        ))}
+        {rows}
       </Space>
       {field.description && (
         <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginTop: 8 }}>

@@ -4,7 +4,7 @@
 // Используется в JSON-табе detail-страниц вместо <pre>-блока.
 
 import { useMemo } from "react";
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
 import { theme } from "antd";
 import { useThemeMode } from "@/lib/theme-context";
 
@@ -13,6 +13,22 @@ interface Props {
   /** Высота редактора. Default 60vh — занимает основную часть tab-area. */
   height?: string | number;
 }
+
+// Редактор берётся со СВОЕГО origin. По умолчанию `@monaco-editor/react` грузит
+// его с внешнего CDN, а CSP консоли разрешает только `script-src 'self'` —
+// браузер блокирует загрузку, и вкладка навсегда остаётся в «Loading…»
+// (наблюдалось на живом стенде 2026-08-12: JSON не работал ни у одного ресурса).
+// Ослаблять CSP ради стороннего домена нельзя, поэтому файлы едут в образе:
+// `scripts/copy-monaco.mjs` кладёт их в `public/monaco/vs` перед сборкой.
+//
+// Путь — от базы САМОГО модуля (`/vpc-remote/`, `/nlb-remote/`, …), потому что
+// каждый федеративный модуль отдаётся под своим префиксом, а оболочка редактора
+// не несёт: у неё нет и зависимости на него.
+// `import.meta.env` даёт Vite; в jest его нет вовсе, и обращение к полю роняло
+// бы МОДУЛЬ на импорте — то есть пробы падали бы не на предмете, а на среде
+// (так и случилось: шесть проб маршрутов легли на `BASE_URL` undefined).
+const monacoBase = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
+loader.config({ paths: { vs: `${monacoBase}monaco/vs` } });
 
 export function JsonMonacoView({ data, height = "60vh" }: Props) {
   const { token } = theme.useToken();

@@ -310,7 +310,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
           label={
             <Space size={4}>
               Основной IPv4 CIDR
-              <Tooltip title="Неизменяемый основной IPv4 CIDR подсети (⊆ одного супернет-блока сети), например 10.20.0.0/24. Можно оставить пустым для IPv6-only подсети. Доп. диапазоны добавляются позже.">
+              <Tooltip title="Неизменяемый основной IPv4 CIDR подсети (⊆ одного CIDR-блока сети), например 10.20.0.0/24. Можно оставить пустым для IPv6-only подсети. Доп. диапазоны добавляются позже.">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>
@@ -329,7 +329,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
           label={
             <Space size={4}>
               Основной IPv6 CIDR
-              <Tooltip title="Опционально. Неизменяемый основной IPv6 CIDR подсети (⊆ IPv6-супернета сети), например fd00:20::/64.">
+              <Tooltip title="Опционально. Неизменяемый основной IPv6 CIDR подсети (⊆ IPv6 CIDR сети), например fd00:20::/64.">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>
