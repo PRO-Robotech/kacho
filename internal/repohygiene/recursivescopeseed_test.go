@@ -218,7 +218,7 @@ func auditRecursiveSQL(sql string) ([]scopeSeedFinding, scopeSeedCensus) {
 		c.setSeeded++
 		line := offsetLine(code, idx+strings.Index(code[idx:], e.name))
 
-		if seedTable && !mentionsWord(seed, "LIMIT") {
+		if seedTable && !boundsOutput(seed) {
 			findings = append(findings, scopeSeedFinding{line: line, cte: e.name,
 				why: "заход читает таблицу БЕЗ предела: цепь раскрутится на всём наборе, а предел " +
 					"в конце запроса ограничит длину ответа, но не работу. Предел обязан стоять на " +
@@ -226,7 +226,7 @@ func auditRecursiveSQL(sql string) ([]scopeSeedFinding, scopeSeedCensus) {
 		}
 		for _, ref := range seedSets {
 			refTable, _ := readsTableOutsideBoundedLateral(ref.body, names)
-			if refTable && !mentionsWord(ref.body, "LIMIT") {
+			if refTable && !boundsOutput(ref.body) {
 				findings = append(findings, scopeSeedFinding{line: line, cte: e.name,
 					why: "заход посеян набором " + ref.name + ", а тот читает таблицу БЕЗ предела: " +
 						"цепь раскрутится на всём наборе, и предел в конце ограничит длину ответа, " +
@@ -399,7 +399,7 @@ func readsTableOutsideBoundedLateral(branch string, cteNames map[string]bool) (b
 		after2 := j + len(w2)
 		if strings.EqualFold(w2, "LATERAL") {
 			body, rest, ok := takeParens(branch[after2:])
-			if ok && mentionsWord(body, "LIMIT") {
+			if ok && boundsOutput(body) {
 				k := skipSpace(branch, len(branch)-len(rest))
 				_, alias := takeIdentAt(branch[k:]) // псевдоним соединения
 				i = k + len(alias)
@@ -441,17 +441,55 @@ func skipSpace(s string, i int) int {
 
 // mentionsWord — есть ли слово целиком (не часть идентификатора).
 func mentionsWord(s, word string) bool {
+	_, ok := findWord(s, word)
+	return ok
+}
+
+// boundsOutput — ограничивает ли предел ВЫДАЧУ этой ветви.
+//
+// Только предел на своём уровне скобок. Предел во вложенном подзапросе
+// ограничивает его, а не ветвь: принять его за границу значило бы объявить
+// ограниченным набор, который таковым не стал, — форма без содержания ровно в
+// том месте, ради которого гейт написан.
+func boundsOutput(s string) bool {
+	i, ok := findWord(s, "LIMIT")
+	for ok {
+		if parenDepthAt(s, i) == 0 {
+			return true
+		}
+		j, more := findWord(s[i+1:], "LIMIT")
+		i, ok = i+1+j, more
+	}
+	return false
+}
+
+// parenDepthAt — глубина скобок в точке.
+func parenDepthAt(s string, off int) int {
+	depth := 0
+	for i := 0; i < off && i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		}
+	}
+	return depth
+}
+
+// findWord — позиция слова целиком.
+func findWord(s, word string) (int, bool) {
 	for i := 0; ; {
 		j := strings.Index(s[i:], word)
 		if j < 0 {
-			return false
+			return 0, false
 		}
 		j += i
 		before := j == 0 || !isIdentByte(s[j-1])
 		k := j + len(word)
 		after := k >= len(s) || !isIdentByte(s[k])
 		if before && after {
-			return true
+			return j, true
 		}
 		i = j + 1
 	}
