@@ -950,6 +950,7 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 | `SUB-UPD-V1-ZONE-IMMUTABLE` | VPC-1-28 | STATE,VAL,NEG | P1 | Update mask=`zone_id` → sync InvalidArgument «zone_id is immutable after Subnet.Create» (F6). |
 | `SUB-UPD-V1-NETWORK-IMMUTABLE` | VPC-1-38 | STATE,VAL,NEG | P1 | Update mask=`network_id` → sync InvalidArgument «network_id is immutable after Subnet.Create» (F8). |
 | `SUB-CR-V1-CIDR-OUTSIDE-SUPERNET` | VPC-1-30 | VAL,NEG,CONF | P0 | ipv4CidrPrimary вне супернета сети → sync InvalidArgument «subnet CIDR … is not within any network CIDR block» (F7). |
+| `SUB-CR-V1-NO-SUPERNET-REFUSED` | VPC-1-30 | VAL,NEG,CONF | P0 | сеть НЕ объявила супернет семейства → sync InvalidArgument «network declares no IPv4 supernet: add blocks via :add-cidr-blocks …»; в том же кейсе положительный контроль — объявили план через `:add-cidr-blocks`, та же подсеть проходит (F7). Единственный кейс, создающий сеть без плана намеренно (`declares_no_supernet`). |
 | `SUB-CR-V1-CIDR-OVERLAP` | VPC-1-31 | NEG,CONF | P0 | пересекающийся ipv4CidrPrimary в той же сети → sync FAILED_PRECONDITION «Subnet CIDRs can not overlap» (F7 EXCLUDE). |
 | `SUB-CR-V1-CIDR-PERNET-ISO` | VPC-1-32 | CONF,STATE | P1 | подсети РАЗНЫХ сетей с одинаковым CIDR → обе OK (per-network EXCLUDE-изоляция, F7). |
 | `SUB-ACB-V1-ADD-OK` | VPC-1-34 | CRUD,STATE | P1 | `:add-cidr-blocks` доп. диапазон ⊆ супернет → `ipv4CidrBlocks°` содержит блок, primary неизменён (F7). |

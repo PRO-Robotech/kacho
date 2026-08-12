@@ -150,7 +150,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-ov-net-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-ov-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -182,7 +182,7 @@
           ]
         },
         {
-          "name": "poll-op-1097",
+          "name": "poll-op-1102",
           "request": {
             "method": "GET",
             "header": [
@@ -457,7 +457,7 @@
           ]
         },
         {
-          "name": "list-and-cleanup-rya894",
+          "name": "list-and-cleanup-rya896",
           "request": {
             "method": "GET",
             "header": [
@@ -606,7 +606,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya890",
+          "name": "cleanup-net-rya892",
           "request": {
             "method": "DELETE",
             "header": [
@@ -662,7 +662,7 @@
           ]
         },
         {
-          "name": "poll-op-1098",
+          "name": "poll-op-1103",
           "request": {
             "method": "GET",
             "header": [
@@ -995,7 +995,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-macu-net-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-macu-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1027,7 +1027,7 @@
           ]
         },
         {
-          "name": "poll-op-1099",
+          "name": "poll-op-1104",
           "request": {
             "method": "GET",
             "header": [
@@ -1149,7 +1149,7 @@
           ]
         },
         {
-          "name": "poll-op-1100",
+          "name": "poll-op-1105",
           "request": {
             "method": "GET",
             "header": [
@@ -1473,7 +1473,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya891",
+          "name": "cleanup-sub-rya893",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1529,7 +1529,7 @@
           ]
         },
         {
-          "name": "poll-op-1101",
+          "name": "poll-op-1106",
           "request": {
             "method": "GET",
             "header": [
@@ -1593,7 +1593,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya892",
+          "name": "cleanup-net-rya894",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1649,7 +1649,7 @@
           ]
         },
         {
-          "name": "poll-op-1102",
+          "name": "poll-op-1107",
           "request": {
             "method": "GET",
             "header": [
@@ -1741,7 +1741,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-occ-net-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"conc-occ-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1773,7 +1773,7 @@
           ]
         },
         {
-          "name": "poll-op-1103",
+          "name": "poll-op-1108",
           "request": {
             "method": "GET",
             "header": [
@@ -1895,7 +1895,7 @@
           ]
         },
         {
-          "name": "poll-op-1104",
+          "name": "poll-op-1109",
           "request": {
             "method": "GET",
             "header": [
@@ -1963,7 +1963,7 @@
           ]
         },
         {
-          "name": "await-sg-authorized-rya895",
+          "name": "await-sg-authorized-rya897",
           "request": {
             "method": "GET",
             "header": [
@@ -2125,7 +2125,7 @@
           ]
         },
         {
-          "name": "fetch-sg-rules-after-occ-rya896",
+          "name": "fetch-sg-rules-after-occ-rya898",
           "request": {
             "method": "GET",
             "header": [
@@ -2225,7 +2225,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya897",
+          "name": "cleanup-sg-rya899",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2281,7 +2281,7 @@
           ]
         },
         {
-          "name": "poll-op-1105",
+          "name": "poll-op-1110",
           "request": {
             "method": "GET",
             "header": [
@@ -2345,7 +2345,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya893",
+          "name": "cleanup-net-rya895",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2401,7 +2401,7 @@
           ]
         },
         {
-          "name": "poll-op-1106",
+          "name": "poll-op-1111",
           "request": {
             "method": "GET",
             "header": [

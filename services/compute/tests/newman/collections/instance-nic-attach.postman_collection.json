@@ -294,7 +294,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nicnetdet{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nicnetdet{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4491,7 +4491,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nicnetgate{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nicnetgate{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"

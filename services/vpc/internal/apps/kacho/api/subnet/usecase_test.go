@@ -80,7 +80,14 @@ func seedNetwork(t *testing.T, kr *kachomock.Repository, projectID, networkID st
 	ctx := context.Background()
 	w, err := kr.Writer(ctx)
 	require.NoError(t, err)
-	_, err = w.Networks().Insert(ctx, &domain.Network{ID: networkID, ProjectID: projectID, Name: domain.RcNameVPC("net-for-test")})
+	_, err = w.Networks().Insert(ctx, &domain.Network{
+		ID: networkID, ProjectID: projectID, Name: domain.RcNameVPC("net-for-test"),
+		// Супернет объявлен, потому что его объявляет продукт: сеть без него
+		// подсеть не принимает. Фикстура, снисходительнее продукта, прятала бы
+		// ровно тот отказ, который проверяют соседние пробы.
+		IPv4CidrBlocks: []string{"10.0.0.0/8"},
+		IPv6CidrBlocks: []string{"fd00::/48"},
+	})
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
 }
@@ -410,7 +417,7 @@ func TestCreateUseCase_Regional_OK(t *testing.T) {
 	op, err := h.Create(context.Background(), &vpcv1.CreateSubnetRequest{
 		ProjectId: "f1", NetworkId: netID, Name: "reg1",
 		RegionId:        testRegion,
-		Ipv4CidrPrimary: "192.168.0.0/24",
+		Ipv4CidrPrimary: "10.168.0.0/24",
 	})
 	require.NoError(t, err)
 	saved := repomock.AwaitOpDone(t, or, op.Id)

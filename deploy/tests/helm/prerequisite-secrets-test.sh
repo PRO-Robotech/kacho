@@ -32,6 +32,9 @@
 # Самопроверка: --self-test (гейт обязан краснеть на внесённом дефекте и молчать
 # на законной конструкции той же формы).
 set -uo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -43,11 +46,14 @@ N=0
 fail() { echo "FAIL: $1"; exit 1; }
 ok() { N=$((N + 1)); }
 
-# Профили, которые цель Makefile реально разворачивает на кластере, и цель,
-# которая это делает. Формат: <make-цель>|<-f ...>
+# Цели Makefile, которые реально разворачивают стенд, и СТЕК, которым каждая это
+# делает. Формат: <make-цель>|<стек>. Сама цепочка `-f` берётся из единственной
+# таблицы дерева — здесь была её копия, и копия стареет молча: цель может
+# получить новый слой, а проверка продолжит рендерить прежний состав и
+# отчитываться зелёным.
 PROFILES=(
-  "dev-up|-f $UMBRELLA/values.dev.yaml"
-  "dev-prod-up|-f $UMBRELLA/values.dev.yaml -f $UMBRELLA/values.dev-prod.yaml"
+  "dev-up|$(stacks_args dev "$UMBRELLA")"
+  "dev-prod-up|$(stacks_args dev-prod "$UMBRELLA")"
 )
 
 # target_body <make-цель> — рецепт цели: строка объявления + все строки-команды
@@ -101,8 +107,8 @@ PY
 self_test() {
   local rc=0 render prov
   render="$(mktemp)"; trap 'rm -f "$render"' RETURN
-  helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" \
-    -f "$UMBRELLA/values.dev-prod.yaml" 2>/dev/null > "$render"
+  # shellcheck disable=SC2046,SC2086
+  helm template kacho-umbrella "$UMBRELLA" $(stacks_args dev-prod "$UMBRELLA") 2>/dev/null > "$render"
   prov="$(provisioned_by dev-prod-up)"
 
   echo "  (0) дерево как есть                    → $( [ -z "$(unmet "$render" "$prov")" ] && echo МОЛЧИТ || { echo "красный:"; unmet "$render" "$prov"; rc=1; } )"

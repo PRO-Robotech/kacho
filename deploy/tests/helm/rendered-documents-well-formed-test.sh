@@ -62,6 +62,9 @@
 # и тот, когда два собственных блока чарта напечатали одно имя без всякого
 # проброса.
 set -uo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHART="$(cd "$HERE/../.." && pwd)/helm/umbrella"
@@ -156,32 +159,35 @@ PY
 
 echo "=== документ несёт apiVersion и kind; имя переменной в контейнере одно ==="
 
-check_profile "dev" -f "$CHART/values.dev.yaml" || fail=1
-check_profile "production (values.dev-prod поверх dev)" \
-  -f "$CHART/values.dev.yaml" -f "$CHART/values.dev-prod.yaml" || fail=1
-# Боевые профили. Слоями они НЕ ложатся на dev: values.prod.yaml рендерится сам
-# по себе, а наложение площадки — поверх него (deploy/helm/umbrella/cutover-*.sh
-# зовёт ровно эту цепочку). Ни одна из двух до сих пор не рендерилась ни одним
-# манифест-гейтом.
-check_profile "боевой (values.prod)" -f "$CHART/values.prod.yaml" || fail=1
-# Четвёртый слой боевого набора — ПОСАДКА провайдеров личности — с 2026-08-11
-# отслеживается git (values.fe3455-ory-posture.yaml) и потому измеряется
-# ВСЕГДА, в том числе в CI. Раньше он лежал в одном файле с кредами Ory, файл
-# был gitignored, и оговорка ниже покрывала оба: три слоя из четырёх выглядели
-# осознанным решением, хотя посадка просто была невидима.
-FE_ARGS=(-f "$CHART/values.prod.yaml" -f "$CHART/values.fe3455.yaml"
-         -f "$CHART/values.fe3455-prod.yaml" -f "$CHART/values.fe3455-ory-posture.yaml")
-FE_LABEL="боевой + площадка (values.prod + fe3455 + fe3455-prod + fe3455-ory-posture)"
-# ПЯТЫЙ слой — values.fe3455-ory.yaml — НАМЕРЕННО не в репозитории (несёт
-# учётные данные стенда, см. cutover-fe3455.sh). Посадки он больше не несёт,
-# поэтому его отсутствие в CI ничего не скрывает; добавляем, когда файл на
-# месте. Что именно измерено, видно в метке профиля: «измерили меньше» не
-# должно выглядеть как «измерили всё».
-if [ -f "$CHART/values.fe3455-ory.yaml" ]; then
-  FE_ARGS+=(-f "$CHART/values.fe3455-ory.yaml")
-  FE_LABEL="$FE_LABEL + fe3455-ory(креды)"
+# СТЕКИ БЕРУТСЯ ИЗ ЕДИНСТВЕННОЙ ТАБЛИЦЫ ДЕРЕВА, а не выписаны здесь. Раньше они
+# были выписаны, и цепочка боевого набора знала на слой меньше, чем раскатывает
+# скрипт: «ноль находок» по невидимому слою неотличимо от «ноль прочитанного».
+# Новый стенд приходит под проверку без правки этого файла.
+profiles_checked=0
+while IFS= read -r row; do
+  [ -z "$row" ] && continue
+  stack="${row%%:*}"; files="${row#*:}"
+  args=(); label="$stack ($(printf '%s' "$files" | tr ',' '+'))"
+  IFS=','; for f in $files; do args+=(-f "$CHART/$f"); done; unset IFS
+  # Слой учётных данных боевой площадки НАМЕРЕННО не в репозитории (см.
+  # cutover-fe3455.sh). Посадки он больше не несёт, поэтому его отсутствие в CI
+  # ничего не скрывает; добавляем, когда файл на месте. Что именно измерено,
+  # видно в метке: «измерили меньше» не должно выглядеть как «измерили всё».
+  if [ "$stack" = "fe3455" ] && [ -f "$CHART/values.fe3455-ory.yaml" ]; then
+    args+=(-f "$CHART/values.fe3455-ory.yaml")
+    label="$label + fe3455-ory(креды)"
+  fi
+  check_profile "$label" "${args[@]}" || fail=1
+  profiles_checked=$((profiles_checked + 1))
+done <<<"$(stacks_table)"
+
+# Объём осмотренного — отдельное утверждение. Обход, который не отрендерил ни
+# одного стека, зелен ровно так же, как чистое дерево.
+if [ "$profiles_checked" -lt 1 ]; then
+  echo "ОТКАЗ: не проверено ни одного стека — таблица стеков не прочиталась"
+  exit 2
 fi
-check_profile "$FE_LABEL" "${FE_ARGS[@]}" || fail=1
+echo "осмотрено: стеков $profiles_checked"
 
 if [ "$fail" -ne 0 ]; then
   echo

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/backoff"
 )
 
 // Operation — ответ края об асинхронной мутации в той форме, которая нужна провайдеру.
@@ -28,10 +30,9 @@ type Operation struct {
 	// Metadata — сырой объект: идентификатор созданного ресурса лежит здесь, но читать его
 	// вправе только тот, кто уже убедился в отсутствии отказа.
 	Metadata map[string]any `json:"metadata"`
-	Error    *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	// Error — тот же конверт google.rpc.Status, что и у синхронного отказа, вместе с
+	// блоком details: без него отказ асинхронной мутации не называет ни одного поля.
+	Error *statusEnvelope `json:"error"`
 }
 
 // MetadataString возвращает строковое поле метаданных — например networkId.
@@ -58,9 +59,16 @@ const (
 	// отказ провайдера.
 	DefaultAwaitBudget = 5 * time.Minute
 
-	// DefaultAwaitInterval — пауза между опросами. Реальная: плотный цикл создаёт на краю
-	// ту самую нагрузку, из-за которой операция и выполняется дольше.
+	// DefaultAwaitInterval — НАЧАЛЬНАЯ пауза между опросами. Реальная: плотный цикл создаёт
+	// на краю ту самую нагрузку, из-за которой операция и выполняется дольше.
+	//
+	// Дальше пауза растёт по общему для платформы закону (pkg/backoff): короткие операции
+	// завершаются на первых опросах, длинные не молотят край с постоянной частотой.
 	DefaultAwaitInterval = 1 * time.Second
+
+	// maxAwaitInterval — потолок паузы: расти бесконечно нельзя, иначе завершившаяся
+	// операция ждала бы своего опроса дольше, чем выполнялась.
+	maxAwaitInterval = 15 * time.Second
 )
 
 // AwaitOptions — бюджет ожидания. Нули означают умолчания выше.
@@ -88,6 +96,16 @@ func (c *Client) AwaitOperation(ctx context.Context, opID string, opts AwaitOpti
 	if interval <= 0 {
 		interval = DefaultAwaitInterval
 	}
+
+	// Общий для платформы закон повторов вместо самописной константы: рандомизация
+	// разводит одновременные ожидания нескольких ресурсов, а множитель не даёт долгой
+	// операции опрашиваться с частотой короткой.
+	bo := backoff.ExponentialBackoffBuilder().
+		WithInitialInterval(interval).
+		WithMaxInterval(maxAwaitInterval).
+		WithMultiplier(1.5).
+		WithRandomizationFactor(0.2).
+		Build()
 
 	deadline := time.Now().Add(budget)
 	for attempt := 1; ; attempt++ {
@@ -120,8 +138,12 @@ func (c *Client) AwaitOperation(ctx context.Context, opID string, opts AwaitOpti
 
 		if op.Done {
 			if op.Error != nil {
+				code := -1
+				if op.Error.Code != nil {
+					code = *op.Error.Code
+				}
 				return nil, fmt.Errorf("операция %s завершилась отказом (код %d): %s",
-					opID, op.Error.Code, op.Error.Message)
+					opID, code, explain(*op.Error))
 			}
 			return op, nil
 		}
@@ -133,10 +155,14 @@ func (c *Client) AwaitOperation(ctx context.Context, opID string, opts AwaitOpti
 				opID, budget, attempt)
 		}
 
+		wait := bo.NextBackOff()
+		if wait == backoff.Stop {
+			wait = maxAwaitInterval
+		}
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("ожидание операции %s прервано: %w", opID, ctx.Err())
-		case <-time.After(interval):
+		case <-time.After(wait):
 		}
 	}
 }

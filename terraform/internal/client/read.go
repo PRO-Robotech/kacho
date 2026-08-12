@@ -73,8 +73,20 @@ type ListPage struct {
 // пообъектно (точечно отозванная выдача). Такой случай будет принят за удаление. Защита от
 // него — обязательное имя: пересоздание упрётся в громкий конфликт имени, а не создаст
 // молчаливый дубль.
-func (c *Client) ConfirmAbsence(ctx context.Context, collectionPath, projectID, name string) (Verdict, error) {
-	byName, err := c.listPage(ctx, collectionPath, projectID, name)
+// scopeParam — имя параметра области в списочном запросе.
+//
+// У ресурсов vpc и nlb это проект, у ресурсов iam — аккаунт. Параметр назван явно, потому
+// что подстановка «всегда projectId» дала бы у iam пустой список на КАЖДОМ подтверждении:
+// край отверг бы неизвестный параметр молча, а провайдер прочитал бы это как «в области
+// ничего нет» и остановился бы на ровном месте.
+const (
+	ScopeProject = "projectId"
+	ScopeAccount = "accountId"
+)
+
+// ConfirmAbsence — см. описание исходов у типа Verdict.
+func (c *Client) ConfirmAbsence(ctx context.Context, collectionPath, scopeParam, scopeID, name string) (Verdict, error) {
+	byName, err := c.listPage(ctx, collectionPath, scopeParam, scopeID, name)
 	if err != nil {
 		return VerdictAmbiguous, err
 	}
@@ -88,7 +100,7 @@ func (c *Client) ConfirmAbsence(ctx context.Context, collectionPath, projectID, 
 		return VerdictPresent, nil
 	}
 
-	control, err := c.listPage(ctx, collectionPath, projectID, "")
+	control, err := c.listPage(ctx, collectionPath, scopeParam, scopeID, "")
 	if err != nil {
 		return VerdictAmbiguous, err
 	}
@@ -114,9 +126,9 @@ type listResult struct {
 // контрольный вопрос — «есть ли в проекте хоть что-нибудь этого типа», и для него первой
 // страницы достаточно. Поиск по имени сужен фильтром, поэтому его ответ помещается в
 // страницу by construction.
-func (c *Client) listPage(ctx context.Context, collectionPath, projectID, name string) (listResult, error) {
+func (c *Client) listPage(ctx context.Context, collectionPath, scopeParam, scopeID, name string) (listResult, error) {
 	q := url.Values{}
-	q.Set("projectId", projectID)
+	q.Set(scopeParam, scopeID)
 	if name != "" {
 		q.Set("filter", fmt.Sprintf("name=%q", name))
 	}

@@ -146,12 +146,23 @@ if grep -qE '^\s*tag:\s*main-b3d23769\s*$' "$CHART_DIR/values.fe3455-prod.yaml" 
   warn "ACK_IAM_ISSUED_AT_REVERT=1 set — proceeding with main-b3d23769; 'docker login' WILL break until c300053 is on the iam image."
 fi
 
-# ── 1. required value files present (values.fe3455-ory.yaml is gitignored) ─────
-for f in values.prod.yaml values.fe3455.yaml values.fe3455-prod.yaml \
-         values.fe3455-ory-posture.yaml values.fe3455-ory.yaml; do
-  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  (values.fe3455-ory.yaml is gitignored — restore it locally before cutover)"
+# ── 1. required value files present (the credentials layer is gitignored) ─────
+#
+# THE CHAIN IS READ, NOT RESTATED. It used to be written out here and in every
+# gate that renders this stand; the copies drifted, and a stand nobody deploys
+# was being checked while this script deployed another. deploy/stacks.txt is the
+# one declaration; the credentials layer is appended here because it is outside
+# the tree by design and cannot live in a tracked table.
+ORY_CREDS_LAYER="values.fe3455-ory.yaml"
+FE_LAYERS="$(bash "$CHART_DIR/../../tests/helm/stacks.sh" --chain fe3455 ' ')"
+[ -n "$FE_LAYERS" ] || die "stack table declares no fe3455 chain — nothing to deploy, and that is a refusal, not an empty success"
+FE_LAYERS="$FE_LAYERS $ORY_CREDS_LAYER"
+FE_ARGS=()
+for f in $FE_LAYERS; do
+  [ -f "$CHART_DIR/$f" ] || die "missing values file: $f  ($ORY_CREDS_LAYER is gitignored — restore it locally before cutover)"
+  FE_ARGS+=(-f "$f")
 done
-log "all 5 overlay value files present."
+log "all $(printf '%s\n' $FE_LAYERS | grep -c .) overlay value files present."
 
 # ── 1a. the credentials layer must carry CREDENTIALS ONLY ─────────────────────
 #
@@ -234,11 +245,7 @@ log "built pg upgrade-guard --set args (${#PG_SVCS[@]} services scanned; values 
 # ── 5. the convergence upgrade ────────────────────────────────────────────────
 log "helm upgrade $RELEASE — CONVERGE onto live images (--take-ownership adopts hand-applied resources)…"
 if ! helm upgrade "$RELEASE" . -n "$NS" \
-      -f values.prod.yaml \
-      -f values.fe3455.yaml \
-      -f values.fe3455-prod.yaml \
-      -f values.fe3455-ory-posture.yaml \
-      -f values.fe3455-ory.yaml \
+      "${FE_ARGS[@]}" \
       --set uif.enabled=true \
       --take-ownership \
       --wait --timeout 15m \
