@@ -8,7 +8,7 @@
 //   • edit   → { deletion_rule_ids: [id], addition_rule_specs: [spec] }
 //   • delete → { deletion_rule_ids: [...] }
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Checkbox, Dropdown, Modal, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
@@ -86,11 +86,17 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const mutation = useMutation({
     mutationFn: (payload: unknown) => api.update(`${sgSpec.apiPath}/${sgId}/rules`, payload),
   });
-  const refresh = () => qc.invalidateQueries({ queryKey: [sgSpec.id] });
+  const { mutateAsync } = mutation;
 
-  const runOp = async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
+  const refresh = useCallback(() => qc.invalidateQueries({ queryKey: [sgSpec.id] }), [qc, sgSpec.id]);
+
+  // Стабильна по той же причине, что и обработчики ниже: они попадают в узел,
+  // который слот шапки кладёт в состояние, и новая функция на каждом рендере
+  // означала бы новый узел на каждом рендере.
+  const runOp = useCallback(
+    async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
     try {
-      const resp = await mutation.mutateAsync(payload);
+      const resp = await mutateAsync(payload);
       const opId = extractOperationId(resp);
       if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
       void refresh();
@@ -98,10 +104,12 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
       const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
       toast.error(`Правило группы безопасности: ${m}`);
     }
-  };
+    },
+    [mutateAsync, projectId, refresh, sgSpec.id],
+  );
 
   // Выбор — только правила с id (после backfill id есть у всех).
-  const selectableIds = rules.map((r) => r.id).filter(Boolean) as string[];
+  const selectableIds = useMemo(() => rules.map((r) => r.id).filter((id): id is string => !!id), [rules]);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
   const someSelected = selectableIds.some((id) => selected.has(id));
   const selCount = selectableIds.filter((id) => selected.has(id)).length;
@@ -113,9 +121,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
       else next.delete(id);
       return next;
     });
-  const toggleAll = (on: boolean) => setSelected(on ? new Set(selectableIds) : new Set());
+  const toggleAll = useCallback((on: boolean) => setSelected(on ? new Set(selectableIds) : new Set()), [selectableIds]);
 
-  const confirmDeleteSelected = () => {
+  const confirmDeleteSelected = useCallback(() => {
     const ids = selectableIds.filter((id) => selected.has(id));
     if (ids.length === 0) return;
     Modal.confirm({
@@ -130,7 +138,7 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         setSelected(new Set());
       },
     });
-  };
+  }, [selectableIds, selected, runOp]);
 
   const confirmDelete = (r: SgRule) => {
     if (!r.id) return;
@@ -203,7 +211,7 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         Удалить{selCount > 0 ? ` (${selCount})` : ""}
       </Button>
     </>
-  )), [editObj, allSelected, someSelected, selectableIds.length, selCount]);
+  )), [editObj, allSelected, someSelected, selectableIds.length, selCount, toggleAll, confirmDeleteSelected]);
   useHeaderRight(listActions);
 
   if (editObj) {
@@ -244,14 +252,14 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         // отличалась от остальных таблиц шапкой, отступами и поведением
         // сортировки, то есть один и тот же предмет — список строк ресурса —
         // выглядел на этой вкладке иначе, чем везде.
-        <ResourceTable
-          rows={rules as unknown as Record<string, unknown>[]}
-          rowKey={(r) => (r.id as string) ?? String(rules.indexOf(r as unknown as SgRule))}
+        <ResourceTable<SgRule>
+          rows={rules}
+          rowKey={(r) => r.id ?? String(rules.indexOf(r))}
           columns={[
             {
               header: "",
               cell: (row) => {
-                const r = row as unknown as SgRule;
+                const r = row;
                 return (
                   <Checkbox
                     checked={!!r.id && selected.has(r.id)}
@@ -263,32 +271,32 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
             },
             {
               header: "Направление",
-              cell: (row) => <DirectionFact value={dirOf(row as unknown as SgRule)} />,
+              cell: (row) => <DirectionFact value={dirOf(row)} />,
             },
-            { header: "Протокол", cell: (row) => protoLabel(row as unknown as SgRule) },
-            { header: "Диапазон портов", cell: (row) => portsLabel(row as unknown as SgRule) },
+            { header: "Протокол", cell: (row) => protoLabel(row) },
+            { header: "Диапазон портов", cell: (row) => portsLabel(row) },
             {
               header: "Тип источника",
               cell: (row) => (
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {targetParts(row as unknown as SgRule).kind}
+                  {targetParts(row).kind}
                 </Typography.Text>
               ),
             },
             {
               header: "Источник",
               className: "font-mono text-xs",
-              cell: (row) => targetParts(row as unknown as SgRule).value,
+              cell: (row) => targetParts(row).value,
             },
             {
               header: "Описание",
-              cell: (row) => (row as unknown as SgRule).description || "—",
+              cell: (row) => row.description || "—",
             },
             {
               header: "",
               className: "text-right whitespace-nowrap",
               cell: (row) => {
-                const r = row as unknown as SgRule;
+                const r = row;
                 return (
                   <Dropdown
                     trigger={["click"]}

@@ -6,7 +6,7 @@
 // Каждый child-tab имеет Title + filter (имя или id substring) над таблицей.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Space, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
@@ -25,7 +25,6 @@ import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
 export function NetworkDetailPage() {
   const { uid: networkId, projectId } = useParams();
-  const navigate = useNavigate();
   const networkSpec = REGISTRY["networks"];
   const rtSpec = REGISTRY["route-tables"];
   const sgSpec = REGISTRY["security-groups"];
@@ -150,7 +149,7 @@ export function NetworkDetailPage() {
         </Space>
       );
     },
-    [networkSubnets, subnetColumns, projectId, networkId, navigate],
+    [networkSubnets, subnetColumns, networkId],
   );
 
   const extraTabs = useMemo(
@@ -196,7 +195,7 @@ export function NetworkDetailPage() {
       // tab "Операции" автоматически добавляется ResourceDetailPage —
       // не дублируем здесь.
     ],
-    [networkRouteTables, networkSGs, rtColumns, sgColumns, projectId, networkId, navigate],
+    [networkRouteTables, networkSGs, rtColumns, sgColumns],
   );
 
   const headerActionsByTab = useCallback(

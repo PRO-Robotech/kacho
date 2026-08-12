@@ -4,7 +4,7 @@
 // что и /projects/X/addresses.
 
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { Button as AntButton, Input, Space, Typography } from "antd";
@@ -24,7 +24,6 @@ import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/T
 
 export function SubnetDetailPage() {
   const { uid: subnetId, projectId, networkId } = useParams();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const spec = REGISTRY["subnets"];
   const addrSpec = REGISTRY["addresses"];
@@ -107,7 +106,7 @@ export function SubnetDetailPage() {
       // tab "Операции" автоматически добавляется ResourceDetailPage —
       // не дублируем здесь.
     ],
-    [subnetAddresses, addrColumns, addressesBasePath, navigate, subnetId, openReserveModal],
+    [subnetAddresses, addrColumns, subnetId, openReserveModal],
   );
 
   const headerActionsByTab = useCallback(

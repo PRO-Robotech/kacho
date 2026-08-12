@@ -228,7 +228,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
           // не моноширинный идентификатор. Ветку рисует единственный
           // `PlacementAnchor` — здесь стояла третья её копия.
           label: "Размещение",
-          value: <PlacementAnchor row={data as Record<string, unknown>} maxChars={42} />,
+          value: <PlacementAnchor row={data} maxChars={42} />,
         },
         {
           label: "Сеть",

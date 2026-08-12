@@ -178,12 +178,12 @@ describe("ResourceFormBody — раскладка: имя слева, ввод �
   // оказывается внутри собственной рамки, а левая колонка против него пуста —
   // взгляд теряет строку, по которой шёл сверху вниз.
   const arr = (over: Partial<ArrayField> & { name: string; label: string; itemFields: FormField[] }): FormField =>
-    ({ type: "array", itemLabel: "элемент", ...over }) as FormField;
+    ({ type: "array", itemLabel: "элемент", ...over });
 
-  const cidrItem: FormField[] = [{ type: "string", name: "value", label: "CIDR" } as FormField];
+  const cidrItem: FormField[] = [{ type: "string", name: "value", label: "CIDR" }];
   const twoItems: FormField[] = [
-    { type: "string", name: "a", label: "Первое" } as FormField,
-    { type: "string", name: "b", label: "Второе" } as FormField,
+    { type: "string", name: "a", label: "Первое" },
+    { type: "string", name: "b", label: "Второе" },
   ];
 
   // Предикат опирается на контракт ЗАГЛУШКИ antd, а не на её классы: заглушка

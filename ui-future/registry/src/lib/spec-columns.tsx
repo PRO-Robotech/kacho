@@ -137,7 +137,7 @@ function ResourceNameCell({
       specId={spec.id}
       id={typeof idRaw === "string" ? idRaw : ""}
       name={typeof nameRaw === "string" ? nameRaw : ""}
-      href={opts.nameHref ? opts.nameHref(row) : opts.nameBasePath && idRaw ? `${opts.nameBasePath}/${String(idRaw)}` : undefined}
+      href={opts.nameHref ? opts.nameHref(row) : opts.nameBasePath && idRaw ? `${opts.nameBasePath}/${typeof idRaw === "string" ? idRaw : ""}` : undefined}
       projectId={opts.projectId}
       icon={opts.nameIcon}
       copy

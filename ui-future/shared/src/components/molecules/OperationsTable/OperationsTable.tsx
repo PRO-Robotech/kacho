@@ -203,7 +203,7 @@ export function OperationsTable({ rows, loading, showResourceKind, empty, hidden
   // горизонтальной прокрутке широкой таблицы без неё не видно, к какой строке
   // относятся уехавшие вправо значения.
   const columns: ColumnsType<Op> = allColumns
-    .filter((c) => !hiddenColumns?.has(String(c.title ?? "")))
+    .filter((c) => !hiddenColumns?.has(typeof c.title === "string" ? c.title : ""))
     // Ширина обязательна: без неё antd закрепление молча игнорирует.
     .map((c, i) => (i === 0 ? { ...c, fixed: "left" as const, width: 220 } : c));
 

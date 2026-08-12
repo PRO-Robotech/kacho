@@ -489,7 +489,7 @@ export function ResourceDetailPage({
     spec.id === "subnets"
       ? {
           label: "Размещение",
-          value: <PlacementAnchor row={data as Record<string, unknown>} maxChars={42} />,
+          value: <PlacementAnchor row={data} maxChars={42} />,
         }
       : null,
     // Subnet-specific: IPv4 CIDR — immutable primary anchor + additional ranges

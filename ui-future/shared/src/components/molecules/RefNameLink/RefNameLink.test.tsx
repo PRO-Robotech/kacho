@@ -17,7 +17,7 @@ let asked: string[] = [];
 function stubList(payload: unknown) {
   asked = [];
   globalThis.fetch = (input: RequestInfo | URL) => {
-    asked.push(String(input));
+    asked.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     return Promise.resolve({
       ok: true,
       status: 200,
