@@ -5,6 +5,7 @@ syntax = "proto3";
 
 package kacho.cloud.storage.v1;
 
+import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/validation.proto";
@@ -50,6 +51,11 @@ service InternalStorageBackendService {
   // неизменяемому id, а не по имени (ban #15). Имя администратор вправе сменить, и
   // ревизии привязок не должны от этого разъехаться.
   rpc Create(CreateStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {
+      post: "/storage/v1/storageBackends"
+      body: "*"
+    };
+
     option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.create";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -61,6 +67,8 @@ service InternalStorageBackendService {
 
   // Get — возвращает регистрацию по id.
   rpc Get(GetStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {get: "/storage/v1/storageBackends/{storage_backend_id}"};
+
     option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.get";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -74,6 +82,8 @@ service InternalStorageBackendService {
   // остальных списков домена: `page_size` вне `[0..1000]` отвергается, а не
   // подрезается, мусорный `page_token` — `INVALID_ARGUMENT`.
   rpc List(ListStorageBackendsRequest) returns (ListStorageBackendsResponse) {
+    option (google.api.http) = {get: "/storage/v1/storageBackends"};
+
     option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.list";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -90,6 +100,11 @@ service InternalStorageBackendService {
   // прежнего, а ходить мы стали бы к новому. Попытка отвергается синхронно:
   // `"kind is immutable after StorageBackend.Create"`.
   rpc Update(UpdateStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {
+      patch: "/storage/v1/storageBackends/{storage_backend_id}"
+      body: "*"
+    };
+
     option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.update";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -109,6 +124,8 @@ service InternalStorageBackendService {
   //
   // Ответ пуст: ресурса после удаления нет, возвращать нечего.
   rpc Delete(DeleteStorageBackendRequest) returns (DeleteStorageBackendResponse) {
+    option (google.api.http) = {delete: "/storage/v1/storageBackends/{storage_backend_id}"};
+
     option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.delete";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {

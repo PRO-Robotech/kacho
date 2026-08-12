@@ -12,6 +12,7 @@ package storagev1
 import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -772,7 +773,7 @@ var File_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto protore
 
 const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc = "" +
 	"\n" +
-	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xa1\x04\n" +
+	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xa1\x04\n" +
 	"\x0fDiskTypeBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\fdisk_type_id\x18\x02 \x01(\tR\n" +
@@ -834,14 +835,14 @@ const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDe
 	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x9d\x01\n" +
 	"\x1cListDiskTypeBindingsResponse\x12U\n" +
 	"\x12disk_type_bindings\x18\x01 \x03(\v2'.kacho.cloud.storage.v1.DiskTypeBindingR\x10diskTypeBindings\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc1\x04\n" +
-	"\x1eInternalDiskTypeBindingService\x12\xb3\x01\n" +
-	"\x06Create\x124.kacho.cloud.storage.v1.CreateDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"J\x8a\xb5\x18!storage.disk_type_bindings.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xaa\x01\n" +
-	"\x03Get\x121.kacho.cloud.storage.v1.GetDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"G\x8a\xb5\x18\x1estorage.disk_type_bindings.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xbb\x01\n" +
-	"\x04List\x123.kacho.cloud.storage.v1.ListDiskTypeBindingsRequest\x1a4.kacho.cloud.storage.v1.ListDiskTypeBindingsResponse\"H\x8a\xb5\x18\x1fstorage.disk_type_bindings.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc8\x05\n" +
+	"\x1eInternalDiskTypeBindingService\x12\xda\x01\n" +
+	"\x06Create\x124.kacho.cloud.storage.v1.CreateDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"q\x8a\xb5\x18!storage.disk_type_bindings.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/storage/v1/diskTypeBindings\x12\xe6\x01\n" +
+	"\x03Get\x121.kacho.cloud.storage.v1.GetDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"\x82\x01\x8a\xb5\x18\x1estorage.disk_type_bindings.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x025\x123/storage/v1/diskTypeBindings/{disk_type_binding_id}\x12\xdf\x01\n" +
+	"\x04List\x123.kacho.cloud.storage.v1.ListDiskTypeBindingsRequest\x1a4.kacho.cloud.storage.v1.ListDiskTypeBindingsResponse\"l\x8a\xb5\x18\x1fstorage.disk_type_bindings.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1e\x12\x1c/storage/v1/diskTypeBindingsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDescOnce sync.Once

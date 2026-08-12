@@ -344,6 +344,15 @@ func (x *CreateSnapshotMetadata) GetSourceVolumeId() string {
 
 type CopySnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// Проект, в котором создаётся копия. Он же обязан быть проектом источника —
+	// копия проект не меняет, и расхождение отвергается синхронно.
+	//
+	// Поле обязательно, хотя выглядит выводимым из источника, и это НЕ избыточность:
+	// именно оно — объект вопроса о правах. Право «создать» в Kachō спрашивают у
+	// РОДИТЕЛЯ (`editor@project`), пообъектного `v_create` в платформе нет вовсе.
+	// Выведи мы проект из источника молча — у края не осталось бы поля, на которое
+	// сослаться, и вопрос пришлось бы задать про сам снимок, то есть про чтение.
+	ProjectId string `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// ID снимка-источника. Копия читает его данные; сам он не меняется.
 	SnapshotId string `protobuf:"bytes,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
 	// Зона, в которой создаётся копия. Обязательна и называется вызывающим явно:
@@ -391,6 +400,13 @@ func (x *CopySnapshotRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CopySnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CopySnapshotRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_storage_v1_snapshot_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *CopySnapshotRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
 }
 
 func (x *CopySnapshotRequest) GetSnapshotId() string {
@@ -854,8 +870,10 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\x16CreateSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12(\n" +
-	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xb2\x03\n" +
-	"\x13CopySnapshotRequest\x12-\n" +
+	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xdf\x03\n" +
+	"\x13CopySnapshotRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12-\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"snapshotId\x122\n" +
 	"\x0etarget_zone_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\ftargetZoneId\x129\n" +
@@ -900,7 +918,7 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xac\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa3\r\n" +
 	"\x0fSnapshotService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.storage.v1.GetSnapshotRequest\x1a .kacho.cloud.storage.v1.Snapshot\"u\x8a\xb5\x18\x15storage.snapshots.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/storage/v1/snapshots/{snapshot_id}\x12\xc4\x01\n" +
@@ -910,9 +928,10 @@ const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18storage.snapshots.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
-	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xfa\x01\n" +
-	"\x04Copy\x12+.kacho.cloud.storage.v1.CopySnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa2\x01\x8a\xb5\x18\x16storage.snapshots.copy\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
-	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
+	"\x16CreateSnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/snapshots\x12\xf1\x01\n" +
+	"\x04Copy\x12+.kacho.cloud.storage.v1.CopySnapshotRequest\x1a .kacho.cloud.operation.Operation\"\x99\x01\x8a\xb5\x18\x16storage.snapshots.copy\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
 	"\x14CopySnapshotMetadata\x12\bSnapshot\x82\xd3\xe4\x93\x02-:\x01*\"(/storage/v1/snapshots/{snapshot_id}:copy\x12\x80\x02\n" +
 	"\x06Update\x12-.kacho.cloud.storage.v1.UpdateSnapshotRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18\x18storage.snapshots.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x1f\n" +
 	"\x10storage_snapshot\x12\vsnapshot_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +

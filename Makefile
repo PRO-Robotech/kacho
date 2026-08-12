@@ -158,7 +158,7 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # модели прав, а не её текст). Единственный источник этого перечня; конвейер,
 # человек и гейт провязки читают его отсюда.
 #
-# Отбор интеграционной джобы идёт ПО ПУТИ (`/internal/(repo|clients)` внутри
+# Отбор интеграционной джобы идёт ПО ПУТИ (`/internal/(repo|clients|reconciler)` внутри
 # services/), и ни один из них в него не попадает: они лежат в apps/ и в
 # internal/authz*. Быстрая джоба гоняет `-short`, под которым каждый из них
 # пропускается. То есть до появления этой цели поведенческие пробы модели прав
@@ -179,7 +179,7 @@ AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/testsupport/fgatest
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
-# которых отбор интеграционной джобы (`/internal/(repo|clients)` внутри
+# которых отбор интеграционной джобы (`/internal/(repo|clients|reconciler)` внутри
 # services/) не достаёт. Единственный источник перечня; конвейер, человек и гейт
 # провязки читают его отсюда.
 #
@@ -235,7 +235,7 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; }; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients)(/|$$)'); \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler)(/|$$)'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	echo "$$pkgs" | xargs $(GO) test -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1

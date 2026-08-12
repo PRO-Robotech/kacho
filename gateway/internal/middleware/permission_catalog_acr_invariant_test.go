@@ -382,10 +382,38 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// InternalSessionRevocationsService/ListByUser, exempt→routine.
 	//
 	// Итог: 59→34 exempt, 209→234 routine, sensitive и total не тронуты.
+	//
+	// 2026-08-13, целевой вид storage: +14 записей, ВСЕ рутинные. 234→248 routine,
+	// 295→309 total; sensitive (27) и exempt (34) не тронуты — ни одна из
+	// четырнадцати не освобождена от проверки и ни одна не поднимает планку
+	// аутентификации.
+	//
+	// Состав: четыре публичных глагола (Volume/ChangeDiskType — v_update;
+	// Snapshot/ListOperations — v_list; Snapshot/Copy и Image/Copy — editor@project)
+	// и десять административных на :9091 (StorageBackend ×5, DiskTypeBinding ×3,
+	// DiskType/SetLifecycle, Image/Register), все — system_admin на кластерном
+	// синглтоне.
+	//
+	// Почему десять административных остались РУТИННЫМИ, хотя соблазн поднять их
+	// велик. Полоса «чувствительных» в этом дереве собрана по одному признаку:
+	// метод решает, КАК И КУДА доставляется аутентификация (адреса возврата
+	// авторизационного кода, выдача токенов). Регистрация кластера хранения к
+	// этому признаку не относится: она требует привилегии, а не более сильного
+	// доказательства личности, и её привилегию уже держит system_admin. Подняв
+	// планку одному административному RPC из десятков однотипных в дереве, мы
+	// получили бы расхождение, невидимое ниоткуда, кроме этой переписи. Решение
+	// названо здесь, чтобы следующий читатель видел выбор, а не пропуск.
+	//
+	// Отдельно про Copy: обе копии гейтятся `editor@project`, а НЕ `v_get` на
+	// источник. Копия — новый ресурс (квота, имя, деньги), а роль наблюдателя
+	// материализует v_get на каждый объект проекта: гейт на чтение отдал бы
+	// наблюдателю право порождать ресурсы. Пообъектного `v_create` в платформе
+	// нет by construction (authzmap: «создать» спрашивают у родителя), поэтому
+	// форма у Copy та же, что у всякого Create.
 	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 234, n1, "routine count")
+	assert.Equal(t, 248, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 295, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 309, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

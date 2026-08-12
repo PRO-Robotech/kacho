@@ -580,6 +580,13 @@ func (x *DeleteImageMetadata) GetImageId() string {
 // CopyImageRequest — копия образа в другом регионе. Источник запросом не изменяется.
 type CopyImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// Проект, в котором создаётся копия. Он же обязан быть проектом источника.
+	//
+	// Обязателен, хотя выводим из источника: именно он — объект вопроса о правах.
+	// «Создать» спрашивают у родителя (`editor@project`); пообъектного `v_create`
+	// в платформе нет. Причина полностью изложена у CopySnapshotRequest — здесь
+	// не пересказывается, чтобы два места об одном предмете не разошлись.
+	ProjectId string `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// ID образа-источника.
 	ImageId string `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"`
 	// ID региона, в котором создаётся копия. Peer-валидируется у kacho-geo, как region_id
@@ -629,6 +636,13 @@ func (x *CopyImageRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CopyImageRequest.ProtoReflect.Descriptor instead.
 func (*CopyImageRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CopyImageRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
 }
 
 func (x *CopyImageRequest) GetImageId() string {
@@ -882,8 +896,10 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\x12DeleteImageRequest\x12'\n" +
 	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"0\n" +
 	"\x13DeleteImageMetadata\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xaa\x03\n" +
-	"\x10CopyImageRequest\x12'\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xd7\x03\n" +
+	"\x10CopyImageRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
 	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x126\n" +
 	"\x10target_region_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0etargetRegionId\x129\n" +
 	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
@@ -904,7 +920,7 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x9d\f\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x9a\f\n" +
 	"\fImageService\x12\xb5\x01\n" +
 	"\x03Get\x12'.kacho.cloud.storage.v1.GetImageRequest\x1a\x1d.kacho.cloud.storage.v1.Image\"f\x8a\xb5\x18\x12storage.images.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/storage/v1/images/{image_id}\x12\xb8\x01\n" +
@@ -920,9 +936,10 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\x13UpdateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\":\x01*2\x1d/storage/v1/images/{image_id}\x12\xf5\x01\n" +
 	"\x06Delete\x12*.kacho.cloud.storage.v1.DeleteImageRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x15storage.images.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x13DeleteImageMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/storage/v1/images/{image_id}\x12\xe2\x01\n" +
-	"\x04Copy\x12(.kacho.cloud.storage.v1.CopyImageRequest\x1a .kacho.cloud.operation.Operation\"\x8d\x01\x8a\xb5\x18\x13storage.images.copy\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
-	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
+	"\x13DeleteImageMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/storage/v1/images/{image_id}\x12\xdf\x01\n" +
+	"\x04Copy\x12(.kacho.cloud.storage.v1.CopyImageRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x13storage.images.copy\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
 	"\x11CopyImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02':\x01*\"\"/storage/v1/images/{image_id}:copy\x12\xf8\x01\n" +
 	"\x0eListOperations\x122.kacho.cloud.storage.v1.ListImageOperationsRequest\x1a3.kacho.cloud.storage.v1.ListImageOperationsResponse\"}\x8a\xb5\x18\x1dstorage.images.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/storage/v1/images/{image_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"

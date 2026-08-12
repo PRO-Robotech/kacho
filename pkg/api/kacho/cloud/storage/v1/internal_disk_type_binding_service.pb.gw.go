@@ -66,12 +66,18 @@ func request_InternalDiskTypeBindingService_Get_0(ctx context.Context, marshaler
 	var (
 		protoReq GetDiskTypeBindingRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["disk_type_binding_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "disk_type_binding_id")
+	}
+	protoReq.DiskTypeBindingId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "disk_type_binding_id", err)
 	}
 	msg, err := client.Get(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -81,24 +87,35 @@ func local_request_InternalDiskTypeBindingService_Get_0(ctx context.Context, mar
 	var (
 		protoReq GetDiskTypeBindingRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["disk_type_binding_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "disk_type_binding_id")
+	}
+	protoReq.DiskTypeBindingId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "disk_type_binding_id", err)
 	}
 	msg, err := server.Get(ctx, &protoReq)
 	return msg, metadata, err
 }
+
+var filter_InternalDiskTypeBindingService_List_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_InternalDiskTypeBindingService_List_0(ctx context.Context, marshaler runtime.Marshaler, client InternalDiskTypeBindingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListDiskTypeBindingsRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InternalDiskTypeBindingService_List_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.List(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -109,7 +126,10 @@ func local_request_InternalDiskTypeBindingService_List_0(ctx context.Context, ma
 		protoReq ListDiskTypeBindingsRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InternalDiskTypeBindingService_List_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.List(ctx, &protoReq)
@@ -128,7 +148,7 @@ func RegisterInternalDiskTypeBindingServiceHandlerServer(ctx context.Context, mu
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -142,13 +162,13 @@ func RegisterInternalDiskTypeBindingServiceHandlerServer(ctx context.Context, mu
 		}
 		forward_InternalDiskTypeBindingService_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalDiskTypeBindingService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings/{disk_type_binding_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -162,13 +182,13 @@ func RegisterInternalDiskTypeBindingServiceHandlerServer(ctx context.Context, mu
 		}
 		forward_InternalDiskTypeBindingService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalDiskTypeBindingService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -226,7 +246,7 @@ func RegisterInternalDiskTypeBindingServiceHandlerClient(ctx context.Context, mu
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -239,11 +259,11 @@ func RegisterInternalDiskTypeBindingServiceHandlerClient(ctx context.Context, mu
 		}
 		forward_InternalDiskTypeBindingService_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalDiskTypeBindingService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings/{disk_type_binding_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -256,11 +276,11 @@ func RegisterInternalDiskTypeBindingServiceHandlerClient(ctx context.Context, mu
 		}
 		forward_InternalDiskTypeBindingService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalDiskTypeBindingService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List", runtime.WithHTTPPathPattern("/storage/v1/diskTypeBindings"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -277,9 +297,9 @@ func RegisterInternalDiskTypeBindingServiceHandlerClient(ctx context.Context, mu
 }
 
 var (
-	pattern_InternalDiskTypeBindingService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Create"}, ""))
-	pattern_InternalDiskTypeBindingService_Get_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Get"}, ""))
-	pattern_InternalDiskTypeBindingService_List_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "List"}, ""))
+	pattern_InternalDiskTypeBindingService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"storage", "v1", "diskTypeBindings"}, ""))
+	pattern_InternalDiskTypeBindingService_Get_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"storage", "v1", "diskTypeBindings", "disk_type_binding_id"}, ""))
+	pattern_InternalDiskTypeBindingService_List_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"storage", "v1", "diskTypeBindings"}, ""))
 )
 
 var (

@@ -39,8 +39,14 @@ import (
 // Перечень явный, потому что имя глагола угадать нельзя: пользователь заводится не
 // `Create`, а `Invite`, и первая редакция этого гейта его не увидела вовсе — то есть
 // объявляла «покрыт каждый ресурс API», не прочитав целый вид предмета.
+// `Copy` здесь СОЗДАЮЩИЙ, и это не формальность: копия снимка/образа — новый
+// ресурс со своим id, своей квотой и своим именем, а не правка источника. Та же
+// классификация принята и в правах: обе копии гейтятся `editor@project`, как
+// всякий Create, потому что гейт на чтение отдал бы наблюдателю проекта право
+// порождать ресурсы. Два места об одном предмете здесь СОГЛАСНЫ — если однажды
+// разойдутся, неверно будет то, которое молчит.
 var creatingVerbs = map[string]bool{
-	"Create": true, "Issue": true, "Invite": true, "CreateRepository": true,
+	"Create": true, "Issue": true, "Invite": true, "CreateRepository": true, "Copy": true,
 }
 
 // nonCreatingVerbs — все остальные глаголы публичного API, перечисленные ПОИМЁННО.
@@ -49,7 +55,7 @@ var creatingVerbs = map[string]bool{
 // списков, роняет гейт. Без него слепое пятно повторится молча — ровно так, как повторилось
 // с `Invite`. Список механически выведен из дерева и обязан за ним следовать.
 var nonCreatingVerbs = map[string]bool{
-	"AddCidrBlocks": true, "AddMember": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
+	"AddCidrBlocks": true, "AddMember": true, "ChangeDiskType": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
 	"AttachNetworkInterface": true, "BatchCheck": true, "Block": true, "Cancel": true, "Check": true, "Delete": true,
 	"DeleteRepository": true, "DeleteTag": true, "DetachDisk": true, "DetachNetworkInterface": true, "Disable": true,
 	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByValue": true, "GetRepository": true,

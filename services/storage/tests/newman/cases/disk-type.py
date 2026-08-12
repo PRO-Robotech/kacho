@@ -4,13 +4,31 @@
 """Case-set для DiskTypeService (kacho-storage) — stage S2 CS1-S2-*.
 
 DiskType — admin-каталог: public read (DiskTypeService.Get/List, sync) +
-admin CRUD (InternalDiskTypeService.Create/Update/Delete) на :9091 (internal-mux
-only, ban #6). DiskType.id — admin-assigned slug (напр. block-balanced), НЕ
-генерируемый префикс.
+admin CRUD (InternalDiskTypeService.Create/Update/Delete/SetLifecycle) на :9091
+(internal-mux only, ban #6). DiskType.id — admin-assigned slug, НЕ генерируемый
+префикс.
 
-Seed (миграция 0004): block-standard, block-balanced, block-fast, block-single,
-block-io-max — все с zone_ids=[] (не ограничены зонами), performance_tier =
-standard/balanced/fast/single/io-max.
+ПОСЕВА НЕТ — и это решение, а не пробел. Класс не может быть предложен арендатору
+раньше, чем администратор объявит, ЧЕМ он обслуживается: класс без действующей
+ревизии привязки к кластеру данных — обещание ёмкости, которой никто не дал.
+Прежняя редакция этого файла пинила пять посеянных слагов миграции; посев снят
+вместе с миграцией, и утверждения о нём стали ложными. Здесь они не ослаблены, а
+ПЕРЕАДРЕСОВАНЫ: содержательная сторона («созданный класс читается публично со
+своим ярусом, обращением и способностями») проверяется там, где достижима
+административная полоса, — internal/repo/pg/disk_type_integration_test.go,
+TestDiskTypeCreateUpdateAdmin · TestDiskTypeCatalogEmptyAfterSeedRemoval ·
+TestDiskTypePolicyRoundTrip · TestDiskTypeCapabilitiesIntersectActiveBindings.
+
+Почему не засеять каталог отсюда: эти коллекции ходят ТОЛЬКО на внешний слушатель
+(тот же предел, что у attach в internal-volume.py), а административная полоса
+живёт на :9091. Кейс, которому нужно недоступное здесь условие, маски не получает
+— он получает исполнителя, который это условие создаёт, и тот назван выше
+поимённо.
+
+Ярус переехал из свободной строки в закрытый словарь: поле `tier`
+(CAPACITY/BALANCED/FAST/SINGLE/IO_MAX), прежнее `performanceTier` снято с
+контракта вместе с номером и именем. Проба, продолжавшая слать снятое поле,
+поймана гейтом тела запросов на крае — не глазами.
 
 Black-box coverage:
   - public read (List/Get/NotFound) — CS1-S2-01.
@@ -24,7 +42,12 @@ internal-mux + per-RPC system_admin Check → покрываются integration
 CASES = []
 
 DT = "/storage/v1/diskTypes"
-_SEEDED = ["block-standard", "block-balanced", "block-fast", "block-single", "block-io-max"]
+
+# Закрытый словарь яруса. Публичное чтение обязано отдавать значение ИЗ НЕГО либо
+# не отдавать ярус вовсе (необъявленный ярус законен). Свободная строка здесь —
+# находка: именно ею инфра-подробность утекала сквозь гейт, перечисляющий имена.
+_TIERS = ["PERFORMANCE_TIER_UNSPECIFIED", "CAPACITY", "BALANCED", "FAST", "SINGLE", "IO_MAX"]
+_LIFECYCLES = ["ACTIVE", "DEPRECATED", "RETIRED"]
 
 
 # ---------------------------------------------------------------------------
@@ -33,35 +56,64 @@ _SEEDED = ["block-standard", "block-balanced", "block-fast", "block-single", "bl
 
 CASES.append(Case(
     id="DT-LST-CRUD-OK",
-    title="List diskTypes → ≥5 seeded slug'ов (block-standard/-balanced/-fast/-single/-io-max), у каждого performanceTier + zoneIds array",
-    classes=["CRUD"], priority="P1",
-    # verifies CS1-S2-01
+    title="List diskTypes → массив; у КАЖДОЙ записи tier из закрытого словаря, lifecycle из закрытого словаря, zoneIds array — и НИ ОДНОГО инфра-поля",
+    classes=["CRUD", "CONF", "SEC"], priority="P1",
+    # verifies CS1-S2-01, STOR-P-69
+    #
+    # Пустой каталог — законный ответ (посева нет), поэтому длина не утверждается.
+    # Утверждается СВОЙСТВО КАЖДОЙ записи, и оно различающее: ярус свободной
+    # строкой роняет кейс, как ронял бы адрес пула или имя пространства имён.
     steps=[Step(name="list", method="GET", path=DT,
                 test_script=[*assert_status(200),
                              "const j = pm.response.json();",
                              "pm.test('diskTypes is array', () => pm.expect(j.diskTypes || []).to.be.an('array'));",
-                             "const ids = (j.diskTypes || []).map(x => x.id);",
-                             "pm.test('at least 5 seeded types', () => pm.expect(ids.length).to.be.at.least(5));",
-                             "['block-standard','block-balanced','block-fast','block-single','block-io-max'].forEach(s => pm.test('contains ' + s, () => pm.expect(ids).to.include(s)));",
-                             "pm.test('each has performanceTier + zoneIds array', () => (j.diskTypes || []).forEach(t => { pm.expect(t.performanceTier, t.id).to.be.a('string'); pm.expect(t.zoneIds || [], t.id).to.be.an('array'); }));"])],
+                             f"const TIERS = {_TIERS!r}.map(String);",
+                             f"const LIFE = {_LIFECYCLES!r}.map(String);",
+                             "(j.diskTypes || []).forEach(t => {",
+                             "  pm.test('tier is from the closed dictionary: ' + t.id, () => pm.expect(TIERS).to.include(t.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(t.tier)));",
+                             "  pm.test('lifecycle is from the closed dictionary: ' + t.id, () => pm.expect(LIFE).to.include(String(t.lifecycle)));",
+                             "  pm.test('zoneIds is array: ' + t.id, () => pm.expect(t.zoneIds || []).to.be.an('array'));",
+                             "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
+                             "});",
+                             "pm.test('performanceTier is gone from the contract', () => (j.diskTypes || []).forEach(t => pm.expect(t, t.id).to.not.have.property('performanceTier')));"])],
 ))
 
 CASES.append(Case(
     id="DT-GET-CRUD-OK",
-    title="Get block-balanced → id=block-balanced, performanceTier=balanced, zoneIds array",
+    title="Get класса, ВЗЯТОГО ИЗ СПИСКА → те же поля, что отдал список (id/tier/lifecycle/zoneIds); пустой каталог — находка, а не зелёный",
     classes=["CRUD", "CONF"], priority="P1",
     # verifies CS1-S2-01
-    steps=[Step(name="get", method="GET", path=f"{DT}/block-balanced",
+    #
+    # Прежняя редакция пинила посеянный слаг. Посев снят, и пин стал ссылкой в
+    # пустоту. Здесь id БЕРЁТСЯ ИЗ ОТВЕТА — так проба переживает любой состав
+    # каталога и по-прежнему утверждает содержательное: элемент и коллекция
+    # говорят об одном ресурсе одно и то же.
+    #
+    # Пустой каталог НЕ пропускается молча. На поднятом стенде он означает, что
+    # шаг подъёма `seed-storage` не отработал, и тогда каждое создание тома
+    # ответит отказом — то есть это состояние стенда, а не «нечего проверять».
+    steps=[Step(name="list-for-id", method="GET", path=DT,
                 test_script=[*assert_status(200),
                              "const j = pm.response.json();",
-                             "pm.test('id == block-balanced', () => pm.expect(j.id).to.eql('block-balanced'));",
-                             "pm.test('performanceTier == balanced', () => pm.expect(j.performanceTier).to.eql('balanced'));",
+                             "const ts = j.diskTypes || [];",
+                             "pm.test('каталог не пуст (иначе стенд не обслуживает тома — см. deploy seed-storage)', () => pm.expect(ts.length, 'классов в каталоге').to.be.at.least(1));",
+                             "if (ts.length) {",
+                             "  pm.environment.set('dtProbeId', ts[0].id);",
+                             "  pm.environment.set('dtProbeTier', ts[0].tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(ts[0].tier));",
+                             "  pm.environment.set('dtProbeLifecycle', String(ts[0].lifecycle));",
+                             "}"]),
+           Step(name="get", method="GET", path=f"{DT}/{{{{dtProbeId}}}}",
+                test_script=[*assert_status(200),
+                             "const j = pm.response.json();",
+                             "pm.test('id совпадает со списочным', () => pm.expect(j.id).to.eql(pm.environment.get('dtProbeId')));",
+                             "pm.test('tier совпадает со списочным', () => pm.expect(j.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(j.tier)).to.eql(pm.environment.get('dtProbeTier')));",
+                             "pm.test('lifecycle совпадает со списочным', () => pm.expect(String(j.lifecycle)).to.eql(pm.environment.get('dtProbeLifecycle')));",
                              "pm.test('zoneIds is array', () => pm.expect(j.zoneIds || []).to.be.an('array'));"])],
 ))
 
 CASES.append(Case(
     id="DT-GET-NEG-NOTFOUND",
-    title="Get block-nope → 404 NOT_FOUND 'DiskType block-nope not found'",
+    title="Get block-nope → 404 NOT_FOUND 'DiskType block-nope not found' (тон контракта, id в тексте)",
     classes=["NEG", "CONF"], priority="P0",
     # verifies CS1-S2-01
     steps=[Step(name="get-nx", method="GET", path=f"{DT}/block-nope",

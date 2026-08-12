@@ -9,7 +9,7 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo e2e-newman stand-provenance \
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage e2e-newman stand-provenance \
         managed-image-pins managed-image-pins-check
 
 SHELL := bash
@@ -430,6 +430,12 @@ dev-up: preflight
 	echo "    к geo на пути запроса, fail-closed). Поднятый стенд без этого шага"; \
 	echo "    непригоден, и ни один «под Ready» этого не показывает."; \
 	$(MAKE) --no-print-directory seed-geo; \
+	echo "=== базовый каталог хранения (кластер данных, классы, привязки) ==="; \
+	echo "    Каталог классов тоже стартует ПУСТЫМ: класс не предлагается раньше,"; \
+	echo "    чем объявлено, ЧЕМ он обслуживается. Пока он пуст, каждое создание тома"; \
+	echo "    отвечает «класс не найден». Зоны привязок спрашиваются у geo, поэтому"; \
+	echo "    шаг идёт СТРОГО после посева каталога размещения."; \
+	$(MAKE) --no-print-directory seed-storage; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -1251,3 +1257,22 @@ seed-nlb:
 # guard-kind-context: цель ПИШЕТ в базу активного контекста.
 seed-geo: guard-kind-context
 	@bash ./scripts/seed-geo-baseline.sh
+
+# ─── Базовый каталог блочного хранения (кластер данных, классы, привязки) ──
+#
+# Тот же класс беды, что у пустого каталога geo, и то же решение. Каталог
+# классов стартует пустым осознанно: класс без действующей ревизии привязки —
+# обещание ёмкости, которой никто не дал, поэтому посев из миграции снят, а
+# продукт поставляется пустым. Следствие: свежий стенд не создаёт ни одного
+# тома, и «под Ready» этого не показывает.
+#
+# ПОРЯДОК ЗНАЧИМ: привязка называет зону, зоны заводит seed-geo. Отсюда цель
+# стоит в `dev-up` строго после него, а сам скрипт спрашивает зоны у владельца
+# и падает, если открытых нет, — а не пишет ноль привязок молча.
+#
+# ПОЧЕМУ НЕ АДМИН-RPC: та же причина, что у geo (бутстрап-токен + Hydra +
+# проброс портов; вторая копия этой машинерии разъехалась бы с первой молча).
+#
+# guard-kind-context: цель ПИШЕТ в базу активного контекста.
+seed-storage: guard-kind-context
+	@bash ./scripts/seed-storage-catalog.sh

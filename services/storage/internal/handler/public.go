@@ -209,12 +209,30 @@ func (h *SnapshotHandler) Delete(ctx context.Context, req *storagev1.DeleteSnaps
 	return operationToProto(op), nil
 }
 
+// ListOperations возвращает операции по Snapshot.
+//
+// Паритет с томом и образом: у обоих этот глагол есть, и без него владелец
+// снимка не мог узнать, чем кончилось его же копирование, — единственный ответ
+// был «метод не реализован», то есть отказ без причины и без адреса возможности.
+func (h *SnapshotHandler) ListOperations(ctx context.Context, req *storagev1.ListSnapshotOperationsRequest) (*storagev1.ListSnapshotOperationsResponse, error) {
+	ops, next, err := h.uc.ListOperations(ctx, req.GetSnapshotId(), snapshot.Pagination{PageSize: req.GetPageSize(), PageToken: req.GetPageToken()})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	resp := &storagev1.ListSnapshotOperationsResponse{NextPageToken: next}
+	for i := range ops {
+		resp.Operations = append(resp.Operations, operationToProto(&ops[i]))
+	}
+	return resp, nil
+}
+
 // Copy копирует снимок в другую зону (async Operation).
 //
 // Единственный законный путь переноса данных между зонами: зона неизменяема, и без
 // копии её неизменяемость была бы тупиком. Создаётся НОВЫЙ снимок.
 func (h *SnapshotHandler) Copy(ctx context.Context, req *storagev1.CopySnapshotRequest) (*operationpb.Operation, error) {
 	op, err := h.uc.Copy(ctx, snapshot.CopyInput{
+		ProjectID:    req.GetProjectId(),
 		SnapshotID:   req.GetSnapshotId(),
 		TargetZoneID: req.GetTargetZoneId(),
 		Name:         req.GetName(),
@@ -319,6 +337,7 @@ func (h *ImageHandler) ListOperations(ctx context.Context, req *storagev1.ListIm
 // Copy копирует образ в другой регион (async Operation).
 func (h *ImageHandler) Copy(ctx context.Context, req *storagev1.CopyImageRequest) (*operationpb.Operation, error) {
 	op, err := h.uc.Copy(ctx, image.CopyInput{
+		ProjectID:      req.GetProjectId(),
 		ImageID:        req.GetImageId(),
 		TargetRegionID: req.GetTargetRegionId(),
 		Name:           req.GetName(),

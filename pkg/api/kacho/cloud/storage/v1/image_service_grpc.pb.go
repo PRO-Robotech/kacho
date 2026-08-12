@@ -64,9 +64,10 @@ type ImageServiceClient interface {
 	// (anycast), region_id неизменяем после Create — «переехать» существующей строкой
 	// нечем, перенос возможен только новой.
 	//
-	// Целевого проекта в запросе нет: копия остаётся в проекте источника. Поэтому у края
-	// ровно один объект вопроса — сам образ, и отношение на него v_get: копирование
-	// источник не трогает, а кто вправе читать образ, тот вправе снять с него копию.
+	// Гейт — `editor@project`, как у всякого Create: копия есть НОВЫЙ ресурс, а
+	// право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
+	// отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
+	// образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
 	Copy(ctx context.Context, in *CopyImageRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified image.
 	ListOperations(ctx context.Context, in *ListImageOperationsRequest, opts ...grpc.CallOption) (*ListImageOperationsResponse, error)
@@ -182,9 +183,10 @@ type ImageServiceServer interface {
 	// (anycast), region_id неизменяем после Create — «переехать» существующей строкой
 	// нечем, перенос возможен только новой.
 	//
-	// Целевого проекта в запросе нет: копия остаётся в проекте источника. Поэтому у края
-	// ровно один объект вопроса — сам образ, и отношение на него v_get: копирование
-	// источник не трогает, а кто вправе читать образ, тот вправе снять с него копию.
+	// Гейт — `editor@project`, как у всякого Create: копия есть НОВЫЙ ресурс, а
+	// право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
+	// отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
+	// образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
 	Copy(context.Context, *CopyImageRequest) (*operation.Operation, error)
 	// Lists operations for the specified image.
 	ListOperations(context.Context, *ListImageOperationsRequest) (*ListImageOperationsResponse, error)

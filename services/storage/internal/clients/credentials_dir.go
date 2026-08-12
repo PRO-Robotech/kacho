@@ -51,7 +51,9 @@ func (d *DirCredentials) Resolve(_ context.Context, ref string) ([]byte, error) 
 	if !strings.HasPrefix(path, filepath.Clean(d.dir)+string(filepath.Separator)) {
 		return nil, fmt.Errorf("credentials reference %q escapes the credentials directory", ref)
 	}
-	material, err := os.ReadFile(path) //nolint:gosec // путь сведён к файлу внутри смонтированного каталога выше
+	// Путь сведён к файлу ВНУТРИ смонтированного каталога выше: имя очищено и
+	// склеено с корнем, выход за него отвергается там же.
+	material, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("credentials reference %q is not resolvable: %w", ref, err)
 	}

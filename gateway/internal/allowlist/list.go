@@ -134,12 +134,20 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.storage.v1.VolumeService/Update":         {},
 	"/kacho.cloud.storage.v1.VolumeService/Delete":         {},
 	"/kacho.cloud.storage.v1.VolumeService/ListOperations": {},
+	// ChangeDiskType — смена класса на живом томе. Публичный глагол: арендатор
+	// вправе переехать между классами, не пересоздавая том. Плоскость данных
+	// переезда наружу не видна — она остаётся предметом сверщика.
+	"/kacho.cloud.storage.v1.VolumeService/ChangeDiskType": {},
 	// storage.v1 — SnapshotService (StorageSnapshot `snp`, отдельно от compute Snapshot)
-	"/kacho.cloud.storage.v1.SnapshotService/Get":    {},
-	"/kacho.cloud.storage.v1.SnapshotService/List":   {},
-	"/kacho.cloud.storage.v1.SnapshotService/Create": {},
-	"/kacho.cloud.storage.v1.SnapshotService/Update": {},
-	"/kacho.cloud.storage.v1.SnapshotService/Delete": {},
+	"/kacho.cloud.storage.v1.SnapshotService/Get":            {},
+	"/kacho.cloud.storage.v1.SnapshotService/List":           {},
+	"/kacho.cloud.storage.v1.SnapshotService/Create":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/Update":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/Delete":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/ListOperations": {},
+	// Copy — перенос снимка в другую зону. Публичный: без него снимок заперт в
+	// зоне своего тома, и восстановление в соседней зоне невозможно арендатору.
+	"/kacho.cloud.storage.v1.SnapshotService/Copy": {},
 	// storage.v1 — DiskTypeService (read-only справочник; admin-CRUD — через
 	// InternalDiskTypeService на :9091, НЕ в allowlist).
 	"/kacho.cloud.storage.v1.DiskTypeService/Get":  {},
@@ -153,6 +161,12 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.storage.v1.ImageService/Update":         {},
 	"/kacho.cloud.storage.v1.ImageService/Delete":         {},
 	"/kacho.cloud.storage.v1.ImageService/ListOperations": {},
+	// Copy — перенос образа в другую зону. Публичный по той же причине, что и у
+	// снимка: образ, запертый в одной зоне, не даёт запустить машину в соседней.
+	// Register (принятие уже существующего объекта плоскости данных) публичным НЕ
+	// является и живёт на InternalImageService — это административный глагол,
+	// который называет координату в хранилище (ban #6).
+	"/kacho.cloud.storage.v1.ImageService/Copy": {},
 	// storage.v1 — InternalVolumeService (Attach/Detach/ListAttachments/GetInternal,
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.

@@ -626,6 +626,9 @@ func marshalImage(i *domain.Image) (*anypb.Any, error) {
 
 // CopyInput — вход копирования образа в другой регион.
 type CopyInput struct {
+	// ProjectID — проект, в котором создаётся копия, и объект вопроса о правах.
+	// Обязан совпадать с проектом источника (разбор — у snapshot.Copy).
+	ProjectID      string
 	ImageID        string
 	TargetRegionID string
 	Name           string
@@ -646,6 +649,13 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	if err := idInvalid(in.ImageID); err != nil {
 		return nil, u.errStatus(err)
 	}
+	if in.ProjectID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: project_id: required", storageerr.ErrInvalidArg))
+	}
+	// Формат чужого id здесь НЕ проверяется (B4: формат — только у своих), и
+	// существование проекта не спрашивается у iam: проект источника авторитетен,
+	// а расхождение всё равно отвечает промахом ниже. Лишний вызов к соседу дал
+	// бы ещё одну причину отказать на пути, где ответ уже известен.
 	if in.TargetRegionID == "" {
 		return nil, u.errStatus(fmt.Errorf("%w: target_region_id: required", storageerr.ErrInvalidArg))
 	}
@@ -669,6 +679,10 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	src, gerr := u.reader.Get(ctx, in.ImageID)
 	if gerr != nil {
 		return nil, u.errStatus(gerr)
+	}
+	if src.ProjectID != in.ProjectID {
+		// Байт-в-байт тон промаха: чужая строка неотличима от отсутствующей.
+		return nil, u.errStatus(fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, in.ImageID))
 	}
 
 	copyItem := &domain.Image{

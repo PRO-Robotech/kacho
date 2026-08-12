@@ -92,7 +92,10 @@ func (r ExecRunner) Run(ctx context.Context, args ...string) ([]byte, []byte, in
 		"--name", r.ClientName,
 	}, args...)
 
-	cmd := exec.CommandContext(callCtx, r.Binary, full...) //nolint:gosec // бинарь и аргументы собираются здесь, не приходят из запроса
+	// Бинарь и аргументы собираются ЗДЕСЬ и не приходят из запроса: путь к
+	// инструменту задаёт посадка, остальное — имена объектов, выведенные из
+	// префикса установки и id ресурса. Пользовательской строки в этом наборе нет.
+	cmd := exec.CommandContext(callCtx, r.Binary, full...)
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

@@ -66,12 +66,18 @@ func request_InternalStorageBackendService_Get_0(ctx context.Context, marshaler 
 	var (
 		protoReq GetStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := client.Get(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -81,24 +87,35 @@ func local_request_InternalStorageBackendService_Get_0(ctx context.Context, mars
 	var (
 		protoReq GetStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := server.Get(ctx, &protoReq)
 	return msg, metadata, err
 }
+
+var filter_InternalStorageBackendService_List_0 = &utilities.DoubleArray{Encoding: map[string]int{}, Base: []int(nil), Check: []int(nil)}
 
 func request_InternalStorageBackendService_List_0(ctx context.Context, marshaler runtime.Marshaler, client InternalStorageBackendServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListStorageBackendsRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InternalStorageBackendService_List_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := client.List(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -109,7 +126,10 @@ func local_request_InternalStorageBackendService_List_0(ctx context.Context, mar
 		protoReq ListStorageBackendsRequest
 		metadata runtime.ServerMetadata
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_InternalStorageBackendService_List_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.List(ctx, &protoReq)
@@ -120,12 +140,21 @@ func request_InternalStorageBackendService_Update_0(ctx context.Context, marshal
 	var (
 		protoReq UpdateStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := client.Update(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -135,9 +164,18 @@ func local_request_InternalStorageBackendService_Update_0(ctx context.Context, m
 	var (
 		protoReq UpdateStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := server.Update(ctx, &protoReq)
 	return msg, metadata, err
@@ -147,12 +185,18 @@ func request_InternalStorageBackendService_Delete_0(ctx context.Context, marshal
 	var (
 		protoReq DeleteStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
+	}
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := client.Delete(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -162,9 +206,15 @@ func local_request_InternalStorageBackendService_Delete_0(ctx context.Context, m
 	var (
 		protoReq DeleteStorageBackendRequest
 		metadata runtime.ServerMetadata
+		err      error
 	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	val, ok := pathParams["storage_backend_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "storage_backend_id")
+	}
+	protoReq.StorageBackendId, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "storage_backend_id", err)
 	}
 	msg, err := server.Delete(ctx, &protoReq)
 	return msg, metadata, err
@@ -182,7 +232,7 @@ func RegisterInternalStorageBackendServiceHandlerServer(ctx context.Context, mux
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Create", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Create"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Create", runtime.WithHTTPPathPattern("/storage/v1/storageBackends"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -196,13 +246,13 @@ func RegisterInternalStorageBackendServiceHandlerServer(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalStorageBackendService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Get"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Get", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -216,13 +266,13 @@ func RegisterInternalStorageBackendServiceHandlerServer(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalStorageBackendService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/List", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/List"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/List", runtime.WithHTTPPathPattern("/storage/v1/storageBackends"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -236,13 +286,13 @@ func RegisterInternalStorageBackendServiceHandlerServer(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_List_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Update_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPatch, pattern_InternalStorageBackendService_Update_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Update", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Update"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Update", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -256,13 +306,13 @@ func RegisterInternalStorageBackendServiceHandlerServer(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Update_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Delete_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodDelete, pattern_InternalStorageBackendService_Delete_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Delete", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Delete"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Delete", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -320,7 +370,7 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Create", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Create"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Create", runtime.WithHTTPPathPattern("/storage/v1/storageBackends"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -333,11 +383,11 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Create_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalStorageBackendService_Get_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Get", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Get"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Get", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -350,11 +400,11 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Get_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodGet, pattern_InternalStorageBackendService_List_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/List", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/List"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/List", runtime.WithHTTPPathPattern("/storage/v1/storageBackends"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -367,11 +417,11 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_List_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Update_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodPatch, pattern_InternalStorageBackendService_Update_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Update", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Update"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Update", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -384,11 +434,11 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 		}
 		forward_InternalStorageBackendService_Update_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalStorageBackendService_Delete_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+	mux.Handle(http.MethodDelete, pattern_InternalStorageBackendService_Delete_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Delete", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalStorageBackendService/Delete"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalStorageBackendService/Delete", runtime.WithHTTPPathPattern("/storage/v1/storageBackends/{storage_backend_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -405,11 +455,11 @@ func RegisterInternalStorageBackendServiceHandlerClient(ctx context.Context, mux
 }
 
 var (
-	pattern_InternalStorageBackendService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalStorageBackendService", "Create"}, ""))
-	pattern_InternalStorageBackendService_Get_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalStorageBackendService", "Get"}, ""))
-	pattern_InternalStorageBackendService_List_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalStorageBackendService", "List"}, ""))
-	pattern_InternalStorageBackendService_Update_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalStorageBackendService", "Update"}, ""))
-	pattern_InternalStorageBackendService_Delete_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalStorageBackendService", "Delete"}, ""))
+	pattern_InternalStorageBackendService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"storage", "v1", "storageBackends"}, ""))
+	pattern_InternalStorageBackendService_Get_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"storage", "v1", "storageBackends", "storage_backend_id"}, ""))
+	pattern_InternalStorageBackendService_List_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"storage", "v1", "storageBackends"}, ""))
+	pattern_InternalStorageBackendService_Update_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"storage", "v1", "storageBackends", "storage_backend_id"}, ""))
+	pattern_InternalStorageBackendService_Delete_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"storage", "v1", "storageBackends", "storage_backend_id"}, ""))
 )
 
 var (

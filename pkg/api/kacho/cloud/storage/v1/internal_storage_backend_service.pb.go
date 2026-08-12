@@ -12,6 +12,7 @@ package storagev1
 import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -746,7 +747,7 @@ var File_kacho_cloud_storage_v1_internal_storage_backend_service_proto protorefl
 
 const file_kacho_cloud_storage_v1_internal_storage_backend_service_proto_rawDesc = "" +
 	"\n" +
-	"=kacho/cloud/storage/v1/internal_storage_backend_service.proto\x12\x16kacho.cloud.storage.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc0\x04\n" +
+	"=kacho/cloud/storage/v1/internal_storage_backend_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc0\x04\n" +
 	"\x0eStorageBackend\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12F\n" +
@@ -800,18 +801,18 @@ const file_kacho_cloud_storage_v1_internal_storage_backend_service_proto_rawDesc
 	"updateMask\"Q\n" +
 	"\x1bDeleteStorageBackendRequest\x122\n" +
 	"\x12storage_backend_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x10storageBackendId\"\x1e\n" +
-	"\x1cDeleteStorageBackendResponse2\xa6\a\n" +
-	"\x1dInternalStorageBackendService\x12\xaf\x01\n" +
-	"\x06Create\x123.kacho.cloud.storage.v1.CreateStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"H\x8a\xb5\x18\x1fstorage.storage_backends.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xa6\x01\n" +
-	"\x03Get\x120.kacho.cloud.storage.v1.GetStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"E\x8a\xb5\x18\x1cstorage.storage_backends.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xb7\x01\n" +
-	"\x04List\x122.kacho.cloud.storage.v1.ListStorageBackendsRequest\x1a3.kacho.cloud.storage.v1.ListStorageBackendsResponse\"F\x8a\xb5\x18\x1dstorage.storage_backends.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xaf\x01\n" +
-	"\x06Update\x123.kacho.cloud.storage.v1.UpdateStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"H\x8a\xb5\x18\x1fstorage.storage_backends.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xbd\x01\n" +
-	"\x06Delete\x123.kacho.cloud.storage.v1.DeleteStorageBackendRequest\x1a4.kacho.cloud.storage.v1.DeleteStorageBackendResponse\"H\x8a\xb5\x18\x1fstorage.storage_backends.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x1cDeleteStorageBackendResponse2\x9c\t\n" +
+	"\x1dInternalStorageBackendService\x12\xd5\x01\n" +
+	"\x06Create\x123.kacho.cloud.storage.v1.CreateStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"n\x8a\xb5\x18\x1fstorage.storage_backends.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/storage/v1/storageBackends\x12\xde\x01\n" +
+	"\x03Get\x120.kacho.cloud.storage.v1.GetStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"}\x8a\xb5\x18\x1cstorage.storage_backends.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/storage/v1/storageBackends/{storage_backend_id}\x12\xda\x01\n" +
+	"\x04List\x122.kacho.cloud.storage.v1.ListStorageBackendsRequest\x1a3.kacho.cloud.storage.v1.ListStorageBackendsResponse\"i\x8a\xb5\x18\x1dstorage.storage_backends.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/storage/v1/storageBackends\x12\xeb\x01\n" +
+	"\x06Update\x123.kacho.cloud.storage.v1.UpdateStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"\x83\x01\x8a\xb5\x18\x1fstorage.storage_backends.update\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x025:\x01*20/storage/v1/storageBackends/{storage_backend_id}\x12\xf6\x01\n" +
+	"\x06Delete\x123.kacho.cloud.storage.v1.DeleteStorageBackendRequest\x1a4.kacho.cloud.storage.v1.DeleteStorageBackendResponse\"\x80\x01\x8a\xb5\x18\x1fstorage.storage_backends.delete\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022*0/storage/v1/storageBackends/{storage_backend_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_internal_storage_backend_service_proto_rawDescOnce sync.Once

@@ -376,10 +376,12 @@ func DiskTypeBinding(b *domain.DiskTypeBinding) *storagev1.DiskTypeBinding {
 		DiskTypeId: b.DiskTypeID,
 		ZoneId:     b.ZoneID,
 		BackendId:  b.BackendID,
-		Revision:   int32(b.Revision), //nolint:gosec // номер ревизии ограничен CHECK > 0 и растёт по одному
-		Locator:    &storagev1.BackendLocator{Pool: b.Locator.Pool, NamespaceTemplate: b.Locator.NamespaceTemplate},
-		Status:     bindingStatus(b.Status),
-		CreatedAt:  ts(b.CreatedAt),
+		// Номер ревизии ограничен CHECK > 0 и растёт по одному: переполнения
+		// int32 здесь не бывает by construction.
+		Revision:  int32(b.Revision),
+		Locator:   &storagev1.BackendLocator{Pool: b.Locator.Pool, NamespaceTemplate: b.Locator.NamespaceTemplate},
+		Status:    bindingStatus(b.Status),
+		CreatedAt: ts(b.CreatedAt),
 		Capabilities: &storagev1.BindingCapabilities{
 			Snapshots:         b.Capabilities.Snapshots,
 			CloneFromSnapshot: b.Capabilities.CloneFromSnapshot,

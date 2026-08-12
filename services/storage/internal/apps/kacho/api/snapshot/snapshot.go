@@ -468,6 +468,9 @@ func marshalSnapshot(s *domain.Snapshot) (*anypb.Any, error) {
 
 // CopyInput — вход копирования снимка в другую зону.
 type CopyInput struct {
+	// ProjectID — проект, в котором создаётся копия, и объект вопроса о правах.
+	// Обязан совпадать с проектом источника (см. Copy).
+	ProjectID    string
 	SnapshotID   string
 	TargetZoneID string
 	Name         string
@@ -484,10 +487,30 @@ type CopyInput struct {
 // Целевая зона проверяется у владельца географии — не потому, что мы ей не доверяем,
 // а потому, что несуществующая зона иначе дала бы отказ «нет привязки», отправив
 // вызывающего чинить каталог вместо опечатки в имени зоны.
+//
+// # Почему проект назван вызывающим и сверяется здесь
+//
+// Право создавать спрашивают у родителя (`editor@project`), и край задаёт этот
+// вопрос про `project_id` из запроса. Значит проект обязан быть НАЗВАН — иначе
+// у края нет объекта вопроса. Отсюда обязанность этой функции: убедиться, что
+// названный проект и есть проект источника. Без сверки вызывающий предъявлял бы
+// край проект, где он редактор, а копировал снимок из чужого — то есть выбирал
+// себе область прав сам (BOLA).
+//
+// Расхождение отвечает ТЕМ ЖЕ текстом, что и отсутствующий снимок. Отличимый
+// ответ («снимок есть, но не ваш») сообщал бы о существовании чужой строки —
+// ровно то, что скрытие и закрывает.
 func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation, error) {
 	if err := idInvalid(in.SnapshotID); err != nil {
 		return nil, u.errStatus(err)
 	}
+	if in.ProjectID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: project_id: required", storageerr.ErrInvalidArg))
+	}
+	// Формат чужого id здесь НЕ проверяется (B4: формат — только у своих), и
+	// существование проекта не спрашивается у iam: проект источника авторитетен,
+	// а расхождение всё равно отвечает промахом ниже. Лишний вызов к соседу дал
+	// бы ещё одну причину отказать на пути, где ответ уже известен.
 	if in.TargetZoneID == "" {
 		return nil, u.errStatus(fmt.Errorf("%w: target_zone_id: required", storageerr.ErrInvalidArg))
 	}
@@ -512,6 +535,11 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	src, err := u.repo.Get(ctx, in.SnapshotID)
 	if err != nil {
 		return nil, u.errStatus(err)
+	}
+	if src.ProjectID != in.ProjectID {
+		// Байт-в-байт тон промаха репозитория: чужая строка неотличима от
+		// отсутствующей.
+		return nil, u.errStatus(fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, in.SnapshotID))
 	}
 
 	copyItem := &domain.Snapshot{
