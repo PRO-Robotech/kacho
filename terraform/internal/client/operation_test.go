@@ -165,3 +165,27 @@ func mustClient(t *testing.T, endpoint string) *Client {
 	}
 	return c
 }
+
+// Отказ АСИНХРОННОЙ мутации приходит тем же конвертом google.rpc.Status — и теряет
+// подробности ровно так же, если их не прочитать. Проба закрепляет, что причина отказа
+// операции доезжает до оператора: без неё «invalid argument» на apply не указывает ни на
+// одно поле, которое надо править.
+func TestAwaitOperationCarriesFailureDetails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"op-1","done":true,"metadata":{"targetGroupId":"tgr-1"},` +
+			`"error":{"code":3,"message":"invalid argument","details":[` +
+			`{"@type":"type.googleapis.com/google.rpc.BadRequest","fieldViolations":[` +
+			`{"field":"health_check.timeout","description":"must be <= interval"}]}]}}`))
+	}))
+	defer srv.Close()
+
+	c := mustClient(t, srv.URL)
+	_, err := c.AwaitOperation(context.Background(), "op-1", AwaitOptions{Budget: time.Second})
+	if err == nil {
+		t.Fatal("операция с отказом принята за успех")
+	}
+	if !strings.Contains(err.Error(), "health_check.timeout: must be <= interval") {
+		t.Fatalf("подробность отказа потеряна: %v", err)
+	}
+}

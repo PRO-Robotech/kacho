@@ -140,3 +140,47 @@ func TestDecodeToleratesUnknownFields(t *testing.T) {
 		t.Errorf("неизвестное поле сломало разбор: %v (%s)", got.Kind, got.Message)
 	}
 }
+
+// Край сообщает, ЧТО именно негодно, отдельным блоком details — и без него сообщение
+// «invalid argument» не даёт оператору ни одного основания для правки. Проба закрепляет,
+// что нарушения полей доезжают до текста.
+func TestClassifyCarriesFieldViolations(t *testing.T) {
+	body := `{"code":3,"message":"invalid argument","details":[{"@type":"type.googleapis.com/google.rpc.BadRequest",` +
+		`"fieldViolations":[{"field":"health_check.interval","description":"must be in range [1s, 600s]"},` +
+		`{"field":"port","description":"required"}]}]}`
+	got := Classify(&Response{StatusCode: 400, ContentType: "application/json", Body: []byte(body)})
+
+	if got.Kind != OutcomeInvalid {
+		t.Fatalf("исход: получено %v, ожидалось %v", got.Kind, OutcomeInvalid)
+	}
+	for _, want := range []string{
+		"invalid argument",
+		"health_check.interval: must be in range [1s, 600s]",
+		"port: required",
+	} {
+		if !strings.Contains(got.Message, want) {
+			t.Errorf("в сообщении нет %q; сообщение: %s", want, got.Message)
+		}
+	}
+}
+
+// Зеркальная проба: ответ БЕЗ details не обрастает пустыми скобками — иначе текст
+// становится шумным ровно там, где сказать нечего.
+func TestClassifyLeavesMessageAloneWithoutDetails(t *testing.T) {
+	body := `{"code":9,"message":"target group is not empty"}`
+	got := Classify(&Response{StatusCode: 400, ContentType: "application/json", Body: []byte(body)})
+	if got.Message != "target group is not empty" {
+		t.Fatalf("сообщение изменено: %q", got.Message)
+	}
+}
+
+// Причина отказа в доступе тоже приезжает деталью (PreconditionFailure) — и она
+// единственная, что отличает «нет пути к ресурсу» от «прав нет вовсе».
+func TestClassifyCarriesPreconditionViolations(t *testing.T) {
+	body := `{"code":7,"message":"permission denied","details":[{"@type":"type.googleapis.com/google.rpc.PreconditionFailure",` +
+		`"violations":[{"type":"authz.catalog","description":"no authorization path to the resource"}]}]}`
+	got := Classify(&Response{StatusCode: 403, ContentType: "application/json", Body: []byte(body)})
+	if !strings.Contains(got.Message, "no authorization path to the resource") {
+		t.Fatalf("причина отказа потеряна: %s", got.Message)
+	}
+}

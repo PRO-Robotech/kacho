@@ -159,6 +159,8 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewIAMProjectResource,
 		NewIAMGroupResource,
 		NewIAMServiceAccountResource,
+		// nlb
+		NewNLBTargetGroupResource,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 // mapFromTF переводит карту меток в форму запроса. Неизвестное и пустое дают nil: край
@@ -101,4 +102,10 @@ func diffSets(have, want []string) (add, remove []string) {
 		}
 	}
 	return add, remove
+}
+
+// fieldMask — маска обновления из путей. Пустую маску провайдер не отправляет никогда,
+// поэтому функция вызывается только на непустом наборе.
+func fieldMask(paths []string) *fieldmaskpb.FieldMask {
+	return &fieldmaskpb.FieldMask{Paths: paths}
 }

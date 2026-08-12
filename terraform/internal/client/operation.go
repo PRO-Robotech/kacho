@@ -30,10 +30,9 @@ type Operation struct {
 	// Metadata — сырой объект: идентификатор созданного ресурса лежит здесь, но читать его
 	// вправе только тот, кто уже убедился в отсутствии отказа.
 	Metadata map[string]any `json:"metadata"`
-	Error    *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
+	// Error — тот же конверт google.rpc.Status, что и у синхронного отказа, вместе с
+	// блоком details: без него отказ асинхронной мутации не называет ни одного поля.
+	Error *statusEnvelope `json:"error"`
 }
 
 // MetadataString возвращает строковое поле метаданных — например networkId.
@@ -139,8 +138,12 @@ func (c *Client) AwaitOperation(ctx context.Context, opID string, opts AwaitOpti
 
 		if op.Done {
 			if op.Error != nil {
+				code := -1
+				if op.Error.Code != nil {
+					code = *op.Error.Code
+				}
 				return nil, fmt.Errorf("операция %s завершилась отказом (код %d): %s",
-					opID, op.Error.Code, op.Error.Message)
+					opID, code, explain(*op.Error))
 			}
 			return op, nil
 		}

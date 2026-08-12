@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -179,6 +181,19 @@ func IdempotencyKey(resourceType, address string, body []byte) string {
 // Нужен там, где тела у контракта нет отдельным сообщением: суффикс-действия края
 // принимают маленький объект, для которого генерировать тип не из чего. Общий путь
 // остаётся типизированным (Do), и это исключение видно по имени.
+// previewJSON — начало тела для журнала. Обрезается, потому что список на тысячу строк в
+// журнале не читают, а ищут в нём первую сотню знаков.
+func previewJSON(b []byte) string {
+	const limit = 512
+	if len(b) == 0 {
+		return ""
+	}
+	if len(b) > limit {
+		return string(b[:limit]) + "…"
+	}
+	return string(b)
+}
+
 func (c *Client) DoRaw(ctx context.Context, method, path string, body []byte, hdr *Headers) (*Response, error) {
 	var reader io.Reader
 	if body != nil {
@@ -207,5 +222,13 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body []byte, hd
 	if err != nil {
 		return nil, fmt.Errorf("чтение ответа %s %s: %w", method, path, err)
 	}
+	// Журнал уровня DEBUG (`TF_LOG=DEBUG`) — единственный способ увидеть, ЧТО провайдер
+	// на самом деле послал: без него отладка идёт по догадкам о собственном коде.
+	// Заголовок с учётными данными сюда не попадает никогда.
+	tflog.Debug(ctx, "kacho: запрос к краю", map[string]any{
+		"method": method, "path": path, "status": resp.StatusCode,
+		"request":  previewJSON(body),
+		"response": previewJSON(raw),
+	})
 	return &Response{StatusCode: resp.StatusCode, Body: raw, ContentType: resp.Header.Get("Content-Type")}, nil
 }
