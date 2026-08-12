@@ -347,9 +347,9 @@ jobs:
       - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '26' }
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@v5
 
       # buf нужен пробе ban #6: она берёт дескрипторы из `buf build proto`, а не из
       # reflection — reflection на внутреннем листенере закрыт намеренно и снимать
@@ -737,7 +737,7 @@ jobs:
       # отказ скачивания, из которого не видно, чьей описи не хватает.
       - name: скачать архивы шардов (описи + отчёты)
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: newman-shard-*
           path: .

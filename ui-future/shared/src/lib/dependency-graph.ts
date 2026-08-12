@@ -183,7 +183,7 @@ export async function loadDependents(
   if (resourceId === "network-interfaces") {
     // NIC, приаттаченный к инстансу, нельзя удалить (NIC.Delete → FailedPrecondition).
     // Загружаем сам NIC, чтобы узнать used_by.
-    let ni: Rec | null = null;
+    let ni: Rec | null;
     try {
       ni = await api.get<Rec>(`/vpc/v1/networkInterfaces/${resource.id}`);
     } catch {

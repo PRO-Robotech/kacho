@@ -99,6 +99,98 @@ jobs:
       - name: test -race -short (unit)
         run: make test-unit
 
+  # ── TERRAFORM ────────────────────────────────────────────────────────────────
+  #
+  # Go-сторона провайдера УЖЕ покрыта джобой выше: он живёт в общем модуле, поэтому
+  # `go build ./...`, `go vet ./...`, `make test-unit`, golangci-lint и gosec видят его
+  # без единой строки настройки. Проверено, а не предположено: `go test ./terraform/...
+  # -race -short` даёт 35 проб.
+  #
+  # Здесь — то, чего Go-сторона не видит вовсе: сами файлы `.tf`. Модули не
+  # компилируются, поэтому опечатка в связывании ресурсов и снятая проверка входа
+  # проходят молча до первого apply у пользователя.
+  terraform:
+    name: terraform — формат · модульные пробы (tofu test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.5
+          # Обёртка перехватывает код возврата и подменяет вывод; вердикт должен
+          # приходить от самого tofu.
+          tofu_wrapper: false
+
+      # Пробы гоняются против ТОГО ЖЕ провайдера, что собирается из этого дерева, а не
+      # против опубликованного: иначе они судили бы чужую версию.
+      - name: собрать провайдер из этого дерева
+        run: |
+          mkdir -p "$RUNNER_TEMP/plugins"
+          go build -o "$RUNNER_TEMP/plugins/terraform-provider-kacho" ./terraform/cmd/terraform-provider-kacho
+
+      - name: направить tofu на собранный провайдер
+        run: |
+          cat > "$RUNNER_TEMP/tofu.tfrc" <<RC
+          provider_installation {
+            dev_overrides { "PRO-Robotech/kacho" = "$RUNNER_TEMP/plugins" }
+            direct {}
+          }
+          RC
+          echo "TF_CLI_CONFIG_FILE=$RUNNER_TEMP/tofu.tfrc" >> "$GITHUB_ENV"
+
+      - name: формат .tf
+        run: tofu fmt -check -recursive terraform
+
+      # Перечень модулей ВЫВОДИТСЯ из дерева, а не выписывается: рукописный список
+      # разошёлся бы с деревом молча, и новый модуль приехал бы непроверенным.
+      #
+      # Ноль модулей — ОТКАЗ, а не успех: обходчик, которому нечего обходить, обязан
+      # быть отличим от обходчика, у которого всё сошлось. Печатается объём осмотренного.
+      - name: модульные пробы (tofu test)
+        run: |
+          modules=$(git ls-files 'terraform/modules/*/main.tf' | xargs -r -n1 dirname | sort -u)
+          if [ -z "$modules" ]; then
+            echo "::error::модулей terraform не найдено — предикат поиска устарел или каталог переехал"
+            exit 1
+          fi
+          seen=0
+          for m in $modules; do
+            suites=$(git ls-files "$m/tests/*.tftest.hcl" | wc -l)
+            if [ "$suites" -eq 0 ]; then
+              echo "::error file=$m/main.tf::модуль без модульных проб: заведите $m/tests/*.tftest.hcl"
+              exit 1
+            fi
+            echo "── $m ($suites сюит)"
+            ( cd "$m" && tofu test -no-color )
+            seen=$((seen + 1))
+          done
+          echo "модулей осмотрено: $seen"
+
+      # Примеры — то, что читатель копирует первым. Непроверяемый пример устаревает
+      # тише всего: он не собирается ничем и не падает нигде.
+      - name: примеры разбираются и сходятся по типам
+        run: |
+          examples=$(git ls-files 'terraform/examples/*/main.tf' | xargs -r -n1 dirname | sort -u)
+          if [ -z "$examples" ]; then
+            echo "::error::примеров terraform не найдено — предикат поиска устарел"
+            exit 1
+          fi
+          seen=0
+          for e in $examples; do
+            # `tofu get`, а НЕ `tofu init`: провайдер здесь приходит подменой пути
+            # (dev_overrides), и init на нём выходит с кодом 1, потому что честно не
+            # находит его в реестре. Глушить этот код было бы мягким проходом, не
+            # отличающим настройку от сбоя; `get` ставит только модули и таким
+            # вопросом не задаётся.
+            ( cd "$e" && tofu get -no-color && tofu validate -no-color )
+            seen=$((seen + 1))
+          done
+          echo "примеров осмотрено: $seen"
+
   integration:
     name: integration (${{ matrix.svc }})
     runs-on: ubuntu-latest
@@ -289,40 +381,6 @@ jobs:
             exit 1
           fi
 
-          # ─── ВТОРОЙ ВЫХОД: типы Terraform-провайдера ──────────────────────────
-          #
-          # Проверяется ЗДЕСЬ, а не отдельной джобой, ровно по той причине, ради которой
-          # существует эта: оба выхода обязаны быть порождены из ОДНОЙ ревизии proto/.
-          # Разнеси их по джобам — и появится окно, в котором каждая половина зелёная,
-          # а между собой они от разных ревизий.
-          #
-          # Сравнение выходов ДРУГ С ДРУГОМ здесь невозможно и не нужно: наборы плагинов
-          # разные, префикс пакета разный, побайтового равенства не будет никогда. Это
-          # гейт УСТАРЕВАНИЯ каждого выхода относительно своего источника.
-          #
-          # Рукописных файлов у второго выхода НЕТ — в отличие от pkg/api, где их
-          # приходится спасать списком. Выход заведён сегодня, поэтому здесь не список
-          # исключений, а запрет: список пришлось бы поддерживать вручную, и он пережил
-          # бы свой предмет.
-          handwritten_tf="$(git ls-files terraform/internal/api | grep -vE '\.pb\.go$' || true)"
-          if [ -n "$handwritten_tf" ]; then
-            echo "::error::под terraform/internal/api есть НЕ порождённые файлы — выход обязан быть целиком машинным"
-            echo "$handwritten_tf"
-            exit 1
-          fi
-
-          rm -rf terraform/internal/api
-          (cd proto && buf generate --template buf.gen.terraform.yaml)
-
-          if ! git diff --quiet -- terraform/internal/api; then
-            echo "::error::terraform/internal/api разошёлся с proto/ — прогони 'cd proto && buf generate --template buf.gen.terraform.yaml' и закоммить"
-            git diff --stat -- terraform/internal/api
-            exit 1
-          fi
-
-          # Объём осмотренного: без него «ноль расхождений» неотличимо от «ничего не
-          # порождено» — например если из шаблона выпал бы весь список входов.
-          echo "порождено: pkg/api $(git ls-files pkg/api | grep -cE '\.pb\.go$|\.pb\.gw\.go$') файлов, terraform/internal/api $(git ls-files terraform/internal/api | grep -cE '\.pb\.go$') файлов"
 
   authz-artifacts:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
@@ -966,43 +1024,14 @@ jobs:
         working-directory: services/vpc/tests/newman
         run: python3 scripts/selftest_autowrap.py
 
-  terraform-module:
-    name: terraform — сборка, тесты, формат
+  tofu-fmt:
+    name: конфигурации terraform отформатированы
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: terraform/go.mod
-          cache: false
-
-      # Пять команд — ровно те, что корневой модуль применяет к себе. Корневой `./...` во
-      # вложенный модуль НЕ спускается: это свойство инструмента, а не оплошность, поэтому
-      # у второго модуля обязана быть своя пара каждой проверке. Без неё «ноль находок»
-      # здесь означало бы «ноль осмотренного».
-      - name: build + vet
-        working-directory: terraform
-        run: |
-          go build ./...
-          go vet ./...
-
-      - name: test -race
-        working-directory: terraform
-        run: go test ./... -race
-
-      - name: go mod tidy не меняет файлы
-        working-directory: terraform
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-
-      - name: govulncheck
-        working-directory: terraform
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          "$(go env GOPATH)/bin/govulncheck" ./...
-
-      - name: формат конфигураций
+      # Провайдер живёт в общем модуле, поэтому его Go-код проверяют те же джобы, что и
+      # весь продукт. Отдельного внимания требует только HCL: `go vet` его не читает.
+      - name: tofu fmt
         run: |
           curl -sL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.12.5/tofu_1.12.5_linux_amd64.zip
           unzip -oq /tmp/tofu.zip -d /tmp/tofubin
@@ -1436,7 +1465,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm

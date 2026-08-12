@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,7 +20,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	vpcv1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/vpc/v1"
+	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -180,6 +182,10 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 	// состояние пусто — следующий apply создаст дубль. Поэтому сначала записываем то, что
 	// уже знаем, и лишь затем идём читать.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт по сообщению на каждое
+	// поле вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -216,7 +222,7 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Одиночное «не найдено» ничего не устанавливает: тот же ответ приходит при отказе в
 	// доступе, и он побайтово равен настоящему отсутствию.
-	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -341,7 +347,7 @@ func (r *networkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		// Цель достигнута — но только если отсутствие подтверждено. Тот же ответ приходит
 		// при отказе в доступе, и безусловное «404 значит удалено» оставило бы живой
 		// ресурс вне состояния.
-		verdict, _ := r.c.ConfirmAbsence(ctx, networksPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление сети не подтверждено",
@@ -354,7 +360,21 @@ func (r *networkResource) Delete(ctx context.Context, req resource.DeleteRequest
 	}
 }
 
+// ImportState принимает идентификатор ресурса.
+//
+// Формат проверяется ЗДЕСЬ, общим каталогом префиксов платформы (pkg/ids) — до любого
+// обращения к краю. Это та же дисциплина, что у сервисов: заведомо негодный идентификатор
+// получает терминальный отказ с внятным текстом, а не уезжает в сеть, чтобы вернуться
+// оттуда «ресурс не найден» — ответом, который для строки, не являющейся идентификатором,
+// не значит ничего.
 func (r *networkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if !ids.IsValid(req.ID, ids.PrefixNetwork) {
+		resp.Diagnostics.AddError("Негодный идентификатор сети",
+			"Строка "+strconv.Quote(req.ID)+" не является идентификатором сети Kachō: "+
+				"он начинается с «"+ids.PrefixNetwork+"» и состоит из знаков crockford-base32. "+
+				"Идентификатор виден в выводе списка сетей и в консоли.")
+		return
+	}
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 

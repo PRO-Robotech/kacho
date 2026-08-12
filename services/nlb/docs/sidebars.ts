@@ -28,6 +28,12 @@ const sidebars: SidebarsConfig = {
         'api/operations',
       ],
     },
+    {
+      type: 'category',
+      label: 'Terraform',
+      collapsed: false,
+      items: ['terraform/provider', 'terraform/module-nlb-service'],
+    },
   ],
 }
 

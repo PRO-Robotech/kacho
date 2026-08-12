@@ -107,7 +107,26 @@ terraform state rm <адрес ресурса>
 
 ## Ресурсы
 
+Домен VPC:
+
 - [`kacho_vpc_network`](../api/network.mdx) — сеть
 - [`kacho_vpc_subnet`](../api/subnet.mdx) — подсеть
 
 Остальные ресурсы VPC добавляются следующими под-фазами.
+
+### Другие домены — тот же провайдер
+
+Провайдер один на всю платформу; ресурсы других доменов описаны в их документации:
+
+| Домен | Ресурсы |
+|---|---|
+| IAM | `kacho_iam_project`, `kacho_iam_group`, `kacho_iam_service_account` |
+| Балансировщик | `kacho_nlb_target_group`, `kacho_nlb_load_balancer`, `kacho_nlb_listener` |
+
+## Модули
+
+| Модуль | Что описывает |
+|---|---|
+| `terraform/modules/vpc-network` | Сеть вместе с подсетями |
+| `terraform/modules/nlb-service` | Группа целей, балансировщик и слушатели одной единицей |
+| `terraform/modules/iam-project` | Проект вместе с группами и служебными учётками |

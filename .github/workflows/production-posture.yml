@@ -104,7 +104,7 @@ jobs:
       - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@v5
 
       # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим
       # kind-config (host-port mappings для ingress). БЕЗ sudo и в ~/bin — установка
