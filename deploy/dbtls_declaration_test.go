@@ -169,22 +169,17 @@ func dbTLSKnobs(t *testing.T) []dbTLSKnob {
 	return out
 }
 
-// stacksTable — координата единственного места в дереве, где цепочки `-f`
-// выписаны машиночитаемо. Цепочки не дублируются здесь: расхождение двух
+// stacksTable — координата ЕДИНСТВЕННОГО места в дереве, где цепочки `-f`
+// объявлены. Цепочки не дублируются здесь и нигде больше: расхождение двух
 // списков об одном предмете — тот самый класс, который эта проверка ловит на
-// уровне значений.
-const stacksTable = "tests/helm/admin-hop-address-census-test.sh"
-
-// stacksBlock — одинарно-кавыченное присваивание STACKS='…' целиком. Блок
-// читается ЦЕЛИКОМ, а не построчным поиском совпадений: построчный поиск молча
-// теряет первую и последнюю строку (на них лежат кавычки) и объявляет частичный
-// список полным.
-var stacksBlock = regexp.MustCompile(`(?s)STACKS='(.*?)'`)
+// уровне значений. Единственность держит stack_table_test.go
+// (TestNoSecondCopyOfAStackChain), а не уговор.
+const stacksTable = "stacks.txt"
 
 var stackLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
 
-// deployStacks — цепочки профилей, которыми стенды раскатываются, выведенные
-// из таблицы выше.
+// deployStacks — цепочки профилей, которыми стенды раскатываются, прочитанные
+// из таблицы выше. Тот же файл читает shell-сторона (tests/helm/stacks.sh).
 func deployStacks(t *testing.T) map[string][]string {
 	t.Helper()
 	raw, err := os.ReadFile(stacksTable)
@@ -192,15 +187,10 @@ func deployStacks(t *testing.T) map[string][]string {
 		t.Fatalf("таблица стеков %s не читается (%v) — предпосылка проверки исчезла, "+
 			"а не дерево стало чистым", stacksTable, err)
 	}
-	block := stacksBlock.FindStringSubmatch(string(raw))
-	if block == nil {
-		t.Fatalf("в %s нет блока STACKS='…' — таблица стеков сменила форму; "+
-			"проверка не вправе считать, что стеков не осталось", stacksTable)
-	}
 	out := map[string][]string{}
-	for _, line := range strings.Split(block[1], "\n") {
+	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		m := stackLine.FindStringSubmatch(line)
@@ -210,6 +200,10 @@ func deployStacks(t *testing.T) map[string][]string {
 			t.Fatalf("строка таблицы стеков не разобрана: %q (%s)", line, stacksTable)
 		}
 		out[m[1]] = strings.Split(m[2], ",")
+	}
+	if len(out) == 0 {
+		t.Fatalf("в %s нет ни одной строки стека — проверка не вправе считать, "+
+			"что стеков не осталось", stacksTable)
 	}
 	for name, chain := range out {
 		for _, p := range chain {

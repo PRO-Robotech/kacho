@@ -72,6 +72,9 @@
 # Офлайновая manifest-проверка (kind-кластер не нужен), как и остальные tests/helm/*.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
+# Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
+# Своей копии цепочек здесь нет: копии разъезжались молча.
+. "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -654,13 +657,9 @@ fi
 command -v helm >/dev/null 2>&1 || { echo "FATAL: нужен helm"; exit 2; }
 python3 -c 'import yaml' 2>/dev/null || { echo "FATAL: нужен python3 с PyYAML"; exit 2; }
 
-# ПРОФИЛИ ПЕРЕЧИСЛЕНЫ ТЕМ ЖЕ СПИСКОМ, что и у соседнего гейта портов: расхождение
-# составов было бы слепой зоной, о которой никто бы не узнал.
-STACKS='dev:values.dev.yaml
-dev-prod:values.dev.yaml,values.dev-prod.yaml
-prod:values.prod.yaml
-fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,values.fe3455-ory-posture.yaml
-prorobotech:values.dev.yaml,values.prorobotech.yaml'
+# ПРОФИЛИ ЧИТАЮТСЯ ИЗ ЕДИНСТВЕННОЙ ТАБЛИЦЫ, а не перечислены здесь: расхождение
+# составов было слепой зоной, о которой никто бы не узнал, — и оно наступило.
+STACKS="$(stacks_table)"
 
 echo "=== $SCRIPT: форма пода административного перехода ==="
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT

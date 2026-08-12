@@ -36,6 +36,14 @@ SHELL := bash
 # ручка, которая принимается и отменяется следующим шагом.
 CLUSTER_NAME := kacho
 DEV_UP_VALUES ?=
+
+# STACK_ARGS — цепочка `-f` стенда, ПРОЧИТАННАЯ из единственной таблицы дерева
+# (deploy/stacks.txt), а не выписанная в рецепте. Рецепт и проверки обязаны
+# поднимать один и тот же состав: пока цепочка стояла здесь своей копией,
+# проверка могла честно судить стенд, которого рецепт не поднимает.
+# `$(shell …)` вычисляется при разборе Makefile — отказ чтения таблицы виден
+# сразу и до первого действия над кластером.
+STACK_ARGS = $(shell bash tests/helm/stacks.sh --args $(1) ./helm/umbrella)
 # POSTURE_SKIP — сервисы, которых на этом стенде НЕТ по решению оператора.
 # Пусто = стенд полный (умолчание, локальный `make dev-up`).
 POSTURE_SKIP ?=
@@ -394,7 +402,7 @@ dev-up: preflight
 	kubectl -n kacho rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
-	  -f ./helm/umbrella/values.dev.yaml \
+	  $(call STACK_ARGS,dev) \
 	  -f ./$(IMAGE_IDS_VALUES) \
 	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 10m; \
@@ -408,8 +416,7 @@ dev-up: preflight
 	./scripts/dev-prod-secrets.sh; \
 	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
-	  -f ./helm/umbrella/values.dev.yaml \
-	  -f ./helm/umbrella/values.dev-prod.yaml \
+	  $(call STACK_ARGS,dev-prod) \
 	  -f ./$(IMAGE_IDS_VALUES) \
 	  $(UMBRELLA_OPTS) $(DEV_UP_VALUES) \
 	  --wait --timeout 12m; \

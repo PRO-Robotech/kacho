@@ -40,10 +40,14 @@ import (
 // `kratosSelfServiceUI` key.
 var consolePath = []string{"kratos-selfservice-ui", "kratosSelfServiceUI", "enabled"}
 
-// gitignoredStackMember — the fourth `-f` of the live fe3455 chain, deliberately
-// OUTSIDE the tree: it carries per-cluster Ory secrets. Its absence is therefore
-// NOT a finding, and this gate says so out loud instead of quietly reporting
-// "3 of 4" as if it were completeness.
+// gitignoredStackMember — the LAST `-f` of the live fe3455 chain, deliberately
+// OUTSIDE the tree: it carries per-cluster site credentials. Its absence is
+// therefore NOT a finding, and this gate says so out loud instead of quietly
+// reporting a partial fold as if it were completeness.
+//
+// The count is derived, never restated: an earlier edition said "3 of 4" in
+// prose, the chain then gained a tracked posture layer, and the prose kept
+// asserting the old arithmetic while the fold had changed underneath it.
 const gitignoredStackMember = "values.fe3455-ory.yaml"
 
 // The BOOLEAN leaf is read through the package's existing `resolveStackBoolAt`
@@ -64,7 +68,7 @@ func TestStacks_ProductionClassResolvesTheLoginConsole(t *testing.T) {
 	// a production-class predicate that stopped matching anything, would otherwise
 	// report exactly the same green as a healthy tree.
 	inspected := 0
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		if !stackIsProductionClass(t, stack) {
 			t.Logf("%s: dev-class by its own declaration — skipped (%d profile(s))", name, len(stack))
 			continue
@@ -90,9 +94,9 @@ func TestStacks_ProductionClassResolvesTheLoginConsole(t *testing.T) {
 	if inspected == 0 {
 		t.Fatalf("this gate inspected ZERO production-class stacks out of %d declared. "+
 			"Either the stack table emptied or stackIsProductionClass stopped matching — "+
-			"whichever it is, the green above means nothing.", len(deployableStacks))
+			"whichever it is, the green above means nothing.", len(deployableStacks(t)))
 	}
-	t.Logf("inspected %d production-class stack(s) of %d declared", inspected, len(deployableStacks))
+	t.Logf("inspected %d production-class stack(s) of %d declared", inspected, len(deployableStacks(t)))
 }
 
 // TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey — the gate above
@@ -137,13 +141,13 @@ func TestLoginConsole_PremiseLateSilenceDoesNotClearAnEarlierKey(t *testing.T) {
 // TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject — the exclusion
 // this file relies on must expire by itself.
 //
-// The live fe3455 chain is invoked with FOUR `-f` files and deployableStacks
-// lists three; the fourth is out of the tree on purpose (per-cluster Ory
-// secrets). That is a real limit on what the gate above can see, and an
-// unstated limit is how "3 of 4" gets read as completeness. So the basis of the
-// exclusion — the ignore rule — is checked here: if it goes away, the exclusion
-// has lost its subject and this fails, which is the same discipline every other
-// known-gap list in this repository is held to.
+// The live fe3455 chain is invoked with one MORE `-f` than the table names; the
+// extra one is out of the tree on purpose (per-cluster site credentials). That is
+// a real limit on what the gate above can see, and an unstated limit is how a
+// partial fold gets read as completeness. So the basis of the exclusion — the
+// ignore rule — is checked here: if it goes away, the exclusion has lost its
+// subject and this fails, which is the same discipline every other known-gap list
+// in this repository is held to.
 func TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", ".gitignore"))
 	if err != nil {
@@ -154,7 +158,7 @@ func TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject(t *testing.
 			"says so; with the ignore rule gone the exclusion has no subject — either fold the "+
 			"profile in and delete this test, or restore the rule.", gitignoredStackMember)
 	}
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		for _, profile := range stack {
 			if profile == gitignoredStackMember {
 				t.Fatalf("%s now appears in stack %q. It is excluded precisely because it is not "+
@@ -163,7 +167,9 @@ func TestLoginConsole_GitignoredStackMemberExclusionStillHasASubject(t *testing.
 			}
 		}
 	}
-	t.Logf("declared limit: the live fe3455 chain carries %s as a fourth -f; it is outside the "+
-		"tree by design, so the fold above sees 3 of its 4 members and does not call that "+
-		"completeness", gitignoredStackMember)
+	folded := len(deployableStacks(t)["fe3455"])
+	t.Logf("declared limit: the live fe3455 chain carries %s as one more -f on top of the %d "+
+		"the table names; it is outside the tree by design, so the fold above sees %d of its %d "+
+		"members and does not call that completeness",
+		gitignoredStackMember, folded, folded, folded+1)
 }
