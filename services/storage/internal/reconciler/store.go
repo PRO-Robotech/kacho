@@ -63,6 +63,11 @@ type Row struct {
 	// SourceObject — имя объекта-источника, если ресурс засевается из него.
 	// Пусто для чистого создания.
 	SourceObject string
+	// SourceIsSnapshot — источник сам является снимком, то есть ресурс создаётся
+	// КОПИЕЙ, а не снятием. Различие определяет глагол: копия снимается с другого
+	// снимка, снятие — с тома, и перепутать их значит звать операцию, у которой
+	// нет предмета.
+	SourceIsSnapshot bool
 }
 
 // Store — доступ сверщика к нашим строкам.
@@ -310,8 +315,12 @@ func (s *Store) SourceObject(ctx context.Context, kind Kind, id string) (string,
 		       LEFT JOIN images    im ON im.id = v.source_image_id
 		      WHERE v.id = $1`
 	case KindSnapshot:
-		q = `SELECT COALESCE(v.backend_object, '')
-		       FROM snapshots s JOIN volumes v ON v.id = s.source_volume_id
+		// Источником снимка бывает ЛИБО том (снятие), ЛИБО другой снимок (копия).
+		// Различие несущее: у копии тома нет вовсе, и снятие с него отказало бы.
+		q = `SELECT COALESCE(v.backend_object, sn.backend_object, '')
+		       FROM snapshots s
+		       LEFT JOIN volumes   v  ON v.id  = s.source_volume_id
+		       LEFT JOIN snapshots sn ON sn.id = s.source_snapshot_id
 		      WHERE s.id = $1`
 	case KindImage:
 		q = `SELECT COALESCE(sn.backend_object, v.backend_object, '')
@@ -330,4 +339,19 @@ func (s *Store) SourceObject(ctx context.Context, kind Kind, id string) (string,
 		return "", err
 	}
 	return name, nil
+}
+
+// SourceIsSnapshot отвечает, снимается ли строка с ДРУГОГО СНИМКА (копия) либо с
+// тома (снятие). Различие определяет глагол материализации.
+func (s *Store) SourceIsSnapshot(ctx context.Context, id string) (bool, error) {
+	var fromSnapshot bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT source_snapshot_id IS NOT NULL FROM snapshots WHERE id = $1`, id).Scan(&fromSnapshot)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return fromSnapshot, nil
 }

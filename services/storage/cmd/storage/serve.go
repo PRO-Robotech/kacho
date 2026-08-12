@@ -210,7 +210,9 @@ func runServe(cfg config.Config) error {
 	// старта не пропускает посадку с бэкендом и без префикса.
 	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
 		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
-	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
+	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix).
+		WithGeo(geoClient)
 	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	diskTypeUC := disktype.New(diskTypeRepo)
 	storageBackendRepo := pg.NewStorageBackendRepo(pool)

@@ -178,6 +178,16 @@ func (r *Reconciler) step(ctx context.Context, row Row, c *Counts) {
 			return
 		}
 		row.SourceObject = src
+		if row.Kind == KindSnapshot {
+			fromSnapshot, ferr := r.store.SourceIsSnapshot(ctx, row.ID)
+			if ferr != nil {
+				r.logger.ErrorContext(ctx, "storage reconcile: source kind lookup failed",
+					"kind", string(row.Kind), "id", row.ID, "err", ferr)
+				c.Failed++
+				return
+			}
+			row.SourceIsSnapshot = fromSnapshot
+		}
 	}
 
 	item := Item{
@@ -260,6 +270,12 @@ func (r *Reconciler) provision(ctx context.Context, backend blockbackend.Backend
 		}
 		src := row.Ref
 		src.Name = row.SourceObject
+		// Копия снимается с ДРУГОГО СНИМКА и, как правило, лежит в чужом локаторе:
+		// перенос между зонами — весь смысл копии. Снятие же берёт том в том же
+		// локаторе. Один глагол на оба случая ошибался бы ровно там, где цена выше.
+		if row.SourceIsSnapshot {
+			return backend.CopySnapshot(ctx, src, row.Ref)
+		}
 		return backend.CreateSnapshot(ctx, src, row.Ref)
 	}
 	if row.SourceObject != "" {

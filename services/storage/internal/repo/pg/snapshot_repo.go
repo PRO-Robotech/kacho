@@ -360,3 +360,83 @@ func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
 }
 
 var _ snapshot.Repo = (*SnapshotRepo)(nil)
+
+// copySnapshotSQL — копия снимка в ДРУГУЮ зону одним стейтментом.
+//
+// Все предусловия внутри: источник лежит в проекте вызывающего (иначе строка не
+// матчится и ответ байт-в-байт равен настоящему промаху — чужой снимок не
+// подтверждается существованием), источник ГОТОВ, а в целевой зоне есть действующая
+// ревизия привязки ТОГО ЖЕ класса, на котором лежит источник.
+//
+// Класс берётся у ревизии источника, а не у вызывающего: копия обязана лечь на тот же
+// продуктовый класс, иначе она молча сменила бы арендатору гарантии — и он узнал бы
+// об этом по счёту либо по производительности, а не из ответа.
+const copySnapshotSQL = `
+	WITH src AS (
+		SELECT s.id, s.size_bytes, s.state, b.disk_type_id
+		  FROM snapshots s
+		  LEFT JOIN disk_type_bindings b ON b.id = s.binding_id
+		 WHERE s.id = $6 AND s.project_id = $2
+	), target AS (
+		SELECT tb.id,
+		       CASE WHEN tb.namespace_template = '' THEN $2::text
+		            ELSE replace(tb.namespace_template, '{projectId}', $2::text) END AS ns
+		  FROM disk_type_bindings tb, src
+		 WHERE tb.disk_type_id = src.disk_type_id AND tb.zone_id = $7 AND tb.status = 'ACTIVE'
+	)
+	INSERT INTO snapshots
+		(id, project_id, name, description, labels, source_snapshot_id, size_bytes, state,
+		 zone_id, binding_id, backend_object, backend_namespace)
+	SELECT $1, $2, $3, $4, $5::jsonb, src.id, src.size_bytes, 'CREATING',
+	       $7, target.id, $8, target.ns
+	  FROM src, target
+	 WHERE src.state = 'READY'
+	RETURNING created_at, size_bytes`
+
+// Copy реализует snapshot.Repo: копия снимка в другую зону. Копия рождается
+// СОЗДАВАЕМОЙ — материализует её сверщик, а этот вызов фиксирует намерение.
+func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error) {
+	labels, err := json.Marshal(nonNilLabels(s.Labels))
+	if err != nil {
+		return nil, storageerr.ErrInternal
+	}
+	created := *s
+	err = r.pool.QueryRow(ctx, copySnapshotSQL,
+		s.ID, s.ProjectID, s.Name, s.Description, labels, sourceID, targetZone, s.Backend.BackendObject).
+		Scan(&created.CreatedAt, &created.SizeBytes)
+	if err == nil {
+		created.ZoneID = targetZone
+		created.Status = domain.SnapshotStatusCreating
+		return &created, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapSnapshotErr(err, snapErrCtx{snapshotID: s.ID, sourceVolumeID: sourceID})
+	}
+	return nil, r.copyUnavailable(ctx, sourceID, targetZone)
+}
+
+// copyUnavailable разбирает нулевую выборку копии: каждая причина своим текстом.
+// Чужой проект остаётся неотличим от промаха — подтверждать существование чужого
+// снимка отдельным текстом значило бы отвечать на вопрос, который не задавали.
+func (r *SnapshotRepo) copyUnavailable(ctx context.Context, sourceID, targetZone string) error {
+	var state, diskType string
+	err := r.pool.QueryRow(ctx, `
+		SELECT s.state, COALESCE(b.disk_type_id, '')
+		  FROM snapshots s LEFT JOIN disk_type_bindings b ON b.id = s.binding_id
+		 WHERE s.id = $1`, sourceID).Scan(&state, &diskType)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, sourceID)
+		}
+		return mapSnapshotErr(err, snapErrCtx{snapshotID: sourceID})
+	}
+	if state != "READY" {
+		return fmt.Errorf("%w: Snapshot %s is not ready", storageerr.ErrFailedPrecondition, sourceID)
+	}
+	if diskType == "" {
+		return fmt.Errorf("%w: Snapshot %s has no placement and cannot be copied",
+			storageerr.ErrFailedPrecondition, sourceID)
+	}
+	return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+		storageerr.ErrFailedPrecondition, diskType, targetZone)
+}

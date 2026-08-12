@@ -63,6 +63,18 @@ type Repo interface {
 	Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, []ownerregister.Registration, error)
 	Update(ctx context.Context, id string, u SnapshotUpdate) (*domain.Snapshot, []ownerregister.Registration, error)
 	Delete(ctx context.Context, id string) error
+	// Copy заводит КОПИЮ снимка в другой зоне. Копия — новый ресурс, а не правка
+	// существующего: зона снимка неизменяема, и перенос выражается копией.
+	Copy(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error)
+}
+
+// GeoClient — peer-валидация зоны через kacho-geo (fail-closed).
+//
+// Нужен ровно копированию: целевую зону называет вызывающий, и несуществующая зона
+// без этой проверки дала бы отказ «нет привязки» — вызывающего отправило бы чинить
+// каталог вместо опечатки в имени зоны.
+type GeoClient interface {
+	EnsureZoneExists(ctx context.Context, zoneID string) error
 }
 
 // IAMClient — peer-валидация project_id через kacho-iam (fail-closed).
@@ -101,6 +113,9 @@ type UseCase struct {
 	// отвергается синхронно — молча снять снимок без префикса нельзя, иначе
 	// соседнее облако на том же кластере усыновило бы его объект.
 	installPrefix string
+	// geo — владелец географии. Провязывается WithGeo; без него копирование
+	// отвергается закрыто, а не пропускает непроверенную зону.
+	geo GeoClient
 }
 
 // New собирает UseCase для Snapshot.
@@ -132,6 +147,12 @@ func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 // Он приходит из конфигурации процесса, а не из ресурса: это свойство РАЗВЁРТЫВАНИЯ,
 // отличающее наши объекты от объектов соседнего облака в общем кластере хранилища.
 // Пустой префикс боевой страж старта не пропускает — см. config.Validate.
+// WithGeo подключает владельца географии.
+func (u *UseCase) WithGeo(g GeoClient) *UseCase {
+	u.geo = g
+	return u
+}
+
 func (u *UseCase) WithInstallPrefix(p string) *UseCase {
 	u.installPrefix = p
 	return u
@@ -443,4 +464,86 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 // protoconv.Snapshot (та же проекция, что handler — без дрейфа полей).
 func marshalSnapshot(s *domain.Snapshot) (*anypb.Any, error) {
 	return anypb.New(protoconv.Snapshot(s))
+}
+
+// CopyInput — вход копирования снимка в другую зону.
+type CopyInput struct {
+	SnapshotID   string
+	TargetZoneID string
+	Name         string
+	Description  string
+	Labels       map[string]string
+}
+
+// Copy копирует снимок в другую зону.
+//
+// Это ЕДИНСТВЕННЫЙ законный путь переноса данных между зонами: зона тома неизменяема,
+// и без копии её неизменяемость была бы не решением, а тупиком. Создаётся НОВЫЙ
+// снимок; исходный не меняется ни одним полем.
+//
+// Целевая зона проверяется у владельца географии — не потому, что мы ей не доверяем,
+// а потому, что несуществующая зона иначе дала бы отказ «нет привязки», отправив
+// вызывающего чинить каталог вместо опечатки в имени зоны.
+func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation, error) {
+	if err := idInvalid(in.SnapshotID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if in.TargetZoneID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: target_zone_id: required", storageerr.ErrInvalidArg))
+	}
+	if u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
+	}
+	if err := validate.Description("description", in.Description); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := validate.Labels("labels", in.Labels); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if u.geo == nil {
+		// Непроверенная зона не пропускается: отсутствие владельца географии —
+		// неполная посадка, а не разрешение поверить вызывающему на слово.
+		return nil, status.Error(codes.Unavailable, "zone owner is not configured")
+	}
+	if err := u.geo.EnsureZoneExists(ctx, in.TargetZoneID); err != nil {
+		return nil, u.errStatus(err)
+	}
+
+	src, err := u.repo.Get(ctx, in.SnapshotID)
+	if err != nil {
+		return nil, u.errStatus(err)
+	}
+
+	copyItem := &domain.Snapshot{
+		ID:          ids.NewID(domain.PrefixSnapshot),
+		ProjectID:   src.ProjectID,
+		Name:        in.Name,
+		Description: in.Description,
+		Labels:      in.Labels,
+	}
+	copyItem.Backend.BackendObject = blockbackend.SnapshotObjectName(u.installPrefix, copyItem.ID)
+	if verr := copyItem.Validate(); verr != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, verr.Error()))
+	}
+
+	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
+		fmt.Sprintf("Copy snapshot %s to zone %s", in.SnapshotID, in.TargetZoneID),
+		&storagev1.CopySnapshotMetadata{SnapshotId: copyItem.ID, SourceSnapshotId: in.SnapshotID})
+	if err != nil {
+		return nil, err
+	}
+	op.ResourceID = copyItem.ID
+	if err := u.ops.Create(ctx, op); err != nil {
+		return nil, err
+	}
+	target := in.TargetZoneID
+	source := in.SnapshotID
+	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+		res, derr := u.repo.Copy(ctx, copyItem, source, target)
+		if derr != nil {
+			return nil, u.errStatus(derr)
+		}
+		return marshalSnapshot(res)
+	})
+	return &op, nil
 }

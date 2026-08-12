@@ -188,6 +188,7 @@ func (m *ImageWriter) Register(ctx context.Context, i *domain.Image) (*domain.Im
 
 // SnapshotRepo — мок snapshot.Repo на функциях-полях.
 type SnapshotRepo struct {
+	CopyFn     func(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error)
 	GetFunc    func(ctx context.Context, id string) (*domain.Snapshot, error)
 	ListFunc   func(ctx context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error)
 	InsertFunc func(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error)
@@ -431,6 +432,16 @@ func (w *VolumeWriter) ChangeDiskType(ctx context.Context, id, diskTypeID string
 		return w.ChangeDiskTypeFn(ctx, id, diskTypeID)
 	}
 	return nil, errors.New("repomock: ChangeDiskTypeFn is not set")
+}
+
+// Copy — подстановка копирования снимка. Незаданная функция ОТКАЗЫВАЕТ: дублёр,
+// молча отвечающий успехом там, где настоящий делает работу, прячет ровно тот путь,
+// ради которого его подставляют.
+func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error) {
+	if r.CopyFn != nil {
+		return r.CopyFn(ctx, s, sourceID, targetZone)
+	}
+	return nil, errors.New("repomock: CopyFn is not set")
 }
 
 // Compile-time проверки соответствия портам.

@@ -209,6 +209,24 @@ func (h *SnapshotHandler) Delete(ctx context.Context, req *storagev1.DeleteSnaps
 	return operationToProto(op), nil
 }
 
+// Copy копирует снимок в другую зону (async Operation).
+//
+// Единственный законный путь переноса данных между зонами: зона неизменяема, и без
+// копии её неизменяемость была бы тупиком. Создаётся НОВЫЙ снимок.
+func (h *SnapshotHandler) Copy(ctx context.Context, req *storagev1.CopySnapshotRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Copy(ctx, snapshot.CopyInput{
+		SnapshotID:   req.GetSnapshotId(),
+		TargetZoneID: req.GetTargetZoneId(),
+		Name:         req.GetName(),
+		Description:  req.GetDescription(),
+		Labels:       req.GetLabels(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
 // ── ImageService (public :9090) ───────────────────────────────────────────
 
 // ImageHandler реализует storagev1.ImageServiceServer.
