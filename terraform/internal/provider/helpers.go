@@ -7,6 +7,7 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
@@ -207,4 +208,77 @@ func nullOfUnknown(x any) (any, bool) {
 		return nil, false
 	}
 	return nil, false
+}
+
+// Пересоздающие модификаторы для типов, у которых их нет в стандартном наборе фреймворка.
+//
+// Заведены не «для полноты»: у ключа служебной учётки КАЖДОЕ поле входа пересоздаёт
+// ресурс, потому что изменяющей операции у выпущенного ключа не существует. Без этих
+// модификаторов правка метки или срока прошла бы как изменение — и молча не применилась.
+type mapRequiresReplace struct{}
+
+func (mapRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (m mapRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+func (mapRequiresReplace) PlanModifyMap(_ context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type listRequiresReplace struct{}
+
+func (listRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (l listRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return l.Description(ctx)
+}
+func (listRequiresReplace) PlanModifyList(_ context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type int64RequiresReplace struct{}
+
+func (int64RequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (i int64RequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return i.Description(ctx)
+}
+func (int64RequiresReplace) PlanModifyInt64(_ context.Context, req planmodifier.Int64Request, resp *planmodifier.Int64Response) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type boolRequiresReplace struct{}
+
+func (boolRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (b boolRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return b.Description(ctx)
+}
+func (boolRequiresReplace) PlanModifyBool(_ context.Context, req planmodifier.BoolRequest, resp *planmodifier.BoolResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
 }
