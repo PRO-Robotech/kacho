@@ -10,6 +10,7 @@ import (
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 )
 
 // Описания ресурсов, чья механика полностью совпадает с общим каркасом.
@@ -41,7 +42,7 @@ func withFields(base []fieldSpec, extra ...fieldSpec) []fieldSpec {
 
 var storageVolumeSpec = flatSpec{
 	tfName: "kacho_storage_volume", human: "Том", pathCol: "/storage/v1/volumes",
-	idField: "volumeId", prefix: "vol", scopeParam: "projectId", scopeAttr: "project_id",
+	idField: "volumeId", prefix: ids.PrefixVolume, scopeParam: "projectId", scopeAttr: "project_id",
 	descr: "Блочный том. Заводится либо пустым по размеру, либо из снимка или образа.",
 	deleteHint: "Удалению мешает подключение к машине: сначала отсоедините том. " +
 		"Снимки, снятые с тома, удалению не мешают.",
@@ -66,7 +67,7 @@ var storageVolumeSpec = flatSpec{
 
 var storageSnapshotSpec = flatSpec{
 	tfName: "kacho_storage_snapshot", human: "Снимок", pathCol: "/storage/v1/snapshots",
-	idField: "snapshotId", prefix: "snp", scopeParam: "projectId", scopeAttr: "project_id",
+	idField: "snapshotId", prefix: ids.PrefixStorageSnapshot, scopeParam: "projectId", scopeAttr: "project_id",
 	descr:         "Снимок тома — точка, из которой создаются новые тома и образы.",
 	deleteHint:    "Удалению мешают тома и образы, созданные из этого снимка.",
 	newCreate:     func() proto.Message { return &storagev1.CreateSnapshotRequest{} },
@@ -81,7 +82,7 @@ var storageSnapshotSpec = flatSpec{
 
 var storageImageSpec = flatSpec{
 	tfName: "kacho_storage_image", human: "Образ", pathCol: "/storage/v1/images",
-	idField: "imageId", prefix: "img", scopeParam: "projectId", scopeAttr: "project_id",
+	idField: "imageId", prefix: ids.PrefixStorageImage, scopeParam: "projectId", scopeAttr: "project_id",
 	descr: "Образ — региональный источник для создания томов.",
 	deleteHint: "Удалению мешают тома, созданные из этого образа, и машины, ссылающиеся " +
 		"на него как на источник загрузки.",
@@ -127,7 +128,7 @@ var iamAccountSpec = flatSpec{
 
 var registryRegistrySpec = flatSpec{
 	tfName: "kacho_registry_registry", human: "Реестр", pathCol: "/registry/v1/registries",
-	idField: "registryId", prefix: "reg", scopeParam: "projectId", scopeAttr: "project_id",
+	idField: "registryId", prefix: ids.PrefixRegistry, scopeParam: "projectId", scopeAttr: "project_id",
 	descr: "Реестр образов OCI.\n\n" +
 		"Путь загрузки строится по НЕИЗМЕНЯЕМОМУ идентификатору реестра — " +
 		"`$домен/$registryId/$репозиторий:$тег`, — а не по имени: имя меняется, и пути " +
@@ -151,7 +152,7 @@ var registryRegistrySpec = flatSpec{
 
 var vpcNetworkInterfaceSpec = flatSpec{
 	tfName: "kacho_vpc_network_interface", human: "Сетевой интерфейс",
-	pathCol: "/vpc/v1/networkInterfaces", idField: "networkInterfaceId", prefix: "nic",
+	pathCol: "/vpc/v1/networkInterfaces", idField: "networkInterfaceId", prefix: ids.PrefixNetworkInterface,
 	scopeParam: "projectId", scopeAttr: "project_id",
 	descr: "Сетевой интерфейс — самостоятельный ресурс, а не часть машины: он заводится " +
 		"отдельно и подключается к машине по ссылке.",

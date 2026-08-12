@@ -88,7 +88,6 @@ var tfCoverage = map[string]string{
 // значило бы сделать каркас условным — то есть перестать понимать, что он делает.
 var tfPending = map[string]string{
 	"AddressService":       "PRO-Robotech/kacho#235",
-	"GatewayService":       "PRO-Robotech/kacho#235",
 	"RouteTableService":    "PRO-Robotech/kacho#235",
 	"SecurityGroupService": "PRO-Robotech/kacho#235",
 	"RoleService":          "PRO-Robotech/kacho#235",
