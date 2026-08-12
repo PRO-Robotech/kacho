@@ -37,7 +37,7 @@ func TestCreateBootVolume_ZoneRegionUnavailable_FailsClosed(t *testing.T) {
 		&repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
 		repomock.NewOpsRepo(),
 		serviceerr.ToStatus,
-	)
+	).WithInstallPrefix(testInstallPrefix)
 
 	_, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", Name: "boot-geo-down", ZoneID: "region-1-a",
@@ -66,7 +66,7 @@ func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
 		&repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
 		repomock.NewOpsRepo(),
 		serviceerr.ToStatus,
-	)
+	).WithInstallPrefix(testInstallPrefix)
 
 	_, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", Name: "plain-vol", ZoneID: "region-1-a",
@@ -81,7 +81,7 @@ func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
 // ДО peer-вызовов: geo/iam mocks с nil-func паникнули бы, если бы дошло).
 func TestCreateSourceMutualExclusion(t *testing.T) {
 	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
-		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	v := &domain.Volume{
 		ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
 		SourceSnapshot: "snp00000000000000000", SourceImage: "img00000000000000000",
@@ -96,7 +96,7 @@ func TestCreateSourceMutualExclusion(t *testing.T) {
 // маске → sync InvalidArgument "<field> is immutable after Volume.Create".
 func TestUpdateSourceImageImmutable(t *testing.T) {
 	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
-		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	for _, f := range []string{"source_image_id", "attachments"} {
 		_, err := uc.Update(context.Background(), "vol00000000000000000", []string{f}, "", "", nil, 0)
 		if status.Code(err) != codes.InvalidArgument {

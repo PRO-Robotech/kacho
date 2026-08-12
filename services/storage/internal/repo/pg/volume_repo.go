@@ -253,44 +253,55 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // получает прежний fail-closed, а не выдуманный mismatch.
 const volumeInsertCoherentSQL = `
 	WITH src_project AS (
-		SELECT i.region_id, i.min_disk_bytes
+		SELECT i.region_id, i.min_disk_bytes, i.state
 		  FROM images i
 		 WHERE i.id = $10::text AND i.project_id = $2::text
 	), src AS (
 		SELECT sp.min_disk_bytes
 		  FROM src_project sp
-		 WHERE $11::text <> '' AND sp.region_id = $11::text
+		 WHERE sp.state = 'READY' AND $11::text <> '' AND sp.region_id = $11::text
 	), snap_project AS (
-		SELECT s.source_volume_id
+		SELECT s.zone_id, s.state
 		  FROM snapshots s
 		 WHERE s.id = $9::text AND s.project_id = $2::text
-	), snap_zone AS (
-		SELECT lv.zone_id
+	), snap_ok AS (
+		SELECT 1 AS ok
 		  FROM snap_project sp
-		  JOIN volumes lv ON lv.id = sp.source_volume_id
+		 WHERE sp.state = 'READY' AND sp.zone_id <> '' AND sp.zone_id = $6::text
+	), bind AS (
+		SELECT b.id, b.pool,
+		       CASE WHEN b.namespace_template = '' THEN $2::text
+		            ELSE replace(b.namespace_template, '{projectId}', $2::text) END AS ns
+		  FROM disk_type_bindings b
+		 WHERE b.disk_type_id = $7::text AND b.zone_id = $6::text AND b.status = 'ACTIVE'
 	), dt AS (
 		SELECT (jsonb_array_length(d.zone_ids) = 0
-		        OR d.zone_ids @> to_jsonb($6::text)) AS offered
+		        OR d.zone_ids @> to_jsonb($6::text)) AS offered,
+		       d.lifecycle,
+		       d.min_size_bytes, d.max_size_bytes, d.size_step_bytes
 		  FROM disk_types d
 		 WHERE d.id = $7::text
 	), ins AS (
 		INSERT INTO volumes
 			(id, project_id, name, description, labels, zone_id, disk_type_id,
-			 size_bytes, source_snapshot_id, source_image_id, state)
+			 size_bytes, source_snapshot_id, source_image_id, state,
+			 binding_id, backend_object, backend_namespace)
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
-		       $8::bigint,$9::text,$10::text,'READY'
-		 WHERE ($9::text IS NULL OR EXISTS (
-		            SELECT 1 FROM snap_project sp
-		             WHERE sp.source_volume_id IS NULL
-		                OR EXISTS (SELECT 1 FROM snap_zone z WHERE z.zone_id = $6::text)))
+		       $8::bigint,$9::text,$10::text,'CREATING',
+		       b.id, $12::text, b.ns
+		  FROM bind b
+		 WHERE ($9::text IS NULL OR EXISTS (SELECT 1 FROM snap_ok))
 		   AND ($10::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
-		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
+		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered AND dt.lifecycle = 'ACTIVE')
 		RETURNING created_at, updated_at
 	)
-	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text FROM ins
+	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text,
+	       NULL::text, NULL::text, NULL::text, NULL::text FROM ins
 	UNION ALL
 	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt),
-	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_zone)
+	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_project),
+	       (SELECT state FROM src_project), (SELECT state FROM snap_project),
+	       (SELECT lifecycle FROM dt), (SELECT id FROM bind)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -339,10 +350,13 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		var srcMinDisk *int64
 		var dtOffered *bool
 		var ownImageRegion, ownSnapshotZone *string
+		var ownImageState, ownSnapshotState, dtLifecycle, bindingID *string
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, srcSnap, srcImg, zoneRegionID).
-			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone)
+			v.SizeBytes, srcSnap, srcImg, zoneRegionID, v.Backend.BackendObject).
+			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone,
+				&ownImageState, &ownSnapshotState, &dtLifecycle, &bindingID)
+		bindingMissing := bindingID == nil
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
@@ -362,6 +376,33 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			if !*dtOffered {
 				return fmt.Errorf("%w: DiskType %s is not offered in zone %s",
 					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+			}
+			// Класс объявлен и предлагается в зоне, но ДЕЙСТВУЮЩЕЙ ревизии привязки
+			// на эту пару нет — значит исполнять создание некому. Отказ отдельный:
+			// «класс не предлагается в зоне» отправило бы администратора править
+			// каталог, тогда как чинить надо привязку.
+			if bindingMissing {
+				return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+			}
+			// Класс, выведенный из обращения, существующие тома держит, а новые не
+			// принимает. Отказ называется вслух: каталог публичен, скрывать нечего.
+			if dtLifecycle != nil && *dtLifecycle != "ACTIVE" {
+				return fmt.Errorf("%w: DiskType %s is not accepting new volumes",
+					storageerr.ErrFailedPrecondition, v.DiskTypeID)
+			}
+			// Источник СВОЕГО проекта, но не готовый. Полоса отдельная от размещения
+			// намеренно: неготовый источник нельзя использовать независимо от того,
+			// где он лежит, и назвать причину «не та зона» значило бы отправить
+			// вызывающего чинить не то. Чужой проект сюда не доходит — его снимает
+			// полоса проекта, и он остаётся неотличим от промаха.
+			if ownSnapshotState != nil && *ownSnapshotState != "READY" {
+				return fmt.Errorf("%w: Snapshot %s is not ready",
+					storageerr.ErrFailedPrecondition, v.SourceSnapshot)
+			}
+			if ownImageState != nil && *ownImageState != "READY" {
+				return fmt.Errorf("%w: Image %s is not ready",
+					storageerr.ErrFailedPrecondition, v.SourceImage)
 			}
 			// Образ разрешился (свой проект + свой регион), не прошёл только размер —
 			// его минимум вызывающему уже виден, называем причину прямо.
@@ -383,6 +424,14 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// маскируется под промах. Снапшот без происхождения сюда не попадает:
 			// сравнивать было не с чем, полоса его пропустила.
 			if ownSnapshotZone != nil {
+				// Пустая зона — не расхождение, а ОТСУТСТВИЕ размещения: строка
+				// досталась от прежней схемы, где своей зоны у снимка не было.
+				// Доказать когерентность нечем, придумать её задним числом нельзя,
+				// поэтому отказ говорит именно об этом, а не о несовпадении.
+				if *ownSnapshotZone == "" {
+					return fmt.Errorf("%w: Snapshot %s has no placement and cannot seed a volume",
+						storageerr.ErrFailedPrecondition, v.SourceSnapshot)
+				}
 				return fmt.Errorf("%w: Volume and Snapshot must be in the same zone",
 					storageerr.ErrFailedPrecondition)
 			}
@@ -404,7 +453,11 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			snapshotID: v.SourceSnapshot, imageID: v.SourceImage,
 		})
 	}
-	created.Status = domain.DeriveStatus("READY", false) // just created → AVAILABLE
+	// Том рождается СОЗДАВАЕМЫМ. Готовым его объявляет сверщик, увидев объект у
+	// бэкенда: операция фиксирует НАМЕРЕНИЕ, а исход провижининга несёт статус
+	// ресурса. Объявить готовность здесь значило бы утверждать о плоскости
+	// данных то, чего никто не проверял.
+	created.Status = domain.DeriveStatus("CREATING", false)
 	return &created, regs, nil
 }
 

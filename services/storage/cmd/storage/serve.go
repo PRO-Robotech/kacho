@@ -202,7 +202,11 @@ func runServe(cfg config.Config) error {
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
 	geoClient := clients.NewGeoClient(geoConn)
 	iamClient := clients.NewIAMClient(iamConn)
-	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
+	// Префикс установки — свойство РАЗВЁРТЫВАНИЯ, не ресурса: он отличает объекты
+	// этого облака от объектов соседнего в общем кластере хранилища. Боевой страж
+	// старта не пропускает посадку с бэкендом и без префикса.
+	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
 	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
 	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
 	diskTypeUC := disktype.New(diskTypeRepo)

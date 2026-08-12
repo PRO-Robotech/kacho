@@ -32,6 +32,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
@@ -128,6 +129,11 @@ type UseCase struct {
 	// (immediate анти-BOLA-резолв; nil → sync-путь пропускается, остаётся async
 	// register-drainer как at-least-once backstop). Инжектится WithRegistrar.
 	registrar fgaregister.Registrar
+	// installPrefix — префикс имени объектов этого развёртывания у бэкенда.
+	// Инжектится WithInstallPrefix; без него имя не выводится, и создание тома
+	// отвергается синхронно — молча создать объект без префикса нельзя, иначе
+	// соседнее облако на том же кластере усыновило бы его.
+	installPrefix string
 	// listFilter — per-object фильтр видимости страницы List (kacho-iam
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
@@ -157,6 +163,17 @@ func New(reader Reader, writer Writer, geo GeoClient, iam IAMClient, ops operati
 // nil registrar → sync-путь пропускается (dev/no-iam).
 func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 	u.registrar = r
+	return u
+}
+
+// WithInstallPrefix задаёт префикс установки, из которого выводится имя объекта у
+// бэкенда.
+//
+// Он приходит из конфигурации процесса, а не из ресурса: это свойство РАЗВЁРТЫВАНИЯ,
+// отличающее наши объекты от объектов соседнего облака в общем кластере хранилища.
+// Пустой префикс боевой страж старта не пропускает — см. config.Validate.
+func (u *UseCase) WithInstallPrefix(p string) *UseCase {
+	u.installPrefix = p
 	return u
 }
 
@@ -272,6 +289,18 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	if err := v.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
 	}
+	// Способность СЕРВИСА исполнить запрос проверяется ДО обращений к соседям:
+	// посадка без префикса установки не создаст тома ни при каком вводе, и тратить
+	// на это вызовы к владельцам зоны и проекта незачем.
+	//
+	// Код именно UNAVAILABLE: арендатор не сделал ничего неверного — сервис в этой
+	// посадке неспособен. FAILED_PRECONDITION или INVALID_ARGUMENT отправили бы его
+	// чинить собственный ввод, которого чинить нечего. Боевой страж старта такую
+	// посадку не пропускает, поэтому ветка достижима лишь в неполной локальной
+	// сборке — и молчать о ней нельзя.
+	if u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
+	}
 	// Sync BVA at the request edge (parity with Image, #61): reject over-limit
 	// description (>256) / labels (>64) BEFORE any peer/DB call.
 	//
@@ -306,6 +335,7 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 		zoneRegionID = region
 	}
 	v.ID = ids.NewID(domain.PrefixVolume)
+	v.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, v.ID)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create volume %s", v.ID),
 		&storagev1.CreateVolumeMetadata{VolumeId: v.ID})

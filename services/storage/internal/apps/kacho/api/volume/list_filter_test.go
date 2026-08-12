@@ -53,7 +53,7 @@ func readerReturning(page []*domain.Volume, next string) *repomock.VolumeReader 
 
 func newListUC(reader volume.Reader, f *listnarrow.Narrower) *volume.UseCase {
 	return volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{},
-		nil, serviceerr.ToStatus).WithListFilter(f)
+		nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix).WithListFilter(f)
 }
 
 // TestList_HidesVolumesWithoutPerObjectGrant — ГЛАВНАЯ регрессия дыры видимости.
