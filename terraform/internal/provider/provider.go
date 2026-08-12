@@ -137,8 +137,13 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		// vpc
 		NewNetworkResource,
 		NewSubnetResource,
+		// iam
+		NewIAMProjectResource,
+		NewIAMGroupResource,
+		NewIAMServiceAccountResource,
 	}
 }
 

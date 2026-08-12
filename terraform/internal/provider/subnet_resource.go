@@ -233,7 +233,7 @@ func (r *subnetResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	verdict, verr := r.c.ConfirmAbsence(ctx, subnetsPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, subnetsPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -334,7 +334,7 @@ func (r *subnetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 			}
 		}
 	case client.OutcomeNotFound:
-		verdict, _ := r.c.ConfirmAbsence(ctx, subnetsPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, subnetsPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление подсети не подтверждено",

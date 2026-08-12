@@ -218,7 +218,7 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Одиночное «не найдено» ничего не устанавливает: тот же ответ приходит при отказе в
 	// доступе, и он побайтово равен настоящему отсутствию.
-	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -343,7 +343,7 @@ func (r *networkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		// Цель достигнута — но только если отсутствие подтверждено. Тот же ответ приходит
 		// при отказе в доступе, и безусловное «404 значит удалено» оставило бы живой
 		// ресурс вне состояния.
-		verdict, _ := r.c.ConfirmAbsence(ctx, networksPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление сети не подтверждено",
