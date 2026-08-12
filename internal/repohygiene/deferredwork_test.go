@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package artifactgates
+package repohygiene
 
 import (
 	"os"
@@ -26,18 +26,29 @@ import (
 // только для прозы О САМИХ маркерах.
 func TestNoDeferredWorkInTheTree(t *testing.T) {
 	root := repoRoot(t)
-	findings, files, err := auditDeferredWork(root)
+	findings, census, err := auditDeferredWork(root)
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}
 
-	t.Logf("перепись: не-тестовых файлов прочитано %d; находок %d "+
-		"(перечня исключений у этого гейта нет — предикат ловит форму обращения, а не слово)",
-		files, len(findings))
+	t.Logf("%s; находок %d", census, len(findings))
 
-	if files == 0 {
+	if census.Read == 0 {
 		t.Fatal("не прочитано ни одного файла — «маркеров нет» здесь означало бы «ничего не " +
 			"читал», а не чистое дерево")
+	}
+	if len(census.Roots) == 0 {
+		t.Fatal("верхний уровень индекса пуст — область обхода выведена из ничего, и её покрытие " +
+			"ничего не утверждает")
+	}
+	// Вид вычитания, которому больше нечего вычитать, — находка: под его именем
+	// можно положить что угодно, и счёт не сдвинется.
+	for _, s := range deferralSkips {
+		if census.Skipped[s.name] == 0 {
+			t.Errorf("вид вычитания %q не вычел НИ ОДНОГО файла — у него больше нет предмета "+
+				"(заведён потому, что %s). Снимите вид вместе с предметом: оставленный, он "+
+				"остаётся слепой зоной, в которую можно внести отсрочку незамеченной", s.name, s.why)
+		}
 	}
 
 	for _, f := range findings {
@@ -61,16 +72,15 @@ func TestNoDeferredWorkInTheTree(t *testing.T) {
 func synthDeferralTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
-	for _, sub := range deferralScanRoots {
-		if err := os.MkdirAll(filepath.Join(root, sub), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", sub, err)
-		}
-		// Каждое поддерево обязано быть непустым: обход требует состав у индекса
-		// и отказывает на пустом — «смотреть не на что» есть отказ, а не успех.
-		seed := filepath.Join(root, sub, "seed.go")
-		if err := os.WriteFile(seed, []byte("package seed\n"), 0o644); err != nil {
-			t.Fatalf("seed %s: %v", sub, err)
-		}
+	// Дерево обязано быть непустым: обход берёт состав у индекса и отказывает на
+	// пустом — «смотреть не на что» есть отказ, а не успех. Подкаталоги при этом
+	// НЕ засеиваются: область выводится из индекса, поэтому корни синтетического
+	// дерева — ровно те, которые написала сама проба. Прежняя редакция засевала
+	// семь выписанных корней, и проба про восьмой была бы неотличима от пробы про
+	// первый.
+	if err := os.WriteFile(filepath.Join(root, "README.md"),
+		[]byte("# синтетическое дерево пробы\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
 	}
 	for rel, body := range files {
 		full := filepath.Join(root, filepath.FromSlash(rel))
@@ -90,15 +100,41 @@ func TestDeferralGateCatchesAMarkerInProductionCode(t *testing.T) {
 	root := synthDeferralTree(t, map[string]string{
 		"services/x/internal/thing.go": "package thing\n\n// TODO: дочинить после релиза\nfunc F() {}\n",
 	})
-	findings, files, err := auditDeferredWork(root)
+	findings, census, err := auditDeferredWork(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
-	if files == 0 {
+	if census.Read == 0 {
 		t.Fatal("синтетическое дерево не прочитано")
 	}
 	if len(findings) != 1 || !strings.Contains(findings[0].Where, "thing.go") {
 		t.Fatalf("маркер в прод-коде не пойман: %+v", findings)
+	}
+}
+
+// Сторона дефекта, которую ВЫПИСАННАЯ область не ловила: маркер в корне,
+// которого в перечне не было.
+//
+// Область обхода задавалась семью именами, выписанными руками, а верхний уровень
+// индекса несёт больше. Вне перечня оставалась почти четверть отслеживаемого
+// дерева, и «находок ноль» там означало «не читал»: запрет держался не свойством
+// дерева, а тем, что нарушение легло в один из семи названных каталогов.
+func TestDeferralGateCatchesAMarkerOutsideTheHandwrittenRoots(t *testing.T) {
+	root := synthDeferralTree(t, map[string]string{
+		"ui-future/console/src/app.ts": "export const x = 1;\n" +
+			"// " + "TODO" + ": дочинить после релиза\n",
+	})
+	findings, census, err := auditDeferredWork(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if census.Read == 0 {
+		t.Fatal("синтетическое дерево не прочитано")
+	}
+	if len(findings) != 1 || !strings.Contains(findings[0].Where, "ui-future/console/src/app.ts") {
+		t.Fatalf("маркер вне выписанных корней не пойман (%+v): область обхода обязана "+
+			"ВЫВОДИТЬСЯ из индекса дерева, иначе каталог, появившийся после написания "+
+			"перечня, покрыт не будет и об этом никто не узнает", findings)
 	}
 }
 
@@ -111,11 +147,11 @@ func TestDeferralGateStaysSilentOnLawfulTree(t *testing.T) {
 		"services/x/internal/thing_test.go": "package thing\n\n// TODO: фикстура гейта пишет форму дефекта\n",
 		"deploy/chart.yaml":                 "kind: ConfigMap\n# объяснение без отсрочки\n",
 	})
-	findings, files, err := auditDeferredWork(root)
+	findings, census, err := auditDeferredWork(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
-	if files == 0 {
+	if census.Read == 0 {
 		t.Fatal("синтетическое дерево не прочитано")
 	}
 	if len(findings) != 0 {
@@ -145,11 +181,11 @@ func TestEveryDeferralFormIsCaughtThroughTheSieve(t *testing.T) {
 			root := synthDeferralTree(t, map[string]string{
 				"services/x/internal/thing.go": "package thing\n\n" + f.example + "\nfunc F() {}\n",
 			})
-			findings, files, err := auditDeferredWork(root)
+			findings, census, err := auditDeferredWork(root)
 			if err != nil {
 				t.Fatalf("обход синтетического дерева: %v", err)
 			}
-			if files == 0 {
+			if census.Read == 0 {
 				t.Fatal("синтетическое дерево не прочитано")
 			}
 			if len(findings) != 1 {
