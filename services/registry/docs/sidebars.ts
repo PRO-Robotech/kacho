@@ -29,6 +29,12 @@ const sidebars: SidebarsConfig = {
         'api/internal',
       ],
     },
+    {
+      type: 'category',
+      label: 'Terraform',
+      collapsed: false,
+      items: ['terraform/provider', 'terraform/module-registry-space'],
+    },
   ],
 }
 

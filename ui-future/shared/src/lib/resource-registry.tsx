@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Tag } from "antd";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { PlacementBadge } from "@shared/components/atoms/PlacementBadge";
 import {
@@ -20,6 +21,8 @@ import {
 } from "@shared/api/geo";
 import { RoutesEditor, type RouteEntry } from "@shared/components/organisms/RoutesEditor";
 import { CopyableName } from "@shared/components/atoms/CopyableName";
+import { CidrListCell } from "@shared/components/molecules/CidrListCell";
+import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
@@ -283,56 +286,23 @@ function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
 
 // VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
 // hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
+// Основной блок семейства и дополнительные диапазоны — одним списком, каждый
+// своей строкой. Прежде видимым оставался ТОЛЬКО основной, а дополнительные
+// сворачивались в «+N»: число, из которого не узнать ни одного адреса.
 function CidrPrimaryCell({ primary, extra }: { primary: unknown; extra: unknown }): ReactNode {
-  const p = typeof primary === "string" ? primary : "";
-  const more = Array.isArray(extra) ? extra.length : 0;
-  if (!p) return <span className="text-muted-foreground">—</span>;
-  return (
-    <span className="font-mono text-xs">
-      {p}
-      {more > 0 && <span className="text-muted-foreground"> +{more}</span>}
-    </span>
-  );
+  return <CidrListCell items={[primary, extra]} />;
 }
 
-// VPC-1 Network cell: declared supernet blocks (IPv4 first, then IPv6), each on
-// its own line; "+N" collapses long lists. Empty → dash.
+// VPC-1 Network cell: объявленный супернет (IPv4, затем IPv6) — каждый блок
+// своей строкой. Свёртка хвоста в «+N» снята: она показывала два блока из
+// скольких угодно.
 function SupernetCell({ v4, v6 }: { v4: unknown; v6: unknown }): ReactNode {
-  const list = [
-    ...(Array.isArray(v4) ? (v4 as unknown[]) : []),
-    ...(Array.isArray(v6) ? (v6 as unknown[]) : []),
-  ].filter((x): x is string => typeof x === "string" && x !== "");
-  if (list.length === 0) return <span className="text-muted-foreground">—</span>;
-  const head = list.slice(0, 2);
-  const more = list.length - head.length;
-  return (
-    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
-      {head.map((c) => (
-        <span key={c} className="font-mono text-xs">
-          {c}
-        </span>
-      ))}
-      {more > 0 && <span className="text-muted-foreground text-xs">+{more}</span>}
-    </span>
-  );
+  return <CidrListCell items={[v4, v6]} />;
 }
 
-// VPC-1 Subnet cell: server-derived placement — ZONAL(zone) | REGIONAL(region,
-// anycast). Discriminated by placement_type° with zone_id/region_id fallback.
-function PlacementCell({ row }: { row: Record<string, unknown> }): ReactNode {
-  const pt = displayText(row.placement_type);
-  const zone = displayText(row.zone_id);
-  const region = displayText(row.region_id);
-  const anchor = region || zone;
-  if (!pt && !anchor) return <span className="text-muted-foreground">—</span>;
-  const isRegional = pt === "REGIONAL" || (!zone && !!region);
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <Tag color={isRegional ? "geekblue" : "blue"}>{isRegional ? "REGIONAL" : "ZONAL"}</Tag>
-      {anchor && <span className="font-mono text-xs">{anchor}</span>}
-    </span>
-  );
-}
+// Размещение (ZONAL zone | REGIONAL region, anycast) рисует `PlacementAnchor` —
+// он же ставит ССЫЛКУ на зону/регион. Здесь эта ветка прежде жила своей копией,
+// показывавшей якорь плоским текстом.
 
 // ── IAM-1 render helpers (definitionTier / scopeType / target) ──
 const IAM_DASH = <span className="text-muted-foreground">—</span>;
@@ -964,7 +934,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         // VPC-1: declared supernet (immutable via Update; grown/shrunk via
         // :add/:remove-cidr-blocks). Compact IPv4-first view.
-        header: "Супернет",
+        header: "CIDR",
         path: "ipv4_cidr_blocks",
         render: (row) => <SupernetCell v4={row.ipv4_cidr_blocks} v6={row.ipv6_cidr_blocks} />,
       },
@@ -1006,11 +976,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       {
         name: "ipv4_cidr_blocks",
-        label: "Супернет IPv4",
+        label: "CIDR IPv4",
         type: "array",
         itemLabel: "CIDR",
         description:
-          "Объявленное адресное пространство сети (IPv4). Из него нарезаются CIDR подсетей. Неизменяемо через Update — расширяется/сужается verb-действиями на странице сети.",
+          "CIDR сети (IPv4) — из него нарезаются CIDR подсетей. Неизменяемо через Update — расширяется/сужается verb-действиями на странице сети.",
         immutable: true,
         editHidden: true,
         newItem: () => ({ value: "" }),
@@ -1018,10 +988,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "ipv6_cidr_blocks",
-        label: "Супернет IPv6",
+        label: "CIDR IPv6",
         type: "array",
         itemLabel: "CIDR",
-        description: "Опционально. Объявленное адресное пространство сети (IPv6).",
+        description: "Опционально. CIDR сети (IPv6).",
         immutable: true,
         editHidden: true,
         newItem: () => ({ value: "" }),
@@ -1142,7 +1112,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // shows region (anycast). Single column reflects the anchor either way.
         header: "Размещение",
         path: "placement_type",
-        render: (row) => <PlacementCell row={row} />,
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
       },
       {
         header: "Метки",
@@ -1210,7 +1180,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         placeholder: "10.20.0.0/24",
         description:
-          "Неизменяемый основной CIDR-блок подсети (⊆ одного супернет-блока сети). Хотя бы один из IPv4/IPv6 обязателен. Доп. диапазоны добавляются на странице подсети.",
+          "Неизменяемый основной CIDR-блок подсети (⊆ одного CIDR-блока сети). Хотя бы один из IPv4/IPv6 обязателен. Доп. диапазоны добавляются на странице подсети.",
         immutable: true,
       },
       {
@@ -1218,7 +1188,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Основной IPv6 CIDR",
         type: "string",
         placeholder: "fd00:20::/64",
-        description: "Опционально. Неизменяемый основной IPv6 CIDR-блок подсети (⊆ IPv6-супернета сети).",
+        description: "Опционально. Неизменяемый основной IPv6 CIDR-блок подсети (⊆ IPv6 CIDR сети).",
         immutable: true,
       },
       {
@@ -1335,7 +1305,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Используется",
         path: "used",
-        render: (row) => (row.used ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) => <BoolFact value={row.used} yes="Используется" no="Свободен" />,
       },
       {
         header: "Версия",
@@ -1360,7 +1330,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Защита от удаления",
         path: "deletion_protection",
-        render: (row) => (row.deletion_protection ? "Да" : <span className="text-muted-foreground">Нет</span>),
+        render: (row) => <BoolFact value={row.deletion_protection} yes="Удаление запрещено" no="Удаление разрешено" accent />,
       },
       {
         // `used_by` — output-only список kacho.cloud.reference.Reference
@@ -2180,7 +2150,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         format: "text",
         className: "font-mono",
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "Размещение",
         path: "open_for_placement",
@@ -2253,7 +2227,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Статус", path: "status", format: "status" },
       { header: "Тип", path: "instance_kind", format: "code" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
       { header: "Тип машины", path: "machine_type_id", format: "code" },
       {
         header: "vCPU / RAM",
@@ -2589,7 +2567,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       { header: "Статус", path: "status", format: "status" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
     ],
     template: () => ({}),
   },
@@ -2796,7 +2778,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     columns: [
       { header: "Имя", path: "name", format: "text", className: "font-medium" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-      { header: "Регион", path: "region_id", format: "text", className: "font-mono" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "Размещение",
         path: "open_for_placement",
@@ -2981,7 +2967,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       { header: "Тип", path: "kind", format: "text" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "IPv4 CIDR",
         path: "v4_cidr_blocks",
@@ -3174,7 +3164,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
@@ -3373,7 +3367,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",

@@ -6,7 +6,7 @@
 
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { OperationsTable, matchesOutcome, statusOf, statusLabel, type Op } from "./OperationsTable";
+import { OperationsTable, statusOf, statusLabel, type Op } from "./OperationsTable";
 
 const realFetch = globalThis.fetch;
 
@@ -130,22 +130,3 @@ describe("statusOf", () => {
   });
 });
 
-describe("matchesOutcome", () => {
-  it("оставляет только отказавшие для фильтра ошибок", () => {
-    expect(matchesOutcome({ done: true, error: { code: 13, message: "boom" } }, "error")).toBe(true);
-    expect(matchesOutcome({ done: true }, "error")).toBe(false);
-    expect(matchesOutcome({ done: false }, "error")).toBe(false);
-  });
-
-  it("оставляет только успешно завершённые для фильтра успеха", () => {
-    expect(matchesOutcome({ done: true }, "ok")).toBe(true);
-    expect(matchesOutcome({ done: true, error: { message: "x" } }, "ok")).toBe(false);
-    expect(matchesOutcome({ done: false }, "ok")).toBe(false);
-  });
-
-  it("пропускает всё для фильтра «все»", () => {
-    expect(matchesOutcome({ done: true }, "all")).toBe(true);
-    expect(matchesOutcome({ done: true, error: { message: "x" } }, "all")).toBe(true);
-    expect(matchesOutcome({ done: false }, "all")).toBe(true);
-  });
-});

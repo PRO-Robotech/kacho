@@ -155,10 +155,20 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		// vpc
 		NewNetworkResource,
 		NewSubnetResource,
+		newFlatResource(vpcNetworkInterfaceSpec),
 		// iam
 		NewIAMProjectResource,
 		NewIAMGroupResource,
 		NewIAMServiceAccountResource,
+		NewIAMSAKeyResource,
+		newFlatResource(iamAccountSpec),
+		// storage
+		newFlatResource(storageVolumeSpec),
+		newFlatResource(storageSnapshotSpec),
+		newFlatResource(storageImageSpec),
+		// registry
+		newFlatResource(registryRegistrySpec),
+		NewRegistryRepositoryResource,
 		// nlb
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,

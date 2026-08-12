@@ -64,13 +64,10 @@ jest.unstable_mockModule("antd", () => {
   };
 });
 
-// Слот шапки — портал: вне карточки ресурса он не рисует НИЧЕГО, и действия
-// панели были бы недостижимы. Заменитель рисует их на месте — это тот же
-// контракт «показать в шапке», выполненный доступным пробе способом.
-jest.unstable_mockModule("@shared/components/organisms/DetailShell", () => ({
-  HeaderSlotPortal: ({ children }: React.PropsWithChildren) =>
-    React.createElement("div", { "data-testid": "header-slot" }, children),
-}));
+// Действия панели живут в правом слоте шапки СТРАНИЦЫ — там же, где «Создать»
+// у всех списков. Слот настоящий (не заменитель): на странице его даёт
+// провайдер, и проба обязана давать его тоже, иначе она рендерит панель в
+// условиях, которых на странице не бывает.
 
 const update = jest.fn<(path: string, body: unknown) => Promise<unknown>>();
 const toastError = jest.fn();
@@ -85,6 +82,7 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 }));
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
+const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
 type Rule = Parameters<typeof SgRulesPanel>[0]["rules"][number];
 
 const RULES: Rule[] = [
@@ -108,7 +106,12 @@ function show(rules: Rule[] = RULES) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+      <PageHeaderSlotProvider>
+        <div data-testid="header-slot">
+          <HeaderRightSlot />
+        </div>
+        <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+      </PageHeaderSlotProvider>
     </QueryClientProvider>,
   );
 }
@@ -237,7 +240,10 @@ describe("SgRulesPanel — правка и добавление", () => {
 
     fireEvent.click(headerAction(/Добавить правило/));
 
-    expect(screen.getByText("Новое правило")).toBeInTheDocument();
+    // Форма правила живёт в общей оболочке форм: она называет ДЕЙСТВИЕ и тип
+    // («Создание» · «Правило»), а не собственный заголовок «Новое правило».
+    expect(screen.getByText("Создание")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Добавить правило" })).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -245,7 +251,7 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(headerAction(/Добавить правило/));
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить правило" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0][1] as Record<string, unknown>;
@@ -257,7 +263,7 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(within(rowOf("http")).getByRole("button", { name: "Редактировать" }));
-    expect(screen.getByText("Редактирование правила")).toBeInTheDocument();
+    expect(screen.getByText("Редактирование")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));

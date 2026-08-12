@@ -25,6 +25,10 @@ type AnyProps = Record<string, unknown>;
 interface MockColumn {
   title?: React.ReactNode;
   dataIndex?: string;
+  /** Закрепление колонки при горизонтальной прокрутке. */
+  fixed?: "left" | "right";
+  /** Ширина. Настоящая таблица ИГНОРИРУЕТ `fixed` без неё. */
+  width?: number | string;
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
 }
 
@@ -215,7 +219,7 @@ export function antdStub(): Record<string, unknown> {
         React.createElement(
           "tr",
           null,
-          columns.map((c, i) => React.createElement("th", { key: i }, c.title)),
+          columns.map((c, i) => React.createElement("th", { key: i, "data-fixed": c.fixed, "data-width": c.width }, c.title)),
         ),
       ),
       React.createElement(

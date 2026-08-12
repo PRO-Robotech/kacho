@@ -50,24 +50,6 @@ function specByRoute(route: string): ResourceSpec | undefined {
   return Object.values(REGISTRY).find((s) => s.route === route);
 }
 
-/** JsonIntView — internal/infra-проекция ресурса (GET spec.internalGetPath). */
-function JsonIntView({ path }: { path: string }) {
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["jsonint", path],
-    queryFn: () => api.get<Record<string, unknown>>(path),
-    refetchInterval: 5_000,
-    staleTime: 0,
-  });
-  if (isError) return <ErrorResult error={error} />;
-  if (isLoading && !data)
-    return (
-      <div style={{ padding: 32, textAlign: "center" }}>
-        <Spin />
-      </div>
-    );
-  return <JsonMonacoView data={data} />;
-}
-
 /** RelatedTable — встроенная таблица дочернего ресурса (тот же ResourceTable,
  *  что на списке): поиск + конфигуратор колонок + «⋮» actions + welcome-empty. */
 function RelatedTable({
@@ -142,7 +124,15 @@ function RelatedTable({
     columns: childSpec.columns.filter((c) => !filterFields.includes(c.path)),
   };
   const toggleCols: ToggleCol[] = specNoParent.columns.map((c) => ({ key: c.header, label: c.header }));
-  const columns = buildSpecColumns(specNoParent, { projectId }).filter((c) => !hidden.has(c.header));
+  const columns = buildSpecColumns(specNoParent, {
+    projectId,
+    nameIcon: true,
+    // Тот же адрес, каким прежде был переход по клику на строку.
+    nameHref: (r) => {
+      const rid = getByPath<string>(r, "id");
+      return rid ? `${flatChildBase}/${rid}` : null;
+    },
+  }).filter((c) => !hidden.has(c.header));
   // Столбец действий — только когда у ресурса есть строчные действия. Для read-only
   // (напр. образы) не рисуем пустой столбец.
   if (resourceHasRowActions(childSpec)) {
@@ -192,10 +182,6 @@ function RelatedTable({
             loading={isLoading}
             rowKey={(r) => getByPath<string>(r, "id") ?? getByPath<string>(r, "name") ?? Math.random().toString()}
             empty={q || facetVal ? "По запросу ничего не найдено." : undefined}
-            onRowClick={(r) => {
-              const id = getByPath<string>(r, "id");
-              if (id) navigate(`${flatChildBase}/${id}`);
-            }}
           />
         </div>
       </div>
@@ -425,19 +411,9 @@ export function ResourceShell({
       </div>
     ),
   });
-  if (spec.internalGetPath) {
-    const intPath = spec.internalGetPath.replace("{id}", getByPath<string>(data, "id") ?? uid ?? "");
-    tabs.push({
-      id: "jsonint",
-      label: "JSON (internal)",
-      eyebrow: "JSON",
-      render: () => (
-        <div>
-          <JsonIntView path={intPath} />
-        </div>
-      ),
-    });
-  }
+  // Вкладки «JSON (internal)» здесь НЕТ (решение владельца 2026-08-12): она
+  // показывала арендатору вторую, служебную проекцию того же ресурса —
+  // предмет, о котором пользователю нечего решать, рядом с обычной.
 
   // ── form-panel (зона 3) ──
   let mainOverride: ReactNode | undefined;

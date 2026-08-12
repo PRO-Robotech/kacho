@@ -15,6 +15,11 @@ COPY iam/package.json iam/
 COPY system/package.json system/
 RUN npm ci
 
+# Скрипт сборки: кладёт редактор JSON в public модуля. Без него `prebuild`
+# останавливает сборку — вкладка JSON иначе собралась бы «успешно» и не
+# работала бы в рантайме (CSP запрещает загрузку редактора со стороннего CDN).
+COPY scripts/ scripts/
+
 # Sources needed to build the system remote (its own tree + the shared package).
 COPY shared/ shared/
 COPY system/ system/

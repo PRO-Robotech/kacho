@@ -7,13 +7,14 @@
 
 import { useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, Space, Tag, Typography } from "antd";
+import { Button, Input, Select, Tag, Typography } from "antd";
 import { ReloadOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
-import { OperationsTable, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
+import { OperationsTable, operationColumnTitles, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -86,6 +87,7 @@ export function OperationsPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
   const [kind, setKind] = useState<string>("all");
+  const [hiddenCols, toggleCol] = useHiddenColumns("cols:vpc-operations");
 
   // 1) для каждого VPC-resource type грузим список ресурсов проекта.
   const listQueries = useQueries({
@@ -188,11 +190,23 @@ export function OperationsPage() {
   }
 
   return (
-    <div className="kc-surface" style={{ padding: 20, minHeight: "100%" }}>
-      <Space direction="vertical" size={0} style={{ width: "100%" }}>
-        {/* Единая шапка: общая VPC-иконка модуля (DeploymentUnitOutlined,
-            отличная от network) + действие «Операции» + название «VPC» +
-            счётчик; фильтры — справа. */}
+    // Колонка на всю высоту: шапка фиксированной высоты, таблица забирает
+    // остаток и прокручивается ВНУТРИ себя. Прежде страница была обычным
+    // потоком (`minHeight: 100%` + `Space`), и таблица, рассчитанная на высоту
+    // родителя, получала её от контейнера нулевой высоты — список не
+    // растягивался на доступное место, а прокрутка появлялась у страницы,
+    // из-за чего шапка с фильтрами уезжала вверх вместе с содержимым.
+    <div
+      className="kc-surface"
+      style={{ padding: 20, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
+      {/* Без `Space`: его элементы получают `flex: 0 1 auto` и НЕ растягиваются,
+          поэтому таблица внутри оставалась высотой в собственную шапку (182px
+          при окне 900) — измерено на живой странице. Колонка строится явно. */}
+      {/* Шапка не сжимается: остаток высоты забирает таблица.
+          Единая шапка: общая VPC-иконка модуля + действие «Операции» +
+          название «VPC» + счётчик; фильтры — справа. */}
+      <div style={{ flexShrink: 0 }}>
         <PanelHeader
           icon={<DeploymentUnitOutlined />}
           eyebrow="Операции"
@@ -228,17 +242,26 @@ export function OperationsPage() {
               />
               <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
               <Select value={kind} onChange={setKind} options={KIND_OPTIONS} style={{ width: 180 }} />
+              {/* Где есть фильтр — есть и выбор столбцов. */}
+              <ColumnSettings
+                columns={operationColumnTitles(true).map((t) => ({ key: t, label: t }))}
+                hidden={hiddenCols}
+                onToggle={toggleCol}
+              />
             </>
           }
         />
+      </div>
 
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <OperationsTable
           rows={filtered}
           loading={isLoading}
+          hiddenColumns={hiddenCols}
           showResourceKind
           empty={allOps.length > 0 && filtered.length === 0}
         />
-      </Space>
+      </div>
     </div>
   );
 }
