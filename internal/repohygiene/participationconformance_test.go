@@ -37,6 +37,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -72,23 +73,10 @@ type participationSite struct {
 //     уточнить распознавание, а не заводить исключение: перечня исключений у
 //     этого гейта нет намеренно.
 func TestEveryCarrierParticipantIsRaisedByAProbe(t *testing.T) {
-	root := repoRoot(t)
-	sites, files := scanCarrierParticipation(t, root)
-
-	participants, proven := 0, 0
-	var missing []string
-	for svc, site := range sites {
-		if !site.prodCall {
-			continue
-		}
-		participants++
-		if site.testCall {
-			proven++
-			continue
-		}
-		missing = append(missing, fmt.Sprintf("%s (корень: %s)", svc, site.where))
+	participants, proven, missing, files, err := auditCarrierParticipation(repoRoot(t))
+	if err != nil {
+		t.Fatalf("обход композиционных корней: %v", err)
 	}
-	sort.Strings(missing)
 
 	t.Logf("перепись: файлов композиционных корней прочитано %d, участников контура %d "+
 		"(выведено из дерева, не выписано), участие доказано подъёмом у %d",
@@ -111,16 +99,42 @@ func TestEveryCarrierParticipantIsRaisedByAProbe(t *testing.T) {
 	}
 }
 
+// auditCarrierParticipation — исход обхода: сколько участников, у скольких есть
+// проба подъёма и кого недостаёт.
+//
+// Принимает КОРЕНЬ и возвращает ошибку вместо того чтобы ронять прогон изнутри:
+// иначе гейт нельзя прогнать на синтетическом дереве, то есть нельзя доказать
+// инъекцией — ни что он краснеет на участнике без пробы, ни что он молчит на
+// участнике с пробой.
+func auditCarrierParticipation(root string) (participants, proven int, missing []string, files int, err error) {
+	sites, files, err := scanCarrierParticipation(root)
+	if err != nil {
+		return 0, 0, nil, 0, err
+	}
+	for svc, site := range sites {
+		if !site.prodCall {
+			continue
+		}
+		participants++
+		if site.testCall {
+			proven++
+			continue
+		}
+		missing = append(missing, fmt.Sprintf("%s (корень: %s)", svc, site.where))
+	}
+	sort.Strings(missing)
+	return participants, proven, missing, files, nil
+}
+
 // scanCarrierParticipation — обход композиционных корней сервисов.
 //
 // Состав берётся у индекса git: обход диска прочитал бы игнорируемое, и вердикт
 // стал бы свойством рабочего каталога, а не коммита.
-func scanCarrierParticipation(t *testing.T, root string) (map[string]*participationSite, int) {
-	t.Helper()
+func scanCarrierParticipation(root string) (map[string]*participationSite, int, error) {
 	dir := filepath.Join(root, "services")
 	tracked, err := treecorpus.Under(dir)
 	if err != nil {
-		t.Fatalf("состав дерева под %s не читается: %v", dir, err)
+		return nil, 0, fmt.Errorf("состав дерева под %s не читается: %w", dir, err)
 	}
 
 	out := map[string]*participationSite{}
@@ -132,7 +146,7 @@ func scanCarrierParticipation(t *testing.T, root string) (map[string]*participat
 		}
 		rel, rerr := filepath.Rel(root, abs)
 		if rerr != nil {
-			t.Fatalf("относительный путь для %s: %v", abs, rerr)
+			return nil, 0, fmt.Errorf("относительный путь для %s: %w", abs, rerr)
 		}
 		parts := strings.Split(filepath.ToSlash(rel), "/")
 		if len(parts) < 4 || parts[0] != "services" || parts[2] != "cmd" {
@@ -143,7 +157,7 @@ func scanCarrierParticipation(t *testing.T, root string) (map[string]*participat
 
 		f, perr := parser.ParseFile(fset, abs, nil, parser.SkipObjectResolution)
 		if perr != nil {
-			t.Fatalf("разбор %s: %v", abs, perr)
+			return nil, 0, fmt.Errorf("разбор %s: %w", abs, perr)
 		}
 		if !callsCarrierServe(f) {
 			continue
@@ -162,7 +176,7 @@ func scanCarrierParticipation(t *testing.T, root string) (map[string]*participat
 			site.where = filepath.ToSlash(rel)
 		}
 	}
-	return out, files
+	return out, files, nil
 }
 
 // callsCarrierServe — зовёт ли файл `servicehost.Serve`.
@@ -201,4 +215,115 @@ func callsCarrierServe(f *ast.File) bool {
 		return true
 	})
 	return found
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ИНЪЕКЦИЯ: обе стороны гоняют ТУ ЖЕ функцию, что и гейт по дереву
+//
+// Дефект и законный случай отличаются РОВНО одним файлом — тестовым, зовущим
+// носитель. Без стороны «молчит» гейт был бы неотличим от проверки «сервис зовёт
+// носитель» и краснел бы на каждом участнике сразу.
+
+// synthCarrierTree — синтетический композиционный корень, видимый индексу.
+func synthCarrierTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for rel, body := range files {
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	synthTrack(t, root)
+	return root
+}
+
+const carrierProdSrc = `package main
+
+import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+
+func main() { _ = servicehost.Serve(nil, nil) }
+`
+
+const carrierProbeSrc = `package main
+
+import (
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+)
+
+func TestCarrierStarts(t *testing.T) { _ = servicehost.Serve(nil, nil) }
+`
+
+// Сторона дефекта: участник есть, пробы подъёма нет — гейт называет участника.
+func TestCarrierParticipationGateRedOnAParticipantWithoutAProbe(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/cmd/x/main.go": carrierProdSrc,
+	})
+	participants, proven, missing, files, err := auditCarrierParticipation(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if files == 0 {
+		t.Fatal("синтетическое дерево не прочитано")
+	}
+	if participants != 1 || proven != 0 {
+		t.Fatalf("участников %d, доказано подъёмом %d — ожидалось 1 и 0", participants, proven)
+	}
+	if len(missing) != 1 || !strings.Contains(missing[0], "x") {
+		t.Fatalf("участник без пробы не назван: %v", missing)
+	}
+}
+
+// Законный близнец той же формы: тот же участник, та же сборка — плюс проба,
+// зовущая носитель.
+func TestCarrierParticipationGateSilentWhenTheProbeRaisesIt(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/cmd/x/main.go":               carrierProdSrc,
+		"services/x/cmd/x/carrier_start_test.go": carrierProbeSrc,
+	})
+	participants, proven, missing, files, err := auditCarrierParticipation(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if files == 0 {
+		t.Fatal("синтетическое дерево не прочитано")
+	}
+	if participants != 1 || proven != 1 {
+		t.Fatalf("участников %d, доказано подъёмом %d — ожидалось 1 и 1", participants, proven)
+	}
+	if len(missing) != 0 {
+		t.Fatalf("гейт нашёл дефект в законном дереве: %v", missing)
+	}
+}
+
+// Отрицательный контроль распознавания: файл, зовущий ДРУГУЮ функцию того же
+// пакета, участником не делает.
+//
+// Без него гейт ловил бы «корень тронул носитель», а не «корень им поднимается»,
+// и любой сервис, читающий из пакета константу, становился бы участником.
+func TestCarrierParticipationGateIgnoresANonServeCall(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/cmd/x/main.go": `package main
+
+import "github.com/PRO-Robotech/kacho/pkg/servicehost"
+
+func main() { _ = servicehost.DefaultShutdownGrace }
+`,
+	})
+	participants, _, _, files, err := auditCarrierParticipation(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if files == 0 {
+		t.Fatal("синтетическое дерево не прочитано")
+	}
+	if participants != 0 {
+		t.Fatalf("участников %d — обращение к пакету засчитано подъёмом, и тогда участником "+
+			"станет всякий, кто прочтёт оттуда константу", participants)
+	}
 }

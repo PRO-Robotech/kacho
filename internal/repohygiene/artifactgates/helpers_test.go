@@ -11,7 +11,6 @@ package artifactgates
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -37,20 +36,5 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("не найден корень репозитория (каталог с go.mod)")
 		}
 		dir = parent
-	}
-}
-
-// synthTrack делает синтетическое дерево видимым для git-индекса.
-//
-// Копия по той же причине, что и repoRoot: две строки git-команд, связывать
-// пакеты ради которых дороже, чем повторить.
-func synthTrack(t *testing.T, root string) {
-	t.Helper()
-	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v в синтетическом дереве: %v\n%s", args, err, out)
-		}
 	}
 }
