@@ -291,33 +291,82 @@ st=0
 
 IAM_DEP="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
 GEO_DEP="$UMBRELLA/charts/kacho-geo/templates/deployment.yaml"
-JOB="$UMBRELLA/charts/openfga-bootstrap/templates/openfga-bootstrap-job.yaml"
+# КООРДИНАТА ПАТЧА ВНОСИТСЯ ТУДА, ОТКУДА ЕЁ БЕРЁТ РЕНДЕР. Гейт читает исполняемую
+# часть рендера (`command` + `args` контейнера), а тело задания приезжает в `args`
+# из отдельного файла — шаблон его только подключает (`.Files.Get`). Значит вносить
+# синтетическую координату надо в файл тела: инъекция в шаблон, который тела уже не
+# содержит, ничего в рендер не добавляет.
+BOOT_BODY="$UMBRELLA/charts/openfga-bootstrap/files/bootstrap.sh"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ИНЪЕКЦИЯ ОБЯЗАНА ИМЕТЬ ПРОИЗВОДИТЕЛЯ, И ЕГО ОТСУТСТВИЕ — ОТДЕЛЬНЫЙ ИСХОД.
+#
+# «Дефект внесён, гейт его не поймал» и «дефект внести не удалось» — разные вещи,
+# и чинятся они в разных местах: первое разбирают в предикате гейта, второе — в
+# якоре. Пока они не различались, переезд тела задания в отдельный файл давал
+# картину «контроль справа не прошёл (exit=0)»: якоря в шаблоне не стало, вставка
+# не произошла, гейт отработал на НЕТРОНУТОМ дереве и законно смолчал — то есть
+# самопроверка отчитывалась о способности гейта краснеть, ничего ему не предъявив.
+#
+# Поэтому якорь проверяется до записи, а его пропажа называется своим именем.
+# ─────────────────────────────────────────────────────────────────────────────
+inject_at() {  # <файл> <якорь> <вставка> <before|after>
+  python3 - "$@" <<'PY'
+import sys
+
+path, anchor, extra, where = sys.argv[1:5]
+src = open(path).read()
+i = src.find(anchor)
+if i < 0:
+    sys.stderr.write(
+        f"якорь инъекции не найден: {anchor!r}\n"
+        f"        в файле: {path}\n"
+        "        Строка переписана или предмет переехал в другой файл. Дефект НЕ\n"
+        "        ВНЕСЁН, значит о способности гейта краснеть не сказано ничего —\n"
+        "        это не «гейт промолчал», это «гейту нечего было показать».\n"
+    )
+    sys.exit(3)
+if where == "after":
+    i += len(anchor)
+open(path, "w").write(src[:i] + extra + src[i:])
+PY
+}
+
+# Снимок → инъекция → прогон гейта → восстановление. Возвращает 3, когда дефект
+# внести не удалось; при успехе кладёт исход прогона в INJ_RC/INJ_OUT.
+INJ_RC=0; INJ_OUT=""; INJ_ERR=""
+run_with_injection() {  # <файл> <якорь> <вставка> <before|after>
+  local file="$1" bak
+  bak="$(mktemp)"; cp "$file" "$bak"
+  if ! INJ_ERR="$(inject_at "$@" 2>&1)"; then
+    cp "$bak" "$file"; rm -f "$bak"
+    return 3
+  fi
+  INJ_OUT="$(bash "$0" 2>&1)"; INJ_RC=$?
+  cp "$bak" "$file"; rm -f "$bak"
+  return 0
+}
+
+# Вывод гейта печатается ЦЕЛИКОМ: он короток и ограничен сводкой по профилям, а
+# усечение хвостом уничтожает как раз имя падения — то, ради чего его и печатают.
+show() { printf '%s\n' "$1" | sed 's/^/      /'; }
 
 # (A) ИНЪЕКЦИЯ: вернуть в чарт объявление аннотации, которую патчит задание.
 if [ ! -f "$IAM_DEP" ]; then
   echo "  ПРОВАЛ (A) не найден чарт для инъекции ($IAM_DEP)"; st=1
+elif ! run_with_injection "$IAM_DEP" \
+        "        kacho.cloud/config-checksum:" \
+        '        kacho.cloud/openfga-model-id-rev: "pending"
+' before; then
+  echo "  ПРОВАЛ (A) дефект НЕ ВНЕСЁН — у инъекции пропал производитель"
+  show "$INJ_ERR"; st=1
+elif [ $INJ_RC -ne 0 ] \
+     && printf '%s' "$INJ_OUT" | grep -q 'openfga-model-id-rev' \
+     && printf '%s' "$INJ_OUT" | grep -q 'kacho-iam'; then
+  echo "  ОК  (A) второй писатель → КРАСНЫЙ с ключом и координатой"
 else
-  bak="$(mktemp)"; cp "$IAM_DEP" "$bak"
-  python3 - "$IAM_DEP" <<'PY'
-import sys
-p = sys.argv[1]
-src = open(p).read()
-anchor = "        kacho.cloud/config-checksum:"
-i = src.index(anchor)
-open(p, "w").write(
-    src[:i] + '        kacho.cloud/openfga-model-id-rev: "pending"\n' + src[i:]
-)
-PY
-  out="$(bash "$0" 2>&1)"; ist=$?
-  cp "$bak" "$IAM_DEP"; rm -f "$bak"
-  if [ $ist -ne 0 ] \
-     && printf '%s' "$out" | grep -q 'openfga-model-id-rev' \
-     && printf '%s' "$out" | grep -q 'kacho-iam'; then
-    echo "  ОК  (A) второй писатель → КРАСНЫЙ с ключом и координатой"
-  else
-    echo "  ПРОВАЛ (A) двойное владение не поймано (exit=$ist)"
-    printf '%s\n' "$out" | tail -8 | sed 's/^/      /'; st=1
-  fi
+  echo "  ПРОВАЛ (A) двойное владение не поймано (exit=$INJ_RC)"
+  show "$INJ_OUT"; st=1
 fi
 
 # (B) КОНТРОЛЬ СЛЕВА: аннотация, объявленная чартом и никем не патчимая, законна.
@@ -325,54 +374,39 @@ fi
 #     ловил бы форму, а не пересечение, и первый же ложный срабат его бы отключил.
 if [ ! -f "$GEO_DEP" ]; then
   echo "  ПРОВАЛ (B) не найден чарт для контроля ($GEO_DEP)"; st=1
+elif ! run_with_injection "$GEO_DEP" \
+        "      annotations:
+" \
+        '        kacho.cloud/self-test-twin: "x"
+' after; then
+  echo "  ПРОВАЛ (B) контроль НЕ ВНЕСЁН — у инъекции пропал производитель"
+  show "$INJ_ERR"; st=1
+elif [ $INJ_RC -eq 0 ]; then
+  echo "  ОК  (B) объявленная и никем не патчимая аннотация → МОЛЧИТ"
 else
-  bak="$(mktemp)"; cp "$GEO_DEP" "$bak"
-  python3 - "$GEO_DEP" <<'PY'
-import sys
-p = sys.argv[1]
-src = open(p).read()
-anchor = "      annotations:\n"
-i = src.index(anchor) + len(anchor)
-open(p, "w").write(src[:i] + '        kacho.cloud/self-test-twin: "x"\n' + src[i:])
-PY
-  out="$(bash "$0" 2>&1)"; bst=$?
-  cp "$bak" "$GEO_DEP"; rm -f "$bak"
-  if [ $bst -eq 0 ]; then
-    echo "  ОК  (B) объявленная и никем не патчимая аннотация → МОЛЧИТ"
-  else
-    echo "  ПРОВАЛ (B) законная аннотация покрашена (exit=$bst)"
-    printf '%s\n' "$out" | tail -8 | sed 's/^/      /'; st=1
-  fi
+  echo "  ПРОВАЛ (B) законная аннотация покрашена (exit=$INJ_RC)"
+  show "$INJ_OUT"; st=1
 fi
 
 # (C) КОНТРОЛЬ СПРАВА: координата аннотации, которой не объявляет ни один чарт,
 #     законна. Он доказывает сразу две вещи: правая половина эту форму ВИДИТ
 #     (ключ назван в объёме осмотренного) и гейт всё равно молчит, потому что
 #     ключуется на ПЕРЕСЕЧЕНИИ, а не на факте «координата патча встретилась».
-if [ ! -f "$JOB" ]; then
-  echo "  ПРОВАЛ (C) не найдено задание для контроля ($JOB)"; st=1
+if [ ! -f "$BOOT_BODY" ]; then
+  echo "  ПРОВАЛ (C) не найдено тело задания для контроля ($BOOT_BODY)"; st=1
+elif ! run_with_injection "$BOOT_BODY" \
+        'REV=$(date +%s)
+' \
+        'echo "self-test control" \
+  "/spec/template/metadata/annotations/kacho.cloud~1self-test-unowned"
+' after; then
+  echo "  ПРОВАЛ (C) контроль НЕ ВНЕСЁН — у инъекции пропал производитель"
+  show "$INJ_ERR"; st=1
+elif [ $INJ_RC -eq 0 ] && printf '%s' "$INJ_OUT" | grep -q 'self-test-unowned'; then
+  echo "  ОК  (C) координата патча без объявления в чарте → УВИДЕНА и НЕ покрашена"
 else
-  bak="$(mktemp)"; cp "$JOB" "$bak"
-  python3 - "$JOB" <<'PY'
-import sys
-p = sys.argv[1]
-src = open(p).read()
-anchor = "              REV=$(date +%s)\n"
-i = src.index(anchor) + len(anchor)
-extra = (
-    '              echo "self-test control" \\\n'
-    '                "/spec/template/metadata/annotations/kacho.cloud~1self-test-unowned"\n'
-)
-open(p, "w").write(src[:i] + extra + src[i:])
-PY
-  out="$(bash "$0" 2>&1)"; cst=$?
-  cp "$bak" "$JOB"; rm -f "$bak"
-  if [ $cst -eq 0 ] && printf '%s' "$out" | grep -q 'self-test-unowned'; then
-    echo "  ОК  (C) координата патча без объявления в чарте → УВИДЕНА и НЕ покрашена"
-  else
-    echo "  ПРОВАЛ (C) контроль справа не прошёл (exit=$cst)"
-    printf '%s\n' "$out" | tail -8 | sed 's/^/      /'; st=1
-  fi
+  echo "  ПРОВАЛ (C) контроль справа не прошёл (exit=$INJ_RC)"
+  show "$INJ_OUT"; st=1
 fi
 
 echo

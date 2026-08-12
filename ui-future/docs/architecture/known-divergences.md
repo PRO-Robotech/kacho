@@ -12,7 +12,10 @@ re-flag it.
 have-i-been-pwned (HIBP) k-anonymity check (`checkHibp`) that `fetch`es
 `https://api.pwnedpasswords.com/range/<SHA1-prefix>` and warns the user before
 submit. The app's own CSP is `connect-src 'self'`
-(`deploy/values.yaml` / the four `*/nginx.conf`), so **in the deployed image this
+(`deploy/values.yaml` / the five `*/nginx.conf` that emit it — count measured
+2026-08-12 by `git grep -lI Content-Security-Policy -- '*nginx.conf'`, not
+remembered: here stood «four», and it was already wrong when written — the same
+commit that carried the sentence in also carried the fifth file), so **in the deployed image this
 cross-origin fetch is blocked** and `checkHibp` fail-opens (its `catch` returns
 `false`), so the inline warning does not render in production.
 
@@ -44,6 +47,14 @@ lookup through a same-origin gateway endpoint rather than adding
 
 **Status:** accepted / bounded residual (not an exploitable defect).
 
+**Запись гейта:** `csp:style-src-unsafe-inline` — держит `scripts/check-csp-divergence-records.mjs`.
+**Измерено против:** `antd@^6.3.7`.
+
+Запись держится гейтом, а не памятью автора: он краснеет, когда послабления в
+дереве больше нет (принимать нечего — снять запись) и когда пин UI-набора уехал
+(измерение про рантайм-движок стилей той версии больше не относится к дереву).
+Обоснование ниже — про **v6**; пин и есть срок годности этого обоснования.
+
 The console's Content-Security-Policy (`deploy/values.yaml` → `security.contentSecurityPolicy`)
 is otherwise strict — `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
 `frame-ancestors 'none'`, `form-action 'self'`, `connect-src 'self'`. Only
@@ -64,6 +75,72 @@ known. The DPoP token flow, auth ceremony and API calls are unaffected.
 **Revisit trigger:** drop `'unsafe-inline'` from `style-src` and adopt a
 per-response nonce injected by the host nginx once antd exposes nonce-capable
 style injection.
+
+## Политика консоли применяется к проксируемой странице входа и блокирует встроенный скрипт провайдера
+
+**Статус:** принято / ограниченный остаток; измерено 2026-08-11, держится гейтом.
+
+**Запись гейта:** `csp:login-page-inline-script` — держит `scripts/check-csp-divergence-records.mjs`.
+**Измерено против:** `oryd/kratos-selfservice-ui-node:v1.3.1`, `oryd/kratos-selfservice-ui-node:v26.2.0`.
+
+Страницы входа и регистрации отдаёт **сторонний** self-service UI провайдера
+личности, а край консоли проксирует их полосу через себя
+(`deploy/templates/configmap-nginx.yaml`, полоса `^/(login|registration|…)`).
+nginx наследует `add_header` с внешнего уровня, пока у полосы нет своих, — значит
+политика консоли применяется и к странице, которую консоль не писала. Одну
+конструкцию этой страницы политика отвергает, и браузер печатает об этом ошибку
+на каждой загрузке входа.
+
+**Что именно отвергается — измерено, а не предположено:** один встроенный скрипт
+в 123 байта, вешающий пустой обработчик `load` на узлы passkey, которых на
+странице нет. Отказ не меняет ничего: регистрация проходит сквозь
+(форма → пароль → `/dashboard`), проверено на стенде 2026-08-11.
+
+**Почему это не «чинится» ослаблением политики.** `script-src` не ослабляется и
+хеш не добавляется: `'unsafe-inline'` ради пустого обработчика открыл бы
+исполнение произвольных встроенных скриптов на страницах **ввода пароля** — там,
+где цена ошибки максимальна, — а хеш протух бы при первом же обновлении
+провайдера и вернул бы ту же ошибку.
+
+**Почему исход «объявить», а не «снять» — с разбором отвергнутых способов снять:**
+
+- вырезать чужой скрипт при проксировании — правка чужой разметки по образцу: она
+  либо промахнётся мимо будущего настоящего скрипта, либо вырежет его;
+- подставлять чужому скрипту `nonce` — то же ослабление, названное иначе: nonce,
+  выдаваемый любому встроенному скрипту, который прислал провайдер, доверяет всей
+  его разметке, и именно на странице ввода пароля;
+- отдавать вход собственными страницами консоли (`shared/src/pages/auth/`) — смена
+  того, кто отдаёт вход; это отдельный предмет со своей приёмкой, а не правка
+  политики.
+
+**Цена бездействия названа честно:** постоянная ошибка в журнале приучает не
+смотреть на нарушения политики, и настоящее нарушение потеряется среди этого.
+Гейт существует ровно затем, чтобы запись не пережила своё основание молча.
+
+**Условие снятия — и чем каждое держится.** Гейт роняет прогон, когда:
+
+- пин стороннего UI в дереве отличается от названного выше — разметку страницы
+  входа определяет только он, поэтому его смена означает «перемерить и либо снять
+  запись, либо обновить пин»;
+- полоса входа больше не проксируется стороннему UI — предмета у записи нет;
+- у полосы появились собственные заголовки — политика консоли на страницу входа
+  больше не наследуется, и запись описывает не то, что происходит;
+- `script-src` ослаблен — исход, который запись прямо запрещает.
+
+**Про два пина, а не один.** В дереве провайдер закреплён дважды: умолчание
+чарта (`deploy/helm/umbrella/charts/kratos-selfservice-ui/values.yaml`) и
+переопределение профиля разработки (`deploy/helm/umbrella/values.dev.yaml`).
+Профили расходятся: боевой включает UI, тега не переопределяет и едет на
+умолчании чарта, разработка — на более новом. Какой из двух был на стенде
+2026-08-11, в исходной записи не зафиксировано, а восстановить это задним числом
+нельзя, — поэтому запись привязана к **обоим**: любое движение любого из них
+требует перемерить. Предикат: `grep -rn -A3 'repository:.*kratos-selfservice-ui'
+deploy/helm/umbrella`.
+
+Пин — **прокси**-предикат: он ломается раньше своего предмета (образ могли поднять
+по причине, к встроенному скрипту не относящейся). Направление неточности выбрано
+осознанно: ложное срабатывание требует перемерить, а не оставляет запись тихо жить
+после того, как её основание исчезло.
 
 ## `react-hooks/exhaustive-deps` line-level suppressions
 

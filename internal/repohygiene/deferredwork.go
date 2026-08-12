@@ -29,12 +29,25 @@
 // Он не судит ПРОЗУ. Слово «TODO» внутри объяснения запрета (в этом файле, в
 // README проверок, в описании соседнего гейта) — не отложенная работа, а её имя.
 // Различение идёт по форме: маркером считается вхождение в позиции, где оно
-// адресует ЧИТАТЕЛЯ КОДА, — то есть в комментарии или строке рядом с
-// исполняемым, а не в связном абзаце документации о самих маркерах.
-// Практически это выражено списком путей-объяснений: он ЗАКРЫТ и обязан
-// истекать сам (проба ниже роняет прогон на записи, которой больше нечего
-// объяснять).
-package artifactgates
+// адресует ЧИТАТЕЛЯ КОДА, — то есть `TODO:` либо `TODO(тикет):`, а не голое
+// слово внутри предложения.
+//
+// Перечня путей-объяснений у гейта НЕТ — ни закрытого, ни пустого, — и пробы
+// его самоистечения нет тоже, потому что истекать нечему. Здесь стояло обратное:
+// шапка объявляла закрытый список и пробу над ним, тогда как тело того же файла
+// (ниже, над deferralFinding) объясняет, почему механизм снят целиком. Два места
+// об одном предмете, из которых верно одно, — и неверным было то, которое
+// читают первым.
+//
+// # Область обхода ВЫВОДИТСЯ из дерева
+//
+// Состав берётся у индекса git целиком, а верхний уровень перечисляется по
+// нему же. Выписанный руками перечень корней держался ровно до появления
+// восьмого каталога: он молчал про то, чего в нём нет, и «ноль находок» в такой
+// области неотличимо от «ноль прочитанного». Из счёта вычитаются три вида,
+// и у каждого проверяется предмет (см. deferralSkip): тестовый корпус по
+// суффиксу, тестовые данные по каталогу и сгенерированное.
+package repohygiene
 
 import (
 	"fmt"
@@ -148,9 +161,61 @@ func hasDeferralSeed(body string) bool {
 // `TODO(...)` с последующим двоеточием в той же строке.
 var contextTODO = regexp.MustCompile(`context\.TODO\(\)`)
 
-// deferralScanRoots — область обхода. Каталог, которого здесь нет, гейтом не
-// покрыт; отсутствие каталога — отказ, а не тихий пропуск.
-var deferralScanRoots = []string{"pkg", "services", "gateway", "internal", "deploy", "tools", "proto", "terraform"}
+// deferralSkip — вид, вычитаемый из области, и предикат его узнавания.
+//
+// Вычитается ровно то, что судить нельзя ПО СУЩЕСТВУ, а не то, что неудобно:
+// фикстура гейта обязана уметь написать форму дефекта, иначе гейт нельзя
+// проверить инъекцией, а маркер в сгенерированном принадлежит генератору.
+//
+// Каждый вид несёт предмет, и предмет проверяется: обход считает вычтенное
+// поштучно, а гейт роняет прогон на виде, которому больше нечего вычитать
+// (см. TestNoDeferredWorkInTheTree). Вид без предмета — это слепая зона,
+// которую унаследует следующий: под его именем можно положить что угодно, и
+// счёт не сдвинется.
+type deferralSkip struct {
+	name  string
+	why   string
+	match func(slashed string) bool
+}
+
+var deferralSkips = []deferralSkip{
+	{
+		name: "тестовый корпус",
+		why:  "фикстура гейта обязана уметь написать форму дефекта — иначе гейт не проверить инъекцией",
+		match: func(s string) bool {
+			return strings.HasSuffix(s, "_test.go")
+		},
+	},
+	{
+		name:  "тестовые данные",
+		why:   "вход проб, а не код: маркер там принадлежит сценарию, а не продукту",
+		match: func(s string) bool { return strings.Contains(s, "/testdata/") },
+	},
+	{
+		name:  "сгенерированное",
+		why:   "маркеры принадлежат генератору, а не автору дерева",
+		match: func(s string) bool { return strings.HasPrefix(s, "pkg/api/") },
+	},
+}
+
+// deferralCensus — объём осмотренного. Печатается всегда: «ноль находок»
+// обязано быть отличимо от «ноль прочитанного», а «область покрыта» — от
+// «область выписана».
+type deferralCensus struct {
+	Tracked int            // элементов в индексе дерева
+	Read    int            // прочитано
+	Roots   []string       // верхний уровень индекса, ВЫВЕДЕННЫЙ из него же
+	ByRoot  map[string]int // корень → прочитано под ним
+	Skipped map[string]int // вид вычитания → сколько вычтено
+}
+
+// topLevel — верхний сегмент пути; для файла в корне репозитория это он сам.
+func topLevel(slashed string) string {
+	if i := strings.IndexByte(slashed, '/'); i >= 0 {
+		return slashed[:i]
+	}
+	return "."
+}
 
 // Перечня исключений у этого гейта НЕТ — и это измерение, а не упущение.
 //
@@ -217,56 +282,95 @@ func markedLines(body string) []markedLine {
 
 // auditDeferredWork обходит дерево и ищет маркеры отложенной работы.
 //
-// Возвращает находки и число прочитанных файлов: «ноль находок» обязано быть
-// отличимо от «ноль прочитанного».
-func auditDeferredWork(root string) (findings []deferralFinding, filesRead int, err error) {
-	for _, sub := range deferralScanRoots {
-		dir := filepath.Join(root, sub)
-		tracked, terr := treecorpus.Under(dir)
-		if terr != nil {
-			return nil, 0, fmt.Errorf("состав %s: %w", sub, terr)
+// Область — ВЕСЬ индекс: корни не выписываются, а выводятся из него, поэтому
+// каталог, заведённый завтра, попадает под гейт в день появления, а не тогда,
+// когда кто-нибудь снова пройдёт по дереву руками.
+//
+// Возвращает находки и перепись осмотренного: «ноль находок» обязано быть
+// отличимо и от «ноль прочитанного», и от «прочитал не там».
+func auditDeferredWork(root string) (findings []deferralFinding, census deferralCensus, err error) {
+	census.ByRoot = map[string]int{}
+	census.Skipped = map[string]int{}
+	for _, s := range deferralSkips {
+		census.Skipped[s.name] = 0
+	}
+
+	tracked, terr := treecorpus.Under(root)
+	if terr != nil {
+		return nil, census, fmt.Errorf("состав дерева: %w", terr)
+	}
+	census.Tracked = len(tracked)
+
+	roots := map[string]struct{}{}
+	for _, abs := range tracked {
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil {
+			return nil, census, fmt.Errorf("путь %s: %w", abs, rerr)
 		}
-		for _, abs := range tracked {
-			rel, rerr := filepath.Rel(root, abs)
-			if rerr != nil {
-				return nil, 0, fmt.Errorf("путь %s: %w", abs, rerr)
-			}
-			slashed := filepath.ToSlash(rel)
-			if strings.HasSuffix(slashed, "_test.go") || strings.Contains(slashed, "/testdata/") {
-				continue
-			}
-			// Сгенерированное не судим: маркеры там принадлежат генератору.
-			if strings.HasPrefix(slashed, "pkg/api/") {
-				continue
-			}
-			// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из
-			// ввода: включить посторонний файл нечем.
-			raw, berr := os.ReadFile(abs)
-			if berr != nil {
-				return nil, 0, fmt.Errorf("чтение %s: %w", slashed, berr)
-			}
-			body := string(raw)
-			filesRead++
-			// Отсев: файл без единой затравки разбору не подлежит. Подавляющее
-			// большинство дерева отсекается здесь, и именно поэтому гейт
-			// укладывается в бюджет пакета.
-			if !hasDeferralSeed(body) {
-				continue
-			}
-			for _, line := range markedLines(body) {
-				// Строка, где единственное совпадение — имя стандартной функции,
-				// отсрочкой не является.
-				if contextTODO.MatchString(line.text) &&
-					!deferralMarker.MatchString(contextTODO.ReplaceAllString(line.text, "")) {
-					continue
+		slashed := filepath.ToSlash(rel)
+		roots[topLevel(slashed)] = struct{}{}
+
+		if skipped := func() bool {
+			for _, s := range deferralSkips {
+				if s.match(slashed) {
+					census.Skipped[s.name]++
+					return true
 				}
-				findings = append(findings, deferralFinding{
-					Where: fmt.Sprintf("%s:%d", slashed, line.no),
-					Line:  strings.TrimSpace(line.text),
-				})
 			}
+			return false
+		}(); skipped {
+			continue
+		}
+
+		// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus), а не из
+		// ввода: включить посторонний файл нечем.
+		raw, berr := os.ReadFile(abs)
+		if berr != nil {
+			return nil, census, fmt.Errorf("чтение %s: %w", slashed, berr)
+		}
+		body := string(raw)
+		census.Read++
+		census.ByRoot[topLevel(slashed)]++
+		// Отсев: файл без единой затравки разбору не подлежит. Подавляющее
+		// большинство дерева отсекается здесь, и именно поэтому гейт
+		// укладывается в бюджет пакета.
+		if !hasDeferralSeed(body) {
+			continue
+		}
+		for _, line := range markedLines(body) {
+			// Строка, где единственное совпадение — имя стандартной функции,
+			// отсрочкой не является.
+			if contextTODO.MatchString(line.text) &&
+				!deferralMarker.MatchString(contextTODO.ReplaceAllString(line.text, "")) {
+				continue
+			}
+			findings = append(findings, deferralFinding{
+				Where: fmt.Sprintf("%s:%d", slashed, line.no),
+				Line:  strings.TrimSpace(line.text),
+			})
 		}
 	}
+
+	for r := range roots {
+		census.Roots = append(census.Roots, r)
+	}
+	sort.Strings(census.Roots)
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Where < findings[j].Where })
-	return findings, filesRead, nil
+	return findings, census, nil
+}
+
+// String — перепись одной строкой, включая раскладку по корням.
+func (c deferralCensus) String() string {
+	byRoot := make([]string, 0, len(c.Roots))
+	for _, r := range c.Roots {
+		byRoot = append(byRoot, fmt.Sprintf("%s=%d", r, c.ByRoot[r]))
+	}
+	skipped := make([]string, 0, len(deferralSkips))
+	for _, s := range deferralSkips {
+		skipped = append(skipped, fmt.Sprintf("%s=%d", s.name, c.Skipped[s.name]))
+	}
+	return fmt.Sprintf(
+		"перепись: в индексе %d, прочитано %d, корней (выведено из индекса) %d [%s]; "+
+			"вычтено: %s; перечня исключений у гейта нет — предикат ловит форму обращения, а не слово",
+		c.Tracked, c.Read, len(c.Roots), strings.Join(byRoot, " "), strings.Join(skipped, " "))
 }
