@@ -177,6 +177,8 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		// registry
 		newFlatResource(registryRegistrySpec),
 		NewRegistryRepositoryResource,
+		// compute
+		NewComputeInstanceResource,
 		// nlb
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,
@@ -187,8 +189,28 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 // Data-sources появятся в TF-2 вместе с остальными ресурсами vpc: их путь чтения тот же,
 // и заводить их до того, как многошаговое чтение доказано на ресурсах, значило бы
 // размножить непроверенное.
+// DataSources — чтение существующего БЕЗ взятия под управление.
+//
+// Их отсутствие было второй слепой зоной покрытия: гейты спрашивали «каждый ли создаваемый
+// ресурс управляем» и молчали про «каждый ли читаемый читаем». Справочники создающих
+// глаголов не имеют вовсе, поэтому ресурсами быть не могут — и до появления источников
+// сослаться на зону, регион или тип диска было нечем.
 func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		// geo — справочник оси размещения
+		NewGeoRegionDataSource,
+		NewGeoRegionsDataSource,
+		NewGeoZoneDataSource,
+		NewGeoZonesDataSource,
+		// storage / compute — справочники типов
+		NewStorageDiskTypeDataSource,
+		NewStorageDiskTypesDataSource,
+		NewComputeMachineTypeDataSource,
+		NewComputeMachineTypesDataSource,
+		// поиск уже существующего по имени — чтобы сослаться, не импортируя
+		NewVPCNetworkByNameDataSource,
+		NewVPCSubnetByNameDataSource,
+	}
 }
 
 func firstNonEmpty(values ...string) string {
