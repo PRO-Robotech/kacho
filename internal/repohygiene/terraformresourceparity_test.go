@@ -5,12 +5,13 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Каждый ресурс публичного API обязан быть в Terraform-провайдере.
@@ -299,18 +300,31 @@ func publicCreatingServices(t *testing.T, root string) []string {
 // символьную ссылку в чужую рабочую копию. Ровно это и ловит гейт обходчиков.
 func trackedFilesUnder(t *testing.T, root, prefix, suffix string) []string {
 	t.Helper()
-	cmd := exec.Command("git", "ls-files", "-z", "--", prefix)
-	cmd.Dir = root
-	out, err := cmd.Output()
+	// Состав спрашивается у ОБЩЕГО источника, а не своим вызовом git.
+	//
+	// Здесь стоял собственный `git ls-files`. Он давал верный ответ и был ВТОРОЙ
+	// реализацией того, что уже есть в дереве, — а гейт, назвавший это место,
+	// прямо велит брать состав у internal/treecorpus. Разница между двумя
+	// реализациями не умозрительная: `ls-files` отдаёт ОТСЛЕЖИВАЕМОЕ, включая то,
+	// что правила игнорирования отвергли бы, — и ровно на такой записи (ссылка на
+	// каталог зависимостей консоли, уехавшая в индекс) сегодня покраснели четыре
+	// обхода. Один источник состава закрывает этот класс для всех вызывающих
+	// сразу, а не для того, кто вспомнит.
+	abs, err := treecorpus.UnderWithSuffix(filepath.Join(root, prefix), suffix)
 	if err != nil {
-		t.Fatalf("чтение индекса репозитория: %v", err)
+		t.Fatalf("состав дерева под %s: %v", prefix, err)
 	}
-	var res []string
-	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
-		if rel != "" && strings.HasSuffix(rel, suffix) {
-			res = append(res, rel)
+	res := make([]string, 0, len(abs))
+	for _, p := range abs {
+		rel, rerr := filepath.Rel(root, p)
+		if rerr != nil {
+			t.Fatalf("путь %s вне дерева %s: %v", p, root, rerr)
 		}
+		res = append(res, filepath.ToSlash(rel))
 	}
+	// Отказ на пустом наборе остаётся ЗДЕСЬ: общий источник отвергает пустой
+	// корпус, но не пустой результат ОТБОРА по суффиксу — а «ноль файлов .proto»
+	// означает переехавший каталог, а не чистое дерево.
 	if len(res) == 0 {
 		t.Fatalf("под %s не найдено ни одного файла %s — предикат устарел или каталог переехал",
 			prefix, suffix)
