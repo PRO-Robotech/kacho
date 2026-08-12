@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -26,6 +28,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
@@ -93,6 +96,11 @@ type UseCase struct {
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
 	listFilter *listnarrow.Narrower
+	// installPrefix — префикс имени объектов этого развёртывания у бэкенда.
+	// Инжектится WithInstallPrefix; без него имя не выводится, и создание снимка
+	// отвергается синхронно — молча снять снимок без префикса нельзя, иначе
+	// соседнее облако на том же кластере усыновило бы его объект.
+	installPrefix string
 }
 
 // New собирает UseCase для Snapshot.
@@ -115,6 +123,17 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 // WithListFilter подключает per-object фильтр видимости публичного List.
 func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 	u.listFilter = f
+	return u
+}
+
+// WithInstallPrefix задаёт префикс установки, из которого выводится имя объекта у
+// бэкенда.
+//
+// Он приходит из конфигурации процесса, а не из ресурса: это свойство РАЗВЁРТЫВАНИЯ,
+// отличающее наши объекты от объектов соседнего облака в общем кластере хранилища.
+// Пустой префикс боевой страж старта не пропускает — см. config.Validate.
+func (u *UseCase) WithInstallPrefix(p string) *UseCase {
+	u.installPrefix = p
 	return u
 }
 
@@ -205,6 +224,18 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	if err := s.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
 	}
+	// Способность СЕРВИСА исполнить запрос проверяется ДО обращения к соседу:
+	// посадка без префикса установки не снимет снимка ни при каком ответе владельца
+	// проекта, и тратить на это чужой бюджет незачем.
+	//
+	// Код именно UNAVAILABLE: арендатор не сделал ничего неверного — сервис в этой
+	// посадке неспособен. FAILED_PRECONDITION или INVALID_ARGUMENT отправили бы его
+	// чинить собственный ввод, которого чинить нечего. Боевой страж старта такую
+	// посадку не пропускает, поэтому ветка достижима лишь в неполной локальной
+	// сборке — и молчать о ней нельзя.
+	if u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
+	}
 	// Sync BVA at the request edge, matching Volume and Image. The domain validator
 	// does not look at description or labels, so without these two an over-limit
 	// value travelled all the way to the INSERT, was caught by a database
@@ -227,6 +258,11 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 		return nil, u.errStatus(err)
 	}
 	s.ID = ids.NewID(domain.PrefixSnapshot)
+	// Имя объекта у бэкенда выводится из СОБСТВЕННОГО идентификатора снимка, а не из
+	// тома: том удаляется раньше снимка (ссылка на источник обнуляется), и имя,
+	// производное от тома, пережило бы то, что им названо. Вывод детерминирован —
+	// отсюда идемпотентность повтора by construction.
+	s.Backend.BackendObject = blockbackend.SnapshotObjectName(u.installPrefix, s.ID)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create snapshot %s", s.ID),
 		&storagev1.CreateSnapshotMetadata{SnapshotId: s.ID, SourceVolumeId: s.SourceVolumeID})
@@ -326,6 +362,27 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 		return anypb.New(&emptypb.Empty{})
 	})
 	return &op, nil
+}
+
+// ListOperations возвращает операции по конкретному Snapshot (corelib-standard:
+// resource_id-фильтр общей operations-таблицы). Malformed snp-id → sync
+// InvalidArgument (парити с Get): без этой проверки мусорная строка уезжает в общий
+// журнал и возвращает пустую страницу — то есть ответ «операций нет» на вопрос,
+// который вообще не про снимок.
+//
+// Журнал есть у тома и образа; у снимка его не было, хотя операции у него те же
+// три. Отсутствие журнала означает, что об исходе создания вызывающий узнаёт только
+// из ответа на сам запрос: потерял идентификатор операции — потерял причину отказа.
+func (u *UseCase) ListOperations(ctx context.Context, snapshotID string, p Pagination) ([]operations.Operation, string, error) {
+	if err := idInvalid(snapshotID); err != nil {
+		return nil, "", u.errStatus(err)
+	}
+	size, err := validate.PageSize("page_size", p.PageSize)
+	if err != nil {
+		return nil, "", err
+	}
+	return operations.ListForCaller(ctx, u.ops,
+		operations.ListFilter{ResourceID: snapshotID, PageSize: size, PageToken: p.PageToken})
 }
 
 // resolveUpdate резолвит mutable-изменения из mask + тела. Пустой mask → full-object

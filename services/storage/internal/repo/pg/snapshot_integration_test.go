@@ -21,42 +21,49 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
-// mkSnapshot создаёт Snapshot из тома через репо (state=READY, size из тома) и
-// возвращает его.
+// mkSnapshot создаёт Snapshot из тома через репо (size из тома, состояние —
+// СОЗДАВАЕМЫЙ: готовность объявляет сверщик) и возвращает его. Имя объекта у бэкенда
+// выводится так же, как это делает use-case, — из неизменяемого идентификатора
+// снимка: без него частичная уникальность имени объекта не проверяется ничем.
 func mkSnapshot(t *testing.T, r *pg.SnapshotRepo, project, name, srcVolume string) *domain.Snapshot {
 	t.Helper()
-	s, _, err := r.Insert(context.Background(), &domain.Snapshot{
-		ID:             ids.NewID(domain.PrefixSnapshot),
-		ProjectID:      project,
-		Name:           name,
-		SourceVolumeID: srcVolume,
-	})
-	require.NoError(t, err)
-	return s
+	return snapInsert(t, r, project, name, srcVolume)
 }
 
-// TestSnapshotCreateFromReadyVolume — Insert из READY-тома: state READY сразу,
-// size_bytes = volumes.size_bytes на момент, status derived READY; Get совпадает
-// (Snapshot Create happy, §1; task-summary Snapshot Create).
+// TestSnapshotCreateFromReadyVolume — Insert из READY-тома: size_bytes =
+// volumes.size_bytes на момент, состояние — СОЗДАВАЕМЫЙ; Get совпадает.
+//
+// Готовым снимок объявляет сверщик, увидев объект у бэкенда: операция фиксирует
+// намерение, а исход провижининга несёт статус ресурса. Прежде вставка объявляла
+// снимок готовым сама — то есть утверждала о плоскости данных то, чего никто не
+// проверял.
 func TestSnapshotCreateFromReadyVolume(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
 
-	vol := mkVolume(t, vr, "prj-1", "vol-src", 7<<30)
+	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 7<<30)
 	snap := mkSnapshot(t, sr, "prj-1", "snap-a", vol.ID)
 	require.Equal(t, domain.PrefixSnapshot, snap.ID[:3])
 	require.Equal(t, vol.ID, snap.SourceVolumeID)
 	require.EqualValues(t, 7<<30, snap.SizeBytes, "size_bytes snapshotted from source volume")
-	require.Equal(t, domain.SnapshotStatusReady, snap.Status, "state READY immediately (control-plane)")
+	require.Equal(t, domain.SnapshotStatusCreating, snap.Status, "готовность объявляет сверщик")
 
 	got, err := sr.Get(ctx, snap.ID)
 	require.NoError(t, err)
 	require.Equal(t, "snap-a", got.Name)
 	require.EqualValues(t, 7<<30, got.SizeBytes)
-	require.Equal(t, domain.SnapshotStatusReady, got.Status)
+	require.Equal(t, domain.SnapshotStatusCreating, got.Status)
 	require.False(t, got.CreatedAt.IsZero(), "created_at populated")
+
+	// Положительный контроль: тот же снимок, объявленный готовым, читается готовым —
+	// «создаваемый» выше про рождение, а не про то, что чтение состояния сломано.
+	snapMarkSnapshotReady(t, pool, snap.ID)
+	ready, err := sr.Get(ctx, snap.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.SnapshotStatusReady, ready.Status)
 }
 
 // TestSnapshotCreateSourceMissing — source volume не существует → FailedPrecondition
@@ -79,11 +86,12 @@ func TestSnapshotCreateSourceNotReady(t *testing.T) {
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
 
-	vol := mkVolume(t, vr, "prj-1", "vol-creating", 1<<30)
-	_, err := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, vol.ID)
-	require.NoError(t, err)
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
+	// Том рождается создаваемым — готовность объявляет сверщик; здесь она нарочно
+	// не объявляется.
+	vol := snapVolume(t, vr, "prj-1", "vol-creating", snapZoneA, 1<<30)
 
-	_, _, err = sr.Insert(ctx, &domain.Snapshot{
+	_, _, err := sr.Insert(ctx, &domain.Snapshot{
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-y", SourceVolumeID: vol.ID,
 	})
 	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
@@ -104,7 +112,8 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
-	vol := mkVolume(t, vr, "prj-1", "vol-forsnap", 2<<30)
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
+	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-forsnap", snapZoneA, 2<<30)
 
 	const n = 6
 	var ok, dup atomic.Int32
@@ -135,19 +144,27 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 }
 
 // TestSnapshotUpdateMutable — Update name/description применяется; 0-row → NotFound.
+//
+// Отдельно проверяется время правки: колонка updated_at в схеме была, Update её
+// двигал, а чтение её не брало — поэтому объявленное контрактом поле оставалось
+// пустым ВСЕГДА, и «снимок не менялся» было неотличимо от «мы не смотрим».
 func TestSnapshotUpdateMutable(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
-	vol := mkVolume(t, vr, "prj-1", "vol-upd", 1<<30)
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
+	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-upd", snapZoneA, 1<<30)
 	snap := mkSnapshot(t, sr, "prj-1", "snap-old", vol.ID)
+
+	require.False(t, snap.UpdatedAt.IsZero(), "время правки заполнено с рождения")
 
 	name, desc := "snap-new", "patched-desc"
 	up, _, err := sr.Update(ctx, snap.ID, snapshot.SnapshotUpdate{Name: &name, Description: &desc})
 	require.NoError(t, err)
 	require.Equal(t, "snap-new", up.Name)
 	require.Equal(t, "patched-desc", up.Description)
+	require.True(t, up.UpdatedAt.After(up.CreatedAt), "правка двигает время правки")
 
 	_, _, err = sr.Update(ctx, "snp00000000000000000", snapshot.SnapshotUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "update missing → NotFound, got %v", err)
@@ -164,11 +181,13 @@ func TestSnapshotDeleteFKSetNull(t *testing.T) {
 	ctx := context.Background()
 
 	// snp-1 создан из vol-src; vol-2 создан из snp-1.
-	src := mkVolume(t, vr, "prj-1", "vol-src", 3<<30)
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
+	src := snapReadyVolume(t, pool, vr, "prj-1", "vol-src", snapZoneA, 3<<30)
 	snap := mkSnapshot(t, sr, "prj-1", "snp-shared", src.ID)
+	snapMarkSnapshotReady(t, pool, snap.ID)
 	fromSnap, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-2",
-		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 3 << 30, SourceSnapshot: snap.ID,
+		ZoneID: snapZoneA, DiskTypeID: snapClass, SizeBytes: 3 << 30, SourceSnapshot: snap.ID,
 	}, "")
 	require.NoError(t, err)
 	require.Equal(t, snap.ID, fromSnap.SourceSnapshot)
@@ -180,7 +199,7 @@ func TestSnapshotDeleteFKSetNull(t *testing.T) {
 	require.Empty(t, gotVol.SourceSnapshot, "volumes.source_snapshot_id → SET NULL on snapshot delete")
 
 	// Другая сторона: снапшот src-snap ссылается на vol-src; удаляем vol-src.
-	src2 := mkVolume(t, vr, "prj-1", "vol-src2", 4<<30)
+	src2 := snapReadyVolume(t, pool, vr, "prj-1", "vol-src2", snapZoneA, 4<<30)
 	snap2 := mkSnapshot(t, sr, "prj-1", "snp-fromsrc", src2.ID)
 	require.NoError(t, vr.Delete(ctx, src2.ID))
 	gotSnap, err := sr.Get(ctx, snap2.ID)
@@ -194,8 +213,9 @@ func TestSnapshotListCursorFilter(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
-	vol := mkVolume(t, vr, "prj-1", "vol-list", 1<<30)
-	volOther := mkVolume(t, vr, "prj-2", "vol-list-other", 1<<30)
+	snapSeedPlacement(t, pool, snapClass, snapZoneA)
+	vol := snapReadyVolume(t, pool, vr, "prj-1", "vol-list", snapZoneA, 1<<30)
+	volOther := snapReadyVolume(t, pool, vr, "prj-2", "vol-list-other", snapZoneA, 1<<30)
 	for _, n := range []string{"snap-a", "snap-b", "snap-c"} {
 		mkSnapshot(t, sr, "prj-1", n, vol.ID)
 	}

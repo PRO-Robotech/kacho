@@ -66,7 +66,7 @@ func TestUpdateArmsLabelReEmitOnEveryRemovalPath(t *testing.T) {
 				},
 			}
 			ops := repomock.NewOpsRepo()
-			uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+			uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 			op, err := uc.Update(context.Background(), snapUpdID, tc.mask, "", "", tc.labels)
 			if err != nil {

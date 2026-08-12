@@ -147,9 +147,10 @@ func (m *ImageReader) GetInternal(ctx context.Context, id string) (*domain.Image
 
 // ImageWriter — мок image.Writer на функциях-полях.
 type ImageWriter struct {
-	InsertFunc func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
-	UpdateFunc func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
-	DeleteFunc func(ctx context.Context, id string) error
+	InsertFunc   func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
+	UpdateFunc   func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
+	DeleteFunc   func(ctx context.Context, id string) error
+	RegisterFunc func(ctx context.Context, i *domain.Image) (*domain.Image, error)
 }
 
 func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error) {
@@ -170,6 +171,18 @@ func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate
 	return res, mockRegistrations(fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels)), nil
 }
 func (m *ImageWriter) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
+
+// Register — регистрация образа, внесённого в хранилище вне облака. Владение
+// регистрируется той же транзакцией, что и строка, поэтому мок возвращает
+// регистрацию так же, как Insert: проба, ждущая её, не должна зеленеть на моке,
+// который её не отдаёт.
+func (m *ImageWriter) Register(ctx context.Context, i *domain.Image) (*domain.Image, []ownerregister.Registration, error) {
+	res, err := m.RegisterFunc(ctx, i)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, mockRegistrations(fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels)), nil
+}
 
 // SnapshotRepo — мок snapshot.Repo на функциях-полях.
 type SnapshotRepo struct {
@@ -210,7 +223,7 @@ type DiskTypeRepo struct {
 	GetFunc    func(ctx context.Context, id string) (*domain.DiskType, error)
 	ListFunc   func(ctx context.Context, p disktype.Pagination) ([]*domain.DiskType, string, error)
 	InsertFunc func(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error)
-	UpdateFunc func(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error)
+	UpdateFunc func(ctx context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error)
 	DeleteFunc func(ctx context.Context, id string) error
 }
 
@@ -223,8 +236,8 @@ func (m *DiskTypeRepo) List(ctx context.Context, p disktype.Pagination) ([]*doma
 func (m *DiskTypeRepo) Insert(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error) {
 	return m.InsertFunc(ctx, d)
 }
-func (m *DiskTypeRepo) Update(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
-	return m.UpdateFunc(ctx, id, name, description, zoneIDs, performanceTier)
+func (m *DiskTypeRepo) Update(ctx context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error) {
+	return m.UpdateFunc(ctx, id, u)
 }
 func (m *DiskTypeRepo) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 

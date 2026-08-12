@@ -116,33 +116,6 @@ func local_request_InternalDiskTypeBindingService_List_0(ctx context.Context, ma
 	return msg, metadata, err
 }
 
-func request_InternalDiskTypeBindingService_Supersede_0(ctx context.Context, marshaler runtime.Marshaler, client InternalDiskTypeBindingServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq SupersedeDiskTypeBindingRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	msg, err := client.Supersede(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_InternalDiskTypeBindingService_Supersede_0(ctx context.Context, marshaler runtime.Marshaler, server InternalDiskTypeBindingServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq SupersedeDiskTypeBindingRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.Supersede(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 // RegisterInternalDiskTypeBindingServiceHandlerServer registers the http handlers for service InternalDiskTypeBindingService to "mux".
 // UnaryRPC     :call InternalDiskTypeBindingServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -208,26 +181,6 @@ func RegisterInternalDiskTypeBindingServiceHandlerServer(ctx context.Context, mu
 			return
 		}
 		forward_InternalDiskTypeBindingService_List_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_Supersede_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Supersede", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Supersede"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_InternalDiskTypeBindingService_Supersede_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InternalDiskTypeBindingService_Supersede_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 
 	return nil
@@ -320,36 +273,17 @@ func RegisterInternalDiskTypeBindingServiceHandlerClient(ctx context.Context, mu
 		}
 		forward_InternalDiskTypeBindingService_List_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalDiskTypeBindingService_Supersede_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Supersede", runtime.WithHTTPPathPattern("/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Supersede"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_InternalDiskTypeBindingService_Supersede_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InternalDiskTypeBindingService_Supersede_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	return nil
 }
 
 var (
-	pattern_InternalDiskTypeBindingService_Create_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Create"}, ""))
-	pattern_InternalDiskTypeBindingService_Get_0       = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Get"}, ""))
-	pattern_InternalDiskTypeBindingService_List_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "List"}, ""))
-	pattern_InternalDiskTypeBindingService_Supersede_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Supersede"}, ""))
+	pattern_InternalDiskTypeBindingService_Create_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Create"}, ""))
+	pattern_InternalDiskTypeBindingService_Get_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "Get"}, ""))
+	pattern_InternalDiskTypeBindingService_List_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.storage.v1.InternalDiskTypeBindingService", "List"}, ""))
 )
 
 var (
-	forward_InternalDiskTypeBindingService_Create_0    = runtime.ForwardResponseMessage
-	forward_InternalDiskTypeBindingService_Get_0       = runtime.ForwardResponseMessage
-	forward_InternalDiskTypeBindingService_List_0      = runtime.ForwardResponseMessage
-	forward_InternalDiskTypeBindingService_Supersede_0 = runtime.ForwardResponseMessage
+	forward_InternalDiskTypeBindingService_Create_0 = runtime.ForwardResponseMessage
+	forward_InternalDiskTypeBindingService_Get_0    = runtime.ForwardResponseMessage
+	forward_InternalDiskTypeBindingService_List_0   = runtime.ForwardResponseMessage
 )

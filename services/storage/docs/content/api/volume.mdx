@@ -45,27 +45,92 @@ import dedent from 'ts-dedent'
     <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}</td></tr>
     <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.diskTypeId.short}</td></tr>
     <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.sizeBytes.short}</td></tr>
-    <tr><td><code>blockSize</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.blockSize.short}</td></tr>
+    <tr><td><code>usedBytes</code></td><td><code>{TYPES.int64Optional}</code></td><td>{DICTIONARY.usedBytes.short}</td></tr>
     <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
     <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceImageId.short}</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.volumeStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>statusReason</code></td><td><code>{TYPES.statusReason}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
     <tr><td><code>attachments</code></td><td><code>{TYPES.attachments}</code></td><td>{DICTIONARY.attachments.short}</td></tr>
     <tr><td><code>usedBy</code></td><td><code>{TYPES.reference}</code></td><td>{DICTIONARY.usedBy.short}</td></tr>
   </tbody>
 </table>
 
+:::info `usedBytes` может ОТСУТСТВОВАТЬ — и это не ноль
+Потребление отдаётся, только если его сообщил бэкенд. Пока сверщик не увидел объект или
+бэкенд потребления не показывает, поля в ответе **нет**.
+
+Ноль на этом месте был бы утверждением «том пуст» — правдоподобной ложью, по которой
+считают стоимость и решают о расширении. Отсутствие значения обязано быть представимо
+отдельно от значения, поэтому поле необязательное, а не «ноль по умолчанию».
+:::
+
+:::note Поле `blockSize` снято с контракта
+Размер блока принимался на создании, подставлялся умолчанием, хранился и возвращался в
+ответе — и **ни один путь не читал его значение**, чтобы сделать что-то иначе.
+Единственное место логики, где оно упоминалось, — перечень неизменяемых полей маски, то
+есть охрана величины, которая ни на что не влияла. Арендатор читал назад собственный ввод
+и принимал зеркало за подтверждение применения.
+
+Принять поле и не применить его — не исход. Из трёх законных (реализовать · отвергать
+явно · снять с контракта) выбран третий: размер блока задаёт бэкенд вместе с классом
+диска, а не арендатор по каждому тому.
+
+Изменение ломающее и осознанное: номер и имя закрыты навсегда, слот не переиспользуется.
+Запрос, всё ещё несущий `blockSize`, отвергается как неизвестное поле.
+:::
+
 ### Статусы
 
 <StatusTable values={[
-  { code: 'CREATING', desc: 'Том создаётся' },
+  { code: 'CREATING', desc: 'Намерение зафиксировано, объект у бэкенда ещё не подтверждён. Именно в этом состоянии том рождается' },
   { code: 'AVAILABLE', desc: 'Том готов и не привязан ни к одной машине. Выводится из отсутствия привязки' },
   { code: 'IN_USE', desc: 'Том готов и привязан к машине. Выводится из наличия привязки' },
-  { code: 'DELETING', desc: 'Том удаляется' },
-  { code: 'ERROR', desc: 'Том столкнулся с проблемой и не работает' },
+  { code: 'MIGRATING', desc: 'Принят :changeDiskType, объект переносится на другой класс. Из MIGRATING том возвращается в AVAILABLE/IN_USE либо уходит в ERROR — данные при отказе остаются на исходном классе' },
+  { code: 'DELETING', desc: 'Том удаляется: строка живёт, пока объект у бэкенда не снят' },
+  { code: 'ERROR', desc: 'Том столкнулся с проблемой; причину называет statusReason' },
 ]} />
 
-`AVAILABLE` и `IN_USE` не хранятся в базе — они выводятся из наличия строки привязки,
-поэтому разойтись с фактическим состоянием привязки не могут.
+Статус колонкой не хранится, и у двух групп значений **разные производители**:
+
+| Группа | Откуда берётся |
+|---|---|
+| `AVAILABLE` / `IN_USE` | Из наличия привязки — разойтись с состоянием привязки не могут |
+| `CREATING` / `MIGRATING` / `DELETING` / `ERROR` | Из расхождения желаемого и наблюдённого: наша строка объявила одно, у бэкенда пока (или уже) другое |
+
+Отсюда следует, что статус нельзя выставить запросом: у каждой группы свой источник, а
+запись «поверх» сделала бы дрейф ненаходимым — ровно то, ради чего желаемое и
+наблюдённое разведены.
+
+### Почему свежесозданный том — `CREATING`, а операция уже `done`
+
+`Operation.done` означает «намерение закоммичено», и только это: строка тома есть, имя
+занято. Объект у бэкенда к этому моменту ещё не создан — его создаёт **сверщик**, и по
+подтверждению переводит том в `AVAILABLE`.
+
+Так сделано не ради скорости ответа. Функция операции исполняется под потолком времени, а
+разрешитель осиротевших операций через несколько минут признаёт строку завершённой,
+читая **нашу** базу. Если бы создание объекта шло внутри функции, толстое выделение
+дольше этого потолка дало бы арендатору **ложное «готово»** при отсутствующем объекте.
+Поэтому предмет операции — намерение, а исход провижининга несёт `status` ресурса.
+
+### Причина состояния
+
+`statusReason` — закрытый словарь **наших полос**, а не таксономия бэкенда:
+
+| Значение | Что означает |
+|---|---|
+| `STATUS_REASON_UNSPECIFIED` | Причины нет: ресурс в штатном состоянии |
+| `BACKEND_UNAVAILABLE` | Бэкенд не ответил в срок либо недоступен. Повторяемо: сверщик вернётся |
+| `BACKEND_REJECTED` | Бэкенд отказал по существу. Идентичный повтор не пройдёт |
+| `BACKEND_CAPACITY_EXHAUSTED` | У бэкенда нет места |
+| `SOURCE_NOT_READY` | Источник засева не готов |
+| `PRECONDITION_FAILED` | Состояние ресурса не позволяет запрошенное действие |
+| `INTERNAL_ERROR` | Внутренняя ошибка; текст фиксирован |
+
+Значений, называющих физику, в словаре нет и быть не может: арендатору адресовано то, что
+он может изменить своим действием либо обязан переждать, — а не устройство плоскости
+данных, которой он не управляет. Свободная строка причины была бы прямым каналом утечки:
+в неё естественно попал бы текст бэкенда целиком.
 
 ---
 
@@ -143,14 +208,13 @@ import dedent from 'ts-dedent'
   <tbody>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
     <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; проверяется через kacho-geo</td></tr>
-    <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; позиция каталога типов</td></tr>
-    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>&gt; 0</td></tr>
-    <tr><td><code>blockSize</code></td><td><code>{TYPES.int64}</code></td><td>по умолчанию 4096</td></tr>
+    <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; класс обязан быть <code>ACTIVE</code> и предлагаться в этой зоне</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>&gt; 0 и в границах класса</td></tr>
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
-    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>засев из снимка</td></tr>
-    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>засев из образа</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>засев из снимка; источник обязан быть <code>READY</code></td></tr>
+    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>засев из образа; источник обязан быть <code>READY</code></td></tr>
   </tbody>
 </table>
 
@@ -166,7 +230,7 @@ import dedent from 'ts-dedent'
       -d '{
         "projectId": "prj-…",
         "zoneId": "zone-1-a",
-        "diskTypeId": "block-balanced",
+        "diskTypeId": "nvme-general",
         "sizeBytes": 21474836480,
         "name": "data-01"
       }'
@@ -175,7 +239,10 @@ import dedent from 'ts-dedent'
 
 <Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
 
-Источник обязан принадлежать тому же проекту и быть размещён когерентно — см.
+Класс диска обязан быть зарегистрирован, находиться в `ACTIVE` и **предлагаться в зоне
+тома**: класс, у которого нет действующей ревизии привязки на эту зону, исполнять некому.
+
+Источник обязан принадлежать тому же проекту, быть готовым и размещён когерентно — см.
 [Когерентность размещения](/architecture/placement-coherence). Чужой источник отвечает
 дословно тем же текстом, что и несуществующий.
 
@@ -191,13 +258,64 @@ import dedent from 'ts-dedent'
 
 Изменяемые поля: `name`, `description`, `labels`, `sizeBytes`.
 
-Неизменяемые: `projectId`, `zoneId`, `diskTypeId`, `blockSize`, `sourceSnapshotId`,
-`sourceImageId`. Попытка изменить их через `updateMask` → `INVALID_ARGUMENT`
+Неизменяемые: `projectId`, `zoneId`, `diskTypeId`, `sourceSnapshotId`, `sourceImageId`.
+Попытка изменить их через `updateMask` → `INVALID_ARGUMENT`
 (`<field> is immutable after Volume.Create`).
 
-**Размер только растёт.** Попытка уменьшить — `Volume size can only be increased`.
+**Размер только растёт.** Попытка уменьшить — `Volume size can only be increased`. Новый
+размер обязан оставаться в границах класса. Ресайз смотрит и на состояние: том в
+`CREATING`, `MIGRATING`, `DELETING` или `ERROR` увеличить нельзя.
+
+Если класс не объявил способности `onlineGrow`, увеличение требует отсутствия привязок.
 
 <Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ChangeDiskType
+
+<ApiOperation method="POST" endpoint="/storage/v1/volumes/{volumeId}:changeDiskType" async>
+
+Переводит том на другой класс диска. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен: целевой класс. Пустое значение — не «оставить как есть», а запрос без предмета</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/volumes/vol-a1b2c3d4e5f6g7h8j:changeDiskType \\
+      -d '{ "diskTypeId": "nvme-io-max" }'
+  `}
+</CodeBlock>
+
+Том переходит в `MIGRATING`, по завершении — в `AVAILABLE`/`IN_USE` с новым
+`diskTypeId`. Целевой класс обязан быть `ACTIVE`, предлагаться **в той же зоне** и
+допускать текущий размер тома своими границами. Зона глаголом не меняется: перенос между
+зонами делается копированием снимка.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+Том не в `AVAILABLE`/`IN_USE` → `FAILED_PRECONDITION`
+`Volume <id> is not in a state that allows changing disk type`.
+
+:::info Почему это отдельный глагол, а не поле в `Update`
+Смена класса — **перемещение данных**, а не правка поля: она длится, может отказать на
+половине и меняет физическое расположение объекта. Поле в маске выглядело бы как
+переименование, а стоило бы как копия тома.
+
+Поэтому `diskTypeId` не входит в `update_mask` **никогда**: попытка даёт
+`disk_type_id is immutable after Volume.Create`, а действие называется явно.
+:::
 
 </ApiOperation>
 
@@ -211,6 +329,11 @@ import dedent from 'ts-dedent'
 
 **Привязанный том удалить нельзя** — это держит внешний ключ таблицы привязок с
 поведением `RESTRICT`, а не проверка в коде. Сначала отвязать, затем удалить.
+
+Строка тома **не исчезает сразу**: том переходит в `DELETING` и живёт, пока объект у
+бэкенда не снят. Крах между снятием строки и снятием объекта оставил бы ёмкость, о
+которой в системе не осталось записи, — а отвечает за неё чужая команда, и найти утечку
+было бы нечем.
 
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
 
@@ -240,7 +363,6 @@ import dedent from 'ts-dedent'
   { label: 'zoneId', rules: RESTRICTIONS.zoneId },
   { label: 'diskTypeId', rules: RESTRICTIONS.diskTypeId },
   { label: 'sizeBytes', rules: RESTRICTIONS.sizeBytes },
-  { label: 'blockSize', rules: RESTRICTIONS.blockSize },
   { label: 'sourceSnapshotId / sourceImageId', rules: RESTRICTIONS.volumeSource },
   { label: 'updateMask', rules: RESTRICTIONS.updateMask },
   { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
@@ -251,6 +373,7 @@ import dedent from 'ts-dedent'
 | Причина | Механизм |
 |---|---|
 | Том привязан к машине | `FK volume_attachments.volume_id → volumes ON DELETE RESTRICT` |
+| У тома есть зависимые клоны | `FAILED_PRECONDITION` `Volume <id> has dependent clones` — если бэкенд объявил, что клон удерживает родителя |
 
 Снимки и образы, снятые с тома, удалению **не мешают**: их ссылка на источник обнуляется
 (`SET NULL`), потому что это происхождение, а не использование.

@@ -100,28 +100,6 @@ service InternalDiskTypeBindingService {
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
-
-  // Supersede — снимает действующую ревизию с действия БЕЗ замены: класс перестаёт
-  // предлагаться в этой зоне, новые ресурсы на нём не создаются, существующие
-  // продолжают жить под своей ревизией.
-  //
-  // Это единственный глагол ревизии, и он меняет ровно одно — полосу действия.
-  // Содержание строки остаётся прежним, поэтому ссылка ресурса на неё продолжает
-  // значить то же, что значила в момент создания.
-  //
-  // Движение односторонее: `SUPERSEDED` не возвращается в `ACTIVE`. Вернуть класс в
-  // зону — значит завести НОВУЮ ревизию: тогда у ресурсов, созданных под прежней,
-  // остаётся своя политика, а не воскресшая чужая. Повтор на уже вытесненной
-  // ревизии идемпотентен и отвечает тем же телом.
-  rpc Supersede(SupersedeDiskTypeBindingRequest) returns (DiskTypeBinding) {
-    option (kacho.iam.authz.v1.permission)        = "storage.disk_type_bindings.supersede";
-    option (kacho.iam.authz.v1.required_relation) = "system_admin";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "cluster"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
 }
 
 // DiskTypeBinding — неизменяемая ревизия политики для пары (класс диска, зона):
@@ -141,7 +119,7 @@ message DiskTypeBinding {
     // уникальный индекс.
     ACTIVE = 1;
 
-    // Вытеснена: новой ревизией той же пары либо явным [Supersede]. Новые ресурсы
+    // Вытеснена новой ревизией той же пары. Новые ресурсы
     // на неё не ссылаются, существующие ссылаются и дальше.
     SUPERSEDED = 2;
   }
@@ -339,7 +317,3 @@ message ListDiskTypeBindingsResponse {
   string next_page_token = 2;
 }
 
-message SupersedeDiskTypeBindingRequest {
-  // ID снимаемой с действия ревизии.
-  string disk_type_binding_id = 1 [(required) = true];
-}

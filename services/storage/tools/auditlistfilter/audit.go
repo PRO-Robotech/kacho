@@ -162,8 +162,29 @@ var listings = map[string]Listing{
 
 	// Operation histories are narrowed by the caller in the context, not by the
 	// resource id the request names.
-	"image.ListOperations":  {Shape: SubjectScoped},
-	"volume.ListOperations": {Shape: SubjectScoped},
+	"image.ListOperations":    {Shape: SubjectScoped},
+	"volume.ListOperations":   {Shape: SubjectScoped},
+	"snapshot.ListOperations": {Shape: SubjectScoped},
+
+	// Зарегистрированный бэкенд и ревизия привязки класса не принадлежат арендатору:
+	// это отображение продуктового каталога на чужое хранилище, одно на кластер.
+	// Пообъектного сужения у их страниц нет, потому что сужать НЕ К ЧЕМУ — владельца
+	// у строки не существует. Оба ресурса живут только на внутреннем листенере и
+	// гейтятся системным админским отношением, которое подстановочной выдачей не
+	// выполнимо, — в отличие от справочного `viewer` на том же типе объекта.
+	"storage_backend.List": {
+		Shape: ClusterScoped,
+		Reason: "StorageBackend is admin-only infrastructure registration on the internal " +
+			"listener: it has no tenant owner, so there are no per-object grants to narrow " +
+			"to. The exclusion expires with its method — retire the RPC and this entry " +
+			"becomes a finding.",
+	},
+	"disk_type_binding.List": {
+		Shape: ClusterScoped,
+		Reason: "DiskTypeBinding is an immutable revision mapping a product class onto a " +
+			"backend: admin-only, internal listener, no tenant owner and therefore nothing " +
+			"to narrow a page to.",
+	},
 
 	// ListAttachments asks the rights model about the INSTANCES the caller named,
 	// not about the volumes, so the answer is all-or-nothing per instance. It is a

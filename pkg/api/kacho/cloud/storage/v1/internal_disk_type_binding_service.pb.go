@@ -36,7 +36,7 @@ const (
 	// Действующая ревизия пары (класс, зона). Такая ровно одна — частичный
 	// уникальный индекс.
 	DiskTypeBinding_ACTIVE DiskTypeBinding_Status = 1
-	// Вытеснена: новой ревизией той же пары либо явным [Supersede]. Новые ресурсы
+	// Вытеснена новой ревизией той же пары. Новые ресурсы
 	// на неё не ссылаются, существующие ссылаются и дальше.
 	DiskTypeBinding_SUPERSEDED DiskTypeBinding_Status = 2
 )
@@ -768,51 +768,6 @@ func (x *ListDiskTypeBindingsResponse) GetNextPageToken() string {
 	return ""
 }
 
-type SupersedeDiskTypeBindingRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID снимаемой с действия ревизии.
-	DiskTypeBindingId string `protobuf:"bytes,1,opt,name=disk_type_binding_id,json=diskTypeBindingId,proto3" json:"disk_type_binding_id,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *SupersedeDiskTypeBindingRequest) Reset() {
-	*x = SupersedeDiskTypeBindingRequest{}
-	mi := &file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SupersedeDiskTypeBindingRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SupersedeDiskTypeBindingRequest) ProtoMessage() {}
-
-func (x *SupersedeDiskTypeBindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SupersedeDiskTypeBindingRequest.ProtoReflect.Descriptor instead.
-func (*SupersedeDiskTypeBindingRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *SupersedeDiskTypeBindingRequest) GetDiskTypeBindingId() string {
-	if x != nil {
-		return x.DiskTypeBindingId
-	}
-	return ""
-}
-
 var File_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc = "" +
@@ -879,17 +834,13 @@ const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDe
 	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x9d\x01\n" +
 	"\x1cListDiskTypeBindingsResponse\x12U\n" +
 	"\x12disk_type_bindings\x18\x01 \x03(\v2'.kacho.cloud.storage.v1.DiskTypeBindingR\x10diskTypeBindings\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"X\n" +
-	"\x1fSupersedeDiskTypeBindingRequest\x125\n" +
-	"\x14disk_type_binding_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x11diskTypeBindingId2\x80\x06\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc1\x04\n" +
 	"\x1eInternalDiskTypeBindingService\x12\xb3\x01\n" +
 	"\x06Create\x124.kacho.cloud.storage.v1.CreateDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"J\x8a\xb5\x18!storage.disk_type_bindings.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xaa\x01\n" +
 	"\x03Get\x121.kacho.cloud.storage.v1.GetDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"G\x8a\xb5\x18\x1estorage.disk_type_bindings.get\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xbb\x01\n" +
 	"\x04List\x123.kacho.cloud.storage.v1.ListDiskTypeBindingsRequest\x1a4.kacho.cloud.storage.v1.ListDiskTypeBindingsResponse\"H\x8a\xb5\x18\x1fstorage.disk_type_bindings.list\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
-	"\acluster\x12\x01*\xa2\xb5\x18\x011\x12\xbc\x01\n" +
-	"\tSupersede\x127.kacho.cloud.storage.v1.SupersedeDiskTypeBindingRequest\x1a'.kacho.cloud.storage.v1.DiskTypeBinding\"M\x8a\xb5\x18$storage.disk_type_bindings.supersede\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
@@ -905,26 +856,25 @@ func file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDes
 }
 
 var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_goTypes = []any{
-	(DiskTypeBinding_Status)(0),             // 0: kacho.cloud.storage.v1.DiskTypeBinding.Status
-	(*DiskTypeBinding)(nil),                 // 1: kacho.cloud.storage.v1.DiskTypeBinding
-	(*BackendLocator)(nil),                  // 2: kacho.cloud.storage.v1.BackendLocator
-	(*BindingCapabilities)(nil),             // 3: kacho.cloud.storage.v1.BindingCapabilities
-	(*BindingQoS)(nil),                      // 4: kacho.cloud.storage.v1.BindingQoS
-	(*CreateDiskTypeBindingRequest)(nil),    // 5: kacho.cloud.storage.v1.CreateDiskTypeBindingRequest
-	(*GetDiskTypeBindingRequest)(nil),       // 6: kacho.cloud.storage.v1.GetDiskTypeBindingRequest
-	(*ListDiskTypeBindingsRequest)(nil),     // 7: kacho.cloud.storage.v1.ListDiskTypeBindingsRequest
-	(*ListDiskTypeBindingsResponse)(nil),    // 8: kacho.cloud.storage.v1.ListDiskTypeBindingsResponse
-	(*SupersedeDiskTypeBindingRequest)(nil), // 9: kacho.cloud.storage.v1.SupersedeDiskTypeBindingRequest
-	(*timestamppb.Timestamp)(nil),           // 10: google.protobuf.Timestamp
+	(DiskTypeBinding_Status)(0),          // 0: kacho.cloud.storage.v1.DiskTypeBinding.Status
+	(*DiskTypeBinding)(nil),              // 1: kacho.cloud.storage.v1.DiskTypeBinding
+	(*BackendLocator)(nil),               // 2: kacho.cloud.storage.v1.BackendLocator
+	(*BindingCapabilities)(nil),          // 3: kacho.cloud.storage.v1.BindingCapabilities
+	(*BindingQoS)(nil),                   // 4: kacho.cloud.storage.v1.BindingQoS
+	(*CreateDiskTypeBindingRequest)(nil), // 5: kacho.cloud.storage.v1.CreateDiskTypeBindingRequest
+	(*GetDiskTypeBindingRequest)(nil),    // 6: kacho.cloud.storage.v1.GetDiskTypeBindingRequest
+	(*ListDiskTypeBindingsRequest)(nil),  // 7: kacho.cloud.storage.v1.ListDiskTypeBindingsRequest
+	(*ListDiskTypeBindingsResponse)(nil), // 8: kacho.cloud.storage.v1.ListDiskTypeBindingsResponse
+	(*timestamppb.Timestamp)(nil),        // 9: google.protobuf.Timestamp
 }
 var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_depIdxs = []int32{
 	2,  // 0: kacho.cloud.storage.v1.DiskTypeBinding.locator:type_name -> kacho.cloud.storage.v1.BackendLocator
 	3,  // 1: kacho.cloud.storage.v1.DiskTypeBinding.capabilities:type_name -> kacho.cloud.storage.v1.BindingCapabilities
 	4,  // 2: kacho.cloud.storage.v1.DiskTypeBinding.qos:type_name -> kacho.cloud.storage.v1.BindingQoS
 	0,  // 3: kacho.cloud.storage.v1.DiskTypeBinding.status:type_name -> kacho.cloud.storage.v1.DiskTypeBinding.Status
-	10, // 4: kacho.cloud.storage.v1.DiskTypeBinding.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 4: kacho.cloud.storage.v1.DiskTypeBinding.created_at:type_name -> google.protobuf.Timestamp
 	2,  // 5: kacho.cloud.storage.v1.CreateDiskTypeBindingRequest.locator:type_name -> kacho.cloud.storage.v1.BackendLocator
 	3,  // 6: kacho.cloud.storage.v1.CreateDiskTypeBindingRequest.capabilities:type_name -> kacho.cloud.storage.v1.BindingCapabilities
 	4,  // 7: kacho.cloud.storage.v1.CreateDiskTypeBindingRequest.qos:type_name -> kacho.cloud.storage.v1.BindingQoS
@@ -932,13 +882,11 @@ var file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_depIdxs
 	5,  // 9: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Create:input_type -> kacho.cloud.storage.v1.CreateDiskTypeBindingRequest
 	6,  // 10: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Get:input_type -> kacho.cloud.storage.v1.GetDiskTypeBindingRequest
 	7,  // 11: kacho.cloud.storage.v1.InternalDiskTypeBindingService.List:input_type -> kacho.cloud.storage.v1.ListDiskTypeBindingsRequest
-	9,  // 12: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Supersede:input_type -> kacho.cloud.storage.v1.SupersedeDiskTypeBindingRequest
-	1,  // 13: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Create:output_type -> kacho.cloud.storage.v1.DiskTypeBinding
-	1,  // 14: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Get:output_type -> kacho.cloud.storage.v1.DiskTypeBinding
-	8,  // 15: kacho.cloud.storage.v1.InternalDiskTypeBindingService.List:output_type -> kacho.cloud.storage.v1.ListDiskTypeBindingsResponse
-	1,  // 16: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Supersede:output_type -> kacho.cloud.storage.v1.DiskTypeBinding
-	13, // [13:17] is the sub-list for method output_type
-	9,  // [9:13] is the sub-list for method input_type
+	1,  // 12: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Create:output_type -> kacho.cloud.storage.v1.DiskTypeBinding
+	1,  // 13: kacho.cloud.storage.v1.InternalDiskTypeBindingService.Get:output_type -> kacho.cloud.storage.v1.DiskTypeBinding
+	8,  // 14: kacho.cloud.storage.v1.InternalDiskTypeBindingService.List:output_type -> kacho.cloud.storage.v1.ListDiskTypeBindingsResponse
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -955,7 +903,7 @@ func file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_init()
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   9,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

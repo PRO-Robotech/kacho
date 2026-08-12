@@ -66,7 +66,7 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 		}
 	}
 	newUC := func() *snapshot.UseCase {
-		return snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+		return snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	}
 
 	cases := []struct {

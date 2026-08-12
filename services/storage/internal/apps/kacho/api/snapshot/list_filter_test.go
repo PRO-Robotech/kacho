@@ -37,7 +37,7 @@ func snapPage() []*domain.Snapshot {
 }
 
 func newListUC(repo snapshot.Repo, f *listnarrow.Narrower) *snapshot.UseCase {
-	return snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(f)
+	return snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(f).WithInstallPrefix(testInstallPrefix)
 }
 
 func repoReturning(page []*domain.Snapshot, next string) *repomock.SnapshotRepo {

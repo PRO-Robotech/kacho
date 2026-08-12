@@ -23,10 +23,16 @@ import dedent from 'ts-dedent'
 просто обнуляется. Это следствие того, что происхождение — не живая зависимость.
 
 :::info Идентификатор и размещение
-Идентификатор — префикс `snp` плюс 17 символов crockford-base32. Собственного поля
-размещения у снимка **нет**: он наследует зону от тома, с которого снят. Если исходный
-том удалён, свидетельства о размещении не остаётся — и проверки когерентности этот случай
-пропускают, а не подставляют выдуманную зону.
+Идентификатор — префикс `snp` плюс 17 символов crockford-base32. Снимок **зональный** и
+несёт **собственный** якорь `zoneId`: он снимается с зоны исходного тома на создании и
+дальше не зависит от того, жив ли том.
+
+Собственный якорь заведён не для симметрии. Ссылка на источник обнуляется при удалении
+тома — снимок обязан его пережить. Значит зона, добираемая через источник, однажды
+становится пустой, и проверка «зона тома = зона снимка» вырождается в
+тождественно-истинную: сравнивать не с чем, предикат проходит всегда. Восстановление в
+чужую зону отвергалось бы ровно до того дня, когда исходный том удалили, — то есть защита
+отказывала бы именно в том случае, ради которого писалась, и отказывала бы молча.
 :::
 
 ## Поля ресурса
@@ -41,20 +47,44 @@ import dedent from 'ts-dedent'
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.snapshotZoneId.short}</td></tr>
     <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
     <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер снимка в байтах (output-only)</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.snapshotStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>statusReason</code></td><td><code>{TYPES.statusReason}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
+    <tr><td><code>usedBy</code></td><td><code>{TYPES.reference}</code></td><td>{DICTIONARY.seededBy.short}</td></tr>
   </tbody>
 </table>
+
+:::note `updatedAt` был колонкой раньше, чем полем контракта
+Отметка изменения лежала в базе с самого начала, а в ответе её не было — при живом
+`Update`. Арендатор видел ресурс, у которого правка не оставляет следа: отличить «снимок
+не менялся» от «менялся, но мы не показываем» по ответу было невозможно.
+:::
+
+:::info Зачем `usedBy` — он нужен ДО удаления, а не после отказа
+`usedBy` перечисляет тома, засеянные этим снимком. Удаление снимка обнуляет их
+происхождение, а на бэкенде, где клон удерживает родителя, снимок с потомками не
+удаляется вовсе.
+
+Без этого поля единственный способ узнать состав зависимостей — попробовать удалить.
+:::
 
 ### Статусы
 
 <StatusTable values={[
-  { code: 'CREATING', desc: 'Снимок создаётся' },
+  { code: 'CREATING', desc: 'Намерение зафиксировано, объект у бэкенда ещё не подтверждён — состояние, в котором снимок рождается' },
   { code: 'READY', desc: 'Снимок готов — можно засеять том или снять образ' },
   { code: 'DELETING', desc: 'Снимок удаляется' },
-  { code: 'ERROR', desc: 'Снимок столкнулся с проблемой' },
+  { code: 'ERROR', desc: 'Снимок столкнулся с проблемой; причину называет statusReason' },
 ]} />
+
+Готовность объявляет **сверщик**, увидев объект у бэкенда, — не сама операция. Что
+означает `Operation.done` и почему готовность не входит в её предмет, разобрано на
+странице [Operation](/api/operations).
+
+Словарь `statusReason` — общий для всех ресурсов сервиса, он перечислен на странице
+[Volume](/api/volume).
 
 ---
 
@@ -93,12 +123,14 @@ import dedent from 'ts-dedent'
   <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
-    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен — том, с которого снимается</td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен — том, с которого снимается; обязан быть <code>READY</code></td></tr>
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
   </tbody>
 </table>
+
+Зона снимка не называется вызывающим: она **снимается с исходного тома**.
 
 #### Пример запроса
 
@@ -119,7 +151,58 @@ import dedent from 'ts-dedent'
 дословно так же, как несуществующий, — иначе состояние чужого тома стало бы подсказкой о
 его существовании.
 
+Класс диска тома обязан объявлять способность `snapshots`; иначе —
+`FAILED_PRECONDITION` `DiskType <id> does not support snapshots`.
+
 <Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Copy
+
+<ApiOperation method="POST" endpoint="/storage/v1/snapshots/{snapshotId}:copy" async>
+
+Копирует снимок в другую зону. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>targetZoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.targetZoneId.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>своё имя копии; имя источника не наследуется</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно; метки источника не наследуются</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/snapshots/snp-a1b2c3d4e5f6g7h8j:copy \\
+      -d '{
+        "targetZoneId": "zone-1-b",
+        "name": "data-01-nightly-b"
+      }'
+  `}
+</CodeBlock>
+
+Создаётся **новый** снимок в целевой зоне; он проходит `CREATING → READY` через сверщик.
+Исходный снимок не изменяется ни в одном поле.
+
+Это **единственный законный путь переноса данных между зонами**: `zoneId` неизменяем, и
+глагола «переехать» у снимка нет — данные лежат в конкретном хранилище конкретной зоны,
+поэтому перенос всегда копия.
+
+Целевая зона обязательна и называется явно: умолчание «та же зона» превратило бы глагол
+переноса в дубликатор без предмета, а угадывать целевое размещение за арендатора не наше
+дело. Имя источника не наследуется: оно уникально в пределах проекта, и копия с именем
+источника не создалась бы вовсе.
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
 
 </ApiOperation>
 
@@ -133,8 +216,8 @@ import dedent from 'ts-dedent'
 
 Изменяемые поля: `name`, `description`, `labels`.
 
-Неизменяемые: `projectId`, `sourceVolumeId`. Попытка изменить их через `updateMask` →
-`INVALID_ARGUMENT` (`<field> is immutable after Snapshot.Create`).
+Неизменяемые: `projectId`, `sourceVolumeId`, `zoneId`. Попытка изменить их через
+`updateMask` → `INVALID_ARGUMENT` (`<field> is immutable after Snapshot.Create`).
 
 <Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'unauthenticated', 'permissionDenied', 'internal']} />
 
@@ -149,9 +232,25 @@ import dedent from 'ts-dedent'
 Удаляет снимок. Возвращает `Operation`.
 
 Тома и образы, засеянные из этого снимка, удалению **не мешают**: их ссылка на источник
-обнуляется.
+обнуляется. Посмотреть состав зависимостей заранее можно в `usedBy`.
+
+Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда снимок с живыми
+потомками не удаляется, пока они не отвязаны. Это поведение **выводится из способности**
+привязки, а не выбирается нами.
 
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ListOperations
+
+<ApiOperation method="GET" endpoint="/storage/v1/snapshots/{snapshotId}/operations">
+
+Возвращает страницу операций по снимку — теми же правилами, что у тома и образа.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
 
 </ApiOperation>
 
@@ -164,6 +263,7 @@ import dedent from 'ts-dedent'
   { label: 'description', rules: RESTRICTIONS.description },
   { label: 'labels', rules: RESTRICTIONS.labels },
   { label: 'projectId', rules: RESTRICTIONS.projectId },
+  { label: 'zoneId', rules: RESTRICTIONS.snapshotZoneId },
   { label: 'sourceVolumeId', rules: ['обязателен при Create; immutable после Create', 'обязан принадлежать тому же проекту', 'том обязан быть READY'] },
   { label: 'updateMask', rules: RESTRICTIONS.updateMask },
   { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },

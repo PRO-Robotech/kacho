@@ -58,7 +58,7 @@ func TestVolumeSourceImageOwnProjectForeignRegionNamed(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-foreign-region", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "img-region-1", "region-1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-region-1", "region-1", snapID)
 
 	volID, err := bootFromImage(ctx, vr, "prj-1", "boot-foreign-region",
 		"region-2-a", "region-2", // the zone's region, resolved from the owner of Geography
@@ -91,8 +91,8 @@ func TestVolumeSourceImageForeignProjectStaysHidden(t *testing.T) {
 	victimSnap := mkSnapshotRow(t, pool, projVictim, "snap-hidden-region", 20<<30)
 	// Two victim images: one whose region matches the attacker's zone region, one
 	// whose region does not. Both must answer identically.
-	sameRegion := mkImageFromSnapshot(t, ir, projVictim, "victim-img-same-region", "region-1", victimSnap)
-	otherRegion := mkImageFromSnapshot(t, ir, projVictim, "victim-img-other-region", "region-2", victimSnap)
+	sameRegion := mkImageFromSnapshot(t, pool, ir, projVictim, "victim-img-same-region", "region-1", victimSnap)
+	otherRegion := mkImageFromSnapshot(t, pool, ir, projVictim, "victim-img-other-region", "region-2", victimSnap)
 
 	missID := ids.NewID(domain.PrefixImage)
 	_, missErr := bootFromImage(ctx, vr, projAttacker, "boot-miss", "region-1-a", "region-1", missID)
@@ -125,7 +125,7 @@ func TestVolumeSourceImageSameRegionSeeded(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-same-region", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "img-same-region", "region-1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-same-region", "region-1", snapID)
 
 	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-same-region",
@@ -162,7 +162,7 @@ func TestVolumeSourceImageUnresolvedRegionStaysFailClosed(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-unresolved-region", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "img-unresolved-region", "region-1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-unresolved-region", "region-1", snapID)
 
 	_, err := bootFromImage(ctx, vr, "prj-1", "boot-unresolved-region", "region-1-a", "", img.ID)
 	require.Equal(t, "Image "+img.ID+" not found", fpText(t, err),

@@ -150,7 +150,7 @@ func TestImageUpdate_LabelChange_ReEmitsRegisterIntentWithNewLabels(t *testing.T
 	ir := pg.NewImageRepo(pool)
 
 	snapID := mkSnapshotRow(t, pool, "prj-relabel-i", "snap-for-img", 10<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-relabel-i", "img-relabel", "reg-1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-relabel-i", "img-relabel", "reg-1", snapID)
 
 	newLabels := map[string]string{"os": "linux"}
 	_, _, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{LabelsSet: true, Labels: newLabels})
@@ -209,7 +209,7 @@ func TestImageUpdate_LabelsCleared_UpsertsEmptyNotUnregister(t *testing.T) {
 	ir := pg.NewImageRepo(pool)
 
 	snapID := mkSnapshotRow(t, pool, "prj-relabel-ic", "snap-for-img-clear", 10<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-relabel-ic", "img-clear", "reg-1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-relabel-ic", "img-clear", "reg-1", snapID)
 
 	_, _, err := ir.Update(t.Context(), img.ID, image.ImageUpdate{
 		LabelsSet: true, Labels: map[string]string{"tier": "treska"},

@@ -67,7 +67,8 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 	}
 	newUC := func() *image.UseCase {
 		return image.New(&repomock.ImageReader{}, &repomock.ImageWriter{},
-			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).
+			WithInstallPrefix(testInstallPrefix)
 	}
 
 	cases := []struct {

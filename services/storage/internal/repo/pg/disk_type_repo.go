@@ -28,24 +28,6 @@ type DiskTypeRepo struct {
 // NewDiskTypeRepo создаёт DiskTypeRepo поверх pgxpool.
 func NewDiskTypeRepo(pool *pgxpool.Pool) *DiskTypeRepo { return &DiskTypeRepo{pool: pool} }
 
-// DiskTypeUpdate — набор ИЗМЕНЯЕМЫХ полей класса: nil-указатель означает «не
-// менять», а не «обнулить». Форма выбрана под маску правки: поле, названное маской,
-// приезжает сюда указателем, а не названное остаётся nil — поэтому провязка маски
-// ложится на репозиторий без второй переделки SQL.
-//
-// Полное замещение (Update ниже) выражено ЧЕРЕЗ этот набор, а не отдельным
-// стейтментом: два места, пишущие одну строку, расходятся — вопрос лишь когда.
-type DiskTypeUpdate struct {
-	Name            *string
-	Description     *string
-	ZoneIDs         *[]string
-	PerformanceTier *domain.PerformanceTier
-	Lifecycle       *domain.DiskTypeLifecycle
-	MinSizeBytes    *int64
-	MaxSizeBytes    *int64
-	SizeStepBytes   *int64
-}
-
 // diskTypeSelect — единственная форма чтения класса: собственные колонки плюс
 // ВЫВЕДЕННЫЕ способности.
 //
@@ -211,12 +193,14 @@ func (r *DiskTypeRepo) Insert(ctx context.Context, d *domain.DiskType) (*domain.
 	return r.Get(ctx, d.ID)
 }
 
-// UpdateFields применяет НАЗВАННЫЕ поля класса одним стейтментом: nil-указатель →
-// COALESCE оставляет колонку как есть. Пустая строка и пустой список — законные
-// ЗНАЧЕНИЯ (COALESCE их пропускает, потому что NULL'ом является только отсутствие
-// указателя), поэтому «снять описание» и «не трогать описание» различимы.
+// Update реализует disktype.Repo: применяет НАЗВАННЫЕ поля класса одним
+// стейтментом: nil-указатель → COALESCE оставляет колонку как есть. Пустая строка и
+// пустой список — законные ЗНАЧЕНИЯ (COALESCE их пропускает, потому что NULL'ом
+// является только отсутствие указателя), поэтому «снять описание» и «не трогать
+// описание» различимы. Полная замена приходит сюда тем же набором со всеми
+// названными полями — второго стейтмента для неё нет.
 // 0 rows → NotFound.
-func (r *DiskTypeRepo) UpdateFields(ctx context.Context, id string, u DiskTypeUpdate) (*domain.DiskType, error) {
+func (r *DiskTypeRepo) Update(ctx context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error) {
 	var zoneJSON []byte
 	if u.ZoneIDs != nil {
 		b, err := json.Marshal(nonNilSlice(*u.ZoneIDs))
@@ -246,20 +230,6 @@ func (r *DiskTypeRepo) UpdateFields(ctx context.Context, id string, u DiskTypeUp
 		return nil, fmt.Errorf("%w: DiskType %s not found", storageerr.ErrNotFound, id)
 	}
 	return r.Get(ctx, id)
-}
-
-// Update реализует disktype.Repo в его сегодняшней форме — полное замещение
-// названных mutable-полей (запрос правки контракта пока без маски). Выражено через
-// UpdateFields, чтобы строку класса писал ровно один стейтмент: состояние обращения
-// и границы размера этим путём не приходят и остаются как были.
-func (r *DiskTypeRepo) Update(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
-	tier := domain.PerformanceTier(performanceTier)
-	return r.UpdateFields(ctx, id, DiskTypeUpdate{
-		Name:            &name,
-		Description:     &description,
-		ZoneIDs:         &zoneIDs,
-		PerformanceTier: &tier,
-	})
 }
 
 // Delete реализует disktype.Repo: admin-удаление. Ссылающийся том →

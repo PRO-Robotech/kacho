@@ -6,6 +6,8 @@ title: DiskType
 
 import { DICTIONARY } from '@site/src/constants/dictionary'
 import { TYPES } from '@site/src/constants/types'
+import { RESTRICTIONS } from '@site/src/constants/restrictions'
+import { Restrictions } from '@site/src/components/commonBlocks/Restrictions'
 import { Codes } from '@site/src/components/commonBlocks/Codes'
 import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
 import CodeBlock from '@theme/CodeBlock'
@@ -13,13 +15,28 @@ import dedent from 'ts-dedent'
 
 # DiskType
 
-**DiskType** — позиция каталога типов диска: класс надёжности и производительности, из
-которого выбирают при создании тома. Каталог глобальный и курируется администратором
-платформы; тенант его только читает.
+**DiskType** — класс диска: политика, на которой создаётся том. Он несёт ярус, состояние
+обращения, границы размера и способности. Каталог глобальный: тенант его читает, а
+регистрирует классы администратор услуги.
+
+:::info Каталог не сеется — класс регистрирует администратор
+Заранее заготовленного набора классов не существует. Класс — это **регистрация того, что
+провайдер действительно даёт**: пока администратор не завёл класс и не привязал его к
+бэкенду в конкретной зоне, тома на нём не создаются.
+
+**Пустой каталог — законное состояние**, а не признак неполной установки. `List` на
+свежей установке отвечает `OK` с пустым списком, и это правильный ответ: обещать класс,
+за которым не стоит исполнителя, значит переносить отказ с пути администратора на путь
+арендатора.
+
+Прежде каталог наполнялся миграцией пятью заранее придуманными позициями. Их сняла
+миграция `0016_disk_type_policy.sql` — **условно**, только те, на которые не ссылался ни
+один том: безусловное удаление упёрлось бы во внешний ключ и уронило старт сервиса.
+:::
 
 :::info Идентификатор — slug, а не сгенерированный ключ
 `DiskType` — единственный ресурс сервиса, чей идентификатор **не генерируется**: это
-читаемый slug (`block-balanced`), назначаемый администратором. Причина в том, что это
+читаемый slug, назначаемый администратором при регистрации. Причина в том, что это
 позиция справочника, а не созданный тенантом ресурс: на неё ссылаются в запросах руками,
 и осмысленное имя здесь полезнее непрозрачного ключа.
 
@@ -32,28 +49,120 @@ import dedent from 'ts-dedent'
 <table>
   <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>Читаемый slug каталога, напр. <code>block-balanced</code></td></tr>
-    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Отображаемое имя типа</td></tr>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>Читаемый slug, назначенный администратором при регистрации</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Отображаемое имя класса</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>zoneIds</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.zoneIds.short}</td></tr>
-    <tr><td><code>performanceTier</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.performanceTier.short}</td></tr>
-    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+    <tr><td><code>tier</code></td><td><code>{TYPES.performanceTier}</code></td><td>{DICTIONARY.tier.short}</td></tr>
+    <tr><td><code>lifecycle</code></td><td><code>{TYPES.lifecycle}</code></td><td>{DICTIONARY.lifecycle.short}</td></tr>
+    <tr><td><code>capabilities</code></td><td><code>{TYPES.capabilities}</code></td><td>{DICTIONARY.capabilities.short}</td></tr>
+    <tr><td><code>limits</code></td><td><code>{TYPES.sizeLimits}</code></td><td>{DICTIONARY.limits.short}</td></tr>
   </tbody>
 </table>
 
-## Состав каталога
+Отметки времени на классе нет: справочная позиция адресуется своим slug, а её история —
+предмет ревизий привязки, а не самой позиции.
 
-| id | `performanceTier` | Назначение |
-|---|---|---|
-| `block-standard` | `standard` | Экономичный надёжный том |
-| `block-balanced` | `balanced` | Сбалансированный, общего назначения |
-| `block-fast` | `fast` | Высокий IOPS, низкая задержка |
-| `block-single` | `single` | Однорепличный, без резервирования |
-| `block-io-max` | `io-max` | Максимальные IOPS и пропускная способность |
+### Ярус — закрытый словарь
 
-Названия описывают класс надёжности и производительности. Обратите внимание на
-`block-single`: он **не реплицирован**, и это единственная ступень каталога без
-резервирования — выбирать её осознанно.
+| Значение | Что означает |
+|---|---|
+| `CAPACITY` | Ёмкость: объём дешевле отклика |
+| `BALANCED` | Общего назначения, без перекоса в одну сторону |
+| `FAST` | Класс заведён ради задержки и частоты операций |
+| `SINGLE` | Одна копия, избыточности нет — свойство класса, выбираемое осознанно |
+| `IO_MAX` | Предельный ввод-вывод, верхний ярус каталога |
+
+Ярус **не обещает чисел**: чем он обеспечен физически, решает ревизия привязки. Порядок
+значений — не шкала, сравнивать ярусы между собой нельзя.
+
+Словарь закрыт намеренно. Публичную поверхность от инфраструктурной лексики стережёт
+гейт двухпроекционности, а он перечисляет **имена** полей — свободная строка со значением
+вида «пул такой-то» прошла бы сквозь него целиком. Значение вне словаря отвергается на
+входе; **не названный** ярус законен и отличается от «названного неизвестным».
+
+### Состояние обращения
+
+<table>
+  <thead><tr><th><code>lifecycle</code></th><th>Что означает</th></tr></thead>
+  <tbody>
+    <tr><td><code>ACTIVE</code></td><td>Класс принимает новые тома</td></tr>
+    <tr><td><code>DEPRECATED</code></td><td>Существующие тома живут, читаются и обновляются; новые не создаются — <code>FAILED_PRECONDITION</code> <code>DiskType &lt;id&gt; is not accepting new volumes</code></td></tr>
+    <tr><td><code>RETIRED</code></td><td>Класс выведен из обращения. Удаление разрешено при нуле ссылающихся томов; пока том есть — <code>FAILED_PRECONDITION</code> <code>DiskType &lt;id&gt; is in use</code></td></tr>
+  </tbody>
+</table>
+
+Состояние отвечает на **единственный** вопрос: принимает ли класс новые тома. Правка
+справочника не отзывает уже выданное и не трогает чужие данные.
+
+### Способности
+
+`capabilities` публичны намеренно: способность, которую нельзя прочитать заранее,
+превращает полноту API в непредсказуемость — арендатор узнаёт об отсутствии снимков
+отказом, уже написав код.
+
+| Способность | Если `false` |
+|---|---|
+| `snapshots` | `Snapshot.Create` → `FAILED_PRECONDITION` `DiskType <id> does not support snapshots` |
+| `cloneFromSnapshot` | Засев тома из снимка отвергается тем же тоном |
+| `cloneFromImage` | Засев загрузочного тома из образа отвергается тем же тоном |
+| `onlineGrow` | Увеличение размера требует отсутствия привязок |
+| `multiAttach` | Вторая привязка → `Volume <id> is in use` |
+| `encryptionAtRest` | Класс не публикует шифрование |
+
+Поле **output-only**: на вход `Create`/`Update` способности не принимаются. Их источник
+истины — действующие ревизии привязки, а класс выводит их **пересечением**,
+консервативно: класс предлагается в нескольких зонах, а зоны могут обслуживаться разными
+бэкендами. Принять их на вход значило бы завести второй источник одного факта, и он
+разошёлся бы молча.
+
+Сюда выходят только те способности, которые арендатор может **применить своим вызовом**.
+Зависимость клона от родителя и срок корзины остаются на ревизии привязки: они называют
+устройство плоскости данных, а не доступное действие.
+
+### Границы размера
+
+`limits` энфорсятся на `Volume.Create` и `Volume.Update`:
+
+| Поле | Смысл |
+|---|---|
+| `minSizeBytes` | {DICTIONARY.minSizeBytes.short} |
+| `maxSizeBytes` | {DICTIONARY.maxSizeBytes.short} |
+| `sizeStepBytes` | {DICTIONARY.sizeStepBytes.short} |
+
+Ноль означает «класс не сужает»: отсутствие границы отличается от границы, равной нулю, и
+различие выражено самим значением, а не отдельным флагом присутствия.
+
+## Пример ответа
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "nvme-general",
+      "name": "General purpose NVMe",
+      "description": "Durable general-purpose volume",
+      "zoneIds": ["ru-central1-a", "ru-central1-b"],
+      "tier": "BALANCED",
+      "lifecycle": "ACTIVE",
+      "capabilities": {
+        "snapshots": true,
+        "cloneFromSnapshot": true,
+        "cloneFromImage": true,
+        "onlineGrow": true,
+        "multiAttach": false,
+        "encryptionAtRest": true
+      },
+      "limits": {
+        "minSizeBytes": 1073741824,
+        "maxSizeBytes": 17592186044416,
+        "sizeStepBytes": 1073741824
+      }
+    }
+  `}
+</CodeBlock>
+
+Слаг здесь — пример регистрации, а не позиция, которую вы найдёте на своей установке:
+состав каталога определяет ваш администратор.
 
 ---
 
@@ -61,14 +170,14 @@ import dedent from 'ts-dedent'
 
 <ApiOperation method="GET" endpoint="/storage/v1/diskTypes/{diskTypeId}">
 
-Возвращает тип диска по идентификатору.
+Возвращает класс диска по идентификатору.
 
 #### Пример запроса
 
 <CodeBlock language="bash">
   {dedent`
     curl -H "Authorization: Bearer $TOKEN" \\
-      https://api.kacho.local/storage/v1/diskTypes/block-balanced
+      https://api.kacho.local/storage/v1/diskTypes/nvme-general
   `}
 </CodeBlock>
 
@@ -82,7 +191,8 @@ import dedent from 'ts-dedent'
 
 <ApiOperation method="GET" endpoint="/storage/v1/diskTypes">
 
-Возвращает страницу типов диска.
+Возвращает страницу классов диска. На установке, где ни один класс не зарегистрирован,
+отвечает `OK` с пустым списком и пустым `nextPageToken`.
 
 <Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'internal']} />
 
@@ -90,23 +200,42 @@ import dedent from 'ts-dedent'
 
 ---
 
+## Ограничения
+
+<Restrictions items={[
+  { label: 'DiskType', rules: RESTRICTIONS.diskTypeCatalog },
+  { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
+]} />
+
 ## Кто это читает
 
 Каталог — глобальный справочник: чтобы завести хоть один том, тенант обязан знать
-доступные типы. Поэтому чтение доступно **каждому аутентифицированному** субъекту и через
-фильтр видимости не проходит — у позиций каталога нет индивидуальных владельцев.
+зарегистрированные классы. Поэтому чтение доступно **каждому аутентифицированному**
+субъекту и через фильтр видимости не проходит — у позиций каталога нет индивидуальных
+владельцев.
+
+Следствие, названное вслух: выделенного класса «для одного арендатора» не существует, все
+классы видны всем.
 
 Аутентификация при этом обязательна: анонимный запрос отвергается.
 
 ## Администрирование
 
-Создание, изменение и удаление позиций каталога живут в `InternalDiskTypeService` на
-**внутреннем листенере** и на публичную поверхность не выведены. В отличие от остальных
-ресурсов, эти методы **синхронны** — возвращают сам ресурс, а не операцию.
+Регистрация, правка и снятие классов живут в `InternalDiskTypeService` на **внутреннем
+листенере** и на публичную поверхность не выведены. В отличие от остальных ресурсов, эти
+методы **синхронны** — возвращают сам ресурс, а не операцию.
+
+Состояние обращения меняется **отдельным глаголом** `:setLifecycle`, а не полем правки:
+пустая маска у `Update` означает полную замену изменяемых полей, поэтому состояние в его
+теле молча вернуло бы выведенный класс в обращение — правкой описания, которая об этом не
+заявляла.
 
 Подробнее — [Внутренний API](/api/internal).
 
-## Что блокирует удаление типа
+## Что блокирует удаление класса
 
-Тип, на который ссылается хотя бы один том, удалить нельзя: это держит внешний ключ
+Класс, на который ссылается хотя бы один том, удалить нельзя: это держит внешний ключ
 `volumes.disk_type_id → disk_types` с поведением `RESTRICT`.
+
+Штатный способ вывести класс — не удаление, а `:setLifecycle`: `DEPRECATED` закрывает
+приём новых томов, `RETIRED` разрешает удаление, когда последний том ушёл.

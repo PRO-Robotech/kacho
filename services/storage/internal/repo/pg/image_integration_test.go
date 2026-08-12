@@ -33,10 +33,18 @@ func mkSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name string, size 
 	return id
 }
 
-// mkImageFromSnapshot создаёт Image из снапшота через ImageRepo (state READY).
-func mkImageFromSnapshot(t *testing.T, r *pg.ImageRepo, project, name, region, snapID string) *domain.Image {
+// mkImageFromSnapshot создаёт Image из снапшота через ImageRepo и доводит его до
+// READY — так, как это сделает сверщик, увидев объект у бэкенда.
+//
+// Образ РОЖДАЕТСЯ CREATING (объекта ещё нет; см. TestImageCreateBornCreating), но
+// пробам-потребителям нужен ПРИГОДНЫЙ образ: неготовым он не засевает тома и не
+// участвует в сценариях, где предмет — не его готовность. Продвижение делается
+// прямым UPDATE, потому что сверщика в этом слое нет, а выдавать за него
+// репозиторий значило бы проверять его собой же.
+func mkImageFromSnapshot(t *testing.T, pool *pgxpool.Pool, r *pg.ImageRepo, project, name, region, snapID string) *domain.Image {
 	t.Helper()
-	i, _, err := r.Insert(context.Background(), &domain.Image{
+	ctx := context.Background()
+	i, _, err := r.Insert(ctx, &domain.Image{
 		ID:             ids.NewID(domain.PrefixImage),
 		ProjectID:      project,
 		Name:           name,
@@ -44,21 +52,37 @@ func mkImageFromSnapshot(t *testing.T, r *pg.ImageRepo, project, name, region, s
 		SourceSnapshot: snapID,
 	}, fixtureRegionZones)
 	require.NoError(t, err)
-	return i
+	_, err = pool.Exec(ctx,
+		`UPDATE images SET state='READY', observed_state='READY', observed_at=now() WHERE id=$1`, i.ID)
+	require.NoError(t, err)
+	got, err := r.Get(ctx, i.ID)
+	require.NoError(t, err)
+	return got
 }
 
-// TestImageCreateGetReady — STOR-1-20 (NET-NEW): Insert (READY, derived size/min_disk,
-// format STANDARD, placement REGIONAL) → Get отдаёт те же поля.
-func TestImageCreateGetReady(t *testing.T) {
+// TestImageCreateBornCreating — образ рождается CREATING: строка закоммичена, объекта
+// у бэкенда ещё нет, и готовым его объявит сверщик.
+//
+// Прежняя редакция утверждала READY сразу. Это было верно ровно пока плоскости
+// данных не существовало: одна величина отвечала и про намерение, и про факт, а с
+// появлением бэкенда такое утверждение стало обещанием байтов, которых нет.
+// Остальные поля (derived size/min_disk, формат, размещение) проверяются здесь же —
+// они от состояния не зависят.
+func TestImageCreateBornCreating(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewImageRepo(pool)
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "golden-snap", 21474836480)
-	img := mkImageFromSnapshot(t, r, "prj-1", "ubuntu-24-04", "ru-central1", snapID)
+	imgID := ids.NewID(domain.PrefixImage)
+	img, _, err := r.Insert(ctx, &domain.Image{
+		ID: imgID, ProjectID: "prj-1", Name: "ubuntu-24-04", RegionID: "ru-central1",
+		SourceSnapshot: snapID,
+	}, fixtureRegionZones)
+	require.NoError(t, err)
 
 	require.Equal(t, domain.PrefixImage, img.ID[:3], "img- prefix")
-	require.Equal(t, domain.ImageStatusReady, img.Status, "state READY → Status READY")
+	require.Equal(t, domain.ImageStatusCreating, img.Status, "state CREATING → Status CREATING")
 	require.Equal(t, domain.ImagePlacementRegional, img.Placement, "Image is REGIONAL const")
 	require.Equal(t, domain.ImageFormatStandard, img.Format, "native Kachō format STANDARD")
 	require.EqualValues(t, 21474836480, img.SizeBytes, "size derived from source snapshot")
@@ -70,25 +94,33 @@ func TestImageCreateGetReady(t *testing.T) {
 	require.Equal(t, "ru-central1", got.RegionID)
 	require.Equal(t, snapID, got.SourceSnapshot)
 	require.Empty(t, got.SourceVolume)
-	require.Equal(t, domain.ImageStatusReady, got.Status)
+	require.Equal(t, domain.ImageStatusCreating, got.Status)
 	require.Equal(t, domain.ImagePlacementRegional, got.Placement)
+
+	// Второй полюс: доведённый до готовности образ читается READY — «CREATING» выше
+	// про момент рождения, а не про то, что репозиторий не умеет отдавать READY.
+	ready := mkImageFromSnapshot(t, pool, r, "prj-1", "ubuntu-ready", "ru-central1", snapID)
+	require.Equal(t, domain.ImageStatusReady, ready.Status)
 }
 
-// TestImageCreateFromVolume — STOR-1-24: Image из тома напрямую (source_volume_id) →
-// READY, size derived из тома.
+// TestImageCreateFromVolume — STOR-1-24: Image из тома напрямую (source_volume_id),
+// size derived из тома.
+//
+// Том вставляется фикстурой напрямую, а не через репозиторий тома: предмет пробы —
+// захват образа, и завязывать её на создание тома (со своим классом, ревизией
+// привязки и зоной) значило бы красить её отказами чужого пути.
 func TestImageCreateFromVolume(t *testing.T) {
 	pool := newTestPool(t)
 	ir := pg.NewImageRepo(pool)
-	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, vr, "prj-1", "src-vol", 32<<30)
+	volID := imgFixtureVolumeRow(t, pool, "prj-1", "src-vol", "region-1-a", "", 32<<30)
 	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "from-vol",
-		RegionID: "ru-central1", SourceVolume: v.ID,
+		RegionID: "ru-central1", SourceVolume: volID,
 	}, fixtureRegionZones)
 	require.NoError(t, err)
-	require.Equal(t, v.ID, img.SourceVolume)
+	require.Equal(t, volID, img.SourceVolume)
 	require.Empty(t, img.SourceSnapshot)
 	require.EqualValues(t, 32<<30, img.SizeBytes, "size derived from source volume")
 }
@@ -180,13 +212,13 @@ func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-x", 1<<30)
-	v := mkVolume(t, pg.NewVolumeRepo(pool), "prj-1", "vol-x", 1<<30)
+	volID := imgFixtureVolumeRow(t, pool, "prj-1", "vol-x", "region-1-a", "", 1<<30)
 
 	// оба источника → CHECK 23514 (единственный инвариант, который SET NULL нарушить не может).
 	_, err := pool.Exec(ctx, `INSERT INTO images
 		(id, project_id, region_id, source_snapshot_id, source_volume_id, format, state)
 		VALUES ($1,'prj-1','ru-central1',$2,$3,'STANDARD','READY')`,
-		ids.NewID(domain.PrefixImage), snapID, v.ID)
+		ids.NewID(domain.PrefixImage), snapID, volID)
 	require.Error(t, err, "both sources must violate images_source_at_most_one CHECK")
 	require.Contains(t, err.Error(), "images_source_at_most_one")
 
@@ -207,10 +239,10 @@ func TestImageListCursorFilter(t *testing.T) {
 	ctx := context.Background()
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-list", 1<<30)
 	for _, n := range []string{"img-a", "img-b", "img-c"} {
-		mkImageFromSnapshot(t, r, "prj-1", n, "ru-central1", snap)
+		mkImageFromSnapshot(t, pool, r, "prj-1", n, "ru-central1", snap)
 	}
 	snapOther := mkSnapshotRow(t, pool, "prj-2", "snap-other", 1<<30)
-	mkImageFromSnapshot(t, r, "prj-2", "img-other", "ru-central1", snapOther)
+	mkImageFromSnapshot(t, pool, r, "prj-2", "img-other", "ru-central1", snapOther)
 
 	page1, next, err := r.List(ctx, image.Pagination{PageSize: 2, ProjectID: "prj-1"})
 	require.NoError(t, err)
@@ -240,8 +272,8 @@ func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 	r := pg.NewImageRepo(pool)
 	ctx := context.Background()
 	snap := mkSnapshotRow(t, pool, "prj-1", "snap-upd", 1<<30)
-	_ = mkImageFromSnapshot(t, r, "prj-1", "alpha", "ru-central1", snap)
-	ib := mkImageFromSnapshot(t, r, "prj-1", "beta", "ru-central1", snap)
+	_ = mkImageFromSnapshot(t, pool, r, "prj-1", "alpha", "ru-central1", snap)
+	ib := mkImageFromSnapshot(t, pool, r, "prj-1", "beta", "ru-central1", snap)
 
 	name := "alpha"
 	_, _, err := r.Update(ctx, ib.ID, image.ImageUpdate{Name: &name})

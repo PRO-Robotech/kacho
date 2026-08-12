@@ -22,10 +22,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalDiskTypeBindingService_Create_FullMethodName    = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create"
-	InternalDiskTypeBindingService_Get_FullMethodName       = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get"
-	InternalDiskTypeBindingService_List_FullMethodName      = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List"
-	InternalDiskTypeBindingService_Supersede_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Supersede"
+	InternalDiskTypeBindingService_Create_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Create"
+	InternalDiskTypeBindingService_Get_FullMethodName    = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/Get"
+	InternalDiskTypeBindingService_List_FullMethodName   = "/kacho.cloud.storage.v1.InternalDiskTypeBindingService/List"
 )
 
 // InternalDiskTypeBindingServiceClient is the client API for InternalDiskTypeBindingService service.
@@ -95,19 +94,6 @@ type InternalDiskTypeBindingServiceClient interface {
 	// `[0..1000]` отвергается, а не подрезается, мусорный `page_token` —
 	// `INVALID_ARGUMENT`.
 	List(ctx context.Context, in *ListDiskTypeBindingsRequest, opts ...grpc.CallOption) (*ListDiskTypeBindingsResponse, error)
-	// Supersede — снимает действующую ревизию с действия БЕЗ замены: класс перестаёт
-	// предлагаться в этой зоне, новые ресурсы на нём не создаются, существующие
-	// продолжают жить под своей ревизией.
-	//
-	// Это единственный глагол ревизии, и он меняет ровно одно — полосу действия.
-	// Содержание строки остаётся прежним, поэтому ссылка ресурса на неё продолжает
-	// значить то же, что значила в момент создания.
-	//
-	// Движение односторонее: `SUPERSEDED` не возвращается в `ACTIVE`. Вернуть класс в
-	// зону — значит завести НОВУЮ ревизию: тогда у ресурсов, созданных под прежней,
-	// остаётся своя политика, а не воскресшая чужая. Повтор на уже вытесненной
-	// ревизии идемпотентен и отвечает тем же телом.
-	Supersede(ctx context.Context, in *SupersedeDiskTypeBindingRequest, opts ...grpc.CallOption) (*DiskTypeBinding, error)
 }
 
 type internalDiskTypeBindingServiceClient struct {
@@ -142,16 +128,6 @@ func (c *internalDiskTypeBindingServiceClient) List(ctx context.Context, in *Lis
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListDiskTypeBindingsResponse)
 	err := c.cc.Invoke(ctx, InternalDiskTypeBindingService_List_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *internalDiskTypeBindingServiceClient) Supersede(ctx context.Context, in *SupersedeDiskTypeBindingRequest, opts ...grpc.CallOption) (*DiskTypeBinding, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DiskTypeBinding)
-	err := c.cc.Invoke(ctx, InternalDiskTypeBindingService_Supersede_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -225,19 +201,6 @@ type InternalDiskTypeBindingServiceServer interface {
 	// `[0..1000]` отвергается, а не подрезается, мусорный `page_token` —
 	// `INVALID_ARGUMENT`.
 	List(context.Context, *ListDiskTypeBindingsRequest) (*ListDiskTypeBindingsResponse, error)
-	// Supersede — снимает действующую ревизию с действия БЕЗ замены: класс перестаёт
-	// предлагаться в этой зоне, новые ресурсы на нём не создаются, существующие
-	// продолжают жить под своей ревизией.
-	//
-	// Это единственный глагол ревизии, и он меняет ровно одно — полосу действия.
-	// Содержание строки остаётся прежним, поэтому ссылка ресурса на неё продолжает
-	// значить то же, что значила в момент создания.
-	//
-	// Движение односторонее: `SUPERSEDED` не возвращается в `ACTIVE`. Вернуть класс в
-	// зону — значит завести НОВУЮ ревизию: тогда у ресурсов, созданных под прежней,
-	// остаётся своя политика, а не воскресшая чужая. Повтор на уже вытесненной
-	// ревизии идемпотентен и отвечает тем же телом.
-	Supersede(context.Context, *SupersedeDiskTypeBindingRequest) (*DiskTypeBinding, error)
 	mustEmbedUnimplementedInternalDiskTypeBindingServiceServer()
 }
 
@@ -256,9 +219,6 @@ func (UnimplementedInternalDiskTypeBindingServiceServer) Get(context.Context, *G
 }
 func (UnimplementedInternalDiskTypeBindingServiceServer) List(context.Context, *ListDiskTypeBindingsRequest) (*ListDiskTypeBindingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method List not implemented")
-}
-func (UnimplementedInternalDiskTypeBindingServiceServer) Supersede(context.Context, *SupersedeDiskTypeBindingRequest) (*DiskTypeBinding, error) {
-	return nil, status.Error(codes.Unimplemented, "method Supersede not implemented")
 }
 func (UnimplementedInternalDiskTypeBindingServiceServer) mustEmbedUnimplementedInternalDiskTypeBindingServiceServer() {
 }
@@ -336,24 +296,6 @@ func _InternalDiskTypeBindingService_List_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InternalDiskTypeBindingService_Supersede_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SupersedeDiskTypeBindingRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InternalDiskTypeBindingServiceServer).Supersede(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InternalDiskTypeBindingService_Supersede_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InternalDiskTypeBindingServiceServer).Supersede(ctx, req.(*SupersedeDiskTypeBindingRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // InternalDiskTypeBindingService_ServiceDesc is the grpc.ServiceDesc for InternalDiskTypeBindingService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -372,10 +314,6 @@ var InternalDiskTypeBindingService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _InternalDiskTypeBindingService_List_Handler,
-		},
-		{
-			MethodName: "Supersede",
-			Handler:    _InternalDiskTypeBindingService_Supersede_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -171,11 +171,27 @@ func (h *InternalDiskTypeHandler) Create(ctx context.Context, req *storagev1.Cre
 	return protoconv.DiskType(created), nil
 }
 
-// Update меняет mutable-поля DiskType (admin, sync, full-replace — proto без
-// FieldMask). id immutable (path-param).
+// Update меняет изменяемые поля DiskType по маске (admin, sync). id адресует и
+// потому неизменяем (path-param). Дисциплина маски — в use-case (immutable-switch →
+// известные поля → полный PATCH при пустой маске, api-conventions.md).
 func (h *InternalDiskTypeHandler) Update(ctx context.Context, req *storagev1.UpdateDiskTypeRequest) (*storagev1.DiskType, error) {
-	updated, err := h.uc.UpdateAdmin(ctx, req.GetDiskTypeId(), req.GetName(), req.GetDescription(),
-		req.GetZoneIds(), string(protoconv.TierFromProto(req.GetTier())))
+	updated, err := h.uc.UpdateAdmin(ctx, req.GetDiskTypeId(), req.GetUpdateMask().GetPaths(),
+		req.GetName(), req.GetDescription(), req.GetZoneIds(),
+		protoconv.TierFromProto(req.GetTier()), protoconv.SizeLimitsFromProto(req.GetLimits()))
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return protoconv.DiskType(updated), nil
+}
+
+// SetLifecycle переводит класс в другое состояние обращения (admin, sync).
+// Отдельный глагол, а не поле правки: состояние в теле Update возвращало бы
+// выведенный класс в обращение при пустой маске (полный PATCH) — молча.
+//
+// Неназванное состояние конверсия отдаёт ПУСТЫМ, а не ACTIVE: умолчания у этого
+// запроса нет, и отказ приходит из use-case (домен судит словарь).
+func (h *InternalDiskTypeHandler) SetLifecycle(ctx context.Context, req *storagev1.SetDiskTypeLifecycleRequest) (*storagev1.DiskType, error) {
+	updated, err := h.uc.SetLifecycle(ctx, req.GetDiskTypeId(), protoconv.LifecycleFromProto(req.GetLifecycle()))
 	if err != nil {
 		return nil, serviceerr.ToStatus(err)
 	}

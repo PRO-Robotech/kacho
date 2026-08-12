@@ -350,7 +350,11 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 	before, err := vr.Get(ctx, vol.ID)
 	require.NoError(t, err)
 
-	updated, err := dr.Update(ctx, "block-retro", "renamed", "суженный", []string{"region-1-a"}, string(domain.TierFast))
+	retroName, retroDesc := "renamed", "суженный"
+	retroZones, retroTier := []string{"region-1-a"}, domain.TierFast
+	updated, err := dr.Update(ctx, "block-retro", disktype.DiskTypeUpdate{
+		Name: &retroName, Description: &retroDesc, ZoneIDs: &retroZones, PerformanceTier: &retroTier,
+	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"region-1-a"}, updated.ZoneIDs, "правка применилась")
 	require.Equal(t, domain.TierFast, updated.PerformanceTier)
@@ -370,8 +374,8 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 }
 
 // TestDiskTypeCreateUpdateAdmin — admin Create (slug id, zone_ids/ярус) → Get; повтор
-// того же id → AlreadyExists; Update портовой формы (полное замещение изменяемых
-// полей) применяет всё названное.
+// того же id → AlreadyExists; правка, назвавшая все изменяемые поля (форма полного
+// PATCH при пустой маске), применяет всё названное.
 func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newTestPool(t))
 	ctx := context.Background()
@@ -390,14 +394,18 @@ func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 	_, err = dr.Insert(ctx, &domain.DiskType{ID: "block-nvme", Name: "dup", Lifecycle: domain.LifecycleActive})
 	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "duplicate slug → AlreadyExists, got %v", err)
 
-	upd, err := dr.Update(ctx, "block-nvme", "renamed", "new-desc", []string{"region-2-a"}, string(domain.TierIOMax))
+	newName, newDesc := "renamed", "new-desc"
+	newZones, newTier := []string{"region-2-a"}, domain.TierIOMax
+	upd, err := dr.Update(ctx, "block-nvme", disktype.DiskTypeUpdate{
+		Name: &newName, Description: &newDesc, ZoneIDs: &newZones, PerformanceTier: &newTier,
+	})
 	require.NoError(t, err)
 	require.Equal(t, "renamed", upd.Name)
 	require.Equal(t, "new-desc", upd.Description)
 	require.Equal(t, []string{"region-2-a"}, upd.ZoneIDs)
 	require.Equal(t, domain.TierIOMax, upd.PerformanceTier)
 
-	_, err = dr.Update(ctx, "dtp-missing", "x", "", nil, "")
+	_, err = dr.Update(ctx, "dtp-missing", disktype.DiskTypeUpdate{Name: &newName})
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "update missing → NotFound, got %v", err)
 }
 
@@ -418,52 +426,53 @@ func TestDiskTypeUpdateAppliesOnlyNamedFields(t *testing.T) {
 	})
 
 	name := "переименованный"
-	got, err := dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{Name: &name})
+	got, err := dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{Name: &name})
 	require.NoError(t, err)
 	want := *before
 	want.Name = name
 	require.Equal(t, &want, got, "названо имя — изменилось только имя")
 
 	zones := []string{"ru-central1-c"}
-	got, err = dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{ZoneIDs: &zones})
+	got, err = dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{ZoneIDs: &zones})
 	require.NoError(t, err)
 	want.ZoneIDs = zones
 	require.Equal(t, &want, got, "названы зоны — имя предыдущей правки на месте")
 
 	lifecycle := domain.LifecycleDeprecated
-	got, err = dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{Lifecycle: &lifecycle})
+	got, err = dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{Lifecycle: &lifecycle})
 	require.NoError(t, err)
 	want.Lifecycle = lifecycle
 	require.Equal(t, &want, got, "названо состояние обращения — границы размера не тронуты")
 
 	minSize := int64(2) << 30
-	got, err = dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{MinSizeBytes: &minSize})
+	got, err = dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{MinSizeBytes: &minSize})
 	require.NoError(t, err)
 	want.Limits.MinSizeBytes = minSize
 	require.Equal(t, &want, got, "назван минимум — максимум и шаг не тронуты")
 
 	// Пустая правка законна и ничего не меняет: «маска не назвала ни одного поля»
 	// отличается от «маска назвала поля пустыми».
-	got, err = dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{})
+	got, err = dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{})
 	require.NoError(t, err)
 	require.Equal(t, &want, got, "правка без названных полей не меняет ничего")
 
 	// Снять описание — тоже правка: пустая строка есть ЗНАЧЕНИЕ, а не отсутствие.
 	empty := ""
-	got, err = dr.UpdateFields(ctx, "block-mask", pg.DiskTypeUpdate{Description: &empty})
+	got, err = dr.Update(ctx, "block-mask", disktype.DiskTypeUpdate{Description: &empty})
 	require.NoError(t, err)
 	want.Description = ""
 	require.Equal(t, &want, got, "названное пустым описание снимается, остальное на месте")
 
-	_, err = dr.UpdateFields(ctx, "dtp-missing", pg.DiskTypeUpdate{Name: &name})
+	_, err = dr.Update(ctx, "dtp-missing", disktype.DiskTypeUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "правка отсутствующего → NotFound, got %v", err)
 }
 
-// TestDiskTypeUpdatePortFormLeavesPolicyUntouched — портовая форма правки (полное
-// замещение) несёт имя/описание/зоны/ярус и НЕ несёт политику, поэтому состояние
-// обращения и границы размера обязаны пережить её нетронутыми. Пара: зоны она
-// действительно замещает.
-func TestDiskTypeUpdatePortFormLeavesPolicyUntouched(t *testing.T) {
+// TestDiskTypeFullPatchLeavesLifecycleUntouched — форма ПОЛНОГО PATCH (пустая маска:
+// названы все изменяемые поля, включая границы размера) обязана оставить состояние
+// обращения нетронутым: его меняет отдельный глагол SetLifecycle, и правка описания
+// не вправе вернуть выведенный класс в обращение. Пара: зоны и границы она
+// действительно замещает, иначе проба зеленела бы на правке, не делающей ничего.
+func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newTestPool(t))
 	ctx := context.Background()
 
@@ -474,13 +483,18 @@ func TestDiskTypeUpdatePortFormLeavesPolicyUntouched(t *testing.T) {
 		Limits:          domain.SizeLimits{MinSizeBytes: 1 << 30, MaxSizeBytes: 16 << 40, SizeStepBytes: 1 << 30},
 	})
 
-	got, err := dr.Update(ctx, "block-portform", "новое", "новое описание",
-		[]string{"ru-central1-b"}, string(domain.TierFast))
+	name, desc := "новое", "новое описание"
+	zones, tier := []string{"ru-central1-b"}, domain.TierFast
+	minSize, maxSize, step := int64(2)<<30, int64(32)<<40, int64(2)<<30
+	got, err := dr.Update(ctx, "block-portform", disktype.DiskTypeUpdate{
+		Name: &name, Description: &desc, ZoneIDs: &zones, PerformanceTier: &tier,
+		MinSizeBytes: &minSize, MaxSizeBytes: &maxSize, SizeStepBytes: &step,
+	})
 	require.NoError(t, err)
 	require.Equal(t, []string{"ru-central1-b"}, got.ZoneIDs, "зоны замещены — форма не холостая")
 	require.Equal(t, domain.TierFast, got.PerformanceTier)
+	require.Equal(t, minSize, got.Limits.MinSizeBytes, "границы замещены — форма не холостая")
 	require.Equal(t, before.Lifecycle, got.Lifecycle, "состояние обращения этим путём не приходит и не меняется")
-	require.Equal(t, before.Limits, got.Limits, "границы размера этим путём не приходят и не меняются")
 }
 
 // TestDiskTypeDeleteFKRestrict — Q4: Delete типа, на который ссылается том →

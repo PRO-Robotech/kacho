@@ -43,7 +43,7 @@ func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 
 	// min_disk_bytes is derived from the source snapshot: 20 GiB.
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-min-disk", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "img-min-disk", imageRegionFixture, snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-min-disk", imageRegionFixture, snapID)
 	require.EqualValues(t, 20<<30, img.MinDiskBytes, "fixture must carry a non-zero minimum")
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{
@@ -66,7 +66,7 @@ func TestVolumeSourceImageAtMinDiskSeeded(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-at-min", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "img-at-min", imageRegionFixture, snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "img-at-min", imageRegionFixture, snapID)
 
 	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-at-min",
@@ -87,7 +87,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-victim", "snap-victim-min", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-victim", "img-victim-min", imageRegionFixture, snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-victim", "img-victim-min", imageRegionFixture, snapID)
 
 	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-victim-min",

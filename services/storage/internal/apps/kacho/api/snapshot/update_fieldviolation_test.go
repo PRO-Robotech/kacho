@@ -61,7 +61,7 @@ func TestUpdateOverLimitNamesTheField(t *testing.T) {
 				return &domain.Snapshot{ID: snapUpdID}, nil
 			},
 		}
-		return snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
+		return snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	}
 
 	cases := []struct {
@@ -133,7 +133,7 @@ func TestUpdateRejectsIllegalNameSynchronously(t *testing.T) {
 			return &domain.Snapshot{ID: snapUpdID}, nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	for _, tc := range []struct {
 		label string
@@ -173,7 +173,7 @@ func TestUpdateSkipsFieldsOutsideTheMask(t *testing.T) {
 		},
 	}
 	ops := repomock.NewOpsRepo()
-	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Update(context.Background(), snapUpdID, []string{"description"},
 		"Illegal_Name", "fine", updLabels(65))
@@ -205,7 +205,7 @@ func TestUpdateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
 			},
 		}
 		ops := repomock.NewOpsRepo()
-		uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+		uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 		op, err := uc.Update(context.Background(), snapUpdID, mask,
 			"", strings.Repeat("x", 256), atLimit)

@@ -42,13 +42,17 @@ import (
 var fixtureRegionZones = []string{"region-1-a", "region-1-b"}
 
 // mkVolumeRowInZone inserts a volume directly, in the given zone.
+//
+// Класс диска заводит фикстура: каталог больше не засевается (миграция 0016 сняла
+// посев — класс есть РЕГИСТРАЦИЯ того, что даёт провайдер), а ограничительная связь
+// строки тома требует существующего класса.
 func mkVolumeRowInZone(t *testing.T, pool *pgxpool.Pool, project, name, zone string) string {
 	t.Helper()
 	id := ids.NewID(domain.PrefixVolume)
 	_, err := pool.Exec(context.Background(),
 		`INSERT INTO volumes (id, project_id, name, zone_id, disk_type_id, size_bytes, state)
 		 VALUES ($1,$2,$3,$4,$5,$6,'READY')`,
-		id, project, name, zone, seededDiskType, int64(20)<<30)
+		id, project, name, zone, imgFixtureDiskTypeRow(t, pool), int64(20)<<30)
 	require.NoError(t, err)
 	return id
 }

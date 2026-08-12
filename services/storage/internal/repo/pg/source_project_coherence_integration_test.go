@@ -66,7 +66,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	// Приватные ресурсы «жертвы».
 	victimVol := mkVolume(t, vr, projVictim, "victim-vol", 8<<30)
 	victimSnapID := mkSnapshotRow(t, pool, projVictim, "victim-snap", 8<<30)
-	victimImg := mkImageFromSnapshot(t, ir, projVictim, "victim-img", "ru-central1", victimSnapID)
+	victimImg := mkImageFromSnapshot(t, pool, ir, projVictim, "victim-img", "ru-central1", victimSnapID)
 
 	t.Run("image from foreign snapshot", func(t *testing.T) {
 		imgID := ids.NewID(domain.PrefixImage)
