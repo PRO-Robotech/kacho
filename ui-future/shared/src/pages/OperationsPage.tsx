@@ -188,8 +188,17 @@ export function OperationsPage() {
   }
 
   return (
-    <div className="kc-surface" style={{ padding: 20, minHeight: "100%" }}>
-      <Space direction="vertical" size={0} style={{ width: "100%" }}>
+    // Колонка на всю высоту: шапка фиксированной высоты, таблица забирает
+    // остаток и прокручивается ВНУТРИ себя. Прежде страница была обычным
+    // потоком (`minHeight: 100%` + `Space`), и таблица, рассчитанная на высоту
+    // родителя, получала её от контейнера нулевой высоты — список не
+    // растягивался на доступное место, а прокрутка появлялась у страницы,
+    // из-за чего шапка с фильтрами уезжала вверх вместе с содержимым.
+    <div
+      className="kc-surface"
+      style={{ padding: 20, height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+    >
+      <Space direction="vertical" size={0} style={{ width: "100%", flex: 1, minHeight: 0 }}>
         {/* Единая шапка: общая VPC-иконка модуля (DeploymentUnitOutlined,
             отличная от network) + действие «Операции» + название «VPC» +
             счётчик; фильтры — справа. */}
@@ -232,12 +241,14 @@ export function OperationsPage() {
           }
         />
 
-        <OperationsTable
-          rows={filtered}
-          loading={isLoading}
-          showResourceKind
-          empty={allOps.length > 0 && filtered.length === 0}
-        />
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+          <OperationsTable
+            rows={filtered}
+            loading={isLoading}
+            showResourceKind
+            empty={allOps.length > 0 && filtered.length === 0}
+          />
+        </div>
       </Space>
     </div>
   );
