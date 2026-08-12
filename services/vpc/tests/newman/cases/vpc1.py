@@ -644,6 +644,50 @@ CASES.append(Case(
     ],
 ))
 
+# verifies VPC-1-30 (обратная сторона: плана нет вовсе)
+CASES.append(Case(
+    id="SUB-CR-V1-NO-SUPERNET-REFUSED",
+    title="Subnet.Create в сети БЕЗ объявленного супернета семейства → sync InvalidArgument "
+          "'network declares no IPv4 supernet' (нарезать не из чего, F7)",
+    classes=["VAL", "NEG", "CONF"], priority="P0",
+    steps=[
+        # `declares_no_supernet=True` — ЕДИНСТВЕННОЕ место, где сеть создаётся без
+        # плана намеренно: предмет этого кейса и есть отказ. Во всех прочих кейсах
+        # план дописывает генератор, потому что фикстура без плана была бы
+        # снисходительнее продукта и прятала бы ровно этот отказ.
+        Step(name="mk-net-planless", method="POST", path="/vpc/v1/networks",
+             declares_no_supernet=True, pre_script=list(_OCT_PRE),
+             body={"projectId": "{{_suiteProjectId}}", "name": "v1nosup-{{runId}}"},
+             test_script=[*assert_status(200), *_assert_op_in_response(),
+                          *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
+        poll_operation_until_done(),
+        Step(name="cr-sub-no-plan", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "v1nosup-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('refusal names the family and the way forward', () => "
+                          "pm.expect(pm.response.json().message).to.match("
+                          "/^network declares no IPv4 supernet: add blocks via :add-cidr-blocks "
+                          "\\(ipv4CidrBlocks\\) before creating an IPv4 subnet$/));"]),
+        # Положительный контроль В ТОМ ЖЕ кейсе: объявляем план — и та же самая
+        # подсеть проходит. Без него «отказ» зеленел бы и на реализации, которая
+        # отвергает любую подсеть по любой причине.
+        Step(name="declare-plan", method="POST", path="/vpc/v1/networks/{{netId}}:add-cidr-blocks",
+             body={"ipv4CidrBlocks": [_SUPERNET_V4]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        _subnet_create_step("nosupok", {"zoneId": "{{existingZoneId}}",
+                                        "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"}),
+        poll_operation_until_done(),
+        _cleanup_subnet(),
+        poll_operation_until_done(),
+        _cleanup_net(),
+        poll_operation_until_done(),
+    ],
+))
+
 # verifies VPC-1-31
 CASES.append(Case(
     id="SUB-CR-V1-CIDR-OVERLAP",

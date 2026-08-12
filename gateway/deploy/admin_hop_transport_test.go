@@ -85,7 +85,7 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 // over TLS. A plaintext address here is refused at start by the gateway's boot
 // guard — this gate is what keeps that refusal from being discovered on a stand.
 func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			if !stackIsProductionClass(t, stack) {
 				t.Skipf("%s is dev-class by its own declaration — the transport requirement "+
@@ -119,7 +119,7 @@ func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
 // a profile that never named the address still read as configured — while
 // addressing the public ingress hostname, which does not resolve in-cluster.
 func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStackAt(t, stack, "kacho-iam", "kacho", "iam", "hydraAdminUrl")
 			if !ok {
@@ -206,7 +206,7 @@ var adminHopConsumers = map[string][]string{
 // fail a handshake — it fails to resolve. That is the intended shape: loud and
 // immediate, rather than a timeout against something that looks like an address.
 func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			on, _ := resolveStackBoolAt(t, stack, "mtls", "hydraAdminTls", "enabled")
 			if !on {
@@ -299,11 +299,11 @@ var devClassStackNames = map[string]bool{"dev": true}
 // бессмысленно, поэтому страж читает намерение и требует, чтобы состав ему
 // соответствовал.
 func TestStacks_OnlyNamedDevStacksAreDevClass(t *testing.T) {
-	if len(deployableStacks) == 0 {
+	if len(deployableStacks(t)) == 0 {
 		t.Fatal("набор стеков пуст — «все боевые» здесь означало бы «ни одного не смотрели»")
 	}
 	devFound := 0
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		production := stackIsProductionClass(t, stack)
 		if devClassStackNames[name] {
 			devFound++
@@ -325,5 +325,5 @@ func TestStacks_OnlyNamedDevStacksAreDevClass(t *testing.T) {
 		t.Error("ни один стек перечня devClassStackNames не встретился в наборе — перечню " +
 			"больше нечего разрешать, и он остался бы верным при любом дереве")
 	}
-	t.Logf("осмотрено: стеков %d, из них разрешённых dev-класса %d", len(deployableStacks), devFound)
+	t.Logf("осмотрено: стеков %d, из них разрешённых dev-класса %d", len(deployableStacks(t)), devFound)
 }

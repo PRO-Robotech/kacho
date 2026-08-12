@@ -203,7 +203,12 @@ kratos:
   deployment:
     resources: *id002
 kratos-selfservice-ui:
-  resources: *id002
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
 uif:
   enabled: true
   image: docker.io/prorobotech/kacho-ui-future-host:main-dc50f5b4582785470def2d8399febab8ec408d85

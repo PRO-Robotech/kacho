@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -45,38 +46,59 @@ func readRepoFile(t *testing.T, parts ...string) string {
 	return string(raw)
 }
 
-// deployableStacks — the `-f` chains helm is actually invoked with, in order. Kept in
-// step with deploy/Makefile (dev-up / dev-prod-up), helm/umbrella/cutover-fe3455.sh and
-// the identical table in deploy/tests/helm/outbox-autovacuum-naptime-test.sh.
+// stacksTable — the ONE place in the tree where the `-f` chains are declared.
+// Read from here, from deploy/tests/helm/stacks.sh and from the deploy package;
+// nowhere else, and TestNoSecondCopyOfAStackChain (deploy/stack_table_test.go)
+// keeps it that way.
+const stacksTable = "../../deploy/stacks.txt"
+
+var stackTableLine = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*):(values[^,\s]*(?:,values[^,\s]*)*)$`)
+
+// deployableStacks — the `-f` chains helm is actually invoked with, in order,
+// read from the table above rather than restated here.
 //
-// "dev" is an INTERMEDIATE chain, not a stand anybody leaves running: `dev-up` rolls it
-// during the two-phase bootstrap and then upgrades onto "dev-prod", which is where the
-// local stand ends up. It is listed because helm really is invoked with it — a chain
-// that renders during bootstrap can still crash-loop a pod — and because every question
-// asked here is one the intermediate state must also answer.
+// This file used to carry its own copy. It disagreed with the shell-side table
+// about which layers one of the stacks is made of, and BOTH stayed green —
+// each honestly checked the stand it had declared. Worse, the disagreement
+// decided whether that stand counted as production-class at all, so the two
+// answers were mutually exclusive and nothing could tell you which was true.
 //
-// values.fe3455-ory.yaml is deliberately absent — it is gitignored (Ory secrets)
-// and carries no gateway configuration.
-var deployableStacks = map[string][]string{
-	"dev":      {"values.dev.yaml"},
-	"dev-prod": {"values.dev.yaml", "values.dev-prod.yaml"},
-	"prod":     {"values.prod.yaml"},
-	"fe3455":   {"values.prod.yaml", "values.fe3455.yaml", "values.fe3455-prod.yaml"},
-	// Три слоя, а не два. Средний (`values.dev-prod.yaml`) несёт посадку, и
-	// шапка самой накладки объявляет его НЕ опциональным: она описывает только
-	// образы и наследует безопасность у слоя под собой.
-	//
-	// Пока его здесь не было, состав читался «объявлено dev» — и обе проверки
-	// транспорта административного перехода на этом стеке ПРОПУСКАЛИСЬ, потому
-	// что их условие звучит «стек объявил боевую посадку». Между «объявил dev» и
-	// «не объявил ничего» разница ровно та, из-за которой пропуск выглядел
-	// законным: накладка образов не объявляет посадку вовсе, а набор судил её
-	// так, будто она выбрала dev.
-	//
-	// Собранный по своей же документации, стек становится боевым и приходит под
-	// проверки — как и должен, потому что именно им поднимают продукт на
-	// управляемом кластере.
-	"prorobotech": {"values.dev.yaml", "values.dev-prod.yaml", "values.prorobotech.yaml"},
+// "dev" is an INTERMEDIATE chain, not a stand anybody leaves running: `dev-up`
+// rolls it during the two-phase bootstrap and then upgrades onto "dev-prod",
+// which is where the local stand ends up. It is in the table because helm really
+// is invoked with it — a chain that renders during bootstrap can still crash-loop
+// a pod — and because every question asked here is one the intermediate state
+// must also answer.
+//
+// values.fe3455-ory.yaml is deliberately absent from the table — it is gitignored
+// (site credentials) and carries no gateway configuration; the cutover script
+// appends it itself.
+func deployableStacks(t *testing.T) map[string][]string {
+	t.Helper()
+	raw, err := os.ReadFile(stacksTable)
+	if err != nil {
+		t.Fatalf("stack table %s is unreadable (%v) — the premise of every check in this "+
+			"package is gone, which is not the same as a clean tree", stacksTable, err)
+	}
+	out := map[string][]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		m := stackTableLine.FindStringSubmatch(line)
+		if m == nil {
+			// An unparsed line is NOT "fewer stacks", it is "the predicate stopped
+			// recognising them". Staying silent here narrows every check downstream.
+			t.Fatalf("stack table line not parsed: %q (%s)", line, stacksTable)
+		}
+		out[m[1]] = strings.Split(m[2], ",")
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s declares no stacks — this package is not entitled to conclude that "+
+			"none are left", stacksTable)
+	}
+	return out
 }
 
 // introspectionAdminPath — the path the provider's admin API serves token
@@ -128,7 +150,7 @@ func resolveStack(t *testing.T, stack []string, path ...string) (string, bool) {
 // it must be the admin path — pointing it at the public API is exactly the state
 // this contract exists to prevent.
 func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStack(t, stack, "hydra", "introspectionUrl")
 			if !ok {
@@ -147,7 +169,7 @@ func TestStacks_DeclareIntrospectionEndpoint(t *testing.T) {
 // And the admin base the logout handler needs to end the provider-side session.
 // Unset, the session kill is skipped and signing out leaves the session alive.
 func TestStacks_DeclareAdminEndpoint(t *testing.T) {
-	for name, stack := range deployableStacks {
+	for name, stack := range deployableStacks(t) {
 		t.Run(name, func(t *testing.T) {
 			got, ok := resolveStack(t, stack, "hydra", "adminUrl")
 			if !ok {

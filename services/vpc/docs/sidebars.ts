@@ -42,6 +42,12 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Terraform',
+      collapsed: false,
+      items: ['terraform/provider', 'terraform/module-vpc-network'],
+    },
+    {
+      type: 'category',
       label: 'Дополнительно',
       collapsed: true,
       items: ['advanced/observability', 'advanced/known-divergences'],

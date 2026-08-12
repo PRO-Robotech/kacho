@@ -27,8 +27,12 @@ proj = os.environ.get("PRODSEED_PROJECT_ID") or MATRIX["projectA1Id"]
 RID = pm.RID
 ZONE = "ru-central1-a"
 
+# Сеть объявляет адресный план: сеть без него подсеть не принимает (sync 400) —
+# нарезать не из чего. Посев без плана был бы снисходительнее продукта и
+# обрушил бы всё, что стоит на подсети (адрес, интерфейс, балансировщик).
 net = pm._await(pm._curl("POST", "/vpc/v1/networks", boot,
-                         {"projectId": proj, "name": f"ps-cmp-net-{RID}"}), boot, "networkId")
+                         {"projectId": proj, "name": f"ps-cmp-net-{RID}",
+                          "ipv4CidrBlocks": ["10.194.0.0/16"]}), boot, "networkId")
 sub = pm._await(pm._curl("POST", "/vpc/v1/subnets", boot,
                          {"projectId": proj, "networkId": net, "name": f"ps-cmp-sub-{RID}",
                           "zoneId": ZONE, "ipv4CidrPrimary": "10.194.0.0/24"}), boot, "subnetId")

@@ -150,7 +150,7 @@ var contextTODO = regexp.MustCompile(`context\.TODO\(\)`)
 
 // deferralScanRoots — область обхода. Каталог, которого здесь нет, гейтом не
 // покрыт; отсутствие каталога — отказ, а не тихий пропуск.
-var deferralScanRoots = []string{"pkg", "services", "gateway", "internal", "deploy", "tools", "proto"}
+var deferralScanRoots = []string{"pkg", "services", "gateway", "internal", "deploy", "tools", "proto", "terraform"}
 
 // Перечня исключений у этого гейта НЕТ — и это измерение, а не упущение.
 //

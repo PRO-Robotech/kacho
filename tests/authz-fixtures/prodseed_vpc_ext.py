@@ -59,8 +59,12 @@ def fga_write(user, relation, obj):
 # 1) list-filter project + network + visible/hidden subnets (as bootstrap admin).
 lf_proj = pm._await(pm._curl("POST", "/iam/v1/projects", boot,
                              {"accountId": acctA, "name": f"ps-lf-{RID}"}), boot, "projectId")
+# Сеть объявляет адресный план: сеть без него подсеть не принимает (sync 400) —
+# нарезать не из чего. Посев без плана был бы снисходительнее продукта и
+# обрушил бы всё, что стоит на подсети (адрес, интерфейс, балансировщик).
 lf_net = pm._await(pm._curl("POST", "/vpc/v1/networks", boot,
-                            {"projectId": lf_proj, "name": f"ps-lf-net-{RID}"}), boot, "networkId")
+                            {"projectId": lf_proj, "name": f"ps-lf-net-{RID}",
+                             "ipv4CidrBlocks": ["10.193.0.0/16"]}), boot, "networkId")
 lf_vis = pm._await(pm._curl("POST", "/vpc/v1/subnets", boot,
                             {"projectId": lf_proj, "networkId": lf_net, "name": f"ps-lf-vis-{RID}",
                              "zoneId": "ru-central1-a", "ipv4CidrPrimary": "10.193.0.0/24"}), boot, "subnetId")

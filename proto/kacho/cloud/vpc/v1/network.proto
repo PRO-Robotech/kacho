@@ -43,6 +43,12 @@ message Network {
   // must be a subset of one of these blocks. There is no primary at the network
   // level — this is a pure set of supernet blocks. Mutated only via
   // :add-cidr-blocks / :remove-cidr-blocks (immutable through Update).
+  //
+  // Optional at Create — and the consequence is stated rather than left implied:
+  // a network that declares no IPv4 supernet REFUSES IPv4 subnets
+  // (INVALID_ARGUMENT), because there is nothing to carve them from. Declare the
+  // blocks here or grow them later via :add-cidr-blocks. The constraint above is
+  // unconditional: it is never silently skipped for an empty list.
   repeated string ipv4_cidr_blocks = 8;
 
   // Declared IPv6 supernet block(s) for the network. Mirror of ipv4_cidr_blocks.
