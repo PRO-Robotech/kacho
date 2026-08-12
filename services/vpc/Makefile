@@ -58,7 +58,7 @@ audit-list-filter:
 # один Makefile. Утверждения о провязке ребра существовали как текст и ни разу не
 # проверялись. Теперь цель вызывается из CI (.github/workflows/ci.yaml, job
 # `helm`), а то, что она вызывается, залочено гейтом
-# internal/repohygiene/renderguard_test.go.
+# internal/repohygiene/artifactgates/renderguard_test.go.
 helm-render-guard:
 	bash deploy/render-guard.sh
 

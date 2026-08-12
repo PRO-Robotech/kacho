@@ -29,44 +29,25 @@
 namespace:
   create: false
 
+# ЗДЕСЬ ЛЕЖИТ ТОЛЬКО ТО, ЧТО ЧИТАЮТ ШАБЛОНЫ САМОГО ЗОНТИКА.
+#
+# Ключи сабчарта адресуются через его имя (`kacho-iam.kacho.*`) и в этот блок не
+# попадают: helm не пропагирует верхний уровень внутрь сабчарта. Прежде блок нёс
+# копию всей ветки `kacho.*` «для документации» — восемь ключей, которых не читал
+# ни один шаблон. Копия выглядела главной: оператор правил `--set kacho.subdomains.app=…`
+# либо `--set kacho.iam.jwks.encKeySecretName=…`, рендер проходил, ничего не менялось.
+#
+# Действующие адреса тех же настроек: имена секретов JWKS и хука, а также
+# префиксы поддоменов — `kacho-iam.kacho.*` (ниже). Размеры кэшей отзыва сессий и
+# повторов DPoP настраиваются переменными окружения ПРОЦЕССА края
+# (`api-gateway.extraEnv`), а не этой веткой: их читает api-gateway, и никогда не
+# читал kacho-iam.
 kacho:
-  # Корневой домен Kachō Cloud. Override per-cluster:
+  # Корневой домен Kachō Cloud. Читается шаблонами зонтика (ingress, сертификаты).
+  # Override per-cluster:
   #   helm upgrade … --set kacho.domain=test.example.com \
   #                  --set kacho-iam.kacho.domain=test.example.com
   domain: api.kacho.cloud
-
-  # Sub-domain prefixes; используются в Helm templates как
-  # `{{ printf "%s.%s" .Values.kacho.subdomains.app .Values.kacho.domain }}`.
-  subdomains:
-    app: app             # https://app.<domain> — UI / BFF
-    hydra: hydra         # https://hydra.<domain> — Hydra OIDC issuer
-    kratos: kratos       # https://kratos.<domain> — Kratos selfservice public
-    api: ""              # https://<domain> — api-gateway (без prefix'а)
-
-  # IAM AuthN core knobs.
-  iam:
-    # JWKS rotation cron — УДАЛЁН: iam не владеет ключом подписи (издатель и
-    # подписант — Hydra, iam лишь проксирует её публичный JWKS байт-в-байт),
-    # поэтому ротировать нечего. Подробности — charts/kacho-iam/values.yaml.
-    jwks:
-      # AES-GCM key: требуется production boot-guard'ом iam (refuse-to-start без
-      # него). В prod — KMS-CMK через external-secrets.
-      encKeySecretName: kacho-iam-jwks-enc-key
-      encKeySecretKey: enc_key
-
-    # Session-revocation cache (api-gateway in-memory O(1) lookup).
-    sessionRevocations:
-      cacheTTLSeconds: 5
-
-    # DPoP replay cache (RFC 9449 §11.1). Per-pod LRU.
-    dpopReplay:
-      cacheTTLSeconds: 120
-      cacheSize: 100000
-
-  # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook authentication.
-  hooks:
-    tokenHookSecretName: kacho-iam-hook-token
-    tokenHookSecretKey: token
 
 # ─── kacho-iam sub-chart ─────────────────────────────────────────────────
 # Helm не пропагирует top-level `kacho.*` в sub-chart автоматически — дублируем
@@ -84,17 +65,11 @@ kacho-iam:
       app: app
       hydra: hydra
       kratos: kratos
-      api: ""
     iam:
       # Ротатора нет (см. выше) — остаются только реально потребляемые ключи.
       jwks:
         encKeySecretName: kacho-iam-jwks-enc-key
         encKeySecretKey: enc_key
-      sessionRevocations:
-        cacheTTLSeconds: 5
-      dpopReplay:
-        cacheTTLSeconds: 120
-        cacheSize: 100000
       # saKey — lifetime discipline for the machine credential (see the
       # kacho-iam sub-chart values for the full rationale). accessTokenTtl is
       # empty by default: the env is then omitted and the provider-global token
@@ -159,7 +134,6 @@ openfga-bootstrap:
     # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root → bootstrap-скрипту
     # не нужен runtime apk add.
     image: alpine/k8s:1.36.2
-    cliImage: ""
     storeName: kacho-store
     authorizationModelConfigMap: openfga-model-stub
     modelIdSecretName: openfga-model-id
