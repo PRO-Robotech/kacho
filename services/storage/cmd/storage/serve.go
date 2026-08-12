@@ -280,7 +280,7 @@ func runServe(cfg config.Config) error {
 	// без работоспособного адаптера, роняет старт, а не молча заводит петлю, которая
 	// каждый проход берёт работу и ничего не делает.
 	if cfg.BlockBackendKind != "" {
-		opener := clients.NewBackendOpener(blockBackendFactories(),
+		opener := clients.NewBackendOpener(blockBackendFactories(cfg.BlockBackendCallTimeout),
 			clients.NewDirCredentials(cfg.BlockBackendCredentialsDir))
 		if !opener.Supports(cfg.BlockBackendKind) {
 			return fmt.Errorf("storage backend kind %q is configured but this build carries no "+
