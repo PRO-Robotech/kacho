@@ -89,3 +89,18 @@ registry:
     repository: docker.io/prorobotech/kacho-registry
     tag: main-5e8318c8
   imagePullPolicy: IfNotPresent
+  # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
+  # username/password/htpasswd провизионится ВНЕ git — как в values.prod.yaml.
+  #
+  # Накладка описывает образы и ничего не говорила об учётных данных, поэтому
+  # хранилище слоёв на управляемом кластере поднималось с плейсхолдером слоя под
+  # ней — значением из публичного файла. Хранилище слоёв не различает тенантов:
+  # его пароль это доступ ко всем слоям стенда мимо авторизации плоскости данных.
+  # Стенд, тянущий образы продукта из реестра, берёт эти данные ссылкой — держит
+  # TestStandPullingFromARegistryTakesLayerStoreCredentialByReference.
+  zot:
+    auth:
+      existingSecret: zot-auth
+      username: ""
+      password: ""
+      htpasswd: ""

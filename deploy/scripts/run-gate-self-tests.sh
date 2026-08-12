@@ -94,6 +94,7 @@ deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/assert-waiters-name-their-target.sh
+deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
@@ -119,15 +120,22 @@ tools/mixedoutcomeaudit/mixed_outcome_audit.py
 tools/unreadfieldaudit/unread_field_audit.py
 "
 
-# Четыре законные формы разбора аргумента --self-test. Все четыре — КОД: bash-тест,
-# проверка членства в argv, объявление флага в argparse, проверка членства в argv у
-# node. Слово в прозе, внутри регулярного выражения или в строке запуска ни одной из
-# них не является.
+# Пять законных форм разбора аргумента --self-test. Все пять — КОД: bash-тест,
+# ветка bash-case, проверка членства в argv, объявление флага в argparse, проверка
+# членства в argv у node. Слово в прозе, внутри регулярного выражения или в строке
+# запуска ни одной из них не является.
 #
 # Четвёртая форма добавлена вместе с расширением обхода на `*.js`: до этого гейт на
 # JS не мог попасть в состав ВООБЩЕ, каким бы образом он ни разбирал аргумент, и его
 # доказательство инъекцией существовало где угодно, только не в конвейере.
-SELFTEST_PARSE='= *"--self-test" *\]|"--self-test" +in +sys\.argv|add_argument\( *"--self-test"|argv\.includes\([^)]*--self-test'
+#
+# Пятая — ветка `case`. Слепота была ровно того же рода и держалась на совпадении:
+# единственный файл дерева, разбирающий флаг через `case`, разбирает его И
+# bash-тестом ниже, поэтому находился второй формой, а не первой. Гейт, у которого
+# ЕДИНСТВЕННЫМ разбором была бы ветка `case`, не попал бы в состав вовсе. Ветка
+# анкерована началом строки: без анкера строка этого же определения нашла бы саму
+# себя, и прогонщик снова красил бы состав своими объяснениями.
+SELFTEST_PARSE='= *"--self-test" *\]|^[[:space:]]*(-[A-Za-z-]+\|)*--self-test\)|"--self-test" +in +sys\.argv|add_argument\( *"--self-test"|argv\.includes\([^)]*--self-test'
 
 # ЧИТАЕТСЯ ИСПОЛНЯЕМАЯ ЧАСТЬ, А НЕ ТЕКСТ — и это не предосторожность впрок.
 # Первая же редакция обхода по всему дереву нашла САМ ЭТОТ ФАЙЛ: в шапке выше
@@ -231,6 +239,12 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   { echo "'use strict';"
     printf "if (process.argv.includes('%s')) { process.exit(0); }\n" "$sfx"; } \
     >"$tmp/deploy/scripts/node-form.js"
+  # Пятая форма — ветка `case`, включая вариант с соседними флагами слева
+  # (`-h|--help|--self-test)`). Проверяется именно она: единственный файл дерева с
+  # таким разбором находился ДРУГОЙ формой, поэтому слепота была невидима.
+  { echo '#!/usr/bin/env bash'; echo 'case "${1:-}" in'
+    printf '  -h|%s) echo x ;;\n' "$sfx"; echo 'esac'; } \
+    >"$tmp/deploy/scripts/case-form.sh"
 
   # НЕ САМОПРОВЕРКИ — слово есть, разбора нет. Обязаны НЕ найтись, иначе прогон
   # потребует запускать несуществующую ветку.
@@ -240,6 +254,7 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   # записанное КОММЕНТАРИЕМ, — ровно то, чем этот файл красил сам себя.
   { echo '#!/usr/bin/env bash'
     printf '# узнаётся форма: [ "$1" = "%s" ] и "%s" in sys.argv\n' "$sfx" "$sfx"
+    printf '# и ветка case: %s) — здесь это тоже объяснение, а не разбор\n' "$sfx"
     echo 'echo ничего'; } >"$tmp/deploy/scripts/comment-only.sh"
   # То же самое ДЛЯ JS, и это не симметрия ради симметрии: комментарий в JS
   # начинается с `//`, а отбрасывание `#` его не трогает. Без этой фикстуры первый
@@ -260,11 +275,12 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   found="$(discover "$tmp")"
   want=".github/scripts/argv-form.py
 deploy/scripts/assert-bash-form.sh
+deploy/scripts/case-form.sh
 deploy/scripts/long-form.sh
 deploy/scripts/node-form.js
 services/x/tools/argparse-form.py"
   if [ "$found" = "$want" ]; then
-    echo "  ОК  все ЧЕТЫРЕ формы разбора найдены, в трёх каталогах, включая длинный файл"
+    echo "  ОК  все ПЯТЬ форм разбора найдены, в трёх каталогах, включая длинный файл"
   else
     echo "  ПРОВАЛ состав не тот"; echo "--- найдено:"; printf '%s\n' "$found" | sed 's/^/      /'
     echo "--- ожидалось:"; printf '%s\n' "$want" | sed 's/^/      /'; rc=1

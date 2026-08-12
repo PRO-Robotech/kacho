@@ -9,7 +9,8 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo e2e-newman stand-provenance
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo e2e-newman stand-provenance \
+        managed-image-pins managed-image-pins-check
 
 SHELL := bash
 
@@ -678,6 +679,28 @@ helm-lint:
 	( cd helm/umbrella && helm dep update >/dev/null )
 	cd helm/umbrella && helm lint -f values.dev.yaml
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ПИНЫ ОБРАЗОВ ПРОФИЛЯ УПРАВЛЯЕМОГО КЛАСТЕРА — ПОРОЖДАЮТСЯ, А НЕ ПИШУТСЯ РУКОЙ.
+#
+# Профиль объявлял себя порождаемым, а порождающего в дереве не было ни одного:
+# указание «правится порождающий» без координаты правку не переадресует, а
+# отменяет. Теперь координата есть, и она исполняемая.
+#
+#   make managed-image-pins REF=<коммит main>   — переписать пины от коммита
+#   make managed-image-pins-check               — пины сходятся с записью профиля
+#
+# REF по умолчанию HEAD. Порождающий ОТКАЗЫВАЕТ, если коммит не входит в ветку,
+# чьё имя несёт тег: образ с таким тегом публикует сборка этой ветки, и для
+# стороннего коммита его нет — отказ здесь дешевле, чем ImagePullBackOff через
+# минуты после успешного «helm upgrade».
+REF ?= HEAD
+
+managed-image-pins:
+	@bash scripts/gen-managed-image-pins.sh --ref $(REF)
+
+managed-image-pins-check:
+	@bash scripts/gen-managed-image-pins.sh --check
+
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
 # against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
 # api-gateway points at the in-cluster Hydra JWKS endpoint. No kind cluster needed.
@@ -718,9 +741,11 @@ helm-lint:
 # самопроверка и запись без предмета одинаково роняют прогон.
 #
 # --verify-discovery — ДОКАЗАТЕЛЬСТВО САМОГО ОБХОДА: что предикат читает разбор
-# аргумента, а не слово в прозе; что находит все три законные формы в любом
-# каталоге; что не находит сам себя; и что расхождение состава видно в ОБЕ
-# стороны. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
+# аргумента, а не слово в прозе; что находит КАЖДУЮ законную форму разбора в
+# любом каталоге; что не находит сам себя; и что расхождение состава видно в ОБЕ
+# стороны. Сколько форм законно — знает САМ обход (SELFTEST_PARSE в
+# scripts/run-gate-self-tests.sh) и печатает числом; здесь это число не
+# дублируется: копия отставала от него молча и уже отстала однажды. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
 # доказывал всё, кроме себя. Идёт ПЕРВЫМ: пустой или ослепший обход делает
 # зелёный основного прохода бессмысленным.
 gate-self-test:
