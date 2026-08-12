@@ -32,24 +32,24 @@ export function NetworkCidrManager({ networkId, v4Blocks, v6Blocks }: Props) {
         invalidateKey="networks"
         kind="v4"
         blocks={v4Blocks}
-        title="Супернет"
+        title="CIDR"
         prefixExample="/16"
         placeholder="10.30.0.0/16"
-        opNoun="супернет-блока"
-        errNoun="супернет"
-        emptyText="Супернет-блоков нет"
+        opNoun="CIDR"
+        errNoun="CIDR"
+        emptyText="CIDR-блоков нет"
       />
       <CidrTableSection
         actionPath={(verb) => `${NETWORKS_API}/${networkId}:${verb}-cidr-blocks`}
         invalidateKey="networks"
         kind="v6"
         blocks={v6Blocks}
-        title="Супернет"
+        title="CIDR"
         prefixExample="/48"
         placeholder="fd00:30::/48"
-        opNoun="супернет-блока"
-        errNoun="супернет"
-        emptyText="Супернет-блоков нет"
+        opNoun="CIDR"
+        errNoun="CIDR"
+        emptyText="CIDR-блоков нет"
       />
     </>
   );

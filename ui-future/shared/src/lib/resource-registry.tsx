@@ -933,7 +933,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         // VPC-1: declared supernet (immutable via Update; grown/shrunk via
         // :add/:remove-cidr-blocks). Compact IPv4-first view.
-        header: "Супернет",
+        header: "CIDR",
         path: "ipv4_cidr_blocks",
         render: (row) => <SupernetCell v4={row.ipv4_cidr_blocks} v6={row.ipv6_cidr_blocks} />,
       },
@@ -975,11 +975,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       {
         name: "ipv4_cidr_blocks",
-        label: "Супернет IPv4",
+        label: "CIDR IPv4",
         type: "array",
         itemLabel: "CIDR",
         description:
-          "Объявленное адресное пространство сети (IPv4). Из него нарезаются CIDR подсетей. Неизменяемо через Update — расширяется/сужается verb-действиями на странице сети.",
+          "CIDR сети (IPv4) — из него нарезаются CIDR подсетей. Неизменяемо через Update — расширяется/сужается verb-действиями на странице сети.",
         immutable: true,
         editHidden: true,
         newItem: () => ({ value: "" }),
@@ -987,10 +987,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "ipv6_cidr_blocks",
-        label: "Супернет IPv6",
+        label: "CIDR IPv6",
         type: "array",
         itemLabel: "CIDR",
-        description: "Опционально. Объявленное адресное пространство сети (IPv6).",
+        description: "Опционально. CIDR сети (IPv6).",
         immutable: true,
         editHidden: true,
         newItem: () => ({ value: "" }),
@@ -1179,7 +1179,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         placeholder: "10.20.0.0/24",
         description:
-          "Неизменяемый основной CIDR-блок подсети (⊆ одного супернет-блока сети). Хотя бы один из IPv4/IPv6 обязателен. Доп. диапазоны добавляются на странице подсети.",
+          "Неизменяемый основной CIDR-блок подсети (⊆ одного CIDR-блока сети). Хотя бы один из IPv4/IPv6 обязателен. Доп. диапазоны добавляются на странице подсети.",
         immutable: true,
       },
       {
@@ -1187,7 +1187,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Основной IPv6 CIDR",
         type: "string",
         placeholder: "fd00:20::/64",
-        description: "Опционально. Неизменяемый основной IPv6 CIDR-блок подсети (⊆ IPv6-супернета сети).",
+        description: "Опционально. Неизменяемый основной IPv6 CIDR-блок подсети (⊆ IPv6 CIDR сети).",
         immutable: true,
       },
       {

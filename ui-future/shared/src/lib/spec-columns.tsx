@@ -10,7 +10,8 @@ import type { Column } from "@shared/components/organisms/ResourceTable";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
-import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
+import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { getByPath, resourceProjectPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 import { referrerHref, referrerMeta } from "@shared/lib/referrer";
 import { displayText } from "@shared/lib/display-text";
@@ -104,11 +105,58 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+// ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку: иконка
+// типа + собственное содержимое колонки (обычно копируемое имя).
+//
+// Прежде имя было плоским текстом, а переход давал только клик по строке: у
+// строки нет ни адреса, ни вида ссылки — её нельзя открыть в новой вкладке и по
+// ней не видно, что она куда-то ведёт. Имя ресурса — самая частая точка перехода
+// в консоли, и вести себя она должна как ссылка.
+//
+// Собственная отрисовка колонки СОХРАНЯЕТСЯ внутри ссылки, а не заменяется:
+// копирование имени по клику остаётся (оно гасит событие и до перехода не
+// доходит). Запроса здесь нет — имя пришло со строкой; тем и отличается от
+// `RefNameLink`, который резолвит ЧУЖОЙ идентификатор.
+function ResourceNameCell({
+  spec,
+  row,
+  projectId,
+  children,
+}: {
+  spec: ResourceSpec;
+  row: Record<string, unknown>;
+  projectId?: string | null;
+  children: ReactNode;
+}): ReactNode {
+  const id = displayText(getByPath(row, "id"));
+  const base = resourceProjectPath(spec.id, projectId ?? null);
+  const content = (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <ResourceIcon specId={spec.id} />
+      {children}
+    </span>
+  );
+  // Без пути (ресурс без карточки в консоли) ссылка не рисуется: подчёркнутый
+  // текст, никуда не ведущий, обещает переход, которого нет.
+  if (!base || !id) return content;
+  return (
+    <Link to={`${base}/${id}`} onClick={(e) => e.stopPropagation()} className="text-primary hover:underline">
+      {content}
+    </Link>
+  );
+}
+
 export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}): Column<Record<string, unknown>>[] {
   return reorderNameIdFirst(spec.columns).map((c) => ({
     header: c.header,
     className: c.className,
-    cell: (row) => (c.render ? c.render(row) : formatCellByFormat(c, row, opts)),
+    cell: (row) => {
+      const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
+      // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
+      return c.path === "name"
+        ? ResourceNameCell({ spec, row, projectId: opts.projectId, children: inner })
+        : inner;
+    },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
 }

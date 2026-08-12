@@ -139,16 +139,17 @@ describe("дополнения обзора показывают доменны�
 });
 
 describe("панели под обзором", () => {
-  it("сеть получает управление объявленным супернетом с её блоками", () => {
+  it("сеть получает управление своими CIDR-блоками", () => {
     draw(detailExtension("networks")!.overviewBelow!(ctx({ id: "net-1", ipv4_cidr_blocks: ["10.30.0.0/16"] })));
 
     // Вид — тот же, что у CIDR подсети: две секции семейств, заголовок
-    // «Супернет» и бейдж IPv4/IPv6 отдельно (прежде подпись была склеена в
-    // «Супернет IPv4», и сеть с подсетью выглядели разными предметами).
-    expect(screen.getAllByText("Супернет")).toHaveLength(2);
+    // «CIDR» и бейдж IPv4/IPv6 отдельно. Слово то же, что у подсети (решение
+    // владельца 2026-08-12): сеть и подсеть держат один предмет, и «супернет»
+    // рядом с «CIDR» читались как два разных.
+    expect(screen.getAllByText("CIDR")).toHaveLength(2);
     expect(screen.getByText("IPv4")).toBeInTheDocument();
     expect(screen.getByText("10.30.0.0/16")).toBeInTheDocument();
-    expect(screen.getByText("Супернет-блоков нет")).toBeInTheDocument();
+    expect(screen.getByText("CIDR-блоков нет")).toBeInTheDocument();
   });
 
   it("таблица маршрутизации получает панель своих статических маршрутов", () => {

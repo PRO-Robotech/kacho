@@ -135,7 +135,7 @@ export function NetworkDetailPage() {
         <Space direction="vertical" size={24} style={{ width: "100%" }}>
           {networkId && (
             <div style={{ maxWidth: 760 }}>
-              <SectionHeader eyebrow="Адресное пространство" title="Супернет" />
+              <SectionHeader eyebrow="Адресное пространство" title="CIDR" />
               <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
             </div>
           )}

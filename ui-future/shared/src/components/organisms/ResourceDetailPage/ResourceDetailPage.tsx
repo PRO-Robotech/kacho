@@ -428,7 +428,7 @@ export function ResourceDetailPage({
     // Network-specific: declared supernet (VPC-1) — IPv4 then IPv6, multi-line.
     spec.id === "networks"
       ? {
-          label: "Супернет",
+          label: "CIDR",
           value: (() => {
             const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
             const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];

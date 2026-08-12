@@ -1,4 +1,5 @@
-// Супернет сети меняется не правкой поля, а двумя разными глаголами, и каждое
+// Адресное пространство сети (в интерфейсе — «CIDR», тем же словом, что у
+// подсети) меняется не правкой поля, а двумя разными глаголами, и каждое
 // действие уходит на край сразу. Поэтому предмет пробы — ЧТО ушло на край:
 // перепутанное семейство (v4-блок в поле v6) сервер примет и разложит сеть не
 // туда, а проверка на клиенте — единственное, что стоит между опечаткой и
@@ -34,7 +35,7 @@ function show(v4: string[] = [], v6: string[] = []) {
 
 /** Секция семейства — ближайший предок бейджа, у которого есть своё поле ввода.
  *  Семейство различается бейджем шапки («IPv4»/«IPv6»), а заголовок у обеих
- *  секций общий («Супернет») — как и у CIDR подсети, чей вид здесь и принят. */
+ *  секций общий («CIDR») — тем же словом и в том же виде, что у подсети. */
 function family(badge: string): HTMLElement {
   let el: HTMLElement | null = screen.getByText(badge);
   while (el && !el.querySelector("input")) el = el.parentElement;
@@ -60,7 +61,7 @@ describe("NetworkCidrManager", () => {
   it("пустое семейство названо пустым", () => {
     show([], []);
 
-    expect(screen.getAllByText("Супернет-блоков нет")).toHaveLength(2);
+    expect(screen.getAllByText("CIDR-блоков нет")).toHaveLength(2);
   });
 
   it("показывает объявленные блоки и их число по семействам", () => {
@@ -164,7 +165,7 @@ describe("NetworkCidrManager", () => {
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(
-        "IPv4 супернет удаление: FAILED_PRECONDITION: network CIDR block still contains subnets",
+        "IPv4 CIDR удаление: FAILED_PRECONDITION: network CIDR block still contains subnets",
       ),
     );
   });
