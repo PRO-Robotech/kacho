@@ -114,40 +114,6 @@ function refLinks(ids: string[] | undefined, specId: string): ReactNode {
   );
 }
 
-// SgConsumers — кто пользуется группой безопасности.
-//
-// Контракт группы несёт поле потребителей (`used_by`), но сервер его НЕ
-// заполняет: механизм есть только у сетевого интерфейса — «кто меня
-// приаттачил». Поле объявлено и молчит, поэтому карточка честно показывала
-// прочерк при живых потребителях (находка владельца 2026-08-12).
-//
-// Пока источник молчит, консоль спрашивает сама: интерфейсы проекта, у которых
-// эта группа в списке. Ответ сервера остаётся приоритетным — начнёт заполнять,
-// покажем его, и этот обход станет ненужным.
-function SgConsumers({ sgId, projectId, fromServer }: { sgId: string; projectId: string | null; fromServer: unknown[] }) {
-  const { data } = useQuery({
-    queryKey: ["sg-consumers", projectId, sgId],
-    queryFn: () =>
-      api.list<{ network_interfaces?: Array<{ id: string; security_group_ids?: string[] }> }>(
-        "/vpc/v1/networkInterfaces",
-        { project_id: projectId!, pageSize: "500" },
-      ),
-    enabled: !!projectId && !!sgId && fromServer.length === 0,
-    staleTime: 30_000,
-  });
-
-  if (fromServer.length > 0) return null;
-  const nics = (data?.network_interfaces ?? []).filter((n) => (n.security_group_ids ?? []).includes(sgId));
-  if (nics.length === 0) return dash;
-  return (
-    <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-      {nics.map((n) => (
-        <RefNameLink key={n.id} specId="network-interfaces" refId={n.id} projectId={projectId ?? undefined} maxChars={32} />
-      ))}
-    </span>
-  );
-}
-
 // ── RouteTable static_routes ──
 interface StaticRoute {
   destination_prefix?: string;
@@ -319,9 +285,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   },
 
   "security-groups": {
-    overviewExtra: ({ data, projectId }) => {
-      // KAC-239 S2: потребители SG (used_by) — к кому подключена группа.
-      const usedBy = getByPath<{ referrer?: { type?: string; id?: string } }[]>(data, "used_by") ?? [];
+    overviewExtra: ({ data }) => {
       return [
         {
           label: "Сеть",
@@ -342,19 +306,12 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             />
           ),
         },
-        {
-          label: "Потребители",
-          value:
-            usedBy.length === 0 ? (
-              <SgConsumers sgId={getByPath<string>(data, "id") ?? ""} projectId={projectId} fromServer={usedBy} />
-            ) : (
-              <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-                {usedBy.map((u, i) => (
-                  <ReferrerLink key={i} projectId={projectId} referrer={u.referrer} />
-                ))}
-              </span>
-            ),
-        },
+        // Поля «Потребители» здесь НЕТ (решение владельца 2026-08-12).
+        // Контракт группы несёт `used_by`, но сервер его не заполняет: механизм
+        // «кто меня использует» реализован только у сетевого интерфейса. Поле
+        // показывало прочерк при живых потребителях, то есть утверждало
+        // неправду о ресурсе. Из двух исходов — научить сервер отвечать или
+        // снять показ — владелец выбрал снять; вернётся вместе с источником.
       ];
     },
     // req: правила — ОТДЕЛЬНЫМ табом «Правила» (таблица + «Добавить» + чекбоксы +
@@ -390,7 +347,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
           label: "Потребители",
           value:
             usedBy.length === 0 ? (
-              <SgConsumers sgId={getByPath<string>(data, "id") ?? ""} projectId={projectId} fromServer={usedBy} />
+              dash
             ) : (
               <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
                 {usedBy.map((u, i) => (
