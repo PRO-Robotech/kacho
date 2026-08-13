@@ -89,6 +89,12 @@ var tokens = []string{
 	"aliyun",
 	"digitalocean",
 	"hetzner",
+	// The metadata-service abbreviation of one provider. Added 2026-08-13 with
+	// its radius measured first: two occurrences in the tree, both the same
+	// comment (contract + its generated stub), and no substring false positives
+	// — the token never appears inside another word. A field explained through
+	// someone else's product name is a field whose contract is theirs to change.
+	"imds",
 }
 
 // match is one occurrence of one token in a line.

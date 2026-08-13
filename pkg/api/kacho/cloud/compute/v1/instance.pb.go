@@ -2020,7 +2020,13 @@ type MetadataOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether the instance metadata endpoint is reachable from the guest.
 	MetadataEndpoint MetadataOption `protobuf:"varint,7,opt,name=metadata_endpoint,json=metadataEndpoint,proto3,enum=kacho.cloud.compute.v1.MetadataOption" json:"metadata_endpoint,omitempty"`
-	// Whether a session token is required to read metadata (hardened IMDS-equivalent).
+	// Whether a session token is required to read metadata.
+	//
+	// The comment here used to explain this field through another cloud's product
+	// name. That is what ban #2 forbids, and the reason is not etiquette: a field
+	// described by someone else's product is a field whose contract is theirs to
+	// change. Our own terms suffice — a session token, obtained before the read,
+	// is what stops a request forged from inside the guest.
 	MetadataTokenRequired bool `protobuf:"varint,8,opt,name=metadata_token_required,json=metadataTokenRequired,proto3" json:"metadata_token_required,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
