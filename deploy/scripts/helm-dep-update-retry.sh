@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
 # helm-dep-update-retry.sh — подкачка подчартов с ограниченным повтором.
 #
 # ЗАЧЕМ. Подчарты умбреллы намеренно НЕ лежат в git (об этом говорит сама цель
