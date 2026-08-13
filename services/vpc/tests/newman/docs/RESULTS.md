@@ -109,7 +109,7 @@ cluster-internal mux, возвращают ресурсы напрямую (не
 > **СНЯТО 2026-08-01 — `SG-NET-08-RULE-SAME-NETWORK-OK` и
 > `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` (`kacho#106`): предмет мёртв.**
 > Запись утверждала, что `toPb` сериализует **только** ветку `CidrBlocks`, а
-> `SecurityGroupId`/`PredefinedTarget` роняет в `Target=nil`, из-за чего
+> `SecurityGroupId` роняет в `Target=nil` (ветвь `PredefinedTarget` с тех пор снята с контракта), из-за чего
 > `rule.securityGroupId` приходит `undefined`. На этой ревизии это неверно: в
 > `services/vpc/internal/dto/toproto/security_group.go` сериализуются **все три**
 > взаимоисключающие ветки target-oneof, и рядом стоит комментарий, объясняющий, зачем.

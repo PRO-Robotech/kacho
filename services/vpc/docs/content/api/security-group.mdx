@@ -86,13 +86,12 @@ SG-target правило может ссылаться лишь на SG **той
     <tr><td><code>protocolNumber</code></td><td><code>{TYPES.int64}</code></td><td>Номер протокола (IANA). Альтернатива <code>protocolName</code></td></tr>
     <tr><td><code>cidrBlocks</code></td><td><code>{TYPES.cidrSpec}</code></td><td>Target = CIDR-блоки <code>&#123;v4CidrBlocks[], v6CidrBlocks[]&#125;</code>. Oneof <code>target</code> — ровно один из трех</td></tr>
     <tr><td><code>securityGroupId</code></td><td><code>{TYPES.string}</code></td><td>Target = другая SG (<strong>только same-network</strong>). Oneof <code>target</code></td></tr>
-    <tr><td><code>predefinedTarget</code></td><td><code>{TYPES.string}</code></td><td>Target = предопределенная цель. Oneof <code>target</code></td></tr>
   </tbody>
 </table>
 
 :::note Target правила — `exactly_one`
 В каждом правиле задается **ровно один** target: `cidrBlocks` **или** `securityGroupId` **или**
-`predefinedTarget`. Нарушение → `InvalidArgument`. Для SG-target — целевая SG обязана принадлежать
+Нарушение → `InvalidArgument`. Для цели-группы — она обязана принадлежать
 **той же** сети (`network_id`), иначе правило отвергается (`InvalidArgument`).
 :::
 
@@ -540,7 +539,7 @@ sync `InvalidArgument` (`Invalid rule id <id>`); корректный по фо�
 - **SG-target только same-network.** Правило с `securityGroupId` обязано ссылаться на
   группу **той же** сети; cross-network и несуществующая target-SG → `INVALID_ARGUMENT`.
 - **Ровно один target на правило.** В каждом правиле задается **один** из `cidrBlocks` /
-  `securityGroupId` / `predefinedTarget`; ноль или несколько → `INVALID_ARGUMENT`.
+  `securityGroupId`; ноль или несколько → `INVALID_ARGUMENT`.
 - **default-SG нельзя удалить вручную.** Попытка → `FAILED_PRECONDITION
   "default security group cannot be deleted"`; она удаляется автоматически вместе с сетью
   при `Network.Delete`.

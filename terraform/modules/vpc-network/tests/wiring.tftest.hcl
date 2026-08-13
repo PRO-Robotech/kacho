@@ -467,7 +467,6 @@ run "security_group_rule_fields_survive_assembly" {
         rules = [{
           direction         = "EGRESS"
           protocol_number   = 47
-          predefined_target = "internet"
         }]
       }
     }
@@ -519,7 +518,6 @@ run "security_group_rule_fields_survive_assembly" {
   # цель `cidr_blocks` без единого блока и сохранил правило без цели.
   assert {
     condition = (
-      one(kacho_vpc_security_group.this["probe-egress"].rules).predefined_target == "internet" &&
       one(kacho_vpc_security_group.this["probe-egress"].rules).cidr_blocks == null
     )
     error_message = "цель правила подменена при сборке"
@@ -619,19 +617,15 @@ run "security_group_rule_with_empty_target_id_is_rejected" {
 }
 
 # Вторая половина той же проверки — предопределённое имя. Условие проверки конъюнктивно
-# (`security_group_id != "" && predefined_target != ""`), и отрицание на одной половине
 # оставляет вторую без производителя отказа. Проверено инъекцией: со снятым конъюнктом про
-# predefined_target весь набор оставался зелёным.
 #
 # Проба различает ИМЕННО эту проверку, а не соседнюю «ровно одна цель»: пустая строка от
 # null отличается, поэтому цель засчитывается заданной и счёт целей равен единице.
-run "security_group_rule_with_empty_predefined_target_is_rejected" {
   command = plan
 
   variables {
     security_groups = {
       "probe-web" = {
-        rules = [{ direction = "EGRESS", predefined_target = "" }]
       }
     }
   }

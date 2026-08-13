@@ -35,3 +35,17 @@ declared:
       закрыта в обе стороны и интерфейс наследует группу своей сети — сеть без группы
       означала бы интерфейс без единого правила
     issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/vpc/v1/security_group.proto
+    symbol: predefined_target
+    reason: >-
+      свободная строка без словаря и без ветвления: платформа не называла ни одного
+      значения, поэтому вызывающий не мог узнать, что в ней написать
+    issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/vpc/v1/security_group_service.proto
+    symbol: predefined_target
+    reason: >-
+      та же ветвь цели в списочном запросе правил: снимается вместе с проекцией,
+      иначе вход принимал бы то, чего в ответе нет
+    issue: kacho#246

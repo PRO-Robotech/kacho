@@ -514,12 +514,17 @@ func TestIntegration_SGNet_CidrAndPredefinedRulesUnaffected(t *testing.T) {
 		SecurityGroupID: sg2,
 		AdditionRuleSpecs: []domain.SecurityGroupRule{
 			{Direction: domain.SecurityGroupRuleDirectionIngress, FromPort: -1, ToPort: -1, V4CidrBlocks: []string{"10.0.0.0/24"}},
-			{Direction: domain.SecurityGroupRuleDirectionEgress, FromPort: -1, ToPort: -1, PredefinedTarget: "self_security_group"},
+			// Прежде здесь стояло правило с предопределённой целью — ветвь снята с
+			// контракта. Осталось правило с целью-группой: предмет пробы (правила с
+			// ЗАКОННОЙ целью не затрагиваются проверкой цели) сохранён, и он даже
+			// строже, потому что цель-группа проходит через резолв, а свободная
+			// строка не проходила ни через что.
+			{Direction: domain.SecurityGroupRuleDirectionEgress, FromPort: -1, ToPort: -1, SecurityGroupID: sg2},
 		},
 	})
 	require.NoError(t, err)
 	done := f.awaitOp(t, op.ID)
-	require.Nil(t, done.Error, "CIDR/predefined rules must be unaffected: %v", done.Error)
+	require.Nil(t, done.Error, "правила с законной целью не затрагиваются: %v", done.Error)
 }
 
 // ---------------------------------------------------------------------------

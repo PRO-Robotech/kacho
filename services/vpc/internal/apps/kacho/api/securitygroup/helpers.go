@@ -328,9 +328,6 @@ func ruleSpecFromProto(field string, rs *vpcv1.SecurityGroupRuleSpec) (domain.Se
 	if sgID := rs.GetSecurityGroupId(); sgID != "" {
 		r.SecurityGroupID = sgID
 	}
-	if pred := rs.GetPredefinedTarget(); pred != "" {
-		r.PredefinedTarget = pred
-	}
 	return r, nil
 }
 

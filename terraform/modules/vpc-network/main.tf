@@ -100,7 +100,6 @@ resource "kacho_vpc_security_group" "this" {
       }
 
       security_group_id = rule.security_group_id
-      predefined_target = rule.predefined_target
     }
   ]
 }

@@ -711,7 +711,7 @@ SG-target rule (`oneof target = security_group_id`) разрешен **толь�
 group`» (НЕ `NOT_FOUND`). Оба несут `google.rpc.BadRequest.field_violations[].field` (напр.
 `rule_specs[0].security_group_id` / `addition_rule_specs[0].security_group_id` / `security_group_id`).
 Sync fast-fail (Operation НЕ создается). Применяется на `Create` (`rule_specs`), `UpdateRules`
-(`addition_rule_specs`), `UpdateRule` (смена target). CIDR-rule / `predefined_target` — не затронуты.
+(`addition_rule_specs`), `UpdateRule` (смена target). Правила с целью-блоками адресов — не затронуты. Ветвь `predefined_target` снята с контракта.
 Same-network target → OK. Валидация на service-слое (достаточна без нормализованной
 rule-target-таблицы).
 - Validated-by: `SG-NET-07-NEG-RULE-CROSS-NETWORK-CREATE`, `SG-NET-08-RULE-SAME-NETWORK-OK`,

@@ -481,15 +481,10 @@ func TestRuleSpecFromProto_ProtocolNumber(t *testing.T) {
 	assert.Equal(t, "sg-2", r.SecurityGroupID)
 }
 
-func TestRuleSpecFromProto_Predefined(t *testing.T) {
-	rs := &vpcv1.SecurityGroupRuleSpec{
-		Direction: vpcv1.SecurityGroupRule_INGRESS,
-		Target:    &vpcv1.SecurityGroupRuleSpec_PredefinedTarget{PredefinedTarget: "self_security_group"},
-	}
-	r, err := ruleSpecFromProto("rule_specs[0]", rs)
-	require.NoError(t, err)
-	assert.Equal(t, "self_security_group", r.PredefinedTarget)
-}
+// Прежде здесь стояла TestRuleSpecFromProto_Predefined — разбор ветви
+// предопределённой цели. Ветвь СНЯТА с контракта: свободная строка без словаря, на
+// которой сервис не ветвился, а вызывающий не мог узнать, что в неё написать.
+// Проба удалена, а не переписана: разбирать нечего.
 
 // Набор правил аддитивен: серия формально законных добавлений не имеет права
 // растить его без предела. Потолок на НАКОПЛЕННОМ наборе проверяет тот, кто

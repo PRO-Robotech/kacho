@@ -215,6 +215,19 @@ message CreateSecurityGroupRequest {
 }
 
 message SecurityGroupRuleSpec {
+    // 9 — predefined_target, СНЯТО с контракта (ветвь `oneof target`).
+    //
+    // Свободная строка без словаря: платформа не называла ни одного значения,
+    // сервис не ветвился ни на одном, и вызывающий не мог узнать, что в ней
+    // написать. Ввести закрытый словарь значило бы завести подсистему именованных
+    // назначений — она заводится своим доменом со своей приёмкой, а не полем в
+    // чужом сообщении.
+    //
+    // Резервирование стоит НА СООБЩЕНИИ, а не в `oneof`: язык не допускает его
+    // внутри `oneof`, а нумерация полей у них общая — значит номер защищён.
+    reserved 9;
+    reserved "predefined_target";
+
     // Description of the security rule.
     string description = 1 [(length) = "<=256"];
 
@@ -247,12 +260,6 @@ message SecurityGroupRuleSpec {
         // ID of the security group to add rule to.
         string security_group_id = 8;
         
-        // Predefined target: a destination named by the platform, rather than given
-        // as a CIDR block or as a peer security group. Exactly one target is set per
-        // rule (`exactly_one` on the oneof above). Rule fields and the three target
-        // kinds are described on the
-        // [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
-        string predefined_target = 9;
         // string subnet_id = .. ;
     }
 }

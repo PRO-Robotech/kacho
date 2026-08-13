@@ -334,7 +334,6 @@ type SecurityGroupRuleSpec struct {
 	//
 	//	*SecurityGroupRuleSpec_CidrBlocks
 	//	*SecurityGroupRuleSpec_SecurityGroupId
-	//	*SecurityGroupRuleSpec_PredefinedTarget
 	Target        isSecurityGroupRuleSpec_Target `protobuf_oneof:"target"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -448,15 +447,6 @@ func (x *SecurityGroupRuleSpec) GetSecurityGroupId() string {
 	return ""
 }
 
-func (x *SecurityGroupRuleSpec) GetPredefinedTarget() string {
-	if x != nil {
-		if x, ok := x.Target.(*SecurityGroupRuleSpec_PredefinedTarget); ok {
-			return x.PredefinedTarget
-		}
-	}
-	return ""
-}
-
 type isSecurityGroupRuleSpec_Protocol interface {
 	isSecurityGroupRuleSpec_Protocol()
 }
@@ -489,20 +479,9 @@ type SecurityGroupRuleSpec_SecurityGroupId struct {
 	SecurityGroupId string `protobuf:"bytes,8,opt,name=security_group_id,json=securityGroupId,proto3,oneof"`
 }
 
-type SecurityGroupRuleSpec_PredefinedTarget struct {
-	// Predefined target: a destination named by the platform, rather than given
-	// as a CIDR block or as a peer security group. Exactly one target is set per
-	// rule (`exactly_one` on the oneof above). Rule fields and the three target
-	// kinds are described on the
-	// [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
-	PredefinedTarget string `protobuf:"bytes,9,opt,name=predefined_target,json=predefinedTarget,proto3,oneof"` // string subnet_id = .. ;
-}
-
 func (*SecurityGroupRuleSpec_CidrBlocks) isSecurityGroupRuleSpec_Target() {}
 
 func (*SecurityGroupRuleSpec_SecurityGroupId) isSecurityGroupRuleSpec_Target() {}
-
-func (*SecurityGroupRuleSpec_PredefinedTarget) isSecurityGroupRuleSpec_Target() {}
 
 type CreateSecurityGroupMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1155,7 +1134,7 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"rule_specs\x18\x06 \x03(\v2).kacho.cloud.vpc.v1.SecurityGroupRuleSpecR\truleSpecs\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xac\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x96\x05\n" +
 	"\x15SecurityGroupRuleSpec\x12+\n" +
 	"\vdescription\x18\x01 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x92\x01\n" +
 	"\x06labels\x18\x02 \x03(\v25.kacho.cloud.vpc.v1.SecurityGroupRuleSpec.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12S\n" +
@@ -1165,14 +1144,14 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\x0fprotocol_number\x18\x06 \x01(\x03H\x00R\x0eprotocolNumber\x12A\n" +
 	"\vcidr_blocks\x18\a \x01(\v2\x1e.kacho.cloud.vpc.v1.CidrBlocksH\x01R\n" +
 	"cidrBlocks\x12,\n" +
-	"\x11security_group_id\x18\b \x01(\tH\x01R\x0fsecurityGroupId\x12-\n" +
-	"\x11predefined_target\x18\t \x01(\tH\x01R\x10predefinedTarget\x1a9\n" +
+	"\x11security_group_id\x18\b \x01(\tH\x01R\x0fsecurityGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\n" +
 	"\n" +
 	"\bprotocolB\x0e\n" +
-	"\x06target\x12\x04\xc0\xc11\x01\"I\n" +
+	"\x06target\x12\x04\xc0\xc11\x01J\x04\b\t\x10\n" +
+	"R\x11predefined_target\"I\n" +
 	"\x1bCreateSecurityGroupMetadata\x12*\n" +
 	"\x11security_group_id\x18\x01 \x01(\tR\x0fsecurityGroupId\"\xa3\x04\n" +
 	"\x1aUpdateSecurityGroupRequest\x128\n" +
@@ -1337,7 +1316,6 @@ func file_kacho_cloud_vpc_v1_security_group_service_proto_init() {
 		(*SecurityGroupRuleSpec_ProtocolNumber)(nil),
 		(*SecurityGroupRuleSpec_CidrBlocks)(nil),
 		(*SecurityGroupRuleSpec_SecurityGroupId)(nil),
-		(*SecurityGroupRuleSpec_PredefinedTarget)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

@@ -237,7 +237,7 @@ variable "security_groups" {
     - `ports` — обе границы вместе либо ничего: полудиапазона край не знает. Опущенный
       диапазон означает ЛЮБОЙ порт;
     - цель — РОВНО ОДНА из трёх: блоки адресов (`v4_cidr_blocks`/`v6_cidr_blocks`), другая
-      группа (`security_group_id`) или предопределённое имя края (`predefined_target`).
+      группа (`security_group_id`).
 
     `security_group_id` — ВНЕШНИЙ идентификатор, и ключом карты этого модуля он быть не может
     by construction: ссылка группы на группу того же блока — самоссылка, и конфигурация была
@@ -273,7 +273,6 @@ variable "security_groups" {
       v4_cidr_blocks    = optional(list(string))
       v6_cidr_blocks    = optional(list(string))
       security_group_id = optional(string)
-      predefined_target = optional(string)
     })), [])
   }))
   default = {}
@@ -285,19 +284,17 @@ variable "security_groups" {
         length(compact([
           r.v4_cidr_blocks == null && r.v6_cidr_blocks == null ? "" : "cidr_blocks",
           r.security_group_id == null ? "" : "security_group_id",
-          r.predefined_target == null ? "" : "predefined_target",
         ])) == 1
       ]
     ]))
     error_message = format(
-      "Правила %s задают не ровно одну цель. Цель — одна из трёх: блоки адресов, security_group_id, predefined_target. Правило без цели край принимает МОЛЧА, сохраняет и отдаёт обратно без цели — то есть как другое правило, чем вы написали.",
+      "Правила %s задают не ровно одну цель. Цель — одна из двух: блоки адресов либо security_group_id. Правило без цели край ОТВЕРГАЕТ синхронно, называя поле; проверка здесь ловит это раньше обращения к краю.",
       join(", ", flatten([
         for k, g in var.security_groups : [
           for i, r in g.rules : "${k}[${i}]"
           if length(compact([
             r.v4_cidr_blocks == null && r.v6_cidr_blocks == null ? "" : "cidr_blocks",
             r.security_group_id == null ? "" : "security_group_id",
-            r.predefined_target == null ? "" : "predefined_target",
           ])) != 1
         ]
       ]))
@@ -325,16 +322,15 @@ variable "security_groups" {
     condition = alltrue(flatten([
       for _, g in var.security_groups : [
         for r in g.rules :
-        (r.security_group_id == null || r.security_group_id != "") &&
-        (r.predefined_target == null || r.predefined_target != "")
+        (r.security_group_id == null || r.security_group_id != "")
       ]
     ]))
     error_message = format(
-      "У правил %s цель задана пустой строкой. Пустая строка — не значение: край читает её как «цель не задана» и сохраняет правило ШИРЕ написанного, ничем не пожаловавшись. Уберите поле или назовите цель.",
+      "У правил %s цель задана пустой строкой. Пустая строка — не значение: край читает её как «цель не задана», а правило без цели он теперь ОТВЕРГАЕТ. Уберите поле или назовите цель.",
       join(", ", flatten([
         for k, g in var.security_groups : [
           for i, r in g.rules : "${k}[${i}]"
-          if r.security_group_id == "" || r.predefined_target == ""
+          if r.security_group_id == ""
         ]
       ]))
     )
