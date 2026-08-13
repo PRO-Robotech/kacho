@@ -32,6 +32,9 @@ import dedent from 'ts-dedent'
 Прежде каталог наполнялся миграцией пятью заранее придуманными позициями. Их сняла
 миграция `0016_disk_type_policy.sql` — **условно**, только те, на которые не ссылался ни
 один том: безусловное удаление упёрлось бы во внешний ключ и уронило старт сервиса.
+
+Как каталог заводится на свежем стенде — отдельный шаг подъёма, см.
+[Развёртывание](/install/deploy).
 :::
 
 :::info Идентификатор — slug, а не сгенерированный ключ
@@ -141,7 +144,7 @@ import dedent from 'ts-dedent'
       "id": "nvme-general",
       "name": "General purpose NVMe",
       "description": "Durable general-purpose volume",
-      "zoneIds": ["ru-central1-a", "ru-central1-b"],
+      "zoneIds": ["zone-1-a", "zone-1-b"],
       "tier": "BALANCED",
       "lifecycle": "ACTIVE",
       "capabilities": {

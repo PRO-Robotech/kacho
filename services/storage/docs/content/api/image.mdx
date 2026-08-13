@@ -188,6 +188,7 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 <table>
   <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.copyProjectId.short}</td></tr>
     <tr><td><code>targetRegionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.targetRegionId.short}</td></tr>
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>своё имя копии; пустое допустимо — копия адресуется своим новым id</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
@@ -203,6 +204,7 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
       -H "Content-Type: application/json" \\
       https://api.kacho.local/storage/v1/images/img-a1b2c3d4e5f6g7h8j:copy \\
       -d '{
+        "projectId": "prj-…",
         "targetRegionId": "region-2",
         "name": "base-image-r2"
       }'
@@ -213,8 +215,22 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 проекте источника, поэтому имя источника не наследуется — унаследованное, оно столкнулось
 бы с ним самим по уникальности пары «проект, имя».
 
+Это **единственный законный путь переноса образа между регионами**: `regionId` неизменяем
+после создания, «переехать» существующей строкой нечем.
+
 Целевой регион обязателен и называется вызывающим: перенос — предмет этого глагола, а
 угаданное умолчание неотличимо от опечатки.
+
+:::info Право спрашивается на **создание в проекте**, а не на чтение источника
+Гейт `Copy` — `editor` на **проекте** из тела запроса, как у всякого `Create`: копия есть
+новый ресурс, а право создавать в Kachō спрашивают у родителя. Отсюда обязательный
+`projectId` — он и есть объект вопроса о правах.
+
+Форма «`v_get` на источник» отвергнута осознанно: она отдала бы наблюдателю проекта право
+порождать образы. `projectId` обязан совпадать с проектом образа, а расхождение отвечает
+тем же текстом, что несуществующий образ (`Image <id> not found`). Полный разбор — на
+странице [Snapshot](/api/snapshot#copy), здесь он не дублируется.
+:::
 
 <Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
 
@@ -251,8 +267,11 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 а не живая зависимость. Их состав виден заранее в `usedBy` — смотреть туда до удаления
 дешевле, чем узнавать по последствиям.
 
-Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда образ с живыми
-потомками не удаляется, пока они не отвязаны.
+Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда объект образа с
+живыми потомками он снять откажется. Отказ **асинхронный** — запрос принимается, образ
+уходит в `DELETING`, а конфликт всплывает у сверщика: `ERROR` с
+`statusReason: BACKEND_REJECTED`. Синхронного предусловия на этот случай нет: состав
+клонов знает плоскость данных, а не наша строка.
 
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
 

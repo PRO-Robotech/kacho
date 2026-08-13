@@ -123,7 +123,7 @@ import dedent from 'ts-dedent'
   <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
-    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен — том, с которого снимается; обязан быть <code>READY</code></td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен — том, с которого снимается; обязан быть готов, то есть в <code>AVAILABLE</code> либо <code>IN_USE</code></td></tr>
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
@@ -150,6 +150,10 @@ import dedent from 'ts-dedent'
 Исходный том обязан принадлежать **тому же проекту**. Том чужого проекта отвечает
 дословно так же, как несуществующий, — иначе состояние чужого тома стало бы подсказкой о
 его существовании.
+
+Том обязан быть **готов**: годятся `AVAILABLE` и `IN_USE`, привязка снятию снимка не
+мешает. Том в `CREATING`, `MIGRATING`, `DELETING` или `ERROR` отвергается
+`FAILED_PRECONDITION` `Volume <id> is not ready`.
 
 Класс диска тома обязан объявлять способность `snapshots`; иначе —
 `FAILED_PRECONDITION` `DiskType <id> does not support snapshots`.
@@ -254,9 +258,15 @@ import dedent from 'ts-dedent'
 Тома и образы, засеянные из этого снимка, удалению **не мешают**: их ссылка на источник
 обнуляется. Посмотреть состав зависимостей заранее можно в `usedBy`.
 
-Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда снимок с живыми
-потомками не удаляется, пока они не отвязаны. Это поведение **выводится из способности**
+Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда объект снимка с
+живыми потомками он снять откажется. Это поведение **выводится из способности** ревизии
 привязки, а не выбирается нами.
+
+Отказ при этом **асинхронный**, и это важно для клиента: наша строка предусловия не
+знает — состав клонов известен плоскости данных. Запрос принимается, `Operation`
+завершается успехом, снимок уходит в `DELETING`, а конфликт всплывает у сверщика:
+снимок встаёт в `ERROR` с `statusReason: BACKEND_REJECTED`. Синхронного отказа на этот
+случай нет.
 
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
 
@@ -284,7 +294,7 @@ import dedent from 'ts-dedent'
   { label: 'labels', rules: RESTRICTIONS.labels },
   { label: 'projectId', rules: RESTRICTIONS.projectId },
   { label: 'zoneId', rules: RESTRICTIONS.snapshotZoneId },
-  { label: 'sourceVolumeId', rules: ['обязателен при Create; immutable после Create', 'обязан принадлежать тому же проекту', 'том обязан быть READY'] },
+  { label: 'sourceVolumeId', rules: ['обязателен при Create; immutable после Create', 'обязан принадлежать тому же проекту', 'том обязан быть готов — AVAILABLE либо IN_USE («Volume <id> is not ready»)'] },
   { label: 'updateMask', rules: RESTRICTIONS.updateMask },
   { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
 ]} />
