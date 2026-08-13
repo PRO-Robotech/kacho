@@ -603,16 +603,6 @@ func TestInstance_Legacy_AttachDisk_Happy(t *testing.T) {
 	require.Equal(t, "voldata1", in.SecondaryDisks[0].VolumeId)
 }
 
-func TestInstance_Legacy_UpdateMetadata(t *testing.T) {
-	k := newInstanceSvc(t, true)
-	in0 := seedInst(k.repo, seedID, domain.InstanceStatusRunning)
-	in0.Metadata = map[string]string{"a": "1", "b": "2"}
-	op, err := k.svc.UpdateMetadata(context.Background(), seedID, []string{"a"}, map[string]string{"c": "3"})
-	require.NoError(t, err)
-	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
-	require.NotContains(t, in.Metadata, "a")
-	require.Equal(t, "3", in.Metadata["c"])
-}
 
 func TestInstance_Legacy_Delete_ReleasesNicAndVolume(t *testing.T) {
 	k := newInstanceSvc(t, true)

@@ -13,7 +13,7 @@ import (
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	_ "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -609,25 +609,13 @@ type Instance struct {
 	// Status of the instance. Rests at PROVISIONING after Create (durable; the launch
 	// sagas + transition to RUNNING are a follow-on, COMP-2).
 	Status Instance_Status `protobuf:"varint,10,opt,name=status,proto3,enum=kacho.cloud.compute.v1.Instance_Status" json:"status,omitempty"`
-	// Free-form metadata `key:value` pairs (returned only on the FULL view). Redesign
-	// VM configuration moves to vm_spec.user_data; this stays for back-compat.
-	Metadata map[string]string `protobuf:"bytes,11,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Output-only launch mirrors — materialized by the COMP-2 attach sagas; empty in
 	// COMP-1, which persists the durable record without materialize.
-	BootDisk          *AttachedDisk         `protobuf:"bytes,12,opt,name=boot_disk,json=bootDisk,proto3" json:"boot_disk,omitempty"`
-	SecondaryDisks    []*AttachedDisk       `protobuf:"bytes,13,rep,name=secondary_disks,json=secondaryDisks,proto3" json:"secondary_disks,omitempty"`
-	NetworkInterfaces []*NetworkInterface   `protobuf:"bytes,14,rep,name=network_interfaces,json=networkInterfaces,proto3" json:"network_interfaces,omitempty"`
-	Filesystems       []*AttachedFilesystem `protobuf:"bytes,21,rep,name=filesystems,proto3" json:"filesystems,omitempty"`
-	LocalDisks        []*AttachedLocalDisk  `protobuf:"bytes,22,rep,name=local_disks,json=localDisks,proto3" json:"local_disks,omitempty"`
+	BootDisk          *AttachedDisk       `protobuf:"bytes,12,opt,name=boot_disk,json=bootDisk,proto3" json:"boot_disk,omitempty"`
+	SecondaryDisks    []*AttachedDisk     `protobuf:"bytes,13,rep,name=secondary_disks,json=secondaryDisks,proto3" json:"secondary_disks,omitempty"`
+	NetworkInterfaces []*NetworkInterface `protobuf:"bytes,14,rep,name=network_interfaces,json=networkInterfaces,proto3" json:"network_interfaces,omitempty"`
 	// A domain name of the instance. Output-only (server-derived).
 	Fqdn string `protobuf:"bytes,16,opt,name=fqdn,proto3" json:"fqdn,omitempty"`
-	// Legacy network/serial/maintenance/hardware surface (retained; not part of the
-	// COMP-1 sizing/boot retire).
-	NetworkSettings        *NetworkSettings     `protobuf:"bytes,19,opt,name=network_settings,json=networkSettings,proto3" json:"network_settings,omitempty"`
-	SerialPortSettings     *SerialPortSettings  `protobuf:"bytes,24,opt,name=serial_port_settings,json=serialPortSettings,proto3" json:"serial_port_settings,omitempty"`
-	MaintenancePolicy      MaintenancePolicy    `protobuf:"varint,29,opt,name=maintenance_policy,json=maintenancePolicy,proto3,enum=kacho.cloud.compute.v1.MaintenancePolicy" json:"maintenance_policy,omitempty"`
-	MaintenanceGracePeriod *durationpb.Duration `protobuf:"bytes,30,opt,name=maintenance_grace_period,json=maintenanceGracePeriod,proto3" json:"maintenance_grace_period,omitempty"`
-	HardwareGeneration     *HardwareGeneration  `protobuf:"bytes,31,opt,name=hardware_generation,json=hardwareGeneration,proto3" json:"hardware_generation,omitempty"`
 	// Guaranteed CPU baseline per vCPU, in percent.
 	//
 	//	0        = best-effort / burstable (no guarantee);
@@ -751,13 +739,6 @@ func (x *Instance) GetStatus() Instance_Status {
 	return Instance_STATUS_UNSPECIFIED
 }
 
-func (x *Instance) GetMetadata() map[string]string {
-	if x != nil {
-		return x.Metadata
-	}
-	return nil
-}
-
 func (x *Instance) GetBootDisk() *AttachedDisk {
 	if x != nil {
 		return x.BootDisk
@@ -779,60 +760,11 @@ func (x *Instance) GetNetworkInterfaces() []*NetworkInterface {
 	return nil
 }
 
-func (x *Instance) GetFilesystems() []*AttachedFilesystem {
-	if x != nil {
-		return x.Filesystems
-	}
-	return nil
-}
-
-func (x *Instance) GetLocalDisks() []*AttachedLocalDisk {
-	if x != nil {
-		return x.LocalDisks
-	}
-	return nil
-}
-
 func (x *Instance) GetFqdn() string {
 	if x != nil {
 		return x.Fqdn
 	}
 	return ""
-}
-
-func (x *Instance) GetNetworkSettings() *NetworkSettings {
-	if x != nil {
-		return x.NetworkSettings
-	}
-	return nil
-}
-
-func (x *Instance) GetSerialPortSettings() *SerialPortSettings {
-	if x != nil {
-		return x.SerialPortSettings
-	}
-	return nil
-}
-
-func (x *Instance) GetMaintenancePolicy() MaintenancePolicy {
-	if x != nil {
-		return x.MaintenancePolicy
-	}
-	return MaintenancePolicy_MAINTENANCE_POLICY_UNSPECIFIED
-}
-
-func (x *Instance) GetMaintenanceGracePeriod() *durationpb.Duration {
-	if x != nil {
-		return x.MaintenanceGracePeriod
-	}
-	return nil
-}
-
-func (x *Instance) GetHardwareGeneration() *HardwareGeneration {
-	if x != nil {
-		return x.HardwareGeneration
-	}
-	return nil
 }
 
 func (x *Instance) GetCpuGuaranteePercent() int32 {
@@ -2125,7 +2057,7 @@ var File_kacho_cloud_compute_v1_instance_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/reference/reference.proto\"\xad\x13\n" +
+	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/reference/reference.proto\"\x8b\x0f\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2137,20 +2069,11 @@ const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\x06labels\x18\x06 \x03(\v2,.kacho.cloud.compute.v1.Instance.LabelsEntryR\x06labels\x12\x17\n" +
 	"\azone_id\x18\a \x01(\tR\x06zoneId\x12?\n" +
 	"\x06status\x18\n" +
-	" \x01(\x0e2'.kacho.cloud.compute.v1.Instance.StatusR\x06status\x12J\n" +
-	"\bmetadata\x18\v \x03(\v2..kacho.cloud.compute.v1.Instance.MetadataEntryR\bmetadata\x12A\n" +
+	" \x01(\x0e2'.kacho.cloud.compute.v1.Instance.StatusR\x06status\x12A\n" +
 	"\tboot_disk\x18\f \x01(\v2$.kacho.cloud.compute.v1.AttachedDiskR\bbootDisk\x12M\n" +
 	"\x0fsecondary_disks\x18\r \x03(\v2$.kacho.cloud.compute.v1.AttachedDiskR\x0esecondaryDisks\x12W\n" +
-	"\x12network_interfaces\x18\x0e \x03(\v2(.kacho.cloud.compute.v1.NetworkInterfaceR\x11networkInterfaces\x12L\n" +
-	"\vfilesystems\x18\x15 \x03(\v2*.kacho.cloud.compute.v1.AttachedFilesystemR\vfilesystems\x12J\n" +
-	"\vlocal_disks\x18\x16 \x03(\v2).kacho.cloud.compute.v1.AttachedLocalDiskR\n" +
-	"localDisks\x12\x12\n" +
-	"\x04fqdn\x18\x10 \x01(\tR\x04fqdn\x12R\n" +
-	"\x10network_settings\x18\x13 \x01(\v2'.kacho.cloud.compute.v1.NetworkSettingsR\x0fnetworkSettings\x12\\\n" +
-	"\x14serial_port_settings\x18\x18 \x01(\v2*.kacho.cloud.compute.v1.SerialPortSettingsR\x12serialPortSettings\x12X\n" +
-	"\x12maintenance_policy\x18\x1d \x01(\x0e2).kacho.cloud.compute.v1.MaintenancePolicyR\x11maintenancePolicy\x12S\n" +
-	"\x18maintenance_grace_period\x18\x1e \x01(\v2\x19.google.protobuf.DurationR\x16maintenanceGracePeriod\x12[\n" +
-	"\x13hardware_generation\x18\x1f \x01(\v2*.kacho.cloud.compute.v1.HardwareGenerationR\x12hardwareGeneration\x122\n" +
+	"\x12network_interfaces\x18\x0e \x03(\v2(.kacho.cloud.compute.v1.NetworkInterfaceR\x11networkInterfaces\x12\x12\n" +
+	"\x04fqdn\x18\x10 \x01(\tR\x04fqdn\x122\n" +
 	"\x15cpu_guarantee_percent\x18$ \x01(\x05R\x13cpuGuaranteePercent\x12I\n" +
 	"\rinstance_kind\x18% \x01(\x0e2$.kacho.cloud.compute.v1.InstanceKindR\finstanceKind\x12&\n" +
 	"\x0fmachine_type_id\x18& \x01(\tR\rmachineTypeId\x12[\n" +
@@ -2163,9 +2086,6 @@ const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\avm_spec\x18, \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecH\x00R\x06vmSpec\x12N\n" +
 	"\x0econtainer_spec\x18- \x01(\v2%.kacho.cloud.compute.v1.ContainerSpecH\x00R\rcontainerSpec\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a;\n" +
-	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xac\x01\n" +
 	"\x06Status\x12\x16\n" +
@@ -2183,7 +2103,7 @@ const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\bDELETING\x10\n" +
 	"B\x06\n" +
 	"\x04specJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x14\x10\x15J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b \x10!J\x04\b!\x10\"J\x04\b\"\x10#J\x04\b#\x10$J\x04\b\x0f\x10\x10J\x04\b\x19\x10\x1aJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dR\vplatform_idR\tresourcesR\x11scheduling_policyR\x12service_account_idR\x10placement_policyR\x10metadata_optionsR\fgpu_settingsR\x19reserved_instance_pool_idR\vapplicationR\x05imageR\fimage_digestR\rhost_group_idR\ahost_id\"\x8c\x02\n" +
+	"J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x14\x10\x15J\x04\b\x17\x10\x18J\x04\b\x1a\x10\x1bJ\x04\b \x10!J\x04\b!\x10\"J\x04\b\"\x10#J\x04\b#\x10$J\x04\b\x0f\x10\x10J\x04\b\x19\x10\x1aJ\x04\b\x1b\x10\x1cJ\x04\b\x1c\x10\x1dJ\x04\b\v\x10\fJ\x04\b\x13\x10\x14J\x04\b\x15\x10\x16J\x04\b\x16\x10\x17J\x04\b\x18\x10\x19J\x04\b\x1d\x10\x1eJ\x04\b\x1e\x10\x1fJ\x04\b\x1f\x10 R\vplatform_idR\tresourcesR\x11scheduling_policyR\x12service_account_idR\x10placement_policyR\x10metadata_optionsR\fgpu_settingsR\x19reserved_instance_pool_idR\vapplicationR\x05imageR\fimage_digestR\rhost_group_idR\ahost_idR\bmetadataR\x10network_settingsR\vfilesystemsR\vlocal_disksR\x14serial_port_settingsR\x12maintenance_policyR\x18maintenance_grace_periodR\x13hardware_generation\"\x8c\x02\n" +
 	"\n" +
 	"BootSource\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
@@ -2325,7 +2245,7 @@ func file_kacho_cloud_compute_v1_instance_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_compute_v1_instance_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
-var file_kacho_cloud_compute_v1_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_kacho_cloud_compute_v1_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_kacho_cloud_compute_v1_instance_proto_goTypes = []any{
 	(InstanceKind)(0),                        // 0: kacho.cloud.compute.v1.InstanceKind
 	(ImageKind)(0),                           // 1: kacho.cloud.compute.v1.ImageKind
@@ -2357,59 +2277,47 @@ var file_kacho_cloud_compute_v1_instance_proto_goTypes = []any{
 	(*MetadataOptions)(nil),                  // 27: kacho.cloud.compute.v1.MetadataOptions
 	(*SerialPortSettings)(nil),               // 28: kacho.cloud.compute.v1.SerialPortSettings
 	nil,                                      // 29: kacho.cloud.compute.v1.Instance.LabelsEntry
-	nil,                                      // 30: kacho.cloud.compute.v1.Instance.MetadataEntry
-	nil,                                      // 31: kacho.cloud.compute.v1.ContainerSpec.EnvEntry
-	(*timestamppb.Timestamp)(nil),            // 32: google.protobuf.Timestamp
-	(MaintenancePolicy)(0),                   // 33: kacho.cloud.compute.v1.MaintenancePolicy
-	(*durationpb.Duration)(nil),              // 34: google.protobuf.Duration
-	(*HardwareGeneration)(nil),               // 35: kacho.cloud.compute.v1.HardwareGeneration
-	(*EffectiveResources)(nil),               // 36: kacho.cloud.compute.v1.EffectiveResources
-	(*reference.Referrer)(nil),               // 37: kacho.cloud.reference.Referrer
-	(*KMSKey)(nil),                           // 38: kacho.cloud.compute.v1.KMSKey
+	nil,                                      // 30: kacho.cloud.compute.v1.ContainerSpec.EnvEntry
+	(*timestamppb.Timestamp)(nil),            // 31: google.protobuf.Timestamp
+	(*EffectiveResources)(nil),               // 32: kacho.cloud.compute.v1.EffectiveResources
+	(*reference.Referrer)(nil),               // 33: kacho.cloud.reference.Referrer
+	(*KMSKey)(nil),                           // 34: kacho.cloud.compute.v1.KMSKey
 }
 var file_kacho_cloud_compute_v1_instance_proto_depIdxs = []int32{
-	32, // 0: kacho.cloud.compute.v1.Instance.created_at:type_name -> google.protobuf.Timestamp
+	31, // 0: kacho.cloud.compute.v1.Instance.created_at:type_name -> google.protobuf.Timestamp
 	29, // 1: kacho.cloud.compute.v1.Instance.labels:type_name -> kacho.cloud.compute.v1.Instance.LabelsEntry
 	5,  // 2: kacho.cloud.compute.v1.Instance.status:type_name -> kacho.cloud.compute.v1.Instance.Status
-	30, // 3: kacho.cloud.compute.v1.Instance.metadata:type_name -> kacho.cloud.compute.v1.Instance.MetadataEntry
-	17, // 4: kacho.cloud.compute.v1.Instance.boot_disk:type_name -> kacho.cloud.compute.v1.AttachedDisk
-	17, // 5: kacho.cloud.compute.v1.Instance.secondary_disks:type_name -> kacho.cloud.compute.v1.AttachedDisk
-	21, // 6: kacho.cloud.compute.v1.Instance.network_interfaces:type_name -> kacho.cloud.compute.v1.NetworkInterface
-	20, // 7: kacho.cloud.compute.v1.Instance.filesystems:type_name -> kacho.cloud.compute.v1.AttachedFilesystem
-	18, // 8: kacho.cloud.compute.v1.Instance.local_disks:type_name -> kacho.cloud.compute.v1.AttachedLocalDisk
-	25, // 9: kacho.cloud.compute.v1.Instance.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
-	28, // 10: kacho.cloud.compute.v1.Instance.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
-	33, // 11: kacho.cloud.compute.v1.Instance.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
-	34, // 12: kacho.cloud.compute.v1.Instance.maintenance_grace_period:type_name -> google.protobuf.Duration
-	35, // 13: kacho.cloud.compute.v1.Instance.hardware_generation:type_name -> kacho.cloud.compute.v1.HardwareGeneration
-	0,  // 14: kacho.cloud.compute.v1.Instance.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
-	36, // 15: kacho.cloud.compute.v1.Instance.effective_resources:type_name -> kacho.cloud.compute.v1.EffectiveResources
-	11, // 16: kacho.cloud.compute.v1.Instance.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
-	37, // 17: kacho.cloud.compute.v1.Instance.service_account:type_name -> kacho.cloud.reference.Referrer
-	13, // 18: kacho.cloud.compute.v1.Instance.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
-	14, // 19: kacho.cloud.compute.v1.Instance.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
-	12, // 20: kacho.cloud.compute.v1.BootSource.materialized_volume:type_name -> kacho.cloud.compute.v1.MaterializedVolume
-	1,  // 21: kacho.cloud.compute.v1.BootSource.image_kind:type_name -> kacho.cloud.compute.v1.ImageKind
-	27, // 22: kacho.cloud.compute.v1.VmSpec.metadata_options:type_name -> kacho.cloud.compute.v1.MetadataOptions
-	31, // 23: kacho.cloud.compute.v1.ContainerSpec.env:type_name -> kacho.cloud.compute.v1.ContainerSpec.EnvEntry
-	15, // 24: kacho.cloud.compute.v1.ContainerSpec.ports:type_name -> kacho.cloud.compute.v1.ContainerPort
-	2,  // 25: kacho.cloud.compute.v1.ContainerSpec.restart_policy:type_name -> kacho.cloud.compute.v1.RestartPolicy
-	6,  // 26: kacho.cloud.compute.v1.AttachedDisk.mode:type_name -> kacho.cloud.compute.v1.AttachedDisk.Mode
-	19, // 27: kacho.cloud.compute.v1.AttachedLocalDisk.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDisk
-	38, // 28: kacho.cloud.compute.v1.PhysicalLocalDisk.kms_key:type_name -> kacho.cloud.compute.v1.KMSKey
-	7,  // 29: kacho.cloud.compute.v1.AttachedFilesystem.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystem.Mode
-	22, // 30: kacho.cloud.compute.v1.NetworkInterface.primary_v4_address:type_name -> kacho.cloud.compute.v1.PrimaryAddress
-	22, // 31: kacho.cloud.compute.v1.NetworkInterface.primary_v6_address:type_name -> kacho.cloud.compute.v1.PrimaryAddress
-	23, // 32: kacho.cloud.compute.v1.PrimaryAddress.one_to_one_nat:type_name -> kacho.cloud.compute.v1.OneToOneNat
-	3,  // 33: kacho.cloud.compute.v1.OneToOneNat.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
-	8,  // 34: kacho.cloud.compute.v1.NetworkSettings.type:type_name -> kacho.cloud.compute.v1.NetworkSettings.Type
-	4,  // 35: kacho.cloud.compute.v1.MetadataOptions.metadata_endpoint:type_name -> kacho.cloud.compute.v1.MetadataOption
-	9,  // 36: kacho.cloud.compute.v1.SerialPortSettings.ssh_authorization:type_name -> kacho.cloud.compute.v1.SerialPortSettings.SSHAuthorization
-	37, // [37:37] is the sub-list for method output_type
-	37, // [37:37] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	17, // 3: kacho.cloud.compute.v1.Instance.boot_disk:type_name -> kacho.cloud.compute.v1.AttachedDisk
+	17, // 4: kacho.cloud.compute.v1.Instance.secondary_disks:type_name -> kacho.cloud.compute.v1.AttachedDisk
+	21, // 5: kacho.cloud.compute.v1.Instance.network_interfaces:type_name -> kacho.cloud.compute.v1.NetworkInterface
+	0,  // 6: kacho.cloud.compute.v1.Instance.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
+	32, // 7: kacho.cloud.compute.v1.Instance.effective_resources:type_name -> kacho.cloud.compute.v1.EffectiveResources
+	11, // 8: kacho.cloud.compute.v1.Instance.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
+	33, // 9: kacho.cloud.compute.v1.Instance.service_account:type_name -> kacho.cloud.reference.Referrer
+	13, // 10: kacho.cloud.compute.v1.Instance.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
+	14, // 11: kacho.cloud.compute.v1.Instance.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
+	12, // 12: kacho.cloud.compute.v1.BootSource.materialized_volume:type_name -> kacho.cloud.compute.v1.MaterializedVolume
+	1,  // 13: kacho.cloud.compute.v1.BootSource.image_kind:type_name -> kacho.cloud.compute.v1.ImageKind
+	27, // 14: kacho.cloud.compute.v1.VmSpec.metadata_options:type_name -> kacho.cloud.compute.v1.MetadataOptions
+	30, // 15: kacho.cloud.compute.v1.ContainerSpec.env:type_name -> kacho.cloud.compute.v1.ContainerSpec.EnvEntry
+	15, // 16: kacho.cloud.compute.v1.ContainerSpec.ports:type_name -> kacho.cloud.compute.v1.ContainerPort
+	2,  // 17: kacho.cloud.compute.v1.ContainerSpec.restart_policy:type_name -> kacho.cloud.compute.v1.RestartPolicy
+	6,  // 18: kacho.cloud.compute.v1.AttachedDisk.mode:type_name -> kacho.cloud.compute.v1.AttachedDisk.Mode
+	19, // 19: kacho.cloud.compute.v1.AttachedLocalDisk.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDisk
+	34, // 20: kacho.cloud.compute.v1.PhysicalLocalDisk.kms_key:type_name -> kacho.cloud.compute.v1.KMSKey
+	7,  // 21: kacho.cloud.compute.v1.AttachedFilesystem.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystem.Mode
+	22, // 22: kacho.cloud.compute.v1.NetworkInterface.primary_v4_address:type_name -> kacho.cloud.compute.v1.PrimaryAddress
+	22, // 23: kacho.cloud.compute.v1.NetworkInterface.primary_v6_address:type_name -> kacho.cloud.compute.v1.PrimaryAddress
+	23, // 24: kacho.cloud.compute.v1.PrimaryAddress.one_to_one_nat:type_name -> kacho.cloud.compute.v1.OneToOneNat
+	3,  // 25: kacho.cloud.compute.v1.OneToOneNat.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
+	8,  // 26: kacho.cloud.compute.v1.NetworkSettings.type:type_name -> kacho.cloud.compute.v1.NetworkSettings.Type
+	4,  // 27: kacho.cloud.compute.v1.MetadataOptions.metadata_endpoint:type_name -> kacho.cloud.compute.v1.MetadataOption
+	9,  // 28: kacho.cloud.compute.v1.SerialPortSettings.ssh_authorization:type_name -> kacho.cloud.compute.v1.SerialPortSettings.SSHAuthorization
+	29, // [29:29] is the sub-list for method output_type
+	29, // [29:29] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_compute_v1_instance_proto_init() }
@@ -2434,7 +2342,7 @@ func file_kacho_cloud_compute_v1_instance_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_compute_v1_instance_proto_rawDesc), len(file_kacho_cloud_compute_v1_instance_proto_rawDesc)),
 			NumEnums:      10,
-			NumMessages:   22,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

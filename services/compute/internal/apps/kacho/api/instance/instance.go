@@ -625,29 +625,6 @@ func maskIntersects(mask []string, set map[string]struct{}) bool {
 	return false
 }
 
-// UpdateMetadata обновляет map metadata (delete + upsert).
-func (s *InstanceService) UpdateMetadata(ctx context.Context, instanceID string, del []string, upsert map[string]string) (*operations.Operation, error) {
-	if instanceID == "" {
-		return nil, status.Error(codes.InvalidArgument, "instance_id required")
-	}
-	// Бюджет ДЕЛЬТЫ — синхронно: отказ называет поле и не стоит строки операции.
-	// Бюджет ИТОГА СЛИЯНИЯ живёт в БД (CHECK), потому что «прочитать → сложить →
-	// проверить → записать» здесь оставляло бы окно между проверкой и записью: две
-	// одновременные правки прошли бы каждая по отдельности и превысили бюджет вместе.
-	if field, reason, ok := domain.ValidateInstanceMetadata(upsert); !ok {
-		return nil, serviceerr.InvalidArg(field, reason)
-	}
-	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
-		&computev1.UpdateInstanceMetadataMetadata{InstanceId: instanceID},
-		func(ctx context.Context) (*anypb.Any, error) {
-			updated, err := s.repo.MergeMetadata(ctx, instanceID, del, upsert)
-			if err != nil {
-				return nil, serviceerr.MapRepoErr(err)
-			}
-			return anypb.New(protoconv.Instance(updated))
-		})
-}
-
 // Start/Stop/Restart — state-машина (DB-уровневый atomic CAS).
 func (s *InstanceService) Start(ctx context.Context, id string) (*operations.Operation, error) {
 	return s.lifecycle(ctx, id, "Start", domain.InstanceStatusStopped, domain.InstanceStatusRunning,

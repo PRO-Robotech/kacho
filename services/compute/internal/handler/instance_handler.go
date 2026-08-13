@@ -24,16 +24,16 @@ import (
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
 //
-// Семь RPC объявлены контрактом и НЕ несут реализации; каждый переопределён в
-// declared_but_absent.go и отвечает `UNIMPLEMENTED` с названной причиной и
-// адресом владельца возможности. (Здесь стояло «в хвосте файла» — в ЭТОМ файле
-// вхождений `codes.Unimplemented` ноль, они все в соседнем. Комментарий,
-// называющий чужое место своим, отправляет следующего читателя искать не там.) Прежде они наследовались от заглушки, то есть
-// вызывающий получал `method X not implemented`: страница документации причину
-// называла, а клиент API не узнавал её никогда — а он и есть тот, кто
-// сталкивается с ограничением. Разбор — docs/engineering/architecture/07-known-divergences.md.
-// AttachNetworkInterface/DetachNetworkInterface — реализованы (S4, NIC-attach saga →
-// kacho-vpc InternalNetworkInterfaceService).
+// Восемь методов СНЯТЫ волной 1 вместе с файлом их отказов: семь не несли
+// реализации, восьмой (обновление метаданных) реализован, но его предмет —
+// свободная карта — снят той же волной. Владельцы возможностей названы в
+// контракте; перепись снятых имён — internal/repohygiene/retiredrpcsurface.go.
+//
+// Привязка и отвязка сетевого интерфейса ОСТАЮТСЯ публичными и реализованы: у
+// домена сети глагол привязки живёт только на внутреннем слушателе, публичного
+// пути у арендатора нет и не будет — иначе цикл между доменами. Формула, чтобы
+// асимметрия не завелась снова: привязка — глагол потребителя, свойства — глагол
+// владельца.
 type InstanceHandler struct {
 	computev1.UnimplementedInstanceServiceServer
 	svc        *instance.InstanceService
@@ -55,12 +55,7 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 	if err != nil {
 		return nil, err
 	}
-	p := protoconv.Instance(in)
-	// GetInstanceRequest.view — metadata возвращается только при view=FULL.
-	if req.View != computev1.InstanceView_FULL {
-		p.Metadata = nil
-	}
-	return p, nil
+	return protoconv.Instance(in), nil
 }
 
 // List возвращает список ВМ в проекте.
@@ -86,11 +81,7 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	}
 	resp := &computev1.ListInstancesResponse{NextPageToken: nextToken}
 	for _, in := range visible {
-		p := protoconv.Instance(in)
-		// metadata всегда опускается в List response (в ListInstancesRequest
-		// нет view-параметра — это документировано в instance.proto комментарии к Instance.metadata).
-		p.Metadata = nil
-		resp.Instances = append(resp.Instances, p)
+		resp.Instances = append(resp.Instances, protoconv.Instance(in))
 	}
 	return resp, nil
 }
@@ -354,21 +345,6 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 		UpdateMask:          mask,
 	}
 	op, err := h.svc.Update(ctx, ur)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
-// UpdateMetadata инициирует обновление metadata ВМ.
-func (h *InstanceHandler) UpdateMetadata(ctx context.Context, req *computev1.UpdateInstanceMetadataRequest) (*operationpb.Operation, error) {
-	if req.InstanceId == "" {
-		return nil, status.Error(codes.InvalidArgument, "instance_id required")
-	}
-	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
-		return nil, err
-	}
-	op, err := h.svc.UpdateMetadata(ctx, req.InstanceId, req.Delete, req.Upsert)
 	if err != nil {
 		return nil, err
 	}

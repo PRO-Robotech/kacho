@@ -109,25 +109,6 @@ service InstanceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Updates the metadata of the specified instance. For more information on metadata, see [VM metadata](/docs/compute/concepts/vm-metadata).
-  rpc UpdateMetadata(UpdateInstanceMetadataRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}/updateMetadata"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "UpdateInstanceMetadataMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_metadatas.updateMetadata";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Returns the serial port output of the specified Instance resource.
   rpc GetSerialPortOutput(GetInstanceSerialPortOutputRequest) returns (GetInstanceSerialPortOutputResponse) {
     option (google.api.http) = {get: "/compute/v1/instances/{instance_id}:serialPortOutput"};
@@ -274,89 +255,11 @@ service InstanceService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Enables One-to-one NAT on the network interface.
-  rpc AddOneToOneNat(AddInstanceOneToOneNatRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}/addOneToOneNat"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "AddInstanceOneToOneNatMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_one_to_one_nats.addOneToOneNat";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Removes One-to-one NAT from the network interface.
-  rpc RemoveOneToOneNat(RemoveInstanceOneToOneNatRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}/removeOneToOneNat"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "RemoveInstanceOneToOneNatMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_one_to_one_nats.removeOneToOneNat";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Updates the specified instance network interface.
-  rpc UpdateNetworkInterface(UpdateInstanceNetworkInterfaceRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      patch: "/compute/v1/instances/{instance_id}/updateNetworkInterface"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "UpdateInstanceNetworkInterfaceMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instance_network_interfaces.updateNetworkInterface";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Lists operations for the specified instance.
   rpc ListOperations(ListInstanceOperationsRequest) returns (ListInstanceOperationsResponse) {
     option (google.api.http) = {get: "/compute/v1/instances/{instance_id}/operations"};
     option (kacho.iam.authz.v1.permission)        = "compute.instance_operationses.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "compute_instance"
-      from_request_field: "instance_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Moves the specified instance to another availability zone
-  //
-  // Running instance will be restarted during this operation.
-  rpc Relocate(RelocateInstanceRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{instance_id}:relocate"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "RelocateInstanceMetadata"
-      response: "Instance"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.instances.relocate";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "compute_instance"
       from_request_field: "instance_id"
@@ -383,67 +286,6 @@ service InstanceService {
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
-
-  // access
-
-  // Lists access bindings for the instance.
-  rpc ListAccessBindings(access.ListAccessBindingsRequest) returns (access.ListAccessBindingsResponse) {
-    option (google.api.http) = {get: "/compute/v1/instances/{resource_id}:listAccessBindings"};
-    option (kacho.iam.authz.v1.permission)        = "compute.access_bindingses.listAccessBindings";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "project"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Sets access bindings for the instance.
-  rpc SetAccessBindings(access.SetAccessBindingsRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{resource_id}:setAccessBindings"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "access.SetAccessBindingsMetadata"
-      response: "access.AccessBindingsOperationResult"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.access_bindingses.setAccessBindings";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "project"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
-  }
-
-  // Updates access bindings for the instance.
-  rpc UpdateAccessBindings(access.UpdateAccessBindingsRequest) returns (operation.Operation) {
-    option (google.api.http) = {
-      post: "/compute/v1/instances/{resource_id}:updateAccessBindings"
-      body: "*"
-    };
-    option (kacho.cloud.api.operation) = {
-      metadata: "access.UpdateAccessBindingsMetadata"
-      response: "access.AccessBindingsOperationResult"
-    };
-    option (kacho.iam.authz.v1.permission)        = "compute.access_bindingses.updateAccessBindings";
-    option (kacho.iam.authz.v1.required_relation) = "editor";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "project"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min)  = "2";
-  }
-}
-
-enum InstanceView {
-
-  // Doesn't include the metadata of the instance in the server response.
-  BASIC = 0;
-
-  // Returns the metadata of the instance in the server response.
-  FULL = 1;
 }
 
 message GetInstanceRequest {
@@ -454,8 +296,22 @@ message GetInstanceRequest {
     (length) = "<=50"
   ];
 
-  // Defines which information about the Instance resource should be returned in the server response.
-  InstanceView view = 2;
+  // Field 2 held `view` (enum InstanceView: BASIC | FULL). Retired together with
+  // its only subject.
+  //
+  // The enum decided exactly one thing: whether the free-form metadata map came
+  // back in the response. That map is gone, so the switch had nothing left to
+  // switch — a request field accepted by a live RPC and read by nothing, which
+  // is the one shape this contract does not allow. Of the three lawful outcomes
+  // (implement · refuse by name · take off the contract) only the third fits:
+  // there is no behaviour left to implement, and refusing a field that callers
+  // send innocently would break them for holding an old, once-correct habit.
+  //
+  // The enum is removed with it: no field referenced it, so it was never on the
+  // wire on its own. Number and name stay reserved — a view that returns will
+  // mean something else, and must not be read as this one.
+  reserved 2;
+  reserved "view";
 }
 
 message ListInstancesRequest {
@@ -1339,4 +1195,23 @@ message DiskPlacementPolicyChange {
   string disk_id = 1;
   // Placement policy configuration for the given volume.
   DiskPlacementPolicy disk_placement_policy = 2;
+  // ВОСЕМЬ МЕТОДОВ СНЯТЫ (волна 1, приёмка COMP-E1a).
+  //
+  // Семь из них не несли реализации и отвечали отказом «не реализовано», будучи
+  // выставленными на ТРЁХ поверхностях сразу — маршруты края, список
+  // проксирования, каталог прав. Восьмой (обновление метаданных) реализован, но
+  // его предмет — свободная карта — снимается той же волной: два места об одном
+  // предмете, из которых нужное второе.
+  //
+  // Владельцы возможностей названы: правка интерфейса и трансляция адреса —
+  // домен сети (её публичный метод правки интерфейса); привязки доступа — домен
+  // управления доступом; перенос между зонами — предмет, требующий переноса
+  // тома, то есть согласия владельца хранилища.
+  //
+  // `reserved` ЗДЕСЬ НЕВЫРАЗИМ: грамматика принимает его только внутри message и
+  // enum, внутри service компилятор отвечает `Expected "rpc"`, а у метода нет
+  // номера, который можно зарезервировать. Намерение нормы («имя не должно
+  // вернуться молча и с чужим смыслом») выражено переписью снятых имён —
+  // `internal/repohygiene/retiredrpcsurface.go`, куда внесены все восемь.
+
 }

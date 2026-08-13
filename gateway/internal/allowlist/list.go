@@ -100,7 +100,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/Create":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Update":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Delete":                   {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateMetadata":           {},
 	"/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput":      {},
 	"/kacho.cloud.compute.v1.InstanceService/Stop":                     {},
 	"/kacho.cloud.compute.v1.InstanceService/Start":                    {},
@@ -109,15 +108,8 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/DetachDisk":               {},
 	"/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface":   {},
-	"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat":           {},
-	"/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/ListOperations":           {},
-	"/kacho.cloud.compute.v1.InstanceService/Relocate":                 {},
 	"/kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent": {},
-	"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings":       {},
-	"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings":     {},
 	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
 	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).

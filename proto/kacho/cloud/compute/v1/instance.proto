@@ -105,28 +105,16 @@ message Instance {
   // sagas + transition to RUNNING are a follow-on, COMP-2).
   Status status = 10;
 
-  // Free-form metadata `key:value` pairs (returned only on the FULL view). Redesign
-  // VM configuration moves to vm_spec.user_data; this stays for back-compat.
-  map<string, string> metadata = 11;
 
   // Output-only launch mirrors — materialized by the COMP-2 attach sagas; empty in
   // COMP-1, which persists the durable record without materialize.
   AttachedDisk boot_disk = 12;
   repeated AttachedDisk secondary_disks = 13;
   repeated NetworkInterface network_interfaces = 14;
-  repeated AttachedFilesystem filesystems = 21;
-  repeated AttachedLocalDisk local_disks = 22;
 
   // A domain name of the instance. Output-only (server-derived).
   string fqdn = 16;
 
-  // Legacy network/serial/maintenance/hardware surface (retained; not part of the
-  // COMP-1 sizing/boot retire).
-  NetworkSettings network_settings = 19;
-  SerialPortSettings serial_port_settings = 24;
-  MaintenancePolicy maintenance_policy = 29;
-  google.protobuf.Duration maintenance_grace_period = 30;
-  HardwareGeneration hardware_generation = 31;
 
   // Guaranteed CPU baseline per vCPU, in percent.
   //   0        = best-effort / burstable (no guarantee);
@@ -169,6 +157,29 @@ message Instance {
     // CONTAINER configuration (instance_kind = CONTAINER).
     ContainerSpec container_spec = 45;
   }
+
+  // ── Волна 1: восемь полей сняты с резервированием номера И имени ──────────
+  //
+  // Семь из них не имели ни одного писателя во всём непроверочном дереве:
+  // сервер ПРОИЗВОДИЛ их в каждом ответе и не заполнял никогда, а вход по ним
+  // уже отвергался по имени. То есть контракт говорил «не приму» и одновременно
+  // «отдам» — а отдавал пустоту, и вызывающий не мог отличить «нет данных» от
+  // «не реализовано».
+  //
+  // Восьмое (`metadata`) — свободная карта, снятая вместе со своим глаголом.
+  //
+  // Отдельно про поколение оборудования: оно несло топологию шин, то есть
+  // раскладку по железу. Такие данные живут только на внутренней проекции
+  // (правило об инфра-чувствительных данных), и на публичной их не должно быть
+  // независимо от того, заполняются они или нет.
+  //
+  // Резервируются номер И имя: иначе номер вернётся с чужим смыслом, а имя —
+  // с чужой формой, и байты старого клиента будут прочитаны как новое поле.
+  reserved 11, 19, 21, 22, 24, 29, 30, 31;
+  reserved "metadata", "network_settings", "filesystems", "local_disks",
+    "serial_port_settings", "maintenance_policy", "maintenance_grace_period",
+    "hardware_generation";
+
 }
 
 // InstanceKind — the strong first discriminator (F1). VM and CONTAINER have distinct

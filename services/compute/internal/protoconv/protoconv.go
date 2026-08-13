@@ -63,7 +63,6 @@ func Instance(in *domain.Instance) *computev1.Instance {
 		ZoneId:              in.ZoneID,
 		Status:              computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
 		StatusReason:        in.StatusReason,
-		Metadata:            in.Metadata,
 		Fqdn:                in.FQDN,
 		CpuGuaranteePercent: in.CPUGuaranteePercent,
 		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // #nosec G115 -- domain.InstanceKind зеркалит computev1.InstanceKind

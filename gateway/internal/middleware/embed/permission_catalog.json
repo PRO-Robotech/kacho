@@ -1,15 +1,5 @@
 [
   {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/AddOneToOneNat",
-    "permission": "compute.instance_one_to_one_nats.addOneToOneNat",
-    "required_relation": "v_update",
-    "scope_extractor": {
-      "object_type": "compute_instance",
-      "from_request_field": "instance_id"
-    },
-    "required_acr_min": "1"
-  },
-  {
     "fqn": "kacho.cloud.compute.v1.InstanceService/AttachDisk",
     "permission": "compute.instance_disks.attachDisk",
     "required_relation": "v_update",
@@ -100,39 +90,9 @@
     "required_acr_min": "1"
   },
   {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/ListAccessBindings",
-    "permission": "compute.access_bindingses.listAccessBindings",
-    "required_relation": "viewer",
-    "scope_extractor": {
-      "object_type": "project",
-      "from_request_field": "*"
-    },
-    "required_acr_min": "1"
-  },
-  {
     "fqn": "kacho.cloud.compute.v1.InstanceService/ListOperations",
     "permission": "compute.instance_operationses.listOperations",
     "required_relation": "v_list",
-    "scope_extractor": {
-      "object_type": "compute_instance",
-      "from_request_field": "instance_id"
-    },
-    "required_acr_min": "1"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/Relocate",
-    "permission": "compute.instances.relocate",
-    "required_relation": "v_update",
-    "scope_extractor": {
-      "object_type": "compute_instance",
-      "from_request_field": "instance_id"
-    },
-    "required_acr_min": "1"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat",
-    "permission": "compute.instance_one_to_one_nats.removeOneToOneNat",
-    "required_relation": "v_update",
     "scope_extractor": {
       "object_type": "compute_instance",
       "from_request_field": "instance_id"
@@ -148,16 +108,6 @@
       "from_request_field": "instance_id"
     },
     "required_acr_min": "1"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
-    "permission": "compute.access_bindingses.setAccessBindings",
-    "required_relation": "editor",
-    "scope_extractor": {
-      "object_type": "project",
-      "from_request_field": "*"
-    },
-    "required_acr_min": "2"
   },
   {
     "fqn": "kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent",
@@ -192,36 +142,6 @@
   {
     "fqn": "kacho.cloud.compute.v1.InstanceService/Update",
     "permission": "compute.instances.update",
-    "required_relation": "v_update",
-    "scope_extractor": {
-      "object_type": "compute_instance",
-      "from_request_field": "instance_id"
-    },
-    "required_acr_min": "1"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
-    "permission": "compute.access_bindingses.updateAccessBindings",
-    "required_relation": "editor",
-    "scope_extractor": {
-      "object_type": "project",
-      "from_request_field": "*"
-    },
-    "required_acr_min": "2"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/UpdateMetadata",
-    "permission": "compute.instance_metadatas.updateMetadata",
-    "required_relation": "v_update",
-    "scope_extractor": {
-      "object_type": "compute_instance",
-      "from_request_field": "instance_id"
-    },
-    "required_acr_min": "1"
-  },
-  {
-    "fqn": "kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface",
-    "permission": "compute.instance_network_interfaces.updateNetworkInterface",
     "required_relation": "v_update",
     "scope_extractor": {
       "object_type": "compute_instance",
