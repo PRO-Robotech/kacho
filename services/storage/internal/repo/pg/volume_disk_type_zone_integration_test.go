@@ -77,20 +77,36 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 	require.Equal(t, "block-zoned-b", v.DiskTypeID)
 }
 
-// TestVolumeAcceptedOnUnscopedDiskType — an empty zone list is the "offered
-// everywhere" case; it must keep letting every zone through, otherwise the whole
-// seeded catalogue (every entry ships with []) would stop working.
+// TestVolumeAcceptedOnUnscopedDiskType — пустой список зон у класса означает
+// «класс сам себя зонами не ограничивает», а НЕ «предлагается везде».
+//
+// Прежняя редакция утверждала второе и обосновывала это тем, что иначе «перестал
+// бы работать весь посеянный каталог, где у каждой записи пустой список». Посева
+// больше нет: класс предлагается там, где объявлено, ЧЕМ он обслуживается, —
+// то есть где у него есть ДЕЙСТВУЮЩАЯ ревизия привязки. Утверждение не ослаблено,
+// а приведено к предмету: проверяются ОБЕ половины, и вторая — та, ради которой
+// привязка и заведена.
 func TestVolumeAcceptedOnUnscopedDiskType(t *testing.T) {
 	pool := newTestPool(t)
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
+	// Половина первая: зона, где класс привязан, — принимается.
 	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-unscoped-type",
-		ZoneID: "any-zone-at-all", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
+		ZoneID: fixtureZone, DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 	}, "")
 	require.NoError(t, err)
 	require.Equal(t, seededDiskType, v.DiskTypeID)
+
+	// Половина вторая: зона, где привязки нет, — отвергается, и отказ говорит
+	// именно об отсутствии обслуживания, а не о запрете класса.
+	_, _, err = vr.Insert(ctx, &domain.Volume{
+		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-unbound-zone",
+		ZoneID: "any-zone-at-all", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
+	}, "")
+	require.Error(t, err, "класс без действующей ревизии в зоне не обслуживается")
+	require.Contains(t, err.Error(), "has no active binding in zone any-zone-at-all")
 }
 
 // TestVolumeOnMissingDiskTypeStillReportsMissing — the new lane must not swallow

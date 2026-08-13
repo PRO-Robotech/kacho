@@ -77,6 +77,31 @@ func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
+// offerDiskTypeInZone заводит ДЕЙСТВУЮЩУЮ ревизию привязки для класса в зоне.
+//
+// В продукте класс не предлагается, пока не объявлено, ЧЕМ он обслуживается:
+// без действующей ревизии вставка тома отвергается. Проба, заводящая свой класс,
+// обязана пройти тот же путь — иначе она падает отказом «нет действующей
+// привязки» и читается как дефект продукта, хотя это пробел подготовки.
+func offerDiskTypeInZone(t *testing.T, pool *pgxpool.Pool, diskTypeID string, zones ...string) {
+	t.Helper()
+	ctx := context.Background()
+	backendID := ids.NewHyphenID("sb")
+	_, err := pool.Exec(ctx, `
+		INSERT INTO storage_backends (id, name, kind, zone_ids, endpoint, credentials_ref)
+		VALUES ($1, $1, 'CEPH_RBD', '[]'::jsonb, 'cfg://fixture', 'vault://fixture')`, backendID)
+	require.NoError(t, err)
+	for _, zone := range zones {
+		_, err = pool.Exec(ctx, `
+			INSERT INTO disk_type_bindings
+				(id, disk_type_id, zone_id, backend_id, revision, pool, namespace_template,
+				 cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image, cap_online_grow, status)
+			VALUES ($1, $2, $3, $4, 1, 'kacho-fixture', '{projectId}', true, true, true, true, 'ACTIVE')`,
+			ids.NewHyphenID("dtb"), diskTypeID, zone, backendID)
+		require.NoError(t, err)
+	}
+}
+
 // imageRegionFixture — регион, который фикстуры образов объявляют явно
 // (mkImageFromSnapshot(..., "ru-central1", ...)). Он же передаётся в
 // VolumeRepo.Insert как регион ЗОНЫ тома: зона фикстур называется "region-1-a" и

@@ -342,6 +342,7 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 		ID: "block-retro", Name: "retro", ZoneIDs: []string{"region-1-a", "region-1-b"},
 		PerformanceTier: domain.TierBalanced,
 	})
+	offerDiskTypeInZone(t, pool, "block-retro", "region-1-a", "region-1-b")
 	vol, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-retro",
 		ZoneID: "region-1-b", DiskTypeID: "block-retro", SizeBytes: 1 << 30,
@@ -538,6 +539,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 	ctx := context.Background()
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-race", Name: "race"})
+	offerDiskTypeInZone(t, pool, "block-race", "region-1-a")
 	_, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-race-ref",
 		ZoneID: "region-1-a", DiskTypeID: "block-race", SizeBytes: 1 << 30,
