@@ -1275,4 +1275,4 @@ seed-geo: guard-kind-context
 #
 # guard-kind-context: цель ПИШЕТ в базу активного контекста.
 seed-storage: guard-kind-context
-	@bash ./scripts/seed-storage-catalog.sh
+	@POSTURE_SKIP="$(POSTURE_SKIP)" bash ./scripts/seed-storage-catalog.sh
