@@ -6,6 +6,44 @@
 CASES = []
 
 
+def _assert_rule_target_unusable(field: str, target_var: str):
+    """Цель правила непригодна — ОДИН текст на оба исхода резолва.
+
+    Прежняя редакция двух кейсов ждала `'security group rule can only reference a
+    security group in the same network'`. Этот текст СНЯТ ОСОЗНАННО: два разных
+    текста («такой группы нет» против «группа в чужой сети») были
+    существование-оракулом — по тону отказа вызывающий устанавливал, существует
+    ли группа, которой он не владеет. Теперь обе ветви отвечают формой
+    НАСТОЯЩЕГО промаха группы, которую производит слой хранения и которой же
+    край скрывает отказ в доступе:
+    `Security group SecurityGroup.Id(value=<id>) not found`.
+
+    Утверждать «текст равен ожидаемому» здесь мало: ровно ту же строку вернул бы
+    отказ на любой чужой идентификатор. Поэтому утверждений три, и вместе они
+    описывают именно снятое свойство:
+
+      1. текст называет ТОТ id, который прислал вызывающий (его собственный
+         ввод, не чужой объект) — иначе отказ не адресный;
+      2. отказ НЕ сообщает, что дело в сети: отсутствие «same network»/«network»
+         в тексте — это и есть свойство неразличимости, ради которого тексты
+         сводились. Без этого утверждения возврат прежней формулировки прошёл бы
+         молча;
+      3. поле отказа названо вызывающему (`assert_field_violation` у места
+         вызова) — машинный дискриминатор, который об чужом объекте не сообщает.
+
+    Парный положительный контроль — отдельный кейс «цель в ТОЙ ЖЕ сети → 200»
+    (SG-NET-08): без него «отвергнуто» было бы неотличимо от «отвергается всё».
+    """
+    return [
+        "pm.test('отказ называет присланный id, формой настоящего промаха', () => "
+        "pm.expect(pm.response.json().message, pm.response.text()).to.eql("
+        "'Security group SecurityGroup.Id(value=' + pm.environment.get('" + target_var + "') "
+        "+ ') not found'));",
+        "pm.test('отказ НЕ выдаёт, что цель существует в чужой сети', () => "
+        "pm.expect(pm.response.json().message.toLowerCase()).to.not.include('network'));",
+    ]
+
+
 def _net_steps(suffix="sg"):
     return [
         Step(name="pre-net", method="POST", path="/vpc/v1/networks",
@@ -740,15 +778,41 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        # First read of the caller's OWN fresh network's SG list — v_get owner-tuple can
-        # still be draining under parallel load → transient 403/404; retry SELF until visible.
+        # Идентификатор группы по умолчанию называет САМА СЕТЬ (`defaultSecurityGroupId`).
+        #
+        # Прежняя редакция спрашивала под-перечисление сети
+        # (`/vpc/v1/networks/{id}/security_groups`). Этот метод СНЯТ С КОНТРАКТА —
+        # второй путь к одному ответу с другим объектом проверки прав, — и края
+        # такого маршрута не знает: каталог прав не резолвит метод, край
+        # отказывает fail-closed `403` с пустым `action` и `type: authz.catalog`.
+        # `retry_on=(403,404)` крутил этот отказ весь бюджет, потому что читал его
+        # как окно материализации owner-tuple: снятый адрес и не материализуется
+        # никогда. Дальше шаг падал дважды (403 и «must have default SG»), а
+        # следующий шаг — предусловием: `defaultSgId` не захвачена, запрос не
+        # отправлен, и его исполнение вообще не попадало в отчёт
+        # (ASSERTED-NOT-EXECUTED). Одна причина, четыре наблюдаемых следствия.
+        #
+        # Замена не «другой список», а более узкое утверждение: сеть отдаёт id
+        # своей группы по умолчанию сама, поэтому и ждать нечего, и спутать её с
+        # чужой группой того же проекта нельзя.
         retry_until_authorized(
             Step(name="get-default-sg-id", method="GET",
-                 path="/vpc/v1/networks/{{netId}}/security_groups",
+                 path="/vpc/v1/networks/{{netId}}",
                  test_script=[*assert_status(200),
-                              "const def = (pm.response.json().securityGroups || []).find(s => s.defaultForNetwork === true);",
-                              "pm.expect(def, 'must have default SG').to.be.an('object');",
-                              "pm.environment.set('defaultSgId', def.id);"]),
+                              "const j = pm.response.json();",
+                              "pm.test('сеть называет свою группу по умолчанию', () => "
+                              "pm.expect(j.defaultSecurityGroupId, pm.response.text())"
+                              ".to.be.a('string').and.not.empty);",
+                              "pm.environment.set('defaultSgId', j.defaultSecurityGroupId || '');"]),
+            retry_on=(403, 404)),
+        # Она действительно группа по умолчанию — иначе следующий шаг запрещал бы
+        # удаление обычной группы и был бы зелёным не по своему предмету.
+        retry_until_authorized(
+            Step(name="default-sg-is-flagged", method="GET",
+                 path="/vpc/v1/securityGroups/{{defaultSgId}}",
+                 test_script=[*assert_status(200),
+                              "pm.test('помечена как группа по умолчанию', () => "
+                              "pm.expect(pm.response.json().defaultForNetwork).to.eql(true));"]),
             retry_on=(403, 404)),
         # ПРЕДМЕТ КЕЙСА — ОТКАЗ, и он утверждается как отказ.
         #
@@ -1034,11 +1098,27 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-mask-network", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
-             # Mask-only: `network_id` is not a field of UpdateSecurityGroupRequest,
+             # Mask-only: `networkId` is not a field of UpdateSecurityGroupRequest,
              # so the mask is the probe; a body value would be dropped by the edge.
              # verify-unchanged below still confirms the group kept its network.
-             body={"updateMask": "network_id"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
+             #
+             # Путь маски — В ФОРМЕ КОНТРАКТА REST (`networkId`). Прежняя редакция
+             # писала его змеиным (`network_id`), и край отвергал такой запрос ещё
+             # при разборе тела: `FieldMask.paths contains invalid path` — protojson
+             # принимает пути маски только в camelCase. Кейс был ЗЕЛЁНЫМ, ни разу не
+             # дойдя до стража маски: 400 приходил, но от чужого производителя, и
+             # снятие самого стража его бы не уронило. Поэтому утверждается не только
+             # код, но и то, что ответил ИМЕННО страж — нарушение по полю `update_mask`
+             # с именем непринятого пути.
+             body={"updateMask": "networkId"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('ответил страж маски, а не разбор тела', () => {",
+                          "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                          "  pm.expect(d, pm.response.text()).to.be.an('object');",
+                          "  const v = d.fieldViolations.find(x => x.field === 'update_mask');",
+                          "  pm.expect(v, pm.response.text()).to.be.an('object');",
+                          "  pm.expect(v.description).to.include('network_id');",
+                          "});"])),
         retry_until_authorized(Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),
                           "pm.test('networkId unchanged', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"])),
@@ -1073,7 +1153,7 @@ CASES.append(Case(
                    "name": "sg-net07-{{runId}}",
                    "ruleSpecs": [{"direction": "INGRESS", "securityGroupId": "{{sgBId}}"}]},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('same-network text', () => pm.expect(pm.response.json().message).to.eql('security group rule can only reference a security group in the same network'));",
+                          *_assert_rule_target_unusable("rule_specs[0].security_group_id", "sgBId"),
                           *assert_field_violation("rule_specs[0].security_group_id")]),
         Step(name="cleanup-target-b", method="DELETE", path="/vpc/v1/securityGroups/{{sgBId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -1155,7 +1235,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="update-rules-cross", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
              body={"additionRuleSpecs": [{"direction": "INGRESS", "securityGroupId": "{{sgBId}}"}]},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('same-network text', () => pm.expect(pm.response.json().message).to.eql('security group rule can only reference a security group in the same network'));",
+                          *_assert_rule_target_unusable("addition_rule_specs[0].security_group_id", "sgBId"),
                           *assert_field_violation("addition_rule_specs[0].security_group_id")])),
         retry_until_authorized(Step(name="verify-no-rules", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),

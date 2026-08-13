@@ -19,12 +19,16 @@
 | Update | CRUD (desc patch), STATE (immutable project_id), AUTHZ (sync-NF) | NET-UPD-* (3) | ▣ |
 | Delete | NEG (sync-NF) | NET-DEL-AUTHZ-NF-SYNC | ◐ |
 | ~~Move~~ | удален | — | — |
-| ListSubnets | CRUD (empty) | NET-LSUB-CRUD-EMPTY | ◐ |
-| ListSecurityGroups | CRUD (default-SG check) | NET-LSG-CRUD-DEFAULT-SG | ◐ |
-| ListRouteTables | CRUD (empty) | NET-LRT-CRUD-EMPTY | ◐ |
+| ~~ListSubnets~~ · сужение `subnets?filter=network_id` | CRUD (пусто) | NET-LSUB-CRUD-EMPTY | ◐ |
+| ~~ListSecurityGroups~~ · сужение `securityGroups?filter=network_id` | CRUD (группа по умолчанию) | NET-LSG-CRUD-DEFAULT-SG | ◐ |
+| ~~ListRouteTables~~ · сужение `routeTables?filter=network_id` | CRUD (системная таблица сети) | NET-LRT-CRUD-EMPTY | ◐ |
 | ListOperations | CRUD (contains create-op) | NET-LOP-CRUD-OK | ◐ |
 
-**Coverage: 10/10 RPC (100%) хотя бы 1 кейс.**
+Три под-перечисления сети сняты с контракта как вторые пути к одному ответу;
+их предмет («дочерние ЭТОЙ сети») покрывают те же case-id через сужение
+списочного запроса по `network_id`.
+
+**Coverage: 7/7 RPC (100%) хотя бы 1 кейс.**
 
 ## SubnetService (11 RPC)
 

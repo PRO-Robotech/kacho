@@ -642,7 +642,7 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 **Dependency / delete-blocking chain:** NIC → Address → Subnet → Network — все RESTRICT, удаление снизу вверх:
 - `Address.Delete` used-адреса (referrer = NIC) → `FailedPrecondition "address ... is in use by network interface ...; detach it before deleting the address"`. Освободить — detach от NIC / удаление NIC.
 - `Subnet.Delete` — sync-precheck: есть внутренний Address (v4 ИЛИ v6 — `AddressesBySubnet` смотрит и `internal_ipv4`, и `internal_ipv6`) → `FailedPrecondition "Subnet has allocated internal addresses"`; есть NIC → `FailedPrecondition "subnet ... has N network interface(s) (...); delete them first"`. DB-backstops: `addresses_internal_subnet_fkey` (на generated-колонке `addresses.internal_subnet_id`) + `network_interfaces_subnet_id_fkey ON DELETE RESTRICT`.
-- `Network.Delete` непустой (subnets / route tables / non-default SG) → `FailedPrecondition "Network ... is not empty"`; default SG авто-удаляется Delete-worker'ом.
+- `Network.Delete` непустой (subnets / route tables / non-default SG) → `FailedPrecondition "Network <id> is not empty (subnets: 2, route tables: 1)"` (перечень мешающего по видам и числам); default SG авто-удаляется Delete-worker'ом.
 
 Реальные FK constraint-ы в схеме:
 

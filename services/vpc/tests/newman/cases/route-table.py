@@ -643,8 +643,20 @@ CASES.append(Case(
                           "  pm.expect(r.nextHopAddress || '', 'ветвь ровно одна').to.eql('');",
                           "});"])),
         # (1) Шлюза нет — полоса direct-read своего id, контрактный тон.
+        #
+        # Путь маски пишется В ФОРМЕ КОНТРАКТА REST — `staticRoutes`, не
+        # `static_routes`. Прежняя редакция всех четырёх масок этого кейс-файла
+        # была змеиной, и край отвергал такой запрос ещё при разборе тела:
+        # `google.protobuf.FieldMask.paths contains invalid path: "static_routes"`
+        # — protojson принимает пути маски только в camelCase. Отказ приходил от
+        # РАЗБОРА ТЕЛА, а не от проверки, ради которой шаг написан, поэтому три
+        # отрицания ниже зеленели, ни разу не дойдя до резолва шлюза: их
+        # `sync_codes` содержит 400, и 400 они получали — от чужого производителя.
+        # Класс — «проверка с формой без содержания»; замер по дереву кейсов:
+        # змеиных масок было 5 (4 здесь + 1 в security-group.py), и КАЖДАЯ
+        # короткозамыкала свой шаг на разборе.
         retry_until_authorized(Step(name="rt-absent-gw", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
-             body={"updateMask": "static_routes",
+             body={"updateMask": "staticRoutes",
                    "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{garbageVpcId}}"}]},
              test_script=[*assert_refused_sync_or_async("маршрут через несуществующий шлюз",
                                                         sync_codes=(400, 403, 404))])),
@@ -652,14 +664,14 @@ CASES.append(Case(
         # (2) Шлюз ЧУЖОЙ сети — предусловие на состояние, не «не найден».
         *_gw_fixture("alien", "10.73.0.0/24", net_var="alienNetId", sub_var="alienSubId", gw_var="alienGwId"),
         retry_until_authorized(Step(name="rt-alien-net", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
-             body={"updateMask": "static_routes",
+             body={"updateMask": "staticRoutes",
                    "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{alienGwId}}"}]},
              test_script=[*assert_refused_sync_or_async("маршрут через шлюз чужой сети",
                                                         sync_codes=(400, 403, 404))])),
         poll_operation_until_done(must_fail=True),
         # (3) Семейство назначения не то, которое обслуживает вид шлюза.
         retry_until_authorized(Step(name="rt-family", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
-             body={"updateMask": "static_routes",
+             body={"updateMask": "staticRoutes",
                    "staticRoutes": [{"destinationPrefix": "::/0", "gatewayId": "{{gwId}}"}]},
              test_script=[*assert_refused_sync_or_async("IPv6-назначение через шлюз трансляции IPv4",
                                                         sync_codes=(400, 403, 404))])),
@@ -731,7 +743,7 @@ CASES.append(Case(
         poll_operation_until_done(must_fail=True),
         # Снятие маршрута снимает и ссылку — тот же шлюз становится удаляемым.
         retry_until_authorized(Step(name="rt-drop-routes", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
-             body={"updateMask": "static_routes", "staticRoutes": []},
+             body={"updateMask": "staticRoutes", "staticRoutes": []},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="gw-delete-now-ok", method="DELETE", path="/vpc/v1/gateways/{{gwId}}",

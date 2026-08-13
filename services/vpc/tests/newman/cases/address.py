@@ -200,27 +200,117 @@ CASES.append(Case(
     ],
 ))
 
+# ─── Сужение списка по ЗНАЧЕНИЮ — замена снятому поиску по значению ────────────
+#
+# `GetByValue` снят волной 1 (`proto/declared-breaks.yaml`, символ `GetByValue`):
+# его внешняя ветвь была НЕАВТОРИЗУЕМА ПО ПОСТРОЕНИЮ — область бралась из подсети, а
+# у внешнего адреса подсети нет, значит объекта, про который можно задать вопрос о
+# правах, не существовало вовсе. Вопрос «чей это адрес?» остался законным и
+# закрывается сужением списка: `GET /vpc/v1/addresses?projectId=…&ipAddress=…`.
+# Область берётся из `project_id`, который вызывающий и так обязан назвать; страница
+# проверяется по правам построчно. Сужение покрывает ЧЕТЫРЕ формы владения —
+# внутренний и внешний адрес в двух семействах (`ADR-LBV-CRUD-INT`/`-EXT`).
+#
+# Почему кейсы переписаны, а не подправлены. Прежние редакции звали снятый путь, и
+# край отвечал `403 AUTHZ_DENIED` с пустыми `action`/`resource` и fqn
+# `//vpc/v1/addresses:byValue`: записи в каталоге прав нет, потому что метода нет, и
+# гейт края честно закрывается. ЧЕТЫРЕ из этих кейсов при этом были ЗЕЛЁНЫМИ —
+# `ADR-GBV-NEG-NF`, `ADR-GBV-VAL-INVALID-IP`, `ADR-LBS-NEG-PARENT-NF` толерировали
+# 403 через `assert_absent_id_rejected`/`oneOf([200,403,404])`, а
+# `ADR-GBV-AUTHZ-UNSCOPED-DENY` ЖДАЛ 403 и получал его от каталога, а не от
+# проверяемой защиты. Кейс, зеленеющий на несуществующем методе, хуже
+# отсутствующего: он занимает слот и отчитывается об уверенности, которой нет.
+
 CASES.append(Case(
-    id="ADR-GBV-NEG-NF",
-    title="GetByValue несуществующего IP → NotFound (security: не должно leak'ать существование)",
+    id="ADR-LBV-NEG-NF",
+    title="Сужение по значению, которого ни у кого нет → 200 с пустой страницей (существование не раскрыто)",
     classes=["NEG", "AUTHZ"],
     priority="P0",
     steps=[
-        Step(name="gbv", method="GET", path="/vpc/v1/addresses:byValue?externalIpv4Address=192.0.2.99",
-             test_script=[*assert_absent_id_rejected()]),
+        Step(name="create", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvnf-{{runId}}",
+                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address",
+                                              "allocatedIp")])),
+        # Плечо-контроль: СВОЁ значение находится. Без него утверждение о пустой
+        # странице ниже зеленело бы и на сужении, которое не находит ничего никогда,
+        # — то есть отрицание стояло бы без положительного.
+        retry_until_present(Step(name="lbv-own-found", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{allocatedIp}}",
+             test_script=[*assert_status(200),
+                          "pm.test('своё значение находится (плечо-контроль)', () => "
+                          "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                          ".to.include(pm.environment.get('addrId')));"]), "addrId"),
+        # Предмет: значение, которого нет ни у кого. 192.0.2.0/24 — TEST-NET-1, из
+        # пулов стенда не выдаётся (v4-пулы суиты живут в 100.101/16 и 100.102/16),
+        # поэтому строка не появится и под параллельной нагрузкой.
+        #
+        # Исход — 200 с ПУСТОЙ страницей, а не отказ: у списка есть законный ответ на
+        # корректно заданный вопрос, и этот ответ «у вас такого нет». Отказ здесь
+        # означал бы, что край отличает «нет ни у кого» от «есть, но не у вас», то
+        # есть сам стал бы оракулом существования.
+        Step(name="lbv-absent", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress=192.0.2.99",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('страница пуста — существование чужого не раскрыто', () => "
+                 "pm.expect(pm.response.json().addresses || []).to.eql([]));",
+             ]),
+        retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
     ],
 ))
 
+# `ListBySubnet` снят той же волной (`declared-breaks.yaml`) как строгое подмножество
+# списка, который уже несёт сужение по подсети: два пути к одному ответу с разными
+# объектами проверки прав. Замена — поле `subnetId` списочного запроса.
 CASES.append(Case(
-    id="ADR-LBS-CRUD-OK",
-    title="ListBySubnet → массив (возможно пустой)",
+    id="ADR-LSN-CRUD-OK",
+    title="Сужение списка по подсети → адрес этой подсети присутствует, внесубнетный отсутствует",
     classes=["CRUD"],
     priority="P2",
     steps=[
-        *_make_net_sub("lbs", "10.102.0.0/24"),
-        Step(name="lbs", method="GET", path="/vpc/v1/addresses:bySubnet?subnetId={{subId}}",
-             test_script=[*assert_status(200),
-                          "pm.test('addresses array', () => pm.expect(pm.response.json().addresses || []).to.be.an('array'));"]),
+        *_make_net_sub("lsn", "10.102.0.0/24"),
+        Step(name="cr-in-sub", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lsn-{{runId}}",
+                   "internalIpv4AddressSpec": {"subnetId": "{{subId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
+        poll_operation_until_done(),
+        # Внешний адрес не лежит ни в какой подсети — он и есть отрицательное плечо.
+        Step(name="cr-ext", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lsn-ext-{{runId}}",
+                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "extId")]),
+        poll_operation_until_done(),
+        retry_until_present(Step(name="lsn", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&subnetId={{subId}}",
+             test_script=[
+                 *assert_status(200),
+                 # Прежняя редакция утверждала «это массив» — истинно на ЛЮБОМ 200, в
+                 # том числе на сужении, которое не сужает вовсе. Утверждение с таким
+                 # телом не может покраснеть ни на одном дефекте сужения. Теперь на
+                 # одной странице утверждаются ОБЕ стороны: что попадает и что нет.
+                 "pm.test('адрес этой подсети присутствует', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.include(pm.environment.get('addrId')));",
+                 "pm.test('внесубнетный (внешний) адрес того же проекта отсутствует', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.not.include(pm.environment.get('extId')));",
+             ]), "addrId"),
+        retry_until_authorized(Step(name="cleanup-ext", method="DELETE", path="/vpc/v1/addresses/{{extId}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
         *_cleanup_sub_net(),
     ],
 ))
@@ -377,70 +467,135 @@ CASES.append(Case(
 # 200 — сверить id» не исполнялась ни разу, а обёртка повтора сначала выжигала
 # бюджет на отказе и лишь потом засчитывала тот же отказ пройденным.
 #
-# Достижим здесь ВНУТРЕННИЙ адрес: он лежит в подсети, подсеть и есть якорь
-# авторизации, и сужение хранилища идёт по той же подсети. Поэтому положительный
-# путь строится на нём — и впервые действительно проверяет, что GetByValue
-# возвращает именно тот адрес, о котором спросили.
+# ЧЕТЫРЕ ФОРМЫ ВЛАДЕНИЯ, ОДИН ВОПРОС — и обе половины проверяются e2e.
+#
+# Значение адреса хранится в четырёх местах: внутренний и внешний адрес, каждый в
+# двух семействах. Замена, покрывающая только часть из них, отвечала бы «у вас
+# такого нет» на законный вопрос про остальные — то есть была бы у́же снятого метода,
+# а не заменой ему. Внутреннюю пару держит этот кейс, внешнюю — `ADR-LBV-CRUD-EXT`.
+# Тот же инвариант закреплён на уровне хранилища
+# (`internal/repo/address_list_by_value_integration_test.go`); здесь он проверяется
+# через край, потому что до края доезжает ещё и проброс поля через gateway.
+#
+# Подсеть двухстековая: одна фикстура несёт оба семейства, поэтому v4 и v6 отвечают
+# про ОДНУ подсеть и расхождение между ними нельзя списать на разные фикстуры.
 CASES.append(Case(
-    id="ADR-GBV-CRUD-OK",
-    title="GetByValue internal IP со scope subnetId → 200 + сам Address",
+    id="ADR-LBV-CRUD-INT",
+    title="Сужение по значению находит внутренний адрес в ОБОИХ семействах (v4 и v6)",
     classes=["CRUD"], priority="P1",
     steps=[
-        *_make_net_sub("gbv", "10.121.0.0/24"),
-        Step(name="create", method="POST", path="/vpc/v1/addresses",
-             body={"projectId": "{{_suiteProjectId}}", "name": "adr-gbv-{{runId}}",
+        Step(name="pre-net", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvi-net-{{runId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
+        poll_operation_until_done(),
+        Step(name="pre-sub", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "adr-lbvi-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": "10.121.0.0/24", "ipv6CidrPrimary": "fd21:1::/64"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
+        poll_operation_until_done(),
+        # ── форма 1: внутренний IPv4 ──────────────────────────────────────────────
+        Step(name="cr-int-v4", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvi4-{{runId}}",
                    "internalIpv4AddressSpec": {"subnetId": "{{subId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrV4")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get-v4", method="GET", path="/vpc/v1/addresses/{{addrV4}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.internalIpv4Address && j.internalIpv4Address.address", "allocatedIp")])),
-        # Первый доступ к СВОЕМУ свежему ресурсу — обёртка повтора уместна (403/404
-        # на окне материализации). Она не может замаскировать предмет кейса:
-        # повтор идёт только на 403/404, поэтому 200 с чужим id падает сразу.
-        retry_until_authorized(Step(name="gbv", method="GET",
-             path="/vpc/v1/addresses:byValue?internalIpv4Address={{allocatedIp}}&subnetId={{subId}}",
+                          *save_from_response("j.internalIpv4Address && j.internalIpv4Address.address",
+                                              "ipV4")])),
+        retry_until_present(Step(name="lbv-int-v4", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{ipV4}}",
              test_script=[
                  *assert_status(200),
-                 "pm.test('возвращён именно тот адрес, о котором спросили', () => "
-                 "pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
-                 "pm.test('и это тот самый IP', () => "
-                 "pm.expect(pm.response.json().internalIpv4Address.address).to.eql(pm.environment.get('allocatedIp')));",
-             ])),
-        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+                 "pm.test('внутренний IPv4 найден по значению', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.include(pm.environment.get('addrV4')));",
+                 # Сужение обязано отдавать ИМЕННО спрошенное значение, а не страницу
+                 # проекта: без этого утверждения кейс зеленел бы на реализации,
+                 # которая поле игнорирует (адрес нашёлся бы просто как строка списка).
+                 "pm.test('и в странице только строки с этим значением', () => "
+                 "(pm.response.json().addresses || []).forEach(a => pm.expect("
+                 "(a.internalIpv4Address || {}).address).to.eql(pm.environment.get('ipV4'))));",
+             ]), "addrV4"),
+        # ── форма 2: внутренний IPv6, та же подсеть ───────────────────────────────
+        Step(name="cr-int-v6", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvi6-{{runId}}",
+                   "internalIpv6AddressSpec": {"subnetId": "{{subId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrV6")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-v6", method="GET", path="/vpc/v1/addresses/{{addrV6}}",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.internalIpv6Address && j.internalIpv6Address.address",
+                                              "ipV6")])),
+        retry_until_present(Step(name="lbv-int-v6", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{ipV6}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('внутренний IPv6 найден по значению', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.include(pm.environment.get('addrV6')));",
+                 # Отрицательное плечо между семействами: запрос про v6 не тянет за
+                 # собой v4-соседа из той же подсети. Дизъюнкция по четырём колонкам
+                 # хранилища легко пишется так, что совпадает не с тем семейством.
+                 "pm.test('и v4-сосед по той же подсети не подмешан', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.not.include(pm.environment.get('addrV4')));",
+             ]), "addrV6"),
+        retry_until_authorized(Step(name="cleanup-v6", method="DELETE", path="/vpc/v1/addresses/{{addrV6}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="cleanup-v4", method="DELETE", path="/vpc/v1/addresses/{{addrV4}}",
              test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
         poll_operation_until_done(),
         *_cleanup_sub_net(),
     ],
 ))
 
-# ADR-GBV-AUTHZ-UNSCOPED-DENY — то, что прежний ADR-GBV-CRUD-OK исполнял в
-# действительности, теперь заявлено ровно одним исходом.
+# ADR-LBV-AUTHZ-UNSCOPED-DENY — вопрос «чей это адрес?» без названной области
+# ОТВЕРГАЕТСЯ, а не отвечается.
 #
-# Поиск по значению без `subnetId` авторизовать нечем: извлечение области читает
-# именно это поле, поэтому отказ детерминирован. Обёртки повтора здесь НЕТ — её
-# godoc прямо это запрещает («не оборачивать negative/deny»), а на устойчивом
-# отказе она лишь тратит бюджет и потом всё равно принимает тот же отказ.
+# Ровно это свойство и было причиной снятия метода: у поиска по значению область
+# бралась из подсети, а у внешнего адреса подсети нет — авторизовать вопрос было
+# нечем. Замена берёт область из `project_id`, и без него запрос обязан быть
+# отвергнут: иначе сужение по значению превращается в перечисление адресов всего
+# облака по значению, то есть в тот самый неавторизуемый вопрос, только шире.
+#
+# Почему прежняя редакция этого кейса ничего не проверяла. Она ждала 403 — и
+# получала 403 от КАТАЛОГА ПРАВ, потому что метода уже не было: fqn
+# `//vpc/v1/addresses:byValue`, `action`/`resource` пустые. Кейс был зелёным и при
+# этом не касался защиты, о которой заявлял. Утверждение ниже адресовано полосе
+# отказа, а не только его коду: тело обязано называть предмет отказа, и оно не
+# может прийти от отсутствующей записи каталога.
+#
+# Толерантность `400|403` здесь — задокументированное исключение про ПОРЯДОК
+# (`security.md` §authz-first), а не про неопределённость исхода: 403 даёт
+# короткое замыкание края (нечем резолвить область), 400 — backend
+# «project_id required». Обе — «отвергнут», разные полосы, у каждой свой
+# производитель. Обёртки повтора нет: её godoc запрещает оборачивать deny.
 CASES.append(Case(
-    id="ADR-GBV-AUTHZ-UNSCOPED-DENY",
-    title="GetByValue без scope subnetId → 403 fail-closed, адрес не раскрыт",
+    id="ADR-LBV-AUTHZ-UNSCOPED-DENY",
+    title="Сужение по значению без projectId → отвергнуто fail-closed, адрес не раскрыт",
     classes=["AUTHZ", "NEG"], priority="P1",
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/addresses",
-             body={"projectId": "{{_suiteProjectId}}", "name": "adr-gbvu-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvu-{{runId}}",
                    "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-addr", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "allocatedIp")])),
-        Step(name="gbv-unscoped", method="GET",
-             path="/vpc/v1/addresses:byValue?externalIpv4Address={{allocatedIp}}",
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address",
+                                              "allocatedIp")])),
+        Step(name="lbv-unscoped", method="GET",
+             path="/vpc/v1/addresses?ipAddress={{allocatedIp}}",
              test_script=[
-                 *assert_status(403),
-                 *assert_grpc_code(7, "PERMISSION_DENIED"),
+                 *assert_unscoped_rejected(),
                  # Отказ обязан быть ПУСТЫМ по существу: ни id, ни сам IP. Иначе
                  # «отказали» и «рассказали» совпадают, и запрет декоративен.
                  "pm.test('отказ не раскрывает ни id адреса, ни его IP', () => {",
@@ -449,20 +604,55 @@ CASES.append(Case(
                  "  pm.expect(body, 'IP в теле отказа').to.not.contain(pm.environment.get('allocatedIp'));",
                  "});",
              ]),
+        # Положительное плечо: ТОТ ЖЕ запрос с названной областью проходит. Без него
+        # отказ выше зеленел бы и на списке, сломанном целиком, — «отвергнут» ничего
+        # не доказывает, если не отвергается только это.
+        retry_until_present(Step(name="lbv-scoped-ok", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{allocatedIp}}",
+             test_script=[*assert_status(200),
+                          "pm.test('с названной областью тот же вопрос отвечается', () => "
+                          "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                          ".to.include(pm.environment.get('addrId')));"]), "addrId"),
         retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
         poll_operation_until_done(),
     ],
 ))
 
+# Две РАЗНЫЕ полосы ввода на одном поле, и у каждой свой единственный исход.
+# Прежняя редакция сваливала их в `oneOf([200,403,404])` — утверждение, которое
+# принимало и ответ, и отказ, то есть не утверждало ничего; оно и осталось зелёным,
+# когда путь под ним исчез.
 CASES.append(Case(
-    id="ADR-LBS-NEG-PARENT-NF",
-    title="ListBySubnet несуществующего subnet → 200 или 404",
+    id="ADR-LSN-NEG-PARENT-NF",
+    title="Сужение по подсети: well-formed-но-отсутствующая → 200 пусто; малформед → 400",
     classes=["NEG"], priority="P2",
     steps=[
-        Step(name="lbs-nx", method="GET",
-             path="/vpc/v1/addresses:bySubnet?subnetId={{garbageVpcId}}",
-             test_script=["pm.test('200/403/404', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
+        # Полоса 1 — форма верна, подсети нет. Ссылка на СВОЙ ресурс, поэтому ответ
+        # есть: страница пуста. Отказ здесь означал бы оракул существования подсети.
+        Step(name="lsn-absent", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&subnetId={{garbageVpcId}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('страница пуста', () => "
+                 "pm.expect(pm.response.json().addresses || []).to.eql([]));",
+             ]),
+        # Полоса 2 — форма неверна. Малформед отвергается синхронно, до хранилища:
+        # пустая страница утверждала бы «в этой подсети адресов нет» про строку,
+        # которая подсетью быть не может.
+        Step(name="lsn-malformed", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&subnetId=not-a-subnet-id",
+             test_script=[
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет ссылку, из-за которой произошёл', () => "
+                 "pm.expect(pm.response.json().message || '').to.contain('invalid subnet id'));",
+             ]),
+        # Положительный контроль: без сужения тот же список отвечает 200. Иначе оба
+        # плеча выше зеленели бы на списке, отвергающем всё подряд.
+        Step(name="lsn-control", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&pageSize=1",
+             test_script=[*assert_status(200)]),
     ],
 ))
 
@@ -581,75 +771,105 @@ CASES.append(Case(
     ],
 ))
 
+# ADR-LBV-VAL-INVALID — кейс ОСТАЁТСЯ отрицательным, но предмет у него другой.
+#
+# Было: «поиск по значению с негодным IP → 400 или 404» — отрицание про снятый
+# метод, и толерантность `400|403|404` принимала за исход отказ каталога прав.
+# Стало: НЕГОДНОЕ ЗНАЧЕНИЕ ФИЛЬТРА СПИСКА отвергается синхронно.
+#
+# Почему это по-прежнему отрицание, а не «пустая страница». Строка, которая адресом
+# быть не может, не имеет ответа НИ ПРИ КАКИХ данных: ни одна строка хранилища не
+# несёт такого значения. Пустая страница означала бы «такого адреса ни у кого нет» —
+# ложное утверждение об отсутствии, и вызывающий не отличил бы его от «значение
+# никому не принадлежит» (`ADR-LBV-NEG-NF` выше — законный ответ именно на этот
+# второй вопрос). Различать их и есть назначение поля. Ровно за такое ложное «не
+# найдено» на запрос без предмета снимали и сам метод, поэтому замена не наследует
+# послабление, а соседнее сужение того же запроса (`subnetId`) отвергает малформед
+# с самого начала — один и тот же ввод не может иметь два ответа в зависимости от
+# того, каким полем его задали.
+#
+# Продуктовая сторона правилась под этот кейс (RED→GREEN):
+# `internal/apps/kacho/api/address/list.go` + пробы
+# `list_value_narrow_test.go` (там же — оба семейства как положительные контроли).
 CASES.append(Case(
-    id="ADR-GBV-VAL-INVALID-IP",
-    title="GetByValue с garbage IP → 400 или 404",
+    id="ADR-LBV-VAL-INVALID",
+    title="Негодное значение фильтра списка → 400 INVALID_ARGUMENT с именем поля (не пустая страница)",
     classes=["VAL", "NEG"], priority="P2",
-    steps=[Step(name="gbv-bad", method="GET",
-                path="/vpc/v1/addresses:byValue?externalIpv4Address=not-an-ip",
-                test_script=[*assert_absent_id_rejected()])],
+    steps=[
+        Step(name="lbv-bad", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress=not-an-ip",
+             test_script=[
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет поле, из-за которого произошёл', () => "
+                 "pm.expect(pm.response.json().message || '').to.contain('ip_address'));",
+                 # Отказ не превращается в утверждение об отсутствии — именно оно и
+                 # было дефектом.
+                 "pm.test('и не утверждает, что адреса нет', () => "
+                 "pm.expect((pm.response.json().message || '').toLowerCase()).to.not.contain('not found'));",
+             ]),
+        # Положительный контроль в паре: законное значение ТОГО ЖЕ поля проходит.
+        # Без него 400 выше зеленел бы и на списке, отвергающем любое сужение.
+        Step(name="lbv-wellformed-ok", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress=192.0.2.99",
+             test_script=[*assert_status(200)]),
+    ],
 ))
 
-# ADR-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER — P0: область поиска ОБЯЗАНА сужать.
+# ADR-LBV-CONF-NOLEAK-CROSS-PROJECT — P0: область сужения ОБЯЗАНА сужать.
 #
-# Прежняя редакция этого стража сама признавала в комментарии, что утечку не
-# проверяет («cross-project GBV не возможен без второго caller — проверяем что get
-# возвращает что-то»), и несла то же покрывающее всё `oneOf([200, 403])`: заявленный
-# контракт P0-кейса не был проверен ни одним ИСПОЛНЕННЫМ утверждением.
+# Ось области сменилась вместе с механизмом. У снятого метода областью была ПОДСЕТЬ,
+# и страж спрашивал «найдётся ли адрес подсети-1, если областью назвать подсеть-2».
+# У замены область — ПРОЕКТ (`project_id`), поэтому тот же вопрос задаётся по своей
+# оси: адрес живёт в проекте-1, спрашиваем по его значению, но областью называем
+# проект-2. Если сервис отдаст адрес, `project_id` декоративен, и сужение по значению
+# превращается в перечисление чужих адресов по значению — то есть ровно в тот
+# неавторизуемый вопрос, за который метод и сняли.
 #
-# Второй вызывающий для этого и не нужен. Вопрос, который страж обязан задавать, —
-# «сужает ли `subnetId` выборку на самом деле»: адрес живёт в подсети-1, спрашиваем
-# по его IP, но областью называем подсеть-2. Если сервис отдаст адрес, область
-# декоративна, а якорь анти-BOLA ничего не якорит — и тогда чужая подсеть в
-# запросе точно так же вернула бы чужой адрес. Кейс самодостаточен, достижим и
-# РАЗЛИЧАЕТ: снятие сужения по подсети в хранилище немедленно красит его.
+# Второй вызывающий для этого не нужен и был бы хуже: право на ОБА проекта у актора
+# суиты есть (директива изоляции — дефолтный actor гранится editor на оба своих
+# проекта), поэтому отказ авторизации не может подменить собой предмет. Различает
+# именно сужение выборки, а не наличие гранта.
+#
+# Кейс самодостаточен, достижим и РАЗЛИЧАЕТ: снятие `project_id` из предиката
+# хранилища немедленно красит его.
 CASES.append(Case(
-    id="ADR-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER",
-    title="GetByValue: адрес подсети-1 не находится, когда областью названа подсеть-2 (scope сужает)",
+    id="ADR-LBV-CONF-NOLEAK-CROSS-PROJECT",
+    title="Сужение по значению: адрес проекта-1 не находится, когда областью назван проект-2",
     classes=["CONF", "AUTHZ"], priority="P0",
     steps=[
-        # Подсеть-1 — дом адреса.
-        *_make_net_sub("leak1", "10.122.0.0/24"),
-        Step(name="cr-in-sub1", method="POST", path="/vpc/v1/addresses",
-             body={"projectId": "{{_suiteProjectId}}", "name": "adr-leak-{{runId}}",
-                   "internalIpv4AddressSpec": {"subnetId": "{{subId}}"}},
+        Step(name="cr-in-proj1", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvleak-{{runId}}",
+                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-ip", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          *save_from_response("j.internalIpv4Address && j.internalIpv4Address.address", "leakIp"),
-                          *save_from_response("j.internalIpv4Address && j.internalIpv4Address.subnetId", "homeSubId")])),
-        # Подсеть-2 — в том же проекте и с тем же доступом, поэтому отказ авторизации
-        # не может подменить собой предмет: право на подсеть-2 у вызывающего ЕСТЬ.
-        # Различает именно сужение выборки, а не наличие гранта.
-        Step(name="pre-net2", method="POST", path="/vpc/v1/networks",
-             body={"projectId": "{{_suiteProjectId}}", "name": "adr-leak2-net-{{runId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkId", "netId2")]),
-        poll_operation_until_done(),
-        Step(name="pre-sub2", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId2}}",
-                   "name": "adr-leak2-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "ipv4CidrPrimary": "10.123.0.0/24"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.subnetId", "subId2")]),
-        poll_operation_until_done(),
-        # Контроль: областью названа СВОЯ подсеть-1 → адрес находится. Без этого
-        # плеча отрицательное плечо ниже зеленело бы и от того, что метод сломан
-        # целиком (тогда «не нашёл» ничего не доказывает).
-        retry_until_authorized(Step(name="gbv-own-scope-finds", method="GET",
-             path="/vpc/v1/addresses:byValue?internalIpv4Address={{leakIp}}&subnetId={{homeSubId}}",
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address",
+                                              "leakIp")])),
+        # Контроль: областью назван СВОЙ проект-1 → адрес находится. Без этого плеча
+        # отрицательное плечо ниже зеленело бы и от того, что сужение сломано целиком
+        # (тогда «не нашёл» не доказывает ничего).
+        retry_until_present(Step(name="lbv-own-scope-finds", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{leakIp}}",
              test_script=[*assert_status(200),
                           "pm.test('в своей области адрес находится (плечо-контроль)', () => "
-                          "pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"])),
-        # Предмет: та же строка, другая область → адрес НЕ выдаётся.
-        Step(name="gbv-foreign-scope", method="GET",
-             path="/vpc/v1/addresses:byValue?internalIpv4Address={{leakIp}}&subnetId={{subId2}}",
+                          "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                          ".to.include(pm.environment.get('addrId')));"]), "addrId"),
+        # Предмет: то же значение, другая область → адрес НЕ выдаётся.
+        #
+        # Утверждается 200 с пустой страницей, а не отказ: право на проект-2 у
+        # вызывающего есть, поэтому список обязан ответить — и ответить, что здесь
+        # такого адреса нет. Отказ на этом месте скрыл бы дефект: он выглядел бы как
+        # «не показали», не будучи доказательством, что не показали ИМЕННО эту строку.
+        Step(name="lbv-foreign-scope", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectCrossId}}&ipAddress={{leakIp}}",
              test_script=[
-                 "pm.test('адрес чужой подсети не выдан (404, не 200)', () => "
-                 "pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.eql(404));",
-                 *assert_grpc_code(5, "NOT_FOUND"),
+                 *assert_status(200),
+                 "pm.test('адрес чужого проекта не выдан', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id), "
+                 "JSON.stringify(pm.response.json())).to.not.include(pm.environment.get('addrId')));",
                  "pm.test('и ни id, ни IP не просочились в ответ', () => {",
                  "  const body = JSON.stringify(pm.response.json());",
                  "  pm.expect(body, 'id адреса').to.not.contain(pm.environment.get('addrId'));",
@@ -659,69 +879,6 @@ CASES.append(Case(
         retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="cleanup-sub2", method="DELETE", path="/vpc/v1/subnets/{{subId2}}",
-             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
-        poll_operation_until_done(),
-        retry_until_authorized(Step(name="cleanup-net2", method="DELETE", path="/vpc/v1/networks/{{netId2}}",
-             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
-        poll_operation_until_done(),
-        *_cleanup_sub_net(),
-    ],
-))
-
-# ADR-GBV-CONF-EXT-BY-VALUE-REFUSED — поиск по значению отвечает только про
-# внутренний адрес, и говорит это прямо.
-#
-# Область у запроса ровно одна — `subnet_id` (ветка `oneof scope`), и авторизация
-# метода читает именно её. Внешний адрес в подсети не размещается (в схеме
-# `external_ipv4` и `internal_ipv4` — РАЗНЫЕ nullable jsonb, а `Address` — oneof:
-# адрес бывает либо тем, либо другим), поэтому вопрос «какой внешний адрес имеет
-# значение X внутри подсети S» не имеет ответа НИ ПРИ КАКИХ данных.
-#
-# Раньше такой запрос доезжал до выборки, сужение по подсети не совпадало ни с
-# одной строкой, и вызывающему отвечали «не найдено» про адрес, который
-# существует, — ложное утверждение об отсутствии в ответ на запрос, который
-# контракт рекламирует. Теперь запрос отвергается синхронно и ПО ИМЕНИ ПОЛЯ.
-#
-# Утверждение адресовано именно этому: код 400, grpc-код 3, имя поля в теле. Все
-# три роняет возврат «не найдено» — то есть кейс краснеет ровно на том дефекте,
-# ради которого существует (проверено инъекцией). Кейс НЕ утверждает 404: 404
-# здесь и был дефектом.
-#
-# closes https://github.com/PRO-Robotech/kacho/issues/104 (первая половина —
-# ложное «не найдено» снято; полноценный поиск по внешнему значению требует
-# области, которой у RPC нет, и остаётся продуктовым решением)
-CASES.append(Case(
-    id="ADR-GBV-CONF-EXT-BY-VALUE-REFUSED",
-    title="GetByValue внешнего IP → 400 INVALID_ARGUMENT с именем поля (не ложное «не найдено»)",
-    classes=["CONF", "NEG"], priority="P1",
-    steps=[
-        *_make_net_sub("gbvx", "10.124.0.0/24"),
-        Step(name="create-ext", method="POST", path="/vpc/v1/addresses",
-             body={"projectId": "{{_suiteProjectId}}", "name": "adr-gbvx-{{runId}}",
-                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
-        poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-ext-ip", method="GET", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=[*assert_status(200),
-                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address", "extIp")])),
-        Step(name="gbv-ext-scoped", method="GET",
-             path="/vpc/v1/addresses:byValue?externalIpv4Address={{extIp}}&subnetId={{subId}}",
-             test_script=[
-                 *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('отказ называет поле, из-за которого он произошёл', () => "
-                 "pm.expect(JSON.stringify(pm.response.json())).to.contain('external_ipv4_address'));",
-                 # Отказ не превращается в утверждение об отсутствии: именно оно и
-                 # было дефектом. Пять слов текста дороже кода — их проверяем.
-                 "pm.test('и не утверждает, что адреса нет', () => "
-                 "pm.expect((pm.response.json().message || '').toLowerCase()).to.not.contain('not found'));",
-             ]),
-        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
-        poll_operation_until_done(),
-        *_cleanup_sub_net(),
     ],
 ))
 
@@ -859,6 +1016,92 @@ def _cleanup_pool():
                           "pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
     ]
 
+
+# `ADR-LBV-CRUD-EXT` стоит ЗДЕСЬ, а не рядом с остальными кейсами сужения по
+# значению: он зовёт `_make_v6_pool`/`_cleanup_pool`, а модуль исполняется
+# сверху вниз — выше по файлу этих имён ещё не существует.
+# ADR-LBV-CRUD-EXT — кейс ПЕРЕВЁРНУТ, и это главное содержательное следствие замены.
+#
+# Было: «поиск по значению внешнего адреса ОТВЕРГАЕТСЯ». Это было верно и правильно
+# для снятого метода: область у него была ровно одна — подсеть, а внешний адрес в
+# подсети не размещается (в схеме `external_ipv4` и `internal_ipv4` — разные nullable
+# jsonb, а `Address` — oneof). Вопрос «какой внешний адрес имеет значение X внутри
+# подсети S» не имел ответа ни при каких данных, и отвечать на него ложным «не
+# найдено» было дефектом (issues/104, первая половина).
+#
+# Стало: вопрос имеет ответ, потому что у замены другая область. `project_id` есть и
+# у внешнего адреса — он принадлежит проекту, просто не подсети. Ровно это и было
+# причиной снятия метода, и ровно это замена чинит: закрывается вторая половина
+# issues/104 — полноценный поиск по внешнему значению, которому у снятого RPC не
+# хватало области.
+#
+# Поэтому здесь стоит 200 и НАЙДЕННЫЙ адрес, а не 400. Кейс, оставленный
+# отрицательным, закреплял бы ограничение снятого метода поверх механизма, у
+# которого его нет, — то есть пинил бы дефект.
+#
+# Формы владения 3 и 4 (внешний в двух семействах); формы 1 и 2 — `ADR-LBV-CRUD-INT`.
+CASES.append(Case(
+    id="ADR-LBV-CRUD-EXT",
+    title="Сужение по значению находит ВНЕШНИЙ адрес в обоих семействах (v4 и v6)",
+    classes=["CRUD", "CONF"], priority="P1",
+    steps=[
+        # ── форма 3: внешний IPv4 (default-пул зоны) ──────────────────────────────
+        Step(name="cr-ext-v4", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvx4-{{runId}}",
+                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrX4")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-x4", method="GET", path="/vpc/v1/addresses/{{addrX4}}",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.externalIpv4Address && j.externalIpv4Address.address",
+                                              "ipX4")])),
+        retry_until_present(Step(name="lbv-ext-v4", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{ipX4}}",
+             test_script=[
+                 *assert_status(200),
+                 # Это и есть перевёрнутое утверждение: там, где снятый метод обязан
+                 # был отказать, замена обязана НАЙТИ.
+                 "pm.test('внешний IPv4 найден по значению (у снятого метода ответа не было)', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.include(pm.environment.get('addrX4')));",
+                 "pm.test('и ответ не утверждает, что адреса нет', () => "
+                 "pm.expect(JSON.stringify(pm.response.json()).toLowerCase()).to.not.contain('not found'));",
+             ]), "addrX4"),
+        # ── форма 4: внешний IPv6 (свой пул суиты в {{zoneD}}) ────────────────────
+        *_make_v6_pool("lbvx", zone="{{zoneD}}", cidr="2001:db8:1b7::/64"),
+        Step(name="cr-ext-v6", method="POST", path="/vpc/v1/addresses",
+             body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvx6-{{runId}}",
+                   "externalIpv6AddressSpec": {"zoneId": "{{zoneD}}"}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.addressId", "addrX6")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-x6", method="GET", path="/vpc/v1/addresses/{{addrX6}}",
+             test_script=[*assert_status(200),
+                          *save_from_response("j.externalIpv6Address && j.externalIpv6Address.address",
+                                              "ipX6")])),
+        retry_until_present(Step(name="lbv-ext-v6", method="GET",
+             path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&ipAddress={{ipX6}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('внешний IPv6 найден по значению', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.include(pm.environment.get('addrX6')));",
+                 # Отрицательное плечо между формами владения: запрос про внешний v6
+                 # не подмешивает внешний v4 того же проекта.
+                 "pm.test('и внешний v4 того же проекта не подмешан', () => "
+                 "pm.expect((pm.response.json().addresses || []).map(a => a.id))"
+                 ".to.not.include(pm.environment.get('addrX4')));",
+             ]), "addrX6"),
+        retry_until_authorized(Step(name="cleanup-x6", method="DELETE", path="/vpc/v1/addresses/{{addrX6}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
+        *_cleanup_pool(),
+        retry_until_authorized(Step(name="cleanup-x4", method="DELETE", path="/vpc/v1/addresses/{{addrX4}}",
+             test_script=[*save_from_response("j.id", "opId")]), retry_on=(403,)),
+        poll_operation_until_done(),
+    ],
+))
 
 CASES.append(Case(
     # Happy path для External IPv6 auto-allocation: AddressPool (v6 CIDR) →

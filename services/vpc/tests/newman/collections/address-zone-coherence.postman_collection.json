@@ -434,7 +434,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya790",
+          "name": "get-known-zone-rya805",
           "request": {
             "method": "GET",
             "header": [
@@ -486,7 +486,7 @@
           ]
         },
         {
-          "name": "cleanup-known-zone-rya791",
+          "name": "cleanup-known-zone-rya806",
           "request": {
             "method": "DELETE",
             "header": [
@@ -732,7 +732,7 @@
           ]
         },
         {
-          "name": "cleanup-anycast-rya792",
+          "name": "cleanup-anycast-rya807",
           "request": {
             "method": "DELETE",
             "header": [

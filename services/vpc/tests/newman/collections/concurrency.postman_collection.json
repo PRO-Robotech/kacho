@@ -457,7 +457,7 @@
           ]
         },
         {
-          "name": "list-and-cleanup-rya951",
+          "name": "list-and-cleanup-rya973",
           "request": {
             "method": "GET",
             "header": [
@@ -467,16 +467,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}/subnets?projectId={{_suiteProjectId}}",
+              "raw": "{{baseUrl}}/vpc/v1/subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "networks",
-                "{{netId}}",
-                "subnets?projectId={{_suiteProjectId}}"
+                "subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22"
               ]
             }
           },
@@ -606,7 +604,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya947",
+          "name": "cleanup-net-rya969",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1473,7 +1471,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya948",
+          "name": "cleanup-sub-rya970",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1593,7 +1591,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya949",
+          "name": "cleanup-net-rya971",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1963,7 +1961,7 @@
           ]
         },
         {
-          "name": "await-sg-authorized-rya952",
+          "name": "await-sg-authorized-rya974",
           "request": {
             "method": "GET",
             "header": [
@@ -2125,7 +2123,7 @@
           ]
         },
         {
-          "name": "fetch-sg-rules-after-occ-rya953",
+          "name": "fetch-sg-rules-after-occ-rya975",
           "request": {
             "method": "GET",
             "header": [
@@ -2225,7 +2223,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya954",
+          "name": "cleanup-sg-rya976",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2345,7 +2343,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya950",
+          "name": "cleanup-net-rya972",
           "request": {
             "method": "DELETE",
             "header": [

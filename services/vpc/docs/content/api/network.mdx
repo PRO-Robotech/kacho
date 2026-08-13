@@ -265,7 +265,7 @@ inline-создание default-`SecurityGroup` → запись событий 
 
 Удаляет сеть (hard-delete). Worker удаляет default-SG и саму сеть атомарно, в одной
 writer-транзакции вместе с outbox-событиями. **Непустая сеть**
-(есть Subnet / не-default SG / RouteTable) → `FAILED_PRECONDITION "network is not empty"`.
+(есть Subnet / не-default SG / RouteTable) → `FAILED_PRECONDITION "Network <id> is not empty (subnets: 2, route tables: 1)"` — отказ перечисляет мешающее по видам и числам.
 
 #### Пример запроса
 
@@ -497,7 +497,7 @@ cursor-пагинацией.
 ## Подводные камни
 
 :::caution Удаление непустой сети
-`Delete` отклоняется с `FAILED_PRECONDITION "network is not empty"`, пока в сети есть хотя
+`Delete` отклоняется с `FAILED_PRECONDITION "Network <id> is not empty (<виды и числа>)"`, пока в сети есть хотя
 бы один `Subnet`, не-default `SecurityGroup` или `RouteTable` (FK `ON DELETE RESTRICT`).
 Default-`SecurityGroup` при этом не считается препятствием — он удаляется вместе с сетью в
 одной транзакции. Корректный порядок зачистки — снизу вверх:

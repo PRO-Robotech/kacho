@@ -578,7 +578,7 @@ Boundary 1000 → ok; 1001 → `400`.
 - Проверка: `internal/apps/kacho/api/*/` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
 
 ### REQ-DEL-02 — Network: нельзя удалить с детьми (FK RESTRICT) [P0]
-`Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "network is not empty"` (FK RESTRICT).
+`Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "Network <id> is not empty (subnets: 1, route tables: 1, security groups: 1)"` (FK RESTRICT + sync-precheck; перечень по видам и числам).
 - Validated-by: `*-DEL-NEG-HAS-SUBNETS`, `*-DEL-NEG-HAS-ROUTE-TABLE`, `*-DEL-NEG-HAS-NONDEFAULT-SG`
 - Проверка: миграция — FK `ON DELETE RESTRICT` от children к networks; `serviceerr.MapRepoErr` `23503` → `ErrFailedPrecondition`.
 
@@ -614,7 +614,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 - Проверка: `internal/migrations/0001_initial.sql` (`network_interfaces.subnet_id … REFERENCES subnets(id) ON DELETE RESTRICT`); `internal/apps/kacho/api/subnet/` Delete (sync-precheck NIC); FK RESTRICT в worker'е как backstop.
 
 ### REQ-DEL-08 — Network: транзитивно нельзя удалить (Subnet с NIC) [P0]
-`Delete` Network, у которой Subnet содержит NIC → `FailedPrecondition "network is not empty"`
+`Delete` Network, у которой Subnet содержит NIC → `FailedPrecondition "Network <id> is not empty (subnets: 1)"`
 (NIC блокирует Subnet, Subnet блокирует Network). Удаление возможно только после зачистки снизу вверх.
 - Validated-by: `NET-DEL-NEG-HAS-SUBNET-WITH-NIC` (+ `*-DEL-NEG-HAS-SUBNETS` базовый)
 - Проверка: FK-цепочка `network_interfaces→subnets→networks` (все RESTRICT); `internal/apps/kacho/api/network/` doDelete.

@@ -267,12 +267,12 @@
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER` | AUTHZ,CONF | P0 | 1 (add) | GetByValue: адрес подсети-1 не находится, когда областью названа подсеть-2 (область реально сужает выборку) |
-| `*-GBV-CRUD-OK` | CRUD | P1 | 1 (add) | GetByValue internal IP со scope subnetId → 200 + сам Address (единственный достижимый положительный путь) |
-| `*-GBV-AUTHZ-UNSCOPED-DENY` | AUTHZ,NEG | P1 | 1 (add) | GetByValue без scope subnetId → 403 fail-closed, ни id ни IP не раскрыты |
-| `*-GBV-CONF-EXT-BY-VALUE-REFUSED` | CONF,NEG | P1 | 1 (add) | GetByValue внешнего IP → 400 INVALID_ARGUMENT с именем поля: область у запроса одна (подсеть), внешний адрес в подсети не размещается, поэтому вопрос отвергается прямо, а не ложным «не найдено» |
-| `*-GBV-NEG-NF` | AUTHZ,NEG | P0 | 1 (add) | GetByValue несуществующего IP → NotFound (security: не должно leak'ать существование) |
-| `*-GBV-VAL-INVALID-IP` | NEG,VAL | P2 | 1 (add) | GetByValue с garbage IP → 400 или 404 |
+| `*-LBV-CONF-NOLEAK-CROSS-PROJECT` | AUTHZ,CONF | P0 | 1 (add) | Сужение по значению: адрес проекта-1 не находится, когда областью назван проект-2 (область реально сужает выборку); плечо-контроль — в своём проекте находится |
+| `*-LBV-CRUD-INT` | CRUD | P1 | 1 (add) | Сужение по значению находит ВНУТРЕННИЙ адрес в обоих семействах (v4/v6) в одной двухстековой подсети; страница несёт только спрошенное значение |
+| `*-LBV-CRUD-EXT` | CRUD,CONF | P1 | 1 (add) | Сужение по значению находит ВНЕШНИЙ адрес в обоих семействах (v4/v6) — вопрос, на который у снятого `GetByValue` не было области (issues/104) |
+| `*-LBV-AUTHZ-UNSCOPED-DENY` | AUTHZ,NEG | P1 | 1 (add) | Сужение по значению без `projectId` → отвергнуто fail-closed, ни id ни IP не раскрыты; плечо-контроль — с областью тот же вопрос отвечается |
+| `*-LBV-NEG-NF` | AUTHZ,NEG | P0 | 1 (add) | Сужение по значению, которого ни у кого нет → 200 с пустой страницей (существование не раскрыто); плечо-контроль — своё значение находится |
+| `*-LBV-VAL-INVALID` | NEG,VAL | P2 | 1 (add) | Негодное значение фильтра списка → 400 INVALID_ARGUMENT с именем поля `ip_address`, НЕ пустая страница (ложное утверждение об отсутствии) |
 
 ### Lifecycle
 
@@ -325,8 +325,8 @@
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LBS-CRUD-OK` | CRUD | P2 | 1 (add) | ListBySubnet → массив (возможно пустой) |
-| `*-LBS-NEG-PARENT-NF` | NEG | P2 | 1 (add) | ListBySubnet несуществующего subnet → 200 или 404 |
+| `*-LSN-CRUD-OK` | CRUD | P2 | 1 (add) | Сужение списка по подсети: адрес этой подсети присутствует, внесубнетный (внешний) отсутствует — обе стороны сужения на одной странице |
+| `*-LSN-NEG-PARENT-NF` | NEG | P2 | 1 (add) | Сужение по подсети: well-formed-но-отсутствующая → 200 пусто; малформед → 400 `invalid subnet id`; плюс положительный контроль без сужения |
 
 ### ListOperations
 
@@ -339,32 +339,33 @@
 | `NET-LISTOPS-AFTER-DELETE-OK` | CRUD,STATE | P1 | 1 (net) | После Delete ресурса его `<Resource>.ListOperations(<id>)` все еще содержит историю операций (create+delete) — операции переживают удаление ресурса. Verifies REQ-OPS-04. |
 | `OP-LIST-AFTER-DELETE-OK` | CRUD,STATE | P1 | 1 (ope) | `OperationService.Get(opId)` по операции удаленного ресурса → 200 (запись операции не удаляется вместе с ресурсом). Verifies REQ-OPS-04. |
 
-### ListRouteTables
+### Сужение списка по network_id — таблицы маршрутизации
 
-*Network: RT*
-
-| Pattern | Classes | P | Apps | Что проверяет |
-|---|---|---|---|---|
-| `*-LRT-CRUD-EMPTY` | CRUD | P2 | 1 (net) | ListRouteTables → 200 + empty |
-| `*-LRT-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List route_tables в несуществующей network → 404 NotFound |
-
-### ListSecurityGroups
-
-*Network: SG*
+*Замена снятому `NetworkService.ListRouteTables` (второй путь к одному ответу).
+Case-id сохранены: у них тот же предмет — «дочерние ЭТОЙ сети», — сменился адрес.*
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LSG-CRUD-DEFAULT-SG` | CRUD | P1 | 1 (net) | ListSecurityGroups → default SG присутствует (inline create в doCreate) |
-| `*-LSG-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List security_groups в несуществующей network → 404 NotFound |
+| `*-LRT-CRUD-EMPTY` | CRUD | P2 | 1 (net) | список, суженный по `network_id` → ровно системная таблица сети, арендаторских нет |
+| `*-LRT-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница (не отказ, не утечка) |
 
-### ListSubnets
+### Сужение списка по network_id — группы правил
 
-*Network: subnets*
+*Замена снятому `NetworkService.ListSecurityGroups`.*
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LSUB-CRUD-EMPTY` | CRUD | P2 | 1 (net) | ListSubnets для пустой network → 200 + empty array |
-| `*-LSUB-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List subnets в несуществующей network → 404 NotFound |
+| `*-LSG-CRUD-DEFAULT-SG` | CRUD | P1 | 1 (net) | группа по умолчанию, названная самой сетью, в списке и помечена `defaultForNetwork` |
+| `*-LSG-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница |
+
+### Сужение списка по network_id — подсети
+
+*Замена снятому `NetworkService.ListSubnets`.*
+
+| Pattern | Classes | P | Apps | Что проверяет |
+|---|---|---|---|---|
+| `*-LSUB-CRUD-EMPTY` | CRUD | P2 | 1 (net) | список, суженный по `network_id`, для пустой сети → 200 + пустой массив |
+| `*-LSUB-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница |
 
 ### ListUsedAddresses
 

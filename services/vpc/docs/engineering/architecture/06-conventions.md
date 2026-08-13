@@ -64,7 +64,7 @@ Specific:
   Прежняя редакция называла здесь отдельный «повторяемый internal»-sentinel — имени с
   таким смыслом в дереве нет, и оно тут не воспроизводится: в обратных кавычках оно
   читалось бы как живая координата.
-- Dependency-chain `FailedPrecondition` (sync-prechecks): `Address.Delete` used-адреса → `"address ... is in use by network interface ...; detach it before deleting the address"`; `Subnet.Delete` с внутренними адресами (v4/v6) → `"Subnet has allocated internal addresses"`, с NIC'ами → `"subnet ... has N network interface(s) (...); delete them first"`; `Network.Delete` непустой → `"Network ... is not empty"`; CIDR-less подсеть при internal-v4-allocate → `"subnet ... has no IPv4 CIDR"`.
+- Dependency-chain `FailedPrecondition` (sync-prechecks): `Address.Delete` used-адреса → `"address ... is in use by network interface ...; detach it before deleting the address"`; `Subnet.Delete` с внутренними адресами (v4/v6) → `"Subnet has allocated internal addresses"`, с NIC'ами → `"subnet ... has N network interface(s) (...); delete them first"`; `Network.Delete` непустой → `"Network <id> is not empty (subnets: 2, route tables: 1)"` — отказ ПЕРЕЧИСЛЯЕТ мешающее по видам и числам (виды с нулём в перечень не попадают; идентификаторы дочерних не печатаются никогда); CIDR-less подсеть при internal-v4-allocate → `"subnet ... has no IPv4 CIDR"`.
 
 ## Hard delete
 
@@ -158,7 +158,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 Убирает 2 INSERT + 1 UPDATE из hot-path (≈ +30-40% write-throughput) — для load-тестов.
 В таком режиме newman-кейсы `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` ожидаемо падают.
 
-При Network.Delete worker сначала удаляет default SG (если есть), потом Network. Не-default SG / subnets / route tables препятствуют удалению (FK RESTRICT + sync-precheck) → клиент получает `FailedPrecondition "Network ... is not empty"`.
+При Network.Delete worker сначала удаляет default SG (если есть), потом Network. Не-default SG / subnets / route tables препятствуют удалению (FK RESTRICT + sync-precheck) → клиент получает `FailedPrecondition "Network <id> is not empty (<виды и числа>)"` — перечень мешающего, а не один факт непустоты.
 
 ## Admin boundary
 
