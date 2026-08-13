@@ -309,7 +309,19 @@ func awaitFailure(t *testing.T, or *repomock.OpsRepo, opID string) opFailure {
 	final := repomock.AwaitOpDone(t, or, opID)
 	require.NotNil(t, final.Error, "операция обязана завершиться отказом")
 	out := opFailure{
-		code: codes.Code(final.Error.GetCode()), //nolint:gosec // значение из закрытого набора кодов gRPC
+		// `google.rpc.Status.code` объявлен int32 и несёт значение из ЗАКРЫТОГО
+		// набора кодов gRPC (0..16), поэтому преобразование к codes.Code потери не
+		// даёт. Директивы подавления здесь НЕТ намеренно: в этом репозитории
+		// анализатор безопасности не гоняется ни одним инструментом, и подавление в
+		// диалекте линтера не подавляло бы ничего — гейт
+		// `TestNoInertGosecSuppressions` такую строку и ловит.
+		//
+		// Форма директивы в этом комментарии не воспроизводится, и это не
+		// осторожность: директива, действительная и на ОТДЕЛЬНОЙ строке, в
+		// комментарии неотличима от упоминания о ней, поэтому гейт обязан считать
+		// находкой и её. Тот же принцип, по которому мёртвая координата не
+		// цитируется в документе.
+		code: codes.Code(final.Error.GetCode()),
 		msg:  final.Error.GetMessage(),
 	}
 	for _, d := range final.Error.GetDetails() {
