@@ -53,7 +53,8 @@ func (r *SnapshotRepo) WithReadyOnCommit(v bool) *SnapshotRepo { r.readyOnCommit
 // volumes_source_snapshot_idx заведён миграцией 0003 именно под этот вывод.
 const snapshotSelectCols = `
 	s.id, s.project_id, s.created_at, s.updated_at, s.name, s.description, s.labels,
-	COALESCE(s.source_volume_id, ''), s.size_bytes, s.state, s.zone_id, s.status_reason,
+	COALESCE(s.source_volume_id, ''), COALESCE(s.source_snapshot_id, ''),
+	s.size_bytes, s.state, s.zone_id, s.status_reason,
 	COALESCE(s.binding_id, ''), COALESCE(s.backend_object, ''),
 	COALESCE(b.namespace_template, ''),
 	COALESCE((SELECT array_agg(sv.id ORDER BY sv.created_at, sv.id)
@@ -87,7 +88,7 @@ func scanSnapshot(row pgx.Row) (*domain.Snapshot, error) {
 	)
 	if err := row.Scan(
 		&s.ID, &s.ProjectID, &s.CreatedAt, &s.UpdatedAt, &s.Name, &s.Description, &labelsJSON,
-		&s.SourceVolumeID, &s.SizeBytes, &state, &s.ZoneID, &reason,
+		&s.SourceVolumeID, &s.SourceSnapshotID, &s.SizeBytes, &state, &s.ZoneID, &reason,
 		&bindingID, &backendObj, &nsTemplate, &seeded,
 	); err != nil {
 		return nil, err

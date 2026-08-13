@@ -49,6 +49,7 @@ import dedent from 'ts-dedent'
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.snapshotZoneId.short}</td></tr>
     <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>Снимок, с которого этот <b>скопирован</b> (заполняет <code>:copy</code>, на вход не принимается); immutable. Взаимоисключающий с <code>sourceVolumeId</code>: снимок либо снят с тома, либо скопирован со снимка</td></tr>
     <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер снимка в байтах (output-only)</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.snapshotStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
     <tr><td><code>statusReason</code></td><td><code>{TYPES.statusReason}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
@@ -240,7 +241,7 @@ import dedent from 'ts-dedent'
 
 Изменяемые поля: `name`, `description`, `labels`.
 
-Неизменяемые: `projectId`, `sourceVolumeId`, `zoneId`. Попытка изменить их через
+Неизменяемые: `projectId`, `sourceVolumeId`, `sourceSnapshotId`, `zoneId`. Попытка изменить их через
 `updateMask` → `INVALID_ARGUMENT` (`<field> is immutable after Snapshot.Create`).
 
 <Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'unauthenticated', 'permissionDenied', 'internal']} />

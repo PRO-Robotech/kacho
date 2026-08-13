@@ -49,6 +49,7 @@ func (r *ImageRepo) WithReadyOnCommit(v bool) *ImageRepo { r.readyOnCommit = v; 
 const imageSelectCols = `
 	i.id, i.project_id, i.created_at, i.updated_at, i.name, i.description, i.labels,
 	i.region_id, COALESCE(i.source_snapshot_id, ''), COALESCE(i.source_volume_id, ''),
+	COALESCE(i.source_image_id, ''),
 	i.size_bytes, i.min_disk_bytes, i.format, i.state, i.status_reason,
 	ARRAY(SELECT sv.id FROM volumes sv WHERE sv.source_image_id = i.id
 	       ORDER BY sv.created_at ASC, sv.id ASC)`
@@ -77,7 +78,7 @@ func scanImage(row pgx.Row, extra ...any) (*domain.Image, error) {
 	)
 	dest := []any{
 		&i.ID, &i.ProjectID, &i.CreatedAt, &i.UpdatedAt, &i.Name, &i.Description, &labelsJSON,
-		&i.RegionID, &i.SourceSnapshot, &i.SourceVolume, &i.SizeBytes, &i.MinDiskBytes, &format, &state,
+		&i.RegionID, &i.SourceSnapshot, &i.SourceVolume, &i.SourceImageID, &i.SizeBytes, &i.MinDiskBytes, &format, &state,
 		&reason, &seeded,
 	}
 	if err := row.Scan(append(dest, extra...)...); err != nil {

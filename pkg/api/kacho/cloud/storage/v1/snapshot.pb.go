@@ -122,6 +122,11 @@ type Snapshot struct {
 	// ID of the source volume used to create this snapshot. Same-DB reference to
 	// Volume. Immutable.
 	SourceVolumeId string `protobuf:"bytes,7,opt,name=source_volume_id,json=sourceVolumeId,proto3" json:"source_volume_id,omitempty"`
+	// ID of the snapshot this one was COPIED from, set by Copy. A copy's origin is
+	// the snapshot it was made from, mutually exclusive with source_volume_id: a
+	// snapshot is taken from a volume, or copied from another snapshot. Output-only
+	// (Create never accepts it), immutable, same-DB reference to Snapshot.
+	SourceSnapshotId string `protobuf:"bytes,14,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
 	// Size of the snapshot, specified in bytes.
 	SizeBytes int64 `protobuf:"varint,8,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	// Current status of the snapshot.
@@ -234,6 +239,13 @@ func (x *Snapshot) GetSourceVolumeId() string {
 	return ""
 }
 
+func (x *Snapshot) GetSourceSnapshotId() string {
+	if x != nil {
+		return x.SourceSnapshotId
+	}
+	return ""
+}
+
 func (x *Snapshot) GetSizeBytes() int64 {
 	if x != nil {
 		return x.SizeBytes
@@ -266,7 +278,7 @@ var File_kacho_cloud_storage_v1_snapshot_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/storage/v1/snapshot.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\xe3\x05\n" +
+	"%kacho/cloud/storage/v1/snapshot.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\x91\x06\n" +
 	"\bSnapshot\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -280,7 +292,8 @@ const file_kacho_cloud_storage_v1_snapshot_proto_rawDesc = "" +
 	"\x06labels\x18\x06 \x03(\v2,.kacho.cloud.storage.v1.Snapshot.LabelsEntryR\x06labels\x12\x17\n" +
 	"\azone_id\x18\n" +
 	" \x01(\tR\x06zoneId\x12(\n" +
-	"\x10source_volume_id\x18\a \x01(\tR\x0esourceVolumeId\x12\x1d\n" +
+	"\x10source_volume_id\x18\a \x01(\tR\x0esourceVolumeId\x12,\n" +
+	"\x12source_snapshot_id\x18\x0e \x01(\tR\x10sourceSnapshotId\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\b \x01(\x03R\tsizeBytes\x12?\n" +
 	"\x06status\x18\t \x01(\x0e2'.kacho.cloud.storage.v1.Snapshot.StatusR\x06status\x12I\n" +

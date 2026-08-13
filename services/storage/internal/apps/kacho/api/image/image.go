@@ -711,12 +711,11 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 		Description: in.Description,
 		Labels:      in.Labels,
 		Format:      src.Format,
-		// Происхождение НАСЛЕДУЕТСЯ: копия пришла из того же источника, что и
-		// оригинал, транзитивно. Домен требует ровно один источник, и без этого
-		// копия отвергалась как образ без источника — то есть глагол не работал
-		// ни разу с момента заведения. Ровно та же беда была у копии снимка.
-		SourceSnapshot: src.SourceSnapshot,
-		SourceVolume:   src.SourceVolume,
+		// Происхождение копии — НЕПОСРЕДСТВЕННЫЙ РОДИТЕЛЬ (см. тот же разбор в
+		// копии снимка): вставка копии с самого начала писала `source_image_id`,
+		// а наследование источника источника расходилось с этой строкой и
+		// утверждало о копии неправду.
+		SourceImageID: src.ID,
 	}
 	copyItem.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, copyItem.ID)
 

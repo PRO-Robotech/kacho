@@ -51,6 +51,7 @@ import dedent from 'ts-dedent'
     <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}</td></tr>
     <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
     <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
+    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>Образ, с которого этот <b>скопирован</b> (заполняет <code>:copy</code>, на вход не принимается); immutable. Третий вид происхождения рядом со снимком и томом — взаимоисключающий с ними</td></tr>
     <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер образа в байтах (output-only); у зарегистрированного образа приходит от регистрации</td></tr>
     <tr><td><code>minDiskBytes</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.minDiskBytes.short}</td></tr>
     <tr><td><code>format</code></td><td><code>{TYPES.imageFormat}</code></td><td>{DICTIONARY.format.short}</td></tr>
@@ -246,7 +247,7 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 
 Изменяемые поля: `name`, `description`, `labels`.
 
-Неизменяемые: `projectId`, `regionId`, `sourceSnapshotId`, `sourceVolumeId`. Попытка
+Неизменяемые: `projectId`, `regionId`, `sourceSnapshotId`, `sourceVolumeId`, `sourceImageId`. Попытка
 изменить их через `updateMask` → `INVALID_ARGUMENT`
 (`<field> is immutable after Image.Create`).
 

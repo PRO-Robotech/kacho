@@ -580,6 +580,11 @@ CASES.append(Case(
                           "pm.test('копия лежит в ЦЕЛЕВОЙ зоне', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneAltId')));",
                           "pm.test('копия несёт своё имя, а не имя источника', () => pm.expect(j.name).to.match(/^snap-copy-/));",
                           "pm.test('projectId копии — проект источника', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
+                          # Происхождение копии не проверял никто, а столбец родителя вставка
+                          # писала с самого начала — просто не выходил наружу и не признавался
+                          # доменом, отчего глагол не работал ни разу.
+                          "pm.test('копия помнит родителя-снимок', () => pm.expect(String(j.sourceSnapshotId)).to.eql(String(pm.environment.get('snapshotId'))));",
+                          "pm.test('происхождение ровно одно: том не заполнен', () => pm.expect(String(j.sourceVolumeId || '')).to.eql(''));",
                           "pm.test('sizeBytes унаследован от источника', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_VOL_SIZE) + "'));"])),
         Step(name="verify-source-intact", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
              test_script=[*assert_status(200),

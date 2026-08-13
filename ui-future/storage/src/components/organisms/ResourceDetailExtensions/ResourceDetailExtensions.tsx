@@ -203,19 +203,39 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   // Снимок: исходный том / собственный якорь зоны / размер / статус.
   snapshots: {
     overviewExtra: ({ data }) => [
-      {
-        label: "Исходный том",
-        value: getByPath<string>(data, "source_volume_id") ? (
-          <RefNameLink
-            specId="volumes"
-            refId={getByPath<string>(data, "source_volume_id")}
-            projectId={getByPath<string>(data, "project_id")}
-            maxChars={32}
-          />
-        ) : (
-          dash
-        ),
-      },
+      // Происхождение ровно одно: том (снятие) либо снимок (копирование).
+      // Строка называет ВИД происхождения, а не «источник вообще»: у копии
+      // родитель — снимок, и подпись «Исходный том» на нём была бы неправдой.
+      // До появления поля контракта карточка копии показывала здесь прочерк.
+      ...(getByPath<string>(data, "source_snapshot_id")
+        ? [
+            {
+              label: "Скопирован со снимка",
+              value: (
+                <RefNameLink
+                  specId="snapshots"
+                  refId={getByPath<string>(data, "source_snapshot_id")}
+                  projectId={getByPath<string>(data, "project_id")}
+                  maxChars={32}
+                />
+              ),
+            },
+          ]
+        : [
+            {
+              label: "Исходный том",
+              value: getByPath<string>(data, "source_volume_id") ? (
+                <RefNameLink
+                  specId="volumes"
+                  refId={getByPath<string>(data, "source_volume_id")}
+                  projectId={getByPath<string>(data, "project_id")}
+                  maxChars={32}
+                />
+              ) : (
+                dash
+              ),
+            },
+          ]),
       // Собственный якорь снимка, а не «зона исходного тома»: ссылка на источник
       // обнуляется при его удалении (снимок обязан пережить свой том), и зона,
       // добираемая через источник, однажды стала бы пустой строкой.
@@ -246,10 +266,17 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       const snap = getByPath<string>(data, "source_snapshot_id");
       const vol = getByPath<string>(data, "source_volume_id");
       const projectId = getByPath<string>(data, "project_id");
+      // Происхождений ТРИ вида, и ровно одно из них: снимок либо том (снятие),
+      // либо образ (копирование). Третий вид добавлен вместе с полем контракта:
+      // до него карточка КОПИИ показывала прочерк при живом происхождении —
+      // родитель был записан в базе, но наружу не выходил.
+      const parent = getByPath<string>(data, "source_image_id");
       const sourceValue = snap ? (
         <RefNameLink specId="snapshots" refId={snap} projectId={projectId} maxChars={32} />
       ) : vol ? (
         <RefNameLink specId="volumes" refId={vol} projectId={projectId} maxChars={32} />
+      ) : parent ? (
+        <RefNameLink specId="images" refId={parent} projectId={projectId} maxChars={32} />
       ) : (
         dash
       );

@@ -14697,7 +14697,7 @@
       ]
     },
     {
-      "name": "IMG-COPY-CRUD-OK — Copy готового образа в ДРУГОЙ регион → Operation(новый img) → копия в целевом регионе, своим id и своим именем, sourceImageId==источник; источник не изменился",
+      "name": "IMG-COPY-CRUD-OK — Copy готового образа в ДРУГОЙ регион → Operation(новый img) → копия в целевом регионе, своим id и своим именем, sourceImageId==источник (родитель копии, происхождение ровно одно); источник не изменился",
       "description": "class:CRUD | class:CONF | class:STATE | priority:P1",
       "item": [
         {
@@ -15690,6 +15690,7 @@
                   "const j = pm.response.json();",
                   "pm.test('копия лежит в ЦЕЛЕВОМ регионе', () => pm.expect(String(j.regionId)).to.eql('qa-cpy-' + pm.environment.get('runId')));",
                   "pm.test('копия помнит источник', () => pm.expect(String(j.sourceImageId)).to.eql(String(pm.environment.get('imageId'))));",
+                  "pm.test('происхождение ровно одно: снятие не заполнено', () => { pm.expect(String(j.sourceVolumeId || '')).to.eql(''); pm.expect(String(j.sourceSnapshotId || '')).to.eql(''); });",
                   "pm.test('копия несёт своё имя', () => pm.expect(j.name).to.match(/^img-copy-/));",
                   "pm.test('placementType REGIONAL и у копии', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                   "pm.test('sizeBytes унаследован от источника', () => pm.expect(String(j.sizeBytes)).to.eql('10737418240'));"

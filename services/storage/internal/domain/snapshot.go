@@ -72,10 +72,16 @@ type Snapshot struct {
 	Description    string
 	Labels         map[string]string
 	SourceVolumeID string
-	SizeBytes      int64
-	Status         SnapshotStatus
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+
+	// SourceSnapshotID — снимок, с которого этот СКОПИРОВАН. Отличается от
+	// источника снятия (том): копия переносит снимок между зонами, и родителем
+	// у неё выступает снимок, а не том. Выставляет Copy, вызывающий — никогда.
+	SourceSnapshotID string
+
+	SizeBytes int64
+	Status    SnapshotStatus
+	CreatedAt time.Time
+	UpdatedAt time.Time
 
 	// ZoneID — СОБСТВЕННЫЙ якорь размещения снимка.
 	//
@@ -103,7 +109,18 @@ func (s Snapshot) Validate() error {
 	if s.ProjectID == "" {
 		return fmt.Errorf("snapshot project_id is required")
 	}
-	if s.SourceVolumeID == "" {
+	// Происхождение — РОВНО ОДНО: том (снятие) либо снимок (копирование).
+	//
+	// Второй вид добавлен потому, что без него Copy не работала ни разу: строка
+	// копии несёт родителем снимок, тома у неё нет, и проверка отвергала её как
+	// «том обязателен» — при том что столбец родителя записывался вставкой копии
+	// с самого начала и просто не признавался происхождением.
+	hasVol := s.SourceVolumeID != ""
+	hasSnap := s.SourceSnapshotID != ""
+	switch {
+	case hasVol && hasSnap:
+		return fmt.Errorf("snapshot source_volume_id and source_snapshot_id are mutually exclusive")
+	case !hasVol && !hasSnap:
 		return fmt.Errorf("snapshot source_volume_id is required")
 	}
 	if err := SnapshotName(s.Name).Validate(); err != nil {

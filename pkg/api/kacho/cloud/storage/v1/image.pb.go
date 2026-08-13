@@ -227,6 +227,16 @@ type Image struct {
 	// (ON DELETE SET NULL, provenance). Mutually exclusive with source_snapshot_id.
 	// Immutable.
 	SourceVolumeId string `protobuf:"bytes,11,opt,name=source_volume_id,json=sourceVolumeId,proto3" json:"source_volume_id,omitempty"`
+	// ID of the image this one was COPIED from, set by Copy. A copy's origin is the
+	// image it was made from — a third origin kind next to snapshot and volume, and
+	// mutually exclusive with both: an image is created from a snapshot or a volume,
+	// or copied from another image. Output-only (Create never accepts it), immutable,
+	// same-DB FK to Image (ON DELETE SET NULL, provenance).
+	//
+	// The column has always been written by Copy; until it was surfaced here the
+	// tenant had no way to tell where a copy came from, and the domain rule did not
+	// recognise it as an origin at all — which made Copy unusable.
+	SourceImageId string `protobuf:"bytes,18,opt,name=source_image_id,json=sourceImageId,proto3" json:"source_image_id,omitempty"`
 	// Virtual disk size of the image, in bytes. Output-only (derived from the source).
 	//
 	// У зарегистрированного образа (InternalImageService.Register) источника внутри
@@ -372,6 +382,13 @@ func (x *Image) GetSourceVolumeId() string {
 	return ""
 }
 
+func (x *Image) GetSourceImageId() string {
+	if x != nil {
+		return x.SourceImageId
+	}
+	return ""
+}
+
 func (x *Image) GetSizeBytes() int64 {
 	if x != nil {
 		return x.SizeBytes
@@ -418,7 +435,7 @@ var File_kacho_cloud_storage_v1_image_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_image_proto_rawDesc = "" +
 	"\n" +
-	"\"kacho/cloud/storage/v1/image.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\xb3\b\n" +
+	"\"kacho/cloud/storage/v1/image.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\xdb\b\n" +
 	"\x05Image\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -434,7 +451,8 @@ const file_kacho_cloud_storage_v1_image_proto_rawDesc = "" +
 	"\x0eplacement_type\x18\t \x01(\x0e2+.kacho.cloud.storage.v1.Image.PlacementTypeR\rplacementType\x12,\n" +
 	"\x12source_snapshot_id\x18\n" +
 	" \x01(\tR\x10sourceSnapshotId\x12(\n" +
-	"\x10source_volume_id\x18\v \x01(\tR\x0esourceVolumeId\x12\x1d\n" +
+	"\x10source_volume_id\x18\v \x01(\tR\x0esourceVolumeId\x12&\n" +
+	"\x0fsource_image_id\x18\x12 \x01(\tR\rsourceImageId\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\f \x01(\x03R\tsizeBytes\x12$\n" +
 	"\x0emin_disk_bytes\x18\r \x01(\x03R\fminDiskBytes\x12<\n" +

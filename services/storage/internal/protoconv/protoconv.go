@@ -127,10 +127,12 @@ func Snapshot(s *domain.Snapshot) *storagev1.Snapshot {
 		UpdatedAt:      ts(s.UpdatedAt),
 		ZoneId:         s.ZoneID,
 		SourceVolumeId: s.SourceVolumeID,
-		SizeBytes:      s.SizeBytes,
-		Status:         storagev1.Snapshot_Status(s.Status),
-		StatusReason:   statusReason(s.StatusReason),
-		UsedBy:         seededBy(s.SeededVolumeIDs),
+		// Родитель копии: у снимка, снятого с тома, он пуст — происхождение ровно одно.
+		SourceSnapshotId: s.SourceSnapshotID,
+		SizeBytes:        s.SizeBytes,
+		Status:           storagev1.Snapshot_Status(s.Status),
+		StatusReason:     statusReason(s.StatusReason),
+		UsedBy:           seededBy(s.SeededVolumeIDs),
 	}
 }
 
@@ -174,12 +176,14 @@ func Image(i *domain.Image) *storagev1.Image {
 		PlacementType:    storagev1.Image_PlacementType(i.Placement),
 		SourceSnapshotId: i.SourceSnapshot,
 		SourceVolumeId:   i.SourceVolume,
-		SizeBytes:        i.SizeBytes,
-		MinDiskBytes:     i.MinDiskBytes,
-		Format:           storagev1.Image_Format(i.Format),
-		Status:           storagev1.Image_Status(i.Status),
-		StatusReason:     statusReason(i.StatusReason),
-		UsedBy:           seededBy(i.SeededVolumeIDs),
+		// Родитель копии: у образа, снятого со снимка либо тома, он пуст.
+		SourceImageId: i.SourceImageID,
+		SizeBytes:     i.SizeBytes,
+		MinDiskBytes:  i.MinDiskBytes,
+		Format:        storagev1.Image_Format(i.Format),
+		Status:        storagev1.Image_Status(i.Status),
+		StatusReason:  statusReason(i.StatusReason),
+		UsedBy:        seededBy(i.SeededVolumeIDs),
 	}
 }
 

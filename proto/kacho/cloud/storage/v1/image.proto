@@ -100,6 +100,17 @@ message Image {
   // Immutable.
   string source_volume_id = 11;
 
+  // ID of the image this one was COPIED from, set by Copy. A copy's origin is the
+  // image it was made from — a third origin kind next to snapshot and volume, and
+  // mutually exclusive with both: an image is created from a snapshot or a volume,
+  // or copied from another image. Output-only (Create never accepts it), immutable,
+  // same-DB FK to Image (ON DELETE SET NULL, provenance).
+  //
+  // The column has always been written by Copy; until it was surfaced here the
+  // tenant had no way to tell where a copy came from, and the domain rule did not
+  // recognise it as an origin at all — which made Copy unusable.
+  string source_image_id = 18;
+
   // Virtual disk size of the image, in bytes. Output-only (derived from the source).
   //
   // У зарегистрированного образа (InternalImageService.Register) источника внутри

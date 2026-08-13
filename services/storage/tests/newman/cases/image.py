@@ -1139,7 +1139,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-COPY-CRUD-OK",
-    title="Copy готового образа в ДРУГОЙ регион → Operation(новый img) → копия в целевом регионе, своим id и своим именем, sourceImageId==источник; источник не изменился",
+    title="Copy готового образа в ДРУГОЙ регион → Operation(новый img) → копия в целевом регионе, своим id и своим именем, sourceImageId==источник (родитель копии, происхождение ровно одно); источник не изменился",
     classes=["CRUD", "CONF", "STATE"], priority="P1",
     # verifies STOR-1-20 (regional placement), STOR-1-24
     steps=[
@@ -1170,7 +1170,12 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('копия лежит в ЦЕЛЕВОМ регионе', () => pm.expect(String(j.regionId)).to.eql('qa-cpy-' + pm.environment.get('runId')));",
+                          # Копия называет НЕПОСРЕДСТВЕННОГО РОДИТЕЛЯ. Поле выставлено контрактом
+                          # вместе с этим изменением: вставка копии писала его с самого начала,
+                          # но проекция чтения его не выбирала, а домен не признавал третьим
+                          # видом происхождения — оттого глагол не работал ни разу.
                           "pm.test('копия помнит источник', () => pm.expect(String(j.sourceImageId)).to.eql(String(pm.environment.get('imageId'))));",
+                          "pm.test('происхождение ровно одно: снятие не заполнено', () => { pm.expect(String(j.sourceVolumeId || '')).to.eql(''); pm.expect(String(j.sourceSnapshotId || '')).to.eql(''); });",
                           "pm.test('копия несёт своё имя', () => pm.expect(j.name).to.match(/^img-copy-/));",
                           "pm.test('placementType REGIONAL и у копии', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                           "pm.test('sizeBytes унаследован от источника', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_SRC_SIZE) + "'));"])),

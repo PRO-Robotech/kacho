@@ -73,6 +73,12 @@ message Snapshot {
   // Volume. Immutable.
   string source_volume_id = 7;
 
+  // ID of the snapshot this one was COPIED from, set by Copy. A copy's origin is
+  // the snapshot it was made from, mutually exclusive with source_volume_id: a
+  // snapshot is taken from a volume, or copied from another snapshot. Output-only
+  // (Create never accepts it), immutable, same-DB reference to Snapshot.
+  string source_snapshot_id = 14;
+
   // Size of the snapshot, specified in bytes.
   int64 size_bytes = 8;
 
