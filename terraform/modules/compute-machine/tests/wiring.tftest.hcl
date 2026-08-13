@@ -37,7 +37,7 @@ variables {
   }
 }
 
-run "каждая машина получает зону набора и свой источник загрузки" {
+run "each_machine_takes_the_set_zone_and_its_own_boot_source" {
   command = plan
 
   assert {
@@ -75,7 +75,7 @@ run "каждая машина получает зону набора и сво�
   }
 }
 
-run "неизвестный источник загрузки отвергается входом" {
+run "unknown_boot_source_is_rejected_by_input_validation" {
   command = plan
 
   variables {
