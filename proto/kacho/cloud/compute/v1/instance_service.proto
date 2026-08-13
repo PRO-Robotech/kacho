@@ -8,7 +8,6 @@ package kacho.cloud.compute.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/field_mask.proto";
-import "kacho/cloud/access/access.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
