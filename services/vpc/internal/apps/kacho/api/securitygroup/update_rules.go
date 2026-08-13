@@ -49,10 +49,12 @@ type UpdateRulesUseCase struct {
 // NewUpdateRulesUseCase создает UpdateRulesUseCase.
 //
 // sgReader резолвит network_id редактируемой SG + каждой target-SG для
-// same-network-валидации SG-target-правил. Composition-root инжектит
-// `cqrsadapter.SecurityGroupAdapter`; nil = валидация пропускается.
+// same-network-валидации SG-target-правил. Composition-root передаёт
+// `cqrsadapter.SecurityGroupAdapter`; **nil означает «читать через уже
+// обязательный repo», а НЕ «валидацию пропустить»** — выключенного состояния у
+// проверки больше нет (см. `sgTargetReader`).
 func NewUpdateRulesUseCase(r Repo, opsRepo operations.Repo, sgReader SecurityGroupReader) *UpdateRulesUseCase {
-	return &UpdateRulesUseCase{repo: r, opsRepo: opsRepo, sgReader: sgReader}
+	return &UpdateRulesUseCase{repo: r, opsRepo: opsRepo, sgReader: sgTargetReader(sgReader, r)}
 }
 
 // Execute — sync-валидация правил + Operation + async repo.UpdateRules.
@@ -124,9 +126,6 @@ func (u *UpdateRulesUseCase) Execute(ctx context.Context, in UpdateRulesInput) (
 // редактируемая SG не найдена — НЕ ошибка здесь: основной flow вернет NotFound
 // из repo.UpdateRules в worker'е.
 func (u *UpdateRulesUseCase) validateAdditionsSameNetwork(ctx context.Context, sgID string, additions []domain.SecurityGroupRule, fieldFor func(i int) string) error {
-	if u.sgReader == nil {
-		return nil
-	}
 	hasTarget := false
 	for _, r := range additions {
 		if r.SecurityGroupID != "" {

@@ -141,11 +141,30 @@ func validateSGRuleProtocol(field, name string, number int64) error {
 	return nil
 }
 
-// Тексты ошибок для same-network-валидации SG-target-правил.
-const (
-	errRuleCrossNetwork  = "security group rule can only reference a security group in the same network"
-	errRuleTargetMissing = "security group rule references a non-existent security group"
-)
+// errRuleTargetUnusableFmt — ЕДИНСТВЕННЫЙ текст на оба исхода резолва цели
+// правила: цели нет вовсе и цель есть, но в чужой сети. Форма побайтово равна
+// настоящему промаху SecurityGroup, который производит слой хранения
+// (`repo/helpers`.`WrapSGErr`) и который же отдаёт край, скрывая отказ в доступе
+// (`gateway/internal/middleware`, таблица hide-existence).
+//
+// Два РАЗНЫХ текста здесь были существование-оракулом: по тексту отказа
+// вызывающий устанавливал, существует ли группа, которой он не владеет
+// («references a non-existent security group» ⇒ такой нет; «in the same
+// network» ⇒ есть, просто чужая). Скрытие обязано быть неотличимо от промаха
+// дословно, иначе оно не скрывает ничего (`security.md` §Hardening-инварианты,
+// п.6). Поэтому исход у обеих ветвей ОДИН и возвращается из одного места:
+// два литерала разошлись бы молча, одна точка возврата — нет.
+//
+// Что вызывающий всё же различает машинно — ПОЛЕ отказа
+// (`BadRequest.field_violations[].field`: `rule_specs[0].security_group_id` /
+// `addition_rule_specs[0].security_group_id`): оно называет его собственный
+// ввод и о существовании чужого объекта не сообщает ничего.
+//
+// Правка этого текста — правка контракта: он обязан оставаться равным форме
+// производителя, и это держит проба
+// `TestSGRuleTarget_MissingAndCrossNetworkAreIndistinguishable`, которая берёт
+// форму из `repo/helpers/sg.go` по AST, а не из литерала в тесте.
+const errRuleTargetUnusableFmt = "Security group SecurityGroup.Id(value=%s) not found"
 
 // validateSGTargetSameNetwork проверяет, что каждое SG-target-правило (`oneof
 // target = security_group_id`) ссылается на SecurityGroup из той же Network,
@@ -156,11 +175,18 @@ const (
 // `fieldFor(i)` строит имя поля для BadRequest.field_violations (напр.
 // `rule_specs[0].security_group_id` / `addition_rule_specs[0].security_group_id`).
 //
-// CIDR / predefined правила не затрагиваются (нет `SecurityGroupID`). Cross-network
-// → InvalidArgument; несуществующая target-SG (`repo.ErrNotFound`) →
-// InvalidArgument (единый класс с cross-network) — НЕ NotFound, НЕ wrapSGErr.
-// Проверка не TOCTOU-prone (network_id immutable); удаление target-SG —
-// грациозный dangling-ref либо negative InvalidArgument.
+// CIDR / predefined правила не затрагиваются (нет `SecurityGroupID`). Оба исхода
+// резолва цели — «цели нет» и «цель в чужой сети» — дают ОДИН код
+// (`InvalidArgument`, не NotFound и не wrapSGErr) и ОДИН текст
+// (`errRuleTargetUnusableFmt`): различимый текст сообщал бы вызывающему о
+// существовании чужого объекта. Проверка не TOCTOU-prone (network_id immutable);
+// удаление target-SG — грациозный dangling-ref либо этот же отказ на следующей
+// мутации.
+//
+// `reader` — ОБЯЗАТЕЛЕН и не может быть nil: ветки «порт не передан → ок» здесь
+// не существует, потому что она означала бы «защита не настроена = разрешено»,
+// неотличимое от «разрешила». Порт выводится из уже обязательного `Repo`
+// (`sgTargetReader`), поэтому у вызывающего нет способа его не иметь.
 func validateSGTargetSameNetwork(
 	ctx context.Context,
 	reader SecurityGroupReader,
@@ -168,9 +194,6 @@ func validateSGTargetSameNetwork(
 	rules []domain.SecurityGroupRule,
 	fieldFor func(i int) string,
 ) error {
-	if reader == nil {
-		return nil
-	}
 	// Цели резолвятся ОДНИМ запросом на весь набор и с дедупликацией: длину
 	// набора выбирает вызывающий, а одна и та же цель в тысяче правил — это
 	// одна строка, а не тысяча обращений к БД. Порядок сообщений сохраняется:
@@ -199,12 +222,14 @@ func validateSGTargetSameNetwork(
 		if r.SecurityGroupID == "" {
 			continue
 		}
+		// Одно условие и одна точка возврата на оба исхода — «цели нет» и «цель
+		// в чужой сети». Разводить их по двум return'ам значило бы держать два
+		// литерала, которые обязаны совпадать: совпадение, за которым никто не
+		// следит, перестаёт быть совпадением на первой же правке.
 		target, ok := found[r.SecurityGroupID]
-		if !ok {
-			return serviceerr.InvalidArg(fieldFor(i), errRuleTargetMissing)
-		}
-		if target.NetworkID != ownerNetworkID {
-			return serviceerr.InvalidArg(fieldFor(i), errRuleCrossNetwork)
+		if !ok || target.NetworkID != ownerNetworkID {
+			return serviceerr.InvalidArg(fieldFor(i),
+				fmt.Sprintf(errRuleTargetUnusableFmt, r.SecurityGroupID))
 		}
 	}
 	return nil

@@ -49,19 +49,25 @@ func (u *CreateSecurityGroupUseCase) WithRegistrar(r fgaregister.Registrar) *Cre
 	return u
 }
 
-// WithSGReader подключает порт SecurityGroupReader для проверки SG-target-правил
-// против сети, которой принадлежит создаваемая SG. Composition-root инжектит его
-// (cqrsadapter.SecurityGroupAdapter); nil = проверка пропускается.
+// WithSGReader уточняет ИСТОЧНИК чтения групп для проверки SG-target-правил
+// (composition-root передаёт `cqrsadapter.SecurityGroupAdapter`). Проверку он НЕ
+// включает и не выключает: порт уже выведен конструктором из обязательного
+// `Repo`, а состояния «порт не передан ⇒ проверка пропускается» у пакета больше
+// нет — см. `sgTargetReader`.
 func (u *CreateSecurityGroupUseCase) WithSGReader(r SecurityGroupReader) *CreateSecurityGroupUseCase {
-	u.sgReader = r
+	u.sgReader = sgTargetReader(r, u.repo)
 	return u
 }
 
 // NewCreateSecurityGroupUseCase создает CreateSecurityGroupUseCase.
+//
+// Порт чтения групп выводится здесь же и потому никогда не пуст: проверка
+// «цель правила лежит в моей сети» не имеет выключенного состояния.
 func NewCreateSecurityGroupUseCase(r Repo, networkReader NetworkReader, projectClient ProjectClient, opsRepo operations.Repo) *CreateSecurityGroupUseCase {
 	return &CreateSecurityGroupUseCase{
 		repo:          r,
 		networkReader: networkReader,
+		sgReader:      sgTargetReader(nil, r),
 		projectClient: projectClient,
 		opsRepo:       opsRepo,
 	}
@@ -109,20 +115,21 @@ func (u *CreateSecurityGroupUseCase) Execute(ctx context.Context, sg domain.Secu
 	// возвращается через `operation.error` из async `doCreate`. Sync-проверки
 	// network-existence/uniqueness (по DB-state в той же сервис-БД) остаются —
 	// они race-free относительно peer-сервисов.
-	if u.networkReader != nil {
-		parentNet, err := u.networkReader.Get(ctx, sg.NetworkID)
-		if err != nil {
-			if errors.Is(err, repo.ErrNotFound) {
-				return nil, status.Errorf(codes.NotFound, "Network %s not found", sg.NetworkID)
-			}
-			return nil, serviceerr.MapRepoErr(err)
-		}
-		// BOLA-guard: parent Network обязана принадлежать проекту вызывающего —
-		// иначе SG цеплялась бы к чужой сети (cross-project reference). Ответ —
-		// тот же NotFound, что для несуществующей сети (без existence-oracle).
-		if parentNet.ProjectID != sg.ProjectID {
+	// `networkReader` — обязательный порт (позиционный параметр конструктора), и
+	// ветки «порт не передан ⇒ пропустить» здесь нет намеренно: она означала бы
+	// «BOLA-guard не настроен = разрешено», неотличимое от «guard разрешил».
+	parentNet, err := u.networkReader.Get(ctx, sg.NetworkID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "Network %s not found", sg.NetworkID)
 		}
+		return nil, serviceerr.MapRepoErr(err)
+	}
+	// BOLA-guard: parent Network обязана принадлежать проекту вызывающего —
+	// иначе SG цеплялась бы к чужой сети (cross-project reference). Ответ —
+	// тот же NotFound, что для несуществующей сети (без existence-oracle).
+	if parentNet.ProjectID != sg.ProjectID {
+		return nil, status.Errorf(codes.NotFound, "Network %s not found", sg.NetworkID)
 	}
 
 	// Same-network-валидация SG-target-правил: каждое правило с
@@ -183,16 +190,14 @@ func (u *CreateSecurityGroupUseCase) doCreate(ctx context.Context, sgID string, 
 	if !exists {
 		return nil, status.Errorf(codes.NotFound, "Project %s not found", sg.ProjectID)
 	}
-	if u.networkReader != nil {
-		parentNet, gerr := u.networkReader.Get(ctx, sg.NetworkID)
-		if gerr != nil {
-			return nil, serviceerr.MapRepoErr(gerr)
-		}
-		// BOLA-guard (async backstop): parent Network обязана принадлежать проекту
-		// вызывающего — тот же NotFound, что для отсутствующей сети (без oracle).
-		if parentNet.ProjectID != sg.ProjectID {
-			return nil, status.Errorf(codes.NotFound, "Network %s not found", sg.NetworkID)
-		}
+	parentNet, gerr := u.networkReader.Get(ctx, sg.NetworkID)
+	if gerr != nil {
+		return nil, serviceerr.MapRepoErr(gerr)
+	}
+	// BOLA-guard (async backstop): parent Network обязана принадлежать проекту
+	// вызывающего — тот же NotFound, что для отсутствующей сети (без oracle).
+	if parentNet.ProjectID != sg.ProjectID {
+		return nil, status.Errorf(codes.NotFound, "Network %s not found", sg.NetworkID)
 	}
 	// Async backstop для same-network SG-target-правил: ловит гонку «target-SG
 	// удалена / создана в другой сети после sync-precheck».
