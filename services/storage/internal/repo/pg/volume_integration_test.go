@@ -45,7 +45,15 @@ const seededDiskType = "block-fixture"
 func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
-	zones := []string{"region-1-a", "region-1-b", "ru-central1-a", "ru-central1-b"}
+	// Перечень выведен из ЗОН, которыми пользуются фикстуры пакета, а не выписан
+	// на глаз: класс без действующей ревизии в зоне не обслуживает её вовсе, и
+	// недостающая зона читается как дефект продукта («нет действующей привязки»),
+	// хотя это пробел подготовки.
+	zones := []string{
+		"region-1-a", "region-1-b",
+		"region-2-a", "region-2-b",
+		"ru-central1-a", "ru-central1-b",
+	}
 
 	_, err := pool.Exec(ctx, `
 		INSERT INTO disk_types (id, name, lifecycle) VALUES ($1, $1, 'ACTIVE')
@@ -76,12 +84,35 @@ func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
 // Geography, а не выводится из строки зоны.
 const imageRegionFixture = "ru-central1"
 
+// fixtureZone — зона, в которой живут фикстуры пакета. Названа один раз: та же
+// строка, выписанная в каждой пробе, разъезжается с перечнем зон посева молча.
+const fixtureZone = "region-1-a"
+
+// newBareTestPool — база БЕЗ посева фикстурного каталога.
+//
+// Пробе, чей предмет и есть каталог (ревизии привязки, кластеры данных, политика
+// класса), посев мешает по существу: она считает строки и обязана считать СВОИ.
+// Общий посев делал её утверждение о содержимом таблицы утверждением о чужой
+// подготовке — «должно быть 1, а есть 5» ровно на число посеянных зон.
+//
+// Правильный разрез не «сузить счёт», а «владеть своим предметом»: тест каталога
+// заводит каталог сам, тест тома получает готовый.
+func newBareTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	return newPoolWithCatalog(t, false)
+}
+
 // newTestPool выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который миграции kacho-storage (включая seed disk_types) накатаны
 // один раз (см. TestMain и internal/pgtest). Возвращает pgxpool с
 // search_path=kacho_storage. Пропускается под -short. Каждый тест заводит данные
 // сам.
 func newTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	return newPoolWithCatalog(t, true)
+}
+
+func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
@@ -97,7 +128,9 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
-	seedFixtureCatalog(t, pool)
+	if seed {
+		seedFixtureCatalog(t, pool)
+	}
 	return pool
 }
 
@@ -323,7 +356,8 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 
 	snapID := ids.NewID(domain.PrefixSnapshot)
 	_, err = pool.Exec(ctx,
-		`INSERT INTO snapshots (id, project_id, name, size_bytes, state) VALUES ($1,'prj-1','snap-a',0,'READY')`, snapID)
+		`INSERT INTO snapshots (id, project_id, name, size_bytes, state, zone_id)
+		 VALUES ($1,'prj-1','snap-a',0,'READY','region-1-a')`, snapID)
 	require.NoError(t, err)
 	fromSnap, _, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-fromsnap",

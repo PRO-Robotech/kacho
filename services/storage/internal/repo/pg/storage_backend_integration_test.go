@@ -48,7 +48,7 @@ func iaText(t *testing.T, err error) string {
 // регистрируется и читается ОБОИМИ путями одинаково. Поле, живущее только в одном
 // из двух чтений, — половина контракта, и расходится она молча.
 func TestStorageBackendRegisteredAndReadBackIdentically(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	want := sbSample("ceph-central-1")
@@ -76,7 +76,7 @@ func TestStorageBackendRegisteredAndReadBackIdentically(t *testing.T) {
 // TestStorageBackendGetNotFound — well-formed-но-нет → NotFound контрактного тона.
 // В паре с положительным контролем: существующий бэкенд читается.
 func TestStorageBackendGetNotFound(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	missing := ids.NewHyphenID(domain.PrefixStorageBackend)
@@ -94,7 +94,7 @@ func TestStorageBackendGetNotFound(t *testing.T) {
 // TestStorageBackendIdentityHeldByDB — уникальность id и имени держат индексы БД, а
 // не проверка в коде. Каждое отрицание — с законным близнецом той же формы.
 func TestStorageBackendIdentityHeldByDB(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	first := sbSample("ceph-uniq")
@@ -122,7 +122,7 @@ func TestStorageBackendIdentityHeldByDB(t *testing.T) {
 // координаты энфорсятся ОГРАНИЧЕНИЯМИ БД (0015), а не разбором в репозитории. Пары
 // обязательны: иначе проба зеленела бы на реализации, отвергающей всё подряд.
 func TestStorageBackendDictionariesHeldByDB(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	badKind := sbSample("kind-bad")
@@ -161,7 +161,7 @@ func TestStorageBackendDictionariesHeldByDB(t *testing.T) {
 // одного поля, не трогает и момент изменения: строка, которая не менялась, не вправе
 // выглядеть изменённой.
 func TestStorageBackendUpdateAppliesOnlyNamedFields(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	before, err := r.Insert(ctx, sbSample("ceph-upd"))
@@ -215,7 +215,7 @@ func TestStorageBackendUpdateAppliesOnlyNamedFields(t *testing.T) {
 // в коде. Пара обязательна: бэкенд без привязок удаляется тем же вызовом — значит
 // отказ выше про ссылку, а не про запрет удаления вообще.
 func TestStorageBackendDeleteRestrictedByBinding(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewStorageBackendRepo(pool)
 	br := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
@@ -245,7 +245,7 @@ func TestStorageBackendDeleteRestrictedByBinding(t *testing.T) {
 // не пропускается и не повторяется. Мусорный курсор → InvalidArgument, и это в паре
 // с законным курсором, иначе отрицание зеленело бы на списке, отвергающем любой ввод.
 func TestStorageBackendListCursor(t *testing.T) {
-	r := pg.NewStorageBackendRepo(newTestPool(t))
+	r := pg.NewStorageBackendRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	const total = 5

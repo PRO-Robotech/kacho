@@ -26,9 +26,15 @@ import (
 func mkSnapshotRow(t *testing.T, pool *pgxpool.Pool, project, name string, size int64) string {
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)
+	// Зона обязательна: снимок наследует размещение своего тома, и строка без
+	// зоны — состояние, которого продукт БОЛЬШЕ НЕ ПРОИЗВОДИТ (якорь заведён
+	// вместе с размещением снимка). Фикстура без зоны была бы снисходительнее
+	// продукта и роняла бы засев тома отказом «нет размещения» — то есть проба
+	// падала бы на собственной подготовке, называя виновником продукт.
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO snapshots (id, project_id, name, size_bytes, state) VALUES ($1,$2,$3,$4,'READY')`,
-		id, project, name, size)
+		`INSERT INTO snapshots (id, project_id, name, size_bytes, state, zone_id)
+		 VALUES ($1,$2,$3,$4,'READY',$5)`,
+		id, project, name, size, fixtureZone)
 	require.NoError(t, err)
 	return id
 }

@@ -64,8 +64,11 @@ func mkSnapshotOfVolume(t *testing.T, pool *pgxpool.Pool, project, name, volumeI
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO snapshots (id, project_id, name, source_volume_id, size_bytes, state)
-		 VALUES ($1,$2,$3,$4,$5,'READY')`,
+		// Зона БЕРЁТСЯ У ТОМА, а не выписывается: снимок наследует размещение
+		// источника, и выписанная копия разошлась бы с ним ровно там, где проба
+		// проверяет когерентность размещения.
+		`INSERT INTO snapshots (id, project_id, name, source_volume_id, size_bytes, state, zone_id)
+		 SELECT $1,$2,$3,$4,$5,'READY', v.zone_id FROM volumes v WHERE v.id = $4`,
 		id, project, name, volumeID, int64(20)<<30)
 	require.NoError(t, err)
 	return id

@@ -103,7 +103,7 @@ func bindRevisions(t *testing.T, pool *pgxpool.Pool, diskTypeID, zoneID string) 
 // какой записана: координата, все семь способностей, срок корзины и числа
 // производительности, включая единственное дробное.
 func TestDiskTypeBindingRoundTrip(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -143,7 +143,7 @@ func TestDiskTypeBindingRoundTrip(t *testing.T) {
 // состояния. Это несущая проба всей модели: ссылка тома на ревизию равна копии
 // политики ровно потому, что цель неизменяема.
 func TestDiskTypeBindingRegisterSupersedesPrevious(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -239,7 +239,7 @@ func bindWaitBlocked(t *testing.T, pool *pgxpool.Pool, want int) {
 // перекрытия «ровно одна» — утверждение о расписании, а не о продукте: разошедшиеся
 // во времени регистрации ЗАКОННО проходят обе, последовательно повышая номер.
 func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -316,7 +316,7 @@ func TestDiskTypeBindingRegisterConcurrentExactlyOneWins(t *testing.T) {
 // остаётся ровно одна, номера не повторяются и не имеют дырок, а всякий отказ —
 // ALREADY_EXISTS. Под -race.
 func TestDiskTypeBindingRegisterRaceHoldsUnderAnyInterleaving(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -391,7 +391,7 @@ func TestDiskTypeBindingRepoHasNoMutatingPath(t *testing.T) {
 // ЯВНО: принять и выбросить значило бы вернуть успех на параметр, который не
 // применён.
 func TestDiskTypeBindingNumberAndStatusAssignedByRegistry(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -432,7 +432,7 @@ func TestDiskTypeBindingNumberAndStatusAssignedByRegistry(t *testing.T) {
 // Пара обязательна: ревизия без ссылающихся удаляется тем же стейтментом — значит
 // отказ выше про ССЫЛКУ, а не про запрет удаления вообще.
 func TestDiskTypeBindingReferencedRevisionIsNotDeletable(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
@@ -487,7 +487,7 @@ func requireFKRestrict(t *testing.T, err error, constraint string) {
 // бэкенд внешними связями, поэтому несуществующая сторона отвергается БД. Тон отказа
 // — контрактный, чтобы администратор видел, ЧЕГО не хватает.
 func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -508,7 +508,7 @@ func TestDiskTypeBindingUnknownClassOrBackendRejected(t *testing.T) {
 // TestDiskTypeBindingInvariantsHeldByDB — форма ревизии энфорсится ОГРАНИЧЕНИЯМИ БД
 // (0015), а не разбором в репозитории. Пары обязательны.
 func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 
@@ -546,7 +546,7 @@ func TestDiskTypeBindingInvariantsHeldByDB(t *testing.T) {
 // строка не пропускается и не повторяется; мусорный курсор → InvalidArgument, и это
 // в паре с законным курсором.
 func TestDiskTypeBindingListCursor(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	r := pg.NewDiskTypeBindingRepo(pool)
 	ctx := context.Background()
 

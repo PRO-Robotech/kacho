@@ -116,7 +116,7 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 
 // TestDiskTypeGetNotFound — well-formed-но-нет → ErrNotFound "DiskType <id> not found".
 func TestDiskTypeGetNotFound(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	_, err := dr.Get(context.Background(), "dtp-nonexistent")
 	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("not found: "):])
@@ -127,7 +127,7 @@ func TestDiskTypeGetNotFound(t *testing.T) {
 // тот же List его отдаёт, иначе «пусто» зеленело бы на репозитории, который вообще
 // ничего не читает.
 func TestDiskTypeCatalogEmptyAfterSeedRemoval(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	page, next, err := dr.List(ctx, disktype.Pagination{PageSize: 50})
@@ -151,7 +151,7 @@ func TestDiskTypeCatalogEmptyAfterSeedRemoval(t *testing.T) {
 // размера и типизированный ярус. Читается и Get, и List: поле, живущее только в
 // одном из двух чтений, — половина контракта, и расходится это молча.
 func TestDiskTypePolicyRoundTrip(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	want := &domain.DiskType{
@@ -188,7 +188,7 @@ func TestDiskTypePolicyRoundTrip(t *testing.T) {
 // проверкой в коде репозитория. Каждое отрицание — в паре с законным близнецом той же
 // формы, иначе проба зеленела бы на реализации, отвергающей вообще всё.
 func TestDiskTypePolicyHeldByDBInvariants(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	// Ярус — закрытый словарь. Свободная строка проходит мимо гейта проекции,
@@ -229,7 +229,7 @@ func TestDiskTypePolicyHeldByDBInvariants(t *testing.T) {
 // бэкендами, и объявить умение, которого нет в одной из них, значит соврать
 // арендатору ровно там, где он этого не проверит.
 func TestDiskTypeCapabilitiesIntersectActiveBindings(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	ctx := context.Background()
 	be := dtBackend(t, pool, "sb-caps-1")
@@ -333,7 +333,7 @@ func TestDiskTypeCapabilitiesReadWithoutPerRowQuery(t *testing.T) {
 // узкий список зон отвергает НОВЫЙ том, иначе проба зеленела бы на правке, которая
 // вообще ничего не изменила.
 func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
@@ -377,7 +377,7 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 // того же id → AlreadyExists; правка, назвавшая все изменяемые поля (форма полного
 // PATCH при пустой маске), применяет всё названное.
 func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	created := dtInsert(t, dr, &domain.DiskType{
@@ -414,7 +414,7 @@ func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 // названное поле изменилось (положительный контроль), всё остальное осталось
 // побайтово тем же (иначе проба зеленела бы на правке, не делающей ничего).
 func TestDiskTypeUpdateAppliesOnlyNamedFields(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	before := dtInsert(t, dr, &domain.DiskType{
@@ -473,7 +473,7 @@ func TestDiskTypeUpdateAppliesOnlyNamedFields(t *testing.T) {
 // не вправе вернуть выведенный класс в обращение. Пара: зоны и границы она
 // действительно замещает, иначе проба зеленела бы на правке, не делающей ничего.
 func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	before := dtInsert(t, dr, &domain.DiskType{
@@ -501,7 +501,7 @@ func TestDiskTypeFullPatchLeavesLifecycleUntouched(t *testing.T) {
 // FailedPrecondition "DiskType <id> is in use" (FK RESTRICT 23503); после удаления
 // тома delete проходит; несуществующий → NotFound.
 func TestDiskTypeDeleteFKRestrict(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
@@ -532,7 +532,7 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 // пока том ссылается на тип, N конкурентных Delete(тип) все получают
 // FailedPrecondition (RESTRICT держит); тип не исчезает. Под -race.
 func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
-	pool := newTestPool(t)
+	pool := newBareTestPool(t)
 	dr := pg.NewDiskTypeRepo(pool)
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
@@ -573,7 +573,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 // TestDiskTypeListCursor — cursor (created_at,id) ASC пагинация каталога. Каталог
 // свежей базы пуст (посев снят 0016), поэтому проба сеет свои классы сама.
 func TestDiskTypeListCursor(t *testing.T) {
-	dr := pg.NewDiskTypeRepo(newTestPool(t))
+	dr := pg.NewDiskTypeRepo(newBareTestPool(t))
 	ctx := context.Background()
 
 	const total = 5
