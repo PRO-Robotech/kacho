@@ -59,6 +59,12 @@ func (r *gatewayReader) List(ctx context.Context, f kacho.GatewayFilter, p kacho
 		argIdx++
 	}
 	if f.Filter != "" {
+		// Список остаётся при одном поле ОСОЗНАННО, а не по отставанию. Плоский
+		// контракт шлюза несёт только id, project_id, created_at, name и
+		// description: сужать больше нечем. Колонка `gateway_type` существует, но
+		// полем КОНТРАКТА не является (тот же дефект отдельно чинится в маске
+		// обновления) — вынести её в публичный фильтр значило бы завести
+		// неконтрактное имя на публичной поверхности.
 		ast, perr := filter.Parse(f.Filter, []string{"name"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)

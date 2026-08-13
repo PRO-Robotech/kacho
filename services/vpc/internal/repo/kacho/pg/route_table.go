@@ -72,7 +72,11 @@ func (r *routeTableReader) List(ctx context.Context, f kacho.RouteTableFilter, p
 		argIdx++
 	}
 	if f.Filter != "" {
-		ast, perr := filter.Parse(f.Filter, []string{"name"})
+		// `network_id` — контрактное поле и настоящая колонка. Оно ОБЯЗАТЕЛЬНО:
+		// без него снятие `NetworkService.ListRouteTables` отняло бы возможность
+		// «таблицы этой сети», не дав замены. У подсети и группы правил такое
+		// сужение уже есть, у таблиц маршрутизации его не было.
+		ast, perr := filter.Parse(f.Filter, []string{"name", "network_id"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)
 		}
