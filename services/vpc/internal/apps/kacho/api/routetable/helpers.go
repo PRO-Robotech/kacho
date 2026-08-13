@@ -29,13 +29,41 @@ func marshalRouteTableRecord(rec *kacho.RouteTableRecord) (*anypb.Any, error) {
 	return anypb.New(dst)
 }
 
-// validateStaticRoutes проверяет каждую запись routes:
+// validateStaticRoutesCardinality — потолок числа маршрутов в таблице
+// (domain.MaxStaticRoutes). Стоит ПЕРВЫМ, до поэлементного разбора: длину
+// набора выбирает вызывающий, и всё, что идёт дальше, — разбор каждой записи,
+// сериализация набора в JSONB и его полная выдача в каждом ответе — линейно по
+// этой длине. Проверка, ограничивающая стоимость, не может сама её платить.
+//
+// Проверяется набор, который БУДЕТ записан, — Create и Update несут итог
+// целиком, аддитивного глагола у маршрутов нет (см. Handler.AddRoutes: отказ по
+// имени). DB-CHECK route_tables_static_routes_cardinality (миграция 0028) —
+// атомарный backstop на саму строку, независимо от writer'а.
+func validateStaticRoutesCardinality(routes []domain.StaticRoute) error {
+	if len(routes) > domain.MaxStaticRoutes {
+		return serviceerr.InvalidArg("static_routes",
+			fmt.Sprintf("at most %d static routes per route table", domain.MaxStaticRoutes))
+	}
+	return nil
+}
+
+// validateStaticRoutes проверяет набор маршрутов целиком:
+//   - число записей ≤ domain.MaxStaticRoutes (первым делом, см. выше);
 //   - destinationPrefix: валидный CIDR (IPv4 или IPv6) без host-bits;
 //   - nextHopAddress: валидный IP-адрес (IPv4 или IPv6).
 //
 // Пустой массив — допустим (route table без статических маршрутов).
-// При нарушении — InvalidArgument с FieldViolation `static_routes[<i>].<field>`.
+// При нарушении — InvalidArgument с FieldViolation `static_routes[<i>].<field>`
+// для записи и `static_routes` для набора.
+//
+// Потолок стоит ЗДЕСЬ, а не у каждого вызывающего: через эту функцию проходит
+// каждый путь записи набора (Create, Update по маске и full-object PATCH), и
+// проверка, разложенная по вызывающим, закрывала бы ровно те из них, кто о ней
+// помнит.
 func validateStaticRoutes(routes []domain.StaticRoute) error {
+	if err := validateStaticRoutesCardinality(routes); err != nil {
+		return err
+	}
 	for i, r := range routes {
 		dpField := fmt.Sprintf("static_routes[%d].destination_prefix", i)
 		if r.DestinationPrefix == "" {
