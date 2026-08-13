@@ -73,6 +73,20 @@ func IsNICIndexCollision(err error) bool {
 // FailedPrecondition из WrapPgErr.
 const GatewaySubnetFKConstraint = "gateways_subnet_fk"
 
+// AddressSubnetProjectFKConstraint — имя составного внешнего ключа
+// `addresses (project_id, internal_subnet_id) → subnets (project_id, id)`
+// (миграция 0033). Ссылка own-owned, и её нарушение означает ровно одно из двух:
+// подсети нет ИЛИ подсеть принадлежит другому проекту. Оба читаются полосой
+// direct-read — `NOT_FOUND "Subnet <id> not found"`, дословно тем же текстом,
+// каким на отсутствующую подсеть отвечает синхронная проверка в use-case'е.
+//
+// Тон здесь не косметика, а анти-oracle: различимый текст позволял бы отличить
+// «подсеть есть, но чужая» от «подсети нет», то есть отвечал бы на вопрос о
+// чужом проекте (`security.md` §hardening, п.6). Generic-ветка `WrapPgErr` для
+// 23503 («<kind> has dependent resources», FailedPrecondition) здесь неверна
+// вдвойне: и полосой, и смыслом — зависимых ресурсов у вставляемого адреса нет.
+const AddressSubnetProjectFKConstraint = "addresses_subnet_project_fk"
+
 // RouteRefGatewayFKConstraint — имя внешнего ключа
 // `route_table_gateway_refs.gateway_id → gateways(id)` (миграция 0030,
 // автогенерируемое имя Postgres). Нарушение на пути ЗАПИСИ ссылки означает «шлюза

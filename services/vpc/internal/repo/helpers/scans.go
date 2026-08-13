@@ -4,6 +4,8 @@
 package helpers
 
 import (
+	"fmt"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -211,13 +213,29 @@ func ScanRouteTable(row Scannable) (*kachorepo.RouteTableRecord, error) {
 }
 
 // ScanSG — row-scanner для SecurityGroupRecord.
-// AddressesBySubnetWhere — предикат «адреса этой подсети». Вынесен в общий
-// артефакт, чтобы гейт плана (integration) читал ТУ ЖЕ строку, которую исполняет
-// репозиторий: проверка, EXPLAIN'ящая собственную копию запроса, ничего не
-// сказала бы о запросе продукта. Фильтр идёт по generated-колонке (индекс
-// addresses_internal_subnet_idx), а не по jsonb-выражениям — иначе цена страницы
-// равна размеру таблицы всех проектов.
-const AddressesBySubnetWhere = `internal_subnet_id = $1`
+// AddressesBySubnetWhereAt — предикат «адреса этой подсети» с параметром на
+// позиции n. Вынесен в общий артефакт, чтобы гейт плана (integration) читал ТУ ЖЕ
+// строку, которую исполняет репозиторий: проверка, EXPLAIN'ящая собственную копию
+// запроса, ничего не сказала бы о запросе продукта.
+//
+// Фильтр идёт по хранимой колонке internal_subnet_id (v4-подсеть, иначе
+// v6-подсеть, иначе NULL), а не по дизъюнкции jsonb-выражений: последнюю не
+// покрывает ни один индекс, то есть цена страницы равна размеру таблицы ВСЕХ
+// проектов. Колонка отбирает то же множество: «внутренний адрес несёт ровно одну
+// семью» закреплено проверкой addresses_single_internal_family (0025), поэтому
+// двух разных подсетей у одной строки не бывает by construction.
+//
+// Позиция параметра нужна публичному списку (`ListAddresses?subnet_id=`), где
+// предикат подсети стоит не первым; дочерний список подсети берёт ту же строку
+// через AddressesBySubnetWhere. Один вопрос — одна строка предиката.
+func AddressesBySubnetWhereAt(n int) string {
+	return fmt.Sprintf("internal_subnet_id = $%d", n)
+}
+
+// AddressesBySubnetWhere — тот же предикат с параметром на первой позиции
+// (дочерний список подсети). Не самостоятельный литерал: производится из
+// AddressesBySubnetWhereAt, иначе два места об одном предмете разошлись бы молча.
+var AddressesBySubnetWhere = AddressesBySubnetWhereAt(1)
 
 func ScanSG(row Scannable) (*kachorepo.SecurityGroupRecord, error) {
 	var sg kachorepo.SecurityGroupRecord
