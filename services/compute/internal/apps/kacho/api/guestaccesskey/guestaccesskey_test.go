@@ -37,7 +37,7 @@ func (f *fakeKeyRepo) Get(context.Context, string) (*domain.GuestAccessKey, erro
 	return &domain.GuestAccessKey{ID: "gak-abcdefghjkmnpqrst", ProjectID: "prj1"}, nil
 }
 
-func (f *fakeKeyRepo) List(context.Context, string, ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
+func (f *fakeKeyRepo) List(context.Context, string, string, ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
 	return nil, "", nil
 }
 

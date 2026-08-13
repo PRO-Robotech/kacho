@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
@@ -55,7 +56,7 @@ func (r *GuestAccessKeyRepo) Get(ctx context.Context, id string) (*domain.GuestA
 
 // List возвращает страницу ключей проекта тем же курсором, что у прочих
 // ресурсов продукта: пара «время создания, идентификатор».
-func (r *GuestAccessKeyRepo) List(ctx context.Context, projectID string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
+func (r *GuestAccessKeyRepo) List(ctx context.Context, projectID, filterExpr string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {
 		return nil, "", err
@@ -63,12 +64,26 @@ func (r *GuestAccessKeyRepo) List(ctx context.Context, projectID string, p ports
 
 	args := []any{projectID}
 	where := "WHERE project_id = $1"
+	// Фильтр — тот же белый список, что у прочих списков продукта: разбирается
+	// общим анализатором, поля вне списка отвергаются им же. Своего разбора здесь
+	// нет намеренно — второй анализатор разошёлся бы с первым молча.
+	if filterExpr != "" {
+		ast, perr := filter.Parse(filterExpr, []string{"name"})
+		if perr != nil {
+			return nil, "", invalidFilterErr(perr)
+		}
+		if ast != nil {
+			frag, fargs := ast.ToSQL(len(args) + 1)
+			where += " AND " + frag
+			args = append(args, fargs...)
+		}
+	}
 	if p.PageToken != "" {
 		tsv, id, derr := decodePageToken(p.PageToken)
 		if derr != nil {
 			return nil, "", invalidPageTokenErr(derr)
 		}
-		where += " AND (created_at, id) > ($2, $3)"
+		where += fmt.Sprintf(" AND (created_at, id) > ($%d, $%d)", len(args)+1, len(args)+2)
 		args = append(args, tsv, id)
 	}
 	q := fmt.Sprintf(`SELECT %s FROM guest_access_keys %s ORDER BY created_at ASC, id ASC LIMIT $%d`,

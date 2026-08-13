@@ -40,7 +40,7 @@ const (
 // Repo — порт хранения ключей.
 type Repo interface {
 	Get(ctx context.Context, id string) (*domain.GuestAccessKey, error)
-	List(ctx context.Context, projectID string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error)
+	List(ctx context.Context, projectID, filterExpr string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error)
 	Insert(ctx context.Context, k *domain.GuestAccessKey) (*domain.GuestAccessKey, []ownerregister.Registration, error)
 	Update(ctx context.Context, id string, u ports.GuestAccessKeyUpdate) (*domain.GuestAccessKey, error)
 	Delete(ctx context.Context, id string) error
@@ -86,14 +86,14 @@ func (s *Service) Get(ctx context.Context, id string) (*domain.GuestAccessKey, e
 // Проверка постраничности идёт ПЕРВОЙ — до любого решения о видимости. Иначе
 // ответ на один и тот же неверный ввод зависел бы от того, что вызывающему
 // выдано: с пустым грантом он получил бы пустую страницу, с непустым — отказ.
-func (s *Service) List(ctx context.Context, projectID string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
+func (s *Service) List(ctx context.Context, projectID, filterExpr string, p ports.Pagination) ([]*domain.GuestAccessKey, string, error) {
 	if err := ValidateListPagination(p); err != nil {
 		return nil, "", err
 	}
 	if projectID == "" {
 		return nil, "", serviceerr.InvalidArg("project_id", "projectId is required")
 	}
-	out, next, err := s.repo.List(ctx, projectID, p)
+	out, next, err := s.repo.List(ctx, projectID, filterExpr, p)
 	if err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}

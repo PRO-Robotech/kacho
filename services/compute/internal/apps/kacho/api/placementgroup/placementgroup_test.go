@@ -34,7 +34,7 @@ func (f *fakeGroupRepo) Get(context.Context, string) (*domain.PlacementGroup, er
 	return &domain.PlacementGroup{ID: someGroup, ProjectID: "prj1"}, nil
 }
 
-func (f *fakeGroupRepo) List(context.Context, string, ports.Pagination) ([]*domain.PlacementGroup, string, error) {
+func (f *fakeGroupRepo) List(context.Context, string, string, ports.Pagination) ([]*domain.PlacementGroup, string, error) {
 	return nil, "", nil
 }
 

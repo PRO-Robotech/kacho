@@ -49,7 +49,7 @@ func (h *GuestAccessKeyHandler) Get(ctx context.Context, req *computev1.GetGuest
 
 // List возвращает страницу ключей проекта.
 func (h *GuestAccessKeyHandler) List(ctx context.Context, req *computev1.ListGuestAccessKeysRequest) (*computev1.ListGuestAccessKeysResponse, error) {
-	keys, next, err := h.svc.List(ctx, req.ProjectId, ports.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
+	keys, next, err := h.svc.List(ctx, req.ProjectId, req.Filter, ports.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}

@@ -44,7 +44,7 @@ func (h *PlacementGroupHandler) Get(ctx context.Context, req *computev1.GetPlace
 
 // List возвращает страницу групп проекта.
 func (h *PlacementGroupHandler) List(ctx context.Context, req *computev1.ListPlacementGroupsRequest) (*computev1.ListPlacementGroupsResponse, error) {
-	groups, next, err := h.svc.List(ctx, req.ProjectId,
+	groups, next, err := h.svc.List(ctx, req.ProjectId, req.Filter,
 		ports.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
