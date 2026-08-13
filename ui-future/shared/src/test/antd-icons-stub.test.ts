@@ -6,10 +6,12 @@
 // is how an entire set of shared suites sat "green" without ever executing. This
 // test turns that class into an ordinary red.
 //
-// Scope is DERIVED from the jest configs, never hand-listed. The tree holds six
-// stubs (shared, plus one each in host/compute/storage/nlb/registry) and only
-// the shared one was guarded: a glyph added in compute/src would have killed
-// that package's whole run silently, with no gate anywhere to see it. A
+// Scope is DERIVED from the jest configs, never hand-listed. The tree used to
+// hold six stubs (shared, plus one each in host/compute/storage/nlb/registry)
+// and only the shared one was guarded: a glyph added in compute/src would have
+// killed that package's whole run silently, with no gate anywhere to see it.
+// The six copies drifted exactly that way and are now ONE — every package links
+// the shared stub — so this scan covers all of them by construction. A
 // hand-written list of roots is what produced that blind spot, so here every
 // stub and every source tree comes out of `<pkg>/jest.config.cjs` itself —
 // `moduleNameMapper` says which stub a package links against, `roots` says
@@ -144,8 +146,20 @@ describe("@ant-design/icons test stubs", () => {
       .map((pkg) => `${pkg}/src/test/antd-icons-stub.tsx`)
       .filter((rel) => existsSync(path.join(uiFuture, rel)))
       .sort();
-    expect(scanned.map((t) => t.stub).sort()).toEqual(onDisk);
-    expect(scanned.reduce((n, t) => n + t.imports.size, 0)).toBeGreaterThan(200);
+    // Сравниваются МНОЖЕСТВА, а не списки: подставка сведена к одной, и девять
+    // конфигов законно указывают на один и тот же файл. Список дал бы девять
+    // одинаковых путей против одного файла на диске — расхождение формы, а не
+    // предмета. Свойство, которое здесь держится, осталось прежним: всякая
+    // подставка на диске кем-то слинкована, и всякая слинкованная — в обходе.
+    expect([...new Set(scanned.map((t) => t.stub))].sort()).toEqual(onDisk);
+    // Пороги ниже — защита от ПУСТОГО обхода, а не измерение. Прежние (200 и 8)
+    // были откалиброваны под шесть подставок, где обход шёл по каждой отдельно и
+    // одна иконка считалась столько раз, сколько подставок её видели. Подставка
+    // сведена к одной, двойной счёт исчез — сумма стала числом УНИКАЛЬНЫХ имён
+    // дерева. Порог поэтому не «понижен», а перевыражен в той же единице, в
+    // какой теперь считается: он по-прежнему далёк от нуля и роняет прогон, если
+    // обход перестанет что-либо читать.
+    expect(scanned.reduce((n, t) => n + t.imports.size, 0)).toBeGreaterThan(50);
     expect(scanned.reduce((n, t) => n + t.trees.length, 0)).toBeGreaterThan(8);
   });
 
