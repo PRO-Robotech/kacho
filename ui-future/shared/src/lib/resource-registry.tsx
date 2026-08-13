@@ -1057,9 +1057,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "subnets",
     related: [
       {
-        // Под подсетью адреса всегда ВНУТРЕННИЕ (фильтр по internal_*.subnet_id).
+        // Под подсетью адреса всегда ВНУТРЕННИЕ (ссылка в internal_*.subnet_id).
+        //
+        // Сужает СЕРВЕР, и не выражением `filter`, а типизированным полем
+        // запроса: у адреса подсеть лежит внутри jsonb и в ДВУХ семьях, поэтому
+        // белым списком имён колонок она не выражается вовсе — владелец принимает
+        // её отдельным полем `subnet_id` и отбирает объединение по обеим семьям.
+        // Паритет с владельцем держит related-server-param-parity.test.ts.
+        //
+        // Клиентское сужение остаётся подстраховкой и здесь оно не косметика:
+        // путь к ссылке в строке ответа ВЛОЖЕННЫЙ и их два, то есть выражением
+        // фильтра эта же мысль не записывается.
         childId: "addresses",
         filterField: ["internal_ipv4_address.subnet_id", "internal_ipv6_address.subnet_id"],
+        serverParamField: "subnet_id",
         label: "IP-адреса",
       },
     ],

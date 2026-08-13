@@ -50,6 +50,8 @@ import {
   type ResourceSpec,
 } from "@shared/lib/resource-registry";
 import { operationsListPath } from "@shared/lib/operations-subroute";
+import { relatedListQuery } from "@shared/lib/related-list-query";
+import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
@@ -67,16 +69,17 @@ function specByRoute(route: string): ResourceSpec | undefined {
 function RelatedTable({
   childSpec,
   filterFields,
-  serverFilterField,
+  narrowBy,
   parentId,
   projectId,
   detailBase,
 }: {
   childSpec: ResourceSpec;
   filterFields: string[];
-  /** Поле, которым владелец ребёнка принимает сужение по родителю на сервере
-   *  (`spec.related[].serverFilterField`); не объявлено — сужает только клиент. */
-  serverFilterField?: string;
+  /** Чем владелец ребёнка принимает сужение по родителю НА СЕРВЕРЕ — выражением
+   *  фильтра либо типизированным полем запроса (`spec.related[]`). Ничего не
+   *  объявлено — сужает только клиент. */
+  narrowBy: Pick<RelatedSpec, "serverFilterField" | "serverParamField">;
   parentId: string;
   projectId: string;
   detailBase: string;
@@ -88,14 +91,14 @@ function RelatedTable({
   // (Project/ServiceAccount) требуют account_id = uid аккаунта-родителя; прочие —
   // project_id из URL.
   const accountScoped = childSpec.scope === "account";
-  // Сужение по родителю просит СЕРВЕР, когда владелец ребёнка такое поле
-  // принимает: тогда страница курсора состоит из детей ЭТОГО родителя, а не из
-  // первой страницы списка проекта, в которой они могли и не оказаться.
-  // Выражение — то, что разбирает белый список владельца (`<поле>="<id>"`);
-  // паритет объявления со списком держит related-server-filter-parity.test.ts.
+  // Сужение по родителю просит СЕРВЕР, когда владелец ребёнка его принимает:
+  // тогда страница курсора состоит из детей ЭТОГО родителя, а не из первой
+  // страницы списка проекта, в которой они могли и не оказаться. Чем именно
+  // просить — решает одна функция (`relatedListQuery`), а не эта разметка:
+  // механизмов два, и выбор между ними принадлежит владельцу ребёнка.
   const extraQuery = useMemo(
-    () => (serverFilterField && parentId ? { filter: `${serverFilterField}="${parentId}"` } : undefined),
-    [serverFilterField, parentId],
+    () => relatedListQuery(narrowBy, parentId),
+    [narrowBy, parentId],
   );
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     childSpec,
@@ -402,7 +405,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
         <RelatedTable
           childSpec={childSpec}
           filterFields={filterFields}
-          serverFilterField={r.serverFilterField}
+          narrowBy={r}
           parentId={getByPath<string>(data, "id") ?? uid ?? ""}
           projectId={projectId ?? ""}
           detailBase={detailBase}

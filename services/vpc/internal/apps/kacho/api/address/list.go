@@ -59,6 +59,15 @@ func (u *ListAddressesUseCase) Execute(ctx context.Context, f AddressFilter, p P
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
+	// Форма ссылки на подсеть — тоже проверка ввода, и она стоит здесь, рядом с
+	// пагинацией, а не уезжает в SQL. Подсеть принадлежит этому же сервису, значит
+	// малформед — синхронный `InvalidArgument`, а не пустая страница: пустая
+	// страница утверждала бы «в этой подсети адресов нет» про строку, которая
+	// подсетью быть не может. Пустое значение `corevalidate.ResourceID`
+	// пропускает — это «без сужения», и так его и читает репозиторий.
+	if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, f.SubnetID); err != nil {
+		return nil, "", err
+	}
 	// Предусловие сужения — ДО чтения страницы из БД.
 	//
 	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением

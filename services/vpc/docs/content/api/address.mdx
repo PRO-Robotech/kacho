@@ -188,6 +188,17 @@ IP можно создать заранее, переиспользовать, �
 Список адресов проекта с фильтром и cursor-пагинацией. Опциональный `subnetId` ограничивает
 выборку адресами, выделенными из указанной подсети.
 
+Сужение по подсети — **объединение по обеим внутренним семьям**: адрес попадает в выборку, если
+ссылка на подсеть стоит в его `internalIpv4Address` **либо** в `internalIpv6Address`. Внешний адрес
+подсети не имеет и в такую выборку не попадает никогда. Сужение выполняет сервер, поэтому оно
+относится ко **всему** списку, а не к загруженной странице, и цена страницы не растёт вместе с
+числом адресов подсети.
+
+`subnetId` — ссылка на ресурс этого же сервиса, поэтому её форма проверяется синхронно: строка,
+которая идентификатором подсети быть не может, отвергается как `InvalidArgument`
+(`invalid subnet id '<X>'`), а не возвращает пустую страницу. Пустое значение означает «без
+сужения». Несуществующая, но правильно оформленная подсеть — пустая выборка, а не отказ.
+
 #### Параметры запроса
 
 <table>
@@ -195,7 +206,7 @@ IP можно создать заранее, переиспользовать, �
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
     <tr><td><code>filter</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
-    <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адреса, выделенные из этой подсети (для ref-picker NIC)</td></tr>
+    <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адреса, выделенные из этой подсети — обе внутренние семьи</td></tr>
     <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
     <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
   </tbody>
