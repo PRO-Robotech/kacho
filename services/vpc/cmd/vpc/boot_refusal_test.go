@@ -78,6 +78,25 @@ func productionEnv() map[string]string {
 		// обязан подниматься», и каждый случай падал бы по чужой причине. Значения —
 		// то, что зарезервировано на любой посадке (link-local обоих семейств).
 		"KACHO_VPC_DATAPLANE__RESERVED_PREFIXES": "169.254.0.0/16,fe80::/10",
+		// Величины допуска запросов объявлены по обоим листенерам — по той же
+		// причине, что профиль и перечень выше: без них окружение перестало бы
+		// быть тем, «в котором боевой vpc обязан подниматься», и каждый случай
+		// падал бы по чужой причине. Требование к числам ровно одно — набор
+		// объявлен полностью и проходит стража; совпадение с числами чарта здесь
+		// не утверждается (годность чарта держит своя проба).
+		//
+		// Внутренний листенер идёт заведомо выше публичного, и это решение, а не
+		// щедрость: ограничитель, задушивший наш собственный поток намерения,
+		// воспроизводит заклинивание головы очереди — класс, при котором работа
+		// перестаёт доезжать без единого видимого симптома.
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__READ_PER_SEC":       "100",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__MUTATION_PER_SEC":   "20",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__BURST_FACTOR":       "5",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__IN_FLIGHT":          "16",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL__READ_PER_SEC":     "1000",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL__MUTATION_PER_SEC": "500",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL__BURST_FACTOR":     "5",
+		"KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL__IN_FLIGHT":        "256",
 	}
 }
 
@@ -338,6 +357,93 @@ func TestBootRefusal_ExecutorProfileUnknownFamilyEvenInDev(t *testing.T) {
 	}
 	if !strings.Contains(out, "ipv6") {
 		t.Fatalf("refusal must quote what the operator wrote; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
+	}
+}
+
+// vpc49-P-01: величины допуска запросов НЕ объявлены → процесс не поднимается,
+// называет ручку и останавливается ДО первого соединения.
+//
+// Это инъекция стража S7 на ЖИВОМ ПРОЦЕССЕ: значение снимается — старт падает с
+// называющим текстом; парный положительный контроль тот же, что у случаев выше
+// (vpc9c-P-02): на полном окружении процесс проходит все гарды и доходит до
+// недоступной БД. Без этой пары «отказал по настройке» было бы неотличимо от
+// «бинарь не стартует вообще».
+//
+// Почему нулевые величины — это отказ, а не «ограничивать нечего»: ноль означает
+// «не ограничиваем». Ограничитель тогда либо не навешивается вовсе, либо
+// навешивается пустым — и в обоих случаях выглядит включённым, ни разу не отказав,
+// пока один вызывающий занимает базу, обслуживающую всех.
+func TestBootRefusal_RequestRateLimitsNotDeclared(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	// Снимаем РОВНО одну ось одного листенера: неполный набор негоден так же, как
+	// пустой, и именно это здесь и утверждается.
+	env["KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__IN_FLIGHT"] = "0"
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started without a declared request admission limit; output:\n%s", out)
+	}
+	if !strings.Contains(out, "api-server.rate-limit.public") {
+		t.Fatalf("refusal must name the knob the operator has to set; output:\n%s", out)
+	}
+	if strings.Contains(out, "api-server.rate-limit.internal") {
+		t.Fatalf("refusal must not blame the listener that IS declared; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
+	}
+}
+
+// vpc49-P-02: внутренний листенер судится отдельно от публичного.
+//
+// Без этого случая страж, смотрящий только на публичный, был бы зелёным на всём
+// предыдущем: внутренний листенер зовут наши же модули, и незамеченный там ноль
+// означает, что поток намерения ничем не ограничен.
+func TestBootRefusal_RequestRateLimitsInternalNotDeclared(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	env["KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL__READ_PER_SEC"] = "0"
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started with the internal listener unlimited; output:\n%s", out)
+	}
+	if !strings.Contains(out, "api-server.rate-limit.internal") {
+		t.Fatalf("refusal must name the internal knob; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
+	}
+}
+
+// vpc49-P-03: самопротиворечивое ОБЪЯВЛЕНИЕ отвергается и там, где посадка не
+// боевая.
+//
+// Всплеск ниже устойчивого темпа — ведро, которое не наполняется до одного
+// токена: ограничитель отвергал бы даже законный поток, то есть выглядел бы
+// работающим и ломал продукт. Это негодность сама по себе, а не выбор оператора,
+// поэтому режим здесь ни при чём — и случай подан на живом процессе в dev именно
+// затем, чтобы разделение «посадка против объявления» не осталось утверждением
+// одного юнита.
+func TestBootRefusal_RequestRateBurstBelowSustainedEvenInDev(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	env["KACHO_VPC_AUTH_MODE"] = "dev"
+	env["KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC__BURST_FACTOR"] = "0.5"
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started with a self-contradicting burst factor; output:\n%s", out)
+	}
+	if !strings.Contains(out, "api-server.rate-limit.public") {
+		t.Fatalf("refusal must name the knob; output:\n%s", out)
 	}
 	if strings.Contains(out, "db-that-is-never-dialled") {
 		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)

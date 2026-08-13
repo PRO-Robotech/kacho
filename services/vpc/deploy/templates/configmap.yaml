@@ -31,6 +31,28 @@ data:
       # request-timeout — server-side deadline на один RPC (bounded-pool exhaustion
       # guard, CWE-770). 0 → без границы (нет long-lived server-streams в kacho-vpc).
       request-timeout: {{ default "30s" .Values.apiServer.requestTimeout | quote }}
+      # rate-limit — темп и одновременность запросов НА ВЫЗЫВАЮЩЕГО, по одному
+      # набору на листенер. Срок обработки выше ограничивает ОДИН запрос; здесь
+      # ограничивается их ПОТОК, и это разные защиты.
+      #
+      # Значения рендерятся НАПРЯМУЮ, без `default` — по той же причине, что у
+      # профиля исполнителя и перечня служебных диапазонов ниже: умолчание,
+      # вписанное здесь вторым местом, пережило бы удаление ключа из values.yaml,
+      # правка одного values.yaml не имела бы силы, и величина молча стала бы
+      # нулём. Ноль означает «не ограничиваем», а не «ограничивать нечего», и
+      # боевая посадка на нём НЕ СТАРТУЕТ (config.ValidateRequestRateLimits
+      # называет ручку в отказе).
+      rate-limit:
+        public:
+          read-per-sec: {{ .Values.apiServer.rateLimit.public.readPerSec }}
+          mutation-per-sec: {{ .Values.apiServer.rateLimit.public.mutationPerSec }}
+          burst-factor: {{ .Values.apiServer.rateLimit.public.burstFactor }}
+          in-flight: {{ .Values.apiServer.rateLimit.public.inFlight }}
+        internal:
+          read-per-sec: {{ .Values.apiServer.rateLimit.internal.readPerSec }}
+          mutation-per-sec: {{ .Values.apiServer.rateLimit.internal.mutationPerSec }}
+          burst-factor: {{ .Values.apiServer.rateLimit.internal.burstFactor }}
+          in-flight: {{ .Values.apiServer.rateLimit.internal.inFlight }}
 
     metrics:
       enable: {{ default true .Values.metrics.enable }}

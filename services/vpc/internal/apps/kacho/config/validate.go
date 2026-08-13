@@ -175,6 +175,29 @@ const (
 	errReservedPrefixUnusable = "dataplane.reserved-prefixes: entry %s is unusable (%s) — a silently " +
 		"dropped entry would leave a range the operator considers reserved and the control plane does not, " +
 		"so a tenant subnet laid over it would be accepted; fix the entry or drop it"
+
+	// S7-гардрейл: величины допуска запросов. Тот же довод, что у S6, и та же
+	// граница между «посадка не объявила» (вопрос режима) и «объявление
+	// противоречит себе» (негодность в любом режиме).
+	//
+	// Текст читает оператор, которому стенд отказал в старте, поэтому он называет
+	// и ключ файла настроек, и переменные окружения. Опубликованные величины
+	// (§8.6) в отказе НЕ пересказываются: два места об одном числе разъезжаются
+	// молча, а их единственный дом — таблица решений и values.yaml чарта.
+	// %s = ключ листенера (api-server.rate-limit.public|internal);
+	// %s = Mode.String(); %s = префикс переменных окружения этого листенера.
+	errRateLimitRequired = "%s: request admission limits are not declared for this listener in mode %s " +
+		"(env %s__{READ_PER_SEC,MUTATION_PER_SEC,BURST_FACTOR,IN_FLIGHT}) — a request costs three rows " +
+		"in the database on every mutation and up to a full page of objects with a batched permission " +
+		"check on every read, so an unbounded rate does not hit the network, it hits the DATABASE. " +
+		"Zero values mean «we do not limit», not «there is nothing to limit»: the limiter is then either " +
+		"absent or empty, and in both cases it looks armed while never having refused once. Declare all " +
+		"four axes for this listener"
+	// errRateLimitUnusable — негодное ОБЪЯВЛЕНИЕ, отвергается в любом режиме.
+	// %s = ключ листенера, %s = причина от конструктора величин.
+	errRateLimitUnusable = "%s: %s — a declaration the process cannot execute is worse than none: " +
+		"the operator reads the knob as set while the axis limits nothing (or, with a burst below the " +
+		"sustained rate, refuses even a lawful flow)"
 )
 
 // Validate проверяет инварианты Config — чистая функция без побочных эффектов и без
@@ -670,6 +693,86 @@ func (c Config) ValidateReservedPrefixes() error {
 	return errs
 }
 
+// ratelimitKnob — ключ настроек и префикс переменных окружения одного листенера.
+// Пара, а не две строки в двух местах: отказ обязан назвать оба имени, потому что
+// посадка задаёт величины то файлом, то окружением.
+type ratelimitKnob struct {
+	key    string
+	envPfx string
+}
+
+var (
+	publicRateLimitKnob = ratelimitKnob{
+		key:    "api-server.rate-limit.public",
+		envPfx: "KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC",
+	}
+	internalRateLimitKnob = ratelimitKnob{
+		key:    "api-server.rate-limit.internal",
+		envPfx: "KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL",
+	}
+)
+
+// ValidateRequestRateLimits — boot-гардрейл S7: величины допуска запросов на
+// ОБОИХ листенерах.
+//
+// # Что защищается
+//
+// Стоимость запроса в этом продукте высокая по построению: каждая мутация — три
+// строки в базе (ресурс, очередь намерения, операция), каждое чтение — до 1000
+// объектов на страницу с проверкой прав партиями. Неограниченный темп бьёт не в
+// сеть, а в базу, и один арендатор занимает процесс, обслуживающий всех.
+//
+// # Почему это настройка со стражем, а не константа
+//
+// Исполняется предел ведром В ПРОЦЕССЕ, поэтому при N репликах эффективная
+// величина равна N × объявленного, и посадка обязана уметь назвать свою. А раз
+// это настройка, у неё есть состояние «не задана», и оно НЕ безобидно: нулевые
+// величины означают «не ограничиваем», а не «ограничивать нечего». Ограничитель
+// тогда либо не навешивается вовсе, либо навешивается пустым — и в обоих случаях
+// выглядит включённым, ни разу не отказав.
+//
+// # Два разных вида отказа, разделены НАМЕРЕННО (как в S5/S6)
+//
+//   - ПОСАДКА (величины не объявлены) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур; любой РАЗВЁРНУТЫЙ стенд работает в боевом
+//     режиме (правило #16), поэтому освобождение dev не оставляет дыры ни на одном
+//     стенде.
+//   - ОБЪЯВЛЕНИЕ (неполный набор осей, отрицательная величина, всплеск ниже
+//     устойчивого темпа) — негодно САМО ПО СЕБЕ и отвергается в любом режиме. Это
+//     опечатка или самопротиворечие, а не выбор оператора.
+//
+// Предикат объявленности — ТОТ ЖЕ, что читает композиционный корень
+// (grpcsrv.AdmissionLimits.IsDeclared через Config.*AdmissionLimits), а не
+// сравнение полей на месте: разойдясь здесь, страж и проводка разошлись бы ровно
+// там, где расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями обоих листенеров: оператор обязан
+// увидеть полный список за один прогон, а не чинить их по одному за перезапуск.
+func (c Config) ValidateRequestRateLimits() error {
+	var errs error
+	for _, l := range []struct {
+		knob   ratelimitKnob
+		limits grpcsrv.AdmissionLimits
+	}{
+		{publicRateLimitKnob, c.PublicAdmissionLimits()},
+		{internalRateLimitKnob, c.InternalAdmissionLimits()},
+	} {
+		// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+		for _, reason := range l.limits.Unusable() {
+			errs = multierr.Append(errs, fmt.Errorf(errRateLimitUnusable, l.knob.key, reason))
+		}
+		// (2) Требование к ПОСАДКЕ — только там, где листенер принимает трафик.
+		if !c.AuthN.Mode.IsProduction() {
+			continue
+		}
+		if !l.limits.IsDeclared() && len(l.limits.Unusable()) == 0 {
+			errs = multierr.Append(errs, fmt.Errorf(errRateLimitRequired,
+				l.knob.key, c.AuthN.Mode, l.knob.envPfx))
+		}
+	}
+	return errs
+}
+
 // ValidateBoot — единый boot-валидатор: агрегирует Validate (S1 + базовые
 // инварианты), ValidateServerMTLS (S2) и ValidatePeerTransport (S4) в один multierr,
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
@@ -683,18 +786,18 @@ func (c Config) ValidateReservedPrefixes() error {
 // «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
 // вместо явной пары вызовов, тихо остался бы без проверки фильтра.
 //
-// S5 (ValidateExecutorProfile) и S6 (ValidateReservedPrefixes) входят сюда по той
-// же причине и каждый с того же дня, что заведён сам: проверка, не попавшая в
-// агрегатор, становится той самой ловушкой.
+// S5 (ValidateExecutorProfile), S6 (ValidateReservedPrefixes) и S7
+// (ValidateRequestRateLimits) входят сюда по той же причине и каждый с того же
+// дня, что заведён сам: проверка, не попавшая в агрегатор, становится той самой
+// ловушкой.
 func (c Config) ValidateBoot(m MTLSConfig) error {
-	return multierr.Append(
-		multierr.Append(
-			multierr.Append(
-				multierr.Append(
-					multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
-					c.ValidateListFilter()),
-				c.ValidateExecutorProfile()),
-			c.ValidateReservedPrefixes()),
+	return multierr.Combine(
+		c.Validate(),
+		c.ValidateServerMTLS(m),
+		c.ValidateListFilter(),
+		c.ValidateExecutorProfile(),
+		c.ValidateReservedPrefixes(),
+		c.ValidateRequestRateLimits(),
 		c.ValidatePeerTransport(m),
 	)
 }

@@ -269,6 +269,13 @@ type APIServerConfig struct {
 	// запросов исчерпывают pool → service-wide DoS. Дополняет DB-level
 	// statement_timeout (repository.postgres.statement-timeout).
 	RequestTimeout time.Duration `mapstructure:"request-timeout"`
+
+	// RateLimit — сколько запросов в секунду и сколько одновременно вправе
+	// задать ОДИН вызывающий каждому листенеру. Величина срока обработки выше
+	// ограничивает ОДИН запрос; здесь ограничивается их ПОТОК, а это разные
+	// защиты: тысяча запросов, каждый из которых уложился в срок, занимает базу
+	// целиком. Подробности и полярность умолчания — ratelimit.go.
+	RateLimit RateLimitConfig `mapstructure:"rate-limit"`
 }
 
 // MetricsConfig — секция metrics: cluster-internal diagnostic HTTP-listener

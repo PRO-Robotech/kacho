@@ -47,6 +47,29 @@ func RegisterDefaults(v *viper.Viper) {
 	// exhaustion / deadline-less запросов, CWE-770). 0 → без границы.
 	v.SetDefault("api-server.request-timeout", 30*time.Second)
 
+	// api-server.rate-limit — темп и одновременность запросов НА ВЫЗЫВАЮЩЕГО,
+	// отдельно для каждого листенера (см. ratelimit.go).
+	//
+	// Умолчание — НУЛИ, то есть «не объявлено», и полярность выбрана осознанно
+	// против «удобной»: величины, вписанные сюда, описывали бы один стенд (предел
+	// исполняется ведром В ПРОЦЕССЕ, поэтому при N репликах эффективная величина
+	// равна N × объявленного) и выглядели бы работающей защитой на всех
+	// остальных. Нулевые величины ничего не ограничивают, поэтому боевая посадка
+	// на них НЕ ПОДНИМАЕТСЯ (ValidateRequestRateLimits называет ручку в отказе), а
+	// значение объявляет чарт.
+	//
+	// Ключи объявлены здесь ещё и затем, чтобы их видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_API_SERVER__RATE_LIMIT__*` не доехал бы до поля вовсе.
+	v.SetDefault("api-server.rate-limit.public.read-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.public.mutation-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.public.burst-factor", 0.0)
+	v.SetDefault("api-server.rate-limit.public.in-flight", 0)
+	v.SetDefault("api-server.rate-limit.internal.read-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.mutation-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.burst-factor", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.in-flight", 0)
+
 	// metrics / healthcheck — cluster-internal diagnostic listener (/metrics +
 	// /healthz + /readyz). endpoint=:9095 зеркалит kacho-iam; enable=false ИЛИ
 	// пустой endpoint → listener не поднимается.
