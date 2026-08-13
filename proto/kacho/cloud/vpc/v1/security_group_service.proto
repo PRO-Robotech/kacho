@@ -295,6 +295,11 @@ message UpdateSecurityGroupRequest {
     map<string, string> labels = 5 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
     // Updated rule list. All existing rules will be replaced with given list.
+    //
+    // Замена целиком — это одновременное СНЯТИЕ каждого правила, которого в новом
+    // списке нет, поэтому она обрывает соединения, которые те правила разрешали
+    // (следствие описано целиком у `SecurityGroup.rules`). Неполный список стирает
+    // остальные правила молча: для дельт есть `SecurityGroupService.UpdateRules`.
     repeated SecurityGroupRuleSpec rule_specs = 6;
 }
 
@@ -311,6 +316,10 @@ message UpdateSecurityGroupRulesRequest {
     string security_group_id = 1 [(required) = true];
 
     // List of rules IDs to delete.
+    //
+    // Удаление правила обрывает соединения, которые оно разрешало (следствие описано
+    // целиком у `SecurityGroup.rules`): эффект наблюдается клиентами немедленно, а не
+    // начиная со следующего соединения.
     repeated string deletion_rule_ids = 2;
 
     // Security rules specifications.

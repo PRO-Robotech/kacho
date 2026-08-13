@@ -102,6 +102,22 @@ type SecurityGroup struct {
 	// ID of the network that the security group belongs to.
 	NetworkId string `protobuf:"bytes,7,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
 	// List of the security group rules.
+	//
+	// Правила только РАЗРЕШАЮЩИЕ, и фильтрация ведётся С УЧЁТОМ СОСТОЯНИЯ: обратный
+	// трафик разрешённого соединения проходит сам, зеркальное правило в обратную
+	// сторону не нужно.
+	//
+	// СНЯТИЕ ПРАВИЛА ОБРЫВАЕТ СОЕДИНЕНИЯ, КОТОРЫЕ ИМ РАЗРЕШАЛИСЬ. Пока правило
+	// есть, установленное соединение живёт; после снятия его обратный трафик больше
+	// ничем не разрешён, и соединение обрывается — оно НЕ доживает до своего
+	// закрытия. Обрываются ровно те соединения, которых не разрешает ни одно из
+	// ОСТАВШИХСЯ правил: правило, покрывающее тот же трафик шире, их сохраняет.
+	//
+	// Следствие, которое вызывающий обязан знать ДО правки на живом трафике: снятие
+	// правила — это не «новые соединения не пойдут», а разрыв текущих, наблюдаемый
+	// клиентами немедленно. Планируйте снятие как изменение с немедленным эффектом,
+	// а замену набора целиком (`UpdateSecurityGroupRequest.rule_specs`) — как
+	// одновременное снятие всех правил, которых в новом списке нет.
 	Rules []*SecurityGroupRule `protobuf:"bytes,9,rep,name=rules,proto3" json:"rules,omitempty"`
 	// Flag that indicates that the security group is the default for the network.
 	DefaultForNetwork bool `protobuf:"varint,10,opt,name=default_for_network,json=defaultForNetwork,proto3" json:"default_for_network,omitempty"`

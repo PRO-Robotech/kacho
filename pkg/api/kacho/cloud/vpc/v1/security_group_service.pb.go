@@ -550,6 +550,11 @@ type UpdateSecurityGroupRequest struct {
 	// 3. Send the new set in this field.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Updated rule list. All existing rules will be replaced with given list.
+	//
+	// Замена целиком — это одновременное СНЯТИЕ каждого правила, которого в новом
+	// списке нет, поэтому она обрывает соединения, которые те правила разрешали
+	// (следствие описано целиком у `SecurityGroup.rules`). Неполный список стирает
+	// остальные правила молча: для дельт есть `SecurityGroupService.UpdateRules`.
 	RuleSpecs     []*SecurityGroupRuleSpec `protobuf:"bytes,6,rep,name=rule_specs,json=ruleSpecs,proto3" json:"rule_specs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -686,6 +691,10 @@ type UpdateSecurityGroupRulesRequest struct {
 	// ID of the SecurityGroup that is being updated with new rules.
 	SecurityGroupId string `protobuf:"bytes,1,opt,name=security_group_id,json=securityGroupId,proto3" json:"security_group_id,omitempty"`
 	// List of rules IDs to delete.
+	//
+	// Удаление правила обрывает соединения, которые оно разрешало (следствие описано
+	// целиком у `SecurityGroup.rules`): эффект наблюдается клиентами немедленно, а не
+	// начиная со следующего соединения.
 	DeletionRuleIds []string `protobuf:"bytes,2,rep,name=deletion_rule_ids,json=deletionRuleIds,proto3" json:"deletion_rule_ids,omitempty"`
 	// Security rules specifications.
 	AdditionRuleSpecs []*SecurityGroupRuleSpec `protobuf:"bytes,3,rep,name=addition_rule_specs,json=additionRuleSpecs,proto3" json:"addition_rule_specs,omitempty"`
