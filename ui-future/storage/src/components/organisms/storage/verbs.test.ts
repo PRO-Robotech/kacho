@@ -2,7 +2,27 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { jest } from "@jest/globals";
+
 import { changeDiskTypeAllowed } from "./ChangeDiskTypeDialog";
+
+// Край подменён целиком: предмет утверждения — вызов, а не ответ. Модуль
+// подменяется ДО импорта потребителя (ESM-режим), поэтому сам потребитель
+// загружается динамически ниже.
+// Подменяется ТРАНСПОРТ, а не модуль клиента: предмет утверждения — то, что
+// уходит на провод. Подмена модуля проверяла бы, что мы позвали свою же обёртку,
+// и молчала бы о конверсии имён, которую обёртка делает.
+const sent: Array<{ url: string; body: unknown }> = [];
+(globalThis as unknown as { fetch: unknown }).fetch = async (url: string, init: { body?: string }) => {
+  sent.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : null });
+  return {
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ operation: { id: "sop-test", done: false } }),
+  };
+};
+
+const { volumesApi } = await import("../../../api/resources");
 
 /**
  * Действия-глаголы storage: предусловие смены типа диска и форма тел запросов.
@@ -12,14 +32,19 @@ import { changeDiskTypeAllowed } from "./ChangeDiskTypeDialog";
  * литерала в константу файла. Здесь проверяется то, чего он не видит: ПОЛЯ тела
  * и условие, при котором кнопка доступна.
  *
- * Тела читаются из исходника `api/resources.ts` статически, а не собираются
- * вызовом: вызов потребовал бы поднять клиент и сеть, а предмет утверждения —
- * имена полей, которые контракт объявил обязательными.
+ * Тело ВЫЗЫВАЕТСЯ, а не вычитывается из исходника. Прежняя редакция искала
+ * подстроку в тексте `api/resources.ts` — такая проба зелена, пока файл
+ * существует: функция не зовётся, ни один исход не утверждается, слот занят, а
+ * поведение не проверено. Гейт дерева
+ * (`internal/repohygiene/uisourcereadtest_test.go`) ловит ровно это, и поймал
+ * здесь.
+ *
+ * Сеть поднимать не требуется: край подменён, и предметом утверждения становится
+ * то, ЧТО ему передали, — адрес и поля тела.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../../../..");
-const resourcesSrc = readFileSync(path.resolve(here, "../../../api/resources.ts"), "utf8");
 const protoDir = path.join(repoRoot, "proto/kacho/cloud/storage/v1");
 
 /** Поля `(required) = true` одного сообщения запроса. */
@@ -35,7 +60,7 @@ function requiredFields(protoFile: string, message: string): string[] {
 describe("объём осмотренного", () => {
   it("контракт и исходник вызовов прочитаны", () => {
     // «Ноль находок» обязано быть отличимо от «ноль прочитанного».
-    expect(resourcesSrc.length).toBeGreaterThan(500);
+    expect(typeof volumesApi.changeDiskType).toBe("function");
     expect(requiredFields("volume_service.proto", "ChangeDiskTypeRequest").length).toBeGreaterThan(0);
     expect(requiredFields("snapshot_service.proto", "CopySnapshotRequest").length).toBeGreaterThan(0);
     expect(requiredFields("image_service.proto", "CopyImageRequest").length).toBeGreaterThan(0);
@@ -65,12 +90,24 @@ describe("смена типа диска — предусловие назван
 });
 
 describe("тело запроса несёт всё, что контракт объявил обязательным", () => {
-  it("смена типа диска шлёт disk_type_id", () => {
+  it("смена типа диска шлёт disk_type_id", async () => {
     // `volume_id` едет сегментом пути, а не телом, — его требование выполняется
     // самим адресом.
     const required = requiredFields("volume_service.proto", "ChangeDiskTypeRequest").filter((f) => f !== "volume_id");
     expect(required).toEqual(["disk_type_id"]);
-    expect(resourcesSrc).toContain("disk_type_id: diskTypeId");
+
+    sent.length = 0;
+    await volumesApi.changeDiskType("vol-1", "block-fast");
+
+    // Адрес и тело — то, что УШЛО НА ПРОВОД.
+    expect(sent).toHaveLength(1);
+    expect(sent[0].url).toContain("/storage/v1/volumes/vol-1:changeDiskType");
+    // На проводе имена полей camelCase (конвенция REST-края), поэтому каждое
+    // обязательное поле контракта сверяется в своей проводной форме.
+    const wire = sent[0].body as Record<string, unknown>;
+    const camel = (f: string) => f.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    for (const field of required) expect(Object.keys(wire)).toContain(camel(field));
+    expect(wire.diskTypeId).toBe("block-fast");
   });
 
   it("копия снимка и образа спрашивает проект и цель", () => {
