@@ -139,6 +139,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 	return []func() resource.Resource{
 		NewNetworkResource,
 		NewSubnetResource,
+		NewInstanceResource,
 	}
 }
 

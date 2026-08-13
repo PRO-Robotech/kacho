@@ -102,3 +102,20 @@ func diffSets(have, want []string) (add, remove []string) {
 	}
 	return add, remove
 }
+
+// stringsFromList — значение Terraform в набор строк.
+//
+// Неизвестное и null дают nil, а НЕ пустой набор: пустой набор — это осмысленное
+// намерение («снять все»), и подставить его вместо «пользователь не сказал»
+// значило бы отправить краю команду, которой не было. Разница видна ровно на
+// наборе ключей входа, где пустой набор означает снятие доступа.
+func stringsFromList(ctx context.Context, l types.List) []string {
+	if l.IsNull() || l.IsUnknown() {
+		return nil
+	}
+	var out []string
+	if diags := l.ElementsAs(ctx, &out, false); diags.HasError() {
+		return nil
+	}
+	return out
+}

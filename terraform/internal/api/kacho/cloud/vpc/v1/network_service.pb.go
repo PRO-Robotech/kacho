@@ -232,7 +232,10 @@ type CreateNetworkRequest struct {
 	// Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
 	// true → создать default-SG для сети; false → сеть без default-SG.
 	CreateDefaultSecurityGroup *bool `protobuf:"varint,5,opt,name=create_default_security_group,json=createDefaultSecurityGroup,proto3,oneof" json:"create_default_security_group,omitempty"`
-	// Declared IPv4 supernet block(s). Each Subnet.ipv4_cidr_primary must fall
+	// Declared IPv4 supernet block(s). Optional here, but a network without them
+	// refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the
+	// constraint is never skipped for an empty list.
+	// Each Subnet.ipv4_cidr_primary must fall
 	// within one of these blocks (validated at Subnet.Create). Optional at Create;
 	// extended later via NetworkService.AddCidrBlocks.
 	Ipv4CidrBlocks []string `protobuf:"bytes,6,rep,name=ipv4_cidr_blocks,json=ipv4CidrBlocks,proto3" json:"ipv4_cidr_blocks,omitempty"`

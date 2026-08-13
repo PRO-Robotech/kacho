@@ -34,14 +34,15 @@ plugins:
   - local: protoc-gen-go
     out: ../terraform/internal/api
     opt: paths=source_relative
-# Только то, что нужно ресурсам под-фазы TF-1, плюс их транзитивные зависимости.
-# Домены, которых здесь нет (compute, nlb, registry, storage, geo, iam), приедут вместе
-# со своими ресурсами: выход, порождённый «на будущее», — это мёртвый код, который
-# выглядит рабочим.
+# Только то, что нужно ресурсам, уже заведённым в провайдере, плюс их транзитивные
+# зависимости. Домены, которых здесь нет (nlb, registry, storage, geo, iam), приедут
+# вместе со своими ресурсами: выход, порождённый «на будущее», — это мёртвый код,
+# который выглядит рабочим.
 inputs:
   - directory: .
     paths:
       - kacho/cloud/vpc/v1
+      - kacho/cloud/compute/v1
       - kacho/cloud/operation
       - kacho/cloud/api
       - kacho/cloud/reference
