@@ -156,6 +156,21 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	if err := emitCompute(ctx, tx, "Instance", created.ID, "CREATED", instancePayload(created)); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
+	// Журнал — В ТОЙ ЖЕ транзакции. Провайдер про наши принадлежности не знает,
+	// значит «кто это сделал» способны записать только мы, и только здесь: после
+	// коммита запись теряется ровно при том отказе, ради которого журнал нужен.
+	actor, onBehalf := auditPrincipals(ctx)
+	if err := emitAudit(ctx, tx, AuditEvent{
+		EventType:    "instance.create",
+		ResourceType: "Instance",
+		ResourceID:   created.ID,
+		ProjectID:    created.ProjectID,
+		Actor:        actor,
+		OnBehalfOf:   onBehalf,
+		Payload:      map[string]any{"name": created.Name, "zone_id": created.ZoneID},
+	}); err != nil {
+		return nil, nil, ports.ErrInternal
+	}
 	// FGA owner-tuple register-intent for the Instance in the SAME writer-tx,
 	// carrying the instance labels + parent-scope to feed IAM resource_mirror.
 	reg, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventRegister, "Instance", created.ID, created.ProjectID, created.Labels)
@@ -499,6 +514,16 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 		return wrapPgErr(err, "Instance", id)
 	}
 	// instance_network_interfaces (same-DB cascade child) снимается FK CASCADE.
+	actorDel, onBehalfDel := auditPrincipals(ctx)
+	if err := emitAudit(ctx, tx, AuditEvent{
+		EventType:    "instance.delete",
+		ResourceType: "Instance",
+		ResourceID:   id,
+		Actor:        actorDel,
+		OnBehalfOf:   onBehalfDel,
+	}); err != nil {
+		return ports.ErrInternal
+	}
 	if err := emitCompute(ctx, tx, "Instance", id, "DELETED", map[string]any{"id": id}); err != nil {
 		return ports.ErrInternal
 	}
