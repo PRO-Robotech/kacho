@@ -64,6 +64,7 @@ func Instance(in *domain.Instance) *computev1.Instance {
 		Status:              computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
 		StatusReason:        in.StatusReason,
 		Fqdn:                in.FQDN,
+		GuestAccessKeyIds:   in.GuestAccessKeyIDs,
 		CpuGuaranteePercent: in.CPUGuaranteePercent,
 		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // #nosec G115 -- domain.InstanceKind зеркалит computev1.InstanceKind
 		MachineTypeId:       in.MachineTypeID,
@@ -128,10 +129,9 @@ func bootSource(bs domain.BootSource) *computev1.BootSource {
 
 func vmSpec(v *domain.VMSpec) *computev1.VmSpec {
 	out := &computev1.VmSpec{UserData: v.UserData}
-	if v.MetadataEndpoint != domain.MetadataOptionUnspecified || v.MetadataTokenRequired {
+	if v.MetadataEndpoint != domain.MetadataOptionUnspecified {
 		out.MetadataOptions = &computev1.MetadataOptions{
-			MetadataEndpoint:      computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
-			MetadataTokenRequired: v.MetadataTokenRequired,
+			MetadataEndpoint: computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
 		}
 	}
 	return out

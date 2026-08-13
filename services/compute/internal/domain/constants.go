@@ -43,6 +43,10 @@ const (
 	// MaxSecondaryVolumeSpecsPerInstance — предел числа вторичных томов в запросе
 	// создания машины. Значение объявлено контрактом (`(size) = "<=8"`).
 	MaxSecondaryVolumeSpecsPerInstance = 8
+	// MaxGuestAccessKeysPerInstance — предел числа ключей входа на машину.
+	// Значение объявлено контрактом (`(size) = "<=32"`) и проверяется здесь же:
+	// объявление без исполнителя ничего не ограничивает.
+	MaxGuestAccessKeysPerInstance = 32
 )
 
 // Бюджет свободной карты данных машины (`metadata`).

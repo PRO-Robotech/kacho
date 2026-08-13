@@ -164,8 +164,7 @@ def _seed_instance(suffix):
             "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
                                        "securityGroupIds": ["{{existingSgId}}"]}],
             "vmSpec": {"userData": "#cloud-config\n{}",
-                       "metadataOptions": {"metadataEndpoint": "ENABLED",
-                                           "metadataTokenRequired": True}}}
+                       "metadataOptions": {"metadataEndpoint": "ENABLED"}}}
     return [
         Step(name=f"seed-inst-{suffix}", method="POST", path=INSTANCES, body=body,
              test_script=[*assert_status(200), *assert_operation_envelope(),

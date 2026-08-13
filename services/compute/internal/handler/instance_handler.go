@@ -194,7 +194,10 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	// запущена и недостижима» снималось списком ключей, который никуда не доедет,
 	// то есть страж отпускал ровно тот случай, ради которого заведён.
 	if len(req.GetSshPublicKeys()) > 0 {
-		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+		add("ssh_public_keys",
+			"sshPublicKeys is not accepted: a key carried as a field lives exactly as long as the "+
+				"instance and can be neither revoked nor replaced — reference GuestAccessKey resources "+
+				"by id in guestAccessKeyIds instead")
 	}
 	// containerSpec.exitCode — восьмое поле того же класса, найденное обходом
 	// полей внутри `oneof` (прежде обход их не раскрывал). Код возврата —
@@ -240,7 +243,10 @@ func RejectUnsupportedUpdateFields(req *computev1.UpdateInstanceRequest) error {
 		n++
 	}
 	if len(req.GetSshPublicKeys()) > 0 {
-		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+		add("ssh_public_keys",
+			"sshPublicKeys is not accepted: a key carried as a field lives exactly as long as the "+
+				"instance and can be neither revoked nor replaced — reference GuestAccessKey resources "+
+				"by id in guestAccessKeyIds instead")
 	}
 	if len(req.GetMetadata()) > 0 {
 		add("metadata", "metadata is not updated here: use InstanceService.UpdateMetadata")
@@ -304,6 +310,7 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		AssignExternalAddress:  req.AssignExternalAddress,
 		AcknowledgeUnreachable: req.AcknowledgeUnreachable,
 		NetworkInterfaceSpecs:  nicSpecsFromProto(req.NetworkInterfaceSpecs),
+		GuestAccessKeyIDs:      req.GuestAccessKeyIds,
 		SecondaryVolumeSpecs:   secVolSpecsFromProto(req.SecondaryVolumeSpecs),
 	}
 	switch sp := req.Spec.(type) {
@@ -342,6 +349,7 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 		CPUGuaranteePercent: req.CpuGuaranteePercent,
 		PlacementGroupID:    req.PlacementGroupId,
 		VMSpec:              vmSpecFromProto(req.VmSpec),
+		GuestAccessKeyIDs:   req.GuestAccessKeyIds,
 		UpdateMask:          mask,
 	}
 	op, err := h.svc.Update(ctx, ur)
@@ -559,7 +567,6 @@ func vmSpecFromProto(v *computev1.VmSpec) *domain.VMSpec {
 	out := &domain.VMSpec{UserData: v.UserData}
 	if mo := v.MetadataOptions; mo != nil {
 		out.MetadataEndpoint = domain.MetadataOption(mo.MetadataEndpoint) // #nosec G115 -- proto enum зеркалит domain
-		out.MetadataTokenRequired = mo.MetadataTokenRequired
 	}
 	return out
 }

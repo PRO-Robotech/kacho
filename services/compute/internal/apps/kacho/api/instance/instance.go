@@ -77,6 +77,7 @@ type CreateInstanceReq struct {
 
 	// Launch-*Specs (SKELETON — структурная валидация формы, materialize → COMP-2).
 	NetworkInterfaceSpecs  []NetworkInterfaceSpec
+	GuestAccessKeyIDs      []string
 	SecondaryVolumeSpecs   []SecondaryVolumeSpec
 	UseDefaultNetwork      bool
 	AssignExternalAddress  bool
@@ -109,6 +110,7 @@ type UpdateInstanceReq struct {
 	CPUGuaranteePercent int32
 	PlacementGroupID    string
 	VMSpec              *domain.VMSpec
+	GuestAccessKeyIDs   []string
 	UpdateMask          []string
 }
 
@@ -200,6 +202,25 @@ func (s *InstanceService) List(ctx context.Context, f InstanceFilter, p Paginati
 	return out, next, nil
 }
 
+// validateGuestAccessKeyIDs проверяет форму ссылок на ключи входа.
+//
+// Принадлежность проекту здесь НЕ проверяется: это вопрос к данным, и он решён
+// внутри самой вставки связи. Проверка перед вставкой защищала бы ровно тот
+// путь, который через неё проходит.
+func validateGuestAccessKeyIDs(ids []string) error {
+	if len(ids) > domain.MaxGuestAccessKeysPerInstance {
+		return serviceerr.InvalidArg("guest_access_key_ids",
+			fmt.Sprintf("guestAccessKeyIds must contain at most %d entries (got %d)",
+				domain.MaxGuestAccessKeysPerInstance, len(ids)))
+	}
+	for _, id := range ids {
+		if err := corevalidate.ResourceID("GuestAccessKey", "gak", id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ValidateCreateInstanceReq — синхронная pre-flight валидация Create-запроса (формат/
 // структура/guard'ы; COMP-1 F1/F2/F3/F5/F6). Чистая (без DB/peer/каталог-вызовов) —
 // выделена для fuzz. Порядок: kind-oneof → sizing-канал → bootSource-grammar →
@@ -265,6 +286,13 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 		if err := corevalidate.ResourceID(plgResource, "plg", req.PlacementGroupID); err != nil {
 			return err
 		}
+	}
+	// Ключи входа: формат СВОЕГО идентификатора проверяется здесь, первым
+	// стейтментом. Без проверки непригодная строка уехала бы в связь и вернулась
+	// отказом «ключ не этого проекта» — утверждением о принадлежности строки,
+	// которая ключом быть не может.
+	if err := validateGuestAccessKeyIDs(req.GuestAccessKeyIDs); err != nil {
+		return err
 	}
 	// F6 — launch net-spec: networkInterfaceSpecs ИЛИ useDefaultNetwork (одно обязательно).
 	if len(req.NetworkInterfaceSpecs) == 0 && !req.UseDefaultNetwork {
@@ -378,6 +406,7 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		ServiceAccountID:    req.ServiceAccountID,
 		VMSpec:              req.VMSpec,
 		ContainerSpec:       req.ContainerSpec,
+		GuestAccessKeyIDs:   req.GuestAccessKeyIDs,
 	}
 	// Self-validating domain invariant на persistence-границе (last-line guard;
 	// формат уже проверен sync ValidateCreateInstanceReq).
@@ -434,7 +463,7 @@ func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*
 var instanceUpdateKnown = map[string]struct{}{
 	"name": {}, "description": {}, "labels": {}, "service_account_id": {},
 	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
-	"vm_spec": {},
+	"vm_spec": {}, "guest_access_key_ids": {},
 }
 
 // instanceStoppedGatedMask — маска-поля, требующие STOPPED (sizing/placement, F10).
@@ -447,6 +476,10 @@ var instanceStoppedGatedMask = map[string]struct{}{
 // лишь по явной маске. Один список на применение и на валидацию: разъехавшись, они
 // дают ровно тот дефект, ради которого список и заведён — поле применяется, но не
 // проверяется.
+//
+// Набора ключей входа здесь НЕТ намеренно: пустая маска означала бы «снять все
+// ключи», то есть правка описания молча лишала бы машину доступа. Замена набора
+// требует, чтобы её назвали.
 var instanceFullPatchFields = []string{"name", "description", "labels", "service_account_id"}
 
 // instanceUpdatedFields — поля, которые ЭТОТ запрос изменит: замаскированные, а при
@@ -524,6 +557,9 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 					in.VMSpec = req.VMSpec
 					nextBoot = true
 					changed = append(changed, "vm_spec")
+				case "guest_access_key_ids":
+					in.GuestAccessKeyIDs = req.GuestAccessKeyIDs
+					changed = append(changed, "guest_access_key_ids")
 				}
 			}
 			if nextBoot {
@@ -611,6 +647,10 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 				if err := corevalidate.ResourceID(saResource, "sva", req.ServiceAccountID); err != nil {
 					return err
 				}
+			}
+		case "guest_access_key_ids":
+			if err := validateGuestAccessKeyIDs(req.GuestAccessKeyIDs); err != nil {
+				return err
 			}
 		}
 	}

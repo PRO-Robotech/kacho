@@ -63,6 +63,17 @@ var cardinalityEnforcer = map[string]enforcer{
 		file:  "services/compute/internal/domain/constants.go",
 		ident: "MaxSecondaryVolumeSpecsPerInstance",
 	},
+	// Ключи входа: один исполнитель на оба запроса. Предел проверяется общей
+	// функцией, которую зовут и создание, и правка, — поэтому запись здесь одна
+	// по существу и две по ключу.
+	"CreateInstanceRequest.guest_access_key_ids": {
+		file:  "services/compute/internal/domain/constants.go",
+		ident: "MaxGuestAccessKeysPerInstance",
+	},
+	"UpdateInstanceRequest.guest_access_key_ids": {
+		file:  "services/compute/internal/domain/constants.go",
+		ident: "MaxGuestAccessKeysPerInstance",
+	},
 }
 
 // unreadFields — освобождения: поле не читает ни одна строка прод-кода, поэтому

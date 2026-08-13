@@ -50,10 +50,15 @@ const instanceCols = `id, project_id, created_at, name, description, labels, zon
 // а NOT NULL с пустой строкой по умолчанию не FK-able), тогда как domain-тип
 // остаётся `string`. NULL («тип не задан») читается как "" — как и до 0017.
 // Симметрично на записи — NULLIF (см. Insert/Update).
+// Набор ключей входа читается ТЕМ ЖЕ стейтментом, подзапросом. Отдельное чтение
+// на каждую машину дало бы запрос на строку списка — цена, которую платит
+// вызывающий за то, что мы разложили связь по двум таблицам, а не он.
 const instanceSelectCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
 	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
 	`instance_kind, COALESCE(machine_type_id,'') AS machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
-	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
+	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec, ` +
+	`COALESCE((SELECT array_agg(g.guest_access_key_id ORDER BY g.guest_access_key_id) ` +
+	`FROM instance_guest_access_keys g WHERE g.instance_id = instances.id), '{}') AS guest_access_key_ids`
 
 // Get возвращает ВМ по id. AttachedDisks НЕ заполняются здесь — это зеркало из
 // kacho-storage, use-case подтягивает его на чтении (graceful-degrade).
@@ -165,6 +170,20 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, nil, wrapPgErr(err, "Instance", in.Name)
+	}
+	// Связь с ключами входа — в той же транзакции, что сама машина. Иначе
+	// машина существовала бы с пустым набором ключей ровно до второй записи, а
+	// на её отказе — навсегда: в неё было бы некому войти, и это выглядело бы
+	// как успешное создание.
+	if err := replaceGuestKeyBindings(ctx, tx, created.ID, created.ProjectID, in.GuestAccessKeyIDs); err != nil {
+		return nil, nil, err
+	}
+	// Набор перечитывается, а не зеркалится из входа: вставка идёт ПОСЛЕ строки
+	// машины, поэтому подзапрос в её RETURNING видел пустой набор — а отдать
+	// вызывающему вход вместо записанного значило бы подтвердить то, чего мы не
+	// проверяли.
+	if created.GuestAccessKeyIDs, err = guestKeyIDsOf(ctx, tx, created.ID); err != nil {
+		return nil, nil, err
 	}
 	if err := emitCompute(ctx, tx, "Instance", created.ID, "CREATED", instancePayload(created)); err != nil {
 		return nil, nil, ports.ErrInternal
@@ -286,6 +305,18 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		}
 		return nil, nil, wrapPgErr(err, "Instance", in.ID)
 	}
+	// Набор ключей входа заменяется ЦЕЛИКОМ и только когда маска его назвала.
+	// Не названный маской набор не трогается — иначе правка имени машины молча
+	// снимала бы с неё все ключи, и это выглядело бы как успешное переименование.
+	if _, ok := ch["guest_access_key_ids"]; ok {
+		if err := replaceGuestKeyBindings(ctx, tx, updated.ID, updated.ProjectID, in.GuestAccessKeyIDs); err != nil {
+			return nil, nil, err
+		}
+		if updated.GuestAccessKeyIDs, err = guestKeyIDsOf(ctx, tx, updated.ID); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	if err := emitCompute(ctx, tx, "Instance", updated.ID, "UPDATED", instancePayload(updated)); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -650,7 +681,7 @@ func scanInstance(row scannable) (*domain.Instance, error) {
 		&kind, &in.MachineTypeID,
 		&in.EffectiveResources.VCPU, &in.EffectiveResources.MemoryMiB, &in.EffectiveResources.GPUs, &in.EffectiveResources.GPUType,
 		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &in.PlacementGroupID,
-		&vmSpecJSON, &ctrSpecJSON,
+		&vmSpecJSON, &ctrSpecJSON, &in.GuestAccessKeyIDs,
 	); err != nil {
 		return nil, err
 	}

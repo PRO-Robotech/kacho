@@ -108,7 +108,10 @@ func (r *GuestAccessKeyRepo) List(ctx context.Context, projectID string, p ports
 // управления, и запись о том, кто его завёл, единственная связывает вход с
 // человеком. Без неё «кто-то вошёл» останется без ответа навсегда.
 func (r *GuestAccessKeyRepo) Insert(ctx context.Context, k *domain.GuestAccessKey) (*domain.GuestAccessKey, []ownerregister.Registration, error) {
-	labelsJSON, err := marshalJSONB(k.Labels, "GuestAccessKey.labels")
+	// orEmptyMap обязателен: nil-карта сериализуется в `null`, а схема требует
+	// объект. Без него ключ БЕЗ меток — самый обычный ключ — не создавался бы
+	// вовсе, и отказ приходил бы про разбор ввода, которого вызывающий не слал.
+	labelsJSON, err := marshalJSONB(orEmptyMap(k.Labels), "GuestAccessKey.labels")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -234,12 +237,27 @@ func (r *GuestAccessKeyRepo) Delete(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Перечень держателей читается ДО удаления: арендатор обязан получить радиус
+	// вместе с отказом, а не выяснять его перебором. Ссылочная целостность
+	// отвергла бы удаление и сама, но её отказ называет ограничение, а не машины
+	// — по нему нельзя сделать ни одного следующего шага.
+	holders, truncated, err := instancesHoldingGuestKey(ctx, tx, id, maxNamedHolders)
+	if err != nil {
+		return err
+	}
+	if len(holders) > 0 {
+		return &ErrGuestKeyInUse{KeyID: id, InstanceIDs: holders, Truncated: truncated}
+	}
+
 	var projectID string
 	err = tx.QueryRow(ctx, `DELETE FROM guest_access_keys WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: GuestAccessKey %s not found", ports.ErrNotFound, id)
 		}
+		// Ссылочная целостность остаётся ЗАДНИМ рубежом, а не запасным путём:
+		// перечень выше читается в этой же транзакции, поэтому привязка,
+		// возникшая между чтением и удалением, всё равно не пропустит удаление.
 		return wrapPgErr(err, "GuestAccessKey", id)
 	}
 

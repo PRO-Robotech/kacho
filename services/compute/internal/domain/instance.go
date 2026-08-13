@@ -156,9 +156,13 @@ type BootSource struct {
 
 // VMSpec — конфигурация VM (instance_kind = VM).
 type VMSpec struct {
-	UserData              string         `json:"user_data,omitempty"`
-	MetadataEndpoint      MetadataOption `json:"metadata_endpoint,omitempty"`
-	MetadataTokenRequired bool           `json:"metadata_token_required,omitempty"`
+	UserData         string         `json:"user_data,omitempty"`
+	MetadataEndpoint MetadataOption `json:"metadata_endpoint,omitempty"`
+
+	// Поля «требуется ли сессионный токен» здесь НЕТ, и это решение, а не
+	// пропуск: токен обязателен by construction, а ручка, которой можно
+	// отключить защиту, однажды будет отключена. Снято вместе с полем контракта
+	// (номер и имя зарезервированы навсегда).
 }
 
 // ContainerPort — объявление порта контейнера.
@@ -213,6 +217,11 @@ type Instance struct {
 	// VMSpec set при kind=VM; ContainerSpec — при kind=CONTAINER (взаимоисключающе).
 	VMSpec        *VMSpec
 	ContainerSpec *ContainerSpec
+
+	// Ключи входа гостя — ссылками по неизменяемому идентификатору. Материал
+	// ключа здесь не лежит и лежать не может: ключ — отдельный ресурс, и его
+	// срок жизни не совпадает со сроком жизни машины.
+	GuestAccessKeyIDs []string
 
 	// Output-only зеркала (материализуются launch-сагами COMP-2; пусто в COMP-1).
 	NetworkInterfaces []NetworkInterface

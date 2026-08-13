@@ -177,6 +177,18 @@ message Instance {
     "serial_port_settings", "maintenance_policy", "maintenance_grace_period",
     "hardware_generation";
 
+
+  // Ключи входа гостя, действующие на этой машине.
+  //
+  // ССЫЛКИ ПО НЕИЗМЕНЯЕМОМУ ИДЕНТИФИКАТОРУ, а не материал ключа. Материал,
+  // положенный сюда, жил бы ровно столько, сколько машина: его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Ключ — отдельный
+  // ресурс (`GuestAccessKeyService`), и здесь стоит связь с ним.
+  //
+  // Набор ЗАМЕНЯЕТСЯ целиком при правке: «добавить один» и «оставить как есть»
+  // выразимы через полный набор, а частичные глаголы на списке ссылок дали бы
+  // два способа сказать одно.
+  repeated string guest_access_key_ids = 46;
 }
 
 // InstanceKind — the strong first discriminator (F1). VM and CONTAINER have distinct
@@ -536,14 +548,19 @@ message MetadataOptions {
   // Whether the instance metadata endpoint is reachable from the guest.
   MetadataOption metadata_endpoint = 7;
 
-  // Whether a session token is required to read metadata.
+  // Поле 8 держало «требуется ли сессионный токен для чтения метаданных».
   //
-  // The comment here used to explain this field through another cloud's product
-  // name. That is what ban #2 forbids, and the reason is not etiquette: a field
-  // described by someone else's product is a field whose contract is theirs to
-  // change. Our own terms suffice — a session token, obtained before the read,
-  // is what stops a request forged from inside the guest.
-  bool metadata_token_required = 8;
+  // СНЯТО С КОНТРАКТА, номер и имя зарезервированы навсегда. Токен обязателен
+  // BY CONSTRUCTION: ручки, снимающей эту обязательность, не существует, потому
+  // что ручка, которой можно отключить защиту, однажды будет отключена — и
+  // отключена она будет там, где отладка идёт под давлением, а не там, где о ней
+  // помнят.
+  //
+  // Снято именно СНЯТИЕМ, а не сменой умолчания: пока поле стоит в контракте, оно
+  // подпадает под запрет «принято-и-проигнорировано» — вызывающий получает успех
+  // и уверен, что его параметр применён.
+  reserved 8;
+  reserved "metadata_token_required";
 }
 
 enum MetadataOption {

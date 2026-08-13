@@ -90,7 +90,7 @@ def _vm_body(suffix, mt="{{mtId}}", name=None, ack=True, boot=None, nic=True, ex
          "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
          "bootSource": dict(boot) if boot is not None else dict(_BOOT_STORAGE),
          "vmSpec": {"userData": "#cloud-config\n{}",
-                    "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}}}
+                    "metadataOptions": {"metadataEndpoint": "ENABLED"}}}
     if nic:
         b["networkInterfaceSpecs"] = [{"subnetId": "{{existingSubnetId}}", "securityGroupIds": ["{{existingSgId}}"]}]
     if ack:
@@ -158,7 +158,7 @@ CASES.append(Case(
                          "const j = pm.response.json();",
                          "pm.test('id matches & ins- prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('instanceId')); pm.expect(j.id).to.match(/^ins-/); });",
                          "pm.test('instanceKind VM', () => pm.expect(j.instanceKind).to.eql('VM'));",
-                         "pm.test('vmSpec present, metadataOptions ENABLED (vendor-agnostic F9)', () => { pm.expect(j.vmSpec, 'vmSpec').to.be.an('object'); pm.expect(j.vmSpec.metadataOptions.metadataEndpoint).to.eql('ENABLED'); pm.expect(j.vmSpec.metadataOptions.metadataTokenRequired).to.eql(true); });",
+                         "pm.test('vmSpec present, metadataOptions ENABLED (vendor-agnostic F9)', () => { pm.expect(j.vmSpec, 'vmSpec').to.be.an('object'); pm.expect(j.vmSpec.metadataOptions.metadataEndpoint).to.eql('ENABLED'); pm.expect(j.vmSpec.metadataOptions.metadataTokenRequired, 'ручка обязательности токена снята с контракта — её возврат означал бы, что защиту снова можно отключить').to.be.oneOf([undefined, null]); });",
                          "pm.test('containerSpec absent (oneof XOR)', () => pm.expect(j.containerSpec).to.be.oneOf([undefined, null]));",
                          "pm.test('machineTypeId canonical mt- echo == seeded', () => { pm.expect(j.machineTypeId).to.eql(pm.environment.get('mtId')); pm.expect(j.machineTypeId).to.match(/^mt-/); });",
                          "pm.test('effectiveResources° mirror vCpu=2 memoryMib=8192 gpus=0', () => { const e=j.effectiveResources||{}; pm.expect(String(e.vCpu)).to.eql('2'); pm.expect(String(e.memoryMib)).to.eql('8192'); pm.expect(String(e.gpus||0)).to.eql('0'); });",

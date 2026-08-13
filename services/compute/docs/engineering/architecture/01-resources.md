@@ -113,6 +113,7 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `service_account` | 43 | reference.Referrer | dependency-handle на служебную учётку (graceful-dangling) |
 | `vm_spec` | 44 | VmSpec | ветвь `oneof spec` для `instance_kind = VM` |
 | `container_spec` | 45 | ContainerSpec | ветвь `oneof spec` для `instance_kind = CONTAINER` |
+| `guest_access_key_ids` | 46 | repeated string | ссылки на `GuestAccessKey` по неизменяемому id; заменяются целиком, ключ обязан быть того же проекта (условие внутри вставки связи) |
 
 (`hostname` из `CreateInstanceRequest` хранится в `instances.hostname` для
 вычисления `fqdn` и не возвращается отдельным полем в `Instance`.)

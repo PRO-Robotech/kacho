@@ -382,13 +382,22 @@ type CreateInstanceRequest struct {
 	Spec isCreateInstanceRequest_Spec `protobuf_oneof:"spec"`
 	// Guaranteed CPU baseline per vCPU, in percent (0..100; 0 = burstable). Family-gated.
 	CpuGuaranteePercent int32 `protobuf:"varint,32,opt,name=cpu_guarantee_percent,json=cpuGuaranteePercent,proto3" json:"cpu_guarantee_percent,omitempty"`
-	// NOT ACCEPTED. compute puts nothing into the guest: there is no metadata-service
-	// and no guest-agent, so keys have nowhere to be delivered and no column to live in.
-	// A set value is refused synchronously with INVALID_ARGUMENT naming this field
-	// (accepted-and-ignored is not a lawful outcome). Kept on the contract rather than
-	// removed because the REST edge discards unknown body keys, so removal would turn a
-	// named refusal back into a silent 200. See docs/architecture/07-known-divergences.md §7.1.
+	// НЕ ПРИНИМАЕТСЯ — и теперь у отказа есть замена, которую он называет.
+	//
+	// Материал ключа в запросе машины означал бы ключ, живущий ровно столько,
+	// сколько машина: его нельзя ни отозвать, ни заменить, ни узнать, где ещё он
+	// используется. Ключ — отдельный ресурс, и связь с ним выражается полем
+	// `guest_access_key_ids` ниже.
+	//
+	// Поле ОСТАЁТСЯ в контракте отвергаемым, а не снимается: край отбрасывает
+	// неизвестные ключи тела, поэтому снятие превратило бы названный отказ в
+	// молчаливый успех — прежний вызывающий решил бы, что его ключи применены.
 	SshPublicKeys []string `protobuf:"bytes,33,rep,name=ssh_public_keys,json=sshPublicKeys,proto3" json:"ssh_public_keys,omitempty"`
+	// Ключи входа гостя — ссылками по неизменяемому идентификатору.
+	//
+	// Ключ обязан принадлежать ТОМУ ЖЕ проекту, что машина; это условие стоит
+	// внутри самой вставки связи, а не отдельной проверкой перед ней.
+	GuestAccessKeyIds []string `protobuf:"bytes,39,rep,name=guest_access_key_ids,json=guestAccessKeyIds,proto3" json:"guest_access_key_ids,omitempty"`
 	// Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
 	// COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
 	SecondaryVolumeSpecs []*SecondaryVolumeSpec `protobuf:"bytes,34,rep,name=secondary_volume_specs,json=secondaryVolumeSpecs,proto3" json:"secondary_volume_specs,omitempty"`
@@ -603,6 +612,13 @@ func (x *CreateInstanceRequest) GetSshPublicKeys() []string {
 	return nil
 }
 
+func (x *CreateInstanceRequest) GetGuestAccessKeyIds() []string {
+	if x != nil {
+		return x.GuestAccessKeyIds
+	}
+	return nil
+}
+
 func (x *CreateInstanceRequest) GetSecondaryVolumeSpecs() []*SecondaryVolumeSpec {
 	if x != nil {
 		return x.SecondaryVolumeSpecs
@@ -806,11 +822,17 @@ type UpdateInstanceRequest struct {
 	CpuGuaranteePercent int32 `protobuf:"varint,21,opt,name=cpu_guarantee_percent,json=cpuGuaranteePercent,proto3" json:"cpu_guarantee_percent,omitempty"`
 	// Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
 	PlacementGroupId string `protobuf:"bytes,22,opt,name=placement_group_id,json=placementGroupId,proto3" json:"placement_group_id,omitempty"`
-	// NOT ACCEPTED — same reason as on Create. It used to be stamped as "takes effect on
-	// next boot", which confirmed acceptance of something that would never happen. A set
-	// value is refused synchronously with INVALID_ARGUMENT naming this field, with an
-	// empty mask and a naming mask alike.
+	// НЕ ПРИНИМАЕТСЯ — по той же причине, что на создании, и с той же заменой:
+	// связь с ключами выражается полем `guest_access_key_ids` ниже. Отказ приходит
+	// синхронно и называет это поле — и при пустой маске, и при маске, его
+	// называющей.
 	SshPublicKeys []string `protobuf:"bytes,23,rep,name=ssh_public_keys,json=sshPublicKeys,proto3" json:"ssh_public_keys,omitempty"`
+	// Ключи входа гостя — ЗАМЕНА набора целиком (не добавление к нему).
+	//
+	// Пустой набор при названной маске означает «снять все ключи», и это
+	// осмысленное намерение, а не пропуск: иначе снять последний ключ было бы
+	// нечем.
+	GuestAccessKeyIds []string `protobuf:"bytes,25,rep,name=guest_access_key_ids,json=guestAccessKeyIds,proto3" json:"guest_access_key_ids,omitempty"`
 	// VM spec (next-boot deferred class, F10 — user_data/metadata_options).
 	VmSpec        *VmSpec `protobuf:"bytes,24,opt,name=vm_spec,json=vmSpec,proto3" json:"vm_spec,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -948,6 +970,13 @@ func (x *UpdateInstanceRequest) GetPlacementGroupId() string {
 func (x *UpdateInstanceRequest) GetSshPublicKeys() []string {
 	if x != nil {
 		return x.SshPublicKeys
+	}
+	return nil
+}
+
+func (x *UpdateInstanceRequest) GetGuestAccessKeyIds() []string {
+	if x != nil {
+		return x.GuestAccessKeyIds
 	}
 	return nil
 }
@@ -3734,7 +3763,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
 	"\x15ListInstancesResponse\x12>\n" +
 	"\tinstances\x18\x01 \x03(\v2 .kacho.cloud.compute.v1.InstanceR\tinstances\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xae\x12\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe9\x12\n" +
 	"\x15CreateInstanceRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x129\n" +
@@ -3760,7 +3789,8 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\avm_spec\x18\x1e \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecH\x00R\x06vmSpec\x12N\n" +
 	"\x0econtainer_spec\x18\x1f \x01(\v2%.kacho.cloud.compute.v1.ContainerSpecH\x00R\rcontainerSpec\x122\n" +
 	"\x15cpu_guarantee_percent\x18  \x01(\x05R\x13cpuGuaranteePercent\x12&\n" +
-	"\x0fssh_public_keys\x18! \x03(\tR\rsshPublicKeys\x12j\n" +
+	"\x0fssh_public_keys\x18! \x03(\tR\rsshPublicKeys\x129\n" +
+	"\x14guest_access_key_ids\x18' \x03(\tB\b\x82\xc81\x04<=32R\x11guestAccessKeyIds\x12j\n" +
 	"\x16secondary_volume_specs\x18\" \x03(\v2+.kacho.cloud.compute.v1.SecondaryVolumeSpecB\a\x82\xc81\x03<=8R\x14secondaryVolumeSpecs\x12.\n" +
 	"\x13use_default_network\x18# \x01(\bR\x11useDefaultNetwork\x126\n" +
 	"\x17assign_external_address\x18$ \x01(\bR\x15assignExternalAddress\x127\n" +
@@ -3784,7 +3814,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"autoDelete\"C\n" +
 	"\x16CreateInstanceMetadata\x12)\n" +
 	"\vinstance_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\n" +
-	"instanceId\"\xac\v\n" +
+	"instanceId\"\xe7\v\n" +
 	"\x15UpdateInstanceRequest\x12-\n" +
 	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"instanceId\x12;\n" +
@@ -3804,7 +3834,8 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x0fmachine_type_id\x18\x14 \x01(\tB\b\x8a\xc81\x04<=63R\rmachineTypeId\x122\n" +
 	"\x15cpu_guarantee_percent\x18\x15 \x01(\x05R\x13cpuGuaranteePercent\x126\n" +
 	"\x12placement_group_id\x18\x16 \x01(\tB\b\x8a\xc81\x04<=50R\x10placementGroupId\x12&\n" +
-	"\x0fssh_public_keys\x18\x17 \x03(\tR\rsshPublicKeys\x127\n" +
+	"\x0fssh_public_keys\x18\x17 \x03(\tR\rsshPublicKeys\x129\n" +
+	"\x14guest_access_key_ids\x18\x19 \x03(\tB\b\x82\xc81\x04<=32R\x11guestAccessKeyIds\x127\n" +
 	"\avm_spec\x18\x18 \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecR\x06vmSpec\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

@@ -663,9 +663,20 @@ type Instance struct {
 	//
 	//	*Instance_VmSpec
 	//	*Instance_ContainerSpec
-	Spec          isInstance_Spec `protobuf_oneof:"spec"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Spec isInstance_Spec `protobuf_oneof:"spec"`
+	// Ключи входа гостя, действующие на этой машине.
+	//
+	// ССЫЛКИ ПО НЕИЗМЕНЯЕМОМУ ИДЕНТИФИКАТОРУ, а не материал ключа. Материал,
+	// положенный сюда, жил бы ровно столько, сколько машина: его нельзя ни
+	// отозвать, ни заменить, ни узнать, где ещё он используется. Ключ — отдельный
+	// ресурс (`GuestAccessKeyService`), и здесь стоит связь с ним.
+	//
+	// Набор ЗАМЕНЯЕТСЯ целиком при правке: «добавить один» и «оставить как есть»
+	// выразимы через полный набор, а частичные глаголы на списке ссылок дали бы
+	// два способа сказать одно.
+	GuestAccessKeyIds []string `protobuf:"bytes,46,rep,name=guest_access_key_ids,json=guestAccessKeyIds,proto3" json:"guest_access_key_ids,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Instance) Reset() {
@@ -859,6 +870,13 @@ func (x *Instance) GetContainerSpec() *ContainerSpec {
 		if x, ok := x.Spec.(*Instance_ContainerSpec); ok {
 			return x.ContainerSpec
 		}
+	}
+	return nil
+}
+
+func (x *Instance) GetGuestAccessKeyIds() []string {
+	if x != nil {
+		return x.GuestAccessKeyIds
 	}
 	return nil
 }
@@ -1967,16 +1985,8 @@ type MetadataOptions struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Whether the instance metadata endpoint is reachable from the guest.
 	MetadataEndpoint MetadataOption `protobuf:"varint,7,opt,name=metadata_endpoint,json=metadataEndpoint,proto3,enum=kacho.cloud.compute.v1.MetadataOption" json:"metadata_endpoint,omitempty"`
-	// Whether a session token is required to read metadata.
-	//
-	// The comment here used to explain this field through another cloud's product
-	// name. That is what ban #2 forbids, and the reason is not etiquette: a field
-	// described by someone else's product is a field whose contract is theirs to
-	// change. Our own terms suffice — a session token, obtained before the read,
-	// is what stops a request forged from inside the guest.
-	MetadataTokenRequired bool `protobuf:"varint,8,opt,name=metadata_token_required,json=metadataTokenRequired,proto3" json:"metadata_token_required,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *MetadataOptions) Reset() {
@@ -2014,13 +2024,6 @@ func (x *MetadataOptions) GetMetadataEndpoint() MetadataOption {
 		return x.MetadataEndpoint
 	}
 	return MetadataOption_METADATA_OPTION_UNSPECIFIED
-}
-
-func (x *MetadataOptions) GetMetadataTokenRequired() bool {
-	if x != nil {
-		return x.MetadataTokenRequired
-	}
-	return false
 }
 
 type SerialPortSettings struct {
@@ -2072,7 +2075,7 @@ var File_kacho_cloud_compute_v1_instance_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/reference/reference.proto\"\x8b\x0f\n" +
+	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/reference/reference.proto\"\xbc\x0f\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2099,7 +2102,8 @@ const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\rstatus_reason\x18* \x01(\tR\fstatusReason\x12H\n" +
 	"\x0fservice_account\x18+ \x01(\v2\x1f.kacho.cloud.reference.ReferrerR\x0eserviceAccount\x129\n" +
 	"\avm_spec\x18, \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecH\x00R\x06vmSpec\x12N\n" +
-	"\x0econtainer_spec\x18- \x01(\v2%.kacho.cloud.compute.v1.ContainerSpecH\x00R\rcontainerSpec\x1a9\n" +
+	"\x0econtainer_spec\x18- \x01(\v2%.kacho.cloud.compute.v1.ContainerSpecH\x00R\rcontainerSpec\x12/\n" +
+	"\x14guest_access_key_ids\x18. \x03(\tR\x11guestAccessKeyIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xac\x01\n" +
@@ -2213,10 +2217,9 @@ const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\x14SOFTWARE_ACCELERATED\x10\x02\x12\x18\n" +
 	"\x14HARDWARE_ACCELERATED\x10\x03\"3\n" +
 	"\vGpuSettings\x12$\n" +
-	"\x0egpu_cluster_id\x18\x01 \x01(\tR\fgpuClusterId\"\xb7\x02\n" +
+	"\x0egpu_cluster_id\x18\x01 \x01(\tR\fgpuClusterId\"\x9e\x02\n" +
 	"\x0fMetadataOptions\x12S\n" +
-	"\x11metadata_endpoint\x18\a \x01(\x0e2&.kacho.cloud.compute.v1.MetadataOptionR\x10metadataEndpoint\x126\n" +
-	"\x17metadata_token_required\x18\b \x01(\bR\x15metadataTokenRequiredJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x11gce_http_endpointR\x14aws_v1_http_endpointR\x0egce_http_tokenR\x11aws_v1_http_tokenR\x14aws_v2_http_endpointR\x11aws_v2_http_token\"\xda\x01\n" +
+	"\x11metadata_endpoint\x18\a \x01(\x0e2&.kacho.cloud.compute.v1.MetadataOptionR\x10metadataEndpointJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aJ\x04\b\b\x10\tR\x11gce_http_endpointR\x14aws_v1_http_endpointR\x0egce_http_tokenR\x11aws_v1_http_tokenR\x14aws_v2_http_endpointR\x11aws_v2_http_tokenR\x17metadata_token_required\"\xda\x01\n" +
 	"\x12SerialPortSettings\x12h\n" +
 	"\x11ssh_authorization\x18\x01 \x01(\x0e2;.kacho.cloud.compute.v1.SerialPortSettings.SSHAuthorizationR\x10sshAuthorization\"Z\n" +
 	"\x10SSHAuthorization\x12!\n" +

@@ -471,13 +471,23 @@ message CreateInstanceRequest {
   // Guaranteed CPU baseline per vCPU, in percent (0..100; 0 = burstable). Family-gated.
   int32 cpu_guarantee_percent = 32;
 
-  // NOT ACCEPTED. compute puts nothing into the guest: there is no metadata-service
-  // and no guest-agent, so keys have nowhere to be delivered and no column to live in.
-  // A set value is refused synchronously with INVALID_ARGUMENT naming this field
-  // (accepted-and-ignored is not a lawful outcome). Kept on the contract rather than
-  // removed because the REST edge discards unknown body keys, so removal would turn a
-  // named refusal back into a silent 200. See docs/architecture/07-known-divergences.md §7.1.
+  // НЕ ПРИНИМАЕТСЯ — и теперь у отказа есть замена, которую он называет.
+  //
+  // Материал ключа в запросе машины означал бы ключ, живущий ровно столько,
+  // сколько машина: его нельзя ни отозвать, ни заменить, ни узнать, где ещё он
+  // используется. Ключ — отдельный ресурс, и связь с ним выражается полем
+  // `guest_access_key_ids` ниже.
+  //
+  // Поле ОСТАЁТСЯ в контракте отвергаемым, а не снимается: край отбрасывает
+  // неизвестные ключи тела, поэтому снятие превратило бы названный отказ в
+  // молчаливый успех — прежний вызывающий решил бы, что его ключи применены.
   repeated string ssh_public_keys = 33;
+
+  // Ключи входа гостя — ссылками по неизменяемому идентификатору.
+  //
+  // Ключ обязан принадлежать ТОМУ ЖЕ проекту, что машина; это условие стоит
+  // внутри самой вставки связи, а не отдельной проверкой перед ней.
+  repeated string guest_access_key_ids = 39 [(size) = "<=32"];
 
   // Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
   // COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
@@ -582,11 +592,18 @@ message UpdateInstanceRequest {
   // Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
   string placement_group_id = 22 [(length) = "<=50"];
 
-  // NOT ACCEPTED — same reason as on Create. It used to be stamped as "takes effect on
-  // next boot", which confirmed acceptance of something that would never happen. A set
-  // value is refused synchronously with INVALID_ARGUMENT naming this field, with an
-  // empty mask and a naming mask alike.
+  // НЕ ПРИНИМАЕТСЯ — по той же причине, что на создании, и с той же заменой:
+  // связь с ключами выражается полем `guest_access_key_ids` ниже. Отказ приходит
+  // синхронно и называет это поле — и при пустой маске, и при маске, его
+  // называющей.
   repeated string ssh_public_keys = 23;
+
+  // Ключи входа гостя — ЗАМЕНА набора целиком (не добавление к нему).
+  //
+  // Пустой набор при названной маске означает «снять все ключи», и это
+  // осмысленное намерение, а не пропуск: иначе снять последний ключ было бы
+  // нечем.
+  repeated string guest_access_key_ids = 25 [(size) = "<=32"];
 
   // VM spec (next-boot deferred class, F10 — user_data/metadata_options).
   VmSpec vm_spec = 24;
