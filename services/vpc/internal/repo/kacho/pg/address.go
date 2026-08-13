@@ -69,6 +69,16 @@ func (r *addressReader) List(ctx context.Context, f kacho.AddressFilter, p kacho
 		args = append(args, f.SubnetID)
 		argIdx++
 	}
+	if f.IPAddress != "" {
+		// Четыре формы владения, один вопрос. Значение приходит параметром, поэтому
+		// инъекция через него невозможна; имена путей внутри JSONB — литералы кода.
+		conditions = append(conditions, fmt.Sprintf(
+			"(internal_ipv4->>'address' = $%d OR internal_ipv6->>'address' = $%d"+
+				" OR external_ipv4->>'address' = $%d OR external_ipv6->>'address' = $%d)",
+			argIdx, argIdx, argIdx, argIdx))
+		args = append(args, f.IPAddress)
+		argIdx++
+	}
 	if f.Filter != "" {
 		// Добавлены только те поля, у которых совпадают ТРИ вещи: имя контракта, имя
 		// колонки и пригодность к сравнению по контрактному значению.

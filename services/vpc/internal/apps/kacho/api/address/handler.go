@@ -120,6 +120,12 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListAddressesRequest) (*v
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 		SubnetID:  req.SubnetId,
+		// Сужение по значению — замена снятому поиску по значению. Область запроса
+		// берётся из `project_id`, который вызывающий и так обязан назвать, а страница
+		// проверяется по правам построчно: у снятого метода внешняя ветвь была
+		// неавторизуема по построению, потому что область бралась из подсети, которой
+		// у внешнего адреса нет.
+		IPAddress: req.IpAddress,
 	}, Pagination{
 		PageToken: req.PageToken,
 		PageSize:  req.PageSize,

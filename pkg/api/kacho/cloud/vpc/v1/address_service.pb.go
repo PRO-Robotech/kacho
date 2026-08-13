@@ -217,7 +217,19 @@ type ListAddressesRequest struct {
 	// Optional: list only addresses allocated from this subnet (internal_ipv4 /
 	// internal_ipv6 with this subnet_id). Used by the UI ref-picker for a NIC's
 	// addresses in a given subnet.
-	SubnetId      string `protobuf:"bytes,5,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	SubnetId string `protobuf:"bytes,5,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	// Optional: list only the address whose allocated value equals this IP.
+	//
+	// Замена снятому `GetByValue`. Тот метод отвечал на вопрос «чей это адрес?», но
+	// его внешняя ветвь была НЕАВТОРИЗУЕМА ПО ПОСТРОЕНИЮ: область запроса бралась из
+	// подсети, а у внешнего адреса подсети нет — значит для него не существовало
+	// объекта, про который можно задать вопрос о правах. Тот же сценарий закрывается
+	// списком с сужением: область берётся из `project_id`, который вызывающий и так
+	// обязан назвать, а страница проверяется по правам построчно.
+	//
+	// Сужение применяется к ОБОИМ семействам и к обеим формам владения (внутренний
+	// адрес подсети и внешний из пула): «чей это адрес» — один вопрос, а не четыре.
+	IpAddress     string `protobuf:"bytes,6,opt,name=ip_address,json=ipAddress,proto3" json:"ip_address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -283,6 +295,13 @@ func (x *ListAddressesRequest) GetFilter() string {
 func (x *ListAddressesRequest) GetSubnetId() string {
 	if x != nil {
 		return x.SubnetId
+	}
+	return ""
+}
+
+func (x *ListAddressesRequest) GetIpAddress() string {
+	if x != nil {
+		return x.IpAddress
 	}
 	return ""
 }
@@ -1356,7 +1375,7 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\x15internal_ipv4_address\x18\x02 \x01(\tH\x00R\x13internalIpv4Address\x12'\n" +
 	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50H\x01R\bsubnetIdB\t\n" +
 	"\aaddressB\a\n" +
-	"\x05scopeJ\x04\b\x03\x10\x05\"\xd5\x01\n" +
+	"\x05scopeJ\x04\b\x03\x10\x05\"\xfe\x01\n" +
 	"\x14ListAddressesRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -1365,7 +1384,9 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\x16\n" +
 	"\x06filter\x18\x04 \x01(\tR\x06filter\x12%\n" +
-	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\"z\n" +
+	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12'\n" +
+	"\n" +
+	"ip_address\x18\x06 \x01(\tB\b\x8a\xc81\x04<=45R\tipAddress\"z\n" +
 	"\x15ListAddressesResponse\x129\n" +
 	"\taddresses\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.AddressR\taddresses\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9c\x01\n" +
