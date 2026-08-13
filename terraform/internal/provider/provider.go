@@ -86,7 +86,17 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	var roots *x509.CertPool
 	if caPath != "" {
-		pem, err := os.ReadFile(caPath)
+		// Путь называет ОПЕРАТОР — в своей конфигурации или своём окружении, — и
+		// провайдер исполняется его же правами. Файл, который он вправе назвать, он
+		// вправе и прочитать: границы полномочий здесь не пересекается, поэтому
+		// разбор источника считает опасным то, что опасным не является.
+		//
+		// Ограничивать путь корнем было бы хуже, а не строже: бандл внутреннего
+		// центра сертификации лежит там, где его положил оператор (/etc/ssl,
+		// каталог задачи, смонтированный секрет), и назначенный нами корень
+		// означал бы отказ читать законный файл — то есть подталкивал бы к
+		// отключению проверки сертификата, которого у провайдера нет вовсе.
+		pem, err := os.ReadFile(caPath) // #nosec G304,G703 -- путь из конфигурации оператора, права процесса — его же
 		if err != nil {
 			resp.Diagnostics.AddError("Не читается файл корней доверия",
 				"Атрибут ca_bundle указывает на "+caPath+", но файл не прочитан: "+err.Error())
@@ -140,14 +150,21 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewNetworkResource,
 		NewSubnetResource,
 		NewInstanceResource,
+		NewGuestAccessKeyResource,
+		NewPlacementGroupResource,
 	}
 }
 
-// Data-sources появятся в TF-2 вместе с остальными ресурсами vpc: их путь чтения тот же,
-// и заводить их до того, как многошаговое чтение доказано на ресурсах, значило бы
-// размножить непроверенное.
+// DataSources — то, чем конфигурация ЧИТАЕТ облако, ничего в нём не заводя.
+//
+// Сегодня здесь один источник — каталог размеров машин, и он не про удобство:
+// без него конфигурация обязана нести идентификатор типа, а идентификаторы у
+// разных установок разные. То есть конфигурация без источника данных
+// непереносима by construction.
 func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		NewMachineTypeDataSource,
+	}
 }
 
 func firstNonEmpty(values ...string) string {

@@ -1,0 +1,212 @@
+---
+id: placement-group
+sidebar_position: 5
+title: PlacementGroup
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { StatusTable } from '@site/src/components/commonBlocks/StatusTable'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# PlacementGroup
+
+**PlacementGroup** — правило взаимного размещения машин.
+
+Вы просите **разнести** машины либо **сблизить** их. Разнести — чтобы отказ одного куска
+железа не унёс всю группу; сблизить — чтобы машины видели друг друга коротким путём. Это
+ровно два намерения, и оба выразимы без единого числа.
+
+:::info Числа доменов отказа здесь нет — намеренно
+«Разнести на N доменов отказа» звучит точнее и является хуже: число описывает **нашу**
+раскладку железа, а не ваше намерение. Опубликовав его, платформа обязалась бы держать эту
+раскладку неизменной — и потеряла бы право менять собственную инфраструктуру, ничего не
+сломав снаружи. Число остаётся решением исполнителя.
+:::
+
+## Стратегии
+
+<StatusTable values={[
+  { code: 'SPREAD', desc: 'Разнести: отказ одного куска железа не должен унести всю группу' },
+  { code: 'PACK', desc: 'Сблизить: машины видят друг друга коротким путём' },
+]} />
+
+## Якорь размещения
+
+Группа либо **зональная** (машины в одной зоне), либо **региональная** (машины в одном
+регионе, зоны разные). Это дискриминатор, а не пара необязательных полей: строка, где
+заполнены обе координаты, описывала бы размещение, которого не бывает, и закрыто это
+проверкой схемы БД, а не дисциплиной вызывающего.
+
+<StatusTable values={[
+  { code: 'ZONAL', desc: 'Задан zoneId, regionId пуст' },
+  { code: 'REGIONAL', desc: 'Задан regionId, zoneId пуст' },
+]} />
+
+:::warning Машина обязана быть когерентна якорю группы
+Зональная группа принимает машины **своей зоны**; региональная — машины **своего региона**.
+Несовпадение отвергается на `Instance.Create` и `Instance.Update`, а не обнаруживается
+позже: группа, в которую попала машина не оттуда, не выполняет ни одного из двух обещаний.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short} (префикс <code>plg-</code>)</td></tr>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}; уникально в проекте</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>strategy</code></td><td><code>Strategy</code></td><td><code>SPREAD</code> либо <code>PACK</code></td></tr>
+    <tr><td><code>placementType</code></td><td><code>PlacementType</code></td><td><code>ZONAL</code> либо <code>REGIONAL</code></td></tr>
+    <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short} — при <code>ZONAL</code>, иначе пусто</td></tr>
+    <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>Регион — при <code>REGIONAL</code>, иначе пусто</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+  </tbody>
+</table>
+
+:::info Что неизменяемо
+`strategy`, `placementType` и координата якоря задаются на создании. Смена стратегии — это
+другое обещание о размещении **уже стоящих** машин, и выдать его правкой поля значило бы
+объявить исполненным то, что исполнено не будет. Меняются свободно `name`, `description`,
+`labels`.
+:::
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/compute/v1/placementGroups/{placementGroupId}">
+
+Возвращает группу по идентификатору.
+
+#### Пример ответа
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "plg-9k2m5q7r1t4w6y8u3",
+      "projectId": "prj-3n8k2m5q7r1t4w6y9",
+      "name": "app-spread",
+      "strategy": "SPREAD",
+      "placementType": "ZONAL",
+      "zoneId": "region-1-a",
+      "regionId": "",
+      "createdAt": "2026-08-14T09:12:00Z"
+    }
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/compute/v1/placementGroups">
+
+Группы проекта с cursor-пагинацией.
+
+#### Параметры запроса
+
+<table>
+  <thead><tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>pageSize</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
+    <tr><td><code>pageToken</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
+    <tr><td><code>filter</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
+  </tbody>
+</table>
+
+<Codes codes={['invalidArgument', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Create
+
+<ApiOperation method="POST" endpoint="/compute/v1/placementGroups">
+
+Заводит группу. Мутация асинхронна — идентификатор лежит в `metadata.placementGroupId`
+возвращённой `Operation`.
+
+#### Тело запроса
+
+<table>
+  <thead><tr><th>Поле</th><th>Обязательно</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td>да</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>name</code></td><td>да</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
+    <tr><td><code>strategy</code></td><td>да</td><td><code>Strategy</code></td><td>Группа без стратегии не описывает ни одного намерения</td></tr>
+    <tr><td><code>placementType</code></td><td>да</td><td><code>PlacementType</code></td><td>Вид якоря</td></tr>
+    <tr><td><code>zoneId</code> / <code>regionId</code></td><td>ровно одно</td><td><code>{TYPES.string}</code></td><td>Координата якоря, согласованная с <code>placementType</code></td></tr>
+    <tr><td><code>description</code> / <code>labels</code></td><td>нет</td><td>—</td><td>Описание и метки</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST http://localhost:18080/compute/v1/placementGroups \\
+      -H 'Authorization: Bearer <JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{
+            "projectId": "prj-3n8k2m5q7r1t4w6y9",
+            "name": "app-spread",
+            "strategy": "SPREAD",
+            "placementType": "ZONAL",
+            "zoneId": "region-1-a"
+          }'
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'unavailable', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Update
+
+<ApiOperation method="PATCH" endpoint="/compute/v1/placementGroups/{placementGroupId}">
+
+Меняет `name`, `description`, `labels`. Стратегия и якорь в маске отвергаются по имени —
+см. врезку «Что неизменяемо» выше.
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Delete
+
+<ApiOperation method="DELETE" endpoint="/compute/v1/placementGroups/{placementGroupId}">
+
+Удаляет группу.
+
+<Codes codes={['invalidArgument', 'failedPrecondition', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ListOperations
+
+<ApiOperation method="GET" endpoint="/compute/v1/placementGroups/{placementGroupId}/operations">
+
+История операций над группой с cursor-пагинацией.
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>

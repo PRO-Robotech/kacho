@@ -1002,6 +1002,41 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           "$(go env GOPATH)/bin/govulncheck" ./...
 
+      # golangci-lint и gosec СЮДА, а не в корневые job'ы, — и это не дублирование.
+      #
+      # `./...` не пересекает границу модуля: это свойство инструмента, а не
+      # оплошность настройки. Значит корневой прогон линтера видел у провайдера
+      # РОВНО НОЛЬ файлов, и корневой gosec — тоже. Оба при этом честно печатали
+      # «0 находок»: «ноль найденного» было неотличимо от «ноль прочитанного»
+      # ровно так, как мы запрещаем в продукте.
+      #
+      # Перепись осмотренного печатается обоими шагами именно поэтому.
+      - name: install golangci-lint (нашим toolchain'ом)
+        working-directory: terraform
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: golangci-lint
+        working-directory: terraform
+        env:
+          GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint-terraform
+        run: |
+          echo "пакетов модуля под разбором: $(go list ./... | wc -l)"
+          "$(go env GOPATH)/bin/golangci-lint" run --timeout=10m ./...
+
+      - name: gosec
+        working-directory: terraform
+        run: |
+          # Пин — тот же, что в security-scan.yml: с @latest вердикт менялся бы
+          # без единой правки кода, а воспроизвести локально увиденное CI было бы
+          # нельзя вообще. Свежесть пина стережёт pinned-tools-freshness.
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
+          # internal/api исключён по той же причине, что pkg/api в корневой
+          # джобе: это порождённые стабы protobuf, и G101 ложно срабатывает на
+          # константах имён методов с подстрокой "Token".
+          # `-verbose text` НЕ косметика: он печатает перепись `Files : N`, без
+          # которой отказ анализа выглядит ровно как чистота.
+          "$(go env GOPATH)/bin/gosec" -exclude-dir=internal/api -stdout -verbose text ./...
+
       - name: формат конфигураций
         run: |
           curl -sL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.12.5/tofu_1.12.5_linux_amd64.zip
