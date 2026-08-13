@@ -36,6 +36,12 @@ DT = "/storage/v1/diskTypes"
 # «не ваше», и кейс зеленел бы не тем.
 _ABSENT_ID = "block-newman-nx-{{runId}}"
 
+# Класс, который СОЗДАЁТ посев стенда. Читающие кейсы обязаны обращаться к
+# существующему: публичное чтение каталога отдаёт 200 всякому опознанному
+# субъекту, и на отсутствующем id проверка прав подменяется проверкой наличия —
+# кейс зеленел бы (или краснел) не о том.
+_PRESENT_ID = "block-balanced"
+
 # (код, ярлык, env-переменная с bearer'ом). "anonymous" — gen.py снимает заголовок.
 SUBJECTS = [
     ("ANON", "anon",       "anonymous"),
@@ -114,7 +120,7 @@ def _emit(op_code, op_title, scope, method, path, body):
 
 # Чтение каталога: коллекция и элемент — обе половины публичного read'а.
 _emit("LS", "List diskTypes", "catalog-read", "GET", DT, None)
-_emit("GT", f"Get diskTypes/{_ABSENT_ID}", "catalog-read", "GET", f"{DT}/{_ABSENT_ID}", None)
+_emit("GT", f"Get diskTypes/{_PRESENT_ID}", "catalog-read", "GET", f"{DT}/{_PRESENT_ID}", None)
 
 # Мутация каталога: тот же collection-путь, что у публичного чтения, но метод POST
 # адресует InternalDiskTypeService (system_admin @ cluster). Тело намеренно валидное —

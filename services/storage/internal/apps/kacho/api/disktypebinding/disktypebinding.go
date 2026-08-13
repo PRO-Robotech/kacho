@@ -32,6 +32,7 @@ package disktypebinding
 import (
 	"context"
 	"fmt"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
@@ -88,6 +89,14 @@ func (u *UseCase) List(ctx context.Context, pageSize int64, pageToken string) ([
 // записи, а окончательное решение принимает единственный стейтмент регистрации —
 // здесь она нужна ради ВНЯТНОГО отказа, а не как замена ему.
 func (u *UseCase) Register(ctx context.Context, b *domain.DiskTypeBinding) (*domain.DiskTypeBinding, error) {
+	// Идентификатор чеканит СЕРВИС, а не вызывающий: id присваивается на создании
+	// и неизменяем на всю жизнь ресурса (ядро, ban #15). Требовать его от
+	// вызывающего значило бы отдать наружу выбор адресуемой идентичности — и
+	// именно это делало глагол неисполнимым: всякая регистрация отвергалась
+	// «disk_type_binding id is required».
+	if b.ID == "" {
+		b.ID = ids.NewHyphenID(domain.PrefixDiskTypeBinding)
+	}
 	if err := b.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 	}

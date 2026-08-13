@@ -21,6 +21,7 @@ package storagebackend
 import (
 	"context"
 	"fmt"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
@@ -81,6 +82,13 @@ func (u *UseCase) List(ctx context.Context, pageSize int64, pageToken string) ([
 // состояние отвергает, и угадывать за администратора он не вправе — опечатка в этом
 // поле иначе завела бы бэкенд принимающим новые привязки.
 func (u *UseCase) Create(ctx context.Context, b *domain.StorageBackend) (*domain.StorageBackend, error) {
+	// Идентификатор чеканит СЕРВИС — тем же правилом, что и состояние выше: id
+	// присваивается на создании и неизменяем на всю жизнь ресурса (ядро, ban #15).
+	// Ждать его от вызывающего значило бы отдать наружу выбор адресуемой
+	// идентичности, и всякая регистрация отвергалась бы «id is required».
+	if b.ID == "" {
+		b.ID = ids.NewHyphenID(domain.PrefixStorageBackend)
+	}
 	if b.Status == "" {
 		b.Status = domain.BackendStatusActive
 	}
