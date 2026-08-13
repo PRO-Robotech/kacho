@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -58,9 +59,10 @@ func mkImageFromSnapshot(t *testing.T, pool *pgxpool.Pool, r *pg.ImageRepo, proj
 		SourceSnapshot: snapID,
 	}, fixtureRegionZones)
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx,
-		`UPDATE images SET state='READY', observed_state='READY', observed_at=now() WHERE id=$1`, i.ID)
-	require.NoError(t, err)
+	// Подтверждение — ТЕМ ЖЕ вызовом, что у тома и снимка: прямой UPDATE
+	// перечислял колонки руками и потому отставал от предиката пригодности,
+	// стоило тому прочесть ещё одну.
+	confirmReady(t, pool, reconciler.KindImage, i.ID, i.SizeBytes)
 	got, err := r.Get(ctx, i.ID)
 	require.NoError(t, err)
 	return got

@@ -41,7 +41,7 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
 		ID: "block-zoned-a", Name: "block-zoned-a", ZoneIDs: []string{"region-1-a"},
-		PerformanceTier: "balanced",
+		PerformanceTier: domain.TierBalanced,
 	})
 	require.NoError(t, err)
 	// Класс объявляет свою зону списком И обязан быть в ней ПРИВЯЗАН: список зон
@@ -70,7 +70,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 
 	_, err := dr.Insert(ctx, &domain.DiskType{
 		ID: "block-zoned-b", Name: "block-zoned-b", ZoneIDs: []string{"region-1-a", "region-1-b"},
-		PerformanceTier: "balanced",
+		PerformanceTier: domain.TierBalanced,
 	})
 	require.NoError(t, err)
 	offerDiskTypeInZone(t, pool, "block-zoned-b", "region-1-a", "region-1-b")
