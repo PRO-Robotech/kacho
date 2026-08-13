@@ -973,4 +973,5 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 > `net…`/`sub…` (B3 hyphen ещё не мигрирован). default-RT-provision (VPC-1 F3/F8) **landed**: `Network.Create`
 > безусловно провижнит default-RT в writer-TX и заполняет `defaultRouteTableId°`, `Subnet.Create` привязывается
 > к нему — кейсы ассёртят это как контракт, а legacy DB-выбор RT (`subnet_auto_pick_rt_trg` 0017,
-> `rt_auto_assoc_subnets_trg` 0019) снят.
+> `rt_auto_assoc_subnets_trg` 0019) снят.| `SG-CR-VAL-RULE-NO-TARGET` | NEG,VAL | P1 | 2 (sg) | Create SG с правилом без цели → 400, отказ называет `rule_specs[0].target`; то же правило с целью проходит. Verifies SG-RULE-TARGET-01. |
+

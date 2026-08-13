@@ -42,6 +42,56 @@ def _cleanup_net_lenient():
 
 
 CASES.append(Case(
+    id="SG-CR-VAL-RULE-NO-TARGET",
+    title="Create SG с правилом БЕЗ цели → 400, отказ называет rule_specs[0].target",
+    classes=["NEG", "VAL"],
+    priority="P1",
+    steps=[
+        *_net_steps("notgt"),
+        Step(
+            name="create-rule-without-target",
+            method="POST",
+            path="/vpc/v1/securityGroups",
+            # Контракт обещает «ровно одна цель» аннотацией на `oneof target`, но
+            # энфорсера у обещания не было: правило без цели ПРИНИМАЛОСЬ,
+            # сохранялось и возвращалось при чтении. Оно описывает «разрешить
+            # трафик... куда?» — и по закрытой модели не разрешает ничего, то есть
+            # вызывающий получал успех на правиле, которое не делает написанного.
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sg-notgt-{{runId}}",
+                  "ruleSpecs": [{"direction": "INGRESS", "protocolName": "ANY",
+                                 "fromPort": -1, "toPort": -1}]},
+            test_script=[
+                *assert_status(400),
+                # Отказ обязан НАЗЫВАТЬ поле: «пришло 400» истинно и при отказе по
+                # направлению, порту или протоколу, поэтому предмета оно не утверждает.
+                *assert_field_violation("rule_specs[0].target"),
+            ],
+        ),
+        # Положительный контроль: то же правило С целью проходит. Без него отказ
+        # зеленел бы на реализации, отвергающей ЛЮБОЕ правило.
+        Step(
+            name="create-rule-with-target",
+            method="POST",
+            path="/vpc/v1/securityGroups",
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sg-tgt-{{runId}}",
+                  "ruleSpecs": [{"direction": "INGRESS", "protocolName": "ANY",
+                                 "fromPort": -1, "toPort": -1,
+                                 "cidrBlocks": {"v4CidrBlocks": ["10.0.0.0/8"]}}]},
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")],
+        ),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="cleanup-sg", method="DELETE",
+             path="/vpc/v1/securityGroups/{{sgId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        _cleanup_net(),
+    ],
+))
+
+CASES.append(Case(
     id="SG-CR-CRUD-OK",
     title="Create SG + Get",
     classes=["CRUD"],

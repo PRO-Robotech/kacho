@@ -82,7 +82,52 @@ func validateSGRule(field string, r domain.SecurityGroupRule) error {
 			return err
 		}
 	}
+	// РОВНО ОДНА ЦЕЛЬ — перекрёстное требование, и оно стоит ПОСЛЕ проверок
+	// отдельных полей.
+	//
+	// Контракт обещает его аннотацией `exactly_one` на `oneof target`, но энфорсера у
+	// обещания не было: правило без цели принималось, сохранялось и возвращалось при
+	// чтении. Оно описывает «разрешить трафик... куда?» и по закрытой модели не
+	// разрешает ничего — то есть вызывающий получал успех на правиле, которое не
+	// делает написанного. Правило с двумя целями принималось тоже, а на проводе
+	// `oneof` держит одну: вторая молча терялась при обратном преобразовании.
+	//
+	// Почему проверка здесь, а не полагается на `oneof` формы передачи: use-case
+	// принимает domain-структуру, а у неё поля цели ПЛОСКИЕ — два непустых поля в ней
+	// представимы. Проверка обязана стоять там, где состояние представимо.
+	//
+	// Почему ПОСЛЕ полей: раньше них она перекрывала бы их собственные отказы, и
+	// правило с малформированным блоком адресов получало бы отказ «нет цели» вместо
+	// «блок неверен». Тот же порядок, что у якоря подсети, и по той же причине.
+	if err := validateSGRuleTarget(field, r); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateSGRuleTarget — ровно одна цель у правила.
+//
+// Ветвь `cidr_blocks` несёт ОБА семейства, поэтому «v4 и v6 вместе» — ОДНА цель, а не
+// две: проверка, считающая наборы по отдельности, отвергала бы законное
+// двухсемейное правило.
+func validateSGRuleTarget(field string, r domain.SecurityGroupRule) error {
+	var kinds int
+	if len(r.V4CidrBlocks) > 0 || len(r.V6CidrBlocks) > 0 {
+		kinds++
+	}
+	if r.SecurityGroupID != "" {
+		kinds++
+	}
+	switch kinds {
+	case 1:
+		return nil
+	case 0:
+		return serviceerr.InvalidArg(field+".target",
+			"exactly one target is required: cidr_blocks or security_group_id")
+	default:
+		return serviceerr.InvalidArg(field+".target",
+			"exactly one target is allowed: cidr_blocks or security_group_id, not both")
+	}
 }
 
 // validateSGRulePorts — диапазон портов правила.
