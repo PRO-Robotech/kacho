@@ -88,7 +88,7 @@ python3 services/compute/tests/newman/scripts/gen.py        # все ресур�
   того же актора, что её создатель**: `OperationService.Get/Cancel` энфорсит владение и
   отвечает чужому `NotFound`. Все три свойства держит проверка 4 в `scripts/validate-cases.py`
   (её доказательство инъекцией исполняемо: `validate-cases.py --self-test`), а не соглашение.
-- **LRO-poll**: каждая мутация (`Create/Update/Delete/Move/Relocate/Start/Stop/Restart/Attach/Detach/NAT/UpdateMetadata`)
+- **LRO-poll**: каждая мутация (`Create/Update/Delete/Start/Stop/Restart/Attach/Detach`)
   → `Operation` → poll `GET /operations/{id}` (retry до 8 раз через `setNextRequest`) до `done=true` → assert `response`/`error`.
 - **Формальные техники**: ECP, BVA, decision tables, state transition, error guessing, security — все классы кейсов выводятся системно.
 - **Conformance**: кейс проверяет контракт Kachō — форму ресурса, коды и тон ошибок,

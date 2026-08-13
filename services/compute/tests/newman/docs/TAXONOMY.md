@@ -9,7 +9,7 @@
 | Часть | Значения |
 |---|---|
 | DOMAIN | `DISK` (Disk), `IMG` (Image), `SNAP` (Snapshot), `INST` (Instance; COMP-1 redesign — `INST-RD-` в `cases/instance-redesign.py`), `MT` (MachineType, COMP-1 F7 каталог), `DT` (DiskType), `ZONE` (Zone), `OP` (Operation) |
-| METHOD | `CR` (Create), `GET`, `LST` (List), `UPD` (Update), `DEL` (Delete), `MV` (Move), `REL` (Relocate), `LOP` (ListOperations), `GLF` (GetLatestByFamily — Image), `START`/`STOP`/`RESTART` (Instance state), `AD` (AttachDisk), `DD` (DetachDisk), `NAT` (Add/RemoveOneToOneNat), `UNI` (UpdateNetworkInterface), `ANI` (AttachNetworkInterface), `UMETA` (UpdateMetadata), `SPO` (GetSerialPortOutput), `SME` (SimulateMaintenanceEvent), `STATE` (state-машина), `CANCEL` (Operation.Cancel), `LIFECYCLE` (полный CRUD-цикл) |
+| METHOD | `CR` (Create), `GET`, `LST` (List), `UPD` (Update), `DEL` (Delete), `LOP` (ListOperations), `GLF` (GetLatestByFamily — Image), `START`/`STOP`/`RESTART` (Instance state), `AD` (AttachDisk), `DD` (DetachDisk), `NAT` (Add/RemoveOneToOneNat), `ANI` (AttachNetworkInterface), `SPO` (GetSerialPortOutput), `SME` (SimulateMaintenanceEvent), `STATE` (state-машина), `CANCEL` (Operation.Cancel), `LIFECYCLE` (полный CRUD-цикл) |
 | CLASS | `CRUD`, `VAL`, `NEG`, `BVA`, `IDM`, `CONC`, `CONF`, `STATE`, `AUTHZ`, `PAGE`, `FILTER`, `SEC` |
 | DETAIL | свободное краткое описание |
 
@@ -51,7 +51,7 @@
 | `Instance.DetachDisk` | CRUD-OK, NEG (boot disk → FailedPrecondition, not-attached) | — |
 | `Instance.AddOneToOneNat / RemoveOneToOneNat` | CRUD-OK, NEG (NAT already / bad index) | — |
 | `Instance.UpdateNetworkInterface` | CRUD-OK, NEG (bad index) | — |
-| `Instance.UpdateMetadata` | CRUD-OK (upsert/delete; FULL-view round-trip) | — |
+| ~~`Instance.UpdateMetadata`~~ | RPC снят с контракта вместе с полем `metadata` | — |
 | `Instance.GetSerialPortOutput` | CRUD-OK (contents string), NEG (NotFound) | — |
 | `<Resource>.ListOperations` | CRUD-OK (≥1 op), NEG (parent-NF) | — |
 | `DiskType.Get/List` / `Zone.Get/List` | CRUD (seeded fixtures), NEG (Get garbage→404), BVA (page_size), CONF (NF-text) | — |

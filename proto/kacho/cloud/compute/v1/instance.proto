@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.compute.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/compute/v1/kek.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
 import "kacho/cloud/reference/reference.proto";
 
@@ -342,11 +341,6 @@ message AttachedDisk {
   // is attached to the instance. Cross-service reference (no FK); source of truth
   // is the storage `volume_attachments` row.
   string volume_id = 4;
-}
-
-message PhysicalLocalDisk {
-  // Key encryption key info.
-  KMSKey kms_key = 1;
 }
 
 message NetworkInterface {
