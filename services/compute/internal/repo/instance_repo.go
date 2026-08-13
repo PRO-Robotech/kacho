@@ -147,6 +147,19 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Списание предела — В ТОМ ЖЕ стейтменте, что вставка. Разнесённые
+	// «спросить» и «списать» схлопываются под конкуренцией: два создателя
+	// прочитают одно и то же свободное место и оба пройдут, а потолок
+	// выродится в частоту, умноженную на число параллельных пар.
+	//
+	// Строка счётчика блокируется обновлением, поэтому второй писатель ждёт
+	// коммита первого и видит его результат. Превышение ловится ограничением
+	// схемы, а не сравнением в коде: сравнение защищает только тот путь,
+	// который через него проходит.
+	if err := chargeProjectQuota(ctx, tx, in.ProjectID); err != nil {
+		return nil, nil, err
+	}
+
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
@@ -514,11 +527,20 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 		return wrapPgErr(err, "Instance", id)
 	}
 	// instance_network_interfaces (same-DB cascade child) снимается FK CASCADE.
+
+	// Возврат предела — в ТОЙ ЖЕ транзакции, что удаление строки. Возврат вне
+	// её оставил бы счётчик завышенным при откате: проект платил бы местом за
+	// машину, которой нет.
+	if err := refundProjectQuota(ctx, tx, projectID); err != nil {
+		return err
+	}
+
 	actorDel, onBehalfDel := auditPrincipals(ctx)
 	if err := emitAudit(ctx, tx, AuditEvent{
 		EventType:    "instance.delete",
 		ResourceType: "Instance",
 		ResourceID:   id,
+		ProjectID:    projectID,
 		Actor:        actorDel,
 		OnBehalfOf:   onBehalfDel,
 	}); err != nil {
