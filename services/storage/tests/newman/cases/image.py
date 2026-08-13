@@ -293,7 +293,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-GET-NEG-MALFORMED-ID",
-    title="Get malformed imageId 'not-an-img-id' → sync 400 INVALID_ARGUMENT 'invalid image id ...' (первым стейтментом, до repo)",
+    title="Get malformed imageId 'not-an-img-id' → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, до repo)",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies STOR-1-21
     steps=[Step(name="get-malformed", method="GET", path=f"{IMG}/not-an-img-id",
@@ -1041,7 +1041,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-LOP-NEG-MALFORMED-ID",
-    title="ListOperations malformed imageId → sync 400 INVALID_ARGUMENT 'invalid image id ...' (парити с Get)",
+    title="ListOperations malformed imageId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (парити с Get)",
     classes=["NEG", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-21
     steps=[Step(name="lop-malformed", method="GET", path=f"{IMG}/not-an-img/operations",
@@ -1222,13 +1222,20 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-COPY-NEG-MALFORMED-ID",
-    title="Copy по malformed imageId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, парити с Get)",
+    title="Copy по malformed imageId → sync 400 INVALID_ARGUMENT 'invalid image id ...' (первым стейтментом; конкретный тип — область Copy проектная, край путь не разбирает)",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies STOR-1-21
+    # ТЕКСТ ЗДЕСЬ КОНКРЕТНЕЕ, ЧЕМ У Get, И ЭТО СЛЕДСТВИЕ ПОЛОСЫ, А НЕ РАСХОЖДЕНИЕ.
+    # Край разбирает лишь те идентификаторы, которыми САМ ограничивает область. У
+    # Get областью служит сам ресурс — край видит его id, находит негодным и
+    # отвечает своей РОДОВОЙ формулировкой («тип мне неизвестен»). У Copy областью
+    # служит ПРОЕКТ (иначе читатель проекта заводил бы ресурсы), поэтому путь до
+    # края не разбирается и на негодный id отвечает ВЛАДЕЛЕЦ — конкретным типом,
+    # как и предписывает конвенция «invalid <ресурс> id '<X>'».
     steps=[Step(name="copy-malformed", method="POST", path=f"{IMG}/not-an-img-id:copy",
                 body={"projectId": "{{_suiteProjectId}}", "targetRegionId": "{{existingRegionId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("invalid resource id 'not-an-img-id'")])],
+                             *_assert_msg("invalid image id 'not-an-img-id'")])],
 ))
 
 CASES.append(Case(

@@ -190,7 +190,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-GET-NEG-MALFORMED-ID",
-    title="Get malformed volumeId 'not-a-vol-id' → sync 400 INVALID_ARGUMENT 'invalid volume id ...' (первым стейтментом)",
+    title="Get malformed volumeId 'not-a-vol-id' → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом)",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies CS1-S1-02
     steps=[Step(name="get-malformed", method="GET", path=f"{VOL}/not-a-vol-id",
@@ -644,7 +644,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-LOP-NEG-MALFORMED-ID",
-    title="ListOperations malformed volumeId → sync 400 INVALID_ARGUMENT 'invalid volume id ...' (парити с Get)",
+    title="ListOperations malformed volumeId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (парити с Get)",
     classes=["NEG", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-15
     steps=[Step(name="lop-malformed", method="GET", path=f"{VOL}/not-a-vol/operations",

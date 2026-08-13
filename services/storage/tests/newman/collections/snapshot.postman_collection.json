@@ -6902,7 +6902,7 @@
       ]
     },
     {
-      "name": "SNP-COPY-NEG-MALFORMED-ID — Copy по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, парити с Get)",
+      "name": "SNP-COPY-NEG-MALFORMED-ID — Copy по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid snapshot id ...' (первым стейтментом; конкретный тип — область Copy проектная, край путь не разбирает)",
       "description": "class:NEG | class:VAL | class:CONF | priority:P0",
       "item": [
         {
@@ -6948,7 +6948,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message includes \"invalid resource id \\'nope\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid resource id \\'nope\\''));"
+                  "pm.test('message includes \"invalid snapshot id \\'nope\\'\"', () => pm.expect((pm.response.json().message || ''), JSON.stringify(pm.response.json())).to.include('invalid snapshot id \\'nope\\''));"
                 ]
               }
             }

@@ -29,14 +29,30 @@ func TestDiskTypeBinding_Validate(t *testing.T) {
 	// Положительный контроль: законная ревизия проходит.
 	require.NoError(t, newValidBinding().Validate())
 
+	// НОМЕР РЕВИЗИИ ДО ЗАПИСИ ЕЩЁ НЕ НАЗНАЧЕН, и ноль здесь означает именно это.
+	//
+	// Прежняя редакция пробы держала ноль в таблице отвергаемых — и закрепляла
+	// противоречие, из-за которого глагол не работал НИ РАЗУ: номер назначает
+	// регистрация (`COALESCE(max(revision),0)+1`), а присланный она отвергает
+	// явно. Через любой вход получался отказ: ноль отвергал домен, ненулевое —
+	// хранилище. Два правила об одном поле, взаимоисключающие.
+	//
+	// Проба обязана утверждать ВХОДНОЕ состояние, а не результат записи.
+	unassigned := newValidBinding()
+	unassigned.Revision = 0
+	require.NoError(t, unassigned.Validate(),
+		"ноль означает «номер ещё не назначен» — это законный вход регистрации")
+
 	for name, mutate := range map[string]func(*domain.DiskTypeBinding){
-		"без id":                     func(b *domain.DiskTypeBinding) { b.ID = "" },
-		"без класса":                 func(b *domain.DiskTypeBinding) { b.DiskTypeID = "" },
-		"без зоны":                   func(b *domain.DiskTypeBinding) { b.ZoneID = "" },
-		"без бэкенда":                func(b *domain.DiskTypeBinding) { b.BackendID = "" },
-		"нулевая ревизия":            func(b *domain.DiskTypeBinding) { b.Revision = 0 },
-		"отрицательная ревизия":      func(b *domain.DiskTypeBinding) { b.Revision = -1 },
-		"без пула":                   func(b *domain.DiskTypeBinding) { b.Locator.Pool = "" },
+		"без id":      func(b *domain.DiskTypeBinding) { b.ID = "" },
+		"без класса":  func(b *domain.DiskTypeBinding) { b.DiskTypeID = "" },
+		"без зоны":    func(b *domain.DiskTypeBinding) { b.ZoneID = "" },
+		"без бэкенда": func(b *domain.DiskTypeBinding) { b.BackendID = "" },
+		// Зеркало к утверждению выше: отрицательный номер — не «не назначен»,
+		// а названный неверно, и остаётся отказом. Без этой пары послабление
+		// читалось бы как «номер не проверяется вовсе».
+		"отрицательная ревизия": func(b *domain.DiskTypeBinding) { b.Revision = -1 },
+		"без пула": func(b *domain.DiskTypeBinding) { b.Locator.Pool = "" },
 		"шаблон без подстановки":     func(b *domain.DiskTypeBinding) { b.Locator.NamespaceTemplate = "prj-shared" },
 		"состояние вне словаря":      func(b *domain.DiskTypeBinding) { b.Status = "DELETED" },
 		"отрицательный срок корзины": func(b *domain.DiskTypeBinding) { b.Capabilities.TrashTTLSeconds = -1 },

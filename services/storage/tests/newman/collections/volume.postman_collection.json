@@ -1053,7 +1053,7 @@
       ]
     },
     {
-      "name": "VOL-GET-NEG-MALFORMED-ID — Get malformed volumeId 'not-a-vol-id' → sync 400 INVALID_ARGUMENT 'invalid volume id ...' (первым стейтментом)",
+      "name": "VOL-GET-NEG-MALFORMED-ID — Get malformed volumeId 'not-a-vol-id' → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом)",
       "description": "class:NEG | class:VAL | class:CONF | priority:P0",
       "item": [
         {
@@ -6059,7 +6059,7 @@
       ]
     },
     {
-      "name": "VOL-LOP-NEG-MALFORMED-ID — ListOperations malformed volumeId → sync 400 INVALID_ARGUMENT 'invalid volume id ...' (парити с Get)",
+      "name": "VOL-LOP-NEG-MALFORMED-ID — ListOperations malformed volumeId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (парити с Get)",
       "description": "class:NEG | class:VAL | class:CONF | priority:P1",
       "item": [
         {

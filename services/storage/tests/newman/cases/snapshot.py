@@ -632,13 +632,20 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNP-COPY-NEG-MALFORMED-ID",
-    title="Copy по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, парити с Get)",
+    title="Copy по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid snapshot id ...' (первым стейтментом; конкретный тип — область Copy проектная, край путь не разбирает)",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies CS1-S3-04
+    # ТЕКСТ ЗДЕСЬ КОНКРЕТНЕЕ, ЧЕМ У Get, И ЭТО СЛЕДСТВИЕ ПОЛОСЫ, А НЕ РАСХОЖДЕНИЕ.
+    # Край разбирает лишь те идентификаторы, которыми САМ ограничивает область. У
+    # Get областью служит сам ресурс — край видит его id, находит негодным и
+    # отвечает своей РОДОВОЙ формулировкой («тип мне неизвестен»). У Copy областью
+    # служит ПРОЕКТ (иначе читатель проекта заводил бы ресурсы), поэтому путь до
+    # края не разбирается и на негодный id отвечает ВЛАДЕЛЕЦ — конкретным типом,
+    # как и предписывает конвенция «invalid <ресурс> id '<X>'».
     steps=[Step(name="copy-malformed", method="POST", path=f"{SNP}/nope:copy",
                 body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "{{existingZoneId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("invalid resource id 'nope'")])],
+                             *_assert_msg("invalid snapshot id 'nope'")])],
 ))
 
 CASES.append(Case(
