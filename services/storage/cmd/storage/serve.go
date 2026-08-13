@@ -199,9 +199,23 @@ func runServe(cfg config.Config) error {
 	// ── use-cases (repo → use-case → handler). CQRS reader/writer связываются
 	// раздельно (сейчас обе стороны — один pg-adapter). errStatus — transport-
 	// mapper sentinel→gRPC, инжектится из handler-слоя (serviceerr.ToStatus). ──
-	volumeRepo := pg.NewVolumeRepo(pool).WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit)
-	snapshotRepo := pg.NewSnapshotRepo(pool)
-	imageRepo := pg.NewImageRepo(pool)
+	// Состояние рождения ресурса читается ИЗ ТОГО ЖЕ признака, что и проводка
+	// сверщика: вид плоскости данных объявлен — ресурс рождается в намерении, и
+	// пригодным его делает сверщик; не объявлен — сверять не с чем, и фиксация
+	// записи сама есть готовность.
+	//
+	// Признак ОДИН на оба решения намеренно. Разведи их — и появится посадка, где
+	// ресурс ждёт подтверждения от сверщика, которого никто не запускал: том
+	// остаётся создаваемым навсегда при здоровом рапорте сервиса. Kachō —
+	// платформа только управляющей плоскости, поэтому «плоскости данных нет» —
+	// это штатная посадка, а не неполная.
+	readyOnCommit := cfg.BlockBackendKind == ""
+
+	volumeRepo := pg.NewVolumeRepo(pool).
+		WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit).
+		WithReadyOnCommit(readyOnCommit)
+	snapshotRepo := pg.NewSnapshotRepo(pool).WithReadyOnCommit(readyOnCommit)
+	imageRepo := pg.NewImageRepo(pool).WithReadyOnCommit(readyOnCommit)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
 	geoClient := clients.NewGeoClient(geoConn)
 	iamClient := clients.NewIAMClient(iamConn)

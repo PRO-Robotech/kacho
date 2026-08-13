@@ -28,10 +28,16 @@ import (
 // fga_register_outbox в той же writer-TX (атомарно, один commit).
 type ImageRepo struct {
 	pool *pgxpool.Pool
+	// readyOnCommit — см. VolumeRepo: без плоскости данных фиксация записи
+	// сама есть готовность.
+	readyOnCommit bool
 }
 
 // NewImageRepo создаёт ImageRepo поверх pgxpool.
 func NewImageRepo(pool *pgxpool.Pool) *ImageRepo { return &ImageRepo{pool: pool} }
+
+// WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit.
+func (r *ImageRepo) WithReadyOnCommit(v bool) *ImageRepo { r.readyOnCommit = v; return r }
 
 // imageSelectCols — проекционный список для Get/List. Image — всегда REGIONAL
 // (placement const), поэтому колонки placement нет; source_* nullable → COALESCE ”.
@@ -241,7 +247,7 @@ const imageInsertCoherentSQL = `
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,$8::text,
 		       COALESCE((SELECT size_bytes FROM src), 0),
 		       COALESCE((SELECT size_bytes FROM src), 0),
-		       $9::text,'CREATING',
+		       $9::text,'%s',
 		       (SELECT binding_id FROM src), $11::text, $12::text
 		 WHERE ($7::text IS NULL OR EXISTS (SELECT 1 FROM snap_ok WHERE state = 'READY'))
 		   AND ($8::text IS NULL OR EXISTS (SELECT 1 FROM vol_ok  WHERE state = 'READY'))
@@ -293,7 +299,7 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []s
 		var createdAt, updatedAt *time.Time
 		var sizeBytes, minDiskBytes *int64
 		var snapState, volState *string
-		serr := tx.QueryRow(ctx, imageInsertCoherentSQL,
+		serr := tx.QueryRow(ctx, fmt.Sprintf(imageInsertCoherentSQL, bornState(r.readyOnCommit)),
 			i.ID, i.ProjectID, i.Name, i.Description, labels, i.RegionID,
 			srcSnap, srcVol, domain.FormatStandard, regionZones,
 			backendObjectArg(i.Backend.BackendObject), string(i.StatusReason)).
@@ -597,7 +603,7 @@ const copyImageSQL = `
 		(id, project_id, name, description, labels, region_id, source_image_id,
 		 size_bytes, min_disk_bytes, format, state, binding_id, backend_object, backend_namespace)
 	SELECT $1, $2, $3, $4, $5::jsonb, $8, src.id,
-	       src.size_bytes, src.min_disk_bytes, src.format, 'CREATING',
+	       src.size_bytes, src.min_disk_bytes, src.format, '%s',
 	       target.id, $9, target.ns
 	  FROM src, target
 	 WHERE src.state = 'READY'
@@ -611,7 +617,7 @@ func (r *ImageRepo) Copy(ctx context.Context, i *domain.Image, sourceID string, 
 		return nil, storageerr.ErrInternal
 	}
 	created := *i
-	err = r.pool.QueryRow(ctx, copyImageSQL,
+	err = r.pool.QueryRow(ctx, fmt.Sprintf(copyImageSQL, bornState(r.readyOnCommit)),
 		i.ID, i.ProjectID, i.Name, i.Description, labels, sourceID, targetZones,
 		i.RegionID, i.Backend.BackendObject).
 		Scan(&created.CreatedAt, &created.UpdatedAt, &created.SizeBytes, &created.MinDiskBytes)

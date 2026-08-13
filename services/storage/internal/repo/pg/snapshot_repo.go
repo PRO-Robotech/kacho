@@ -28,10 +28,17 @@ import (
 // (атомарно, ban #16).
 type SnapshotRepo struct {
 	pool *pgxpool.Pool
+	// readyOnCommit — см. VolumeRepo: без плоскости данных фиксация записи
+	// сама есть готовность.
+	readyOnCommit bool
 }
 
 // NewSnapshotRepo создаёт SnapshotRepo поверх pgxpool.
 func NewSnapshotRepo(pool *pgxpool.Pool) *SnapshotRepo { return &SnapshotRepo{pool: pool} }
+
+// WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit: плоскости данных нет,
+// сверять не с чем, и фиксация записи сама есть готовность.
+func (r *SnapshotRepo) WithReadyOnCommit(v bool) *SnapshotRepo { r.readyOnCommit = v; return r }
 
 // snapshotSelectCols — общий проекционный список для Get/List.
 //
@@ -193,7 +200,7 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 const snapshotInsertCAS = `
 	INSERT INTO snapshots (id, project_id, name, description, labels, source_volume_id,
 	                       size_bytes, state, zone_id, status_reason, binding_id, backend_object)
-	SELECT $1, $2, $3, $4, $5::jsonb, v.id, v.size_bytes, 'CREATING',
+	SELECT $1, $2, $3, $4, $5::jsonb, v.id, v.size_bytes, '%s',
 	       v.zone_id, $7::text, v.binding_id, $8::text
 	  FROM volumes v
 	 WHERE v.id = $6 AND v.project_id = $2 AND v.state = 'READY'
@@ -226,7 +233,7 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 			createdAt, updatedAt time.Time
 			zoneID, bindingID    string
 		)
-		serr := tx.QueryRow(ctx, snapshotInsertCAS,
+		serr := tx.QueryRow(ctx, fmt.Sprintf(snapshotInsertCAS, bornState(r.readyOnCommit)),
 			s.ID, s.ProjectID, s.Name, s.Description, labels, s.SourceVolumeID,
 			string(s.StatusReason), backendObject).
 			Scan(&createdAt, &updatedAt, &created.SizeBytes, &zoneID, &bindingID)
@@ -387,7 +394,7 @@ const copySnapshotSQL = `
 	INSERT INTO snapshots
 		(id, project_id, name, description, labels, source_snapshot_id, size_bytes, state,
 		 zone_id, binding_id, backend_object, backend_namespace)
-	SELECT $1, $2, $3, $4, $5::jsonb, src.id, src.size_bytes, 'CREATING',
+	SELECT $1, $2, $3, $4, $5::jsonb, src.id, src.size_bytes, '%s',
 	       $7, target.id, $8, target.ns
 	  FROM src, target
 	 WHERE src.state = 'READY'
@@ -401,7 +408,7 @@ func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, t
 		return nil, storageerr.ErrInternal
 	}
 	created := *s
-	err = r.pool.QueryRow(ctx, copySnapshotSQL,
+	err = r.pool.QueryRow(ctx, fmt.Sprintf(copySnapshotSQL, bornState(r.readyOnCommit)),
 		s.ID, s.ProjectID, s.Name, s.Description, labels, sourceID, targetZone, s.Backend.BackendObject).
 		Scan(&created.CreatedAt, &created.SizeBytes)
 	if err == nil {

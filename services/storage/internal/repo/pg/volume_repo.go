@@ -41,6 +41,27 @@ type VolumeRepo struct {
 	// прошли бы обе, каждая увидев доквотное состояние.
 	projectBytesLimit int64
 	pool              *pgxpool.Pool
+	// readyOnCommit — состояние, в котором рождается ресурс.
+	//
+	// Плоскость данных ОБЪЯВЛЕНА → ресурс рождается в намерении, пригодным его
+	// делает сверщик, увидев объект. НЕ объявлена → сверять не с чем, и фиксация
+	// записи сама есть готовность: Kachō — платформа только управляющей
+	// плоскости, и требовать плоскость данных значило бы требовать того, чего в
+	// продукте не бывает.
+	readyOnCommit bool
+}
+
+// WithReadyOnCommit объявляет, что плоскости данных нет и готовность наступает
+// на фиксации записи. Провязывается композиционным корнем из того же признака,
+// который читает проводка сверщика, — иначе два места разошлись бы молча.
+func (r *VolumeRepo) WithReadyOnCommit(v bool) *VolumeRepo { r.readyOnCommit = v; return r }
+
+// bornState — состояние рождения ресурса этого хранилища.
+func bornState(readyOnCommit bool) string {
+	if readyOnCommit {
+		return "READY"
+	}
+	return "CREATING"
 }
 
 // NewVolumeRepo создаёт VolumeRepo поверх pgxpool.
@@ -304,7 +325,7 @@ const volumeInsertCoherentSQL = `
 			 size_bytes, source_snapshot_id, source_image_id, state,
 			 binding_id, backend_object, backend_namespace)
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
-		       $8::bigint,$9::text,$10::text,'CREATING',
+		       $8::bigint,$9::text,$10::text,'%s',
 		       b.id, $12::text, b.ns
 		  FROM bind b
 		 WHERE ($9::text IS NULL OR EXISTS (SELECT 1 FROM snap_ok))
@@ -370,7 +391,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		var ownImageRegion, ownSnapshotZone *string
 		var ownImageState, ownSnapshotState, dtLifecycle, bindingID *string
 		var withinQuota *bool
-		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
+		serr := tx.QueryRow(ctx, fmt.Sprintf(volumeInsertCoherentSQL, bornState(r.readyOnCommit)),
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, srcSnap, srcImg, zoneRegionID, v.Backend.BackendObject, r.projectBytesLimit).
 			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone,
