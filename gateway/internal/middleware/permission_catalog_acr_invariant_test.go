@@ -382,10 +382,17 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// InternalSessionRevocationsService/ListByUser, exempt→routine.
 	//
 	// Итог: 59→34 exempt, 209→234 routine, sensitive и total не тронуты.
+	//
+	// ЧИСЛА ПЕРЕМЕРЕНЫ после снятия восьми методов домена сети: три метода правки
+	// маршрутов (отвечали отказом при любом входе), поиск адреса по значению и список
+	// адресов по подсети, три метода под-перечисления сети. Все восемь были рутинной
+	// полосы, поэтому изменились ровно два числа: routine 234→226 и total 295→287;
+	// sensitive и exempt не тронуты. Имена снятых стоят в перечне снятой поверхности,
+	// поэтому вернуться молча они не могут.
 	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 234, n1, "routine count")
+	assert.Equal(t, 226, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 295, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 287, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

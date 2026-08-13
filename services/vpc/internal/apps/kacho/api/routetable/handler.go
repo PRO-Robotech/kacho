@@ -216,18 +216,6 @@ const granularRouteRefusal = "granular route editing is not available: a static 
 	"Edit the set with RouteTableService.Update and update_mask [\"static_routes\"], sending the " +
 	"full list"
 
-func (h *Handler) AddRoutes(_ context.Context, _ *vpcv1.AddRouteTableRoutesRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
-
-func (h *Handler) RemoveRoutes(_ context.Context, _ *vpcv1.RemoveRouteTableRoutesRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
-
-func (h *Handler) UpdateRoute(_ context.Context, _ *vpcv1.UpdateRouteTableRouteRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
-
 // routeTableToPb — repo-entity RouteTable → proto RouteTable через DTO-реестр.
 func routeTableToPb(rec *kachorepo.RouteTableRecord) (*vpcv1.RouteTable, error) {
 	var dst *vpcv1.RouteTable

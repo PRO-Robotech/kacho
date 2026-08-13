@@ -164,42 +164,6 @@ service NetworkService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Lists subnets from the specified network.
-  rpc ListSubnets (ListNetworkSubnetsRequest) returns (ListNetworkSubnetsResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/subnets" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_subnets.listSubnets";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Lists security groups from the specified network.
-  rpc ListSecurityGroups (ListNetworkSecurityGroupsRequest) returns (ListNetworkSecurityGroupsResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/security_groups" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_security_groups.listSecurityGroups";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Lists route tables from the specified network.
-  rpc ListRouteTables (ListNetworkRouteTablesRequest) returns (ListNetworkRouteTablesResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/route_tables" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_route_tables.listRouteTables";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Lists operations for the specified network.
   rpc ListOperations (ListNetworkOperationsRequest) returns (ListNetworkOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/operations" };

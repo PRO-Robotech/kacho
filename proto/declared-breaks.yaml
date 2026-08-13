@@ -49,3 +49,51 @@ declared:
       та же ветвь цели в списочном запросе правил: снимается вместе с проекцией,
       иначе вход принимал бы то, чего в ответе нет
     issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: AddRoutes
+    reason: >-
+      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: RemoveRoutes
+    reason: >-
+      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: UpdateRoute
+    reason: >-
+      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/address_service.proto
+    symbol: GetByValue
+    reason: >-
+      внешняя ветвь неавторизуема по построению — область бралась из подсети, которой у внешнего адреса нет; замена — список с сужением по значению
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/address_service.proto
+    symbol: ListBySubnet
+    reason: >-
+      строгое подмножество списка, который уже несёт сужение по подсети: два пути к одному ответу с разными объектами проверки прав
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListSubnets
+    reason: >-
+      второй путь к ответу списка подсетей, объект проверки прав другой (сеть, а не ресурс); замена — список с сужением по сети
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListSecurityGroups
+    reason: >-
+      второй путь к ответу списка групп правил, объект проверки прав другой; замена — список с сужением по сети
+    issue: kacho#246
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListRouteTables
+    reason: >-
+      второй путь к ответу списка таблиц маршрутизации, объект проверки прав другой; замена — список с сужением по сети
+    issue: kacho#246

@@ -31,20 +31,6 @@ service AddressService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Returns the specified Address resource by a given value.
-  //
-  // To get the list of all available Address resources, make a [List] request.
-  rpc GetByValue(GetAddressByValueRequest) returns (Address) {
-    option (google.api.http) = {get: "/vpc/v1/addresses:byValue"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.address_by_values.getByValue";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_subnet"
-      from_request_field: "subnet_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Retrieves the list of Address resources in the specified folder.
   rpc List(ListAddressesRequest) returns (ListAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/addresses"};
@@ -61,18 +47,6 @@ service AddressService {
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Retrieves the list of Address resources in the specified subnet.
-  rpc ListBySubnet(ListAddressesBySubnetRequest) returns (ListAddressesBySubnetResponse) {
-    option (google.api.http) = {get: "/vpc/v1/addresses:bySubnet"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.addresses_by_subnets.listBySubnet";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_subnet"
-      from_request_field: "subnet_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }

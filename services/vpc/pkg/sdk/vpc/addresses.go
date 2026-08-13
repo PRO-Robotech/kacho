@@ -20,20 +20,17 @@ func (c *Client) GetAddress(ctx context.Context, id string, opts ...grpc.CallOpt
 	return c.Addresses.Get(ctx, &vpcv1.GetAddressRequest{AddressId: id}, opts...)
 }
 
-// GetAddressByValue — sync lookup по литералу IP (для cross-service ref-validation).
-func (c *Client) GetAddressByValue(ctx context.Context, req *vpcv1.GetAddressByValueRequest, opts ...grpc.CallOption) (*vpcv1.Address, error) {
-	return c.Addresses.GetByValue(ctx, req, opts...)
-}
-
 // ListAddresses — sync list по project/page.
 func (c *Client) ListAddresses(ctx context.Context, req *vpcv1.ListAddressesRequest, opts ...grpc.CallOption) (*vpcv1.ListAddressesResponse, error) {
 	return c.Addresses.List(ctx, req, opts...)
 }
 
-// ListAddressesBySubnet — sync list internal-адресов одной подсети.
-func (c *Client) ListAddressesBySubnet(ctx context.Context, req *vpcv1.ListAddressesBySubnetRequest, opts ...grpc.CallOption) (*vpcv1.ListAddressesBySubnetResponse, error) {
-	return c.Addresses.ListBySubnet(ctx, req, opts...)
-}
+// Обёртки поиска по значению и списка по подсети СНЯТЫ вместе с методами.
+//
+// Оба вопроса закрывает список: сужение по значению — поле `ip_address`, сужение по
+// подсети — поле `subnet_id`. Область запроса при этом берётся из проекта, а не из
+// подсети: у снятого поиска по значению внешняя ветвь была неавторизуема по
+// построению, потому что у внешнего адреса подсети нет.
 
 // CreateAddress — async; IPAM allocate происходит inline в worker.
 func (c *Client) CreateAddress(ctx context.Context, req *vpcv1.CreateAddressRequest, opts ...grpc.CallOption) (*operationv1.Operation, error) {

@@ -1468,21 +1468,15 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xf2\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xbb\n" +
+	"\n" +
 	"\x0eAddressService\x12\xb1\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetAddressRequest\x1a\x1b.kacho.cloud.vpc.v1.Address\"f\x8a\xb5\x18\x11vpc.addresses.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
-	"address_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addresses/{address_id}\x12\xc7\x01\n" +
-	"\n" +
-	"GetByValue\x12,.kacho.cloud.vpc.v1.GetAddressByValueRequest\x1a\x1b.kacho.cloud.vpc.v1.Address\"n\x8a\xb5\x18 vpc.address_by_values.getByValue\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
-	"\n" +
-	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/vpc/v1/addresses:byValue\x12\xb4\x01\n" +
+	"address_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 \x12\x1e/vpc/v1/addresses/{address_id}\x12\xb4\x01\n" +
 	"\x04List\x12(.kacho.cloud.vpc.v1.ListAddressesRequest\x1a).kacho.cloud.vpc.v1.ListAddressesResponse\"W\x8a\xb5\x18\x12vpc.addresses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/vpc/v1/addresses\x12\xea\x01\n" +
-	"\fListBySubnet\x120.kacho.cloud.vpc.v1.ListAddressesBySubnetRequest\x1a1.kacho.cloud.vpc.v1.ListAddressesBySubnetResponse\"u\x8a\xb5\x18%vpc.addresses_by_subnets.listBySubnet\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
-	"\n" +
-	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1c\x12\x1a/vpc/v1/addresses:bySubnet\x12\xd7\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/vpc/v1/addresses\x12\xd7\x01\n" +
 	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateAddressRequest\x1a .kacho.cloud.operation.Operation\"\x80\x01\x8a\xb5\x18\x14vpc.addresses.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
@@ -1552,23 +1546,19 @@ var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	19, // 10: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
 	23, // 11: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 12: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
-	1,  // 13: kacho.cloud.vpc.v1.AddressService.GetByValue:input_type -> kacho.cloud.vpc.v1.GetAddressByValueRequest
-	2,  // 14: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
-	4,  // 15: kacho.cloud.vpc.v1.AddressService.ListBySubnet:input_type -> kacho.cloud.vpc.v1.ListAddressesBySubnetRequest
-	6,  // 16: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
-	12, // 17: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
-	14, // 18: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
-	16, // 19: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
-	20, // 20: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
-	20, // 21: kacho.cloud.vpc.v1.AddressService.GetByValue:output_type -> kacho.cloud.vpc.v1.Address
-	3,  // 22: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
-	5,  // 23: kacho.cloud.vpc.v1.AddressService.ListBySubnet:output_type -> kacho.cloud.vpc.v1.ListAddressesBySubnetResponse
-	23, // 24: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
-	23, // 25: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
-	23, // 26: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
-	17, // 27: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
-	20, // [20:28] is the sub-list for method output_type
-	12, // [12:20] is the sub-list for method input_type
+	2,  // 13: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
+	6,  // 14: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
+	12, // 15: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
+	14, // 16: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
+	16, // 17: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
+	20, // 18: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
+	3,  // 19: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
+	23, // 20: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
+	23, // 21: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
+	23, // 22: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
+	17, // 23: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
+	18, // [18:24] is the sub-list for method output_type
+	12, // [12:18] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
 	12, // [12:12] is the sub-list for extension extendee
 	0,  // [0:12] is the sub-list for field type_name

@@ -103,20 +103,20 @@ var Profile = listfiltergate.Profile{
 		"address.ListOperations":          parentGate(),
 		"gateway.ListOperations":          parentGate(),
 		"network.ListOperations":          parentGate(),
-		"network.ListRouteTables":         parentGate(),
-		"network.ListSecurityGroups":      parentGate(),
-		"network.ListSubnets":             parentGate(),
 		"networkinterface.ListOperations": parentGate(),
 		"routetable.ListOperations":       parentGate(),
 		"securitygroup.ListOperations":    parentGate(),
 		"subnet.ListOperations":           parentGate(),
 		"subnet.ListUsedAddresses":        parentGate(),
 
-		"address.ListBySubnet": {
-			Shape:       listfiltergate.EdgeGate,
-			ProtoFile:   "kacho/cloud/vpc/v1/address_service.proto",
-			ParentField: "subnet_id",
-		},
+		// Здесь стояли четыре объявления под-перечислений: три у сети и одно у
+		// адреса. Методы СНЯТЫ с контракта (вторые пути к одному ответу с другим
+		// объектом проверки прав), поэтому объявлениям больше нечего описывать, и
+		// гейт правильно потребовал их снять: иначе следующий метод с тем же именем
+		// унаследовал бы утверждение об энфорсменте, которого никто не проверял.
+		//
+		// Замена у всех четырёх — список ресурса с сужением: по сети (`network_id` в
+		// белом списке фильтра) и по подсети (`subnet_id` в списочном запросе).
 
 		"addresspool.List":          {Shape: listfiltergate.ClusterScoped, Reason: adminPool},
 		"addresspool.ListAddresses": {Shape: listfiltergate.ClusterScoped, Reason: adminPool},

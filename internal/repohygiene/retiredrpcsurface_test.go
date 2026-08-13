@@ -26,6 +26,38 @@ import (
 // ничего не находило».
 var retiredRPCSurface = []RetiredRPC{
 	{
+		FQN:    "kacho.cloud.vpc.v1.RouteTableService/AddRoutes",
+		Reason: "метод отвечал отказом при любом входе: идентичности маршрута в модели нет, адресовать правку было нечем. Имя не должно вернуться под другой замысел — правка набора идёт заменой набора целиком.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes",
+		Reason: "то же: гранулярная правка маршрута без идентичности маршрута невыразима.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.RouteTableService/UpdateRoute",
+		Reason: "то же: гранулярная правка маршрута без идентичности маршрута невыразима.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.AddressService/GetByValue",
+		Reason: "внешняя ветвь была неавторизуема по построению — область бралась из подсети, которой у внешнего адреса нет. Замена: список с сужением по значению (поле ip_address).",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.AddressService/ListBySubnet",
+		Reason: "строгое подмножество списка, который уже несёт сужение по подсети: два пути к одному ответу с разными объектами проверки прав.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.NetworkService/ListSubnets",
+		Reason: "второй путь к ответу списка подсетей с ДРУГИМ объектом проверки прав. Замена: список подсетей с сужением по сети.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups",
+		Reason: "второй путь к ответу списка групп правил с другим объектом проверки прав. Замена: список групп с сужением по сети.",
+	},
+	{
+		FQN:    "kacho.cloud.vpc.v1.NetworkService/ListRouteTables",
+		Reason: "второй путь к ответу списка таблиц с другим объектом проверки прав. Замена: список таблиц с сужением по сети (поле network_id в белом списке фильтра заведено ДО снятия).",
+	},
+	{
 		FQN: "kacho.cloud.compute.v1.InternalResourceLifecycleService/Subscribe",
 		Reason: "фид жизненного цикла ресурсов был объявлен в трёх доменах, а реализован " +
 			"ровно в одном (loadbalancer.v1). Объявление compute не несло ни сервера, ни клиента, " +

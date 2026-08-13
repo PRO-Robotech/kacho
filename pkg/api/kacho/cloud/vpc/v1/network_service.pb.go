@@ -1314,7 +1314,7 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xfe\x14\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xef\x0e\n" +
 	"\x0eNetworkService\x12\xaf\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetNetworkRequest\x1a\x1b.kacho.cloud.vpc.v1.Network\"d\x8a\xb5\x18\x10vpc.networks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
@@ -1341,16 +1341,7 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x10RemoveCidrBlocks\x122.kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb9\x01\x8a\xb5\x18(vpc.network_cidr_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}:remove-cidr-blocks\x12\xea\x01\n" +
-	"\vListSubnets\x12-.kacho.cloud.vpc.v1.ListNetworkSubnetsRequest\x1a..kacho.cloud.vpc.v1.ListNetworkSubnetsResponse\"|\x8a\xb5\x18\x1fvpc.network_subnets.listSubnets\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02'\x12%/vpc/v1/networks/{network_id}/subnets\x12\x97\x02\n" +
-	"\x12ListSecurityGroups\x124.kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest\x1a5.kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse\"\x93\x01\x8a\xb5\x18.vpc.network_security_groups.listSecurityGroups\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02/\x12-/vpc/v1/networks/{network_id}/security_groups\x12\x85\x02\n" +
-	"\x0fListRouteTables\x121.kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest\x1a2.kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse\"\x8a\x01\x8a\xb5\x18(vpc.network_route_tables.listRouteTables\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/networks/{network_id}/route_tables\x12\xfd\x01\n" +
+	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}:remove-cidr-blocks\x12\xfd\x01\n" +
 	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListNetworkOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkOperationsResponse\"\x85\x01\x8a\xb5\x18%vpc.network_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/networks/{network_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
@@ -1413,23 +1404,17 @@ var file_kacho_cloud_vpc_v1_network_service_proto_depIdxs = []int32{
 	9,  // 12: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
 	7,  // 13: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
 	8,  // 14: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
-	11, // 15: kacho.cloud.vpc.v1.NetworkService.ListSubnets:input_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
-	13, // 16: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:input_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
-	15, // 17: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:input_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
-	17, // 18: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	21, // 19: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
-	2,  // 20: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
-	26, // 21: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
-	26, // 22: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
-	26, // 23: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
-	26, // 24: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	26, // 25: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	12, // 26: kacho.cloud.vpc.v1.NetworkService.ListSubnets:output_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
-	14, // 27: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:output_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
-	16, // 28: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:output_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
-	18, // 29: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	19, // [19:30] is the sub-list for method output_type
-	8,  // [8:19] is the sub-list for method input_type
+	17, // 15: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	21, // 16: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
+	2,  // 17: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
+	26, // 18: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
+	26, // 19: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
+	26, // 20: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
+	26, // 21: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	26, // 22: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	18, // 23: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name

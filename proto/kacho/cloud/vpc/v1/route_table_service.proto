@@ -113,53 +113,6 @@ service RouteTableService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Гранулярное управление маршрутами (стиль verb-RPC как Subnet
-  // :add-cidr-blocks). Каждая мутация — Operation→RouteTable. Хранение —
-  // static_routes JSONB + стабильный StaticRoute.id, atomic через xmin-OCC.
-  rpc AddRoutes (AddRouteTableRoutesRequest) returns (operation.Operation) {
-    option (google.api.http) = { post: "/vpc/v1/routeTables/{route_table_id}:add-routes" body: "*" };
-    option (kacho.cloud.api.operation) = {
-      metadata: "UpdateRouteTableMetadata"
-      response: "RouteTable"
-    };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_route_table"
-      from_request_field: "route_table_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  rpc RemoveRoutes (RemoveRouteTableRoutesRequest) returns (operation.Operation) {
-    option (google.api.http) = { post: "/vpc/v1/routeTables/{route_table_id}:remove-routes" body: "*" };
-    option (kacho.cloud.api.operation) = {
-      metadata: "UpdateRouteTableMetadata"
-      response: "RouteTable"
-    };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_route_table"
-      from_request_field: "route_table_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  rpc UpdateRoute (UpdateRouteTableRouteRequest) returns (operation.Operation) {
-    option (google.api.http) = { post: "/vpc/v1/routeTables/{route_table_id}:update-route" body: "*" };
-    option (kacho.cloud.api.operation) = {
-      metadata: "UpdateRouteTableMetadata"
-      response: "RouteTable"
-    };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_route_table"
-      from_request_field: "route_table_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
 }
 
 message GetRouteTableRequest {

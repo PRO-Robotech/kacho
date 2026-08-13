@@ -59,8 +59,12 @@ CASES.append(Case(
             # вызывающий получал успех на правиле, которое не делает написанного.
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sg-notgt-{{runId}}",
-                  "ruleSpecs": [{"direction": "INGRESS", "protocolName": "ANY",
-                                 "fromPort": -1, "toPort": -1}]},
+                  # Порты у спецификации правила лежат ВЛОЖЕННЫМ объектом `ports`, а
+                  # не полями верхнего уровня: первая редакция этого кейса послала их
+                  # верхним уровнем, и гейт неизвестных полей коллекций её поймал.
+                  # Здесь порты вообще не заданы — «любой порт», и предмет кейса это не
+                  # затрагивает: он про ЦЕЛЬ.
+                  "ruleSpecs": [{"direction": "INGRESS", "protocolName": "ANY"}]},
             test_script=[
                 *assert_status(400),
                 # Отказ обязан НАЗЫВАТЬ поле: «пришло 400» истинно и при отказе по
@@ -77,7 +81,6 @@ CASES.append(Case(
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sg-tgt-{{runId}}",
                   "ruleSpecs": [{"direction": "INGRESS", "protocolName": "ANY",
-                                 "fromPort": -1, "toPort": -1,
                                  "cidrBlocks": {"v4CidrBlocks": ["10.0.0.0/8"]}}]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")],

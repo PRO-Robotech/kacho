@@ -32,6 +32,40 @@ import (
 
 // ---- builders ----
 
+// TestHandler_Update_Happy — предмет: обновление сети по маске.
+//
+// Прежняя редакция дополнительно звала снятые методы под-перечисления («child list
+// happy»). Их предмет исчез вместе с ними, но предмет САМОЙ пробы — обновление — не
+// изменился, поэтому проба восстановлена без них: снимать её целиком значило бы
+// потерять покрытие обновления заодно со снятым списком.
+//
+// Замена под-перечислению — список ресурса с сужением по сети, и она проверяется
+// пробами своих ресурсов, а не здесь.
+func TestHandler_Update_Happy(t *testing.T) {
+	kr := kachomock.NewRepository()
+	or := repomock.NewOpsRepo()
+	sr := repomock.NewSubnetRepo()
+	rtr := repomock.NewRouteTableRepo()
+	h := makeHandler(t, kr, sr, rtr, nil, or, &repomock.ProjectClient{OK: true})
+
+	createOp, err := h.Create(context.Background(), &vpcv1.CreateNetworkRequest{ProjectId: "f1", Name: "n"})
+	require.NoError(t, err)
+	repomock.AwaitOpDone(t, or, createOp.Id)
+
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
+	require.Len(t, resp.Networks, 1)
+	netID := resp.Networks[0].Id
+
+	updOp, err := h.Update(context.Background(), &vpcv1.UpdateNetworkRequest{
+		NetworkId: netID, Name: "n-upd",
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}},
+	})
+	require.NoError(t, err)
+	repomock.AwaitOpDone(t, or, updOp.Id)
+	got, _ := h.Get(context.Background(), &vpcv1.GetNetworkRequest{NetworkId: netID})
+	assert.Equal(t, "n-upd", got.Name)
+}
+
 func makeHandler(t *testing.T,
 	kr *kachomock.Repository,
 	sr *repomock.SubnetRepo,
@@ -423,42 +457,4 @@ func TestHandler_ListOperations_RequiresID(t *testing.T) {
 	_, err := h.ListOperations(context.Background(), &vpcv1.ListNetworkOperationsRequest{NetworkId: ""})
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-}
-
-func TestHandler_Update_Happy(t *testing.T) {
-	kr := kachomock.NewRepository()
-	or := repomock.NewOpsRepo()
-	sr := repomock.NewSubnetRepo()
-	rtr := repomock.NewRouteTableRepo()
-	h := makeHandler(t, kr, sr, rtr, nil, or, &repomock.ProjectClient{OK: true})
-
-	createOp, err := h.Create(context.Background(), &vpcv1.CreateNetworkRequest{ProjectId: "f1", Name: "n"})
-	require.NoError(t, err)
-	repomock.AwaitOpDone(t, or, createOp.Id)
-
-	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
-	require.Len(t, resp.Networks, 1)
-	netID := resp.Networks[0].Id
-
-	updOp, err := h.Update(context.Background(), &vpcv1.UpdateNetworkRequest{
-		NetworkId: netID, Name: "n-upd",
-		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}},
-	})
-	require.NoError(t, err)
-	repomock.AwaitOpDone(t, or, updOp.Id)
-	got, _ := h.Get(context.Background(), &vpcv1.GetNetworkRequest{NetworkId: netID})
-	assert.Equal(t, "n-upd", got.Name)
-
-	// child list happy
-	_, err = h.ListSubnets(context.Background(), &vpcv1.ListNetworkSubnetsRequest{NetworkId: netID})
-	require.NoError(t, err)
-	_, err = h.ListRouteTables(context.Background(), &vpcv1.ListNetworkRouteTablesRequest{NetworkId: netID})
-	require.NoError(t, err)
-	_, err = h.ListOperations(context.Background(), &vpcv1.ListNetworkOperationsRequest{NetworkId: netID})
-	require.NoError(t, err)
-
-	// Delete (без child-resources)
-	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteNetworkRequest{NetworkId: netID})
-	require.NoError(t, err)
-	repomock.AwaitOpDone(t, or, delOp.Id)
 }

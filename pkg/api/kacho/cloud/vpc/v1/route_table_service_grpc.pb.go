@@ -29,9 +29,6 @@ const (
 	RouteTableService_Update_FullMethodName         = "/kacho.cloud.vpc.v1.RouteTableService/Update"
 	RouteTableService_Delete_FullMethodName         = "/kacho.cloud.vpc.v1.RouteTableService/Delete"
 	RouteTableService_ListOperations_FullMethodName = "/kacho.cloud.vpc.v1.RouteTableService/ListOperations"
-	RouteTableService_AddRoutes_FullMethodName      = "/kacho.cloud.vpc.v1.RouteTableService/AddRoutes"
-	RouteTableService_RemoveRoutes_FullMethodName   = "/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes"
-	RouteTableService_UpdateRoute_FullMethodName    = "/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute"
 )
 
 // RouteTableServiceClient is the client API for RouteTableService service.
@@ -56,12 +53,6 @@ type RouteTableServiceClient interface {
 	Delete(ctx context.Context, in *DeleteRouteTableRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// List operations for the specified route table.
 	ListOperations(ctx context.Context, in *ListRouteTableOperationsRequest, opts ...grpc.CallOption) (*ListRouteTableOperationsResponse, error)
-	// Гранулярное управление маршрутами (стиль verb-RPC как Subnet
-	// :add-cidr-blocks). Каждая мутация — Operation→RouteTable. Хранение —
-	// static_routes JSONB + стабильный StaticRoute.id, atomic через xmin-OCC.
-	AddRoutes(ctx context.Context, in *AddRouteTableRoutesRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	RemoveRoutes(ctx context.Context, in *RemoveRouteTableRoutesRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	UpdateRoute(ctx context.Context, in *UpdateRouteTableRouteRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type routeTableServiceClient struct {
@@ -132,36 +123,6 @@ func (c *routeTableServiceClient) ListOperations(ctx context.Context, in *ListRo
 	return out, nil
 }
 
-func (c *routeTableServiceClient) AddRoutes(ctx context.Context, in *AddRouteTableRoutesRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RouteTableService_AddRoutes_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *routeTableServiceClient) RemoveRoutes(ctx context.Context, in *RemoveRouteTableRoutesRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RouteTableService_RemoveRoutes_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *routeTableServiceClient) UpdateRoute(ctx context.Context, in *UpdateRouteTableRouteRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, RouteTableService_UpdateRoute_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // RouteTableServiceServer is the server API for RouteTableService service.
 // All implementations must embed UnimplementedRouteTableServiceServer
 // for forward compatibility.
@@ -184,12 +145,6 @@ type RouteTableServiceServer interface {
 	Delete(context.Context, *DeleteRouteTableRequest) (*operation.Operation, error)
 	// List operations for the specified route table.
 	ListOperations(context.Context, *ListRouteTableOperationsRequest) (*ListRouteTableOperationsResponse, error)
-	// Гранулярное управление маршрутами (стиль verb-RPC как Subnet
-	// :add-cidr-blocks). Каждая мутация — Operation→RouteTable. Хранение —
-	// static_routes JSONB + стабильный StaticRoute.id, atomic через xmin-OCC.
-	AddRoutes(context.Context, *AddRouteTableRoutesRequest) (*operation.Operation, error)
-	RemoveRoutes(context.Context, *RemoveRouteTableRoutesRequest) (*operation.Operation, error)
-	UpdateRoute(context.Context, *UpdateRouteTableRouteRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedRouteTableServiceServer()
 }
 
@@ -217,15 +172,6 @@ func (UnimplementedRouteTableServiceServer) Delete(context.Context, *DeleteRoute
 }
 func (UnimplementedRouteTableServiceServer) ListOperations(context.Context, *ListRouteTableOperationsRequest) (*ListRouteTableOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
-}
-func (UnimplementedRouteTableServiceServer) AddRoutes(context.Context, *AddRouteTableRoutesRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method AddRoutes not implemented")
-}
-func (UnimplementedRouteTableServiceServer) RemoveRoutes(context.Context, *RemoveRouteTableRoutesRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method RemoveRoutes not implemented")
-}
-func (UnimplementedRouteTableServiceServer) UpdateRoute(context.Context, *UpdateRouteTableRouteRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateRoute not implemented")
 }
 func (UnimplementedRouteTableServiceServer) mustEmbedUnimplementedRouteTableServiceServer() {}
 func (UnimplementedRouteTableServiceServer) testEmbeddedByValue()                           {}
@@ -356,60 +302,6 @@ func _RouteTableService_ListOperations_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RouteTableService_AddRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AddRouteTableRoutesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RouteTableServiceServer).AddRoutes(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RouteTableService_AddRoutes_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RouteTableServiceServer).AddRoutes(ctx, req.(*AddRouteTableRoutesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RouteTableService_RemoveRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RemoveRouteTableRoutesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RouteTableServiceServer).RemoveRoutes(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RouteTableService_RemoveRoutes_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RouteTableServiceServer).RemoveRoutes(ctx, req.(*RemoveRouteTableRoutesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RouteTableService_UpdateRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRouteTableRouteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RouteTableServiceServer).UpdateRoute(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RouteTableService_UpdateRoute_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RouteTableServiceServer).UpdateRoute(ctx, req.(*UpdateRouteTableRouteRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // RouteTableService_ServiceDesc is the grpc.ServiceDesc for RouteTableService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -440,18 +332,6 @@ var RouteTableService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOperations",
 			Handler:    _RouteTableService_ListOperations_Handler,
-		},
-		{
-			MethodName: "AddRoutes",
-			Handler:    _RouteTableService_AddRoutes_Handler,
-		},
-		{
-			MethodName: "RemoveRoutes",
-			Handler:    _RouteTableService_RemoveRoutes_Handler,
-		},
-		{
-			MethodName: "UpdateRoute",
-			Handler:    _RouteTableService_UpdateRoute_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

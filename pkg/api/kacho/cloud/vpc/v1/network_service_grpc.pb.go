@@ -23,17 +23,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NetworkService_Get_FullMethodName                = "/kacho.cloud.vpc.v1.NetworkService/Get"
-	NetworkService_List_FullMethodName               = "/kacho.cloud.vpc.v1.NetworkService/List"
-	NetworkService_Create_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Create"
-	NetworkService_Update_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Update"
-	NetworkService_Delete_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/Delete"
-	NetworkService_AddCidrBlocks_FullMethodName      = "/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks"
-	NetworkService_RemoveCidrBlocks_FullMethodName   = "/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks"
-	NetworkService_ListSubnets_FullMethodName        = "/kacho.cloud.vpc.v1.NetworkService/ListSubnets"
-	NetworkService_ListSecurityGroups_FullMethodName = "/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups"
-	NetworkService_ListRouteTables_FullMethodName    = "/kacho.cloud.vpc.v1.NetworkService/ListRouteTables"
-	NetworkService_ListOperations_FullMethodName     = "/kacho.cloud.vpc.v1.NetworkService/ListOperations"
+	NetworkService_Get_FullMethodName              = "/kacho.cloud.vpc.v1.NetworkService/Get"
+	NetworkService_List_FullMethodName             = "/kacho.cloud.vpc.v1.NetworkService/List"
+	NetworkService_Create_FullMethodName           = "/kacho.cloud.vpc.v1.NetworkService/Create"
+	NetworkService_Update_FullMethodName           = "/kacho.cloud.vpc.v1.NetworkService/Update"
+	NetworkService_Delete_FullMethodName           = "/kacho.cloud.vpc.v1.NetworkService/Delete"
+	NetworkService_AddCidrBlocks_FullMethodName    = "/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks"
+	NetworkService_RemoveCidrBlocks_FullMethodName = "/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks"
+	NetworkService_ListOperations_FullMethodName   = "/kacho.cloud.vpc.v1.NetworkService/ListOperations"
 )
 
 // NetworkServiceClient is the client API for NetworkService service.
@@ -63,12 +60,6 @@ type NetworkServiceClient interface {
 	// Shrinks the network's declared supernet by removing CIDR block(s). A block
 	// that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
 	RemoveCidrBlocks(ctx context.Context, in *RemoveNetworkCidrBlocksRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Lists subnets from the specified network.
-	ListSubnets(ctx context.Context, in *ListNetworkSubnetsRequest, opts ...grpc.CallOption) (*ListNetworkSubnetsResponse, error)
-	// Lists security groups from the specified network.
-	ListSecurityGroups(ctx context.Context, in *ListNetworkSecurityGroupsRequest, opts ...grpc.CallOption) (*ListNetworkSecurityGroupsResponse, error)
-	// Lists route tables from the specified network.
-	ListRouteTables(ctx context.Context, in *ListNetworkRouteTablesRequest, opts ...grpc.CallOption) (*ListNetworkRouteTablesResponse, error)
 	// Lists operations for the specified network.
 	ListOperations(ctx context.Context, in *ListNetworkOperationsRequest, opts ...grpc.CallOption) (*ListNetworkOperationsResponse, error)
 }
@@ -151,36 +142,6 @@ func (c *networkServiceClient) RemoveCidrBlocks(ctx context.Context, in *RemoveN
 	return out, nil
 }
 
-func (c *networkServiceClient) ListSubnets(ctx context.Context, in *ListNetworkSubnetsRequest, opts ...grpc.CallOption) (*ListNetworkSubnetsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListNetworkSubnetsResponse)
-	err := c.cc.Invoke(ctx, NetworkService_ListSubnets_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *networkServiceClient) ListSecurityGroups(ctx context.Context, in *ListNetworkSecurityGroupsRequest, opts ...grpc.CallOption) (*ListNetworkSecurityGroupsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListNetworkSecurityGroupsResponse)
-	err := c.cc.Invoke(ctx, NetworkService_ListSecurityGroups_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *networkServiceClient) ListRouteTables(ctx context.Context, in *ListNetworkRouteTablesRequest, opts ...grpc.CallOption) (*ListNetworkRouteTablesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListNetworkRouteTablesResponse)
-	err := c.cc.Invoke(ctx, NetworkService_ListRouteTables_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *networkServiceClient) ListOperations(ctx context.Context, in *ListNetworkOperationsRequest, opts ...grpc.CallOption) (*ListNetworkOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListNetworkOperationsResponse)
@@ -218,12 +179,6 @@ type NetworkServiceServer interface {
 	// Shrinks the network's declared supernet by removing CIDR block(s). A block
 	// that still contains a live subnet cannot be removed (FAILED_PRECONDITION).
 	RemoveCidrBlocks(context.Context, *RemoveNetworkCidrBlocksRequest) (*operation.Operation, error)
-	// Lists subnets from the specified network.
-	ListSubnets(context.Context, *ListNetworkSubnetsRequest) (*ListNetworkSubnetsResponse, error)
-	// Lists security groups from the specified network.
-	ListSecurityGroups(context.Context, *ListNetworkSecurityGroupsRequest) (*ListNetworkSecurityGroupsResponse, error)
-	// Lists route tables from the specified network.
-	ListRouteTables(context.Context, *ListNetworkRouteTablesRequest) (*ListNetworkRouteTablesResponse, error)
 	// Lists operations for the specified network.
 	ListOperations(context.Context, *ListNetworkOperationsRequest) (*ListNetworkOperationsResponse, error)
 	mustEmbedUnimplementedNetworkServiceServer()
@@ -256,15 +211,6 @@ func (UnimplementedNetworkServiceServer) AddCidrBlocks(context.Context, *AddNetw
 }
 func (UnimplementedNetworkServiceServer) RemoveCidrBlocks(context.Context, *RemoveNetworkCidrBlocksRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveCidrBlocks not implemented")
-}
-func (UnimplementedNetworkServiceServer) ListSubnets(context.Context, *ListNetworkSubnetsRequest) (*ListNetworkSubnetsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListSubnets not implemented")
-}
-func (UnimplementedNetworkServiceServer) ListSecurityGroups(context.Context, *ListNetworkSecurityGroupsRequest) (*ListNetworkSecurityGroupsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListSecurityGroups not implemented")
-}
-func (UnimplementedNetworkServiceServer) ListRouteTables(context.Context, *ListNetworkRouteTablesRequest) (*ListNetworkRouteTablesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListRouteTables not implemented")
 }
 func (UnimplementedNetworkServiceServer) ListOperations(context.Context, *ListNetworkOperationsRequest) (*ListNetworkOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
@@ -416,60 +362,6 @@ func _NetworkService_RemoveCidrBlocks_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NetworkService_ListSubnets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListNetworkSubnetsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkServiceServer).ListSubnets(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkService_ListSubnets_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkServiceServer).ListSubnets(ctx, req.(*ListNetworkSubnetsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NetworkService_ListSecurityGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListNetworkSecurityGroupsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkServiceServer).ListSecurityGroups(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkService_ListSecurityGroups_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkServiceServer).ListSecurityGroups(ctx, req.(*ListNetworkSecurityGroupsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _NetworkService_ListRouteTables_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListNetworkRouteTablesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(NetworkServiceServer).ListRouteTables(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: NetworkService_ListRouteTables_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NetworkServiceServer).ListRouteTables(ctx, req.(*ListNetworkRouteTablesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _NetworkService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListNetworkOperationsRequest)
 	if err := dec(in); err != nil {
@@ -522,18 +414,6 @@ var NetworkService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveCidrBlocks",
 			Handler:    _NetworkService_RemoveCidrBlocks_Handler,
-		},
-		{
-			MethodName: "ListSubnets",
-			Handler:    _NetworkService_ListSubnets_Handler,
-		},
-		{
-			MethodName: "ListSecurityGroups",
-			Handler:    _NetworkService_ListSecurityGroups_Handler,
-		},
-		{
-			MethodName: "ListRouteTables",
-			Handler:    _NetworkService_ListRouteTables_Handler,
 		},
 		{
 			MethodName: "ListOperations",

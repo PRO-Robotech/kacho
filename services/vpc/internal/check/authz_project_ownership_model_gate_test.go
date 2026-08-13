@@ -121,12 +121,6 @@ func ownershipGuardModelGatedRPCs() []ownershipGuardRPC {
 			&vpcv1.RemoveNetworkCidrBlocksRequest{NetworkId: gNetID}, gNetID},
 		{"/kacho.cloud.vpc.v1.NetworkService/Delete", "v_delete", "vpc_network",
 			&vpcv1.DeleteNetworkRequest{NetworkId: gNetID}, gNetID},
-		{"/kacho.cloud.vpc.v1.NetworkService/ListSubnets", "v_list", "vpc_network",
-			&vpcv1.ListNetworkSubnetsRequest{NetworkId: gNetID}, gNetID},
-		{"/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups", "v_list", "vpc_network",
-			&vpcv1.ListNetworkSecurityGroupsRequest{NetworkId: gNetID}, gNetID},
-		{"/kacho.cloud.vpc.v1.NetworkService/ListRouteTables", "v_list", "vpc_network",
-			&vpcv1.ListNetworkRouteTablesRequest{NetworkId: gNetID}, gNetID},
 		{"/kacho.cloud.vpc.v1.NetworkService/ListOperations", "v_list", "vpc_network",
 			&vpcv1.ListNetworkOperationsRequest{NetworkId: gNetID}, gNetID},
 
@@ -153,14 +147,6 @@ func ownershipGuardModelGatedRPCs() []ownershipGuardRPC {
 		// ---- AddressService ----
 		{"/kacho.cloud.vpc.v1.AddressService/Get", "v_get", "vpc_address",
 			&vpcv1.GetAddressRequest{AddressId: gAddrID}, gAddrID},
-		// GetByValue is scoped to the PARENT SUBNET, not the address: the address
-		// id is not known to the caller at call time.
-		{"/kacho.cloud.vpc.v1.AddressService/GetByValue", "v_get", "vpc_subnet",
-			&vpcv1.GetAddressByValueRequest{
-				Scope: &vpcv1.GetAddressByValueRequest_SubnetId{SubnetId: gSubID},
-			}, gSubID},
-		{"/kacho.cloud.vpc.v1.AddressService/ListBySubnet", "v_list", "vpc_subnet",
-			&vpcv1.ListAddressesBySubnetRequest{SubnetId: gSubID}, gSubID},
 		{"/kacho.cloud.vpc.v1.AddressService/List", "viewer", "project",
 			&vpcv1.ListAddressesRequest{ProjectId: gVpcProjD}, gVpcProjD},
 		{"/kacho.cloud.vpc.v1.AddressService/Create", "editor", "project",

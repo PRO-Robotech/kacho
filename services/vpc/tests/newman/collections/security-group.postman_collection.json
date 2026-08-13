@@ -272,7 +272,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-notgt-{{runId}}\", \"ruleSpecs\": [{\"direction\": \"INGRESS\", \"protocolName\": \"ANY\", \"fromPort\": -1, \"toPort\": -1}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-notgt-{{runId}}\", \"ruleSpecs\": [{\"direction\": \"INGRESS\", \"protocolName\": \"ANY\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -322,7 +322,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-tgt-{{runId}}\", \"ruleSpecs\": [{\"direction\": \"INGRESS\", \"protocolName\": \"ANY\", \"fromPort\": -1, \"toPort\": -1, \"cidrBlocks\": {\"v4CidrBlocks\": [\"10.0.0.0/8\"]}}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sg-tgt-{{runId}}\", \"ruleSpecs\": [{\"direction\": \"INGRESS\", \"protocolName\": \"ANY\", \"cidrBlocks\": {\"v4CidrBlocks\": [\"10.0.0.0/8\"]}}]}",
               "options": {
                 "raw": {
                   "language": "json"

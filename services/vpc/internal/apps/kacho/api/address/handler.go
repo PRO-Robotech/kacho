@@ -75,44 +75,6 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetAddressRequest) (*vpcv1
 	return addressToPb(a)
 }
 
-// GetByValue — sync lookup-by-IP. AuthZ энфорсит per-RPC authz-interceptor
-// прямым Check'ом `v_get @ vpc_subnet:<req.subnet_id>` (fail-closed, если
-// subnet_id не задан) — отдельной ownership-проверки в handler'е нет.
-func (h *Handler) GetByValue(ctx context.Context, req *vpcv1.GetAddressByValueRequest) (*vpcv1.Address, error) {
-	externalIP := req.GetExternalIpv4Address()
-	internalIP := req.GetInternalIpv4Address()
-	subnetID := req.GetSubnetId()
-	a, err := h.getByValue.Execute(ctx, externalIP, internalIP, subnetID)
-	if err != nil {
-		return nil, err
-	}
-	return addressToPb(a)
-}
-
-// ListBySubnet — child list. AuthZ по parent subnet'у энфорсит per-RPC
-// authz-interceptor прямым Check'ом `v_list @ vpc_subnet:<req.subnet_id>`.
-func (h *Handler) ListBySubnet(ctx context.Context, req *vpcv1.ListAddressesBySubnetRequest) (*vpcv1.ListAddressesBySubnetResponse, error) {
-	if req.SubnetId == "" {
-		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
-	}
-	addrs, nextToken, err := h.listBySubnet.Execute(ctx, req.SubnetId, Pagination{
-		PageToken: req.PageToken,
-		PageSize:  req.PageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp := &vpcv1.ListAddressesBySubnetResponse{NextPageToken: nextToken}
-	for _, a := range addrs {
-		pb, err := addressToPb(a)
-		if err != nil {
-			return nil, err
-		}
-		resp.Addresses = append(resp.Addresses, pb)
-	}
-	return resp, nil
-}
-
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListAddressesRequest) (*vpcv1.ListAddressesResponse, error) {
