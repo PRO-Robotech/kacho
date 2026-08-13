@@ -247,29 +247,12 @@ func networkToPb(rec *kachorepo.NetworkRecord) (*vpcv1.Network, error) {
 	return dst, nil
 }
 
-// subnetToPb / routeTableToPb / securityGroupToPb — repo-entity child-resource
-// → proto. Reuse уже зарегистрированных DTO-трансферов из `internal/dto/toproto`
-// (blank-import выше).
-func subnetToPb(rec *kachorepo.SubnetRecord) (*vpcv1.Subnet, error) {
-	var dst *vpcv1.Subnet
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer Subnet failed")
-	}
-	return dst, nil
-}
-
-func routeTableToPb(rec *kachorepo.RouteTableRecord) (*vpcv1.RouteTable, error) {
-	var dst *vpcv1.RouteTable
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer RouteTable failed")
-	}
-	return dst, nil
-}
-
-func securityGroupToPb(rec *kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGroup, error) {
-	var dst *vpcv1.SecurityGroup
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer SecurityGroup failed")
-	}
-	return dst, nil
-}
+// Здесь стояли три преобразователя дочерних ресурсов — снят вместе со своим предметом.
+//
+// Они обслуживали под-перечисления сети, снятые с контракта: второй путь к ответу, который
+// уже даёт список самого ресурса с сужением по сети. Функции пережили снятие методов на
+// один заход и держались только тем, что компилятор их не проверяет на достижимость.
+//
+// Одноимённые преобразователи в пакетах САМИХ ресурсов живы и используются их списками —
+// это разные функции с совпадающими именами. Классифицировать совпадения по референту
+// обязательно: удаление «всех вхождений имени» вынесло бы отсюда мёртвое вместе с живым.
