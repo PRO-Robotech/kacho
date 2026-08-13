@@ -48,12 +48,28 @@ lookup through a same-origin gateway endpoint rather than adding
 **Status:** accepted / bounded residual (not an exploitable defect).
 
 **Запись гейта:** `csp:style-src-unsafe-inline` — держит `scripts/check-csp-divergence-records.mjs`.
-**Измерено против:** `antd@^6.3.7`.
+**Измерено против:** `antd@^6.6.0`.
 
 Запись держится гейтом, а не памятью автора: он краснеет, когда послабления в
 дереве больше нет (принимать нечего — снять запись) и когда пин UI-набора уехал
 (измерение про рантайм-движок стилей той версии больше не относится к дереву).
 Обоснование ниже — про **v6**; пин и есть срок годности этого обоснования.
+
+> [!important] Перемерено на бампе `antd@^6.3.7 → ^6.6.0`: одно из оснований УСТАРЕЛО
+> Гейт покраснел на этом бампе — как и задуман, — и перемер показал, что запись держалась
+> отчасти на утверждении, которого дерево больше не подтверждает. Прежняя редакция говорила:
+> «antd v6 не выставляет интеграцию nonce, которую nginx мог бы накормить через `sub_filter`».
+> **Выставляет:** `ConfigProvider` принимает `csp?: { nonce?: string }`
+> (`node_modules/antd/lib/config-provider/context.d.ts`, интерфейс `CSPConfig`), значение
+> доходит до движка стилей `@ant-design/cssinjs@^2.1.2`, где его применяет `injectCSPNonce`
+> (`lib/util/index.js`), а хуки регистрации стилей объявляют `nonce?: string | (() => string)`.
+>
+> Отступление тем не менее **остаётся принятым**, потому что не сделана НАША половина:
+> per-response nonce никто не выпускает и не подставляет — ни в заголовок политики, ни в
+> страницу. То есть препятствие переехало из чужой библиотеки в наш конвейер доставки, и
+> условие пересмотра ниже переписано под это. Само послабление в дереве не тронуто: правка
+> политики содержимого — предмет отдельного изменения со своей приёмкой, а не побочный
+> эффект бампа зависимости.
 
 The console's Content-Security-Policy (`deploy/values.yaml` → `security.contentSecurityPolicy`)
 is otherwise strict — `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
@@ -61,10 +77,13 @@ is otherwise strict — `script-src 'self'`, `object-src 'none'`, `base-uri 'sel
 `style-src` is relaxed to `'self' 'unsafe-inline'`.
 
 **Why it is required:** antd v6 styles components through a runtime CSS-in-JS
-engine that injects `<style>` elements without a per-response nonce or a
-build-time-stable hash. A nonce/hash-based `style-src` would break antd's runtime
-styling. antd v6 does not currently expose a `StyleProvider` nonce integration
-that nginx could feed via `sub_filter`.
+engine that injects `<style>` elements at runtime, so a hash-based `style-src` is
+not available (the hashes are not build-time-stable). A *nonce*-based `style-src`
+is now technically reachable — `ConfigProvider csp={{ nonce }}` forwards a nonce to
+`@ant-design/cssinjs` — but nothing in this repository produces or propagates a
+per-response nonce: the CSP header in `deploy/values.yaml` is static, and the host
+nginx does not inject one into the served document. Until that plumbing exists,
+tightening `style-src` would break antd's runtime styling.
 
 **Why the risk is bounded:** `script-src` remains `'self'`, so no
 attacker-controlled JavaScript can execute regardless of the style relaxation.
@@ -72,9 +91,13 @@ The residual is limited to CSS-only vectors (restyle/overlay of controls) and is
 only reachable if a separate DOM-injection sink is introduced elsewhere — none is
 known. The DPoP token flow, auth ceremony and API calls are unaffected.
 
-**Revisit trigger:** drop `'unsafe-inline'` from `style-src` and adopt a
-per-response nonce injected by the host nginx once antd exposes nonce-capable
-style injection.
+**Revisit trigger:** the antd-side precondition is **already met** (see the
+re-measurement note above), so what remains is ours: have the host nginx mint a
+per-response nonce, emit it both in the `style-src` directive and into the served
+document, feed it to `ConfigProvider csp={{ nonce }}`, and only then drop
+`'unsafe-inline'`. That is a change to the delivery pipeline and to the security
+posture — it carries its own acceptance, and it is deliberately not folded into a
+dependency bump.
 
 ## Политика консоли применяется к проксируемой странице входа и блокирует встроенный скрипт провайдера
 
