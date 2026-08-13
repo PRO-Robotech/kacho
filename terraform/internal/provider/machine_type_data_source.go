@@ -15,8 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/datasourcevalidator"
-
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -64,9 +62,9 @@ func (d *machineTypeDataSource) Configure(_ context.Context, req datasource.Conf
 // два разных ответа, и молчаливый выбор одного из них.
 func (d *machineTypeDataSource) ConfigValidators(_ context.Context) []datasource.ConfigValidator {
 	return []datasource.ConfigValidator{
-		datasourcevalidator.ExactlyOneOf(
-			path.MatchRoot("name"),
-			path.MatchRoot("id"),
+		exactlyOneOf(
+			path.Root("name"),
+			path.Root("id"),
 		),
 	}
 }

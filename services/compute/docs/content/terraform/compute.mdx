@@ -122,6 +122,53 @@ import dedent from 'ts-dedent'
 Заданы обе координаты или ни одной — конфигурация отвергается **на плане**, а не отказом
 края на применении.
 
+## Модуль `compute-machine`
+
+Ключи входа и группы размещения заводятся **тем же** модулем, что и машины, а не
+отдельным. Причина не в удобстве: у обоих срок жизни привязан к набору машин, и разнеся
+их по модулям, вы получили бы порядок уничтожения на свою ответственность — группа,
+снятая раньше машин, оставит их без правила размещения. Внутри одного модуля порядок
+выводит сам Terraform из ссылок.
+
+<CodeBlock language="hcl">
+  {dedent`
+    module "app" {
+      source = ".../terraform/modules/compute-machine"
+
+      project_id = var.project_id
+      zone_id    = var.zone_id
+
+      guest_access_keys = {
+        operator = { name = "operator", public_key = var.public_key }
+      }
+
+      placement_groups = {
+        spread = { name = "app-spread", strategy = "SPREAD", zone_id = var.zone_id }
+      }
+
+      machines = {
+        web = {
+          name                  = "web-1"
+          machine_type_id       = data.kacho_compute_machine_type.small.id
+          boot_source_type      = "storage.image"
+          boot_source_id        = var.boot_image_id
+          subnet_id             = var.subnet_id
+          placement_group_key   = "spread"
+          guest_access_key_keys = ["operator"]
+        }
+      }
+    }
+  `}
+</CodeBlock>
+
+Группа называется **ключом карты** (`placement_group_key`), если её заводит этот же
+модуль, и **идентификатором** (`placement_group_id`), если она пришла снаружи. Это два
+разных вопроса, поэтому два поля; задать оба сразу модуль не даёт.
+
+Ключи, наоборот, **складываются**: `guest_access_key_keys` (свои) и
+`guest_access_key_ids` (чужие) объединяются, потому что набор ключей — множество, а не
+выбор.
+
 ## Полный пример
 
 Рабочая конфигурация — сеть, подсеть, ключ, группа и машина — лежит в репозитории

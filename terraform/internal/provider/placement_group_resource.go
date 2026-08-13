@@ -18,8 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
@@ -73,9 +71,9 @@ func (r *placementGroupResource) Configure(_ context.Context, req resource.Confi
 // нас.
 func (r *placementGroupResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
-		resourcevalidator.ExactlyOneOf(
-			path.MatchRoot("zone_id"),
-			path.MatchRoot("region_id"),
+		exactlyOneOf(
+			path.Root("zone_id"),
+			path.Root("region_id"),
 		),
 	}
 }
@@ -99,7 +97,7 @@ func (r *placementGroupResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"description": schema.StringAttribute{Optional: true, Computed: true},
 			"labels":      schema.MapAttribute{Optional: true, Computed: true, ElementType: types.StringType},
 			"strategy": schema.StringAttribute{Required: true, PlanModifiers: replace,
-				Validators: []validator.String{stringvalidator.OneOf("SPREAD", "PACK")},
+				Validators: []validator.String{oneOf("SPREAD", "PACK")},
 				MarkdownDescription: "`SPREAD` — разнести, `PACK` — сблизить.\n\n" +
 					"Изменение пересоздаёт группу: смена стратегии — это другое обещание " +
 					"о размещении уже стоящих машин, и выдать его правкой поля значило бы " +
