@@ -159,7 +159,11 @@ var vpcNetworkInterfaceSpec = flatSpec{
 	pathCol: "/vpc/v1/networkInterfaces", idField: "networkInterfaceId", prefix: ids.PrefixNetworkInterface,
 	scopeParam: "projectId", scopeAttr: "project_id",
 	descr: "Сетевой интерфейс — самостоятельный ресурс, а не часть машины: он заводится " +
-		"отдельно и подключается к машине по ссылке.",
+		"отдельно и подключается к машине по ссылке.\n\n" +
+		"Подключения здесь нет и быть не может: край отвергает его на создании синхронно и " +
+		"с именем поля. Привязку выполняет владелец машины — только он способен проверить " +
+		"инварианты подключения (та же зона, принадлежность машины, атомарная смена " +
+		"владельца, номер гнезда). Кто держит интерфейс сейчас, видно у самой машины.",
 	deleteHint:    "Удалению мешает подключение к машине: сначала отсоедините интерфейс.",
 	newCreate:     func() proto.Message { return &vpcv1.CreateNetworkInterfaceRequest{} },
 	newUpdate:     func() proto.Message { return &vpcv1.UpdateNetworkInterfaceRequest{} },
@@ -169,11 +173,13 @@ var vpcNetworkInterfaceSpec = flatSpec{
 			doc: "Подсеть интерфейса. Её зона задаёт зону интерфейса, а значит и машины."},
 		fieldSpec{name: "security_group_ids", kind: fStringList,
 			doc: "Группы безопасности, применяемые к трафику интерфейса."},
-		fieldSpec{name: "instance_id", kind: fString, immutable: true,
-			doc: "Машина, к которой подключён интерфейс. Обычно задаётся не здесь, а самой " +
-				"машиной: подключение — её действие."},
-		fieldSpec{name: "index", kind: fString, immutable: true,
-			doc: "Порядковый номер интерфейса у машины."},
+		// Здесь стояли `instance_id` и `index`. Контракт создания их несёт, но край
+		// отвергает ОБА безусловно — синхронно, первыми проверками и с именем поля.
+		// Предлагать их в конфигурации значило обещать возможность, которой нет:
+		// пользователь пишет строку, план её показывает, а отказ приходит применением. И
+		// обратного пути у них тоже не было — проекция чтения интерфейса этих полей не
+		// несёт вовсе (номера зарезервированы), поэтому даже вычисляемым зеркалом они
+		// быть не могли: в состоянии навсегда осталась бы пустая строка.
 		fieldSpec{name: "v4_address_ids", kind: fStringList, doc: "Привязанные адреса IPv4."},
 		fieldSpec{name: "v6_address_ids", kind: fStringList, doc: "Привязанные адреса IPv6."},
 		fieldSpec{name: "status", kind: fString, computed: true},
