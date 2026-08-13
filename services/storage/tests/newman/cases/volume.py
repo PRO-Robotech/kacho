@@ -11,20 +11,42 @@ existingProjectId (_suiteProjectId из env), Org/Cloud/Project НЕ созда�
 суффиксуются {{runId}}. id-prefix Volume = `vol`, op-root storage = `sop`.
 
 Error-тексты §0.2 acceptance (нормативны — часть контракта) assert'ятся
-behaviour-level (код И точное сообщение). sizeBytes[>0]; block_size default 4096.
+behaviour-level (код И точное сообщение). sizeBytes[>0].
 
-Не-black-box (integration-only, НЕ здесь): не-READY-state Given (control-plane
-финализирует READY мгновенно — §0.1); attach-CAS (Internal :9091, см.
+ТОМ РОЖДАЕТСЯ В НАМЕРЕНИИ. `Operation.done` означает «строка закоммичена», и
+ТОЛЬКО это; пригодным том объявляет СВЕРЩИК, увидев объект у плоскости данных.
+Поэтому всё, что требует готовности — рост размера, снятие снимка, захват образа,
+смена класса, — ждёт её `wait_until_ready`, а не считает завершение операции
+доказательством существования объекта. Ожидание ограничено и падает, назвав
+наблюдённое `status` и `statusReason`.
+
+`blockSize` СНЯТ С КОНТРАКТА (номер 11 и имя зарезервированы): размер блока задаёт
+бэкенд вместе с классом диска, а не арендатор по каждому тому. Здесь он ни в одном
+теле не шлётся, а его ОТСУТСТВИЕ в ответе утверждается — иначе снятие поля прошло
+бы мимо чёрного ящика.
+
+Не-black-box (integration-only, НЕ здесь): attach-CAS (Internal :9091, см.
 cases/internal-volume.py); listauthz/anti-BOLA (cases/authz.py, fixture-gated).
 """
 
 CASES = []
 
 VOL = "/storage/v1/volumes"
+DT = "/storage/v1/diskTypes"
 
 _DEF_SIZE = 10737418240   # 10 GiB
 _GROW_SIZE = 21474836480  # 20 GiB
 _SHRINK_SIZE = 5368709120  # 5 GiB
+
+# Закрытые словари ответа. Публичная поверхность обязана отдавать значение ИЗ НИХ:
+# свободная строка в состоянии или причине — прямой канал утечки физики (имя пула,
+# координата узла), которого гейт двухпроекционности не увидит, потому что
+# перечисляет ИМЕНА полей, а не значения.
+_VOL_STATUSES = ["STATUS_UNSPECIFIED", "CREATING", "AVAILABLE", "IN_USE",
+                 "DELETING", "ERROR", "MIGRATING"]
+_STATUS_REASONS = ["STATUS_REASON_UNSPECIFIED", "BACKEND_UNAVAILABLE", "BACKEND_REJECTED",
+                   "BACKEND_CAPACITY_EXHAUSTED", "SOURCE_NOT_READY", "PRECONDITION_FAILED",
+                   "INTERNAL_ERROR"]
 
 
 def _vol_body(suffix, **over):
@@ -51,9 +73,14 @@ def _assert_msg(substr):
 
 CASES.append(Case(
     id="VOL-CR-CRUD-OK",
-    title="Create Volume → Operation(vol metadata) → poll READY → Get: vol-prefix, blockSize 4096, status AVAILABLE, createdAt sec, attachments/usedBy пусты",
+    title="Create Volume → Operation(vol metadata) → ДОЖДАТЬСЯ пригодности (её объявляет сверщик) → Get: vol-prefix, status AVAILABLE, statusReason не заполнена, blockSize отсутствует, createdAt sec, attachments/usedBy пусты",
     classes=["CRUD", "CONF"], priority="P1",
     # verifies CS1-S1-01
+    #
+    # Прежняя редакция читала состояние СРАЗУ после `done` и требовала AVAILABLE.
+    # Это утверждало не о контракте, а о том, успел ли обход сверщика: том
+    # рождается в намерении, и готовность производит тот, кто УВИДЕЛ объект у
+    # плоскости данных. Ожидание ограничено и падает, назвав status и statusReason.
     steps=[
         Step(name="create", method="POST", path=VOL,
              body=_vol_body("cr", description="newman CRUD-OK", labels={"suite": "newman"}),
@@ -62,19 +89,22 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
+        wait_until_ready(Step(name="get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=["const j = pm.response.json();",
                           "pm.test('id matches & vol prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('volumeId')); pm.expect(j.id).to.match(/^vol/); });",
                           "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('zoneId matches', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
                           "pm.test('diskTypeId matches', () => pm.expect(j.diskTypeId).to.eql(pm.environment.get('existingDiskTypeId')));",
                           "pm.test('sizeBytes matches', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_DEF_SIZE) + "'));",
-                          "pm.test('blockSize default 4096', () => pm.expect(String(j.blockSize)).to.eql('4096'));",
-                          "pm.test('status AVAILABLE (derived, no attachment)', () => pm.expect(j.status).to.eql('AVAILABLE'));",
+                          # Снятое с контракта поле не возвращается. Край отдаёт публичную
+                          # проекцию с явными нулевыми значениями (EmitUnpopulated), поэтому
+                          # ЖИВОЕ поле в ответе присутствует всегда — отсутствие ключа здесь
+                          # различающе, а не следствие пустого значения.
+                          "pm.test('blockSize снят с контракта — ключа в ответе нет', () => pm.expect(j).to.not.have.property('blockSize'));",
+                          "pm.test('statusReason не заполнена у пригодного тома', () => pm.expect(String(j.statusReason)).to.eql('STATUS_REASON_UNSPECIFIED'));",
                           "pm.test('attachments empty', () => pm.expect(j.attachments || []).to.be.an('array').that.is.empty);",
                           "pm.test('usedBy empty', () => pm.expect(j.usedBy || []).to.be.an('array').that.is.empty);",
-                          *assert_created_at_seconds()])),
+                          *assert_created_at_seconds()]), ready="AVAILABLE", subject="Volume"),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -124,11 +154,16 @@ CASES.append(Case(
         # GET own volume as the PROJECT-SCOPED editor → object-self Check on
         # storage_volume:<id> must resolve v_get for the editor (materialized from
         # the project binding). Pre-#71: 403 (type missing) → RED.
-        retry_until_authorized(Step(name="objself-get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+        #
+        # Ожидание здесь двойное по предмету и одно по механике: окно видимости
+        # owner-tuple И окно пригодности тома. Второе обязательно — рост размера
+        # применяется размер-CAS'ом только к ГОТОВОМУ тому, поэтому без него правка
+        # ниже отвергалась бы предусловием, а кейс называл бы виновником authz.
+        wait_until_ready(Step(name="objself-get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
              auth="jwtProjectEditorA",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
-                          "pm.test('project-editor resolves own volume (v_get materialized)', () => pm.expect(j.id).to.eql(pm.environment.get('volumeId')));"])),
+             test_script=["const j = pm.response.json();",
+                          "pm.test('project-editor resolves own volume (v_get materialized)', () => pm.expect(j.id).to.eql(pm.environment.get('volumeId')));"]),
+             ready="AVAILABLE", subject="Volume"),
         # UPDATE (grow) as the project-scoped editor → object-self v_update.
         retry_until_authorized(Step(name="objself-patch", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
              auth="jwtProjectEditorA",
@@ -249,6 +284,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(),
+        # Размер-CAS применяется ТОЛЬКО к готовому тому: без ожидания рост отвергался
+        # бы предусловием, а падал бы шаг проверки размера — то есть невиновный.
+        wait_until_ready(Step(name="await-ready", method="GET", path=f"{VOL}/{{{{volumeId}}}}"),
+                         ready="AVAILABLE", subject="Volume"),
         retry_until_authorized(Step(name="patch-grow", method="PATCH", path=f"{VOL}/{{{{volumeId}}}}",
              body={"updateMask": "sizeBytes", "sizeBytes": _GROW_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
@@ -527,10 +566,19 @@ CASES.append(Case(
         retry_until_authorized(Step(name="get", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "const forbidden = ['backendLun','nvmeNamespace','storageNode','poolId','capacityBytes','infraId','backend_lun','storage_node','pool_id'];",
+                          "const forbidden = ['backendLun','nvmeNamespace','storageNode','poolId','capacityBytes','infraId','backend_lun','storage_node','pool_id','bindingId','backendObject','desiredBindingId'];",
                           "pm.test('no infra fields on public projection', () => forbidden.forEach(k => pm.expect(j, 'leaked infra field ' + k).to.not.have.property(k)));",
                           "const body = JSON.stringify(j).toLowerCase();",
-                          "pm.test('no lun/nvme/pool tokens in body', () => { pm.expect(body).to.not.include('nvme'); pm.expect(body).to.not.include('backendlun'); pm.expect(body).to.not.include('storagenode'); });"])),
+                          "pm.test('no lun/nvme/pool tokens in body', () => { pm.expect(body).to.not.include('nvme'); pm.expect(body).to.not.include('backendlun'); pm.expect(body).to.not.include('storagenode'); });",
+                          # Состояние и причина — ЗАКРЫТЫЕ словари, и это не косметика:
+                          # свободная строка причины несёт текст бэкенда целиком (имя пула,
+                          # координата узла), а гейт двухпроекционности перечисляет ИМЕНА
+                          # полей и такое значение пропускает. Канал закрывается по
+                          # ЗНАЧЕНИЯМ — здесь это и проверяется.
+                          f"const STATUSES = {_VOL_STATUSES!r}.map(String);",
+                          f"const REASONS = {_STATUS_REASONS!r}.map(String);",
+                          "pm.test('status из закрытого словаря', () => pm.expect(STATUSES, JSON.stringify(j)).to.include(String(j.status)));",
+                          "pm.test('statusReason из закрытого словаря (свободной строки бэкенда наружу нет)', () => pm.expect(REASONS, JSON.stringify(j)).to.include(String(j.statusReason)));"])),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
@@ -682,23 +730,36 @@ CASES.append(Case(
 ))
 
 # ---------------------------------------------------------------------------
-# CS1-S1-05 (add) — immutable-mask parity (block_size / source_snapshot_id) +
-#   пустой mask = full-PATCH. immutable-switch (ДО UpdateMask, api-conventions
-#   gotcha) для полного набора immutable-полей Volume {zone_id, disk_type_id,
-#   block_size, source_snapshot_id, used_by}; existing покрывает zone_id/disk_type_id.
-#   Техника state-transition (immutable после Create). UpdateVolumeRequest не несёт
-#   тела block_size/source_snapshot_id -> триггер именно mask-path (immutable-switch).
+# CS1-S1-05 (add) — mask-parity: снятый с контракта слот + immutable
+#   source_snapshot_id + пустой mask = full-PATCH. immutable-switch (ДО UpdateMask,
+#   api-conventions gotcha) для immutable-полей Volume {zone_id, disk_type_id,
+#   source_snapshot_id, source_image_id, used_by}; existing покрывает
+#   zone_id/disk_type_id. Техника state-transition (immutable после Create).
+#   UpdateVolumeRequest не несёт тела source_snapshot_id -> триггер именно
+#   mask-path (immutable-switch).
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
-    id="VOL-UPD-MASK-IMMUTABLE-BLOCKSIZE",
-    title="Update mask=block_size -> sync 400 INVALID_ARGUMENT 'block_size is immutable after Volume.Create' (immutable-switch до UpdateMask)",
+    id="VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED",
+    title="Update mask=blockSize (слот СНЯТ с контракта, номер и имя зарезервированы) -> СИНХРОННЫЙ 400 INVALID_ARGUMENT; молча принят быть не может",
     classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
     # verifies CS1-S1-05
-    steps=[Step(name="patch-imm-bs", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
+    #
+    # ЗДЕСЬ СТОЯЛ ПИН НА ТЕКСТ «block_size is immutable after Volume.Create». Он
+    # пережил свой предмет: поле снято с контракта целиком (Volume номер 11 и
+    # CreateVolumeRequest номер 8 зарезервированы номером И именем), а «неизменяемое
+    # после Create» — утверждение о ПОЛЕ РЕСУРСА, которого больше нет. Пин на такой
+    # текст запирал бы сервис в описании снятой величины и краснел бы на уборке,
+    # которая контракта не меняет.
+    #
+    # Что утверждается вместо: маска, называющая снятый слот, отвергается СИНХРОННО
+    # и с INVALID_ARGUMENT. Это и есть предмет — принято-и-проигнорировано не исход:
+    # приняв такую маску, край ответил бы успехом на правку величины, которой нет.
+    # Утверждение переживёт и то, что отказ придёт от известного набора маски, а не
+    # от перечня неизменяемых: обе полосы — отказ, и обе сохраняют смысл.
+    steps=[Step(name="patch-retired-bs", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
                 body={"updateMask": "blockSize"},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             *_assert_msg("block_size is immutable after Volume.Create")])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
 CASES.append(Case(
@@ -860,6 +921,175 @@ CASES.append(Case(
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           *assert_field_violation("labels")]),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}", test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# ChangeDiskType — ВЫДЕЛЕННЫЙ глагол смены класса диска
+#   (POST /storage/v1/volumes/{volumeId}:changeDiskType, v_update)
+#
+# Почему не поле правки: это ПЕРЕМЕЩЕНИЕ ДАННЫХ. Оно длится (том в MIGRATING),
+# может отказать на половине — и тогда данные остаются на исходном классе, — и
+# меняет физическое расположение объекта у бэкенда. `disk_type_id` через Update
+# отвергается как неизменяемый (VOL-UPD-MASK-IMMUTABLE-DISKTYPE выше), и отказ
+# называет глагол; здесь проверяется сам глагол.
+#
+# Предусловия глагола (все — на стороне сервиса, одним стейтментом): том в
+# AVAILABLE либо IN_USE; целевой класс ACTIVE и предлагается В ТОЙ ЖЕ зоне
+# (зона глаголом не меняется); размер тома укладывается в границы класса.
+# ---------------------------------------------------------------------------
+
+# Выбор ЦЕЛЕВОГО класса — из ответа списка, а не из литерала. Каталог посева
+# стенда здесь не пинится: он заводится шагом подъёма и его состав — свойство
+# стенда, а не контракта. Отбор повторяет предусловия глагола настолько, насколько
+# они видны публично: обращение ACTIVE, зона тома предлагается классом (пустой
+# список зон = «во всех»), размер тома внутри объявленных границ.
+#
+# int64 приезжает СТРОКОЙ (protojson), поэтому границы приводятся Number() — иначе
+# сравнение шло бы лексикографически и '2' оказалось бы больше '10737418240'.
+_PICK_ALT_DISK_TYPE = [
+    # Имя определяется ДО отбора и всегда: неопределённое `{{altDiskTypeId}}` уехало
+    # бы в тело ЛИТЕРАЛОМ (страж неразрешённого адреса читает URL, а не тело), и
+    # отказ пришёл бы формой имени класса вместо «второго класса в каталоге нет».
+    "pm.environment.set('altDiskTypeId', '');",
+    "const j = pm.response.json();",
+    "const zone = String(pm.environment.get('existingZoneId'));",
+    "const cur = String(pm.environment.get('existingDiskTypeId'));",
+    "const size = " + str(_DEF_SIZE) + ";",
+    "const fits = t => {",
+    "  const lim = t.limits || {};",
+    "  const min = Number(lim.minSizeBytes || 0), max = Number(lim.maxSizeBytes || 0);",
+    "  const step = Number(lim.sizeStepBytes || 0);",
+    "  if (min > 0 && size < min) return false;",
+    "  if (max > 0 && size > max) return false;",
+    "  if (step > 0 && size % step !== 0) return false;",
+    "  return true;",
+    "};",
+    "const alt = (j.diskTypes || []).filter(t => String(t.id) !== cur",
+    "  && String(t.lifecycle) === 'ACTIVE'",
+    "  && ((t.zoneIds || []).length === 0 || (t.zoneIds || []).indexOf(zone) >= 0)",
+    "  && fits(t));",
+    "pm.test('в каталоге есть ВТОРОЙ пригодный класс — иначе смену класса не на что проверять "
+    "(состав каталога заводит шаг подъёма стенда: make -C deploy seed-storage)', () => {",
+    "  pm.expect(alt.length, 'подходящих классов помимо ' + cur + ' среди ' + "
+    "((j.diskTypes || []).length) + ' в каталоге').to.be.at.least(1);",
+    "});",
+    "if (alt.length) { pm.environment.set('altDiskTypeId', String(alt[0].id)); }",
+]
+
+CASES.append(Case(
+    id="VOL-CDT-CRUD-OK",
+    title="ChangeDiskType: готовый том → другой пригодный класс той же зоны → Operation ok; Get отдаёт НОВЫЙ diskTypeId, зона не изменилась",
+    classes=["CRUD", "STATE", "CONF"], priority="P1",
+    # verifies CS1-S1-04
+    steps=[
+        Step(name="list-disk-types", method="GET", path=f"{DT}?pageSize=1000",
+             test_script=[*assert_status(200), *_PICK_ALT_DISK_TYPE]),
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("cdt"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # Глагол принимает ТОЛЬКО готовый том (AVAILABLE/IN_USE): без ожидания
+        # получили бы FAILED_PRECONDITION по состоянию, а кейс читался бы как
+        # «смена класса сломана».
+        wait_until_ready(Step(name="await-ready", method="GET", path=f"{VOL}/{{{{volumeId}}}}"),
+                         ready="AVAILABLE", subject="Volume"),
+        Step(name="change-disk-type", method="POST",
+             path=f"{VOL}/{{{{volumeId}}}}:changeDiskType",
+             body={"diskTypeId": "{{altDiskTypeId}}"},
+             test_script=[*assert_status(200), *assert_operation_envelope(),
+                          "pm.test('metadata.volumeId — тот же том', () => pm.expect(pm.response.json().metadata && pm.response.json().metadata.volumeId).to.eql(pm.environment.get('volumeId')));",
+                          *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="verify", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('diskTypeId стал целевым', () => pm.expect(String(j.diskTypeId)).to.eql(String(pm.environment.get('altDiskTypeId'))));",
+                          "pm.test('zoneId глаголом не меняется', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
+                          "pm.test('sizeBytes не тронут', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_DEF_SIZE) + "'));"]),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))
+
+CASES.append(Case(
+    id="VOL-CDT-NEG-MALFORMED-ID",
+    title="ChangeDiskType по malformed volumeId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, парити с Get)",
+    classes=["NEG", "VAL", "CONF"], priority="P0",
+    # verifies CS1-S1-02
+    steps=[Step(name="cdt-malformed", method="POST", path=f"{VOL}/not-a-vol-id:changeDiskType",
+                body={"diskTypeId": "{{existingDiskTypeId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("invalid resource id 'not-a-vol-id'")])],
+))
+
+CASES.append(Case(
+    id="VOL-CDT-VAL-DISKTYPE-REQUIRED",
+    title="ChangeDiskType с пустым diskTypeId → sync 400 INVALID_ARGUMENT 'disk_type_id: required' (пустое — не «оставить как есть», а запрос без предмета)",
+    classes=["VAL", "NEG", "CONF"], priority="P0",
+    # verifies CS1-S1-12
+    #
+    # Цель — СВОЙ созданный том, а не well-formed-отсутствующий: у глагола
+    # scope_extractor берёт объект из volume_id, и на несуществующем томе отказ
+    # пришёл бы authz-полосой, то есть кейс проверял бы не то, что заявляет.
+    steps=[
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("cdtreq"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="cdt-empty", method="POST",
+             path=f"{VOL}/{{{{volumeId}}}}:changeDiskType", body={"diskTypeId": ""},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *_assert_msg("disk_type_id: required")])),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+    ],
+))
+
+CASES.append(Case(
+    id="VOL-CDT-NEG-VOLUME-NOTFOUND",
+    title="ChangeDiskType по well-formed-но-нет volumeId → Operation error NOT_FOUND 'Volume <id> not found' (состояние тома проверять не на чем)",
+    classes=["NEG", "CONF"], priority="P1",
+    # verifies CS1-S1-07
+    steps=[
+        Step(name="cdt-nx", method="POST",
+             path=f"{VOL}/{{{{garbageStorageId}}}}:changeDiskType",
+             body={"diskTypeId": "{{existingDiskTypeId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        assert_op_error(5, "NOT_FOUND", msg_substr="Volume vol00000000000000000 not found"),
+    ],
+))
+
+CASES.append(Case(
+    id="VOL-CDT-NEG-DISKTYPE-UNKNOWN",
+    title="ChangeDiskType готового тома на несуществующий класс → Operation error FAILED_PRECONDITION 'DiskType block-unicorn not found'; класс тома не изменился",
+    classes=["NEG", "CONF", "STATE"], priority="P1",
+    # verifies CS1-S1-10
+    steps=[
+        Step(name="cr", method="POST", path=VOL, body=_vol_body("cdtunk"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # Готовность нужна, чтобы отказ пришёл ПО КЛАССУ, а не по состоянию тома:
+        # сервис разбирает нулевую выборку по порядку и о неготовом томе говорит
+        # первым делом про состояние.
+        wait_until_ready(Step(name="await-ready", method="GET", path=f"{VOL}/{{{{volumeId}}}}"),
+                         ready="AVAILABLE", subject="Volume"),
+        Step(name="cdt-unknown", method="POST",
+             path=f"{VOL}/{{{{volumeId}}}}:changeDiskType", body={"diskTypeId": "block-unicorn"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="DiskType block-unicorn not found"),
+        Step(name="verify-unchanged", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('класс тома не изменился отвергнутым глаголом', () => pm.expect(String(pm.response.json().diskTypeId)).to.eql(String(pm.environment.get('existingDiskTypeId'))));"]),
+        Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
 ))

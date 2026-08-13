@@ -75,7 +75,11 @@ python3 services/storage/tests/newman/scripts/gen.py              # все ре�
 - **Integration-only (НЕ black-box):** attach-CAS happy/race (CS1-S4-01..12), admin
   DiskType Create/Update/Delete happy + FK-delete-in-use (CS1-S2-02/03/05), не-READY
   Given-состояния (CS1-S4-04 attach-not-ready, CS1-S3-02 from-non-READY). Причина:
-  control-plane финализирует READY мгновенно (§0.1), не-READY достижимо только DB-seed;
+  состояние ресурса ЧЁРНЫМ ЯЩИКОМ не задаётся — пригодность объявляет сверщик, увидев
+  объект у плоскости данных, и остановить его на полпути отсюда нечем (прежняя редакция
+  писала «control-plane финализирует READY мгновенно», и это перестало быть правдой
+  вместе со сменой контракта: ресурс рождается в намерении, а happy-кейсы ЖДУТ
+  пригодности `wait_until_ready`);
   attach/admin-CRUD доступны только на :9091 mTLS internal-mux + per-RPC Check. Покрыты
   integration-тестами (testcontainers, concurrent `-race`), не external newman. Здесь
   провокабельная часть — Internal-only **external-absence** (INV-7a, CS1-S2-04/S4-11).

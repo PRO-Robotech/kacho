@@ -349,6 +349,94 @@ def retry_until_authorized(step: Step, budget: int = 15, interval_ms: int = 400,
                    test_script=guard + list(step.test_script))
 
 
+_RDY_SEQ = [0]
+
+# Состояния, из которых ресурс ЕЩЁ может стать пригодным. Всё остальное —
+# терминально, и ждать его бессмысленно: `ERROR` не рассосётся сам, а
+# `DELETING` ведёт в противоположную сторону.
+_PENDING_STATUSES = ("CREATING", "MIGRATING", "STATUS_UNSPECIFIED", "")
+
+
+def wait_until_ready(step: Step, ready: str, subject: str,
+                     budget: int = 60, interval_ms: int = 500) -> Step:
+    """Обернуть первое обращение к своему свежему ресурсу ожиданием ПРИГОДНОСТИ.
+
+    `Operation.done` означает «намерение закоммичено», и ТОЛЬКО это: строка
+    ресурса записана, а объекта у плоскости данных ещё нет. Пригодным ресурс
+    объявляет СВЕРЩИК, увидев объект, — то есть между завершением операции и
+    готовностью лежит окно, длина которого задана периодом обхода сверщика, а не
+    нашим ожиданием. Кейс, читающий состояние сразу после `done`, утверждает не о
+    контракте, а о том, успел ли обход; и он же — единственный, кто мог бы
+    заметить, что сверщик не работает вовсе.
+
+    Поэтому здесь ОЖИДАНИЕ, а не утверждение сразу, и оно ограничено: бюджет
+    израсходован → шаг ПАДАЕТ, назвав наблюдённое состояние и причину
+    (`statusReason`). Так «плоскости данных на стенде нет» читается прямо из
+    отчёта, а не выглядит загадочным отказом соседнего шага три запроса спустя.
+
+    Терминальное состояние НЕ пережидается: `ERROR` роняет шаг сразу — ждать его
+    исправления нечего, а бюджет, потраченный на заведомо конечный исход, лишь
+    отодвинул бы находку.
+
+    Окно видимости owner-tuple (403/404 на первом обращении к своему свежему
+    ресурсу) поглощается здесь же — отдельная обёртка `retry_until_authorized`
+    поверх не нужна и вредна: две петли на одном шаге делили бы один счётчик.
+    """
+    if ready in _PENDING_STATUSES:
+        raise ValueError(f"wait_until_ready: {ready!r} — состояние ожидания, а не готовности")
+    pending = ",".join(f"'{s}'" for s in _PENDING_STATUSES)
+    guard = [
+        "// ПРИГОДНОСТЬ ПРОИЗВОДИТ СВЕРЩИК, А НЕ ОПЕРАЦИЯ: Operation.done = «намерение",
+        "// закоммичено», объекта у плоскости данных может ещё не быть. Ожидание",
+        "// ограничено: бюджет израсходован — шаг падает, назвав состояние и причину.",
+        "if (pm.environment.get('_readyWaitFor') !== pm.info.requestName) {",
+        "  pm.environment.set('_readyWaitCount', '0');",
+        "  pm.environment.set('_readyWaitFor', pm.info.requestName);",
+        "}",
+        "const _rwc = parseInt(pm.environment.get('_readyWaitCount') || '0', 10);",
+        "let _rwj; try { _rwj = pm.response.json(); } catch (e) { _rwj = {}; }",
+        "const _rwOk = pm.response.code === 200;",
+        "const _rwStatus = _rwOk ? String(_rwj.status === undefined ? '' : _rwj.status) : '';",
+        "const _rwReason = _rwOk ? String(_rwj.statusReason === undefined ? '' : _rwj.statusReason) : '';",
+        f"const _rwPending = (pm.response.code === 403 || pm.response.code === 404) || (_rwOk && [{pending}].includes(_rwStatus));",
+        f"if (_rwPending && _rwc < {budget}) {{",
+        "  pm.environment.set('_readyWaitCount', String(_rwc + 1));",
+        f"  const _rwd = Date.now(); while (Date.now() - _rwd < {interval_ms}) {{ /* обход сверщика */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_readyWaitCount');",
+        "pm.environment.unset('_readyWaitFor');",
+        f"pm.test('{subject} стал пригоден: status {ready} (объявляет сверщик, не Operation.done)', () => {{",
+        "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+        f"  pm.expect(_rwStatus, 'наблюдено status=' + _rwStatus + ', statusReason=' + _rwReason +",
+        f"    '; за {budget * interval_ms}ms ресурс так и не стал пригоден — либо сверщик не"
+        " довёл объект, либо плоскости данных на этом стенде нет').to.eql('" + ready + "');",
+        "});",
+    ]
+    _RDY_SEQ[0] += 1
+    # Имя делается глобально уникальным по той же причине, что у
+    # `retry_until_authorized`: newman резолвит setNextRequest в ПЕРВЫЙ item с
+    # этим именем, и повтор имени увёл бы ожидание на чужой шаг.
+    return replace(step, name=f"{step.name}-rdy{_RDY_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
+def wait_until_ready_step(name: str, path: str, ready: str, subject: str,
+                          auth: Optional[str] = None) -> Step:
+    """Ожидание пригодности отдельным шагом — для ФИКСТУР, у которых своего
+    чтения нет вовсе.
+
+    Фикстура, создающая источник (том под снимок, снимок под образ), обязана
+    дождаться его пригодности: снимок снимается только с готового тома, образ
+    захватывается только с готового источника. Без ожидания предмет кейса
+    отвергается предусловием, а падает шаг, сделавший ровно то, что положено при
+    неготовом источнике, — и виновником называется невиновный.
+    """
+    return wait_until_ready(
+        Step(name=name, method="GET", path=path, auth=auth), ready=ready, subject=subject)
+
+
 _poll_seq = [0]
 
 
@@ -1391,6 +1479,8 @@ def load_cases_module(path: Path):
     mod.assert_created_at_seconds = assert_created_at_seconds
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.wait_until_ready = wait_until_ready
+    mod.wait_until_ready_step = wait_until_ready_step
     mod.assert_op_error = assert_op_error
     mod.assert_op_error_oneof = assert_op_error_oneof
     mod.assert_op_success = assert_op_success

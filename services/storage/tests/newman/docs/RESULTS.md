@@ -134,7 +134,7 @@ concurrent `-race`), т.к. недостижимы через external public AP
 | CS1-S4-05 zone/project-mismatch раздельными текстами | attach-CAS predicate — тот же internal :9091 путь |
 | CS1-S4-08 auto-device-name concurrency (`-race`) | concurrent goroutines + `23505` retry — internal integration, не e2e |
 | CS1-S4-10 double-attach race (`-race`) | concurrent goroutines — internal integration |
-| CS1-S4-04 attach-not-ready / CS1-S3-02 snapshot-from-non-READY | control-plane финализирует Volume READY **мгновенно** (§0.1); не-READY достижимо только DB-seed |
+| CS1-S4-04 attach-not-ready / CS1-S3-02 snapshot-from-non-READY | состояние ресурса чёрным ящиком не задаётся: том рождается в намерении, пригодным его объявляет **сверщик**, и остановить его на полпути отсюда нечем. Happy-кейсы поэтому ЖДУТ пригодности (`wait_until_ready`), а не-READY-Given достижим только DB-seed |
 | CS1-S2-02/03/05 admin DiskType Create/Update/Delete happy + FK delete-in-use | `InternalDiskTypeService.*` sync admin CRUD только на :9091 internal-mux + `system_admin` Check |
 
 **Провокабельная (и включённая) часть S4/S2:** INV-7a — Internal-only RPC **отсутствуют**
@@ -161,8 +161,19 @@ fixture-минимальны (исход не зависит от существ
   reject (op-error `Volume size can only be increased`), dup-name (op-error ALREADY_EXISTS),
   unknown-zone (sync `unknown zone id`), project-not-found (sync FAILED_PRECONDITION),
   same-DB FK diskType/snapshot not-found (op-error), sizeBytes=0 / uppercase / unicode name (sync).
+- **Volume.ChangeDiskType** (выделенный глагол смены класса — перемещение данных, а не
+  правка поля): malformed-id (sync), пустой `diskTypeId` (sync `disk_type_id: required`),
+  well-formed-отсутствующий том (op-error NOT_FOUND), несуществующий класс на ГОТОВОМ томе
+  (op-error `DiskType … not found`, класс тома при этом не изменился).
 - **Snapshot:** malformed-id, not-found, source-missing (op-error), project-not-found (sync),
-  uppercase/unicode name (sync), immutable source_volume_id (sync), delete-not-found (op-error).
+  uppercase/unicode name (sync), immutable source_volume_id (sync), delete-not-found (op-error),
+  маска `zoneId` (sync — якорь размещения правкой не меняется).
+- **Snapshot.Copy / Image.Copy** (перенос между зоной/регионом НОВОЙ строкой): без
+  `projectId` — unscoped-отказ (право «создать» спрашивают у родителя), без
+  `targetZoneId`/`targetRegionId` — sync `…: required`, несуществующая зона/регион —
+  sync FAILED_PRECONDITION `unknown … id`, malformed id источника — sync, отсутствующий
+  источник — sync 404 тоном промаха.
+- **Snapshot.ListOperations:** malformed-id (sync), `pageSize` > 1000 (sync BVA).
 - **DiskType:** not-found (`DiskType <id> not found`), pageSize-over-max, admin-external-absence.
 
 ## Parity-добор (qa, +14 кейсов) — Volume/Snapshot/DiskType до паритета с Image-шаблоном
@@ -173,9 +184,13 @@ RED→GREEN исполняет CI-раннер, локальный newman env-bl
 
 - **Volume (+8):** `VOL-CR-BVA-NAME-OVER-64` (BVA len 63+1 → `Illegal argument name`,
   domain `RuneCount>63`), `VOL-CR-VAL-NAME-{DIGIT,HYPHEN}-START` (ECP первого символа,
-  displayNameRe), `VOL-UPD-MASK-IMMUTABLE-{BLOCKSIZE,SOURCESNAPSHOT}` (immutable-switch;
-  выписанный здесь «полный набор» не был удержан ничем и разошёлся с деревом — сверять
-  предикатом `grep -n 'case "zone_id"' services/storage/internal/apps/kacho/api/volume/volume.go`,
+  displayNameRe), `VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED` (слот `block_size` СНЯТ с
+  контракта — номер и имя зарезервированы; маска, называющая его, отвергается синхронно,
+  а прежний пин на текст «неизменяемо после Create» снят: он утверждал бы о поле
+  ресурса, которого больше нет) + `VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT`
+  (immutable-switch; выписанный здесь «полный набор» не был удержан ничем и разошёлся с
+  деревом — сверять предикатом
+  `grep -n 'case "zone_id"' services/storage/internal/apps/kacho/api/volume/volume.go`,
   а не этой строкой),
   `VOL-UPD-MASK-EMPTY-FULL-PATCH-OK` (пустой mask = full-PATCH, mutable применён, immutable
   zone цел — CS1-S1-05 gap), `VOL-CR-SEC-NAME-INJECTION` + `VOL-LST-SEC-FILTER-SQLI`

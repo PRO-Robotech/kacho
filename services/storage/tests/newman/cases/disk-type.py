@@ -56,24 +56,42 @@ _LIFECYCLES = ["ACTIVE", "DEPRECATED", "RETIRED"]
 
 CASES.append(Case(
     id="DT-LST-CRUD-OK",
-    title="List diskTypes → массив; у КАЖДОЙ записи tier из закрытого словаря, lifecycle из закрытого словаря, zoneIds array — и НИ ОДНОГО инфра-поля",
+    title="List diskTypes → массив; у КАЖДОЙ записи tier и lifecycle из закрытых словарей, zoneIds array, limits — целые границы, capabilities — только булевы, и НИ ОДНОГО инфра-поля",
     classes=["CRUD", "CONF", "SEC"], priority="P1",
     # verifies CS1-S2-01, STOR-P-69
     #
     # Пустой каталог — законный ответ (посева нет), поэтому длина не утверждается.
     # Утверждается СВОЙСТВО КАЖДОЙ записи, и оно различающее: ярус свободной
     # строкой роняет кейс, как ронял бы адрес пула или имя пространства имён.
+    #
+    # `capabilities` и `limits` — поля политики, добавленные вместе с ярусом.
+    # Способности проверяются на ТИП: они выводятся пересечением действующих
+    # ревизий привязки, и любое НЕбулево значение здесь означало бы, что на
+    # публичную поверхность просочилось содержимое ревизии, а не вывод из неё.
+    # Границы — целые числа (int64 приезжает строкой), потому что по ним
+    # энфорсится размер тома: нечисловая граница сделала бы проверку размера
+    # тождественно-истинной.
     steps=[Step(name="list", method="GET", path=DT,
                 test_script=[*assert_status(200),
                              "const j = pm.response.json();",
                              "pm.test('diskTypes is array', () => pm.expect(j.diskTypes || []).to.be.an('array'));",
                              f"const TIERS = {_TIERS!r}.map(String);",
                              f"const LIFE = {_LIFECYCLES!r}.map(String);",
+                             "const CAPS = ['snapshots','cloneFromSnapshot','cloneFromImage','onlineGrow','multiAttach','encryptionAtRest'];",
+                             "const LIMS = ['minSizeBytes','maxSizeBytes','sizeStepBytes'];",
                              "(j.diskTypes || []).forEach(t => {",
                              "  pm.test('tier is from the closed dictionary: ' + t.id, () => pm.expect(TIERS).to.include(t.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(t.tier)));",
                              "  pm.test('lifecycle is from the closed dictionary: ' + t.id, () => pm.expect(LIFE).to.include(String(t.lifecycle)));",
                              "  pm.test('zoneIds is array: ' + t.id, () => pm.expect(t.zoneIds || []).to.be.an('array'));",
-                             "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
+                             "  pm.test('capabilities — только объявленные булевы способности: ' + t.id, () => {",
+                             "    const c = t.capabilities || {};",
+                             "    Object.keys(c).forEach(k => { pm.expect(CAPS, 'посторонний ключ способностей ' + k).to.include(k); pm.expect(c[k], k).to.be.a('boolean'); });",
+                             "  });",
+                             "  pm.test('limits — целые границы размера: ' + t.id, () => {",
+                             "    const l = t.limits || {};",
+                             "    Object.keys(l).forEach(k => { pm.expect(LIMS, 'посторонний ключ границ ' + k).to.include(k); pm.expect(Number(l[k]), k + '=' + l[k]).to.be.a('number'); pm.expect(Number.isFinite(Number(l[k])), k).to.eql(true); });",
+                             "  });",
+                             "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName','qos','revision'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
                              "});",
                              "pm.test('performanceTier is gone from the contract', () => (j.diskTypes || []).forEach(t => pm.expect(t, t.id).to.not.have.property('performanceTier')));"])],
 ))
@@ -101,6 +119,8 @@ CASES.append(Case(
                              "  pm.environment.set('dtProbeId', ts[0].id);",
                              "  pm.environment.set('dtProbeTier', ts[0].tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(ts[0].tier));",
                              "  pm.environment.set('dtProbeLifecycle', String(ts[0].lifecycle));",
+                             "  pm.environment.set('dtProbeCaps', JSON.stringify(ts[0].capabilities || {}));",
+                             "  pm.environment.set('dtProbeLimits', JSON.stringify(ts[0].limits || {}));",
                              "}"]),
            Step(name="get", method="GET", path=f"{DT}/{{{{dtProbeId}}}}",
                 test_script=[*assert_status(200),
@@ -108,6 +128,12 @@ CASES.append(Case(
                              "pm.test('id совпадает со списочным', () => pm.expect(j.id).to.eql(pm.environment.get('dtProbeId')));",
                              "pm.test('tier совпадает со списочным', () => pm.expect(j.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(j.tier)).to.eql(pm.environment.get('dtProbeTier')));",
                              "pm.test('lifecycle совпадает со списочным', () => pm.expect(String(j.lifecycle)).to.eql(pm.environment.get('dtProbeLifecycle')));",
+                             # Способности и границы — политика класса, и элемент обязан
+                             # говорить о ней ТО ЖЕ, что коллекция. Расхождение здесь
+                             # означало бы две проекции одного факта: арендатор читает
+                             # список, планирует по нему, а карточка отвечает иначе.
+                             "pm.test('capabilities совпадают со списочными', () => pm.expect(JSON.stringify(j.capabilities || {})).to.eql(pm.environment.get('dtProbeCaps')));",
+                             "pm.test('limits совпадают со списочными', () => pm.expect(JSON.stringify(j.limits || {})).to.eql(pm.environment.get('dtProbeLimits')));",
                              "pm.test('zoneIds is array', () => pm.expect(j.zoneIds || []).to.be.an('array'));"])],
 ))
 
@@ -177,10 +203,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DT-UPD-NEG-EXTERNAL-ABSENT",
-    title="PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 400/403/404 — НИКОГДА 200/мутация seed",
+    title="PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 401/403/404/405/501 — НИКОГДА 200/мутация каталога",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (не block-balanced)
-    #   → NOT_FOUND/403, не 200, seed не мутируется.
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: цель run-scoped и заведомо
+    #   несуществующая — каталог не мутируется даже если маршрут когда-нибудь
+    #   забриджат. Ни один класс каталога здесь не назван: его состав заводит шаг
+    #   подъёма стенда, и литерал был бы утверждением о посеве, которого нет.
     steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 body={"name": "block-hacked"},
                 test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
@@ -188,10 +216,11 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DT-DEL-NEG-EXTERNAL-ABSENT",
-    title="DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 400/403/404 — НИКОГДА 200/удаление seed",
+    title="DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 401/403/404/405/501 — НИКОГДА 200/удаление класса",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (прежняя форма
-    #   DELETE block-balanced удаляла реальный seed-тип → 200 в artifact).
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: цель run-scoped и заведомо
+    #   несуществующая. Прежняя форма называла класс каталога поимённо и на успехе
+    #   УДАЛЯЛА его — проверка, разрушающая стенд, недопустима и в красном виде.
     steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
 ))

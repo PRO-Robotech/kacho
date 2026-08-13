@@ -125,7 +125,7 @@
           ]
         },
         {
-          "name": "poll-op-97",
+          "name": "poll-op-103",
           "request": {
             "method": "GET",
             "header": [
@@ -189,7 +189,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya109",
+          "name": "assert-op-success-rya130",
           "request": {
             "method": "GET",
             "header": [
@@ -257,7 +257,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya106",
+          "name": "get-after-create-rya127",
           "request": {
             "method": "GET",
             "header": [
@@ -418,7 +418,7 @@
           ]
         },
         {
-          "name": "delete-rya110",
+          "name": "delete-rya131",
           "request": {
             "method": "DELETE",
             "header": [
@@ -497,7 +497,7 @@
           ]
         },
         {
-          "name": "poll-op-98",
+          "name": "poll-op-104",
           "request": {
             "method": "GET",
             "header": [
@@ -561,7 +561,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya111",
+          "name": "assert-op-success-rya132",
           "request": {
             "method": "GET",
             "header": [
@@ -629,7 +629,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya112",
+          "name": "get-after-delete-rya133",
           "request": {
             "method": "GET",
             "header": [
@@ -862,7 +862,7 @@
           ]
         },
         {
-          "name": "poll-op-99",
+          "name": "poll-op-105",
           "request": {
             "method": "GET",
             "header": [
@@ -926,7 +926,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya113",
+          "name": "assert-op-success-rya134",
           "request": {
             "method": "GET",
             "header": [
@@ -988,6 +988,84 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "pre-vol-snap-ready-rdy28",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{secdSrcVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{secdSrcVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРИГОДНОСТЬ ПРОИЗВОДИТ СВЕРЩИК, А НЕ ОПЕРАЦИЯ: Operation.done = «намерение",
+                  "// закоммичено», объекта у плоскости данных может ещё не быть. Ожидание",
+                  "// ограничено: бюджет израсходован — шаг падает, назвав состояние и причину.",
+                  "if (pm.environment.get('_readyWaitFor') !== pm.info.requestName) {",
+                  "  pm.environment.set('_readyWaitCount', '0');",
+                  "  pm.environment.set('_readyWaitFor', pm.info.requestName);",
+                  "}",
+                  "const _rwc = parseInt(pm.environment.get('_readyWaitCount') || '0', 10);",
+                  "let _rwj; try { _rwj = pm.response.json(); } catch (e) { _rwj = {}; }",
+                  "const _rwOk = pm.response.code === 200;",
+                  "const _rwStatus = _rwOk ? String(_rwj.status === undefined ? '' : _rwj.status) : '';",
+                  "const _rwReason = _rwOk ? String(_rwj.statusReason === undefined ? '' : _rwj.statusReason) : '';",
+                  "const _rwPending = (pm.response.code === 403 || pm.response.code === 404) || (_rwOk && ['CREATING','MIGRATING','STATUS_UNSPECIFIED',''].includes(_rwStatus));",
+                  "if (_rwPending && _rwc < 60) {",
+                  "  pm.environment.set('_readyWaitCount', String(_rwc + 1));",
+                  "  const _rwd = Date.now(); while (Date.now() - _rwd < 500) { /* обход сверщика */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_readyWaitCount');",
+                  "pm.environment.unset('_readyWaitFor');",
+                  "pm.test('Том-источник стал пригоден: status AVAILABLE (объявляет сверщик, не Operation.done)', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "  pm.expect(_rwStatus, 'наблюдено status=' + _rwStatus + ', statusReason=' + _rwReason +",
+                  "    '; за 30000ms ресурс так и не стал пригоден — либо сверщик не довёл объект, либо плоскости данных на этом стенде нет').to.eql('AVAILABLE');",
+                  "});"
                 ]
               }
             }
@@ -1071,7 +1149,7 @@
           ]
         },
         {
-          "name": "poll-op-101",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -1135,7 +1213,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya114",
+          "name": "assert-op-success-rya135",
           "request": {
             "method": "GET",
             "header": [
@@ -1203,7 +1281,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya107",
+          "name": "get-after-create-rya128",
           "request": {
             "method": "GET",
             "header": [
@@ -1364,7 +1442,7 @@
           ]
         },
         {
-          "name": "delete-rya115",
+          "name": "delete-rya136",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1443,7 +1521,7 @@
           ]
         },
         {
-          "name": "poll-op-102",
+          "name": "poll-op-108",
           "request": {
             "method": "GET",
             "header": [
@@ -1507,7 +1585,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya116",
+          "name": "assert-op-success-rya137",
           "request": {
             "method": "GET",
             "header": [
@@ -1575,7 +1653,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya117",
+          "name": "get-after-delete-rya138",
           "request": {
             "method": "GET",
             "header": [
@@ -1730,7 +1808,7 @@
           ]
         },
         {
-          "name": "cleanup-src-vol-rya118",
+          "name": "cleanup-src-vol-rya139",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1804,7 +1882,7 @@
           ]
         },
         {
-          "name": "poll-op-100",
+          "name": "poll-op-106",
           "request": {
             "method": "GET",
             "header": [
@@ -1955,7 +2033,7 @@
           ]
         },
         {
-          "name": "poll-op-103",
+          "name": "poll-op-109",
           "request": {
             "method": "GET",
             "header": [
@@ -2019,7 +2097,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya119",
+          "name": "assert-op-success-rya140",
           "request": {
             "method": "GET",
             "header": [
@@ -2081,6 +2159,84 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "pre-vol-img-ready-rdy29",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{secdImgSrcVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{secdImgSrcVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminA'",
+                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРИГОДНОСТЬ ПРОИЗВОДИТ СВЕРЩИК, А НЕ ОПЕРАЦИЯ: Operation.done = «намерение",
+                  "// закоммичено», объекта у плоскости данных может ещё не быть. Ожидание",
+                  "// ограничено: бюджет израсходован — шаг падает, назвав состояние и причину.",
+                  "if (pm.environment.get('_readyWaitFor') !== pm.info.requestName) {",
+                  "  pm.environment.set('_readyWaitCount', '0');",
+                  "  pm.environment.set('_readyWaitFor', pm.info.requestName);",
+                  "}",
+                  "const _rwc = parseInt(pm.environment.get('_readyWaitCount') || '0', 10);",
+                  "let _rwj; try { _rwj = pm.response.json(); } catch (e) { _rwj = {}; }",
+                  "const _rwOk = pm.response.code === 200;",
+                  "const _rwStatus = _rwOk ? String(_rwj.status === undefined ? '' : _rwj.status) : '';",
+                  "const _rwReason = _rwOk ? String(_rwj.statusReason === undefined ? '' : _rwj.statusReason) : '';",
+                  "const _rwPending = (pm.response.code === 403 || pm.response.code === 404) || (_rwOk && ['CREATING','MIGRATING','STATUS_UNSPECIFIED',''].includes(_rwStatus));",
+                  "if (_rwPending && _rwc < 60) {",
+                  "  pm.environment.set('_readyWaitCount', String(_rwc + 1));",
+                  "  const _rwd = Date.now(); while (Date.now() - _rwd < 500) { /* обход сверщика */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_readyWaitCount');",
+                  "pm.environment.unset('_readyWaitFor');",
+                  "pm.test('Том-источник стал пригоден: status AVAILABLE (объявляет сверщик, не Operation.done)', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "  pm.expect(_rwStatus, 'наблюдено status=' + _rwStatus + ', statusReason=' + _rwReason +",
+                  "    '; за 30000ms ресурс так и не стал пригоден — либо сверщик не довёл объект, либо плоскости данных на этом стенде нет').to.eql('AVAILABLE');",
+                  "});"
                 ]
               }
             }
@@ -2164,7 +2320,7 @@
           ]
         },
         {
-          "name": "poll-op-105",
+          "name": "poll-op-111",
           "request": {
             "method": "GET",
             "header": [
@@ -2228,7 +2384,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya120",
+          "name": "assert-op-success-rya141",
           "request": {
             "method": "GET",
             "header": [
@@ -2296,7 +2452,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya108",
+          "name": "get-after-create-rya129",
           "request": {
             "method": "GET",
             "header": [
@@ -2457,7 +2613,7 @@
           ]
         },
         {
-          "name": "delete-rya121",
+          "name": "delete-rya142",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2536,7 +2692,7 @@
           ]
         },
         {
-          "name": "poll-op-106",
+          "name": "poll-op-112",
           "request": {
             "method": "GET",
             "header": [
@@ -2600,7 +2756,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya122",
+          "name": "assert-op-success-rya143",
           "request": {
             "method": "GET",
             "header": [
@@ -2668,7 +2824,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya123",
+          "name": "get-after-delete-rya144",
           "request": {
             "method": "GET",
             "header": [
@@ -2823,7 +2979,7 @@
           ]
         },
         {
-          "name": "cleanup-img-src-vol-rya124",
+          "name": "cleanup-img-src-vol-rya145",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2897,7 +3053,7 @@
           ]
         },
         {
-          "name": "poll-op-104",
+          "name": "poll-op-110",
           "request": {
             "method": "GET",
             "header": [

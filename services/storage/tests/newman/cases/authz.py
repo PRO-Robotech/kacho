@@ -302,9 +302,17 @@ def _assert_absent(case_id, list_field, what):
     ]
 
 
-def _seed_volume(name_suffix, id_var):
-    """Создать READY-том дефолтным актором; id — только после assert !op.error."""
-    return [
+def _seed_volume(name_suffix, id_var, await_ready=False):
+    """Создать том дефолтным актором; id — только после assert !op.error.
+
+    `await_ready` — дождаться пригодности. Нужно там, где том служит ИСТОЧНИКОМ
+    (снимок снимается только с готового тома, образ захватывается только с
+    готового источника): `Operation.done` означает «строка закоммичена», а
+    готовность объявляет сверщик. Сторожу утечки видимости готовность не нужна —
+    его предмет в том, что чужой субъект не видит строку, а не в том, что за ней
+    стоит объект.
+    """
+    steps = [
         Step(name=f"seed-vol-{name_suffix}", method="POST", path=VOL,
              body={"projectId": "{{_suiteProjectId}}",
                    "name": f"vol-leak-{name_suffix}-{{{{runId}}}}",
@@ -315,6 +323,11 @@ def _seed_volume(name_suffix, id_var):
                           *save_from_response("j.metadata && j.metadata.volumeId", id_var)]),
         poll_operation_until_done(), assert_op_success(),
     ]
+    if await_ready:
+        steps.append(wait_until_ready_step(
+            f"seed-vol-{name_suffix}-ready", f"{VOL}/{{{{{id_var}}}}}",
+            ready="AVAILABLE", subject="Том-источник"))
+    return steps
 
 
 def _delete(path_base, id_var, step_name):
@@ -346,7 +359,7 @@ CASES.append(Case(
     classes=["AUTHZ", "SEC", "NEG", "LST"], priority="P0",
     # index: within-project per-object visibility (over-show leak guard)
     steps=[
-        *_seed_volume("snpsrc", "leakSnapSrcVolumeId"),
+        *_seed_volume("snpsrc", "leakSnapSrcVolumeId", await_ready=True),
         Step(name="seed-snapshot", method="POST", path=SNP,
              body={"projectId": "{{_suiteProjectId}}",
                    "sourceVolumeId": "{{leakSnapSrcVolumeId}}",
@@ -369,7 +382,7 @@ CASES.append(Case(
     classes=["AUTHZ", "SEC", "NEG", "LST"], priority="P0",
     # index: within-project per-object visibility (over-show leak guard)
     steps=[
-        *_seed_volume("imgsrc", "leakImgSrcVolumeId"),
+        *_seed_volume("imgsrc", "leakImgSrcVolumeId", await_ready=True),
         Step(name="seed-image", method="POST", path=IMG,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                    "name": "img-leak-{{runId}}",

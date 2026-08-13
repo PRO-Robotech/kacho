@@ -44,7 +44,7 @@
   ],
   "item": [
     {
-      "name": "DT-LST-CRUD-OK — List diskTypes → массив; у КАЖДОЙ записи tier из закрытого словаря, lifecycle из закрытого словаря, zoneIds array — и НИ ОДНОГО инфра-поля",
+      "name": "DT-LST-CRUD-OK — List diskTypes → массив; у КАЖДОЙ записи tier и lifecycle из закрытых словарей, zoneIds array, limits — целые границы, capabilities — только булевы, и НИ ОДНОГО инфра-поля",
       "description": "class:CRUD | class:CONF | class:SEC | priority:P1",
       "item": [
         {
@@ -80,11 +80,21 @@
                   "pm.test('diskTypes is array', () => pm.expect(j.diskTypes || []).to.be.an('array'));",
                   "const TIERS = ['PERFORMANCE_TIER_UNSPECIFIED', 'CAPACITY', 'BALANCED', 'FAST', 'SINGLE', 'IO_MAX'].map(String);",
                   "const LIFE = ['ACTIVE', 'DEPRECATED', 'RETIRED'].map(String);",
+                  "const CAPS = ['snapshots','cloneFromSnapshot','cloneFromImage','onlineGrow','multiAttach','encryptionAtRest'];",
+                  "const LIMS = ['minSizeBytes','maxSizeBytes','sizeStepBytes'];",
                   "(j.diskTypes || []).forEach(t => {",
                   "  pm.test('tier is from the closed dictionary: ' + t.id, () => pm.expect(TIERS).to.include(t.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(t.tier)));",
                   "  pm.test('lifecycle is from the closed dictionary: ' + t.id, () => pm.expect(LIFE).to.include(String(t.lifecycle)));",
                   "  pm.test('zoneIds is array: ' + t.id, () => pm.expect(t.zoneIds || []).to.be.an('array'));",
-                  "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
+                  "  pm.test('capabilities — только объявленные булевы способности: ' + t.id, () => {",
+                  "    const c = t.capabilities || {};",
+                  "    Object.keys(c).forEach(k => { pm.expect(CAPS, 'посторонний ключ способностей ' + k).to.include(k); pm.expect(c[k], k).to.be.a('boolean'); });",
+                  "  });",
+                  "  pm.test('limits — целые границы размера: ' + t.id, () => {",
+                  "    const l = t.limits || {};",
+                  "    Object.keys(l).forEach(k => { pm.expect(LIMS, 'посторонний ключ границ ' + k).to.include(k); pm.expect(Number(l[k]), k + '=' + l[k]).to.be.a('number'); pm.expect(Number.isFinite(Number(l[k])), k).to.eql(true); });",
+                  "  });",
+                  "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName','qos','revision'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
                   "});",
                   "pm.test('performanceTier is gone from the contract', () => (j.diskTypes || []).forEach(t => pm.expect(t, t.id).to.not.have.property('performanceTier')));"
                 ]
@@ -134,6 +144,8 @@
                   "  pm.environment.set('dtProbeId', ts[0].id);",
                   "  pm.environment.set('dtProbeTier', ts[0].tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(ts[0].tier));",
                   "  pm.environment.set('dtProbeLifecycle', String(ts[0].lifecycle));",
+                  "  pm.environment.set('dtProbeCaps', JSON.stringify(ts[0].capabilities || {}));",
+                  "  pm.environment.set('dtProbeLimits', JSON.stringify(ts[0].limits || {}));",
                   "}"
                 ]
               }
@@ -189,6 +201,8 @@
                   "pm.test('id совпадает со списочным', () => pm.expect(j.id).to.eql(pm.environment.get('dtProbeId')));",
                   "pm.test('tier совпадает со списочным', () => pm.expect(j.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(j.tier)).to.eql(pm.environment.get('dtProbeTier')));",
                   "pm.test('lifecycle совпадает со списочным', () => pm.expect(String(j.lifecycle)).to.eql(pm.environment.get('dtProbeLifecycle')));",
+                  "pm.test('capabilities совпадают со списочными', () => pm.expect(JSON.stringify(j.capabilities || {})).to.eql(pm.environment.get('dtProbeCaps')));",
+                  "pm.test('limits совпадают со списочными', () => pm.expect(JSON.stringify(j.limits || {})).to.eql(pm.environment.get('dtProbeLimits')));",
                   "pm.test('zoneIds is array', () => pm.expect(j.zoneIds || []).to.be.an('array'));"
                 ]
               }
@@ -338,7 +352,7 @@
       ]
     },
     {
-      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 400/403/404 — НИКОГДА 200/мутация seed",
+      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 401/403/404/405/501 — НИКОГДА 200/мутация каталога",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -388,7 +402,7 @@
       ]
     },
     {
-      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 400/403/404 — НИКОГДА 200/удаление seed",
+      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 401/403/404/405/501 — НИКОГДА 200/удаление класса",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {

@@ -215,7 +215,14 @@ def _delete_source(name, base_path, id_var):
 
 
 def _source_volume(suffix, out_var="secdSrcVolumeId"):
-    """READY-том как источник снимка/образа."""
+    """Том-источник снимка/образа, ДОВЕДЁННЫЙ до пригодности.
+
+    Снимок снимается только с готового тома, захват образа берёт только готовый
+    источник, а `Operation.done` означает лишь «строка закоммичена»: готовность
+    объявляет сверщик, увидев объект у плоскости данных. Без ожидания фикстура
+    этих кейсов не собиралась бы, и предметом падения оказался бы не owner-tuple,
+    ради которого они написаны.
+    """
     return [
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL, auth=_OWNER,
              body={"projectId": "{{_suiteProjectId}}", "name": f"secd-src-{suffix}-{{{{runId}}}}",
@@ -225,6 +232,8 @@ def _source_volume(suffix, out_var="secdSrcVolumeId"):
                           *save_from_response("j.metadata && j.metadata.volumeId", out_var)]),
         poll_operation_until_done(auth=_OWNER),
         assert_op_success(auth=_OWNER),
+        wait_until_ready_step(f"pre-vol-{suffix}-ready", f"{VOL}/{{{{{out_var}}}}}",
+                              ready="AVAILABLE", subject="Том-источник", auth=_OWNER),
     ]
 
 
