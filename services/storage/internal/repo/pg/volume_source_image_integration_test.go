@@ -14,6 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -35,6 +36,10 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 	}, imageRegionFixture)
 	require.NoError(t, err)
 	require.Equal(t, img.ID, boot.SourceImage)
+	// Том рождается в НАМЕРЕНИИ: пригодным его делает сверщик, увидев объект.
+	// Проба ждёт пригодного, поэтому проходит тот же путь, а не объявляет
+	// состояние рукой.
+	confirmReady(t, pool, reconciler.KindVolume, boot.ID, boot.SizeBytes)
 
 	got, err := vr.Get(ctx, boot.ID)
 	require.NoError(t, err)

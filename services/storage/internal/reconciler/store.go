@@ -158,8 +158,20 @@ func (s *Store) Confirm(ctx context.Context, kind Kind, id string, obs blockback
 	if kind == KindVolume {
 		args = append(args, obs.SizeBytes, usedOrNil(obs))
 	}
-	_, err = s.pool.Exec(ctx, q, args...)
-	return err
+	tag, err := s.pool.Exec(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	// Нулевой исход условного обновления — НЕ успех. Проглотив его, сверщик
+	// засчитал бы подтверждением то, что не применилось: строка не в том
+	// состоянии (её уже тронул другой путь) либо её вовсе нет. Тогда «ресурс
+	// подтверждён» и «ресурс остался в намерении» выглядели бы одинаково, а
+	// разошлись бы только в жалобе арендатора.
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("reconciler: confirm %s %s applied to no row: "+
+			"the row is not in a confirmable state or no longer exists", kind, id)
+	}
+	return nil
 }
 
 // observedSizeSet — присваивание наблюдённых величин там, где они есть. У тома

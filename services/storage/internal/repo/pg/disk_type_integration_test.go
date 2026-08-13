@@ -340,7 +340,7 @@ func TestDiskTypeUpdateNotRetroactiveForExistingVolumes(t *testing.T) {
 
 	dtInsert(t, dr, &domain.DiskType{
 		ID: "block-retro", Name: "retro", ZoneIDs: []string{"region-1-a", "region-1-b"},
-		PerformanceTier: domain.TierBalanced,
+		PerformanceTier: domain.TierBalanced, Lifecycle: domain.LifecycleActive,
 	})
 	offerDiskTypeInZone(t, pool, "block-retro", "region-1-a", "region-1-b")
 	vol, _, err := vr.Insert(ctx, &domain.Volume{
