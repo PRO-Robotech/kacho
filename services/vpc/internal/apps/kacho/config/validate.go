@@ -151,6 +151,25 @@ const (
 		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps is not declared (got %d) — the declaration " +
 		"contradicts itself: a tenant-settable limit is a ceiling under the guaranteed band, and there is no " +
 		"band to limit against. Declare the guaranteed band, or drop the tenant-settable limit"
+	// %[1]d = объявлено стендом, %[2]d = обещано продуктом.
+	//
+	// Оба числа обязательны по той же причине, что и у размера кадра: без первого
+	// оператор не знает, ЧТО чинить, без второго — ДО КАКОЙ величины.
+	errExecutorTenantLimitRangeEmpty = "dataplane.executor.tenant-settable-bandwidth-limit=true while " +
+		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps=%[1]d is not ABOVE the band this product " +
+		"promises every interface (%[2]d Mbps, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS) — a tenant limit is accepted " +
+		"strictly above the promised floor and up to what this stand guarantees, so these two numbers leave an " +
+		"EMPTY interval: the capability is declared and cannot be used once. Either raise the declared " +
+		"guarantee to what the executor actually holds, or drop the tenant-settable limit"
+	errExecutorBandBelowProductFloor = "mode %[1]s: dataplane.executor.guaranteed-bandwidth-per-interface-mbps=%[2]d " +
+		"is below the band this product promises the tenant (%[3]d Mbps, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS) — the promise is a product-wide " +
+		"lower bound the tenant reads in the documentation and cannot verify against this stand, so a stand whose " +
+		"executor carries less makes it false for everyone who arrives here, and makes it false SILENTLY. Either " +
+		"point this stand at an executor that carries at least the promised band, or raise the declaration to " +
+		"what the executor actually holds; lowering the promise is a product decision and changes the " +
+		"documentation that states it"
 
 	// S6-гардрейлы (перечень адресных диапазонов, которые платформа держит за
 	// собой, см. dataplane.go `ReservedPrefixes`).
@@ -567,6 +586,20 @@ func (c Config) ValidateExecutorProfile() error {
 		errs = multierr.Append(errs, fmt.Errorf(errExecutorTenantLimitWithoutBand,
 			e.GuaranteedBandwidthPerInterfaceMbps))
 	}
+	// Умение объявлено, но промежуток приёма ПУСТ. Арендаторское ограничение
+	// принимается строго выше опубликованного пола продукта и не выше того, что
+	// гарантирует этот стенд (`domain.BandwidthLimitPolicy`); гарантия на уровне
+	// пола или ниже делает эти два края несовместимыми, и объявленным умением
+	// нельзя воспользоваться НИ РАЗУ. Это негодность самого объявления, а не
+	// требование к посадке, поэтому проверяется в любом режиме — как и остальные
+	// самопротиворечия профиля. Второй отказ про то же число не выдаётся: ветвь
+	// выше уже сработала на неположительной гарантии.
+	if e.TenantSettableBandwidthLimit &&
+		e.GuaranteedBandwidthPerInterfaceMbps > 0 &&
+		e.GuaranteedBandwidthPerInterfaceMbps <= domain.GuaranteedInterfaceBandwidthFloorMbps {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorTenantLimitRangeEmpty,
+			e.GuaranteedBandwidthPerInterfaceMbps, domain.GuaranteedInterfaceBandwidthFloorMbps))
+	}
 
 	// (2) Требования к ПОСАДКЕ — только там, где исполнитель есть.
 	if !c.AuthN.Mode.IsProduction() {
@@ -588,11 +621,16 @@ func (c Config) ValidateExecutorProfile() error {
 				c.AuthN.Mode, g.knob, g.env, g.value))
 		}
 	}
-	// Полезный размер кадра — единственная гарантия профиля, у которой есть
-	// ОБЕЩАНИЕ ПРОДУКТА (domain.GuaranteedPayloadFloorBytes): арендатор читает
-	// нижнюю границу в документации и рассчитывает на неё, не зная ни этого стенда,
-	// ни его исполнителя. Поэтому здесь проверяется не только «объявлено», но и «не
-	// меньше обещанного».
+	// Полезный размер кадра — гарантия профиля, у которой есть ОБЕЩАНИЕ ПРОДУКТА
+	// (domain.GuaranteedPayloadFloorBytes): арендатор читает нижнюю границу в
+	// документации и рассчитывает на неё, не зная ни этого стенда, ни его
+	// исполнителя. Поэтому здесь проверяется не только «объявлено», но и «не меньше
+	// обещанного».
+	//
+	// Прежняя редакция называла её ЕДИНСТВЕННОЙ такой гарантией. Это было верно на
+	// день, когда писалось, и перестало быть верным вместе с публикацией полосы на
+	// интерфейс: обещаний продукта в профиле стало два, и второе проверяется ниже —
+	// тем же порядком и по той же причине.
 	//
 	// Ноль отсеян выше как ОТСУТСТВИЕ гарантии, и второй отказ про то же число
 	// назвал бы оператору две проблемы там, где она одна. Граница ВКЛЮЧАЮЩАЯ —
@@ -600,6 +638,15 @@ func (c Config) ValidateExecutorProfile() error {
 	if p := e.GuaranteedPayloadBytes; p > 0 && p < domain.GuaranteedPayloadFloorBytes {
 		errs = multierr.Append(errs, fmt.Errorf(errExecutorPayloadBelowProductFloor,
 			c.AuthN.Mode, p, domain.GuaranteedPayloadFloorBytes))
+	}
+	// Полоса на интерфейс — ВТОРАЯ гарантия профиля с обещанием продукта
+	// (`domain.GuaranteedInterfaceBandwidthFloorMbps`, «не менее 1 Гбит/с»), и
+	// проверяется она тем же порядком и по той же причине, что и размер кадра.
+	// Ноль отсеян выше как ОТСУТСТВИЕ гарантии; граница ВКЛЮЧАЮЩАЯ — обещание
+	// звучит «не менее», и ровно обещанное законно.
+	if b := e.GuaranteedBandwidthPerInterfaceMbps; b > 0 && b < domain.GuaranteedInterfaceBandwidthFloorMbps {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorBandBelowProductFloor,
+			c.AuthN.Mode, b, domain.GuaranteedInterfaceBandwidthFloorMbps))
 	}
 	return errs
 }

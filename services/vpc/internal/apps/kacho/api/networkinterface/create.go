@@ -65,6 +65,24 @@ type CreateNetworkInterfaceUseCase struct {
 	projectClient ProjectClient
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
+	bandwidth     domain.BandwidthLimitPolicy
+}
+
+// WithBandwidthLimitPolicy подключает то, что ПОСАДКА объявила про полосу:
+// умеет ли исполнитель датаплейна ограничивать её на логическом порту и какую
+// величину он гарантирует интерфейсу.
+//
+// Нулевое значение (метод не звали) означает «умение не объявлено», и это
+// намеренно: композиционный корень, забывший провязку, обязан ОТВЕРГАТЬ поле, а
+// не принимать его молча. Обратная полярность была бы удобнее и неверна по
+// существу — она даёт «принято-и-проигнорировано» ровно там, где его нельзя
+// заметить.
+//
+// Значение читается ЗДЕСЬ же, на пути запроса, тем же предикатом, что и в
+// проверке при старте: «страж пропустил» ⟺ «поле принимается» — по построению.
+func (u *CreateNetworkInterfaceUseCase) WithBandwidthLimitPolicy(p domain.BandwidthLimitPolicy) *CreateNetworkInterfaceUseCase {
+	u.bandwidth = p
+	return u
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
@@ -121,6 +139,13 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	// сериализована с удалением группы), но она уже не может быть вызвана с
 	// массивом произвольной длины.
 	if err := validateNICSecurityGroupCardinality(n.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
+	// Ограничение полосы — СИНХРОННО, до создания Operation: величину задаёт
+	// вызывающий, и её негодность видна без обращения к БД и без вызова соседа.
+	// Отдав отказ в асинхронную часть, мы вернули бы вызывающему успешно созданную
+	// операцию на настройку, которая не принята.
+	if err := validateNICBandwidthLimit(u.bandwidth, n.BandwidthLimitMbps); err != nil {
 		return nil, err
 	}
 	// Привязка интерфейса к машине — НЕ исход публичного создания. Инвариант
@@ -241,6 +266,8 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		UsedByType:       usedByType,
 		UsedByID:         usedByID,
 		Status:           st,
+
+		BandwidthLimitMbps: n.BandwidthLimitMbps,
 	}
 	// MAC аллоцируется здесь и больше не меняется на протяжении жизни NIC.
 	// При cloud-wide UNIQUE-collision генерируем новый MAC и повторяем Insert.

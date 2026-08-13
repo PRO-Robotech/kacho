@@ -148,6 +148,23 @@ declared:
     reason: >-
       сообщение спецификации снятой ветви; замена — NatGatewaySpec и EgressOnlyGatewaySpec
     issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/loadbalancer/v1/listener.proto
+    symbol: proxy_protocol_v2
+    reason: >-
+      заголовок PROXY-протокола уходит до любых данных соединения, то есть его
+      вставляет только владелец байтового потока к бекенду; балансировщик четвёртого
+      уровня потоком не владеет, а у рассмотренного программного датаплейна такого
+      обрамления нет вовсе — исполнителя не существует ни в одном варианте
+    issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/loadbalancer/v1/listener_service.proto
+    symbol: proxy_protocol_v2
+    reason: >-
+      тот же признак в ОБОИХ входах — создания и изменения: вход, у которого нет ни
+      исполнителя, ни выхода в ресурсе, — принято-и-проигнорировано; путь маски с
+      этим именем теперь отвергается как неизвестный, а не принимается молча
+    issue: kacho#246
   - rule: ONEOF_NO_DELETE
     path: kacho/cloud/vpc/v1/gateway_service.proto
     symbol: gateway

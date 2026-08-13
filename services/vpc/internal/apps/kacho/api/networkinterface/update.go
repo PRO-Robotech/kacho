@@ -28,8 +28,8 @@ import (
 // UpdateInput — параметры для UpdateNetworkInterfaceUseCase.Execute. Несущим
 // носителем данных служит сам `domain.NetworkInterface`, чтобы не плодить
 // параллельный XxxReq, дублирующий domain. Значимы только потенциально меняемые
-// поля (Name/Description/Labels/SecurityGroupIDs/V4AddressIDs/V6AddressIDs);
-// project_id/subnet_id/mac — immutable.
+// поля (Name/Description/Labels/SecurityGroupIDs/V4AddressIDs/V6AddressIDs/
+// BandwidthLimitMbps); project_id/subnet_id/mac — immutable.
 type UpdateInput struct {
 	NetworkInterfaceID string
 	NetworkInterface   domain.NetworkInterface
@@ -43,6 +43,15 @@ type UpdateNetworkInterfaceUseCase struct {
 	repo      Repo
 	opsRepo   operations.Repo
 	registrar fgaregister.Registrar
+	bandwidth domain.BandwidthLimitPolicy
+}
+
+// WithBandwidthLimitPolicy — то же, что у пути создания, и по той же причине:
+// правило приёма обязано быть ОДНО на оба пути. Разойдясь, они дали бы стенд, на
+// котором величину нельзя задать при создании и можно дописать изменением.
+func (u *UpdateNetworkInterfaceUseCase) WithBandwidthLimitPolicy(p domain.BandwidthLimitPolicy) *UpdateNetworkInterfaceUseCase {
+	u.bandwidth = p
+	return u
 }
 
 // NewUpdateNetworkInterfaceUseCase создает UpdateNetworkInterfaceUseCase.
@@ -74,6 +83,7 @@ func (u *UpdateNetworkInterfaceUseCase) Execute(ctx context.Context, in UpdateIn
 	known := map[string]struct{}{
 		"name": {}, "description": {}, "labels": {},
 		"security_group_ids": {}, "v4_address_ids": {}, "v6_address_ids": {},
+		"bandwidth_limit_mbps": {},
 	}
 	if err := corevalidate.UpdateMask("update_mask", in.UpdateMask, known); err != nil {
 		return nil, err
@@ -95,6 +105,13 @@ func (u *UpdateNetworkInterfaceUseCase) Execute(ctx context.Context, in UpdateIn
 	}
 	// Потолок числа групп — синхронно (см. Create).
 	if err := validateNICSecurityGroupCardinality(in.NetworkInterface.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
+	// Ограничение полосы — синхронно, тем же правилом, что и на создании.
+	// Проверяется присланное значение независимо от маски — тем же порядком, каким
+	// это уже делают проверки выше: негодная величина не станет годной ни в одной
+	// маске, а на пустой маске (full-object PATCH) она применяется в любом случае.
+	if err := validateNICBandwidthLimit(u.bandwidth, in.NetworkInterface.BandwidthLimitMbps); err != nil {
 		return nil, err
 	}
 
@@ -309,6 +326,7 @@ func applyNICMask(n *domain.NetworkInterface, in UpdateInput) {
 		n.Labels = src.Labels
 		n.SecurityGroupIDs = src.SecurityGroupIDs
 		n.V4AddressIDs, n.V6AddressIDs = src.V4AddressIDs, src.V6AddressIDs
+		n.BandwidthLimitMbps = src.BandwidthLimitMbps
 		return
 	}
 	for _, f := range in.UpdateMask {
@@ -325,6 +343,8 @@ func applyNICMask(n *domain.NetworkInterface, in UpdateInput) {
 			n.V4AddressIDs = src.V4AddressIDs
 		case "v6_address_ids":
 			n.V6AddressIDs = src.V6AddressIDs
+		case "bandwidth_limit_mbps":
+			n.BandwidthLimitMbps = src.BandwidthLimitMbps
 		}
 	}
 }

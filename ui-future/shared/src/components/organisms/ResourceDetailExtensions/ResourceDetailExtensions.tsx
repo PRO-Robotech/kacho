@@ -26,10 +26,16 @@ import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
 import { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";
 import { NetworkCidrManager } from "@shared/components/organisms/NetworkCidrManager";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
-import { ReferrerLink } from "@shared/lib/spec-columns";
+import { ConsumersFact } from "@shared/components/molecules/ConsumersFact";
+import { SECURITY_GROUP_USED_BY_LIMIT } from "@shared/lib/used-by-limits";
 import { api } from "@shared/api/client";
 import { getByPath } from "@shared/lib/resource-registry";
 import { displayText } from "@shared/lib/display-text";
+
+/** Одна запись `used_by` — output-only kacho.cloud.reference.Reference. */
+export interface UsedByEntry {
+  referrer?: { type?: string; id?: string; name?: string };
+}
 
 export interface DescItem {
   label: string;
@@ -285,7 +291,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   },
 
   "security-groups": {
-    overviewExtra: ({ data }) => {
+    overviewExtra: ({ data, projectId }) => {
       return [
         {
           label: "Сеть",
@@ -306,12 +312,25 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             />
           ),
         },
-        // Поля «Потребители» здесь НЕТ (решение владельца 2026-08-12).
-        // Контракт группы несёт `used_by`, но сервер его не заполняет: механизм
-        // «кто меня использует» реализован только у сетевого интерфейса. Поле
-        // показывало прочерк при живых потребителях, то есть утверждало
-        // неправду о ресурсе. Из двух исходов — научить сервер отвечать или
-        // снять показ — владелец выбрал снять; вернётся вместе с источником.
+        {
+          // Поле вернулось ВМЕСТЕ С ИСТОЧНИКОМ, как и было записано при его
+          // снятии: сервер выводит потребителей чтением по отношениям, которые
+          // база уже держит (набор групп на интерфейсе и группа по умолчанию у
+          // сети). Пока источника не было, поле показывало прочерк при живых
+          // потребителях — то есть утверждало о ресурсе неправду.
+          //
+          // Потолок передаётся ЯВНО: у группы правил число потребителей ничем не
+          // ограничено, сервер отдаёт предел плюс одну строку, и по этой лишней
+          // строке компонент отличает полный список от усечённого.
+          label: "Потребители",
+          value: (
+            <ConsumersFact
+              usedBy={getByPath<UsedByEntry[]>(data, "used_by")}
+              projectId={projectId}
+              limit={SECURITY_GROUP_USED_BY_LIMIT}
+            />
+          ),
+        },
       ];
     },
     // req: правила — ОТДЕЛЬНЫМ табом «Правила» (таблица + «Добавить» + чекбоксы +
@@ -344,17 +363,12 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "Вид", value: txt(info.kind) },
         { label: "Занятость", value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" /> },
         {
+          // Тот же вид, что у группы правил, — но БЕЗ потолка: у адреса число
+          // потребителей ограничено по построению (адрес держит один интерфейс),
+          // и придумывать ему предел значило бы обещать усечение, которого не
+          // бывает.
           label: "Потребители",
-          value:
-            usedBy.length === 0 ? (
-              dash
-            ) : (
-              <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-                {usedBy.map((u, i) => (
-                  <ReferrerLink key={i} projectId={projectId} referrer={u.referrer} />
-                ))}
-              </span>
-            ),
+          value: <ConsumersFact usedBy={usedBy} projectId={projectId} />,
         },
         {
           label: "Защита от удаления",

@@ -25,8 +25,8 @@ type ListenerWriterIface interface {
 	Insert(ctx context.Context, l *domain.Listener) (*ListenerRecord, error)
 
 	// Update — UPDATE listeners SET mutable fields (name/description/labels/
-	// default_target_group_id/proxy_protocol_v2). Immutable lb_id/protocol/port
-	// обрабатываются в use-case (rejected sync if в mask).
+	// default_target_group_id). Immutable lb_id/protocol/port обрабатываются в
+	// use-case (rejected sync if в mask).
 	// expectedXmin — OCC-snapshot (record.Xmin из Get); concurrent-modify → 0 rows
 	// → ErrFailedPrecondition (защита от lost update на partial-mask Update).
 	Update(ctx context.Context, l *domain.Listener, expectedXmin string) (*ListenerRecord, error)

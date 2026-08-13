@@ -207,12 +207,12 @@ func TestCidrGroupUpdateMaskCarriesCosmeticsOnly(t *testing.T) {
 		Name:         types.StringValue("office"),
 		Description:  types.StringValue("было"),
 		Labels:       mapToTF(ctx, map[string]string{"a": "1"}),
-		V4CidrBlocks: listFromStrings(ctx, []string{"203.0.113.0/24"}),
-		V6CidrBlocks: listFromStrings(ctx, nil),
+		V4CidrBlocks: setFromStrings(ctx, []string{"203.0.113.0/24"}),
+		V6CidrBlocks: setFromStrings(ctx, nil),
 	}
 	plan := state
 	plan.Description = types.StringValue("стало")
-	plan.V4CidrBlocks = listFromStrings(ctx, []string{"198.51.100.0/24"})
+	plan.V4CidrBlocks = setFromStrings(ctx, []string{"198.51.100.0/24"})
 
 	body, paths := cidrGroupUpdateBody(ctx, plan, state)
 	sort.Strings(paths)
@@ -237,12 +237,12 @@ func TestCidrGroupUpdateMaskCarriesCosmeticsOnly(t *testing.T) {
 
 	// Правка ОДНОГО состава не даёт запроса изменения вовсе — но даёт дельту глаголам.
 	plan = state
-	plan.V6CidrBlocks = listFromStrings(ctx, []string{"2001:db8::/32"})
+	plan.V6CidrBlocks = setFromStrings(ctx, []string{"2001:db8::/32"})
 	if _, paths = cidrGroupUpdateBody(ctx, plan, state); len(paths) != 0 {
 		t.Fatalf("правка одного состава дала маску %v — запрос изменения был бы отвергнут краем", paths)
 	}
 	var d cidrDelta
-	d.addV6, d.removeV6 = cidrFamilyDiff(ctx, plan.V6CidrBlocks, state.V6CidrBlocks)
+	d.addV6, d.removeV6 = cidrGroupFamilyDiff(ctx, plan.V6CidrBlocks, state.V6CidrBlocks)
 	if len(d.addV6) != 1 {
 		t.Fatalf("дельта состава пуста: %+v — правка не доехала бы ни маской, ни глаголом", d)
 	}
@@ -322,10 +322,10 @@ func TestApplyCidrGroupKeepsWhatTheEdgeAnswered(t *testing.T) {
 	if err := applyCidrGroup(context.Background(), &m, raw); err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
-	if got := stringsFromTF(context.Background(), m.V4CidrBlocks); len(got) != 2 {
+	if got := stringsFromSet(context.Background(), m.V4CidrBlocks); len(got) != 2 {
 		t.Errorf("состав IPv4 потерян: %v", got)
 	}
-	if got := stringsFromTF(context.Background(), m.V6CidrBlocks); len(got) != 1 {
+	if got := stringsFromSet(context.Background(), m.V6CidrBlocks); len(got) != 1 {
 		t.Errorf("состав IPv6 потерян: %v", got)
 	}
 	if m.CidrBlockCount.ValueInt64() != 3 {
@@ -424,4 +424,85 @@ func importDiagnostics(t *testing.T, id string) bool {
 	NewVPCCidrGroupResource().(resource.ResourceWithImportState).ImportState(ctx,
 		resource.ImportStateRequest{ID: id}, &resp)
 	return resp.Diagnostics.HasError()
+}
+
+// ---- запись члена набора -------------------------------------------------------------
+
+// Состав — НАБОР, а не список, и это свойство схемы, а не оформления.
+//
+// Край отдаёт членов отсортированными (в его запросе стоит `ORDER BY family(block), block`),
+// а не в порядке присылки. На списке любая конфигурация с несортированным перечнем падала
+// бы после применения на несогласованности Terraform, хотя край сделал ровно то, о чём
+// просили. Проба закрепляет именно тип: у набора порядок не значим by construction.
+func TestCidrGroupMembersAreASetNotAList(t *testing.T) {
+	ctx := context.Background()
+	attrs := cidrGroupSchemaAttrs(t)
+	for _, name := range []string{"v4_cidr_blocks", "v6_cidr_blocks"} {
+		a, ok := attrs[name]
+		if !ok {
+			t.Fatalf("схема не выставляет %q", name)
+		}
+		if _, isSet := a.GetType().(types.SetType); !isSet {
+			t.Errorf("%s объявлен как %T, а не набором: край возвращает членов "+
+				"отсортированными, и несортированная настройка падала бы после применения",
+				name, a.GetType())
+		}
+	}
+	// Парный положительный контроль на сам предикат: соседний атрибут набором НЕ является,
+	// то есть проверка отличает типы, а не отвечает «да» на любой.
+	if _, isSet := attrs["labels"].GetType().(types.SetType); isSet {
+		t.Error("предикат считает набором даже карту меток — он не различает типы")
+	}
+	_ = ctx
+}
+
+// Негодная запись члена называется на ПЛАНЕ, а не отказом края после применения.
+//
+// Таблица держит положительный контроль в каждой строке: без него отрицания зеленели бы на
+// проверке, которая отвергает всё подряд, — и законная настройка стала бы невыразимой.
+func TestCidrGroupMemberDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name    string
+		field   string
+		wantV4  bool
+		members []string
+		wantErr bool
+	}{
+		{name: "канонический IPv4 проходит", field: "v4_cidr_blocks", wantV4: true,
+			members: []string{"203.0.113.0/24", "198.51.100.16/28"}},
+		{name: "канонический IPv6 проходит", field: "v6_cidr_blocks",
+			members: []string{"2001:db8::/32"}},
+		{name: "не разбирается", field: "v4_cidr_blocks", wantV4: true,
+			members: []string{"203.0.113.0"}, wantErr: true},
+		{name: "заданы разряды узла", field: "v4_cidr_blocks", wantV4: true,
+			members: []string{"203.0.113.5/24"}, wantErr: true},
+		{name: "чужое семейство в поле IPv4", field: "v4_cidr_blocks", wantV4: true,
+			members: []string{"2001:db8::/32"}, wantErr: true},
+		{name: "чужое семейство в поле IPv6", field: "v6_cidr_blocks",
+			members: []string{"203.0.113.0/24"}, wantErr: true},
+		{name: "неканоническая запись того же префикса", field: "v6_cidr_blocks",
+			members: []string{"2001:0db8::/32"}, wantErr: true},
+		{name: "один префикс в двух написаниях", field: "v6_cidr_blocks",
+			members: []string{"2001:db8::/32", "2001:0DB8::/32"}, wantErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			diags := cidrGroupMemberDiagnostics(ctx, c.field, setFromStrings(ctx, c.members), c.wantV4)
+			if got := diags.HasError(); got != c.wantErr {
+				t.Fatalf("отказ=%v, ожидался %v; диагностика: %v", got, c.wantErr, diags.Errors())
+			}
+		})
+	}
+
+	// Неизвестное значение не судится вовсе: член вправе прийти из ещё не вычисленной
+	// ссылки, и счесть неизвестное негодным значило бы отвергнуть законную конфигурацию.
+	if d := cidrGroupMemberDiagnostics(ctx, "v4_cidr_blocks",
+		types.SetUnknown(types.StringType), true); d.HasError() {
+		t.Errorf("неизвестный состав отвергнут: %v", d.Errors())
+	}
+	if d := cidrGroupMemberDiagnostics(ctx, "v4_cidr_blocks",
+		types.SetNull(types.StringType), true); d.HasError() {
+		t.Errorf("незаданный состав отвергнут: %v", d.Errors())
+	}
 }

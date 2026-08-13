@@ -56,8 +56,7 @@ func NewLoadBalancer(
 // Defaults:
 //   - ID: свежий `lst`-prefix;
 //   - RegionID: денормализуется из LB (caller передаёт);
-//   - Status: CREATING;
-//   - ProxyProtocolV2: false.
+//   - Status: CREATING.
 func NewListener(
 	lb LoadBalancer,
 	name LbName,
@@ -66,16 +65,15 @@ func NewListener(
 	targetPort LbPort,
 ) Listener {
 	return Listener{
-		ID:              ResourceID(ids.NewID(ids.PrefixListener)),
-		ProjectID:       lb.ProjectID,
-		LoadBalancerID:  lb.ID,
-		RegionID:        lb.RegionID,
-		Name:            name,
-		Protocol:        protocol,
-		Port:            port,
-		TargetPort:      targetPort,
-		ProxyProtocolV2: false,
-		Status:          ListenerStatusCreating,
+		ID:             ResourceID(ids.NewID(ids.PrefixListener)),
+		ProjectID:      lb.ProjectID,
+		LoadBalancerID: lb.ID,
+		RegionID:       lb.RegionID,
+		Name:           name,
+		Protocol:       protocol,
+		Port:           port,
+		TargetPort:     targetPort,
+		Status:         ListenerStatusCreating,
 	}
 }
 

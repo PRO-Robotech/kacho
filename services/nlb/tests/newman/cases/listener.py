@@ -231,8 +231,7 @@ CASES.append(Case(
         # transient 403 reddened the whole listener CRUD chain — wrap it too (fail-closed).
         retry_until_authorized(Step(name="cr-lst", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
-                   "proxyProtocolV2": False},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -370,7 +369,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="LST-UPD-CRUD-OK",
-    title="Update Listener mutable fields (name, proxy_protocol_v2)",
+    title="Update Listener mutable fields (name, description)",
     classes=["CRUD"], priority="P1",
     steps=[
         *_setup_lb("upd-ok"),
@@ -381,12 +380,12 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         # FieldMask JSON paths are lowerCamelCase (proto3 JSON); a snake_case path
-        # (proxy_protocol_v2) is rejected sync as InvalidArgument "FieldMask.paths
-        # contains invalid path". Mutable listener fields per UpdateListenerRequest:
-        # name/description/labels/proxyProtocolV2/defaultTargetGroupId.
+        # is rejected sync as InvalidArgument "FieldMask.paths contains invalid path".
+        # Mutable listener fields per UpdateListenerRequest:
+        # name/description/labels/defaultTargetGroupId/targetGroupId.
         retry_until_authorized(Step(name="upd", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             body={"updateMask": "name,proxyProtocolV2",
-                   "name": "https-{{runId}}", "proxyProtocolV2": True},
+             body={"updateMask": "name,description",
+                   "name": "https-{{runId}}", "description": "edge-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         *_cleanup_lst(),
@@ -1057,23 +1056,41 @@ CASES.append(Case(
     ],
 ))
 
+# PROXY-protocol framing is RETIRED from the contract: the header goes out before any
+# connection data, so only the owner of the byte stream to the backend can insert it, and
+# an L4 balancer forwards the stream rather than owning it. The former happy-path case
+# ("create with proxy_protocol_v2=true → OK") asserted persistence of a setting no
+# executor ever performed; it is replaced by the negative the retirement actually
+# produces.
+#
+# The mask path — and NOT a Create body key — is the assertion, and that is deliberate.
+# The edge parses request bodies with `DiscardUnknown`, so a retired key in a Create body
+# is dropped without a word and the call still returns 200: a case asserting 400 there
+# would be asserting an outcome the edge does not produce. What the retirement DOES make
+# observable through the black box is the update mask, which the service validates
+# against a closed set of paths. Absence of the key from every collection body is held
+# statically instead, by the edge-side gate over collection bodies
+# (`TestNewmanCollectionsSendNoUnknownRequestFields`).
 CASES.append(Case(
-    id="LST-CR-CRUD-PROXY-PROTO-V2",
-    title="Create with proxy_protocol_v2=true → OK",
-    classes=["CRUD"], priority="P2",
+    id="LST-UPD-VAL-PROXY-PROTO-V2-RETIRED",
+    title="Update with retired proxy_protocol_v2 in mask → InvalidArgument",
+    classes=["VAL"], priority="P2",
     steps=[
         *_setup_lb("pp2"),
         retry_until_authorized(Step(name="cr-pp2", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
-                   "protocol": "TCP", "port": 90, "targetPort": 9090,
-                   "proxyProtocolV2": True},
+                   "protocol": "TCP", "port": 90, "targetPort": 9090},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
-        poll_operation_until_done(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
-             test_script=[*assert_status(200),
-                          "pm.test('proxy_protocol_v2 persisted', () => "
-                          "  pm.expect(pm.response.json().proxyProtocolV2).to.eql(true));"])),
+        poll_operation_until_done(must_succeed=True),
+        # Positive control lives in LST-UPD-CRUD-OK (a legitimate path still applies):
+        # without it "rejected" would be indistinguishable from "no path is accepted".
+        retry_until_authorized(Step(name="upd-retired", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
+             body={"updateMask": "proxyProtocolV2"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('rejection names the retired path', () => "
+                          "  pm.expect(pm.response.json().message || '')"
+                          "    .to.include('proxy_protocol_v2'));"])),
         *_cleanup_lst(),
         *_cleanup_lb(),
     ],

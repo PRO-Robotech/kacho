@@ -193,10 +193,12 @@ First-class NIC-ресурс домена VPC. Project-level (`project_id` об�
 | `security_group_ids[]` | jsonb | подставляемого умолчания НЕТ: пустой массив остаётся пустым (`Network.default_security_group_id` в этот путь не читается). Каждый переданный id проверяется на существование, принадлежность проекту интерфейса и сеть подсети; network-less (project-level) SG принимается в любой подсети своего проекта. Число групп ограничено (`MaxNICSecurityGroups` + CHECK) |
 | `used_by` | `kacho.cloud.reference.Reference` | денормализованное зеркало «кто использует этот NIC»; flat-колонки `used_by_type`/`used_by_id`/`used_by_name` |
 | `status` | enum | `PROVISIONING` / `ACTIVE` / `AVAILABLE` / `FAILED` / `DELETING` |
+| `bandwidth_limit_mbps` | bigint, mutable | верхняя граница полосы, задаваемая АРЕНДАТОРОМ; `0` — ограничения нет. Непустая величина принимается ТОЛЬКО когда посадка объявила `dataplane.executor.tenant-settable-bandwidth-limit`, иначе синхронный `InvalidArgument` с именем поля. Промежуток: строго выше `domain.GuaranteedInterfaceBandwidthFloorMbps` и не выше гарантии, объявленной стендом; нижний край продублирован CHECK'ом (0036), верхний в схему не вморожен — он свойство посадки |
 
 **Проекция** (lean, control-plane-only):
 - **`NetworkInterface`:** `id`, `name`, `labels`, `subnet_id`, `mac_address`,
-  `v4_address_ids`, `v6_address_ids`, `security_group_ids`, `used_by`, `status`.
+  `v4_address_ids`, `v6_address_ids`, `security_group_ids`, `used_by`, `status`,
+  `bandwidth_limit_mbps`.
 - Инфра/data-plane-проекции у kacho-vpc нет — ресурс несет только control-plane-поля.
   **На публичной поверхности инфра-чувствительных полей нет.**
 
@@ -239,6 +241,47 @@ Firewall rules. **`network_id` обязателен на Create и immutable п�
 | `network_id` | text; **обязателен** на Create, immutable после. Колонка объявлена NULLABLE ради FK (пустая строка сломала бы ссылку), но use-case пустую не пропускает. `List?filter=network_id="<id>"` работает (whitelist фильтра включает `network_id`) |
 | `default_for_network` | bool — `true` у системной группы, которую создаёт сама сеть (безусловно) |
 | `rules` | jsonb array; область значений правила (протокол, диапазон портов) держится CHECK'ами на DB-уровне — миграция `0027_security_group_rules_domain.sql` |
+| `used_by` | output-only; выводится ЧТЕНИЕМ (Get/List), не хранится. См. §«Кем используется» ниже |
+
+#### `used_by` — кем используется группа (output-only, выводится на чтении)
+
+Поле объявлено контрактом с основания репозитория и до задачи 40 **не имело
+производителя**: сервер его не заполнял, а карточка консоли показывала прочерк при
+живых потребителях — то есть утверждала о ресурсе неправду. Отношение при этом уже
+выражено базой, поэтому обратная ссылка — **запрос, а не новая таблица**.
+
+Две полосы потребителей:
+
+| Полоса | Откуда | Кардинальность |
+|---|---|---|
+| `network` | `networks.default_security_group_id = <sg>` | ≤ 1 (у сети одна группа по умолчанию) |
+| `network_interface` | `network_interfaces.security_group_ids @> [<sg>]` | **не ограничена** |
+
+**Ответ ограничен, и предел — часть контракта чтения.** Запрос читает не больше
+`SecurityGroupUsedByLimit + 1` = **33** записей на группу
+(`internal/repo/kacho/entity_security_group.go`). Отдельного поля «есть ещё» в
+сообщении нет, поэтому признаком служит сама длина:
+
+- получено **≤ 32** — список полон;
+- получено **ровно 33** — потребителей **больше 32**, наружу уехали первые.
+
+Порядок детерминирован: сначала сеть, затем интерфейсы по `(created_at, id)`.
+
+**Граница проекта выражена внутри запроса** (`project_id = sg.project_id` на обеих
+полосах): потребитель другого проекта не попадает в ответ, поэтому группа с чужим
+потребителем **неотличима** от группы без потребителей вовсе.
+
+**Заполняется только на путях чтения** (`Get`/`List`). Резолверы (`GetMany`,
+`GetForUpdate`, проверка целей правил, предусловие удаления) и ответы мутаций его не
+несут — обратная ссылка стоит запроса, и платить за неё там, где её никто не читает,
+не за что.
+
+**Индексы под предикаты** — миграция `0037_security_group_used_by_indexes.sql`:
+GIN (`jsonb_path_ops`) на `network_interfaces.security_group_ids` и частичный btree
+`WHERE default_security_group_id IS NOT NULL` на `networks`. Частичный предикат
+выписан через `IS NOT NULL`, а не через сравнение с пустой строкой: из `col = $1`
+планировщик выводит `col IS NOT NULL`, но не `col <> ''`, и индекс с таким предикатом
+не применился бы ни разу.
 
 **RPC специфика**:
 - `Update` с маской `rule_specs` — ПОЛНАЯ замена массива правил

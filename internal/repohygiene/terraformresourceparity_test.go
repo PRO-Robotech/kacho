@@ -74,6 +74,7 @@ var tfCoverage = map[string]string{
 	"RouteTableService":       "kacho_vpc_route_table",
 	"SecurityGroupService":    "kacho_vpc_security_group",
 	"NetworkInterfaceService": "kacho_vpc_network_interface",
+	"CidrGroupService":        "kacho_vpc_cidr_group",
 
 	// iam
 	"ProjectService":        "kacho_iam_project",

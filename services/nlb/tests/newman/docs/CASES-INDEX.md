@@ -145,7 +145,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-CR-CRUD-INTERNAL` — CRUD/P1 — Create INTERNAL with subnet_id (Verifies REQ-LST-CR-INTERNAL)
 - `*-GET-CRUD-OK` — CRUD/P0 — Get existing listener
 - `*-LST-CRUD-OK` — CRUD,LSG/P1 — List by load_balancer_id
-- `*-UPD-CRUD-OK` — CRUD/P1 — Update mutable (name, proxy_protocol_v2, default_target_group_id)
+- `*-UPD-CRUD-OK` — CRUD/P1 — Update mutable (name, description, default_target_group_id)
 - `*-DEL-CRUD-OK` — CRUD,STATE/P1 — Delete Listener → parent LB keeps its VIP (address release belongs to the LoadBalancer)
 - `*-LOPS-CRUD-OK` — CRUD,LSG/P2 — ListOperations
 
@@ -386,7 +386,7 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-CR-VAL-TARGET-PORT-ZERO` — VAL,BVA/P1 — target_port=0 → InvalidArgument
 - `*-CR-VAL-TARGET-PORT-OVER` — VAL,BVA/P1 — target_port=65536 → InvalidArgument
 - `*-CR-CRUD-IPV6` — CRUD/P1 — Create with ip_version=IPV6 → OK
-- `*-CR-CRUD-PROXY-PROTO-V2` — CRUD/P2 — Create with proxy_protocol_v2=true → OK
+- `*-UPD-VAL-PROXY-PROTO-V2-RETIRED` — VAL/P2 — Update with retired proxy_protocol_v2 in mask → InvalidArgument
 - `*-UPD-CRUD-DEFAULT-TG-CLEAR` — CRUD,STATE/P2 — Update default_target_group_id=null → cleared
 - `*-CR-VAL-TG-NAME-COLLISION-CROSS-REGION` — VAL/P2 — same name in different region → allowed (Verifies REQ-DB-TGR-NAME-UNIQ)
 - `*-RM-VAL-EMPTY-LIST` — VAL/P1 — RemoveTargets with empty list → InvalidArgument

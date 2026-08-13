@@ -160,6 +160,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewVPCAddressResource,
 		NewVPCRouteTableResource,
 		NewVPCSecurityGroupResource,
+		NewVPCCidrGroupResource,
 		// iam
 		NewIAMProjectResource,
 		NewIAMGroupResource,

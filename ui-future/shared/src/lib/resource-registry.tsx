@@ -1909,6 +1909,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           },
         ],
       },
+      {
+        // Ограничение принимается НЕ НА КАЖДОМ СТЕНДЕ: полосу выдерживает
+        // исполнитель датаплейна, и умение ограничивать её объявляет посадка
+        // (`dataplane.executor.tenant-settable-bandwidth-limit`). Признак на
+        // публичной поверхности не виден, поэтому консоль поле предлагает, а край
+        // отвечает отказом с именем поля там, где умения нет. Описание об этом
+        // говорит прямо: пользователь должен узнать причину из формы, а не из
+        // отказа.
+        name: "bandwidth_limit_mbps",
+        label: "Ограничение полосы, Мбит/с",
+        type: "int",
+        required: false,
+        min: 0,
+        description:
+          "Опционально. Верхняя граница полосы интерфейса; 0 — без ограничения. Принимается только выше гарантированной полосы интерфейса и не выше того, что гарантирует стенд; на стендах, где исполнитель этого не умеет, край отвергает величину.",
+      },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       FIELD_PROJECT_ID,
@@ -1920,6 +1936,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       v4_address_ids: [],
       v6_address_ids: [],
       security_group_ids: [],
+      bandwidth_limit_mbps: 0,
       description: "",
       labels: {},
     }),

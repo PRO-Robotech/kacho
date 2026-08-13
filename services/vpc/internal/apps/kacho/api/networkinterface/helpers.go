@@ -187,3 +187,20 @@ func marshalNetworkInterfaceRecord(rec *kachorepo.NetworkInterfaceRecord) (*anyp
 	}
 	return anypb.New(dst)
 }
+
+// validateNICBandwidthLimit — единственная точка перевода доменного правила
+// приёма арендаторского ограничения полосы в отказ, который видит вызывающий.
+//
+// Одна на оба пути (создание и изменение) намеренно: два одинаково написанных тела
+// разошлись бы молча, и разошлись бы там, где расхождение не видно — на стенде, где
+// величину нельзя задать при создании и можно дописать изменением.
+//
+// Форма отказа — контракт: `INVALID_ARGUMENT` + имя поля в
+// `google.rpc.BadRequest.field_violations[].field`. Имя поля обязано быть машинно
+// читаемым, а не только упомянутым в прозе: вызывающий чинит настройку, а не гадает.
+func validateNICBandwidthLimit(policy domain.BandwidthLimitPolicy, limitMbps int64) error {
+	if err := policy.Check(limitMbps); err != nil {
+		return serviceerr.InvalidArg("bandwidth_limit_mbps", err.Error())
+	}
+	return nil
+}

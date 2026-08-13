@@ -109,7 +109,6 @@ export interface Listener {
   protocol?: "TCP" | "UDP";
   port?: number;
   target_port?: number;
-  proxy_protocol_v2?: boolean;
   // Целевая группа листенера. Привязка перешла СЮДА со снятых глаголов
   // балансировщика (:attachTargetGroup / :detachTargetGroup) вместе с M:N-снимком.
   target_group_id?: string;

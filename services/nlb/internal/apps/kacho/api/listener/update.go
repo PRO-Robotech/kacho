@@ -108,7 +108,6 @@ var listenerMutableMaskPaths = map[string]struct{}{
 	"description":             {},
 	"labels":                  {},
 	"default_target_group_id": {},
-	"proxy_protocol_v2":       {},
 	// NLB-1b EXPAND (additive): repoint the wired target group (LIVE-mutable).
 	"target_group_id": {},
 }
@@ -216,10 +215,6 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 			tgRegionCheckNeeded = true
 		}
 	}
-	if apply("proxy_protocol_v2") {
-		next.ProxyProtocolV2 = req.GetProxyProtocolV2()
-	}
-
 	// Owning-project + authz + same-region precheck for the (re)wired target group.
 	// The referenced TG must belong to the listener's OWN project: repointing at a
 	// victim project's TargetGroup would forward this LB's traffic to the victim's

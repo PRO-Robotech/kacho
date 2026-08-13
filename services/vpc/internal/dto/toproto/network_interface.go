@@ -41,6 +41,10 @@ func (networkInterface) toPb(rec kachorepo.NetworkInterfaceRecord) (*vpcv1.Netwo
 		SecurityGroupIds: rec.SecurityGroupIDs,
 		MacAddress:       rec.MAC,
 		Status:           niStatusToPb(rec.Status),
+		// Ноль на выходе означает «ограничения нет» — то же, что и на входе. Особой
+		// ветви под него нет намеренно: второе представление отсутствия однажды
+		// разошлось бы с первым.
+		BandwidthLimitMbps: rec.BandwidthLimitMbps,
 	}
 	// used_by (kacho extension, output-only) — кто приаттачил этот NIC.
 	// Shape — как у Address.used_by: Reference{referrer{type,id}, type=USED_BY}.

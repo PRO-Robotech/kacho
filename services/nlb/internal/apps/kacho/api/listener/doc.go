@@ -11,7 +11,7 @@
 //     SetReference CAS on existing vpc.Address) ИЛИ auto-alloc via
 //     vpc.InternalAddressService.AllocateExternalIP/AllocateInternalIP.
 //   - Update              — async; mutable fields only (name/description/labels/
-//     default_target_group_id/proxy_protocol_v2). Immutable load_balancer_id/
+//     default_target_group_id). Immutable load_balancer_id/
 //     protocol/port/ip_version/address_id rejected sync с текст ошибки по конвенции Kachō
 //     `"<field> is immutable after Listener.Create"`.
 //   - Delete              — async; free VIP back to pool (auto-alloc) либо

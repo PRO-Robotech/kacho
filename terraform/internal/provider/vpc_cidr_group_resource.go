@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/netip"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -35,8 +36,8 @@ type cidrGroupModel struct {
 	Description    types.String `tfsdk:"description"`
 	Labels         types.Map    `tfsdk:"labels"`
 	CreatedAt      types.String `tfsdk:"created_at"`
-	V4CidrBlocks   types.List   `tfsdk:"v4_cidr_blocks"`
-	V6CidrBlocks   types.List   `tfsdk:"v6_cidr_blocks"`
+	V4CidrBlocks   types.Set    `tfsdk:"v4_cidr_blocks"`
+	V6CidrBlocks   types.Set    `tfsdk:"v6_cidr_blocks"`
 	CidrBlockCount types.Int64  `tfsdk:"cidr_block_count"`
 	UsedBy         types.List   `tfsdk:"used_by"`
 }
@@ -115,14 +116,22 @@ func (r *cidrGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"created_at": schema.StringAttribute{Computed: true,
 				MarkdownDescription: "Момент создания по данным края."},
 
-			"v4_cidr_blocks": schema.ListAttribute{Optional: true, Computed: true, ElementType: types.StringType,
+			// НАБОР, а не список — и это не стиль.
+			//
+			// Край хранит членов в дочерней таблице и отдаёт их ОТСОРТИРОВАННЫМИ (по семье и
+			// значению), а не в порядке, в каком их прислали. На списке любая конфигурация с
+			// несортированным перечнем падала бы после применения на собственной
+			// несогласованности Terraform («Provider produced inconsistent result after
+			// apply»), хотя край сделал ровно то, о чём просили. У набора порядок не значим
+			// by construction, а членство — это и есть предмет ресурса.
+			"v4_cidr_blocks": schema.SetAttribute{Optional: true, Computed: true, ElementType: types.StringType,
 				MarkdownDescription: "Члены набора семейства IPv4 в канонической записи " +
 					"(младшие разряды узла нулевые). Не более 64 на семейство.\n\n" +
 					"Изменяется НЕ обычной правкой, а отдельными действиями края " +
 					"(`:add-cidr-blocks` / `:remove-cidr-blocks`) — провайдер вычисляет разницу " +
 					"набора и вызывает их сам. Опустошить семью, на которую ссылается живое " +
 					"правило, край не даст, и apply остановится на его отказе."},
-			"v6_cidr_blocks": schema.ListAttribute{Optional: true, Computed: true, ElementType: types.StringType,
+			"v6_cidr_blocks": schema.SetAttribute{Optional: true, Computed: true, ElementType: types.StringType,
 				MarkdownDescription: "Члены набора семейства IPv6. Приводятся ТЕМИ ЖЕ действиями " +
 					"края и в тех же вызовах, что IPv4: обе семьи уходят одним запросом на " +
 					"действие, поэтому правка IPv4 и IPv6 в одном плане применяется краем одной " +
@@ -166,6 +175,45 @@ func (r *cidrGroupResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	}
 }
 
+// stringsFromSet — члены набора из значения Terraform. Неизвестное и null дают nil: «не
+// задано» и «задано пустым» — разные вещи, и слать пустой набор вместо отсутствия значило
+// бы стирать состав при каждом создании.
+func stringsFromSet(ctx context.Context, s types.Set) []string {
+	if s.IsNull() || s.IsUnknown() {
+		return nil
+	}
+	out := make([]string, 0, len(s.Elements()))
+	_ = s.ElementsAs(ctx, &out, false)
+	return out
+}
+
+// setFromStrings — члены набора в значение Terraform. nil и пустой дают ПУСТОЙ набор, а не
+// null: край всегда отвечает массивом, и null здесь означал бы расхождение на каждом плане.
+func setFromStrings(ctx context.Context, in []string) types.Set {
+	if in == nil {
+		in = []string{}
+	}
+	v, diags := types.SetValueFrom(ctx, types.StringType, in)
+	if diags.HasError() {
+		return types.SetNull(types.StringType)
+	}
+	return v
+}
+
+// cidrGroupFamilyDiff — что добавить и что снять у ОДНОЙ семьи.
+//
+// Неизвестный план исключает семью из приведения целиком, и это не перестраховка: на
+// неизвестном значении stringsFromSet отдаёт nil, поэтому «пока не знаю» стало бы
+// неотличимо от «пусто», а разница с текущим составом вышла бы «снять всё». Семья, чей план
+// неизвестен (значение ссылается на ещё не вычисленное), приводится следующим применением.
+// Вторая семья от этого не страдает: считаются они порознь.
+func cidrGroupFamilyDiff(ctx context.Context, planned, current types.Set) (add, remove []string) {
+	if planned.IsUnknown() || planned.Equal(current) {
+		return nil, nil
+	}
+	return diffSets(stringsFromSet(ctx, current), stringsFromSet(ctx, planned))
+}
+
 // ValidateConfig держит обещание, записанное у атрибута `name`.
 //
 // `Required: true` требует, чтобы атрибут был НАПИСАН, и пустую строку принимает; край
@@ -193,6 +241,78 @@ func (r *cidrGroupResource) ValidateConfig(ctx context.Context, req resource.Val
 				"потерянного ответа. Без него удалённый вне Terraform набор не снимется из "+
 				"состояния, а повтор создания заведёт дубль.")
 	}
+	resp.Diagnostics.Append(cidrGroupMemberDiagnostics(ctx, "v4_cidr_blocks", cfg.V4CidrBlocks, true)...)
+	resp.Diagnostics.Append(cidrGroupMemberDiagnostics(ctx, "v6_cidr_blocks", cfg.V6CidrBlocks, false)...)
+}
+
+// cidrGroupMemberDiagnostics — запись члена набора, проверенная ДО обращения к краю.
+//
+// Правило отдельной функцией от чтения настройки: оно чистое от набора, и его можно
+// предъявить таблицей случаев с положительным контролем в каждой строке (тот же довод
+// записан у маршрутов таблицы маршрутизации).
+//
+// Проверяется РОВНО то, что край делает со значением сам, и тем же предикатом
+// (`net/netip` стандартной библиотеки на обеих сторонах):
+//
+//   - не разбирается как запись CIDR — край отвергнет;
+//   - разряды узла ненулевые — край отвергнет;
+//   - чужое семейство в этом поле — край отвергнет, называя поле и индекс;
+//   - НЕКАНОНИЧЕСКАЯ запись того же префикса (`2001:0db8::/32`) и повтор одного префикса
+//     в двух написаниях — край примет, но вернёт СВОЮ запись и без дубля. Значение в
+//     состоянии разошлось бы с настройкой, и Terraform остановился бы на собственной
+//     несогласованности после применения — отказом, из которого не видно ни поля, ни
+//     причины. Поэтому оба случая называются здесь, на плане, с готовой заменой в тексте.
+//
+// Судить можно ТОЛЬКО о том, что уже известно: член вправе прийти из ещё не вычисленной
+// ссылки, и счесть неизвестное негодным значило бы отвергнуть законную конфигурацию.
+func cidrGroupMemberDiagnostics(ctx context.Context, field string, set types.Set, wantV4 bool) diagList {
+	var diags diagList
+	if set.IsNull() || set.IsUnknown() {
+		return diags
+	}
+	family := "IPv6"
+	if wantV4 {
+		family = "IPv4"
+	}
+	seen := map[netip.Prefix]string{}
+	for _, raw := range stringsFromSet(ctx, set) {
+		p, err := netip.ParsePrefix(raw)
+		if err != nil {
+			diags.AddError("Негодный член набора",
+				fmt.Sprintf("%s: %q не разбирается как запись CIDR. Ожидается вид "+
+					"`203.0.113.0/24` или `2001:db8::/32`.", field, raw))
+			continue
+		}
+		if p.Masked() != p {
+			diags.AddError("В члене набора заданы разряды узла",
+				fmt.Sprintf("%s: %q описывает адрес внутри сети, а член набора — саму сеть. "+
+					"Укажите %q.", field, raw, p.Masked().String()))
+			continue
+		}
+		if p.Addr().Is4() != wantV4 || p.Addr().Is4In6() {
+			diags.AddError("Член набора не того семейства",
+				fmt.Sprintf("%s: %q — не %s. Семьи задаются РАЗНЫМИ полями: край отвергает "+
+					"чужого члена на входе, поэтому смешанный набор не выразим вовсе.",
+					field, raw, family))
+			continue
+		}
+		if canonical := p.String(); canonical != raw {
+			diags.AddError("Неканоническая запись члена набора",
+				fmt.Sprintf("%s: %q край сохранит как %q и вернёт именно так. Настройка и "+
+					"состояние разошлись бы после применения. Укажите %q.",
+					field, raw, canonical, canonical))
+			continue
+		}
+		if prev, dup := seen[p]; dup {
+			diags.AddError("Один член набора задан дважды",
+				fmt.Sprintf("%s: %q и %q — один и тот же префикс. Набор хранит членов по "+
+					"значению, поэтому край сохранит его ОДИН раз, и состав в состоянии "+
+					"окажется короче написанного.", field, prev, raw))
+			continue
+		}
+		seen[p] = raw
+	}
+	return diags
 }
 
 func (r *cidrGroupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -211,8 +331,8 @@ func (r *cidrGroupResource) Create(ctx context.Context, req resource.CreateReque
 		// Состав задаётся ПРИ СОЗДАНИИ: набор заводят ради его членов, и «создам пустой,
 		// наполню потом» стоило бы лишнего применения, а на пустой набор ещё и нельзя
 		// сослаться правилом.
-		V4CidrBlocks: stringsFromTF(ctx, plan.V4CidrBlocks),
-		V6CidrBlocks: stringsFromTF(ctx, plan.V6CidrBlocks),
+		V4CidrBlocks: stringsFromSet(ctx, plan.V4CidrBlocks),
+		V6CidrBlocks: stringsFromSet(ctx, plan.V6CidrBlocks),
 	}
 
 	// Ключ повторной подачи считается по ВСЕМУ телу запроса (см. awaitCreate): повтор того
@@ -300,8 +420,8 @@ func (r *cidrGroupResource) Update(ctx context.Context, req resource.UpdateReque
 	// независимы (неизвестный план одной не мешает привести другую), но края обеих касается
 	// один и тот же вызов — см. reconcileBlocks.
 	var delta cidrDelta
-	delta.addV4, delta.removeV4 = cidrFamilyDiff(ctx, plan.V4CidrBlocks, state.V4CidrBlocks)
-	delta.addV6, delta.removeV6 = cidrFamilyDiff(ctx, plan.V6CidrBlocks, state.V6CidrBlocks)
+	delta.addV4, delta.removeV4 = cidrGroupFamilyDiff(ctx, plan.V4CidrBlocks, state.V4CidrBlocks)
+	delta.addV6, delta.removeV6 = cidrGroupFamilyDiff(ctx, plan.V6CidrBlocks, state.V6CidrBlocks)
 	if err := r.reconcileBlocks(ctx, id, delta); err != nil {
 		resp.Diagnostics.AddError("Приведение состава набора не удалось", err.Error())
 		// Обещание, записанное у reconcileBlocks («в состоянии окажется ФАКТИЧЕСКИ
@@ -532,8 +652,8 @@ func applyCidrGroup(ctx context.Context, m *cidrGroupModel, raw []byte) error {
 	m.Description = types.StringValue(w.Description)
 	m.Labels = mapToTF(ctx, w.Labels)
 	m.CreatedAt = types.StringValue(w.CreatedAt)
-	m.V4CidrBlocks = listFromStrings(ctx, w.V4CidrBlocks)
-	m.V6CidrBlocks = listFromStrings(ctx, w.V6CidrBlocks)
+	m.V4CidrBlocks = setFromStrings(ctx, w.V4CidrBlocks)
+	m.V6CidrBlocks = setFromStrings(ctx, w.V6CidrBlocks)
 	m.CidrBlockCount = types.Int64Value(w.CidrBlockCount)
 
 	usedBy := make([]cidrGroupUsedByModel, 0, len(w.UsedBy))

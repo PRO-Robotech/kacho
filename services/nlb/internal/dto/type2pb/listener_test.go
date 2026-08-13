@@ -25,18 +25,17 @@ func TestListener_Transfer(t *testing.T) {
 	// в proto-проекцию они не выходят.
 	rec := kachorepo.ListenerRecord{
 		Listener: domain.Listener{
-			ID:              "lst01ABCDEF1234567xx",
-			ProjectID:       "prj01ABCDEF1234567ll",
-			LoadBalancerID:  "nlb01ABCDEF1234567xx",
-			RegionID:        "ru-central1",
-			Name:            "ext-lst",
-			Description:     "ext listener",
-			Labels:          domain.LabelsFromMap(map[string]string{"role": "edge"}),
-			Protocol:        domain.ProtoTCP,
-			Port:            443,
-			TargetPort:      8443,
-			ProxyProtocolV2: true,
-			Status:          domain.ListenerStatusActive,
+			ID:             "lst01ABCDEF1234567xx",
+			ProjectID:      "prj01ABCDEF1234567ll",
+			LoadBalancerID: "nlb01ABCDEF1234567xx",
+			RegionID:       "ru-central1",
+			Name:           "ext-lst",
+			Description:    "ext listener",
+			Labels:         domain.LabelsFromMap(map[string]string{"role": "edge"}),
+			Protocol:       domain.ProtoTCP,
+			Port:           443,
+			TargetPort:     8443,
+			Status:         domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 1, 2, 3, 0, time.UTC),
 	}
@@ -48,7 +47,6 @@ func TestListener_Transfer(t *testing.T) {
 	assert.Equal(t, lbv1.Listener_TCP, pb.Protocol)
 	assert.Equal(t, int64(443), pb.Port)
 	assert.Equal(t, int64(8443), pb.TargetPort)
-	assert.True(t, pb.ProxyProtocolV2)
 	assert.Equal(t, lbv1.Listener_ACTIVE, pb.Status)
 }
 

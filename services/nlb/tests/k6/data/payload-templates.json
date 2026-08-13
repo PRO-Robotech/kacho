@@ -12,7 +12,6 @@
       "port": 80,
       "target_port": 8080,
       "ip_version": "IPV4",
-      "proxy_protocol_v2": false,
       "labels": { "env": "loadtest" }
     },
     "createTG": {

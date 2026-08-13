@@ -930,7 +930,8 @@ network-bound валидацию SG-привязки не навязывает �
 
 ### REQ-NIC-06 — проекция NIC — lean (control-plane only, без инфра-полей) [P0]
 `NetworkInterface` (`Get`/`List`/`Create`-result) содержит ТОЛЬКО `id`/`project_id`/`name`/
-`labels`/`subnet_id`/`v4_address_ids`/`v6_address_ids`/`security_group_ids`/`used_by`/`mac_address`/`status`.
+`labels`/`subnet_id`/`v4_address_ids`/`v6_address_ids`/`security_group_ids`/`used_by`/`mac_address`/
+`status`/`bandwidth_limit_mbps`.
 Инфра/data-plane-полей у `kacho-vpc` нет — они появятся на стороне будущего data-plane сервиса
 `kacho-vpc-implement`. Регрессионное требование: публичная NIC НИКОГДА не должна нести инфра-чувствительные
 поля (placement, SRv6-SID, host-wiring) — защита от случайного reintroduce.
@@ -938,10 +939,28 @@ network-bound валидацию SG-привязки не навязывает �
 - Проверка: `proto/kacho/cloud/vpc/v1/network_interface_service.proto` (public `NetworkInterface` без инфра-полей); `internal/apps/kacho/api/networkinterface/handler.go` (public mapper не выставляет инфра-поля); разделом про инфра-чувствительные данные.
 
 ### REQ-NIC-07 — Update NIC: меняются mutable-поля, subnet_id/инфра — нет [P1]
-`Update` NIC через mask (`name`/`labels`/`security_group_ids`) → Operation → новые значения видны;
+`Update` NIC через mask (`name`/`labels`/`security_group_ids`/`bandwidth_limit_mbps`) → Operation →
+новые значения видны;
 `subnet_id` — immutable (в mask → `InvalidArgument`); инфра-поля недоступны для записи через публичный API.
 - Validated-by: `NIC-UPD-OK`
 - Проверка: `internal/apps/kacho/api/networkinterface/` Update — `subnet_id` в hard-immutable reject-switch; mask-применение только к mutable.
+
+### REQ-NIC-BANDWIDTH-LIMIT — ограничение полосы принимается только при признаке в профиле исполнителя [P1]
+`NetworkInterface.bandwidth_limit_mbps` — верхняя граница полосы, которую задаёт АРЕНДАТОР;
+`0` — ограничения нет (единственное представление отсутствия), величина ИЗМЕНЯЕМА.
+Непустая величина принимается ТОЛЬКО когда посадка объявила
+`dataplane.executor.tenant-settable-bandwidth-limit`; иначе — синхронный `InvalidArgument`
+с именем поля в `google.rpc.BadRequest.field_violations[].field` и причиной в message
+(«принято-и-проигнорировано» запрещено: успех на настройке, которая не действует, хуже отказа).
+Промежуток приёма — строго выше опубликованного пола продукта
+(`domain.GuaranteedInterfaceBandwidthFloorMbps`) и не выше гарантии, объявленной этим стендом;
+пустой промежуток при объявленном умении не поднимает сервис (страж старта).
+- Validated-by: `NIC-CR-VAL-BANDWIDTH-LIMIT-NOT-DECLARED`, `NIC-CR-VAL-BANDWIDTH-LIMIT-UNSET-OK`
+- Проверка: `internal/domain/tenant_bandwidth_limit.go` (правило и оба края);
+  `internal/apps/kacho/api/networkinterface/` Create/Update (синхронный отказ, применение по маске);
+  `internal/apps/kacho/config/validate.go` (`ValidateExecutorProfile` — пустой промежуток и полоса
+  ниже обещания продукта); `internal/migrations/0036_network_interface_bandwidth_limit.sql`
+  (нижний край на конструкции базы).
 
 ### REQ-NIC-08 — NIC.mac_address — output-only, стабилен, cloud-wide unique [P1]
 `mac_address` на публичной `NetworkInterface` (самостоятельный сетевой интерфейс): аллоцируется системой

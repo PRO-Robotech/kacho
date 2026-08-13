@@ -33,8 +33,7 @@ VIP** — собственного адреса листенер не несёт
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки</td></tr>
     <tr><td><code>protocol</code></td><td>enum</td><td>immutable</td><td><code>TCP</code> / <code>UDP</code></td></tr>
     <tr><td><code>port</code></td><td>int64</td><td>immutable</td><td>Входящий порт (1–65535)</td></tr>
-    <tr><td><code>targetPort</code></td><td>int64</td><td>mutable</td><td>Порт таргета для форвардинга (1–65535)</td></tr>
-    <tr><td><code>proxyProtocolV2</code></td><td>bool</td><td>mutable</td><td>PROXY-protocol v2 на принимаемых соединениях</td></tr>
+    <tr><td><code>targetPort</code></td><td>int64</td><td>immutable</td><td>Порт таргета для форвардинга (1–65535)</td></tr>
     <tr><td><code>defaultTargetGroupId</code></td><td>string</td><td>mutable</td><td>Группа таргетов листенера. Обязана принадлежать <strong>тому же проекту</strong>, что и листенер, и быть region-когерентной с балансировщиком; ссылка держится FK <code>ON DELETE RESTRICT</code>. Нерезолвящийся id (нет такой группы <em>либо</em> она в чужом проекте — ответ одинаковый) отвергается синхронно</td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td><code>CREATING</code> / <code>ACTIVE</code> / <code>UPDATING</code> / <code>DELETING</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
@@ -113,7 +112,6 @@ VIP** — собственного адреса листенер не несёт
             "protocol": "TCP",
             "port": 443,
             "targetPort": 8443,
-            "proxyProtocolV2": true,
             "defaultTargetGroupId": "tgr..."
           }'
   `}
@@ -125,9 +123,18 @@ VIP** — собственного адреса листенер не несёт
 
 <ApiOperation method="PATCH" endpoint="/nlb/v1/listeners/{id}" async>
 
-Меняет изменяемые поля (`name`, `description`, `labels`, `targetPort`, `proxyProtocolV2`,
-`defaultTargetGroupId`). Immutable-поля (`loadBalancerId`, `protocol`, `port`) в `updateMask`
-отклоняются (`InvalidArgument`).
+Меняет изменяемые поля (`name`, `description`, `labels`, `defaultTargetGroupId`,
+`targetGroupId`). Immutable-поля (`loadBalancerId`, `protocol`, `port`, `targetPort`) в
+`updateMask` отклоняются (`InvalidArgument`).
+
+:::note `proxyProtocolV2` снят с контракта
+Обрамление PROXY-протокола уходит **до любых данных** соединения, то есть его вставляет
+владелец байтового потока к бекенду; балансировщик четвёртого уровня потоком не владеет —
+он его пересылает. Исполнителя у этого поля не было ни в одном рассмотренном датаплейне,
+поэтому оно снято: номер и имя зарезервированы, путь `proxyProtocolV2` в `updateMask`
+отвергается как неизвестный. Понадобится обрамление — оно придёт свойством слушателя
+нового вида, владеющего соединением, а не булевым полем на L4.
+:::
 
 <CodeBlock language="bash">
   {dedent`

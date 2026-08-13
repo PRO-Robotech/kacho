@@ -4,6 +4,7 @@
 package toproto
 
 import (
+	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
@@ -30,6 +31,16 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 		Description:       string(rec.Description),
 		Labels:            domain.LabelsToMap(rec.Labels),
 		DefaultForNetwork: rec.DefaultForNetwork,
+	}
+	// used_by — потребители группы. Заполняется только там, где запись пришла с
+	// путей чтения: на путях резолва и мутации `rec.UsedBy` пуст, и поле уезжает
+	// пустым, а не прочерком «неизвестно». Контракт поля так и объявлен —
+	// output-only, выводится на чтении.
+	for _, ref := range rec.UsedBy {
+		p.UsedBy = append(p.UsedBy, &reference.Reference{
+			Referrer: &reference.Referrer{Type: ref.Type, Id: ref.ID, Name: ref.Name},
+			Type:     reference.Reference_USED_BY,
+		})
 	}
 	for _, r := range rec.Rules {
 		pr := &vpcv1.SecurityGroupRule{

@@ -188,6 +188,12 @@ message CreateNetworkInterfaceRequest {
   repeated string v4_address_ids = 12;
   repeated string v6_address_ids = 13;
 
+  // Верхняя граница полосы интерфейса, Мбит/с. Ноль — ограничения нет. Непустая
+  // величина принимается ТОЛЬКО когда исполнитель датаплейна стенда объявил
+  // умение её исполнять; иначе — синхронный INVALID_ARGUMENT с именем поля.
+  // Промежуток — (гарантированная полоса продукта; гарантия этого стенда].
+  int64 bandwidth_limit_mbps = 14;
+
   reserved 6, 10, 11; // ранее: primary_v4_address_spec, secondary_v4_addresses, v6_addresses (raw-IP) — заменены на *_address_ids
 }
 
@@ -199,7 +205,7 @@ message UpdateNetworkInterfaceRequest {
   string network_interface_id = 1 [(required) = true, (length) = "<=50"];
 
   // Field mask of the fields to update (name, description, labels, security_group_ids,
-  // v4_address_ids, v6_address_ids).
+  // v4_address_ids, v6_address_ids, bandwidth_limit_mbps).
   google.protobuf.FieldMask update_mask = 2;
 
   string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
@@ -208,6 +214,9 @@ message UpdateNetworkInterfaceRequest {
   repeated string security_group_ids = 6;
   repeated string v4_address_ids = 9;
   repeated string v6_address_ids = 10;
+  // Верхняя граница полосы, Мбит/с. Изменяема (настройка, а не идентичность);
+  // ноль снимает ограничение. Условия приёма — те же, что на создании.
+  int64 bandwidth_limit_mbps = 11;
   reserved 7, 8; // ранее: secondary_v4_addresses, v6_addresses (raw-IP)
 }
 

@@ -274,6 +274,84 @@ func TestValidateExecutorProfile_Dev_PayloadBelowProductFloor_Passes(t *testing.
 	require.NoError(t, c.ValidateExecutorProfile())
 }
 
+// S5-18: умение задавать ограничение полосы объявлено, а гарантия НЕ ВЫШЕ
+// опубликованного пола продукта — принимаемый промежуток ПУСТ.
+//
+// Арендаторское ограничение принимается строго выше пола и не выше гарантии
+// стенда (`domain.BandwidthLimitPolicy`). Гарантия на уровне пола делает эти два
+// края несовместимыми: умение объявлено, и воспользоваться им нельзя ни разу —
+// то есть посадка обещает возможность, которой на ней нет. Это негодность самого
+// ОБЪЯВЛЕНИЯ, поэтому отказ в любом режиме.
+//
+// Отказ обязан назвать ОБА числа: без объявленного оператор не знает, что чинить,
+// без обещанного — до какой величины.
+func TestValidateExecutorProfile_TenantLimitWithEmptyRange_FailsInEveryMode(t *testing.T) {
+	for _, mode := range []Mode{ModeDev, ModeProduction, ModeProductionStrict} {
+		c := prodExecutorCfg(mode)
+		c.Dataplane.Executor.TenantSettableBandwidthLimit = true
+		c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps
+
+		err := c.ValidateExecutorProfile()
+		require.Error(t, err, "режим %s", mode)
+		assert.Contains(t, err.Error(), "dataplane.executor.tenant-settable-bandwidth-limit")
+		assert.Contains(t, err.Error(), "dataplane.executor.guaranteed-bandwidth-per-interface-mbps")
+		assert.Contains(t, err.Error(), strconv.Itoa(domain.GuaranteedInterfaceBandwidthFloorMbps),
+			"отказ обязан назвать ОБЕЩАННОЕ число — иначе оператор не знает, до какой величины поднимать")
+	}
+}
+
+// S5-19 (положительный контроль к S5-18): гарантия СТРОГО выше пола — промежуток
+// непуст, объявление законно.
+//
+// Без него отказ выше был бы неотличим от «умение нельзя объявить никогда».
+func TestValidateExecutorProfile_TenantLimitWithNonEmptyRange_Passes(t *testing.T) {
+	for _, mode := range []Mode{ModeDev, ModeProduction, ModeProductionStrict} {
+		c := prodExecutorCfg(mode)
+		c.Dataplane.Executor.TenantSettableBandwidthLimit = true
+		c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps + 1
+
+		require.NoError(t, c.ValidateExecutorProfile(), "режим %s", mode)
+	}
+}
+
+// S5-20: объявленная полоса НИЖЕ обещания продукта — то же требование к посадке,
+// что и у размера кадра (S5-14), и по той же причине: обещание «не менее 1 Гбит/с
+// на интерфейс» арендатор читает в документации и проверить на этом стенде не
+// может, поэтому стенд, чей исполнитель несёт меньше, делает его ложным ТИХО.
+//
+// Прежняя редакция комментария рядом с проверкой размера кадра называла его
+// ЕДИНСТВЕННОЙ гарантией профиля с обещанием продукта. Это перестало быть верным
+// вместе с публикацией полосы — и эта проба и есть то, что делает расхождение
+// видимым, а не устная договорённость.
+func TestValidateExecutorProfile_Production_BandBelowProductFloor_Fails(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps - 100
+
+	err := c.ValidateExecutorProfile()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dataplane.executor.guaranteed-bandwidth-per-interface-mbps")
+	assert.Contains(t, err.Error(), "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS")
+	assert.Contains(t, err.Error(), "mode production")
+}
+
+// S5-21 (положительный контроль): ровно обещанное законно — граница ВКЛЮЧАЮЩАЯ,
+// обещание звучит «не менее».
+func TestValidateExecutorProfile_Production_BandExactlyProductFloor_Passes(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}
+
+// S5-22: на dev нижняя граница полосы не требуется — по той же причине, что и у
+// размера кадра (S5-17): исполнителя там нет вовсе.
+func TestValidateExecutorProfile_Dev_BandBelowProductFloor_Passes(t *testing.T) {
+	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps = domain.GuaranteedInterfaceBandwidthFloorMbps - 100
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}
+
 // Объявление ЧАРТА сверяется с обещанием там, где уже живёт читатель файла
 // значений — `services/vpc/deploy/executor_profile_test.go`. Второй разбор YAML
 // здесь был бы вторым предикатом об одном предмете, и разошёлся бы он молча.

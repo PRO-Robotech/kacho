@@ -505,7 +505,7 @@ func (rd *readerImpl) Networks() kacho.NetworkReaderIface {
 }
 
 func (rd *readerImpl) SecurityGroups() kacho.SecurityGroupReaderIface {
-	return &securityGroupReader{snap: rd.sgSnap}
+	return &securityGroupReader{snap: rd.sgSnap, niSnap: rd.niSnap, netSnap: rd.netSnap}
 }
 
 func (rd *readerImpl) Subnets() kacho.SubnetReaderIface {

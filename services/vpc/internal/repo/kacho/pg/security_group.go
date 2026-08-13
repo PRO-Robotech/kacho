@@ -71,6 +71,93 @@ func (r *securityGroupReader) GetMany(ctx context.Context, ids []string) (map[st
 	return out, nil
 }
 
+// SecurityGroupReferrersSQL — «кем используется группа», одним запросом на набор групп.
+//
+// Экспортирован НАМЕРЕННО, ради пробы плана: проба дешевизны обязана объяснять
+// ТОТ ЖЕ запрос, который исполняется. Списанный в тест текст был бы вторым местом
+// об одном предмете — и разошёлся бы с первым ровно тогда, когда правку вносят в
+// один из двух, то есть проба продолжала бы утверждать про индекс, которого
+// исполняемый запрос уже не спрашивает.
+//
+// Обе полосы потребителей выражены отношениями, которые база УЖЕ держит, поэтому
+// обратная ссылка здесь — запрос, а не своя таблица: копия отношения разошлась бы
+// с оригиналом молча, и разошлась бы именно там, где расхождение не видно.
+//
+//	kind=0  сеть, у которой эта группа объявлена группой по умолчанию
+//	        (`networks.default_security_group_id`). Полоса ограничена по
+//	        построению: у сети такая группа одна.
+//	kind=1  интерфейс, чей набор групп содержит эту группу
+//	        (`network_interfaces.security_group_ids`). Полоса НЕ ограничена
+//	        ничем — отсюда предел ниже.
+//
+// ГРАНИЦА ПРОЕКТА выражена внутри запроса — `project_id = sg.project_id` на обеих
+// полосах. Не «вызывающий передал свой проект», а «проект самой группы»: строка
+// чужого проекта не попадает в ответ ни при каком аргументе, поэтому группа с
+// чужим потребителем неотличима от группы без потребителей. Отдельной проверки
+// «а того ли проекта вызывающий» здесь нет и быть не должно — видимость самой
+// группы решает per-object проверка прав выше по стеку.
+//
+// LIMIT стоит ВНУТРИ бокового соединения — то есть применяется к КАЖДОЙ группе
+// набора, а не к ответу целиком. Снаружи он ограничивал бы страницу, и одна
+// многолюдная группа съедала бы квоту соседей.
+//
+// Порядок детерминирован (`kind, created_at, consumer_id`): ответ, меняющий
+// порядок между двумя одинаковыми чтениями, читался бы как изменение ресурса.
+// Сеть-потребитель идёт первой намеренно — она одна и она про саму группу, а не
+// про то, кто её взял.
+const SecurityGroupReferrersSQL = `
+	SELECT sg.id, c.kind, c.consumer_id, c.consumer_name
+	  FROM security_groups sg
+	  JOIN LATERAL (
+	       SELECT u.kind, u.consumer_id, u.consumer_name
+	         FROM (
+	              SELECT 0 AS kind, n.id AS consumer_id, n.name AS consumer_name, n.created_at AS created_at
+	                FROM networks n
+	               WHERE n.default_security_group_id = sg.id
+	                 AND n.project_id = sg.project_id
+	              UNION ALL
+	              SELECT 1, ni.id, ni.name, ni.created_at
+	                FROM network_interfaces ni
+	               WHERE ni.security_group_ids @> jsonb_build_array(sg.id)
+	                 AND ni.project_id = sg.project_id
+	              ) u
+	        ORDER BY u.kind, u.created_at, u.consumer_id
+	        LIMIT $2
+	  ) c ON TRUE
+	 WHERE sg.id = ANY($1::text[])`
+
+// ReferrersFor — потребители групп, ОДНИМ запросом на весь набор.
+func (r *securityGroupReader) ReferrersFor(ctx context.Context, sgIDs []string) (map[string][]kacho.SecurityGroupReferrer, error) {
+	out := make(map[string][]kacho.SecurityGroupReferrer, len(sgIDs))
+	if len(sgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.tx.Query(ctx, SecurityGroupReferrersSQL, sgIDs, kacho.SecurityGroupUsedByFetch)
+	if err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			sgID string
+			kind int16
+			ref  kacho.SecurityGroupReferrer
+		)
+		if err := rows.Scan(&sgID, &kind, &ref.ID, &ref.Name); err != nil {
+			return nil, helpers.WrapSGErr(err, "")
+		}
+		ref.Type = kacho.SecurityGroupReferrerNIC
+		if kind == 0 {
+			ref.Type = kacho.SecurityGroupReferrerNetwork
+		}
+		out[sgID] = append(out[sgID], ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	return out, nil
+}
+
 // List — cursor-based pagination + filter.Parse (whitelist полей
 // ["name","network_id"]).
 func (r *securityGroupReader) List(ctx context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {

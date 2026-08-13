@@ -68,6 +68,7 @@ IP на нагрузку реализуется через **несколько 
     <tr><td><code>v6AddressIds</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v6AddressIds.short}</td></tr>
     <tr><td><code>securityGroupIds</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.securityGroupIds.short} (при создании наследуется default-SG сети)</td></tr>
     <tr><td><code>macAddress</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.macAddress.short} (префикс <code>0e:</code>, стабилен на жизни NIC, immutable)</td></tr>
+    <tr><td><code>bandwidthLimitMbps</code></td><td><code>{TYPES.int64}</code></td><td>Верхняя граница полосы интерфейса, Мбит/с, заданная арендатором. <code>0</code> — ограничения нет. Принимается только на стендах, где исполнитель датаплейна объявил такое умение (см. врезку ниже)</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.status.short}</td></tr>
   </tbody>
 </table>
@@ -206,8 +207,22 @@ IP на нагрузку реализуется через **несколько 
     <tr><td><code>v4AddressIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v4AddressIds.short}</td></tr>
     <tr><td><code>v6AddressIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v6AddressIds.short}</td></tr>
     <tr><td><code>securityGroupIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.securityGroupIds.short}</td></tr>
+    <tr><td><code>bandwidthLimitMbps</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>Верхняя граница полосы, Мбит/с; <code>0</code> — без ограничения</td></tr>
   </tbody>
 </table>
+
+:::note Ограничение полосы принимается не на каждом стенде
+Полосу выдерживает исполнитель датаплейна, а не управляющий контур, и умение
+ограничивать её — свойство **стенда**. Там, где оно не объявлено, непустая величина
+отвергается синхронно (`InvalidArgument`, имя поля — в `google.rpc.BadRequest`), а не
+принимается молча: успех на настройке, которая не действует, хуже отказа — отказ виден
+сразу, а несделанное только по последствиям.
+
+Промежуток приёма: **строго выше** гарантированной полосы интерфейса
+(см. [Плоскость данных](/architecture/data-plane)) и **не выше** того, что гарантирует этот стенд.
+Ниже пола ограничение противоречило бы обещанию платформы, выше её гарантии —
+ограничивать нечего.
+:::
 
 #### Пример запроса
 
@@ -273,7 +288,9 @@ IP на нагрузку реализуется через **несколько 
 <ApiOperation method="PATCH" endpoint="/vpc/v1/networkInterfaces/{networkInterfaceId}" async>
 
 Изменяет mutable-поля интерфейса: `name`, `description`, `labels`, `securityGroupIds`,
-`v4AddressIds`, `v6AddressIds`. Поля `projectId` / `subnetId` / `macAddress` — immutable.
+`v4AddressIds`, `v6AddressIds`, `bandwidthLimitMbps`. Поля `projectId` / `subnetId` /
+`macAddress` — immutable. Ограничение полосы **изменяемо**: это настройка, а не
+идентичность; ноль снимает его.
 Возвращает `Operation` (async). Дисциплина `updateMask` — как у прочих ресурсов
 (см. правила ниже).
 
@@ -289,6 +306,7 @@ IP на нагрузку реализуется через **несколько 
     <tr><td><code>securityGroupIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.securityGroupIds.short}</td></tr>
     <tr><td><code>v4AddressIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v4AddressIds.short}</td></tr>
     <tr><td><code>v6AddressIds</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v6AddressIds.short}</td></tr>
+    <tr><td><code>bandwidthLimitMbps</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>Верхняя граница полосы, Мбит/с; <code>0</code> снимает ограничение. Условия приёма — те же, что на создании</td></tr>
   </tbody>
 </table>
 

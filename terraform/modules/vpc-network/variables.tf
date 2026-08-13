@@ -215,6 +215,33 @@ variable "network_interfaces" {
   }
 }
 
+variable "cidr_groups" {
+  description = <<-EOT
+    Именованные наборы префиксов. Ключ карты — имя набора в пределах проекта.
+
+    Набор существует ради ссылок на него: перечень сетей, повторённый в двадцати правилах,
+    правится ОДИН раз здесь, а не в двадцати местах. Правила этого модуля называют набор
+    ключом (`cidr_group` у правила) — идентификатор модуль подставит сам, и получившаяся
+    ссылка построит граф: правило снимется раньше набора. Порядок несущий — край не удаляет
+    набор, на который ссылается живое правило.
+
+    Набор принадлежит ПРОЕКТУ, а не сети: ссылки на сеть в его контракте нет вовсе. Правило
+    вправе назвать только набор СВОЕГО проекта.
+
+    Семьи задаются РАЗНЫМИ полями: член чужого семейства край отвергает на входе, поэтому
+    смешанный набор невыразим. Потолок — 64 члена на семейство; своей проверки этого здесь
+    НЕТ намеренно: она была бы вторым, более слабым предикатом того же предмета, а
+    расходятся такие пары молча и именно там, где расхождение не видно.
+  EOT
+  type = map(object({
+    description    = optional(string, "")
+    labels         = optional(map(string), {})
+    v4_cidr_blocks = optional(list(string), [])
+    v6_cidr_blocks = optional(list(string), [])
+  }))
+  default = {}
+}
+
 variable "security_groups" {
   description = <<-EOT
     Группы безопасности сети. Ключ карты — имя группы в пределах проекта.
@@ -237,7 +264,14 @@ variable "security_groups" {
     - `ports` — обе границы вместе либо ничего: полудиапазона край не знает. Опущенный
       диапазон означает ЛЮБОЙ порт;
     - цель — РОВНО ОДНА из трёх: блоки адресов (`v4_cidr_blocks`/`v6_cidr_blocks`), другая
-      группа (`security_group_id`).
+      группа (`security_group_id`), именованный набор префиксов (`cidr_group` — ключ карты
+      `cidr_groups` этого модуля, либо `cidr_group_id` — готовый идентификатор набора,
+      заведённого вне модуля; оба сразу задать нельзя).
+
+    Набор — способ не копировать перечень сетей в каждое правило: правило называет НАБОР,
+    и правка набора действует во всех правилах, которые на него сослались. Пустой набор
+    целью быть не может — край отвергает такое правило, поэтому проверка входа ниже
+    отвергает его раньше обращения к краю.
 
     `security_group_id` — ВНЕШНИЙ идентификатор, и ключом карты этого модуля он быть не может
     by construction: ссылка группы на группу того же блока — самоссылка, и конфигурация была
@@ -273,6 +307,8 @@ variable "security_groups" {
       v4_cidr_blocks    = optional(list(string))
       v6_cidr_blocks    = optional(list(string))
       security_group_id = optional(string)
+      cidr_group        = optional(string)
+      cidr_group_id     = optional(string)
     })), [])
   }))
   default = {}
@@ -284,18 +320,83 @@ variable "security_groups" {
         length(compact([
           r.v4_cidr_blocks == null && r.v6_cidr_blocks == null ? "" : "cidr_blocks",
           r.security_group_id == null ? "" : "security_group_id",
+          r.cidr_group == null && r.cidr_group_id == null ? "" : "cidr_group",
         ])) == 1
       ]
     ]))
     error_message = format(
-      "Правила %s задают не ровно одну цель. Цель — одна из двух: блоки адресов либо security_group_id. Правило без цели край ОТВЕРГАЕТ синхронно, называя поле; проверка здесь ловит это раньше обращения к краю.",
+      "Правила %s задают не ровно одну цель. Цель — одна из трёх: блоки адресов, security_group_id либо именованный набор (cidr_group / cidr_group_id). Правило без цели край ОТВЕРГАЕТ синхронно, называя поле; проверка здесь ловит это раньше обращения к краю.",
       join(", ", flatten([
         for k, g in var.security_groups : [
           for i, r in g.rules : "${k}[${i}]"
           if length(compact([
             r.v4_cidr_blocks == null && r.v6_cidr_blocks == null ? "" : "cidr_blocks",
             r.security_group_id == null ? "" : "security_group_id",
+            r.cidr_group == null && r.cidr_group_id == null ? "" : "cidr_group",
           ])) != 1
+        ]
+      ]))
+    )
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, g in var.security_groups : [
+        for r in g.rules : r.cidr_group == null || r.cidr_group_id == null
+      ]
+    ]))
+    error_message = format(
+      "У правил %s заданы и cidr_group, и cidr_group_id. Это два написания одной цели — ключ набора этого модуля и готовый идентификатор чужого, — и выбрать за вас, какое имелось в виду, модуль не вправе.",
+      join(", ", flatten([
+        for k, g in var.security_groups : [
+          for i, r in g.rules : "${k}[${i}]"
+          if r.cidr_group != null && r.cidr_group_id != null
+        ]
+      ]))
+    )
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for _, g in var.security_groups : [
+        for r in g.rules :
+        r.cidr_group == null || contains(keys(var.cidr_groups), coalesce(r.cidr_group, "-"))
+      ]
+    ]))
+    error_message = format(
+      "Правила %s ссылаются на набор префиксов, которого нет в карте cidr_groups. Правило называет набор КЛЮЧОМ карты этого модуля: у несозданного набора идентификатора нет ни у кого. Известные ключи: %s.",
+      join(", ", flatten([
+        for k, g in var.security_groups : [
+          for i, r in g.rules : "${k}[${i}]"
+          if r.cidr_group != null && !contains(keys(var.cidr_groups), coalesce(r.cidr_group, "-"))
+        ]
+      ])),
+      length(var.cidr_groups) == 0 ? "карта cidr_groups пуста" : join(", ", keys(var.cidr_groups))
+    )
+  }
+
+  # Пустой набор целью быть НЕ МОЖЕТ: край отвергает такое правило («a rule cannot reference
+  # an empty set»), потому что правило иначе либо потеряло бы фильтр, либо перестало
+  # пропускать что-либо — оба исхода молчаливы. Проверка ограничена НАЗВАННЫМИ наборами:
+  # объявить пустой набор, на который никто не ссылается, край позволяет, и запрещать это
+  # модулю не за что.
+  validation {
+    condition = alltrue(flatten([
+      for _, g in var.security_groups : [
+        for r in g.rules :
+        length(var.cidr_groups[r.cidr_group].v4_cidr_blocks) +
+        length(var.cidr_groups[r.cidr_group].v6_cidr_blocks) > 0
+        if r.cidr_group != null && contains(keys(var.cidr_groups), coalesce(r.cidr_group, "-"))
+      ]
+    ]))
+    error_message = format(
+      "Правила %s ссылаются на ПУСТОЙ набор префиксов. Край отвергает такое правило: набор без единого члена не сужает и не расширяет ничего, а молча меняет смысл правила. Задайте набору хотя бы один блок.",
+      join(", ", flatten([
+        for k, g in var.security_groups : [
+          for i, r in g.rules : "${k}[${i}]"
+          if r.cidr_group != null && contains(keys(var.cidr_groups), coalesce(r.cidr_group, "-")) &&
+          length(var.cidr_groups[r.cidr_group].v4_cidr_blocks) +
+          length(var.cidr_groups[r.cidr_group].v6_cidr_blocks) == 0
         ]
       ]))
     )

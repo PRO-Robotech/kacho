@@ -43,7 +43,6 @@ export const templates = {
       target_port: targetPort,
       ip_version: 'IPV4',
       address_spec: addressSpec,
-      proxy_protocol_v2: false,
     });
   },
 

@@ -1095,10 +1095,26 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// CQRS-Repository (`kachoRepo`). У NIC нет Move RPC (NIC привязан к Subnet).
 	// Address-attach/detach идёт через writer-TX (`w.Addresses()`) внутри Create/
 	// Update — отдельный addressAdapter в эти UC больше не передаётся.
-	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	//
+	// Ограничение полосы, задаваемое арендатором, принимается ровно тогда, когда
+	// посадка объявила умение исполнителя, и в промежутке, верхний край которого —
+	// её же объявленная гарантия. Правило собирается ОДИН раз и раздаётся обоим
+	// путям: собери его дважды — и стенд однажды получит поле, которое нельзя
+	// задать при создании и можно дописать изменением. Пустоту промежутка при
+	// объявленном умении не пускает страж старта (`cfg.ValidateExecutorProfile`
+	// выше), поэтому здесь остаётся чтение настроек, а не своя арифметика.
+	bandwidthPolicy := domain.NewBandwidthLimitPolicy(
+		cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
+		cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
+	)
+	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).
+		WithRegistrar(registrar).
+		WithBandwidthLimitPolicy(bandwidthPolicy)
 	niHandler := niapp.NewHandler(
 		niCreateUC,
-		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
+		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).
+			WithRegistrar(registrar).
+			WithBandwidthLimitPolicy(bandwidthPolicy),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo),
 		niapp.NewListNetworkInterfacesUseCase(kachoRepo, listFilter),

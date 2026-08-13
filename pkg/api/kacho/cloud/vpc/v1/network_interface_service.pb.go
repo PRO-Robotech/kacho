@@ -247,10 +247,15 @@ type CreateNetworkInterfaceRequest struct {
 	// subnet) to attach to the interface. To allocate a fresh IP, first create an
 	// internal Address (AddressService.Create with internal_ipv4_address_spec.subnet_id)
 	// and pass its id here.
-	V4AddressIds  []string `protobuf:"bytes,12,rep,name=v4_address_ids,json=v4AddressIds,proto3" json:"v4_address_ids,omitempty"`
-	V6AddressIds  []string `protobuf:"bytes,13,rep,name=v6_address_ids,json=v6AddressIds,proto3" json:"v6_address_ids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	V4AddressIds []string `protobuf:"bytes,12,rep,name=v4_address_ids,json=v4AddressIds,proto3" json:"v4_address_ids,omitempty"`
+	V6AddressIds []string `protobuf:"bytes,13,rep,name=v6_address_ids,json=v6AddressIds,proto3" json:"v6_address_ids,omitempty"`
+	// Верхняя граница полосы интерфейса, Мбит/с. Ноль — ограничения нет. Непустая
+	// величина принимается ТОЛЬКО когда исполнитель датаплейна стенда объявил
+	// умение её исполнять; иначе — синхронный INVALID_ARGUMENT с именем поля.
+	// Промежуток — (гарантированная полоса продукта; гарантия этого стенда].
+	BandwidthLimitMbps int64 `protobuf:"varint,14,opt,name=bandwidth_limit_mbps,json=bandwidthLimitMbps,proto3" json:"bandwidth_limit_mbps,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *CreateNetworkInterfaceRequest) Reset() {
@@ -353,6 +358,13 @@ func (x *CreateNetworkInterfaceRequest) GetV6AddressIds() []string {
 	return nil
 }
 
+func (x *CreateNetworkInterfaceRequest) GetBandwidthLimitMbps() int64 {
+	if x != nil {
+		return x.BandwidthLimitMbps
+	}
+	return 0
+}
+
 type CreateNetworkInterfaceMetadata struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
@@ -401,7 +413,7 @@ type UpdateNetworkInterfaceRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
 	// Field mask of the fields to update (name, description, labels, security_group_ids,
-	// v4_address_ids, v6_address_ids).
+	// v4_address_ids, v6_address_ids, bandwidth_limit_mbps).
 	UpdateMask       *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Description      string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
@@ -409,8 +421,11 @@ type UpdateNetworkInterfaceRequest struct {
 	SecurityGroupIds []string               `protobuf:"bytes,6,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
 	V4AddressIds     []string               `protobuf:"bytes,9,rep,name=v4_address_ids,json=v4AddressIds,proto3" json:"v4_address_ids,omitempty"`
 	V6AddressIds     []string               `protobuf:"bytes,10,rep,name=v6_address_ids,json=v6AddressIds,proto3" json:"v6_address_ids,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Верхняя граница полосы, Мбит/с. Изменяема (настройка, а не идентичность);
+	// ноль снимает ограничение. Условия приёма — те же, что на создании.
+	BandwidthLimitMbps int64 `protobuf:"varint,11,opt,name=bandwidth_limit_mbps,json=bandwidthLimitMbps,proto3" json:"bandwidth_limit_mbps,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateNetworkInterfaceRequest) Reset() {
@@ -497,6 +512,13 @@ func (x *UpdateNetworkInterfaceRequest) GetV6AddressIds() []string {
 		return x.V6AddressIds
 	}
 	return nil
+}
+
+func (x *UpdateNetworkInterfaceRequest) GetBandwidthLimitMbps() int64 {
+	if x != nil {
+		return x.BandwidthLimitMbps
+	}
+	return 0
 }
 
 type UpdateNetworkInterfaceMetadata struct {
@@ -764,7 +786,7 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"network_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\tnetworkId\"\x9c\x01\n" +
 	"\x1dListNetworkInterfacesResponse\x12S\n" +
 	"\x12network_interfaces\x18\x01 \x03(\v2$.kacho.cloud.vpc.v1.NetworkInterfaceR\x11networkInterfaces\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x85\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb7\x05\n" +
 	"\x1dCreateNetworkInterfaceRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
@@ -777,13 +799,14 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"instanceId\x12\x14\n" +
 	"\x05index\x18\t \x01(\tR\x05index\x12$\n" +
 	"\x0ev4_address_ids\x18\f \x03(\tR\fv4AddressIds\x12$\n" +
-	"\x0ev6_address_ids\x18\r \x03(\tR\fv6AddressIds\x1a9\n" +
+	"\x0ev6_address_ids\x18\r \x03(\tR\fv6AddressIds\x120\n" +
+	"\x14bandwidth_limit_mbps\x18\x0e \x01(\x03R\x12bandwidthLimitMbps\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\n" +
 	"\x10\vJ\x04\b\v\x10\f\"R\n" +
 	"\x1eCreateNetworkInterfaceMetadata\x120\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\xe3\x04\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\x95\x05\n" +
 	"\x1dUpdateNetworkInterfaceRequest\x12>\n" +
 	"\x14network_interface_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x12networkInterfaceId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
@@ -794,7 +817,8 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\x12security_group_ids\x18\x06 \x03(\tR\x10securityGroupIds\x12$\n" +
 	"\x0ev4_address_ids\x18\t \x03(\tR\fv4AddressIds\x12$\n" +
 	"\x0ev6_address_ids\x18\n" +
-	" \x03(\tR\fv6AddressIds\x1a9\n" +
+	" \x03(\tR\fv6AddressIds\x120\n" +
+	"\x14bandwidth_limit_mbps\x18\v \x01(\x03R\x12bandwidthLimitMbps\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\t\"R\n" +

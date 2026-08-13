@@ -149,7 +149,6 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	)
 	listener.Description = domain.LbDescription(req.GetDescription())
 	listener.Labels = domain.LabelsFromMap(req.GetLabels())
-	listener.ProxyProtocolV2 = req.GetProxyProtocolV2()
 	// NLB-1b MIGRATE: wire the (already prechecked) authoritative targetGroupId.
 	if tgID != "" {
 		listener.DefaultTargetGroupID = option.MustNewOption(domain.ResourceID(tgID))

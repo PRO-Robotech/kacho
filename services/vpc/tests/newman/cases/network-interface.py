@@ -665,3 +665,86 @@ CASES.append(Case(
 
 
 
+
+
+# ── Ограничение полосы, задаваемое арендатором ───────────────────────────────
+#
+# ПРЕДПОСЫЛКА ЭТИХ ДВУХ КЕЙСОВ НАЗВАНА ПРЯМО: чарт этого дерева объявляет
+# `dataplane.executor.tenantSettableBandwidthLimit: false`
+# (`services/vpc/deploy/values.yaml`), и это объявление читает декларативная проба
+# `services/vpc/deploy/executor_profile_test.go`. То есть предмет отказа —
+# СВОЙСТВО СТЕНДА, а не универсальная истина.
+#
+# Что будет, если стенд объявит умение: отрицательный кейс покраснеет. Это верное
+# поведение, а не хрупкость — предпосылка изменилась, и изменение обязано быть
+# видно. Тогда рядом заводится положительная половина (величина применяется и
+# видна в ресурсе), а этот кейс переезжает на стенд без умения. Маска, whitelist
+# и «известное красное» здесь запрещены ровно как везде.
+
+CASES.append(Case(
+    id="NIC-CR-VAL-BANDWIDTH-LIMIT-NOT-DECLARED",
+    title="Create NIC с bandwidthLimitMbps на стенде без умения → InvalidArgument с именем поля",
+    classes=["VAL", "NEG"],
+    priority="P1",
+    steps=[
+        *_net_subnet_steps("bwlim", cidr="10.68.0.0/24"),
+        Step(name="create-with-limit", method="POST", path="/vpc/v1/networkInterfaces",
+             # Величина заведомо ЗАКОННА по промежутку (выше гарантированного пола
+             # 1000 Мбит/с): единственная причина отказа — необъявленное умение
+             # исполнителя. Возьми величину вне промежутка — и кейс перестал бы
+             # различать две разные причины отказа.
+             body={"projectId": "{{_suiteProjectId}}", "subnetId": "{{subId}}",
+                   "name": "nic-bwlim-{{runId}}", "bandwidthLimitMbps": 2000},
+             test_script=[
+                 # Отказ СИНХРОННЫЙ: величину задаёт вызывающий, и её негодность
+                 # видна без обращения к БД. `oneOf([200, 400])` здесь было бы
+                 # отсутствием утверждения — сними проверку из сервиса, и кейс
+                 # остался бы зелёным, приняв 200.
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет поле и причину', () => {",
+                 "  const j = pm.response.json();",
+                 "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
+                 "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('bandwidth_limit_mbps');",
+                 "  pm.expect(j.message || '', pm.response.text()).to.include('does not declare');",
+                 "});",
+                 "pm.environment.set('opId', '');",
+             ]),
+        _cleanup_subnet(),
+        poll_operation_until_done(),
+        _cleanup_net(),
+        poll_operation_until_done(),
+    ],
+))
+
+CASES.append(Case(
+    id="NIC-CR-VAL-BANDWIDTH-LIMIT-UNSET-OK",
+    title="Create NIC с bandwidthLimitMbps=0 на том же стенде → 200 (отсутствие просьбы не есть просьба)",
+    classes=["VAL", "CRUD"],
+    priority="P1",
+    steps=[
+        # Положительный контроль к предыдущему кейсу, и он обязателен: без него
+        # «отвергнуто» неотличимо от «этот стенд не принимает создание интерфейса
+        # вовсе», а отказ выше был бы неотличим от заглушенного пути.
+        *_net_subnet_steps("bwzero", cidr="10.69.0.0/24"),
+        Step(name="create-zero-limit", method="POST", path="/vpc/v1/networkInterfaces",
+             body={"projectId": "{{_suiteProjectId}}", "subnetId": "{{subId}}",
+                   "name": "nic-bwzero-{{runId}}", "bandwidthLimitMbps": 0},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkInterfaceId", "nicId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-nic", method="GET",
+             path="/vpc/v1/networkInterfaces/{{nicId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('ограничения нет — и это видно нулём, а не отсутствием ключа', () => {",
+                          "  const j = pm.response.json();",
+                          "  pm.expect(j.bandwidthLimitMbps === undefined || Number(j.bandwidthLimitMbps) === 0,",
+                          "    pm.response.text()).to.eql(true);",
+                          "});"])),
+        *_cleanup_nic(),
+        _cleanup_subnet(),
+        poll_operation_until_done(),
+        _cleanup_net(),
+        poll_operation_until_done(),
+    ],
+))

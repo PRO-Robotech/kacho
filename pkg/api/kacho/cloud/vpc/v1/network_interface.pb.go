@@ -138,6 +138,19 @@ type NetworkInterface struct {
 	// (locally-administered, unicast) зарезервирован под Kachō, остальные 5 байт
 	// — `crypto/rand` (40 бит ≈ 1T значений). Пример: `0e:1a:2b:3c:4d:5e`.
 	MacAddress string `protobuf:"bytes,19,opt,name=mac_address,json=macAddress,proto3" json:"mac_address,omitempty"`
+	// Верхняя граница полосы интерфейса, Мбит/с, заданная АРЕНДАТОРОМ. Ноль —
+	// ограничения нет (единственное представление отсутствия).
+	//
+	// Поле принимается ТОЛЬКО на стенде, чей исполнитель датаплейна объявил умение
+	// ограничивать полосу логического порта. Там, где умения нет, непустая величина
+	// отвергается синхронно с именем поля и причиной: принять её значило бы отдать
+	// арендатору успех на настройке, которая не действует.
+	//
+	// Промежуток — (гарантированная полоса продукта; гарантия, объявленная этим
+	// стендом]. Ниже пола ограничение противоречило бы обещанию платформы «не менее
+	// 1 Гбит/с на интерфейс», выше объявленной гарантии — ограничивать нечего.
+	// Величина ИЗМЕНЯЕМА: это настройка, а не идентичность.
+	BandwidthLimitMbps int64 `protobuf:"varint,20,opt,name=bandwidth_limit_mbps,json=bandwidthLimitMbps,proto3" json:"bandwidth_limit_mbps,omitempty"`
 	// Грубый статус интерфейса.
 	Status        NetworkInterface_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.vpc.v1.NetworkInterface_Status" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -258,6 +271,13 @@ func (x *NetworkInterface) GetMacAddress() string {
 	return ""
 }
 
+func (x *NetworkInterface) GetBandwidthLimitMbps() int64 {
+	if x != nil {
+		return x.BandwidthLimitMbps
+	}
+	return 0
+}
+
 func (x *NetworkInterface) GetStatus() NetworkInterface_Status {
 	if x != nil {
 		return x.Status
@@ -269,7 +289,7 @@ var File_kacho_cloud_vpc_v1_network_interface_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_interface_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/vpc/v1/network_interface.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xfc\x05\n" +
+	"*kacho/cloud/vpc/v1/network_interface.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xae\x06\n" +
 	"\x10NetworkInterface\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -286,7 +306,8 @@ const file_kacho_cloud_vpc_v1_network_interface_proto_rawDesc = "" +
 	" \x03(\tR\x10securityGroupIds\x129\n" +
 	"\aused_by\x18\x12 \x01(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x12\x1f\n" +
 	"\vmac_address\x18\x13 \x01(\tR\n" +
-	"macAddress\x12C\n" +
+	"macAddress\x120\n" +
+	"\x14bandwidth_limit_mbps\x18\x14 \x01(\x03R\x12bandwidthLimitMbps\x12C\n" +
 	"\x06status\x18\r \x01(\x0e2+.kacho.cloud.vpc.v1.NetworkInterface.StatusR\x06status\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

@@ -90,6 +90,36 @@ output "security_group_ids" {
   value       = { for name, g in kacho_vpc_security_group.this : name => g.id }
 }
 
+output "cidr_group_ids" {
+  description = <<-EOT
+    Идентификаторы именованных наборов префиксов по ключам карты `cidr_groups`.
+
+    Правилам ЭТОГО модуля они не нужны: там набор называется ключом (`cidr_group`), и
+    идентификатор модуль подставляет сам. Здесь они — для правил, заводимых вне модуля:
+    группа безопасности из соседнего вызова сошлётся на набор этим значением, и ссылка
+    построит ребро графа — её правило снимется раньше набора.
+  EOT
+  value       = { for name, g in kacho_vpc_cidr_group.this : name => g.id }
+}
+
+output "cidr_groups" {
+  description = <<-EOT
+    Наборы целиком — идентификатор, состав по семьям и число членов.
+
+    `cidr_block_count` считает КРАЙ по обеим семьям: это единственное место, где видно, что
+    состав доехал целиком, — например, что повторное добавление того же префикса не удвоило
+    набор.
+  EOT
+  value = {
+    for name, g in kacho_vpc_cidr_group.this : name => {
+      id               = g.id
+      v4_cidr_blocks   = g.v4_cidr_blocks
+      v6_cidr_blocks   = g.v6_cidr_blocks
+      cidr_block_count = g.cidr_block_count
+    }
+  }
+}
+
 output "route_table_ids" {
   description = <<-EOT
     Идентификаторы таблиц маршрутизации по ключам карты `route_tables`.

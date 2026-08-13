@@ -208,15 +208,14 @@ func (x *ListListenersResponse) GetNextPageToken() string {
 }
 
 type CreateListenerRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	LoadBalancerId  string                 `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
-	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description     string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels          map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Protocol        Listener_Protocol      `protobuf:"varint,5,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
-	Port            int64                  `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
-	TargetPort      int64                  `protobuf:"varint,7,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
-	ProxyProtocolV2 bool                   `protobuf:"varint,10,opt,name=proxy_protocol_v2,json=proxyProtocolV2,proto3" json:"proxy_protocol_v2,omitempty"`
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	LoadBalancerId string                 `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
+	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description    string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Labels         map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Protocol       Listener_Protocol      `protobuf:"varint,5,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
+	Port           int64                  `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	TargetPort     int64                  `protobuf:"varint,7,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
 	// Default target group ID — soft reference to a TG attached to the parent
 	// LB. Optional; can be set later via Update.
 	DefaultTargetGroupId string `protobuf:"bytes,11,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
@@ -307,13 +306,6 @@ func (x *CreateListenerRequest) GetTargetPort() int64 {
 	return 0
 }
 
-func (x *CreateListenerRequest) GetProxyProtocolV2() bool {
-	if x != nil {
-		return x.ProxyProtocolV2
-	}
-	return false
-}
-
 func (x *CreateListenerRequest) GetDefaultTargetGroupId() string {
 	if x != nil {
 		return x.DefaultTargetGroupId
@@ -390,7 +382,6 @@ type UpdateListenerRequest struct {
 	Name                 string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Description          string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	Labels               map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ProxyProtocolV2      bool                   `protobuf:"varint,6,opt,name=proxy_protocol_v2,json=proxyProtocolV2,proto3" json:"proxy_protocol_v2,omitempty"`
 	DefaultTargetGroupId string                 `protobuf:"bytes,7,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
 	// target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
 	// listener to another target group. When present in update_mask it takes
@@ -463,13 +454,6 @@ func (x *UpdateListenerRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
-}
-
-func (x *UpdateListenerRequest) GetProxyProtocolV2() bool {
-	if x != nil {
-		return x.ProxyProtocolV2
-	}
-	return false
 }
 
 func (x *UpdateListenerRequest) GetDefaultTargetGroupId() string {
@@ -758,7 +742,7 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"\x84\x01\n" +
 	"\x15ListListenersResponse\x12C\n" +
 	"\tlisteners\x18\x01 \x03(\v2%.kacho.cloud.loadbalancer.v1.ListenerR\tlisteners\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xd7\x05\n" +
 	"\x15CreateListenerRequest\x126\n" +
 	"\x10load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0eloadBalancerId\x125\n" +
 	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
@@ -767,20 +751,19 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\bprotocol\x18\x05 \x01(\x0e2..kacho.cloud.loadbalancer.v1.Listener.ProtocolB\x04\xe8\xc71\x01R\bprotocol\x12\x1f\n" +
 	"\x04port\x18\x06 \x01(\x03B\v\xfa\xc71\a1-65535R\x04port\x12,\n" +
 	"\vtarget_port\x18\a \x01(\x03B\v\xfa\xc71\a1-65535R\n" +
-	"targetPort\x12*\n" +
-	"\x11proxy_protocol_v2\x18\n" +
-	" \x01(\bR\x0fproxyProtocolV2\x12?\n" +
+	"targetPort\x12?\n" +
 	"\x17default_target_group_id\x18\v \x01(\tB\b\x8a\xc81\x04<=50R\x14defaultTargetGroupId\x120\n" +
 	"\x0ftarget_group_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"R\n" +
-	"ip_versionR\faddress_spec\"c\n" +
+	"J\x04\b\n" +
+	"\x10\vR\n" +
+	"ip_versionR\faddress_specR\x11proxy_protocol_v2\"c\n" +
 	"\x16CreateListenerMetadata\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\x12(\n" +
-	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"\xd7\x04\n" +
+	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"\xc4\x04\n" +
 	"\x15UpdateListenerRequest\x12-\n" +
 	"\vlistener_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"listenerId\x12;\n" +
@@ -788,13 +771,12 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"updateMask\x125\n" +
 	"\x04name\x18\x03 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
 	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x93\x01\n" +
-	"\x06labels\x18\x05 \x03(\v2>.kacho.cloud.loadbalancer.v1.UpdateListenerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12*\n" +
-	"\x11proxy_protocol_v2\x18\x06 \x01(\bR\x0fproxyProtocolV2\x12?\n" +
+	"\x06labels\x18\x05 \x03(\v2>.kacho.cloud.loadbalancer.v1.UpdateListenerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12?\n" +
 	"\x17default_target_group_id\x18\a \x01(\tB\b\x8a\xc81\x04<=50R\x14defaultTargetGroupId\x120\n" +
 	"\x0ftarget_group_id\x18\b \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x11proxy_protocol_v2\"9\n" +
 	"\x16UpdateListenerMetadata\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\"F\n" +

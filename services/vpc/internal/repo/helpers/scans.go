@@ -5,6 +5,7 @@ package helpers
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -54,7 +55,55 @@ const GatewayCols = `id, project_id, created_at, name, description, labels, gate
 
 // NICCols — список колонок таблицы network_interfaces в порядке, ожидаемом ScanNI.
 const NICCols = `id, project_id, created_at, name, description, labels, subnet_id,
-	v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status`
+	v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status,
+	bandwidth_limit_mbps`
+
+// NICColsAliased — тот же перечень, что NICCols, но с алиасом таблицы у каждой
+// колонки. Нужен там, где интерфейс читается в соединении с подсетью
+// (`UPDATE network_interfaces ni … FROM subnets s …`): без алиаса `id`/`name`/
+// `created_at` в RETURNING неоднозначны — подсеть несёт колонки тех же имён.
+//
+// # Почему ВЫВОДИТСЯ, а не выписывается второй раз
+//
+// Выписанная копия — второе место об одном предмете, и разошлась она молча:
+// колонка, добавленная в NICCols, в копию не попала, и запрос упал на
+// несовпадении числа колонок и приёмников уже на интеграционном прогоне. Вывод
+// делает расхождение невозможным by construction: перечень один, порядок один,
+// и добавление колонки доезжает в оба запроса одновременно.
+//
+// # Предпосылка проверяется здесь же
+//
+// Преобразование законно ровно пока каждая запись перечня — ГОЛЫЙ идентификатор
+// колонки: приписать алиас к выражению (`(SELECT …) AS x`, `count(*)`) нельзя, и
+// молчаливо испорченный запрос был бы хуже отсутствия функции. Такую запись
+// функция не пропускает — она паникует при сборке запроса, а не отдаёт негодный
+// SQL: предмет отказа виден в тесте и на старте, а не в отчёте о непонятной
+// ошибке базы.
+func NICColsAliased(alias string) string { return AliasColumns(alias, NICCols) }
+
+// AliasColumns приписывает алиас таблицы каждой записи перечня колонок.
+//
+// Отдельная экспортируемая функция, а не тело предыдущей, по одной причине: у
+// отрицательной половины её пробы должен быть ПРОИЗВОДИТЕЛЬ негодного входа.
+// Спрятав разбор внутри, проверить отказ на выражении было бы нечем — пришлось бы
+// портить действующий перечень, то есть проверять предикат на входе, которого в
+// дереве нет.
+func AliasColumns(alias, list string) string {
+	parts := strings.Split(list, ",")
+	out := make([]string, 0, len(parts))
+	for _, raw := range parts {
+		col := strings.TrimSpace(raw)
+		if col == "" {
+			continue
+		}
+		if strings.ContainsAny(col, " \t(){}*") {
+			panic(fmt.Sprintf("helpers.AliasColumns: запись %q не является голым именем колонки — "+
+				"приписать ей алиас нельзя; вынеси выражение из перечня либо строй такой запрос вручную", col))
+		}
+		out = append(out, alias+"."+col)
+	}
+	return strings.Join(out, ", ")
+}
 
 // AddressPoolCols — список колонок address_pools в порядке, ожидаемом ScanAddressPool.
 const AddressPoolCols = `id, name, description, labels, v4_cidr_blocks, v6_cidr_blocks, kind, zone_id, is_default, selector_labels, selector_priority, created_at, modified_at`
@@ -298,6 +347,7 @@ func ScanNI(row Scannable) (*kachorepo.NetworkInterfaceRecord, error) {
 	if err := row.Scan(
 		&rec.ID, &rec.ProjectID, &rec.CreatedAt, &name, &description, &labelsJSON, &rec.SubnetID,
 		&v4IDsJSON, &v6IDsJSON, &sgJSON, &rec.UsedByType, &rec.UsedByID, &rec.UsedByName, &rec.MAC, &statusName,
+		&rec.BandwidthLimitMbps,
 	); err != nil {
 		return nil, err
 	}

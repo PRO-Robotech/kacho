@@ -55,5 +55,8 @@ func (u *GetSecurityGroupUseCase) Execute(ctx context.Context, id string) (*kach
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	if uerr := loadUsedBy(ctx, rd.SecurityGroups(), []*kacho.SecurityGroupRecord{sg}); uerr != nil {
+		return nil, serviceerr.MapRepoErr(uerr)
+	}
 	return sg, nil
 }

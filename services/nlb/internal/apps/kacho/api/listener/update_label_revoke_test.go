@@ -333,9 +333,9 @@ func TestUpdateListener_NonLabelsMask_NoMirrorIntent(t *testing.T) {
 	suite := newUpdateSuite(t)
 
 	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
-		ListenerId:      string(suite.listener.ID),
-		UpdateMask:      &fieldmaskpb.FieldMask{Paths: []string{"proxy_protocol_v2"}},
-		ProxyProtocolV2: true,
+		ListenerId:  string(suite.listener.ID),
+		UpdateMask:  &fieldmaskpb.FieldMask{Paths: []string{"description"}},
+		Description: "non-labels mutation",
 	})
 	require.NoError(t, err)
 	require.Nil(t, awaitOpDone(t, suite.ops, op.ID, time.Second).Error)

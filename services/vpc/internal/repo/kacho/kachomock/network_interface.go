@@ -219,14 +219,20 @@ func (nw *networkInterfaceWriter) UpdateMeta(_ context.Context, n *domain.Networ
 		return nil, repo.ErrNotFound
 	}
 	// Обновляем mutable-поля (parity с pg-impl): name/description/labels/
-	// security_group_ids/v4_address_ids/v6_address_ids. Immutable: project_id/
-	// subnet_id/mac_address.
+	// security_group_ids/v4_address_ids/v6_address_ids/bandwidth_limit_mbps.
+	// Immutable: project_id/subnet_id/mac_address.
+	//
+	// Перечень обязан совпадать с колонками, которые правит настоящий писатель:
+	// дублёр, СНИСХОДИТЕЛЬНЕЕ или СКУПЕЕ продукта, делает невидимым ровно то, ради
+	// чего его подставляют. Скупее — это когда поле правится в проде и не правится
+	// здесь: проба зеленеет на «не изменилось» и молчит о сломанном применении.
 	existing.Name = n.Name
 	existing.Description = n.Description
 	existing.Labels = n.Labels
 	existing.SecurityGroupIDs = n.SecurityGroupIDs
 	existing.V4AddressIDs = n.V4AddressIDs
 	existing.V6AddressIDs = n.V6AddressIDs
+	existing.BandwidthLimitMbps = n.BandwidthLimitMbps
 	cp := *existing
 	return &cp, nil
 }
