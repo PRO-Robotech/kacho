@@ -2,8 +2,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { jest } from "@jest/globals";
-
 import { changeDiskTypeAllowed } from "./ChangeDiskTypeDialog";
 
 // Край подменён целиком: предмет утверждения — вызов, а не ответ. Модуль
