@@ -276,5 +276,3 @@ uif:
   system:
     image: docker.io/prorobotech/kacho-ui-future-system:main-d00616453addb3264a6d1bce7e422cc7788cb031
     resources: *id002
-minioDev:
-  enabled: false

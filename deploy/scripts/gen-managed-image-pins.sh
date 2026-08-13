@@ -251,8 +251,6 @@ pg-vpc:
   image:
     repository: bitnamilegacy/postgresql
     tag: 16.4.0-debian-12-r0
-minioDev:
-  image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
 localStand:
   image: kacho-vpc:dev
 EOF

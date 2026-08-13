@@ -5,7 +5,7 @@
 #
 # Covers the second-audit INFRA findings on the umbrella-owned auxiliary
 # workloads that the first sec-hardening pass (sec-hardening-test.sh) did NOT
-# reach — the Ory kratos-selfservice-ui sub-chart, the minio-dev dev store and
+# reach — the Ory kratos-selfservice-ui sub-chart, and
 # the hydra-trust-grants federation-in bootstrap Job:
 #
 #   1. kratos-selfservice-ui COOKIE_SECRET / CSRF_COOKIE_SECRET no longer ship a
@@ -15,14 +15,10 @@
 #   2. NODE_TLS_REJECT_UNAUTHORIZED=0 is gated behind insecureSkipTLSVerify — it
 #      is ABSENT under the prod profile (cert verification stays ON) and present
 #      only on the dev stand.
-#   3. kratos-selfservice-ui, minio-dev and hydra-trust-grants-job carry the
+#   3. kratos-selfservice-ui and hydra-trust-grants-job carry the
 #      restricted securityContext floor (runAsNonRoot, runAsUser!=0,
 #      readOnlyRootFilesystem, drop ALL caps, allowPrivilegeEscalation=false,
 #      seccompProfile RuntimeDefault) on every container.
-#   4. minio-dev root credentials come from a Secret via secretKeyRef, not
-#      plaintext env in values.
-#
-# Contracts unchanged (helm/CI/docs only). Mirrors tests/helm/*-test.sh.
 set -euo pipefail
 
 SCRIPT="$(basename "$0")"
@@ -136,9 +132,6 @@ UI_POD_SC=$(echo "$UI_DEV" | yq 'select(.kind=="Deployment") | .spec.template.sp
 [ "$(echo "$UI_POD_SC" | yq '.seccompProfile.type')" = "RuntimeDefault" ] || fail "kratos-ui: pod seccomp != RuntimeDefault"
 ok
 
-MINIO=$(render "$DEV" "templates/minio-dev.yaml")
-assert_sc "$MINIO" minio "minio-dev"
-assert_sc "$MINIO" mc "minio-dev-init"
 
 # hydraTrustGrants.adminUrl — ОБЯЗАТЕЛЕН при включённом federationIn: шаблон
 # роняет РЕНДЕР, если адрес не объявлен (он внесён в перепись потребителей
@@ -165,11 +158,5 @@ TRUST=$(render "$DEV" "templates/hydra-trust-grants-job.yaml" \
 [ -n "$TRUST" ] || fail "hydra-trust-grants: рендер пуст — утверждения НЕ ВЫПОЛНЕНЫ, а не чисты"
 assert_sc "$TRUST" trust-grants "hydra-trust-grants"
 
-# ── 4. minio-dev root credentials via secretKeyRef (not plaintext env) ────────
-MINIO_USER_REF=$(env_secret_ref "$MINIO" minio MINIO_ROOT_USER)
-MINIO_PW_REF=$(env_secret_ref "$MINIO" minio MINIO_ROOT_PASSWORD)
-[ -n "$MINIO_USER_REF" ] && [ "$MINIO_USER_REF" != "null" ] || fail "minio-dev: MINIO_ROOT_USER not via secretKeyRef"
-[ -n "$MINIO_PW_REF" ] && [ "$MINIO_PW_REF" != "null" ] || fail "minio-dev: MINIO_ROOT_PASSWORD not via secretKeyRef"
-ok
 
 echo "$SCRIPT: all green ($N assertions)"

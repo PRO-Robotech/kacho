@@ -68,7 +68,6 @@ export function IamOperationsPage() {
       fresh.forEach((o) => byId.set(o.id, o));
       return Array.from(byId.values());
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, pageToken]);
 
   const nextToken = data?.next_page_token || null;

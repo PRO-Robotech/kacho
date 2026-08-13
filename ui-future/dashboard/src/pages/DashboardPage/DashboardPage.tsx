@@ -54,7 +54,7 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
   // (чтобы выбранный проект был виден в раскрытом узле).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const accResp = await apiList<{ accounts?: Array<{ id: string; name?: string }> }>("/iam/v1/accounts", {
           pageSize: "1000",
@@ -123,6 +123,7 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
         // При поиске убираем аккаунт, если ни имя, ни его (загруженные) проекты
         // не совпали.
         if (q && !accMatch && loaded && (children?.length ?? 0) === 0) return null;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- утверждение НЕСУЩЕЕ: без него узел выводится с `key: string`, тогда как `DataNode.key` — это `Key` (string | number), и предикат `.filter((n): n is DataNode …)` ниже становится недопустимым (проверено tsc: удаление даёт TS2322 и TS2677). Правило смотрит только на непосредственного получателя и о предикате ничего не знает.
         return {
           key: `acc:${account.id}`,
           selectable: false,
