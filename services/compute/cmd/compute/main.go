@@ -49,8 +49,10 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/realization"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
@@ -89,8 +91,10 @@ func main() {
 
 // services — собранный набор бизнес-сервисов (composition-point).
 type services struct {
-	machineType *machinetype.MachineTypeService
-	instance    *instance.InstanceService
+	machineType    *machinetype.MachineTypeService
+	instance       *instance.InstanceService
+	guestAccessKey *guestaccesskey.Service
+	realization    *realization.Service
 }
 
 func runServe(cfg config.Config) error {
@@ -281,7 +285,8 @@ func runServe(cfg config.Config) error {
 		}
 		defer closeReg()
 		svcs.instance.WithOwnerRegistrar(reg)
-		logger.Info("owner-tuple sync-registrar enabled (Instance Create)")
+		svcs.guestAccessKey.WithOwnerRegistrar(reg)
+		logger.Info("owner-tuple sync-registrar enabled (Instance/GuestAccessKey Create)")
 	}
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
@@ -879,6 +884,9 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 	return &services{
 		machineType: machinetype.NewMachineTypeService(machineTypeRepo, opsRepo),
 		instance:    instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
+		guestAccessKey: guestaccesskey.NewService(
+			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil),
+		realization: realization.NewService(instanceRepo),
 	}
 }
 
@@ -892,6 +900,7 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo operations.Repo, listFilter *authzfilter.Narrower) {
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
+	computev1.RegisterGuestAccessKeyServiceServer(srv, handler.NewGuestAccessKeyHandler(svcs.guestAccessKey, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
@@ -1093,4 +1102,5 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
+	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 }

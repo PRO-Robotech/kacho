@@ -63,7 +63,12 @@ var labelTouchedDiscriminators = map[string]string{
 var syncLabelDelivery = map[string]string{
 	"DeliverAfterCommit": "vpc — fgaregister.DeliverAfterCommit",
 	"syncRegister":       "nlb — UseCase.syncRegister",
-	"syncRegisterOwner":  "compute — syncRegisterOwner",
+	// compute: имя переехало в общий пакет `shared/ownersync`, когда синхронную
+	// доставку стал звать не только ресурс машины. Гейт знает точки доставки
+	// ПОИМЁННО, поэтому переименование делает площадку ему невидимой — что он и
+	// показал в тот же прогон. Здесь стоит короткое имя вызова (`ownersync.Register`
+	// разбирается как селектор `Register`).
+	"Register":           "compute — ownersync.Register",
 	"registerOwnerTuple": "storage — UseCase.registerOwnerTuple",
 }
 

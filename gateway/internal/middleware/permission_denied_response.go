@@ -170,6 +170,8 @@ var hideExistenceNotFoundFormats = map[string]string{
 	// Snapshot are NOT here: that duplicate of block storage was retired
 	// (kacho-storage owns those), and their rows went with it.
 	"compute_instance": "Instance %s not found",
+	// Ключ входа в машину — services/compute/internal/repo/guest_access_key_repo.go.
+	"compute_guest_access_key": "GuestAccessKey %s not found",
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

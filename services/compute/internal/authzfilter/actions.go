@@ -7,7 +7,8 @@ package authzfilter
 // iam.BatchCheck.checks[].resource.type). Must stay in sync with
 // internal/check/permission_map.go.
 const (
-	ResourceTypeInstance = "compute_instance"
+	ResourceTypeInstance       = "compute_instance"
+	ResourceTypeGuestAccessKey = "compute_guest_access_key"
 )
 
 // Compute-domain action strings. Format: `<domain>.<resource>.<verb>`.
@@ -30,5 +31,14 @@ const (
 // другого. Комментарий утверждал инвариант, которого код не держал, и переживал
 // обзоры именно поэтому.
 const (
-	ActionInstanceRead = "compute.instances.list"
+	ActionInstanceRead       = "compute.instances.list"
+	ActionGuestAccessKeyRead = "compute.guest_access_keys.list"
 )
+
+// PerObjectTypes — пообъектные типы прав, которые поднимает compute.
+//
+// Перечень назван ОДИН раз и читается всеми, кому он нужен (сужатель, дескриптор
+// процесса, формы сокрытия существования). Выписанный второй раз, он разошёлся
+// бы молча — и разошёлся бы именно там, где расхождение означает неполную карту
+// скрытия, то есть отличимый ответ на «нет доступа».
+var PerObjectTypes = []string{ResourceTypeInstance, ResourceTypeGuestAccessKey}

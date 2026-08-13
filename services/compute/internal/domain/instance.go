@@ -237,3 +237,18 @@ func (i *Instance) BootDiskMirror() *AttachedDisk {
 	}
 	return nil
 }
+
+// GuestAccessKey — публичная половина ключа, с которым арендатор входит в
+// машину.
+//
+// Закрытая половина здесь не хранится никогда: её место — у арендатора, а
+// хранилище закрытых ключей есть отдельный домен со своей моделью угроз.
+type GuestAccessKey struct {
+	ID          string
+	ProjectID   string
+	Name        string
+	PublicKey   string
+	Fingerprint string
+	Labels      map[string]string
+	CreatedAt   time.Time
+}

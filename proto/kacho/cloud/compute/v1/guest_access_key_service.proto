@@ -1,0 +1,183 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/compute/v1/guest_access_key.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// GuestAccessKeyService — ключи, с которыми арендатор входит в свои машины.
+//
+// Чтения синхронны, мутации возвращают операцию — общая форма продукта. Ключ
+// адресуется неизменяемым идентификатором; имя косметическое и в ссылках не
+// участвует.
+service GuestAccessKeyService {
+
+  rpc Get(GetGuestAccessKeyRequest) returns (GuestAccessKey) {
+    option (google.api.http) = {
+      get: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.get";
+    option (kacho.iam.authz.v1.required_relation) = "v_get";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_guest_access_key"
+      from_request_field: "guest_access_key_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc List(ListGuestAccessKeysRequest) returns (ListGuestAccessKeysResponse) {
+    option (google.api.http) = {
+      get: "/compute/v1/guestAccessKeys"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc Create(CreateGuestAccessKeyRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/compute/v1/guestAccessKeys"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Update — правка косметической части ключа.
+  //
+  // Меняются ИМЯ и МЕТКИ. Материал ключа неизменяем: подменить его значило бы
+  // сменить того, кто может войти, не сменив ни идентификатора, ни ссылок на
+  // него с машин — то есть тихо переадресовать доступ. Смена материала
+  // выражается парой «завести новый ключ, снять старый», и каждая половина этой
+  // пары видна в журнале.
+  rpc Update(UpdateGuestAccessKeyRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.update";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_guest_access_key"
+      from_request_field: "guest_access_key_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // ListOperations — операции над этим ключом.
+  //
+  // Та же форма, что у прочих ресурсов продукта: мутации асинхронны, и вопрос
+  // «что происходило с этим ключом» задаётся ему самому, а не журналу целиком.
+  rpc ListOperations(ListGuestAccessKeyOperationsRequest) returns (ListGuestAccessKeyOperationsResponse) {
+    option (google.api.http) = {get: "/compute/v1/guestAccessKeys/{guest_access_key_id}/operations"};
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_key_operations.listOperations";
+    option (kacho.iam.authz.v1.required_relation) = "v_list";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_guest_access_key"
+      from_request_field: "guest_access_key_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Delete — снятие ключа.
+  //
+  // Снятие ключа НЕ выселяет того, кто уже вошёл: соединение, установленное до
+  // снятия, живёт своей жизнью, и плоскость управления его не видит. Это
+  // свойство прямого входа, а не пробел реализации, и оно названо здесь, чтобы
+  // снятие не читалось как отзыв доступа.
+  rpc Delete(DeleteGuestAccessKeyRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      delete: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.delete";
+    option (kacho.iam.authz.v1.required_relation) = "v_delete";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_guest_access_key"
+      from_request_field: "guest_access_key_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+message GetGuestAccessKeyRequest {
+  string guest_access_key_id = 1;
+}
+
+message ListGuestAccessKeysRequest {
+  string project_id = 1;
+  int64 page_size = 2;
+  string page_token = 3;
+  string filter = 4;
+}
+
+message ListGuestAccessKeysResponse {
+  repeated GuestAccessKey guest_access_keys = 1;
+  string next_page_token = 2;
+}
+
+message CreateGuestAccessKeyRequest {
+  string project_id = 1;
+  string name = 2;
+
+  // Материал публичного ключа. Разбирается при создании: строка, которую нельзя
+  // разобрать, доехала бы до машины и молча не сработала, а отладка началась бы
+  // с гостя — то есть там, где причины нет.
+  string public_key = 3;
+
+  map<string, string> labels = 4;
+}
+
+message CreateGuestAccessKeyMetadata {
+  string guest_access_key_id = 1;
+}
+
+message UpdateGuestAccessKeyRequest {
+  string guest_access_key_id = 1;
+
+  // Маска изменяемых полей. Пустая — правка всех изменяемых полей из тела;
+  // неизменяемое поле в маске отвергается по имени, неизвестное — тоже.
+  google.protobuf.FieldMask update_mask = 2;
+
+  string name = 3;
+  map<string, string> labels = 4;
+}
+
+message UpdateGuestAccessKeyMetadata {
+  string guest_access_key_id = 1;
+}
+
+message ListGuestAccessKeyOperationsRequest {
+  string guest_access_key_id = 1;
+  int64 page_size = 2;
+  string page_token = 3;
+}
+
+message ListGuestAccessKeyOperationsResponse {
+  repeated operation.Operation operations = 1;
+  string next_page_token = 2;
+}
+
+message DeleteGuestAccessKeyRequest {
+  string guest_access_key_id = 1;
+}
+
+message DeleteGuestAccessKeyMetadata {
+  string guest_access_key_id = 1;
+}

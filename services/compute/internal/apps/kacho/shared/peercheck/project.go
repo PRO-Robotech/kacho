@@ -1,16 +1,24 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package instance
+// Package peercheck — проверки существования чужих ресурсов у их владельцев.
+//
+// Пакет отдельный НЕ ради слоя, а ради единственности: тот же вопрос задаёт
+// теперь не только машина, и вторая копия разошлась бы с первой ровно так, как
+// разошлись три копии, сведённые здесь в одну.
+
+package peercheck
 
 import (
 	"context"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
-// checkProject — единый cross-service existence-check владельца-Project через
+// Project — единый cross-service existence-check владельца-Project через
 // ProjectClient (kacho-iam ProjectService.Get). Раньше был byte-for-byte
 // продублирован в instance/image/disk (метод `checkFolder`) + inline в snapshot;
 // сведён в один helper (rule 11), чтобы маппинг (peer-недоступен → Unavailable,
@@ -25,7 +33,7 @@ import (
 // Код НЕ меняем: NotFound остаётся NotFound. Перевод этой peer-validate-линии на
 // FAILED_PRECONDITION (api-conventions.md by-lane code-split) — отдельное
 // ломающее решение, не здесь.
-func checkProject(ctx context.Context, pc ProjectClient, projectID string) error {
+func Project(ctx context.Context, pc ports.ProjectClient, projectID string) error {
 	exists, err := pc.Exists(ctx, projectID)
 	if err != nil {
 		return status.Error(codes.Unavailable, "project check: upstream project service unavailable")

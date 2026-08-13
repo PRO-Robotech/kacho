@@ -30,5 +30,6 @@ var PageRelations = map[string][]string{
 	// том, что гейт паритета сверяет объявление с каталогом прав ПОТИПНО: под одним
 	// умолчанием ему нечего сопоставлять, и «сверено типов = 0» выглядело бы как
 	// зелёное, будучи пустым.
-	"compute_instance": {"v_get"},
+	"compute_instance":         {"v_get"},
+	"compute_guest_access_key": {"v_get"},
 }

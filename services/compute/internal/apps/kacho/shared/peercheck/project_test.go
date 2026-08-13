@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package instance
+package peercheck
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// fakeProjectCheckClient — minimal ProjectClient stub for the checkProject
+// fakeProjectCheckClient — minimal ProjectClient stub for the Project
 // contract test (exists / absent / peer-down).
 type fakeProjectCheckClient struct {
 	exists bool
@@ -23,7 +23,7 @@ func (f fakeProjectCheckClient) Exists(context.Context, string) (bool, error) {
 	return f.exists, f.err
 }
 
-// TestCheckProject_UsesProjectVocabulary locks the error TEXT of the compute →
+// TestProject_UsesProjectVocabulary locks the error TEXT of the compute →
 // iam project existence-check to the Kachō vocabulary.
 //
 // The resource is `Project` (proto/kacho/cloud/iam/v1/project.proto); `Folder`
@@ -33,11 +33,11 @@ func (f fakeProjectCheckClient) Exists(context.Context, string) (bool, error) {
 //
 // Error CODE is deliberately NOT changed here (NotFound stays NotFound); moving
 // this peer-validate lane to FAILED_PRECONDITION is a separate breaking decision.
-func TestCheckProject_UsesProjectVocabulary(t *testing.T) {
+func TestProject_UsesProjectVocabulary(t *testing.T) {
 	const projectID = "prj1234567890abcdefg"
 
 	t.Run("absent project → NotFound with Project vocabulary", func(t *testing.T) {
-		err := checkProject(context.Background(), fakeProjectCheckClient{exists: false}, projectID)
+		err := Project(context.Background(), fakeProjectCheckClient{exists: false}, projectID)
 		if err == nil {
 			t.Fatal("expected an error for an absent project")
 		}
@@ -55,7 +55,7 @@ func TestCheckProject_UsesProjectVocabulary(t *testing.T) {
 	})
 
 	t.Run("peer down → Unavailable with project vocabulary", func(t *testing.T) {
-		err := checkProject(context.Background(),
+		err := Project(context.Background(),
 			fakeProjectCheckClient{err: errors.New("dial tcp: connection refused")}, projectID)
 		if err == nil {
 			t.Fatal("expected an error when the peer is unreachable")
@@ -78,7 +78,7 @@ func TestCheckProject_UsesProjectVocabulary(t *testing.T) {
 	})
 
 	t.Run("existing project → no error", func(t *testing.T) {
-		if err := checkProject(context.Background(),
+		if err := Project(context.Background(),
 			fakeProjectCheckClient{exists: true}, projectID); err != nil {
 			t.Fatalf("existing project must pass the check, got %v", err)
 		}

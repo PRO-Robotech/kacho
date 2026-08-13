@@ -13,7 +13,6 @@ import (
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	_ "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -2073,7 +2072,7 @@ var File_kacho_cloud_compute_v1_instance_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_compute_v1_instance_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a0kacho/cloud/compute/v1/hardware_generation.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/reference/reference.proto\"\x8b\x0f\n" +
+	"%kacho/cloud/compute/v1/instance.proto\x12\x16kacho.cloud.compute.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a kacho/cloud/compute/v1/kek.proto\x1a)kacho/cloud/compute/v1/machine_type.proto\x1a%kacho/cloud/reference/reference.proto\"\x8b\x0f\n" +
 	"\bInstance\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2342,9 +2341,7 @@ func file_kacho_cloud_compute_v1_instance_proto_init() {
 		return
 	}
 	file_kacho_cloud_compute_v1_kek_proto_init()
-	file_kacho_cloud_compute_v1_hardware_generation_proto_init()
 	file_kacho_cloud_compute_v1_machine_type_proto_init()
-	file_kacho_cloud_compute_v1_maintenance_proto_init()
 	file_kacho_cloud_compute_v1_instance_proto_msgTypes[0].OneofWrappers = []any{
 		(*Instance_VmSpec)(nil),
 		(*Instance_ContainerSpec)(nil),

@@ -59,9 +59,11 @@ var watchMethod = servicecontract.MethodFQN(
 // заявлением: ровно такое стояло у storage и у nlb, и оба раза отвергалось
 // носителем, как только судья и исполнение свели к одному предикату.
 //
-// Замер по карте прав compute (`internal/check.PermissionMap`): пообъектный тип
-// из неё выводится РОВНО один — `compute_instance`; типы машины и внутреннего
-// каталога гейтятся кластерным ярусом, объекта у них нет.
+// Пообъектных типов у compute ДВА — `compute_instance` и
+// `compute_guest_access_key`; типы машины и внутреннего каталога гейтятся
+// кластерным ярусом, объекта у них нет. Перечень берётся из
+// `authzfilter.PerObjectTypes`, а не выписывается здесь: выписанный, он пережил
+// бы появление следующего типа и оставил бы его без формы скрытия.
 //
 // Формы взяты у ПРОИЗВОДИТЕЛЯ (`authz.OwnerNotFoundFormat`), а не выписаны:
 // отвечает всегда его таблица, поэтому выписанная копия разошлась бы с
@@ -71,7 +73,7 @@ var watchMethod = servicecontract.MethodFQN(
 // нельзя.
 func hideExistenceForms() map[servicecontract.ObjectType]servicecontract.NotFoundFormat {
 	out := map[servicecontract.ObjectType]servicecontract.NotFoundFormat{}
-	for _, ot := range []string{authzfilter.ResourceTypeInstance} {
+	for _, ot := range authzfilter.PerObjectTypes {
 		form, ok := authz.OwnerNotFoundFormat(ot)
 		if !ok {
 			panic("compute: у типа " + ot + " нет голоса владельца в таблице промахов — " +

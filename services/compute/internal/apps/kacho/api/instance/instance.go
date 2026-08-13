@@ -24,6 +24,8 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/ownersync"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/peercheck"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -332,7 +334,7 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 }
 
 func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req CreateInstanceReq) (*anypb.Any, error) {
-	if err := checkProject(ctx, s.projectClient, req.ProjectID); err != nil {
+	if err := peercheck.Project(ctx, s.projectClient, req.ProjectID); err != nil {
 		return nil, err
 	}
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
@@ -388,7 +390,7 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	}
 	// Sync-register owner-tuple post-commit (best-effort window-оптимизация); durable
 	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
-	syncRegisterOwner(ctx, s.ownerRegistrar, regs)
+	ownersync.Register(ctx, s.ownerRegistrar, regs)
 	return anypb.New(protoconv.Instance(created))
 }
 
@@ -546,7 +548,7 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			// МОЛЧА — а вердикт про «доставку зеркала меток» перестал бы быть
 			// про то дерево, что есть.
 			if labelsInMask {
-				syncRegisterOwner(ctx, s.ownerRegistrar, regs)
+				ownersync.Register(ctx, s.ownerRegistrar, regs)
 			}
 			return anypb.New(protoconv.Instance(updated))
 		})

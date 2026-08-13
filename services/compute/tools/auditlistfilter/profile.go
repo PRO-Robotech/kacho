@@ -82,6 +82,14 @@ var Profile = listfiltergate.Profile{
 		// комментария: «уйдёт RPC из контракта — у записи не станет предмета».
 		// Послабление истекло от факта, а не от чьей-то памяти, и снято тем же
 		// изменением, что сняло его предмет.
+		// Ключ входа в машину. Страница читается из своей БД и сужается по тому же
+		// отношению, каким гейтится одиночное чтение: право проекта не отвечает на
+		// вопрос «можно ли этому вызывающему видеть ЭТИ строки».
+		"guest_access_key.List": {Shape: listfiltergate.RowFilter},
+		"guest_access_key.ListOperations": {
+			Shape: listfiltergate.ParentGate,
+			Gate:  "svc.Get",
+		},
 		"machine_type.List": {
 			Shape: listfiltergate.ClusterScoped,
 			Reason: "cluster-wide sizing catalog (COMP-1 F7): every authenticated caller reads " +

@@ -28,6 +28,12 @@ type restRoute struct {
 // generatedRestRoutes — full REST<->gRPC route table. Order is
 // path-then-method for deterministic, longest-prefix-friendly matching.
 var generatedRestRoutes = []restRoute{
+	{Method: "GET", Template: "/compute/v1/guestAccessKeys", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/List"},
+	{Method: "POST", Template: "/compute/v1/guestAccessKeys", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/Create"},
+	{Method: "DELETE", Template: "/compute/v1/guestAccessKeys/{guest_access_key_id}", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/Delete"},
+	{Method: "GET", Template: "/compute/v1/guestAccessKeys/{guest_access_key_id}", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/Get"},
+	{Method: "PATCH", Template: "/compute/v1/guestAccessKeys/{guest_access_key_id}", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/Update"},
+	{Method: "GET", Template: "/compute/v1/guestAccessKeys/{guest_access_key_id}/operations", FQN: "kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations"},
 	{Method: "GET", Template: "/compute/v1/instances", FQN: "kacho.cloud.compute.v1.InstanceService/List"},
 	{Method: "POST", Template: "/compute/v1/instances", FQN: "kacho.cloud.compute.v1.InstanceService/Create"},
 	{Method: "DELETE", Template: "/compute/v1/instances/{instance_id}", FQN: "kacho.cloud.compute.v1.InstanceService/Delete"},

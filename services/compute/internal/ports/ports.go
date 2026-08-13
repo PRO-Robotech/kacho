@@ -183,6 +183,23 @@ type MachineTypeRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// GuestAccessKeyUpdate — резолвнутый набор изменений одной правки ключа.
+// nil-поле означает «колонку не трогать»; LabelsSet отличает «метки названы
+// маской» от «не названы» (пустая карта — законное значение).
+//
+// Материала ключа и отпечатка здесь НЕТ, и это не пропуск: подменить материал
+// значило бы сменить того, кто может войти, не сменив ни идентификатора, ни
+// ссылок на него с машин. Смена материала выражается парой «завести новый,
+// снять старый», и каждая половина этой пары видна в журнале.
+type GuestAccessKeyUpdate struct {
+	Name      *string
+	Labels    map[string]string
+	LabelsSet bool
+}
+
+// Touched сообщает, называет ли правка хоть одну колонку.
+func (u GuestAccessKeyUpdate) Touched() bool { return u.Name != nil || u.LabelsSet }
+
 // ProjectClient — port для проверки существования Project в kacho-iam
 // (ProjectService.Get). Аргумент projectID — id владельца-проекта; в схеме
 // kacho-compute он лежит в колонке `project_id`.

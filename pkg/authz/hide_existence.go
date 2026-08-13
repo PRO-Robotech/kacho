@@ -56,6 +56,11 @@ var hideExistenceNotFoundFormats = map[string]string{
 	// compute — Disk / Image / Snapshot are NOT here: that duplicate of block
 	// storage was retired (kacho-storage owns those), and their rows went with it.
 	"compute_instance": "Instance %s not found",
+	// Текст СКОПИРОВАН с ответа владельца, а не сочинён: скрытие работает
+	// только пока отказ по праву неотличим от настоящего промаха. Любое
+	// расхождение — примета, по которой отличают «нет доступа» от «нет
+	// объекта», то есть ровно то, что скрытие закрывает.
+	"compute_guest_access_key": "GuestAccessKey %s not found",
 	// vpc
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

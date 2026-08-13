@@ -203,3 +203,20 @@ func oneToOneNat(n *domain.OneToOneNat) *computev1.OneToOneNat {
 		IpVersion: computev1.IpVersion(n.IPVersion),
 	}
 }
+
+// GuestAccessKey конвертирует domain.GuestAccessKey → computev1.GuestAccessKey.
+//
+// Закрытой половины ключа здесь нет и быть не может: её нет в доменной сущности,
+// поэтому «забыть не отдать» тут нечего — свойство держится составом типа, а не
+// внимательностью этой функции.
+func GuestAccessKey(k *domain.GuestAccessKey) *computev1.GuestAccessKey {
+	return &computev1.GuestAccessKey{
+		Id:          k.ID,
+		ProjectId:   k.ProjectID,
+		Name:        k.Name,
+		PublicKey:   k.PublicKey,
+		Fingerprint: k.Fingerprint,
+		Labels:      k.Labels,
+		CreatedAt:   ts(k.CreatedAt),
+	}
+}

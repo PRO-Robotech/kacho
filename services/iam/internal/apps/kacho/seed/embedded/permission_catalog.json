@@ -1,5 +1,65 @@
 [
   {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/Create",
+    "permission": "compute.guest_access_keys.create",
+    "required_relation": "editor",
+    "scope_extractor": {
+      "object_type": "project",
+      "from_request_field": "project_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/Delete",
+    "permission": "compute.guest_access_keys.delete",
+    "required_relation": "v_delete",
+    "scope_extractor": {
+      "object_type": "compute_guest_access_key",
+      "from_request_field": "guest_access_key_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/Get",
+    "permission": "compute.guest_access_keys.get",
+    "required_relation": "v_get",
+    "scope_extractor": {
+      "object_type": "compute_guest_access_key",
+      "from_request_field": "guest_access_key_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/List",
+    "permission": "compute.guest_access_keys.list",
+    "required_relation": "viewer",
+    "scope_extractor": {
+      "object_type": "project",
+      "from_request_field": "project_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations",
+    "permission": "compute.guest_access_key_operations.listOperations",
+    "required_relation": "v_list",
+    "scope_extractor": {
+      "object_type": "compute_guest_access_key",
+      "from_request_field": "guest_access_key_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.GuestAccessKeyService/Update",
+    "permission": "compute.guest_access_keys.update",
+    "required_relation": "v_update",
+    "scope_extractor": {
+      "object_type": "compute_guest_access_key",
+      "from_request_field": "guest_access_key_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "kacho.cloud.compute.v1.InstanceService/AttachDisk",
     "permission": "compute.instance_disks.attachDisk",
     "required_relation": "v_update",
@@ -176,6 +236,16 @@
     "scope_extractor": {
       "object_type": "cluster",
       "from_request_field": "*"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.InternalRealizationService/ReportInstanceRealization",
+    "permission": "compute.instances.reportRealization",
+    "required_relation": "realization_writer",
+    "scope_extractor": {
+      "object_type": "compute_instance",
+      "from_request_field": "instance_id"
     },
     "required_acr_min": "1"
   },

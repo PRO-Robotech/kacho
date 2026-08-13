@@ -115,6 +115,16 @@ var AllowedMethods = map[string]struct{}{
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).
 	"/kacho.cloud.compute.v1.MachineTypeService/Get":  {},
 	"/kacho.cloud.compute.v1.MachineTypeService/List": {},
+	// compute.v1 — GuestAccessKeyService (публичные ключи входа арендатора в свои
+	// машины). Чтения sync, мутации — Operation. Пообъектный тип прав
+	// (`compute_guest_access_key`) нужен потому, что запрос несёт только
+	// идентификатор ключа: проект резолвит владелец прав, а не вызывающий.
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Get":            {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/List":           {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Create":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Update":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Delete":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 
