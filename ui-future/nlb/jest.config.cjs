@@ -18,7 +18,7 @@ module.exports = {
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал
     // статических named-экспортов → ESM-линкер `import { XOutlined }` висел под vm-modules.
-    "^@ant-design/icons$": "<rootDir>/src/test/antd-icons-stub.tsx",
+    "^@ant-design/icons$": "<rootDir>/../shared/src/test/antd-icons-stub.tsx",
     "\\.(css|less|scss|sass)$": "<rootDir>/src/test/style-mock.ts",
     // Те же singleton'ы, что и resolve.dedupe в vite.config.ts: файлы @shared лежат
     // вне этого пакета, поэтому без явного отображения jest резолвил бы им ВТОРУЮ
