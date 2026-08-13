@@ -204,7 +204,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya75",
+          "name": "assert-op-success-rya74",
           "request": {
             "method": "GET",
             "header": [
@@ -378,7 +378,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya76",
+          "name": "assert-op-success-rya75",
           "request": {
             "method": "GET",
             "header": [
@@ -494,7 +494,7 @@
           ]
         },
         {
-          "name": "del-inst-rya77",
+          "name": "del-inst-rya76",
           "request": {
             "method": "DELETE",
             "header": [
@@ -607,7 +607,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya78",
+          "name": "cleanup-mt-rya77",
           "request": {
             "method": "DELETE",
             "header": [
@@ -759,8 +759,8 @@
       ]
     },
     {
-      "name": "INST-RD-CR-CRUD-CONTAINER-OK — COMP-1-02/15: Create CONTAINER (containerSpec+bootSource registry.image, БЕЗ ssh/external) → done → Get: instanceKind==CONTAINER, containerSpec present (command/restartPolicy ON_FAILURE), vmSpec absent (oneof), bootSource.materializedVolume absent (ephemeral rootfs); unreachable-guard НЕ применяется к CONTAINER (F5 exempt). [verifies COMP-1-02/15 · state + decision-table]",
-      "description": "class:CRUD | class:STATE | priority:P0",
+      "name": "INST-RD-CR-VAL-CONTAINER-REGISTRY-SOURCE-REFUSED — Create CONTAINER с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля 'bootSource.type registry.image is not accepted yet'. СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ НЕ КОНСТРУИРУЕТСЯ: у образа реестра нет durable-координаты (у репозитория нет неизменяемого идентификатора), а иного источника у контейнера не бывает. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт вместо счастливого пути — и обязан покраснеть в тот день, когда ветвь откроется. [verifies COMP-1-02/15 частично · ECP формы источника]",
+      "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
           "name": "seed-mt-ctok",
@@ -900,7 +900,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya79",
+          "name": "assert-op-success-rya78",
           "request": {
             "method": "GET",
             "header": [
@@ -968,7 +968,7 @@
           ]
         },
         {
-          "name": "create",
+          "name": "create-container-refused",
           "request": {
             "method": "POST",
             "header": [
@@ -1004,296 +1004,20 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('Operation envelope returned', () => {",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.instanceId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
-                  "} catch (e) {}",
-                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                  "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
+                  "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"
                 ]
               }
             }
           ]
         },
         {
-          "name": "poll-op-42",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-op-success-rya80",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "const j = pm.response.json();",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-rya51",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances",
-                "{{instanceId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "pm.test('instanceKind CONTAINER', () => pm.expect(j.instanceKind).to.eql('CONTAINER'));",
-                  "pm.test('containerSpec present (command, restartPolicy)', () => { pm.expect(j.containerSpec, 'containerSpec').to.be.an('object'); pm.expect(j.containerSpec.command).to.eql(['python','train.py']); pm.expect(j.containerSpec.restartPolicy).to.eql('ON_FAILURE'); });",
-                  "pm.test('vmSpec absent (oneof XOR)', () => pm.expect(j.vmSpec).to.be.oneOf([undefined, null]));",
-                  "pm.test('bootSource registry.image echo', () => pm.expect(j.bootSource.type).to.eql('registry.image'));",
-                  "pm.test('bootSource.materializedVolume absent for CONTAINER', () => pm.expect(j.bootSource.materializedVolume).to.be.oneOf([undefined, null]));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "del-inst-rya81",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances",
-                "{{instanceId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-43",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
-                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
-                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
-                  "(function () {",
-                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
-                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
-                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-mt-rya82",
+          "name": "cleanup-mt-rya79",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1370,7 +1094,7 @@
           ]
         },
         {
-          "name": "poll-op-44",
+          "name": "poll-op-42",
           "request": {
             "method": "GET",
             "header": [
@@ -1685,7 +1409,7 @@
           ]
         },
         {
-          "name": "poll-op-45",
+          "name": "poll-op-43",
           "request": {
             "method": "GET",
             "header": [
@@ -1749,7 +1473,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya83",
+          "name": "assert-op-success-rya80",
           "request": {
             "method": "GET",
             "header": [
@@ -1877,7 +1601,7 @@
           ]
         },
         {
-          "name": "poll-op-46",
+          "name": "poll-op-44",
           "request": {
             "method": "GET",
             "header": [
@@ -1923,7 +1647,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya84",
+          "name": "assert-op-success-rya81",
           "request": {
             "method": "GET",
             "header": [
@@ -1973,7 +1697,7 @@
           ]
         },
         {
-          "name": "get-rya52",
+          "name": "get-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -2024,7 +1748,7 @@
           ]
         },
         {
-          "name": "del-inst-rya85",
+          "name": "del-inst-rya82",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2082,7 +1806,7 @@
           ]
         },
         {
-          "name": "poll-op-47",
+          "name": "poll-op-45",
           "request": {
             "method": "GET",
             "header": [
@@ -2137,7 +1861,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya86",
+          "name": "cleanup-mt-rya83",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2214,7 +1938,7 @@
           ]
         },
         {
-          "name": "poll-op-48",
+          "name": "poll-op-46",
           "request": {
             "method": "GET",
             "header": [
@@ -2450,7 +2174,7 @@
           ]
         },
         {
-          "name": "poll-op-49",
+          "name": "poll-op-47",
           "request": {
             "method": "GET",
             "header": [
@@ -2496,7 +2220,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya87",
+          "name": "assert-op-error-rya84",
           "request": {
             "method": "GET",
             "header": [
@@ -2842,7 +2566,7 @@
           ]
         },
         {
-          "name": "poll-op-50",
+          "name": "poll-op-48",
           "request": {
             "method": "GET",
             "header": [
@@ -2906,7 +2630,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya88",
+          "name": "assert-op-success-rya85",
           "request": {
             "method": "GET",
             "header": [
@@ -3034,7 +2758,7 @@
           ]
         },
         {
-          "name": "poll-op-51",
+          "name": "poll-op-49",
           "request": {
             "method": "GET",
             "header": [
@@ -3080,7 +2804,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya89",
+          "name": "assert-op-success-rya86",
           "request": {
             "method": "GET",
             "header": [
@@ -3130,7 +2854,7 @@
           ]
         },
         {
-          "name": "get-rya53",
+          "name": "get-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -3182,7 +2906,7 @@
           ]
         },
         {
-          "name": "del-inst-rya90",
+          "name": "del-inst-rya87",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3240,7 +2964,7 @@
           ]
         },
         {
-          "name": "poll-op-52",
+          "name": "poll-op-50",
           "request": {
             "method": "GET",
             "header": [
@@ -3295,7 +3019,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya91",
+          "name": "cleanup-mt-rya88",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3372,7 +3096,7 @@
           ]
         },
         {
-          "name": "poll-op-53",
+          "name": "poll-op-51",
           "request": {
             "method": "GET",
             "header": [
@@ -3632,7 +3356,7 @@
           ]
         },
         {
-          "name": "poll-op-54",
+          "name": "poll-op-52",
           "request": {
             "method": "GET",
             "header": [
@@ -3696,7 +3420,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya92",
+          "name": "assert-op-success-rya89",
           "request": {
             "method": "GET",
             "header": [
@@ -3824,7 +3548,7 @@
           ]
         },
         {
-          "name": "poll-op-55",
+          "name": "poll-op-53",
           "request": {
             "method": "GET",
             "header": [
@@ -3870,7 +3594,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya93",
+          "name": "assert-op-success-rya90",
           "request": {
             "method": "GET",
             "header": [
@@ -3920,7 +3644,7 @@
           ]
         },
         {
-          "name": "get-rya54",
+          "name": "get-rya53",
           "request": {
             "method": "GET",
             "header": [
@@ -3971,7 +3695,7 @@
           ]
         },
         {
-          "name": "del-inst-rya94",
+          "name": "del-inst-rya91",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4029,7 +3753,7 @@
           ]
         },
         {
-          "name": "poll-op-56",
+          "name": "poll-op-54",
           "request": {
             "method": "GET",
             "header": [
@@ -4084,7 +3808,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya95",
+          "name": "cleanup-mt-rya92",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4161,7 +3885,7 @@
           ]
         },
         {
-          "name": "poll-op-57",
+          "name": "poll-op-55",
           "request": {
             "method": "GET",
             "header": [
@@ -4367,7 +4091,7 @@
           ]
         },
         {
-          "name": "poll-op-58",
+          "name": "poll-op-56",
           "request": {
             "method": "GET",
             "header": [
@@ -4431,7 +4155,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya96",
+          "name": "assert-op-success-rya93",
           "request": {
             "method": "GET",
             "header": [
@@ -4559,7 +4283,7 @@
           ]
         },
         {
-          "name": "poll-op-59",
+          "name": "poll-op-57",
           "request": {
             "method": "GET",
             "header": [
@@ -4605,7 +4329,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya97",
+          "name": "assert-op-success-rya94",
           "request": {
             "method": "GET",
             "header": [
@@ -4655,7 +4379,7 @@
           ]
         },
         {
-          "name": "get-rya55",
+          "name": "get-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -4706,7 +4430,7 @@
           ]
         },
         {
-          "name": "del-inst-rya98",
+          "name": "del-inst-rya95",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4764,7 +4488,7 @@
           ]
         },
         {
-          "name": "poll-op-60",
+          "name": "poll-op-58",
           "request": {
             "method": "GET",
             "header": [
@@ -4819,7 +4543,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya99",
+          "name": "cleanup-mt-rya96",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4896,7 +4620,7 @@
           ]
         },
         {
-          "name": "poll-op-61",
+          "name": "poll-op-59",
           "request": {
             "method": "GET",
             "header": [
@@ -5672,7 +5396,7 @@
           ]
         },
         {
-          "name": "poll-op-62",
+          "name": "poll-op-60",
           "request": {
             "method": "GET",
             "header": [
@@ -5736,7 +5460,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya100",
+          "name": "assert-op-success-rya97",
           "request": {
             "method": "GET",
             "header": [
@@ -5864,7 +5588,7 @@
           ]
         },
         {
-          "name": "poll-op-63",
+          "name": "poll-op-61",
           "request": {
             "method": "GET",
             "header": [
@@ -5910,7 +5634,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya101",
+          "name": "assert-op-success-rya98",
           "request": {
             "method": "GET",
             "header": [
@@ -6009,7 +5733,7 @@
           ]
         },
         {
-          "name": "poll-op-64",
+          "name": "poll-op-62",
           "request": {
             "method": "GET",
             "header": [
@@ -6055,7 +5779,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya102",
+          "name": "assert-op-error-rya99",
           "request": {
             "method": "GET",
             "header": [
@@ -6105,7 +5829,7 @@
           ]
         },
         {
-          "name": "del-inst-rya103",
+          "name": "del-inst-rya100",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6163,7 +5887,7 @@
           ]
         },
         {
-          "name": "poll-op-65",
+          "name": "poll-op-63",
           "request": {
             "method": "GET",
             "header": [
@@ -6218,7 +5942,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya104",
+          "name": "cleanup-mt-rya101",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6295,7 +6019,7 @@
           ]
         },
         {
-          "name": "poll-op-66",
+          "name": "poll-op-64",
           "request": {
             "method": "GET",
             "header": [
@@ -6423,7 +6147,7 @@
           ]
         },
         {
-          "name": "poll-op-67",
+          "name": "poll-op-65",
           "request": {
             "method": "GET",
             "header": [
@@ -6469,7 +6193,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya105",
+          "name": "assert-op-error-rya102",
           "request": {
             "method": "GET",
             "header": [
@@ -6600,7 +6324,7 @@
           ]
         },
         {
-          "name": "poll-op-68",
+          "name": "poll-op-66",
           "request": {
             "method": "GET",
             "header": [
@@ -6664,7 +6388,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya106",
+          "name": "assert-op-success-rya103",
           "request": {
             "method": "GET",
             "header": [
@@ -6792,7 +6516,7 @@
           ]
         },
         {
-          "name": "poll-op-69",
+          "name": "poll-op-67",
           "request": {
             "method": "GET",
             "header": [
@@ -6838,7 +6562,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya107",
+          "name": "assert-op-success-rya104",
           "request": {
             "method": "GET",
             "header": [
@@ -6888,7 +6612,7 @@
           ]
         },
         {
-          "name": "warm-upd-rya56",
+          "name": "warm-upd-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -6938,7 +6662,7 @@
           ]
         },
         {
-          "name": "patch-rya57",
+          "name": "patch-rya56",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7003,7 +6727,7 @@
           ]
         },
         {
-          "name": "poll-op-70",
+          "name": "poll-op-68",
           "request": {
             "method": "GET",
             "header": [
@@ -7049,7 +6773,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya108",
+          "name": "assert-op-success-rya105",
           "request": {
             "method": "GET",
             "header": [
@@ -7099,7 +6823,7 @@
           ]
         },
         {
-          "name": "get-rya109",
+          "name": "get-rya106",
           "request": {
             "method": "GET",
             "header": [
@@ -7152,7 +6876,7 @@
           ]
         },
         {
-          "name": "del-inst-rya110",
+          "name": "del-inst-rya107",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7210,7 +6934,7 @@
           ]
         },
         {
-          "name": "poll-op-71",
+          "name": "poll-op-69",
           "request": {
             "method": "GET",
             "header": [
@@ -7265,7 +6989,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya111",
+          "name": "cleanup-mt-rya108",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7342,7 +7066,7 @@
           ]
         },
         {
-          "name": "poll-op-72",
+          "name": "poll-op-70",
           "request": {
             "method": "GET",
             "header": [
@@ -7494,7 +7218,7 @@
           ]
         },
         {
-          "name": "poll-op-73",
+          "name": "poll-op-71",
           "request": {
             "method": "GET",
             "header": [
@@ -7558,7 +7282,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya112",
+          "name": "assert-op-success-rya109",
           "request": {
             "method": "GET",
             "header": [
@@ -7686,7 +7410,7 @@
           ]
         },
         {
-          "name": "poll-op-74",
+          "name": "poll-op-72",
           "request": {
             "method": "GET",
             "header": [
@@ -7732,7 +7456,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya113",
+          "name": "assert-op-success-rya110",
           "request": {
             "method": "GET",
             "header": [
@@ -7782,7 +7506,7 @@
           ]
         },
         {
-          "name": "warm-imm-rya58",
+          "name": "warm-imm-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -7832,7 +7556,7 @@
           ]
         },
         {
-          "name": "upd-kind-immutable-rya114",
+          "name": "upd-kind-immutable-rya111",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7896,7 +7620,7 @@
           ]
         },
         {
-          "name": "upd-zone-immutable-rya115",
+          "name": "upd-zone-immutable-rya112",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7960,7 +7684,7 @@
           ]
         },
         {
-          "name": "upd-bootsource-reinstall-rya116",
+          "name": "upd-bootsource-reinstall-rya113",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8024,7 +7748,7 @@
           ]
         },
         {
-          "name": "upd-unknown-mask-rya117",
+          "name": "upd-unknown-mask-rya114",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8087,7 +7811,7 @@
           ]
         },
         {
-          "name": "upd-stopped-gate-rya118",
+          "name": "upd-stopped-gate-rya115",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8151,7 +7875,7 @@
           ]
         },
         {
-          "name": "del-inst-rya119",
+          "name": "del-inst-rya116",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8209,7 +7933,7 @@
           ]
         },
         {
-          "name": "poll-op-75",
+          "name": "poll-op-73",
           "request": {
             "method": "GET",
             "header": [
@@ -8264,7 +7988,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya120",
+          "name": "cleanup-mt-rya117",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8341,7 +8065,7 @@
           ]
         },
         {
-          "name": "poll-op-76",
+          "name": "poll-op-74",
           "request": {
             "method": "GET",
             "header": [
@@ -8493,7 +8217,7 @@
           ]
         },
         {
-          "name": "poll-op-77",
+          "name": "poll-op-75",
           "request": {
             "method": "GET",
             "header": [
@@ -8557,7 +8281,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya121",
+          "name": "assert-op-success-rya118",
           "request": {
             "method": "GET",
             "header": [
@@ -8685,7 +8409,7 @@
           ]
         },
         {
-          "name": "poll-op-78",
+          "name": "poll-op-76",
           "request": {
             "method": "GET",
             "header": [
@@ -8731,7 +8455,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya122",
+          "name": "assert-op-success-rya119",
           "request": {
             "method": "GET",
             "header": [
@@ -8781,7 +8505,7 @@
           ]
         },
         {
-          "name": "warm-nb-rya59",
+          "name": "warm-nb-rya58",
           "request": {
             "method": "GET",
             "header": [
@@ -8831,7 +8555,7 @@
           ]
         },
         {
-          "name": "patch-vmspec-rya60",
+          "name": "patch-vmspec-rya59",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8896,7 +8620,7 @@
           ]
         },
         {
-          "name": "poll-op-79",
+          "name": "poll-op-77",
           "request": {
             "method": "GET",
             "header": [
@@ -8942,7 +8666,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya123",
+          "name": "assert-op-success-rya120",
           "request": {
             "method": "GET",
             "header": [
@@ -8992,7 +8716,7 @@
           ]
         },
         {
-          "name": "get-rya124",
+          "name": "get-rya121",
           "request": {
             "method": "GET",
             "header": [
@@ -9043,7 +8767,7 @@
           ]
         },
         {
-          "name": "del-inst-rya125",
+          "name": "del-inst-rya122",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9101,7 +8825,7 @@
           ]
         },
         {
-          "name": "poll-op-80",
+          "name": "poll-op-78",
           "request": {
             "method": "GET",
             "header": [
@@ -9156,7 +8880,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya126",
+          "name": "cleanup-mt-rya123",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9233,7 +8957,7 @@
           ]
         },
         {
-          "name": "poll-op-81",
+          "name": "poll-op-79",
           "request": {
             "method": "GET",
             "header": [
@@ -9385,7 +9109,7 @@
           ]
         },
         {
-          "name": "poll-op-82",
+          "name": "poll-op-80",
           "request": {
             "method": "GET",
             "header": [
@@ -9449,7 +9173,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya127",
+          "name": "assert-op-success-rya124",
           "request": {
             "method": "GET",
             "header": [
@@ -9577,7 +9301,7 @@
           ]
         },
         {
-          "name": "poll-op-83",
+          "name": "poll-op-81",
           "request": {
             "method": "GET",
             "header": [
@@ -9623,7 +9347,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya128",
+          "name": "assert-op-success-rya125",
           "request": {
             "method": "GET",
             "header": [
@@ -9673,7 +9397,7 @@
           ]
         },
         {
-          "name": "warm-sshpub-rya61",
+          "name": "warm-sshpub-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -9723,7 +9447,7 @@
           ]
         },
         {
-          "name": "upd-ssh-public-keys-rya62",
+          "name": "upd-ssh-public-keys-rya61",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9794,7 +9518,7 @@
           ]
         },
         {
-          "name": "del-inst-rya129",
+          "name": "del-inst-rya126",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9852,7 +9576,7 @@
           ]
         },
         {
-          "name": "poll-op-84",
+          "name": "poll-op-82",
           "request": {
             "method": "GET",
             "header": [
@@ -9907,7 +9631,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya130",
+          "name": "cleanup-mt-rya127",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9984,7 +9708,7 @@
           ]
         },
         {
-          "name": "poll-op-85",
+          "name": "poll-op-83",
           "request": {
             "method": "GET",
             "header": [
@@ -10136,7 +9860,7 @@
           ]
         },
         {
-          "name": "poll-op-86",
+          "name": "poll-op-84",
           "request": {
             "method": "GET",
             "header": [
@@ -10200,7 +9924,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya131",
+          "name": "assert-op-success-rya128",
           "request": {
             "method": "GET",
             "header": [
@@ -10328,7 +10052,7 @@
           ]
         },
         {
-          "name": "poll-op-87",
+          "name": "poll-op-85",
           "request": {
             "method": "GET",
             "header": [
@@ -10374,7 +10098,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya132",
+          "name": "assert-op-success-rya129",
           "request": {
             "method": "GET",
             "header": [
@@ -10424,7 +10148,7 @@
           ]
         },
         {
-          "name": "warm-networ-rya63",
+          "name": "warm-networ-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -10474,7 +10198,7 @@
           ]
         },
         {
-          "name": "upd-network-settings-rya64",
+          "name": "upd-network-settings-rya63",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10545,7 +10269,7 @@
           ]
         },
         {
-          "name": "del-inst-rya133",
+          "name": "del-inst-rya130",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10603,7 +10327,7 @@
           ]
         },
         {
-          "name": "poll-op-88",
+          "name": "poll-op-86",
           "request": {
             "method": "GET",
             "header": [
@@ -10658,7 +10382,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya134",
+          "name": "cleanup-mt-rya131",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10735,7 +10459,7 @@
           ]
         },
         {
-          "name": "poll-op-89",
+          "name": "poll-op-87",
           "request": {
             "method": "GET",
             "header": [
@@ -10887,7 +10611,7 @@
           ]
         },
         {
-          "name": "poll-op-90",
+          "name": "poll-op-88",
           "request": {
             "method": "GET",
             "header": [
@@ -10951,7 +10675,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya135",
+          "name": "assert-op-success-rya132",
           "request": {
             "method": "GET",
             "header": [
@@ -11079,7 +10803,7 @@
           ]
         },
         {
-          "name": "poll-op-91",
+          "name": "poll-op-89",
           "request": {
             "method": "GET",
             "header": [
@@ -11125,7 +10849,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya136",
+          "name": "assert-op-success-rya133",
           "request": {
             "method": "GET",
             "header": [
@@ -11175,7 +10899,7 @@
           ]
         },
         {
-          "name": "warm-serial-rya65",
+          "name": "warm-serial-rya64",
           "request": {
             "method": "GET",
             "header": [
@@ -11225,7 +10949,7 @@
           ]
         },
         {
-          "name": "upd-serial-port-settings-rya66",
+          "name": "upd-serial-port-settings-rya65",
           "request": {
             "method": "PATCH",
             "header": [
@@ -11296,7 +11020,7 @@
           ]
         },
         {
-          "name": "del-inst-rya137",
+          "name": "del-inst-rya134",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11354,7 +11078,7 @@
           ]
         },
         {
-          "name": "poll-op-92",
+          "name": "poll-op-90",
           "request": {
             "method": "GET",
             "header": [
@@ -11409,7 +11133,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya138",
+          "name": "cleanup-mt-rya135",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11486,7 +11210,7 @@
           ]
         },
         {
-          "name": "poll-op-93",
+          "name": "poll-op-91",
           "request": {
             "method": "GET",
             "header": [
@@ -11638,7 +11362,7 @@
           ]
         },
         {
-          "name": "poll-op-94",
+          "name": "poll-op-92",
           "request": {
             "method": "GET",
             "header": [
@@ -11702,7 +11426,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya139",
+          "name": "assert-op-success-rya136",
           "request": {
             "method": "GET",
             "header": [
@@ -11830,7 +11554,7 @@
           ]
         },
         {
-          "name": "poll-op-95",
+          "name": "poll-op-93",
           "request": {
             "method": "GET",
             "header": [
@@ -11876,7 +11600,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya140",
+          "name": "assert-op-success-rya137",
           "request": {
             "method": "GET",
             "header": [
@@ -11926,7 +11650,7 @@
           ]
         },
         {
-          "name": "warm-serp-rya67",
+          "name": "warm-serp-rya66",
           "request": {
             "method": "GET",
             "header": [
@@ -11976,7 +11700,7 @@
           ]
         },
         {
-          "name": "serial-port-rya68",
+          "name": "serial-port-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -12037,7 +11761,7 @@
           ]
         },
         {
-          "name": "del-inst-rya141",
+          "name": "del-inst-rya138",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12095,7 +11819,7 @@
           ]
         },
         {
-          "name": "poll-op-96",
+          "name": "poll-op-94",
           "request": {
             "method": "GET",
             "header": [
@@ -12150,7 +11874,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya142",
+          "name": "cleanup-mt-rya139",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12227,7 +11951,7 @@
           ]
         },
         {
-          "name": "poll-op-97",
+          "name": "poll-op-95",
           "request": {
             "method": "GET",
             "header": [
@@ -12379,7 +12103,7 @@
           ]
         },
         {
-          "name": "poll-op-98",
+          "name": "poll-op-96",
           "request": {
             "method": "GET",
             "header": [
@@ -12443,7 +12167,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya143",
+          "name": "assert-op-success-rya140",
           "request": {
             "method": "GET",
             "header": [
@@ -12571,7 +12295,7 @@
           ]
         },
         {
-          "name": "poll-op-99",
+          "name": "poll-op-97",
           "request": {
             "method": "GET",
             "header": [
@@ -12617,7 +12341,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya144",
+          "name": "assert-op-success-rya141",
           "request": {
             "method": "GET",
             "header": [
@@ -12667,7 +12391,7 @@
           ]
         },
         {
-          "name": "warm-fa-rya69",
+          "name": "warm-fa-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -12717,7 +12441,7 @@
           ]
         },
         {
-          "name": "get-rya145",
+          "name": "get-rya142",
           "request": {
             "method": "GET",
             "header": [
@@ -12774,7 +12498,7 @@
           ]
         },
         {
-          "name": "del-inst-rya146",
+          "name": "del-inst-rya143",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12832,7 +12556,7 @@
           ]
         },
         {
-          "name": "poll-op-100",
+          "name": "poll-op-98",
           "request": {
             "method": "GET",
             "header": [
@@ -12887,7 +12611,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya147",
+          "name": "cleanup-mt-rya144",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12964,7 +12688,7 @@
           ]
         },
         {
-          "name": "poll-op-101",
+          "name": "poll-op-99",
           "request": {
             "method": "GET",
             "header": [
@@ -13116,7 +12840,7 @@
           ]
         },
         {
-          "name": "poll-op-102",
+          "name": "poll-op-100",
           "request": {
             "method": "GET",
             "header": [
@@ -13180,7 +12904,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya148",
+          "name": "assert-op-success-rya145",
           "request": {
             "method": "GET",
             "header": [
@@ -13308,7 +13032,7 @@
           ]
         },
         {
-          "name": "poll-op-103",
+          "name": "poll-op-101",
           "request": {
             "method": "GET",
             "header": [
@@ -13354,7 +13078,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya149",
+          "name": "assert-op-success-rya146",
           "request": {
             "method": "GET",
             "header": [
@@ -13404,7 +13128,7 @@
           ]
         },
         {
-          "name": "warm-lst-rya70",
+          "name": "warm-lst-rya69",
           "request": {
             "method": "GET",
             "header": [
@@ -13454,7 +13178,7 @@
           ]
         },
         {
-          "name": "list-lst71",
+          "name": "list-lst70",
           "request": {
             "method": "GET",
             "header": [
@@ -13507,7 +13231,7 @@
           ]
         },
         {
-          "name": "list-filter-name-lst72",
+          "name": "list-filter-name-lst71",
           "request": {
             "method": "GET",
             "header": [
@@ -13559,7 +13283,7 @@
           ]
         },
         {
-          "name": "del-inst-rya150",
+          "name": "del-inst-rya147",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13617,7 +13341,7 @@
           ]
         },
         {
-          "name": "poll-op-104",
+          "name": "poll-op-102",
           "request": {
             "method": "GET",
             "header": [
@@ -13672,7 +13396,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya151",
+          "name": "cleanup-mt-rya148",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13749,7 +13473,7 @@
           ]
         },
         {
-          "name": "poll-op-105",
+          "name": "poll-op-103",
           "request": {
             "method": "GET",
             "header": [
@@ -14113,7 +13837,7 @@
           ]
         },
         {
-          "name": "poll-op-106",
+          "name": "poll-op-104",
           "request": {
             "method": "GET",
             "header": [
@@ -14177,7 +13901,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya152",
+          "name": "assert-op-success-rya149",
           "request": {
             "method": "GET",
             "header": [
@@ -14305,7 +14029,7 @@
           ]
         },
         {
-          "name": "poll-op-107",
+          "name": "poll-op-105",
           "request": {
             "method": "GET",
             "header": [
@@ -14351,7 +14075,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya153",
+          "name": "assert-op-success-rya150",
           "request": {
             "method": "GET",
             "header": [
@@ -14401,7 +14125,7 @@
           ]
         },
         {
-          "name": "warm-del-rya73",
+          "name": "warm-del-rya72",
           "request": {
             "method": "GET",
             "header": [
@@ -14451,7 +14175,7 @@
           ]
         },
         {
-          "name": "delete-1-rya154",
+          "name": "delete-1-rya151",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14509,7 +14233,7 @@
           ]
         },
         {
-          "name": "poll-op-108",
+          "name": "poll-op-106",
           "request": {
             "method": "GET",
             "header": [
@@ -14659,7 +14383,7 @@
           ]
         },
         {
-          "name": "poll-op-109",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -14705,7 +14429,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya155",
+          "name": "assert-op-success-rya152",
           "request": {
             "method": "GET",
             "header": [
@@ -14755,7 +14479,7 @@
           ]
         },
         {
-          "name": "delete-2-rya156",
+          "name": "delete-2-rya153",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14813,7 +14537,7 @@
           ]
         },
         {
-          "name": "poll-op-110",
+          "name": "poll-op-108",
           "request": {
             "method": "GET",
             "header": [
@@ -14868,7 +14592,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya157",
+          "name": "cleanup-mt-rya154",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14945,7 +14669,7 @@
           ]
         },
         {
-          "name": "poll-op-111",
+          "name": "poll-op-109",
           "request": {
             "method": "GET",
             "header": [
@@ -15180,7 +14904,7 @@
           ]
         },
         {
-          "name": "poll-op-112",
+          "name": "poll-op-110",
           "request": {
             "method": "GET",
             "header": [
@@ -15244,7 +14968,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya158",
+          "name": "assert-op-success-rya155",
           "request": {
             "method": "GET",
             "header": [
@@ -15372,7 +15096,7 @@
           ]
         },
         {
-          "name": "poll-op-113",
+          "name": "poll-op-111",
           "request": {
             "method": "GET",
             "header": [
@@ -15418,7 +15142,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya159",
+          "name": "assert-op-success-rya156",
           "request": {
             "method": "GET",
             "header": [
@@ -15468,7 +15192,7 @@
           ]
         },
         {
-          "name": "warm-mtfk-rya74",
+          "name": "warm-mtfk-rya73",
           "request": {
             "method": "GET",
             "header": [
@@ -15518,7 +15242,381 @@
           ]
         },
         {
-          "name": "del-mt-inuse-rya160",
+          "name": "del-mt-inuse-rya157",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-112",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-error-rya158",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                  "pm.test('error text includes \"is in use\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('is in use'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "mt-still-readable-rya159",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/machineTypes/{{mtId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('machine type survived the rejected delete', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('mtId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst-mtfk-rya160",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-113",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-mt-freed-rya161",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15659,381 +15757,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya161",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "const j = pm.response.json();",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"is in use\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('is in use'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "mt-still-readable-rya162",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/machineTypes/{{mtId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "machineTypes",
-                "{{mtId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('machine type survived the rejected delete', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('mtId')));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "del-inst-mtfk-rya163",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances",
-                "{{instanceId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-115",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
-                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
-                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
-                  "(function () {",
-                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
-                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
-                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "del-mt-freed-rya164",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
-              "host": [
-                "{{internalBaseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "internal",
-                "machineTypes",
-                "{{mtId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 40) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-116",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtBootstrap'",
-                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-op-success-rya165",
+          "name": "assert-op-success-rya162",
           "request": {
             "method": "GET",
             "header": [
