@@ -20,7 +20,6 @@
 package validate
 
 import (
-	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -219,56 +218,26 @@ func ZoneId(field, value string) error { //nolint:revive // стабильное
 	return nil
 }
 
-// dhcpDomainNameRe — RFC 1034/1123-совместимое DNS-имя.
+// Здесь стояли `IPAddress`, `DhcpDomainName` и их регулярное выражение — сняты
+// вместе с предметом (vpc-миграция 0029).
 //
-// Контракт валидации: отвергаем некорректное имя с текстом
-// "Illegal argument Invalid domain name '<value>'" (sync 400 code:3). Длина
-// каждой метки 1..63, общая длина <= 253 (без trailing dot).
-var dhcpDomainNameRe = regexp.MustCompile(`^([a-zA-Z0-9]([-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)(\.([a-zA-Z0-9]([-a-zA-Z0-9]{0,61}[a-zA-Z0-9])?))*$`)
+// Единственным полем, которое их звало, были параметры DHCP подсети: контракт снят
+// давно, Go-тип и колонка — этой миграцией. Потребителей в дереве после этого
+// осталось НОЛЬ (предикат:
+// `grep -rnE '\b(corevalidate|validate)\.(IPAddress|DhcpDomainName)\b' --include='*.go'`
+// по всему дереву, кроме сгенерённого `pkg/api`, — пусто; одноимённый
+// `domain.IPAddress` у nlb — СВОЙ newtype этого сервиса, другой референт, он жив).
+// Экспортированная функция без вызывающих в общем фундаменте — не «на будущее»: она
+// приглашает следующий сервис валидировать адрес по правилам снятой подсистемы.
 
-// IPAddress проверяет, что value — синтаксически валидный IPv4 или IPv6
-// адрес (без CIDR). Используется для DhcpOptions.{domain_name_servers,
-// ntp_servers} и подобных IP-полей.
+// Здесь стоял набор разрешённых поставщиков защиты от перегрузки — снят по тому же
+// признаку и найден по тому же поводу.
 //
-// Контракт валидации: отвергаем "not-an-ip" / "pool.ntp.org" с текстом
-// "Illegal argument Cannot parse address: <value>".
-//
-// Возвращает InvalidArgument с FieldViolation либо nil.
-func IPAddress(field, value string) error {
-	if net.ParseIP(value) == nil {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, "Cannot parse address: "+value).
-			Err()
-	}
-	return nil
-}
-
-// DhcpDomainName проверяет, что value — валидное DNS-имя (RFC 1123).
-//
-// Пустая строка — OK (поле опциональное). Длина общая <= 253, regex выше.
-//
-// Текст ошибки: "Invalid domain name '<value>'".
-func DhcpDomainName(field, value string) error {
-	if value == "" {
-		return nil
-	}
-	if utf8.RuneCountInString(value) > 253 || !dhcpDomainNameRe.MatchString(value) {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, "Invalid domain name '"+value+"'").
-			Err()
-	}
-	return nil
-}
-
-// allowedDdosProviders — whitelist разрешенных провайдеров.
-//
-// Неизвестный провайдер отвергается с "Illegal argument Invalid DDoS protection
-// provider." Пустая строка — OK (опциональное поле).
-var allowedDdosProviders = map[string]struct{}{
-	"":         {},
-	"qrator":   {},
-	"advanced": {},
-}
+// Набор был unexported и НЕ имел ни одного читателя: функции, которой он служил, в
+// дереве нет вовсе (`git grep 'func DdosProvider'` — пусто), то есть whitelist
+// пережил свою проверку. Линтер `unused` назвал его в тот же прогон, что и снятие
+// регулярного выражения DNS-имени: класс один — вспомогательное значение, чей
+// потребитель снят, остаётся выглядеть действующим правилом.
 
 // UpdateMask проверяет, что все field-ы в mask содержатся в known.
 //
