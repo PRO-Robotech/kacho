@@ -287,9 +287,39 @@ const testInstallPrefix = "kctest"
 // Арендатор не сделал ничего неверного: сервис в этой посадке не способен исполнить
 // запрос. Код FAILED_PRECONDITION или INVALID_ARGUMENT отправил бы его чинить свой
 // ввод, которого чинить нечего.
-func TestCreateWithoutInstallPrefixIsRefused(t *testing.T) {
+// TestCreateWithoutDataPlaneNeedsNoInstallPrefix — обратная сторона того же
+// правила, и без неё отрицание выше означало бы «отказываем всегда».
+//
+// Префикс даёт ИМЯ объекту у бэкенда. Плоскости данных нет — объекта не будет,
+// имя выводить не для чего, и требовать префикс беспредметно. Отказ Unavailable
+// в такой посадке говорил бы «сервис недоступен» там, где он исправен: именно
+// это и роняло сквозные прогоны на стенде без кластера хранения.
+func TestCreateWithoutDataPlaneNeedsNoInstallPrefix(t *testing.T) {
 	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
 		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	// dataPlane НЕ объявлена и префикса нет — сочетание, штатное для платформы
+	// только управляющей плоскости.
+	// Предмет пробы — ОТСУТСТВИЕ отказа по неспособности сервиса, а не успех
+	// создания: успех потребовал бы поднять весь путь записи, и проба стала бы
+	// о другом. Поэтому паника на неполном дублёре ловится и не засчитывается
+	// за отказ — нас интересует ровно код Unavailable.
+	defer func() { _ = recover() }()
+
+	_, err := uc.Create(context.Background(), &domain.Volume{
+		ID: "vol00000000000000000", ProjectID: "prj-1", Name: "v",
+		ZoneID: "region-1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
+	})
+	if err != nil && status.Code(err) == codes.Unavailable {
+		t.Fatalf("посадка без плоскости данных НЕ должна отвечать «сервис недоступен»: %v", err)
+	}
+}
+
+func TestCreateWithoutInstallPrefixIsRefused(t *testing.T) {
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).
+		// Отказ ждут ТАМ, ГДЕ плоскость данных объявлена: без неё имя объекта
+		// выводить не для чего, и требование префикса беспредметно.
+		WithDataPlane(true)
 
 	_, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", ZoneID: "ru-central1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,

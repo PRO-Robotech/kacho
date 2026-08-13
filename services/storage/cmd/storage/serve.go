@@ -209,7 +209,13 @@ func runServe(cfg config.Config) error {
 	// остаётся создаваемым навсегда при здоровом рапорте сервиса. Kachō —
 	// платформа только управляющей плоскости, поэтому «плоскости данных нет» —
 	// это штатная посадка, а не неполная.
-	readyOnCommit := cfg.BlockBackendKind == ""
+	// dataPlane — ТОТ ЖЕ признак, из которого поднимается сверщик и берётся
+	// состояние рождения ресурса. Одно решение на все три места: разведи их — и
+	// появится посадка, где префикс требуется, а объекта, которому он даёт имя,
+	// не будет никогда.
+	dataPlane := cfg.BlockBackendKind != ""
+
+	readyOnCommit := !dataPlane
 
 	volumeRepo := pg.NewVolumeRepo(pool).
 		WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit).
@@ -223,11 +229,15 @@ func runServe(cfg config.Config) error {
 	// этого облака от объектов соседнего в общем кластере хранилища. Боевой страж
 	// старта не пропускает посадку с бэкендом и без префикса.
 	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
 		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
 	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
 		WithInstallPrefix(cfg.BlockBackendInstallPrefix).
 		WithGeo(geoClient)
-	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
+	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
 	diskTypeUC := disktype.New(diskTypeRepo)
 	storageBackendRepo := pg.NewStorageBackendRepo(pool)
 	diskTypeBindingRepo := pg.NewDiskTypeBindingRepo(pool)

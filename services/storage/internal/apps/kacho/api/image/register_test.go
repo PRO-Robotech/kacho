@@ -48,7 +48,8 @@ func TestImageCreateWithoutInstallPrefixIsRefused(t *testing.T) {
 		t.Fatal("iam не должен вызываться: сервис уже неспособен исполнить запрос")
 		return nil
 	}}
-	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus).
+		WithDataPlane(true) // отказ ждут ТАМ, ГДЕ плоскость данных объявлена: без неё имя объекта выводить не для чего
 
 	_, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", RegionID: "ru-central1", Name: "img-a",

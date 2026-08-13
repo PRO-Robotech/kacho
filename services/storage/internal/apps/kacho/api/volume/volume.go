@@ -137,6 +137,9 @@ type UseCase struct {
 	// отвергается синхронно — молча создать объект без префикса нельзя, иначе
 	// соседнее облако на том же кластере усыновило бы его.
 	installPrefix string
+	// dataPlane — объявлена ли плоскость данных. Тот же признак, что читает
+	// проводка сверщика: два решения об одном предмете не должны разъезжаться.
+	dataPlane bool
 	// listFilter — per-object фильтр видимости страницы List (kacho-iam
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
@@ -175,6 +178,10 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 // Он приходит из конфигурации процесса, а не из ресурса: это свойство РАЗВЁРТЫВАНИЯ,
 // отличающее наши объекты от объектов соседнего облака в общем кластере хранилища.
 // Пустой префикс боевой страж старта не пропускает — см. config.Validate.
+// WithDataPlane объявляет наличие плоскости данных. Тот же признак, из которого
+// композиционный корень поднимает сверщик, — чтобы решения не разъезжались.
+func (u *UseCase) WithDataPlane(v bool) *UseCase { u.dataPlane = v; return u }
+
 func (u *UseCase) WithInstallPrefix(p string) *UseCase {
 	u.installPrefix = p
 	return u
@@ -301,7 +308,12 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 	// чинить собственный ввод, которого чинить нечего. Боевой страж старта такую
 	// посадку не пропускает, поэтому ветка достижима лишь в неполной локальной
 	// сборке — и молчать о ней нельзя.
-	if u.installPrefix == "" {
+	// Префикс требуется ТОЛЬКО когда объявлена плоскость данных: из него
+	// выводится имя объекта у бэкенда. Её нет — выводить не для чего, объекта не
+	// будет, и готовность наступает на фиксации записи. Требование префикса в
+	// такой посадке беспредметно, а отказ Unavailable означал бы «сервис
+	// недоступен» там, где он исправен и делает ровно то, что должен.
+	if u.dataPlane && u.installPrefix == "" {
 		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
 	}
 	// Sync BVA at the request edge (parity with Image, #61): reject over-limit

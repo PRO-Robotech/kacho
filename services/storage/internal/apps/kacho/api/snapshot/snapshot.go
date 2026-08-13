@@ -113,6 +113,9 @@ type UseCase struct {
 	// отвергается синхронно — молча снять снимок без префикса нельзя, иначе
 	// соседнее облако на том же кластере усыновило бы его объект.
 	installPrefix string
+	// dataPlane — объявлена ли плоскость данных. Тот же признак, что читает
+	// проводка сверщика: два решения об одном предмете не должны разъезжаться.
+	dataPlane bool
 	// geo — владелец географии. Провязывается WithGeo; без него копирование
 	// отвергается закрыто, а не пропускает непроверенную зону.
 	geo GeoClient
@@ -152,6 +155,10 @@ func (u *UseCase) WithGeo(g GeoClient) *UseCase {
 	u.geo = g
 	return u
 }
+
+// WithDataPlane объявляет наличие плоскости данных. Тот же признак, из которого
+// композиционный корень поднимает сверщик, — чтобы решения не разъезжались.
+func (u *UseCase) WithDataPlane(v bool) *UseCase { u.dataPlane = v; return u }
 
 func (u *UseCase) WithInstallPrefix(p string) *UseCase {
 	u.installPrefix = p
@@ -254,7 +261,12 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	// чинить собственный ввод, которого чинить нечего. Боевой страж старта такую
 	// посадку не пропускает, поэтому ветка достижима лишь в неполной локальной
 	// сборке — и молчать о ней нельзя.
-	if u.installPrefix == "" {
+	// Префикс требуется ТОЛЬКО когда объявлена плоскость данных: из него
+	// выводится имя объекта у бэкенда. Её нет — выводить не для чего, объекта не
+	// будет, и готовность наступает на фиксации записи. Требование префикса в
+	// такой посадке беспредметно, а отказ Unavailable означал бы «сервис
+	// недоступен» там, где он исправен и делает ровно то, что должен.
+	if u.dataPlane && u.installPrefix == "" {
 		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
 	}
 	// Sync BVA at the request edge, matching Volume and Image. The domain validator
@@ -514,7 +526,12 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	if in.TargetZoneID == "" {
 		return nil, u.errStatus(fmt.Errorf("%w: target_zone_id: required", storageerr.ErrInvalidArg))
 	}
-	if u.installPrefix == "" {
+	// Префикс требуется ТОЛЬКО когда объявлена плоскость данных: из него
+	// выводится имя объекта у бэкенда. Её нет — выводить не для чего, объекта не
+	// будет, и готовность наступает на фиксации записи. Требование префикса в
+	// такой посадке беспредметно, а отказ Unavailable означал бы «сервис
+	// недоступен» там, где он исправен и делает ровно то, что должен.
+	if u.dataPlane && u.installPrefix == "" {
 		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
 	}
 	if err := validate.Description("description", in.Description); err != nil {

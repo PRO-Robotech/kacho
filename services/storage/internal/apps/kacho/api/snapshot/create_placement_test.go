@@ -47,7 +47,7 @@ func TestSnapshotCreateWithoutInstallPrefixIsRefused(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := snapshot.New(repo, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, iam, nil, serviceerr.ToStatus).WithDataPlane(true)
 
 	_, err := uc.Create(context.Background(), &domain.Snapshot{
 		ProjectID: "prj-1", SourceVolumeID: "vol00000000000000000",
