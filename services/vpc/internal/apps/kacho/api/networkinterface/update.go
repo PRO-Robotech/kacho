@@ -86,6 +86,13 @@ func (u *UpdateNetworkInterfaceUseCase) Execute(ctx context.Context, in UpdateIn
 	if err := validateNICAddressCardinality(in.NetworkInterface.V4AddressIDs, in.NetworkInterface.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Форма присланных ссылок на адреса — синхронно, как в Create. Проверяется то,
+	// что прислал вызывающий, независимо от маски — тем же порядком, каким это уже
+	// делает проверка кардинальности строкой выше: негодный по форме идентификатор
+	// не станет годным ни в одной маске.
+	if err := validateNICAddressRefIDs(in.NetworkInterface.V4AddressIDs, in.NetworkInterface.V6AddressIDs); err != nil {
+		return nil, err
+	}
 	// Потолок числа групп — синхронно (см. Create).
 	if err := validateNICSecurityGroupCardinality(in.NetworkInterface.SecurityGroupIDs); err != nil {
 		return nil, err
@@ -157,7 +164,11 @@ func (u *UpdateNetworkInterfaceUseCase) doUpdate(ctx context.Context, in UpdateI
 				addedV6 = append(addedV6, id)
 			}
 		}
-		if err := attachNICAddresses(ctx, ar, rec.ID, derefName(in, rec), rec.SubnetID, addedV4, addedV6); err != nil {
+		// Проект берётся у СТРОКИ интерфейса (`rec`), а не из присланного тела:
+		// project_id интерфейса immutable, и вызывающий его на этом пути не задаёт —
+		// принимать его из тела значило бы отдать выбор проверяемого проекта тому,
+		// кого проверяют.
+		if err := attachNICAddresses(ctx, ar, rec.ID, derefName(in, rec), rec.ProjectID, rec.SubnetID, addedV4, addedV6); err != nil {
 			return nil, err
 		}
 	}

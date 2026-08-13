@@ -107,6 +107,14 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	if err := validateNICAddressCardinality(n.V4AddressIDs, n.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Форма ссылок на адреса — СИНХРОННО, до создания Operation и до любого чтения:
+	// идентификатор задаёт вызывающий, и его негодность видна без обращения к БД.
+	// Без этой ветки мусорный идентификатор доезжал до чтения и возвращался
+	// контракт-тоном ОТСУТСТВИЯ РЕСУРСА («address zzz not found») — то есть
+	// утверждением об объекте на строку, которая объектом быть не может.
+	if err := validateNICAddressRefIDs(n.V4AddressIDs, n.V6AddressIDs); err != nil {
+		return nil, err
+	}
 	// Потолок числа групп — СИНХРОННО, до создания Operation и до любого чтения:
 	// величину задаёт вызывающий, и она определяет стоимость запроса. Проверка
 	// принадлежности каждой группы идёт позже, в writer-TX (там она обязана быть
@@ -189,10 +197,16 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	}
 	// BOLA-guard: parent Subnet обязана принадлежать проекту вызывающего — иначе
 	// NIC создавался бы в чужой подсети (cross-project reference). Ответ — тот же
-	// NotFound, что для несуществующего subnet (без existence-oracle: mismatch
-	// неотличим от «нет такого» — `serviceerr.MapRepoErr(repo.ErrNotFound)`).
+	// NotFound, что для несуществующего subnet.
+	//
+	// Текст выписан по владельцу подсети (`repo/kacho/pg/subnet.go` — `"%w: Subnet %s
+	// not found"`), а не собран `serviceerr.MapRepoErr(repo.ErrNotFound)`, как стояло
+	// прежде: голый sentinel даёт «not found» БЕЗ имени и идентификатора, то есть
+	// отказ читался ОТЛИЧИМО от настоящего промаха — а различимый текст и есть тот
+	// оракул существования, который скрытие должно было закрыть. Прежний комментарий
+	// заявлял неотличимость, которой в коде не было.
 	if parentSub.ProjectID != n.ProjectID {
-		return nil, serviceerr.MapRepoErr(repo.ErrNotFound)
+		return nil, status.Errorf(codes.NotFound, "Subnet %s not found", n.SubnetID)
 	}
 	st := domain.NIStatusAvailable
 	usedByType, usedByID := "", ""
@@ -245,7 +259,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		}
 		// Validate + attach address-refs в этой writer-TX (используем w.Addresses(),
 		// а не отдельный addressRepo). Ошибка attach — не MAC-collision → Abort + return.
-		if aerr := attachNICAddresses(ctx, w.Addresses(), niID, string(n.Name), n.SubnetID, n.V4AddressIDs, n.V6AddressIDs); aerr != nil {
+		if aerr := attachNICAddresses(ctx, w.Addresses(), niID, string(n.Name), n.ProjectID, n.SubnetID, n.V4AddressIDs, n.V6AddressIDs); aerr != nil {
 			w.Abort()
 			return nil, aerr
 		}
@@ -299,17 +313,56 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	return nil, status.Errorf(codes.Internal, "could not allocate unique MAC after %d attempts", niMacRetryAttempts)
 }
 
-// validateNICAddressRef проверяет, что Address id существует, имеет ожидаемую
-// IP-версию, (для internal) лежит в подсети nicSubnet и не занят. Свободная
-// функция поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX) — общая
-// для Create и Update. При нарушении возвращает gRPC-status.
-func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicSubnet string, want domain.IpVersion) error {
+// nicAddressMiss — ЕДИНСТВЕННЫЙ ответ на «названный адрес не резолвится как СВОЙ»:
+// строки нет вовсе либо она принадлежит другому проекту. Форма выписана здесь по
+// владельцу (`internal/repo/kacho/pg/address.go` — `"%w: Address %s not found"` под
+// `ErrNotFound`), а не собрана из внутренних имён: отказ обязан читаться ПОБАЙТОВО
+// как настоящий промах владельца, иначе по различию текстов устанавливают, что
+// чужой адрес существует.
+//
+// Код — NotFound: Address принадлежит vpc, значит это полоса direct-read
+// («не нашёл СВОЁ»), а не peer-validate (api-conventions.md §By-lane code-split).
+func nicAddressMiss(id string) error {
+	return status.Errorf(codes.NotFound, "Address %s not found", id)
+}
+
+// validateNICAddressRef — годна ли названная ссылка на адрес для ЭТОГО интерфейса.
+// Свободная функция поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX) —
+// общая для Create и Update. При нарушении возвращает gRPC-status.
+//
+// # Порядок проверок несущий, а не косметический
+//
+// форма → принадлежность проекту → существование → состояние.
+//
+//  1. **Форма** (`validateNICAddressRefID`) — до любого чтения. Иначе явный мусор
+//     («zzz») получает контракт-тон ОТСУТСТВИЯ РЕСУРСА на строку, которая адресом
+//     быть не может, а пустая строка — тот же тон с вырезанным id.
+//  2. **Принадлежность и существование — ОДНА полоса ответа.** Адрес чужого проекта
+//     и отсутствующий адрес отвечают одним и тем же `nicAddressMiss(id)`: различие
+//     между ними и есть оракул существования. Технически принадлежность узнаётся
+//     только чтением строки, поэтому в коде чтение стоит раньше сверки — но НАРУЖУ
+//     обе ветви неразличимы, и именно это утверждает проба.
+//  3. **Состояние** (семейство, подсеть, занятость) — только для адреса СВОЕГО
+//     проекта, и здесь различие исходов законно и полезно: это диагностика по
+//     собственному объекту. Прежняя редакция отвечала этими же четырьмя текстами
+//     на ЛЮБОЙ адрес облака, то есть сообщала посторонним семейство чужого адреса,
+//     идентификатор его подсети и его занятость. Текст «уже занят» сохранён именно
+//     потому, что теперь он касается только своего адреса: скрыть его значило бы
+//     заставить владельца гадать, почему его собственный свободный на вид адрес не
+//     привязывается.
+func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicProject, nicSubnet string, want domain.IpVersion) error {
+	if err := validateNICAddressRefID(want, id); err != nil {
+		return err
+	}
 	a, err := ar.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return status.Errorf(codes.InvalidArgument, "address %s not found", id)
+			return nicAddressMiss(id)
 		}
 		return serviceerr.MapRepoErr(err)
+	}
+	if a.ProjectID != nicProject {
+		return nicAddressMiss(id)
 	}
 	switch want {
 	case domain.IpVersionIPv4:
@@ -337,14 +390,18 @@ func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicSubnet st
 // v4/v6 address id поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX).
 // На ошибке НЕ компенсирует — это решает caller (writer-TX Abort у Update;
 // detachNICAddresses у Create). Общая для Create/Update (убрана дупликация).
-func attachNICAddresses(ctx context.Context, ar AddressRepo, nicID, nicName, nicSubnet string, v4IDs, v6IDs []string) error {
+//
+// `nicProject` — проект ИНТЕРФЕЙСА, а не присланное вызывающим значение: у Create
+// это проверенный проект запроса, у Update — проект уже существующей строки. Адрес
+// другого проекта отвергается как отсутствующий (см. `validateNICAddressRef`).
+func attachNICAddresses(ctx context.Context, ar AddressRepo, nicID, nicName, nicProject, nicSubnet string, v4IDs, v6IDs []string) error {
 	for _, id := range v4IDs {
-		if err := validateNICAddressRef(ctx, ar, id, nicSubnet, domain.IpVersionIPv4); err != nil {
+		if err := validateNICAddressRef(ctx, ar, id, nicProject, nicSubnet, domain.IpVersionIPv4); err != nil {
 			return err
 		}
 	}
 	for _, id := range v6IDs {
-		if err := validateNICAddressRef(ctx, ar, id, nicSubnet, domain.IpVersionIPv6); err != nil {
+		if err := validateNICAddressRef(ctx, ar, id, nicProject, nicSubnet, domain.IpVersionIPv6); err != nil {
 			return err
 		}
 	}

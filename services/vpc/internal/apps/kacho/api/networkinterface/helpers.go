@@ -51,6 +51,61 @@ func validateNICAddressCardinality(v4IDs, v6IDs []string) error {
 	return nil
 }
 
+// nicAddressRefField — имя поля запроса, которым вызывающий назвал ссылку. Нужно,
+// чтобы отказ по форме называл ИМЕННО то поле, куда пришло значение: у интерфейса
+// два семейства ссылок, и «v4_address_ids» на v6-входе отправило бы правящего
+// смотреть не туда.
+func nicAddressRefField(want domain.IpVersion) string {
+	if want == domain.IpVersionIPv6 {
+		return "v6_address_ids"
+	}
+	return "v4_address_ids"
+}
+
+// validateNICAddressRefID — ФОРМА одной ссылки на адрес: обязательность плюс
+// формат идентификатора. Ни одного обращения к БД — величину задаёт вызывающий,
+// поэтому проверка стоит первой и не оплачивается чтением.
+//
+// Обязательность — отдельная ответственность вызывающего: `corevalidate.ResourceID`
+// пустую строку ПРОПУСКАЕТ по своему контракту. Без этой ветки пустая строка
+// уезжала в чтение и возвращалась контракт-тоном промаха с вырезанным id
+// («Address  not found») — утверждение об отсутствии ресурса, которого вызывающий
+// не называл.
+//
+// Формат — канонический `corevalidate.ResourceID` («invalid address id '<X>'»),
+// тот же, что у всех прочих путей адреса в сервисе. Отдельного текста здесь не
+// заводится: два места об одной форме разъезжаются молча.
+func validateNICAddressRefID(want domain.IpVersion, id string) error {
+	if id == "" {
+		return serviceerr.InvalidArg(nicAddressRefField(want), "address id must not be empty")
+	}
+	return corevalidate.ResourceID("address", ids.PrefixAddress, id)
+}
+
+// validateNICAddressRefIDs — та же проверка формы, но по обоим семействам сразу и
+// СИНХРОННО, до создания Operation: мусорный идентификатор не стоит ни чтения, ни
+// асинхронного хвоста.
+//
+// Предикат здесь ровно тот же (`validateNICAddressRefID`), что исполняется на пути
+// чтения внутри `validateNICAddressRef`. Это не два разбора одного значения, а
+// один разбор с двух мест вызова: синхронная проверка делает отказ дешёвым и
+// детерминированным, а проверка внутри читающей функции защищает КАЖДОГО её
+// вызывающего — в том числе того, кто придёт после нас и синхронной ветки не
+// позовёт.
+func validateNICAddressRefIDs(v4IDs, v6IDs []string) error {
+	for _, id := range v4IDs {
+		if err := validateNICAddressRefID(domain.IpVersionIPv4, id); err != nil {
+			return err
+		}
+	}
+	for _, id := range v6IDs {
+		if err := validateNICAddressRefID(domain.IpVersionIPv6, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // validateNICSecurityGroupCardinality — потолок числа групп на интерфейсе.
 // Стоит СИНХРОННО, первым делом: длину массива задаёт вызывающий, и она
 // определяет стоимость запроса. DB-CHECK network_interfaces_sg_cardinality —
@@ -78,11 +133,19 @@ func validateNICSecurityGroupCardinality(ids []string) error {
 // существования. Группа без сети (project-level) принимается в любой подсети
 // проекта; группа с сетью — только в подсети своей сети.
 //
-// Код и регистр выбраны по соседней ссылке ЭТОГО ЖЕ ресурса (validateNICAddressRef:
-// InvalidArgument, "address %s not found"), а не по родительской подсети
-// (NotFound, "Subnet %s not found"): здесь речь о значении ПОЛЯ запроса, а не о
-// самом адресуемом ресурсе. Два соседних прецедента в сервисе действительно
-// разные — выбор сделан осознанно, менять его — через тикет.
+// Код и регистр здесь — «значение ПОЛЯ запроса» (InvalidArgument, "security group %s
+// not found"), и этот выбор НЕ менялся. Менялось другое: прежняя редакция абзаца
+// обосновывала его ссылкой на соседнюю ссылку ЭТОГО ЖЕ ресурса
+// (`validateNICAddressRef` — «InvalidArgument, address %s not found»), а та переехала
+// на полосу СОБСТВЕННОГО ресурса (NotFound, "Address %s not found"): адрес
+// принадлежит vpc, и его четыре различимых исхода раскрывали чужой объект. То есть
+// довод пережил то, на что опирался, и удалён вместе с ним, а не переписан на другого
+// соседа — цитата чужой координаты стареет молча.
+//
+// Смена кода И ЗДЕСЬ — отдельный предмет: группа тоже собственный ресурс vpc, и по
+// полосе direct-read ей полагался бы тот же NotFound. Тексты — часть контракта,
+// поэтому это идёт своим изменением со своей приёмкой, а не побочным эффектом правки
+// соседней ссылки.
 func validateNICSecurityGroupRefs(
 	ctx context.Context,
 	sgr kachorepo.SecurityGroupReaderIface,

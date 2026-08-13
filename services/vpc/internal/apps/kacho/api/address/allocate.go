@@ -164,12 +164,11 @@ func (u *AllocateUseCase) AllocateExternalIP(ctx context.Context, addressID stri
 	}
 	resolved, err := u.pools.ResolvePoolForAddressObjFamily(ctx, addr, addresspool.FamilyV4)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+		return nil, poolResolveFailure(ctx, addressID, domain.IpVersionIPv4, err)
 	}
 	pool := resolved.Pool
 	if len(pool.V4CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v4_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addressID, domain.IpVersionIPv4)
 	}
 
 	w, err := u.repo.Writer(ctx)
@@ -223,12 +222,11 @@ func (u *AllocateUseCase) AllocateExternalIPv6(ctx context.Context, addressID st
 	}
 	resolved, err := u.pools.ResolvePoolForAddressObjFamily(ctx, addr, addresspool.FamilyV6)
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+		return nil, poolResolveFailure(ctx, addressID, domain.IpVersionIPv6, err)
 	}
 	pool := resolved.Pool
 	if len(pool.V6CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v6_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addressID, domain.IpVersionIPv6)
 	}
 
 	w, err := u.repo.Writer(ctx)

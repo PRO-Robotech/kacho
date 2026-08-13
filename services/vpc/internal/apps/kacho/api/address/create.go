@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 
 	"google.golang.org/grpc/codes"
@@ -526,7 +527,19 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in CreateInput) (*anypb.Any, error) {
 	exists, err := u.projectClient.Exists(ctx, in.ProjectID)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "project check: %v", err)
+		// Проза соседа — оператору, в журнал. Наружу — фиксированный текст: сырой
+		// отказ транспорта несёт адрес и порт узла, а через `operation.error`
+		// уезжает арендатору. Клиент, приняв «не годится» за «повтори позже» (или
+		// наоборот), выбирает не то действие, поэтому важен КОД, а не проза: он
+		// остаётся `UNAVAILABLE` — непроверяемое предусловие мутации не считается
+		// выполненным (fail-closed).
+		//
+		// Текст совпадает с `compute` дословно и намеренно: у двух сервисов один
+		// вопрос к одному соседу, и два разных ответа на него читались бы как два
+		// разных состояния платформы.
+		slog.ErrorContext(ctx, "address create: project existence check failed",
+			"project_id", in.ProjectID, "address_id", addrID, "err", err)
+		return nil, status.Error(codes.Unavailable, "project check: upstream project service unavailable")
 	}
 	if !exists {
 		return nil, status.Errorf(codes.NotFound, "Project %s not found", in.ProjectID)
@@ -556,13 +569,13 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == "" {
 			v4Pool, err = u.pools.ResolvePoolForAddressObjFamily(ctx, &kachorepo.AddressRecord{Address: *a}, addresspool.FamilyV4)
 			if err != nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+				return nil, poolResolveFailure(ctx, addrID, domain.IpVersionIPv4, err)
 			}
 		}
 		if a.ExternalIpv6 != nil && a.ExternalIpv6.Address == "" {
 			v6Pool, err = u.pools.ResolvePoolForAddressObjFamily(ctx, &kachorepo.AddressRecord{Address: *a}, addresspool.FamilyV6)
 			if err != nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+				return nil, poolResolveFailure(ctx, addrID, domain.IpVersionIPv6, err)
 			}
 		}
 	}
@@ -757,8 +770,7 @@ func (u *CreateAddressUseCase) allocateExternalIPv4(ctx context.Context, w Write
 	}
 	pool := resolved.Pool
 	if len(pool.V4CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v4_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addr.ID, domain.IpVersionIPv4)
 	}
 	ip, err := allocateExternalV4IntoTx(ctx, w, pool.ID, addr.ID)
 	if err != nil {
@@ -780,8 +792,7 @@ func (u *CreateAddressUseCase) allocateExternalIPv6(ctx context.Context, w Write
 	}
 	pool := resolved.Pool
 	if len(pool.V6CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v6_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addr.ID, domain.IpVersionIPv6)
 	}
 	ip, err := allocateExternalV6IntoTx(ctx, w, pool.ID, addr.ID, addr.ExternalIpv6.ZoneID)
 	if err != nil {
