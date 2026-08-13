@@ -389,10 +389,24 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// полосы, поэтому изменились ровно два числа: routine 234→226 и total 295→287;
 	// sensitive и exempt не тронуты. Имена снятых стоят в перечне снятой поверхности,
 	// поэтому вернуться молча они не могут.
+	//
+	// ЧИСЛА ПЕРЕМЕРЕНЫ ещё раз — заведён шов с исполнителем датаплейна
+	// (`vpc.v1.InternalDataplaneService`): поток намерения `WatchIntent`
+	// (`system_viewer` @ cluster) и подтверждение применения
+	// `ReportIntentApplied` (`system_admin` @ cluster). Оба — рутинной полосы
+	// (ACR «1»), поэтому изменились ровно два числа: routine 226→228 и
+	// total 287→289; sensitive и exempt не тронуты.
+	//
+	// Полоса ACR у потока — та же, что у остальных внутренних чтений инфра-
+	// поверхности (`InternalNetworkService/GetNetwork`), и поднимать её было бы
+	// требованием повторной аутентификации к машинному вызывающему, который
+	// интерактивной сессии не имеет вовсе. Отношения при этом РАЗНЫЕ у чтения и
+	// записи: право смотреть намерение не даёт права объявлять применённым что
+	// угодно.
 	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 226, n1, "routine count")
+	assert.Equal(t, 228, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 287, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 289, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

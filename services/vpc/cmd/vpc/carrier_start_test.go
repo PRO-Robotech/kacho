@@ -48,6 +48,7 @@ import (
 
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
+	dataplaneapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	niapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/networkinterface"
@@ -80,6 +81,11 @@ func emptyServices() *services {
 		networkInternal:          &networkinternal.Service{},
 		networkInterfaceHandler:  &niapp.Handler{},
 		networkInterfaceInternal: &nicinternal.Service{},
+		// Обработчик потока намерения — в отличие от прочих, не нулевой литерал:
+		// регистратор gRPC вызывает у него метод, вшитый генератором в
+		// `Unimplemented…`-встраивание, и нулевой указатель здесь падает ещё до
+		// того, как носитель дойдёт до своих отказов старта.
+		dataplaneHandler: dataplaneapp.NewHandler(nil, nil, dataplaneapp.NewObserver(nil)),
 	}
 }
 

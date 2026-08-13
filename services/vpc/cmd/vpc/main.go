@@ -36,6 +36,7 @@ import (
 
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
+	dataplaneapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	niapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/networkinterface"
@@ -57,6 +58,7 @@ import (
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
+	dataplanepg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/dataplane"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
@@ -140,6 +142,15 @@ type services struct {
 	networkInternal          *networkinternal.Service
 	networkInterfaceHandler  *niapp.Handler
 	networkInterfaceInternal *nicinternal.Service
+	// dataplaneHandler — шов с исполнителем датаплейна: поток намерения и приём
+	// подтверждения применения (:9091, запрет #6). На публичный слушатель НЕ
+	// регистрируется: поток несёт намерение по всем арендаторам сразу и
+	// координату изоляции сети.
+	dataplaneHandler *dataplaneapp.Handler
+	// dataplaneCompactor — уплотнение снятых намерений. Без него журнал растёт
+	// на каждый удалённый ресурс и не убывает никогда, а исход «твоя ревизия
+	// слишком стара» остаётся веткой без производителя.
+	dataplaneCompactor *dataplaneapp.Compactor
 }
 
 func runServe(cfg config.Config) error {
@@ -576,6 +587,18 @@ func runServe(cfg config.Config) error {
 			}
 			return nil
 		},
+		// Уплотнение журнала намерения. Ставится задачей носителя, а не «горутиной
+		// в стороне»: у неё тот же контекст, что у слушателей, поэтому гашение
+		// процесса гасит и её, а не оставляет читать базу после закрытия портов.
+		//
+		// Отказ уплотнения процесс НЕ роняет: журнал растёт, но доставка
+		// намерения работает. Отказ громкий и со счётом подряд идущих — «не
+		// уплотняется месяц» обязано быть заметно, иначе горизонт стоит, таблица
+		// растёт, и узнают об этом по месту на диске.
+		func() error {
+			svcs.dataplaneCompactor.Run(serveCtx)
+			return nil
+		},
 		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →
 		// гашение + дрейн LRO worker'ов. select по обоим каналам, иначе при крахе
 		// слушателей waiter висел бы на ctx навечно.
@@ -870,6 +893,20 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	sgAdapter := cqrsadapter.NewSecurityGroup(kachoRepo)
 	niAdapter := cqrsadapter.NewNetworkInterface(kachoRepo)
 
+	// Шов с исполнителем датаплейна. Адаптер работает НАПРЯМУЮ с пулом, а не
+	// через `kacho.Repository`: его предмет — проекция намерения и таблицы
+	// ресурсов, читаемые в ОДНОМ снимке (REPEATABLE READ), и разложить это по
+	// per-resource читателям значило бы читать курсор и тела разными
+	// транзакциями — то есть отдавать пару, которой ни в один момент не
+	// существовало.
+	dataplaneStore := dataplanepg.New(pool)
+	dataplaneObserver := dataplaneapp.NewObserver(logger.With("component", "dataplane-intent"))
+	dataplaneHandler := dataplaneapp.NewHandler(
+		dataplaneapp.NewWatchIntentUseCase(dataplaneStore, dataplaneObserver),
+		dataplaneapp.NewReportAppliedUseCase(dataplaneStore, dataplaneObserver),
+		dataplaneObserver,
+	)
+
 	// AddressPool — admin-only use-case-структура (см.
 	// `internal/apps/kacho/api/addresspool/`). Composition root собирает use-case'ы +
 	// ResolverService под единый Handler. Все use-case'ы работают через `kachoRepo`
@@ -1051,6 +1088,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		networkInterfaceInternal: nicinternal.NewService(kachoRepo).
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
+		dataplaneHandler:   dataplaneHandler,
+		dataplaneCompactor: dataplaneapp.NewCompactor(dataplaneStore, logger.With("component", "dataplane-compaction")),
 	}
 }
 
@@ -1081,6 +1120,12 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// external mux (INV-2). Регистрируется на internalSrv → та же authz-Check-цепочка
 	// интерсепторов (internalUnary + authzIntr), что и прочие internal RPC (INV-2a).
 	vpcv1.RegisterInternalNetworkInterfaceServiceServer(srv, handler.NewInternalNetworkInterfaceHandler(svcs.networkInterfaceInternal))
+	// InternalDataplaneService — доставка намерения исполнителю датаплейна и
+	// приём подтверждения применения. Только internal listener: и поток, и
+	// подтверждение оперируют намерением по ВСЕМ арендаторам, а поток вдобавок
+	// несёт координату изоляции сети — инфра-чувствительное поле, которого нет и
+	// не может быть на публичной поверхности.
+	vpcv1.RegisterInternalDataplaneServiceServer(srv, svcs.dataplaneHandler)
 }
 
 // maskDSN отдает DSN с замаскированным паролем — для безопасного логирования

@@ -51,6 +51,11 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 	vpcv1.InternalAddressPoolService_ServiceDesc,
 	vpcv1.InternalNetworkService_ServiceDesc,
 	vpcv1.InternalNetworkInterfaceService_ServiceDesc,
+	// Шов с исполнителем датаплейна. Один из его методов — СЕРВЕРНЫЙ СТРИМ, и он
+	// попадает сюда на тех же основаниях, что и одиночные вызовы: цепочка звеньев
+	// у обоих слушателей одна, а «поток — не запрос, его гейтить не обязательно»
+	// было бы ровно тем запрещённым допущением, что и «internal — доверенный».
+	vpcv1.InternalDataplaneService_ServiceDesc,
 }
 
 // notServedServiceNames — сервисы `kacho.cloud.vpc.v1`, объявленные в proto, но НЕ
