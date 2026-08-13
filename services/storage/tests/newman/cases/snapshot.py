@@ -562,7 +562,7 @@ CASES.append(Case(
         # Копия читает данные источника: `copySnapshotSQL` берёт только READY-строку.
         wait_until_ready(Step(name="src-ready", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
              test_script=_COPY_ZONES_DIFFER), ready="READY", subject="Снимок-источник"),
-        Step(name="copy", method="POST", path=f"{SNP}/{{{{snapshotId}}}}:copy",
+        retry_until_authorized(Step(name="copy", method="POST", path=f"{SNP}/{{{{snapshotId}}}}:copy",
              body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "{{existingZoneAltId}}",
                    "name": "snap-copy-{{runId}}", "description": "newman copy",
                    "labels": {"suite": "newman"}},
@@ -572,6 +572,7 @@ CASES.append(Case(
                           "pm.test('metadata.sourceSnapshotId — источник', () => pm.expect(String(m.sourceSnapshotId)).to.eql(String(pm.environment.get('snapshotId'))));",
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotCopyId")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         poll_operation_until_done(), assert_op_success(),
         retry_until_authorized(Step(name="get-copy", method="GET", path=f"{SNP}/{{{{snapshotCopyId}}}}",
              test_script=[*assert_status(200),

@@ -148,7 +148,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya153",
+          "name": "assert-op-success-rya154",
           "request": {
             "method": "GET",
             "header": [
@@ -365,7 +365,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya154",
+          "name": "assert-op-success-rya155",
           "request": {
             "method": "GET",
             "header": [
@@ -489,7 +489,7 @@
           ]
         },
         {
-          "name": "del-snap-rya155",
+          "name": "del-snap-rya156",
           "request": {
             "method": "DELETE",
             "header": [
@@ -602,7 +602,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya156",
+          "name": "cleanup-source-vol-rya157",
           "request": {
             "method": "DELETE",
             "header": [
@@ -816,7 +816,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya157",
+          "name": "assert-op-error-rya158",
           "request": {
             "method": "GET",
             "header": [
@@ -1521,7 +1521,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya158",
+          "name": "assert-op-success-rya159",
           "request": {
             "method": "GET",
             "header": [
@@ -1855,7 +1855,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya159",
+          "name": "assert-op-success-rya160",
           "request": {
             "method": "GET",
             "header": [
@@ -1905,7 +1905,7 @@
           ]
         },
         {
-          "name": "verify-rya160",
+          "name": "verify-rya161",
           "request": {
             "method": "GET",
             "header": [
@@ -1958,7 +1958,7 @@
           ]
         },
         {
-          "name": "del-snap-rya161",
+          "name": "del-snap-rya162",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2071,7 +2071,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya162",
+          "name": "cleanup-source-vol-rya163",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2290,7 +2290,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya163",
+          "name": "assert-op-success-rya164",
           "request": {
             "method": "GET",
             "header": [
@@ -2615,7 +2615,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya164",
+          "name": "assert-op-success-rya165",
           "request": {
             "method": "GET",
             "header": [
@@ -2665,7 +2665,7 @@
           ]
         },
         {
-          "name": "get-404-rya165",
+          "name": "get-404-rya166",
           "request": {
             "method": "GET",
             "header": [
@@ -2719,7 +2719,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya166",
+          "name": "cleanup-source-vol-rya167",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2925,7 +2925,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya167",
+          "name": "assert-op-error-rya168",
           "request": {
             "method": "GET",
             "header": [
@@ -3344,7 +3344,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya168",
+          "name": "assert-op-success-rya169",
           "request": {
             "method": "GET",
             "header": [
@@ -3678,7 +3678,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya169",
+          "name": "assert-op-success-rya170",
           "request": {
             "method": "GET",
             "header": [
@@ -3728,7 +3728,7 @@
           ]
         },
         {
-          "name": "verify-256-applied-rya170",
+          "name": "verify-256-applied-rya171",
           "request": {
             "method": "GET",
             "header": [
@@ -3779,7 +3779,7 @@
           ]
         },
         {
-          "name": "patch-desc-257-rya171",
+          "name": "patch-desc-257-rya172",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3849,7 +3849,7 @@
           ]
         },
         {
-          "name": "verify-257-not-applied-rya172",
+          "name": "verify-257-not-applied-rya173",
           "request": {
             "method": "GET",
             "header": [
@@ -3900,7 +3900,7 @@
           ]
         },
         {
-          "name": "del-snap-rya173",
+          "name": "del-snap-rya174",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4013,7 +4013,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya174",
+          "name": "cleanup-source-vol-rya175",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4232,7 +4232,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya175",
+          "name": "assert-op-success-rya176",
           "request": {
             "method": "GET",
             "header": [
@@ -4566,7 +4566,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya176",
+          "name": "assert-op-success-rya177",
           "request": {
             "method": "GET",
             "header": [
@@ -4616,7 +4616,7 @@
           ]
         },
         {
-          "name": "verify-64-applied-rya177",
+          "name": "verify-64-applied-rya178",
           "request": {
             "method": "GET",
             "header": [
@@ -4667,7 +4667,7 @@
           ]
         },
         {
-          "name": "patch-labels-65-rya178",
+          "name": "patch-labels-65-rya179",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4737,7 +4737,7 @@
           ]
         },
         {
-          "name": "del-snap-rya179",
+          "name": "del-snap-rya180",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4850,7 +4850,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya180",
+          "name": "cleanup-source-vol-rya181",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5069,7 +5069,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya181",
+          "name": "assert-op-success-rya182",
           "request": {
             "method": "GET",
             "header": [
@@ -5356,7 +5356,7 @@
           ]
         },
         {
-          "name": "verify-name-unchanged-rya182",
+          "name": "verify-name-unchanged-rya183",
           "request": {
             "method": "GET",
             "header": [
@@ -5407,7 +5407,7 @@
           ]
         },
         {
-          "name": "del-snap-rya183",
+          "name": "del-snap-rya184",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5520,7 +5520,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya184",
+          "name": "cleanup-source-vol-rya185",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5793,7 +5793,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya185",
+          "name": "assert-op-success-rya186",
           "request": {
             "method": "GET",
             "header": [
@@ -6003,7 +6003,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya186",
+          "name": "assert-op-success-rya187",
           "request": {
             "method": "GET",
             "header": [
@@ -6117,7 +6117,7 @@
           ]
         },
         {
-          "name": "copy-rya187",
+          "name": "copy-rya151",
           "request": {
             "method": "POST",
             "header": [
@@ -6161,9 +6161,9 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403].includes(pm.response.code) && _arc < 30) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -6291,7 +6291,7 @@
           ]
         },
         {
-          "name": "get-copy-rya151",
+          "name": "get-copy-rya152",
           "request": {
             "method": "GET",
             "header": [
@@ -7376,7 +7376,7 @@
           ]
         },
         {
-          "name": "list-ops-rya152",
+          "name": "list-ops-rya153",
           "request": {
             "method": "GET",
             "header": [

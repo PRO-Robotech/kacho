@@ -1155,7 +1155,7 @@ CASES.append(Case(
         # Копия читает данные источника: `copyImageSQL` берёт только READY-строку.
         wait_until_ready_step("copy-src-ready", f"{IMG}/{{{{imageId}}}}",
                               ready="READY", subject="Образ-источник"),
-        Step(name="copy", method="POST", path=f"{IMG}/{{{{imageId}}}}:copy",
+        retry_until_authorized(Step(name="copy", method="POST", path=f"{IMG}/{{{{imageId}}}}:copy",
              body={"projectId": "{{_suiteProjectId}}", "targetRegionId": _COPY_REGION,
                    "name": "img-copy-{{runId}}", "description": "newman copy",
                    "labels": {"suite": "newman"}},
@@ -1164,6 +1164,7 @@ CASES.append(Case(
                           "pm.test('metadata.imageId — НОВЫЙ образ, не источник', () => { pm.expect(String(m.imageId)).to.match(/^img/); pm.expect(String(m.imageId)).to.not.eql(String(pm.environment.get('imageId'))); });",
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageCopyId")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
         poll_operation_until_done(), assert_op_success(),
         retry_until_authorized(Step(name="get-copy", method="GET", path=f"{IMG}/{{{{imageCopyId}}}}",
              test_script=[*assert_status(200),

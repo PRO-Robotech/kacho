@@ -560,11 +560,20 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	}
 
 	copyItem := &domain.Snapshot{
-		ID:          ids.NewID(domain.PrefixSnapshot),
-		ProjectID:   src.ProjectID,
-		Name:        in.Name,
-		Description: in.Description,
-		Labels:      in.Labels,
+		ID:        ids.NewID(domain.PrefixSnapshot),
+		ProjectID: src.ProjectID,
+		// Происхождение НАСЛЕДУЕТСЯ от источника, и это не формальность ради
+		// проверки домена: копия пришла из того же тома, транзитивно. Снимок
+		// несёт ровно один источник — том; «источник-снимок» отдельным полем не
+		// заводится, иначе у ресурса стало бы два происхождения, и на каждом
+		// пути пришлось бы решать, какое из них настоящее.
+		//
+		// Без этого копия отвергалась проверкой домена как снимок без источника —
+		// то есть глагол не работал НИ РАЗУ с момента заведения.
+		SourceVolumeID: src.SourceVolumeID,
+		Name:           in.Name,
+		Description:    in.Description,
+		Labels:         in.Labels,
 	}
 	copyItem.Backend.BackendObject = blockbackend.SnapshotObjectName(u.installPrefix, copyItem.ID)
 	if verr := copyItem.Validate(); verr != nil {

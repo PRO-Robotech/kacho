@@ -187,7 +187,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya34",
+          "name": "assert-op-success-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -403,7 +403,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya35",
+          "name": "assert-op-success-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -530,7 +530,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya36",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -643,7 +643,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya37",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya38",
           "request": {
             "method": "DELETE",
             "header": [
@@ -901,7 +901,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya38",
+          "name": "assert-op-success-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -1111,7 +1111,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya39",
+          "name": "assert-op-success-rya40",
           "request": {
             "method": "GET",
             "header": [
@@ -1326,7 +1326,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya40",
+          "name": "assert-op-success-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -1439,7 +1439,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya41",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya42",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1552,7 +1552,7 @@
           ]
         },
         {
-          "name": "cleanup-source-snap-rya42",
+          "name": "cleanup-source-snap-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1665,7 +1665,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya43",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1987,7 +1987,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya44",
+          "name": "assert-op-error-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -2139,7 +2139,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya45",
+          "name": "assert-op-error-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -2335,7 +2335,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya46",
+          "name": "assert-op-success-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -2545,7 +2545,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya47",
+          "name": "assert-op-success-rya48",
           "request": {
             "method": "GET",
             "header": [
@@ -2690,7 +2690,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya48",
+          "name": "assert-op-error-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -2741,7 +2741,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya49",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya50",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2854,7 +2854,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya50",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya51",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3683,7 +3683,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya51",
+          "name": "assert-op-success-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -4017,7 +4017,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya52",
+          "name": "assert-op-success-rya53",
           "request": {
             "method": "GET",
             "header": [
@@ -4067,7 +4067,7 @@
           ]
         },
         {
-          "name": "verify-rya53",
+          "name": "verify-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -4121,7 +4121,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya54",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya55",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4234,7 +4234,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya55",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya56",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4886,7 +4886,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya56",
+          "name": "assert-op-success-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -5160,7 +5160,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya57",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya58",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5273,7 +5273,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya58",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya59",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5572,7 +5572,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya59",
+          "name": "assert-op-success-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -5965,7 +5965,7 @@
           ]
         },
         {
-          "name": "page2-rya60",
+          "name": "page2-rya61",
           "request": {
             "method": "GET",
             "header": [
@@ -6015,7 +6015,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageAId}}-rya61",
+          "name": "cleanup-/storage/v1/images/{{imageAId}}-rya62",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6128,7 +6128,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageBId}}-rya62",
+          "name": "cleanup-/storage/v1/images/{{imageBId}}-rya63",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6241,7 +6241,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya63",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya64",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6499,7 +6499,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya64",
+          "name": "assert-op-success-rya65",
           "request": {
             "method": "GET",
             "header": [
@@ -6778,7 +6778,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya65",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya66",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6891,7 +6891,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya66",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya67",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7149,7 +7149,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya67",
+          "name": "assert-op-success-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -7474,7 +7474,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya68",
+          "name": "assert-op-success-rya69",
           "request": {
             "method": "GET",
             "header": [
@@ -7524,7 +7524,7 @@
           ]
         },
         {
-          "name": "get-404-rya69",
+          "name": "get-404-rya70",
           "request": {
             "method": "GET",
             "header": [
@@ -7579,7 +7579,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya70",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya71",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7785,7 +7785,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya71",
+          "name": "assert-op-error-rya72",
           "request": {
             "method": "GET",
             "header": [
@@ -7981,7 +7981,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya72",
+          "name": "assert-op-success-rya73",
           "request": {
             "method": "GET",
             "header": [
@@ -8191,7 +8191,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya73",
+          "name": "assert-op-success-rya74",
           "request": {
             "method": "GET",
             "header": [
@@ -8401,7 +8401,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya74",
+          "name": "assert-op-success-rya75",
           "request": {
             "method": "GET",
             "header": [
@@ -8513,7 +8513,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{bootVolumeId}}-rya75",
+          "name": "cleanup-/storage/v1/volumes/{{bootVolumeId}}-rya76",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8626,7 +8626,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya76",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya77",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8739,7 +8739,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya77",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya78",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9007,7 +9007,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya78",
+          "name": "assert-op-error-rya79",
           "request": {
             "method": "GET",
             "header": [
@@ -9474,7 +9474,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya79",
+          "name": "assert-op-success-rya80",
           "request": {
             "method": "GET",
             "header": [
@@ -9684,7 +9684,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya80",
+          "name": "assert-op-success-rya81",
           "request": {
             "method": "GET",
             "header": [
@@ -9889,7 +9889,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya81",
+          "name": "assert-op-error-rya82",
           "request": {
             "method": "GET",
             "header": [
@@ -9992,7 +9992,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{altImageId}}-rya82",
+          "name": "cleanup-/storage/v1/images/{{altImageId}}-rya83",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10105,7 +10105,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{altSourceVolumeId}}-rya83",
+          "name": "cleanup-/storage/v1/volumes/{{altSourceVolumeId}}-rya84",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10400,7 +10400,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya84",
+          "name": "assert-op-success-rya85",
           "request": {
             "method": "GET",
             "header": [
@@ -10610,7 +10610,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya85",
+          "name": "assert-op-success-rya86",
           "request": {
             "method": "GET",
             "header": [
@@ -10755,7 +10755,7 @@
           ]
         },
         {
-          "name": "assert-op-error-hidden-rya86",
+          "name": "assert-op-error-hidden-rya87",
           "request": {
             "method": "GET",
             "header": [
@@ -10808,7 +10808,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{crossImageId}}-rya87",
+          "name": "cleanup-/storage/v1/images/{{crossImageId}}-rya88",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10921,7 +10921,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{crossSourceVolumeId}}-rya88",
+          "name": "cleanup-/storage/v1/volumes/{{crossSourceVolumeId}}-rya89",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11179,7 +11179,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya89",
+          "name": "assert-op-success-rya90",
           "request": {
             "method": "GET",
             "header": [
@@ -11389,7 +11389,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya90",
+          "name": "assert-op-success-rya91",
           "request": {
             "method": "GET",
             "header": [
@@ -11599,7 +11599,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya91",
+          "name": "assert-op-success-rya92",
           "request": {
             "method": "GET",
             "header": [
@@ -11812,7 +11812,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya92",
+          "name": "assert-op-success-rya93",
           "request": {
             "method": "GET",
             "header": [
@@ -11862,7 +11862,7 @@
           ]
         },
         {
-          "name": "get-boot-post-rya93",
+          "name": "get-boot-post-rya94",
           "request": {
             "method": "GET",
             "header": [
@@ -11916,7 +11916,7 @@
           ]
         },
         {
-          "name": "get-image-404-rya94",
+          "name": "get-image-404-rya95",
           "request": {
             "method": "GET",
             "header": [
@@ -11971,7 +11971,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{bootVolumeId}}-rya95",
+          "name": "cleanup-/storage/v1/volumes/{{bootVolumeId}}-rya96",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12084,7 +12084,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya96",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya97",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12342,7 +12342,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya97",
+          "name": "assert-op-success-rya98",
           "request": {
             "method": "GET",
             "header": [
@@ -12619,7 +12619,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya98",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya99",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12732,7 +12732,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya99",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya100",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13037,7 +13037,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya100",
+          "name": "assert-op-success-rya101",
           "request": {
             "method": "GET",
             "header": [
@@ -13371,7 +13371,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya101",
+          "name": "assert-op-success-rya102",
           "request": {
             "method": "GET",
             "header": [
@@ -13421,7 +13421,7 @@
           ]
         },
         {
-          "name": "verify-256-applied-rya102",
+          "name": "verify-256-applied-rya103",
           "request": {
             "method": "GET",
             "header": [
@@ -13472,7 +13472,7 @@
           ]
         },
         {
-          "name": "patch-desc-257-rya103",
+          "name": "patch-desc-257-rya104",
           "request": {
             "method": "PATCH",
             "header": [
@@ -13542,7 +13542,7 @@
           ]
         },
         {
-          "name": "verify-257-not-applied-rya104",
+          "name": "verify-257-not-applied-rya105",
           "request": {
             "method": "GET",
             "header": [
@@ -13593,7 +13593,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya105",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya106",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13706,7 +13706,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya106",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya107",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13964,7 +13964,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya107",
+          "name": "assert-op-success-rya108",
           "request": {
             "method": "GET",
             "header": [
@@ -14298,7 +14298,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya108",
+          "name": "assert-op-success-rya109",
           "request": {
             "method": "GET",
             "header": [
@@ -14348,7 +14348,7 @@
           ]
         },
         {
-          "name": "verify-64-applied-rya109",
+          "name": "verify-64-applied-rya110",
           "request": {
             "method": "GET",
             "header": [
@@ -14399,7 +14399,7 @@
           ]
         },
         {
-          "name": "patch-labels-65-rya110",
+          "name": "patch-labels-65-rya111",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14469,7 +14469,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/images/{{imageId}}-rya111",
+          "name": "cleanup-/storage/v1/images/{{imageId}}-rya112",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14582,7 +14582,7 @@
           ]
         },
         {
-          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya112",
+          "name": "cleanup-/storage/v1/volumes/{{sourceVolumeId}}-rya113",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15150,7 +15150,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya113",
+          "name": "assert-op-success-rya114",
           "request": {
             "method": "GET",
             "header": [
@@ -15360,7 +15360,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya114",
+          "name": "assert-op-success-rya115",
           "request": {
             "method": "GET",
             "header": [
@@ -15470,7 +15470,7 @@
           ]
         },
         {
-          "name": "copy-rya115",
+          "name": "copy-rya33",
           "request": {
             "method": "POST",
             "header": [
@@ -15514,9 +15514,9 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "if ([403].includes(pm.response.code) && _arc < 30) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
@@ -15643,7 +15643,7 @@
           ]
         },
         {
-          "name": "get-copy-rya33",
+          "name": "get-copy-rya34",
           "request": {
             "method": "GET",
             "header": [
