@@ -24,6 +24,7 @@ import (
 //	authz:         { iam-endpoint, check-timeout, ... }
 //	extapi:        { def-dial-duration, iam, geo }
 //	network:       { default-sg-inline, project-cache }
+//	dataplane:     { executor }
 //
 // Все секции — `mapstructure`-теги (viper по умолчанию использует mapstructure
 // для Unmarshal). Default'ы — в defaults.go.
@@ -38,6 +39,7 @@ type Config struct {
 	ExtAPI      ExtAPIConfig      `mapstructure:"extapi"`
 	Network     NetworkConfig     `mapstructure:"network"`
 	IAM         IAMConfig         `mapstructure:"iam"`
+	Dataplane   DataplaneConfig   `mapstructure:"dataplane"`
 }
 
 // IAMConfig — секция iam: интеграция с kacho-iam (fail-closed boot-gate +
@@ -228,19 +230,16 @@ type ListFilterConfig struct {
 	// Default false (fail-closed). WARN-log + Critical-alert при включении.
 	FailOpen bool `mapstructure:"fail-open"`
 
-	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
-	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
-	// НЕсуженными вместо отказа.
-	//
-	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
-	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
-	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
-	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
-	// называется (`listnarrow.Counts`): иначе аварийный режим становится тихим
-	// штатным, и «им пользуются» неотличимо от «им не пользуются».
-	//
-	// В production запрещён тем же стражем, что запрещает выключенный фильтр.
-	Breakglass bool `mapstructure:"breakglass"`
+	// Ручки аварийного пропуска страницы здесь БОЛЬШЕ НЕТ — её имя называет
+	// `retired_knobs_test.go` (здесь оно намеренно не воспроизводится, иначе
+	// перечень снятого нашёл бы его как возвращённое). Предмет у неё был один —
+	// «посадка без модели прав», — и он недостижим: `ValidateListFilter`
+	// отказывает в старте и на выключенном фильтре, и на нерезолвимом адресе, на
+	// ЛЮБОЙ посадке. Значит у поднявшегося процесса фильтр включён и соединение
+	// есть, а вооружённая ручка не меняла ни одного исхода — то есть была принятой
+	// и проигнорированной. Пропуск на отсутствующей модели остаётся невозможным по
+	// построению: сужатель без соединения ОТКАЗЫВАЕТ (`pkg/listnarrow`), и снять
+	// этот отказ настройкой нельзя.
 }
 
 // LoggerConfig — секция logger.

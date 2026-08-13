@@ -83,28 +83,45 @@ func TestBuildListFilter_EnabledNilConn_StillNarrowsByRefusing(t *testing.T) {
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 }
 
-// Аварийный режим — единственный способ получить проход, и он ОБЪЯВЛЯЕТСЯ. Каждое
-// срабатывание считается: «им пользуются» обязано быть отличимо от «им не
-// пользуются».
-func TestBuildListFilter_BreakglassPassesAndIsCounted(t *testing.T) {
+// Отказ на отсутствующей модели прав НЕ СНИМАЕТСЯ настройкой.
+//
+// Здесь стояла проба аварийного пропуска: она выставляла ручку и утверждала, что
+// страница уходит несуженной, а срабатывание считается. Ручка снята (её имя — в
+// `retired_knobs_test.go`): её предмет — «посадка без модели» — недостижим, потому
+// что на выключенном фильтре и на нерезолвимом адресе процесс не поднимается
+// вовсе. Проба перевёрнута и утверждает то, что осталось верным: пропуска нет ни
+// при какой настройке, и счётчик аварийных проходов остаётся нулевым.
+//
+// Прочитанный ноль — часть утверждения: он отличает «пропуска не было» от
+// «счётчика нет вовсе» (счётчик живёт в общем сужателе и продолжает существовать
+// для тех, у кого такой режим есть).
+func TestBuildListFilter_NoRightsModel_RefusesAndNoKnobWaivesIt(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthZ.ListFilter.Enabled = false
-	cfg.AuthZ.ListFilter.Breakglass = true
 	f := buildListFilter(cfg, nil, discardLogger())
 	require.NotNil(t, f)
 	require.Zero(t, f.Counts().Breakglass, "прочитанный ноль отличает «не было» от «счётчика нет»")
 
 	got, err := listnarrow.IDs(narrowtest.Caller(), f, "vpc_subnet", "vpc.subnets.list", []string{"sub_a"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"sub_a"}, got)
-	assert.Equal(t, uint64(1), f.Counts().Breakglass)
+	require.Error(t, err, "спросить негде — значит отказ; настройки, дающей проход, больше нет")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, got, "отказ не отдаёт страницу")
+	assert.Zero(t, f.Counts().Breakglass,
+		"аварийных проходов не было и быть не может: у vpc такого режима нет")
 }
 
-func TestBuildListFilter_EnabledWithConn_ReturnsFilter(t *testing.T) {
+// Парный положительный контроль к трём отрицаниям выше: на ЗАКОННОЙ посадке
+// (фильтр включён, соединение есть) сужатель действительно сужает. Без него все
+// три отрицания зеленели бы на сужателе, который отказывает всегда, — то есть на
+// сломанном чтении.
+func TestBuildListFilter_EnabledWithConn_Narrows(t *testing.T) {
 	var cfg config.Config
 	cfg.AuthZ.ListFilter.Enabled = true
 	f := buildListFilter(cfg, dialLoopback(t), discardLogger())
 	require.NotNil(t, f, "enabled + conn → FGA per-object filter")
+	assert.True(t, f.Narrows(),
+		"сужение обязано быть ЧИТАЕМЫМ снаружи и включённым: иначе отрицания выше не отличают "+
+			"«отказал, потому что не с кем говорить» от «отказывает всегда»")
 }
 
 // TestSECI_CompletenessGuard_EveryIAMDialThreadsClientCreds — статический

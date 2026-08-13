@@ -63,6 +63,16 @@ func productionEnv() map[string]string {
 		"KACHO_VPC_IAM_PROJECT_MTLS_ENABLE":                   "true",
 		"KACHO_VPC_IAM_REGISTER_MTLS_ENABLE":                  "true",
 		"KACHO_VPC_GEO_MTLS_ENABLE":                           "true",
+		// Профиль возможностей исполнителя объявлен ПОЛНОСТЬЮ — иначе окружение
+		// перестало бы быть тем, «в котором боевой vpc обязан подниматься», и
+		// каждый случай ниже падал бы по чужой причине.
+		"KACHO_VPC_DATAPLANE__EXECUTOR__OVERLAPPING_TENANT_ADDRESSES":            "true",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__STATE_TRACKING_FAMILIES":                 "v4,v6",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__NAMED_SET_REFERENCE_IN_RULE":             "true",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES":                "1450",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS": "1000",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE":          "65536",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__TENANT_SETTABLE_BANDWIDTH_LIMIT":         "false",
 	}
 }
 
@@ -166,5 +176,80 @@ func TestBootRefusal_ListFilterFailOpen(t *testing.T) {
 	}
 	if strings.Contains(out, "authz.list-filter.fail-open") {
 		t.Fatalf("with no ScopeFiltered RPC the guard must stay silent; output:\n%s", out)
+	}
+}
+
+// vpc42-P-01: пересечение адресов НЕ объявлено поддержанным → процесс не
+// поднимается, называет ручку и останавливается ДО первого соединения.
+//
+// Ослабляется РОВНО одна ручка. Парный положительный контроль — тот же, что у
+// случаев выше (vpc9c-P-02): на полном профиле процесс проходит все гарды и
+// доходит до недоступной БД, поэтому «отказал по настройке» отличимо от «бинарь не
+// стартует вообще».
+func TestBootRefusal_ExecutorProfileOverlapNotDeclared(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	env["KACHO_VPC_DATAPLANE__EXECUTOR__OVERLAPPING_TENANT_ADDRESSES"] = "false"
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started while the executor does not declare tenant-address isolation; output:\n%s", out)
+	}
+	if !strings.Contains(out, "dataplane.executor.overlapping-tenant-addresses") {
+		t.Fatalf("refusal must name the knob the operator has to set; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
+	}
+}
+
+// vpc42-P-02: отслеживание состояния задано ОДИНОКОЙ ЗАПЯТОЙ — вырожденный вход
+// на живом процессе.
+//
+// Сырая настройка при этом непуста, а семейств в ней ноль. Пока страж и читатель
+// спрашивают ОДИН предикат, процесс не поднимается; предикат по длине сырой
+// настройки прочитал бы её как заполненную, и посадка с неизвестной статусностью
+// поднялась бы молча. Проверяется именно на процессе: подстановка поля в юните не
+// прошла бы через разбор строки окружения, где запятая и превращается в две пустые
+// записи.
+func TestBootRefusal_ExecutorProfileStateTrackingIsALoneComma(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	env["KACHO_VPC_DATAPLANE__EXECUTOR__STATE_TRACKING_FAMILIES"] = ","
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started with an undeclared state-tracking profile; output:\n%s", out)
+	}
+	if !strings.Contains(out, "dataplane.executor.state-tracking-families") {
+		t.Fatalf("refusal must name the knob; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
+	}
+}
+
+// vpc42-P-03: неизвестное семейство — негодное ОБЪЯВЛЕНИЕ, а не посадка: отказ
+// наступает и там, где посадка не боевая. Случай подан на живом процессе в
+// dev-режиме именно затем, чтобы разделение «посадка против объявления» не осталось
+// утверждением одного юнита.
+func TestBootRefusal_ExecutorProfileUnknownFamilyEvenInDev(t *testing.T) {
+	bin := buildVPCBinary(t)
+
+	env := productionEnv()
+	env["KACHO_VPC_AUTH_MODE"] = "dev"
+	env["KACHO_VPC_DATAPLANE__EXECUTOR__STATE_TRACKING_FAMILIES"] = "v4,ipv6"
+
+	out, code := runBoot(t, bin, env)
+	if code == 0 {
+		t.Fatalf("process started with an unusable family declaration; output:\n%s", out)
+	}
+	if !strings.Contains(out, "ipv6") {
+		t.Fatalf("refusal must quote what the operator wrote; output:\n%s", out)
+	}
+	if strings.Contains(out, "db-that-is-never-dialled") {
+		t.Fatalf("guard must refuse before any dial (database was contacted); output:\n%s", out)
 	}
 }

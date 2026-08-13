@@ -83,6 +83,16 @@ func main() {
 	if err := cfg.ValidateListFilter(); err != nil {
 		log.Fatalf("config validate (list-filter): %v", err)
 	}
+	// S5 boot-guard: профиль возможностей исполнителя датаплейна. Контур принимает
+	// от арендатора то, что исполнять будет НЕ он (адресные диапазоны, правила со
+	// ссылкой на именованный набор, ограничение полосы), и возможностей исполнителя
+	// вывести не может — их объявляет посадка. Несущее предусловие — пересечение
+	// адресов между арендаторами: диапазоны у vpc уникальны лишь в пределах сети по
+	// построению, поэтому боевая посадка, не объявившая изоляцию одинаковых адресов
+	// разных арендаторов, здесь и останавливается.
+	if err := cfg.ValidateExecutorProfile(); err != nil {
+		log.Fatalf("config validate (dataplane executor profile): %v", err)
+	}
 
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
@@ -142,8 +152,34 @@ func runServe(cfg config.Config) error {
 	if cfg.AuthN.Mode == config.ModeProductionStrict {
 		logger.Warn("authn.mode=production-strict: anonymous rejected + TLS+SSL strictly validated")
 	}
-	// breakglass в production сюда не доходит: Config.Validate() отвергает такой
-	// конфиг ещё до этой точки (fail-closed вместо прежнего WARN).
+	// Здесь стояло утверждение, что аварийный пропуск страницы в боевом режиме
+	// «сюда не доходит, потому что Config.Validate() отвергает такой конфиг».
+	// Условия про этот пропуск в Config.Validate НЕ БЫЛО ни в одной редакции:
+	// страж отвергал выключенный фильтр и нерезолвимый адрес, но не саму ручку, —
+	// то есть комментарий называл несуществующую защиту. Это хуже обычного
+	// расхождения: он ОТВЕТИЛ читателю на вопрос «закрыта ли эта ручка», поэтому
+	// проверять никто не шёл. Ручка снята целиком (её имя — в
+	// `retired_knobs_test.go`), и запрет держится тем, что предмета больше нет:
+	// сужатель без соединения отказывает по построению, снять отказ настройкой
+	// нельзя.
+
+	// Профиль возможностей исполнителя — в журнал старта, ОДНОЙ строкой и целиком.
+	//
+	// Он уже прошёл стража (S5, до этой точки), и печатается здесь не ради проверки,
+	// а ради наблюдаемости: гейт посадки читает то, что процесс сам объявил при
+	// старте, а не хранимый ConfigMap (правка ConfigMap не перекатывает под, и
+	// процесс живёт с boot-time окружением). Семейства печатаются НОРМАЛИЗОВАННЫМ
+	// значением — тем же, что читал страж, — иначе журнал показывал бы «v4,,» там,
+	// где страж видел «не объявлено».
+	logger.Info("dataplane executor profile declared",
+		"overlapping_tenant_addresses", cfg.Dataplane.Executor.OverlappingTenantAddresses,
+		"state_tracking_families", cfg.StateTrackingFamilies().String(),
+		"named_set_reference_in_rule", cfg.Dataplane.Executor.NamedSetReferenceInRule,
+		"guaranteed_payload_bytes", cfg.Dataplane.Executor.GuaranteedPayloadBytes,
+		"guaranteed_bandwidth_per_interface_mbps", cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
+		"connection_limit_per_interface", cfg.Dataplane.Executor.ConnectionLimitPerInterface,
+		"tenant_settable_bandwidth_limit", cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
+	)
 
 	// Per-edge opt-in mTLS-конфиг из env (KACHO_VPC_*). enable=false на ребре →
 	// insecure (dev backward-compat). Используется для ребер vpc→iam
@@ -640,16 +676,24 @@ func dialPeer(
 // здесь nil, и use-case'ы трактовали его как «сужение выключено, страницу отдать»:
 // посадка без модели показывала каждому участнику проекта каждую его строку, а у
 // помеченных scope-filtered RPC пропадала единственная пообъектная авторизация
-// вовсе. Теперь сужатель собирается ВСЕГДА и отказывает, пока ему не с кем говорить;
-// пропуск возможен только явным аварийным режимом, и каждое его срабатывание
-// считается и называется.
+// вовсе. Теперь сужатель собирается ВСЕГДА и отказывает, пока ему не с кем говорить.
+//
+// Настройки, снимающей этот отказ, НЕ СУЩЕСТВУЕТ. Прежде здесь читалась ручка
+// аварийного пропуска (имя — в `retired_knobs_test.go`), и её предмет был
+// недостижим: на выключенном фильтре и на нерезолвимом адресе процесс не
+// поднимается — `ValidateListFilter` отказывает на любой посадке, а адрес там и
+// здесь резолвится ОДНИМ методом Config. Отказ на отсутствующей модели остаётся
+// свойством самого сужателя (`pkg/listnarrow`: нет соединения ⇒ PermissionDenied),
+// а не следствием того, что ручку не тронули.
 func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) *authzfilter.Narrower {
-	breakglass := !cfg.AuthZ.ListFilter.Enabled || conn == nil
-	if breakglass {
+	if !cfg.AuthZ.ListFilter.Enabled || conn == nil {
+		// Обе половины условия — то, чему страж старта не даёт случиться; журнал
+		// нужен на случай, если сужатель собирают мимо стража (проба, будущий
+		// второй вызывающий): «страница отказывает» обязано быть названо, а не
+		// выведено потом из отказов на чтении.
 		logger.Warn("per-object list-filter has no rights model to ask — every list will REFUSE "+
-			"unless the emergency bypass is armed",
-			"enabled", cfg.AuthZ.ListFilter.Enabled, "authorize_conn", conn != nil,
-			"breakglass", cfg.AuthZ.ListFilter.Breakglass)
+			"(no configuration waives this: the emergency bypass knob is retired)",
+			"enabled", cfg.AuthZ.ListFilter.Enabled, "authorize_conn", conn != nil)
 		conn = nil
 	}
 	f := authzfilter.New(conn, authzfilter.Config{
@@ -657,7 +701,6 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 		CacheTTL:              cfg.AuthZ.ListFilter.CacheTTL,
 		CacheMaxEntries:       cfg.AuthZ.ListFilter.MaxEntries,
 		SoftPassOnPeerFailure: cfg.AuthZ.ListFilter.FailOpen,
-		Breakglass:            breakglass && cfg.AuthZ.ListFilter.Breakglass,
 	}).WithLogger(logger)
 	logger.Info("per-object list-filter wired",
 		// per_call_timeout_ms гейтит ОДИН BatchCheck; operation_budget — потолок

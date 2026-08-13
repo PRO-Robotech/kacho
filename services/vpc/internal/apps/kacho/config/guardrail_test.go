@@ -36,6 +36,24 @@ func prodCfg(mode Mode, iamEndpoint string) Config {
 	// Круг отправителей чужой личности сужен — тоже чтобы изолировать проверяемый
 	// гард (S1c держит собственный набор случаев в trusted_forwarders_test.go).
 	c.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
+	// Профиль возможностей исполнителя объявлен полностью — по той же причине, что
+	// и всё выше: чтобы каждый случай изолировал СВОЙ гард. Объявление живёт здесь,
+	// в ОДНОМ месте: «законная боевая посадка» — величина, и два её описания
+	// разошлись бы на первом же новом требовании (S5 держит собственный набор
+	// случаев в guardrail_executor_profile_test.go).
+	//
+	// Фикстура обязана быть не снисходительнее продукта: пока страж требует
+	// объявления, фикстура, оставившая профиль пустым, утверждала бы «всё
+	// защищено» на посадке, которая не поднимается.
+	c.Dataplane.Executor = ExecutorProfileConfig{
+		OverlappingTenantAddresses:          true,
+		StateTrackingFamilies:               []string{"v4", "v6"},
+		NamedSetReferenceInRule:             true,
+		GuaranteedPayloadBytes:              1450,
+		GuaranteedBandwidthPerInterfaceMbps: 1000,
+		ConnectionLimitPerInterface:         65536,
+		TenantSettableBandwidthLimit:        false,
+	}
 	return c
 }
 

@@ -131,10 +131,10 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)
-	// breakglass — аварийный пропуск при отсутствующей модели прав. Умолчание
-	// false: «модели нет» само по себе разрешением не бывает, пропуск требуется
-	// объявить.
-	v.SetDefault("authz.list-filter.breakglass", false)
+	// Умолчания аварийного пропуска страницы здесь нет: ручка снята целиком (её
+	// имя — в `retired_knobs_test.go`). «Модели прав нет» разрешением не бывает, а
+	// посадка без модели не поднимается вовсе — отказ даёт `ValidateListFilter` на
+	// любой посадке, поэтому объявлять было нечего.
 
 	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:
 	// dev/Create разрешён, только Warn). register-drainer-enabled — default-on
@@ -148,4 +148,24 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("network.project-cache.positive-ttl", 30*time.Second)
 	v.SetDefault("network.project-cache.negative-ttl", 5*time.Second)
 	v.SetDefault("network.project-cache.max-size", 10000)
+
+	// dataplane.executor — что посадка ЗАЯВЛЯЕТ об исполнителе, которому контур
+	// отдаёт принятое от арендатора (см. dataplane.go).
+	//
+	// Умолчание — «НЕ объявлено» по каждому признаку, и полярность выбрана
+	// осознанно: незаявленный исполнитель не считается способным. Обратное
+	// умолчание было бы удобнее чарту и неверно по существу — посадка, забывшая
+	// объявить профиль, получала бы «умеет всё» молча. Боевая посадка на пустом
+	// профиле не поднимается (ValidateExecutorProfile), значение задаёт чарт.
+	//
+	// Ключи объявлены здесь ещё и для того, чтобы их видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_DATAPLANE__EXECUTOR__*` не доехал бы до поля вовсе.
+	v.SetDefault("dataplane.executor.overlapping-tenant-addresses", false)
+	v.SetDefault("dataplane.executor.state-tracking-families", []string{})
+	v.SetDefault("dataplane.executor.named-set-reference-in-rule", false)
+	v.SetDefault("dataplane.executor.guaranteed-payload-bytes", 0)
+	v.SetDefault("dataplane.executor.guaranteed-bandwidth-per-interface-mbps", 0)
+	v.SetDefault("dataplane.executor.connection-limit-per-interface", 0)
+	v.SetDefault("dataplane.executor.tenant-settable-bandwidth-limit", false)
 }

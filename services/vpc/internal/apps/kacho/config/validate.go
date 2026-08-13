@@ -5,6 +5,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"go.uber.org/multierr"
@@ -100,6 +101,41 @@ const (
 		"KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true (the client identity shared with the Check edge). This is a " +
 		"SEPARATE connection from the authz Check edge — it targets the iam public listener and carries the " +
 		"per-object visibility decision behind every List, so securing the Check edge alone does not cover it"
+
+	// S5-гардрейлы (профиль возможностей исполнителя датаплейна, см. dataplane.go).
+	//
+	// Тексты читает оператор, которому стенд отказал в старте, поэтому они обязаны
+	// называть ручку — и ключ файла настроек, и переменную окружения: посадка
+	// задаёт профиль то так, то так, а искать имя в исходниках оператор не обязан.
+	// %s = Mode.String().
+	errExecutorOverlapRequired = "mode %s: dataplane.executor.overlapping-tenant-addresses=true is required " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__OVERLAPPING_TENANT_ADDRESSES) — tenant address ranges in vpc are " +
+		"unique only WITHIN a network by construction (subnet/pool migrations constrain overlap with " +
+		"`EXCLUDE USING gist (network_id WITH =, …)`), so two tenants holding the same range is the normal case, " +
+		"not an edge one. An executor that does not isolate identical addresses of different tenants merges " +
+		"their traffic. Until that isolation is declared, accepting overlapping ranges is not allowed: declare " +
+		"the capability, or run this stand against an executor that has it"
+	errExecutorStateTrackingRequired = "mode %s: dataplane.executor.state-tracking-families is not declared " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__STATE_TRACKING_FAMILIES, allowed: %s) — an empty declaration means " +
+		"UNKNOWN, not «tracks nothing»: return traffic is permitted by connection state, so on unknown " +
+		"statefulness a rule is accepted and cannot be realized. Note that a lone comma is NOT a declaration — " +
+		"it normalises to zero families, and the guard reads the same normalised value the rest of the process reads"
+	errExecutorUnknownFamily = "dataplane.executor.state-tracking-families: unknown family %s " +
+		"(allowed: %s) — a silently dropped entry would leave a profile the operator considers declared and the " +
+		"guard does not; fix the spelling or drop the entry"
+	errExecutorNamedSetRequired = "mode %s: dataplane.executor.named-set-reference-in-rule=true is required " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__NAMED_SET_REFERENCE_IN_RULE) — a security-group rule target is " +
+		"either address ranges OR a group id (mutually exclusive branches of the accepted contract), so an " +
+		"executor without named-set references leaves part of the already-accepted rules unrealizable"
+	errExecutorGuaranteeRequired = "mode %s: %s must be a positive number (env %s, got %d) — zero is the " +
+		"ABSENCE of a guarantee, not a guarantee of zero, and the control plane has nothing to state to the " +
+		"tenant about what the executor will hold"
+	errExecutorGuaranteeNegative = "%s must not be negative (env %s, got %d) — a negative number is not " +
+		"«no limit», it is an unusable declaration"
+	errExecutorTenantLimitWithoutBand = "dataplane.executor.tenant-settable-bandwidth-limit=true while " +
+		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps is not declared (got %d) — the declaration " +
+		"contradicts itself: a tenant-settable limit is a ceiling under the guaranteed band, and there is no " +
+		"band to limit against. Declare the guaranteed band, or drop the tenant-settable limit"
 )
 
 // Validate проверяет инварианты Config — чистая функция без побочных эффектов и без
@@ -417,6 +453,113 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 	return errs
 }
 
+// ValidateExecutorProfile — boot-гардрейл S5: профиль возможностей исполнителя
+// датаплейна (секция `dataplane.executor`, см. dataplane.go).
+//
+// # Что здесь проверяется и почему это не косметика
+//
+// Управляющий контур принимает от арендатора то, что исполнять будет НЕ он:
+// адресные диапазоны, правила со ссылкой на именованный набор, ограничение полосы.
+// Возможностей исполнителя контур не знает и вывести не может — их объявляет
+// посадка. Пока объявления нет, «принято» и «реализуемо» неотличимы.
+//
+// # Два разных вида отказа, и они разделены НАМЕРЕННО
+//
+//   - ПОСАДКА (пересечение адресов, отслеживание состояния, ссылка на именованный
+//     набор, положительность гарантий) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур, где датаплейна нет вовсе; любой
+//     РАЗВЁРНУТЫЙ стенд работает в боевом режиме (core rule #16), поэтому
+//     освобождение dev не оставляет дыры ни на одном стенде.
+//   - ОБЪЯВЛЕНИЕ (неизвестное семейство, отрицательное число, ограничение полосы
+//     без объявленной полосы) — негодно САМО ПО СЕБЕ, вне зависимости от посадки, и
+//     отвергается в любом режиме. Это опечатка или самопротиворечие, а не выбор
+//     оператора: приняв её молча, мы получили бы профиль, который оператор считает
+//     объявленным, а страж — нет.
+//
+// Предикат непустоты семейств — ТОТ ЖЕ, что читает остальной процесс
+// (Config.StateTrackingFamilies().IsDeclared()), а не длина сырой настройки:
+// одинокая запятая разбирается в две пустые записи, то есть «непусто» по длине и
+// «пусто» по существу. Разошедшись здесь, страж и читатель разошлись бы ровно там,
+// где расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями сразу: оператор обязан увидеть полный
+// список за один прогон, а не чинить профиль по одному отказу за перезапуск.
+func (c Config) ValidateExecutorProfile() error {
+	var errs error
+
+	e := c.Dataplane.Executor
+	families := c.StateTrackingFamilies()
+
+	// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+	for _, u := range families.Unknown() {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorUnknownFamily,
+			strconv.Quote(u), strings.Join(KnownAddressFamilies(), ", ")))
+	}
+	for _, g := range c.executorGuarantees() {
+		if g.value < 0 {
+			errs = multierr.Append(errs,
+				fmt.Errorf(errExecutorGuaranteeNegative, g.knob, g.env, g.value))
+		}
+	}
+	if e.TenantSettableBandwidthLimit && e.GuaranteedBandwidthPerInterfaceMbps <= 0 {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorTenantLimitWithoutBand,
+			e.GuaranteedBandwidthPerInterfaceMbps))
+	}
+
+	// (2) Требования к ПОСАДКЕ — только там, где исполнитель есть.
+	if !c.AuthN.Mode.IsProduction() {
+		return errs
+	}
+	if !e.OverlappingTenantAddresses {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorOverlapRequired, c.AuthN.Mode))
+	}
+	if !families.IsDeclared() {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorStateTrackingRequired,
+			c.AuthN.Mode, strings.Join(KnownAddressFamilies(), ", ")))
+	}
+	if !e.NamedSetReferenceInRule {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorNamedSetRequired, c.AuthN.Mode))
+	}
+	for _, g := range c.executorGuarantees() {
+		if g.value == 0 {
+			errs = multierr.Append(errs, fmt.Errorf(errExecutorGuaranteeRequired,
+				c.AuthN.Mode, g.knob, g.env, g.value))
+		}
+	}
+	return errs
+}
+
+// executorGuarantee — числовая гарантия профиля вместе с именами, которыми её
+// задают. Имена лежат РЯДОМ со значением, чтобы отказ не мог назвать не ту ручку:
+// три числа проверяются одинаково, и общий текст «что-то не объявлено» не сказал бы
+// оператору, что именно чинить.
+type executorGuarantee struct {
+	knob  string
+	env   string
+	value int
+}
+
+func (c Config) executorGuarantees() []executorGuarantee {
+	e := c.Dataplane.Executor
+	return []executorGuarantee{
+		{
+			knob:  "dataplane.executor.guaranteed-payload-bytes",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES",
+			value: e.GuaranteedPayloadBytes,
+		},
+		{
+			knob:  "dataplane.executor.guaranteed-bandwidth-per-interface-mbps",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS",
+			value: e.GuaranteedBandwidthPerInterfaceMbps,
+		},
+		{
+			knob:  "dataplane.executor.connection-limit-per-interface",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE",
+			value: e.ConnectionLimitPerInterface,
+		},
+	}
+}
+
 // ValidateBoot — единый boot-валидатор: агрегирует Validate (S1 + базовые
 // инварианты), ValidateServerMTLS (S2) и ValidatePeerTransport (S4) в один multierr,
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
@@ -429,11 +572,16 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 // оставалось записанным, но неверным, агрегатор был ЛОВУШКОЙ: он выглядит как
 // «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
 // вместо явной пары вызовов, тихо остался бы без проверки фильтра.
+//
+// S5 (ValidateExecutorProfile) входит сюда по той же причине и с того же дня, что
+// заведён сам: проверка, не попавшая в агрегатор, становится той самой ловушкой.
 func (c Config) ValidateBoot(m MTLSConfig) error {
 	return multierr.Append(
 		multierr.Append(
-			multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
-			c.ValidateListFilter()),
+			multierr.Append(
+				multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+				c.ValidateListFilter()),
+			c.ValidateExecutorProfile()),
 		c.ValidatePeerTransport(m),
 	)
 }
