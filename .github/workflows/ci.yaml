@@ -385,7 +385,8 @@ jobs:
           while read -r f; do [ -n "$f" ] && git checkout -- "$f"; done < /tmp/handwritten.list
 
           if ! git diff --quiet -- pkg/api; then
-            echo "::error::pkg/api разошёлся с proto/ — прогони 'cd proto && buf generate' и закоммить"
+            echo "::error::pkg/api разошёлся с proto/ — прогони './scripts/ci-local.sh proto' и закоммить"
+            echo "::notice::НЕ вызывай buf generate напрямую: плагин из PATH может быть другой версии, чем требует go.mod, и тогда коммит внесёт выход чужой версии. Различить: 'which -a protoc-gen-grpc-gateway' и 'go version -m \"\$(which protoc-gen-grpc-gateway)\"'. scripts/ci-local.sh ставит плагины из go.mod и кладёт их первыми в PATH."
             git diff --stat -- pkg/api
             exit 1
           fi
