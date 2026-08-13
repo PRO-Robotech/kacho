@@ -91,7 +91,7 @@ def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
         "machineTypeId": mt,
         "bootSource": {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"},
         "vmSpec": {"userData": "#cloud-config\n{}",
-                   "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+                   "metadataOptions": {"metadataEndpoint": "ENABLED"}},
         "useDefaultNetwork": True,
         "acknowledgeUnreachable": True,
     }

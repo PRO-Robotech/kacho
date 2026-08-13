@@ -24,6 +24,8 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/ownersync"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/peercheck"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -60,7 +62,6 @@ type CreateInstanceReq struct {
 	Description string
 	Labels      map[string]string
 	ZoneID      string
-	Metadata    map[string]string
 	Hostname    string
 
 	InstanceKind        domain.InstanceKind
@@ -75,6 +76,7 @@ type CreateInstanceReq struct {
 
 	// Launch-*Specs (SKELETON — структурная валидация формы, materialize → COMP-2).
 	NetworkInterfaceSpecs  []NetworkInterfaceSpec
+	GuestAccessKeyIDs      []string
 	SecondaryVolumeSpecs   []SecondaryVolumeSpec
 	UseDefaultNetwork      bool
 	AssignExternalAddress  bool
@@ -107,6 +109,7 @@ type UpdateInstanceReq struct {
 	CPUGuaranteePercent int32
 	PlacementGroupID    string
 	VMSpec              *domain.VMSpec
+	GuestAccessKeyIDs   []string
 	UpdateMask          []string
 }
 
@@ -198,6 +201,25 @@ func (s *InstanceService) List(ctx context.Context, f InstanceFilter, p Paginati
 	return out, next, nil
 }
 
+// validateGuestAccessKeyIDs проверяет форму ссылок на ключи входа.
+//
+// Принадлежность проекту здесь НЕ проверяется: это вопрос к данным, и он решён
+// внутри самой вставки связи. Проверка перед вставкой защищала бы ровно тот
+// путь, который через неё проходит.
+func validateGuestAccessKeyIDs(ids []string) error {
+	if len(ids) > domain.MaxGuestAccessKeysPerInstance {
+		return serviceerr.InvalidArg("guest_access_key_ids",
+			fmt.Sprintf("guestAccessKeyIds must contain at most %d entries (got %d)",
+				domain.MaxGuestAccessKeysPerInstance, len(ids)))
+	}
+	for _, id := range ids {
+		if err := corevalidate.ResourceID("GuestAccessKey", "gak", id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ValidateCreateInstanceReq — синхронная pre-flight валидация Create-запроса (формат/
 // структура/guard'ы; COMP-1 F1/F2/F3/F5/F6). Чистая (без DB/peer/каталог-вызовов) —
 // выделена для fuzz. Порядок: kind-oneof → sizing-канал → bootSource-grammar →
@@ -245,9 +267,6 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	// накопленное, поэтому потолок размера сообщения хранимое не ограничивает —
 	// карта росла бы от вызова к вызову, и каждая правка навсегда клала бы весь
 	// выросший блоб ещё и в две неподчищаемые служебные таблицы.
-	if field, reason, ok := domain.ValidateInstanceMetadata(req.Metadata); !ok {
-		return serviceerr.InvalidArg(field, reason)
-	}
 	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
 		return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
@@ -263,6 +282,13 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 		if err := corevalidate.ResourceID(plgResource, "plg", req.PlacementGroupID); err != nil {
 			return err
 		}
+	}
+	// Ключи входа: формат СВОЕГО идентификатора проверяется здесь, первым
+	// стейтментом. Без проверки непригодная строка уехала бы в связь и вернулась
+	// отказом «ключ не этого проекта» — утверждением о принадлежности строки,
+	// которая ключом быть не может.
+	if err := validateGuestAccessKeyIDs(req.GuestAccessKeyIDs); err != nil {
+		return err
 	}
 	// F6 — launch net-spec: networkInterfaceSpecs ИЛИ useDefaultNetwork (одно обязательно).
 	if len(req.NetworkInterfaceSpecs) == 0 && !req.UseDefaultNetwork {
@@ -332,11 +358,26 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 }
 
 func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req CreateInstanceReq) (*anypb.Any, error) {
-	if err := checkProject(ctx, s.projectClient, req.ProjectID); err != nil {
+	if err := peercheck.Project(ctx, s.projectClient, req.ProjectID); err != nil {
 		return nil, err
 	}
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
 		return nil, serviceerr.MapZoneRefErr(err, req.ZoneID)
+	}
+	// Регион зоны резолвится У ВЛАДЕЛЬЦА и только когда он нужен — то есть когда
+	// машина названа группой размещения. Спрашивать его всегда значило бы платить
+	// лишним обращением к соседу на КАЖДОМ создании ради ветки, которой чаще
+	// всего нет.
+	//
+	// Выводить регион из имени зоны запрещено: имена произвольны, выводимой связи
+	// между ними нет, а строковая деривация молча отдаёт пустоту и превращает
+	// проверку когерентности в тождественно-истинную.
+	var regionID string
+	if req.PlacementGroupID != "" {
+		var rerr error
+		if regionID, rerr = s.zones.RegionOfZone(ctx, req.ZoneID); rerr != nil {
+			return nil, serviceerr.MapZoneRefErr(rerr, req.ZoneID)
+		}
 	}
 	// Машина создаётся в своей зоне — её интерфейсы обязаны быть в той же зоне.
 	// Проверяется ЗДЕСЬ, на пути создания (до Insert), а не откладывается до
@@ -364,7 +405,6 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		// OQ1 — resting-status PROVISIONING persisted (durable; launch-сага NIC/Volume +
 		// переход к RUNNING — COMP-2). Operation.done = durability, не materialize (ban 9).
 		Status:              domain.InstanceStatusProvisioning,
-		Metadata:            req.Metadata,
 		Hostname:            req.Hostname,
 		FQDN:                fqdn(instanceID, req.Hostname),
 		CPUGuaranteePercent: req.CPUGuaranteePercent,
@@ -373,9 +413,11 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		EffectiveResources:  mt.EffectiveResources,
 		BootSource:          bs,
 		PlacementGroupID:    req.PlacementGroupID,
+		RegionID:            regionID,
 		ServiceAccountID:    req.ServiceAccountID,
 		VMSpec:              req.VMSpec,
 		ContainerSpec:       req.ContainerSpec,
+		GuestAccessKeyIDs:   req.GuestAccessKeyIDs,
 	}
 	// Self-validating domain invariant на persistence-границе (last-line guard;
 	// формат уже проверен sync ValidateCreateInstanceReq).
@@ -388,7 +430,7 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	}
 	// Sync-register owner-tuple post-commit (best-effort window-оптимизация); durable
 	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
-	syncRegisterOwner(ctx, s.ownerRegistrar, regs)
+	ownersync.Register(ctx, s.ownerRegistrar, regs)
 	return anypb.New(protoconv.Instance(created))
 }
 
@@ -432,7 +474,7 @@ func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*
 var instanceUpdateKnown = map[string]struct{}{
 	"name": {}, "description": {}, "labels": {}, "service_account_id": {},
 	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
-	"vm_spec": {},
+	"vm_spec": {}, "guest_access_key_ids": {},
 }
 
 // instanceStoppedGatedMask — маска-поля, требующие STOPPED (sizing/placement, F10).
@@ -445,6 +487,10 @@ var instanceStoppedGatedMask = map[string]struct{}{
 // лишь по явной маске. Один список на применение и на валидацию: разъехавшись, они
 // дают ровно тот дефект, ради которого список и заведён — поле применяется, но не
 // проверяется.
+//
+// Набора ключей входа здесь НЕТ намеренно: пустая маска означала бы «снять все
+// ключи», то есть правка описания молча лишала бы машину доступа. Замена набора
+// требует, чтобы её назвали.
 var instanceFullPatchFields = []string{"name", "description", "labels", "service_account_id"}
 
 // instanceUpdatedFields — поля, которые ЭТОТ запрос изменит: замаскированные, а при
@@ -517,11 +563,24 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 					changed = append(changed, "cpu_guarantee_percent")
 				case "placement_group_id":
 					in.PlacementGroupID = req.PlacementGroupID
+					// Регион зоны машины — тот же авторитетный резолв, что на
+					// создании, и по той же причине: без него региональная группа
+					// сверялась бы с пустой строкой, то есть не сверялась бы.
+					if req.PlacementGroupID != "" {
+						reg, rerr := s.zones.RegionOfZone(ctx, in.ZoneID)
+						if rerr != nil {
+							return nil, serviceerr.MapZoneRefErr(rerr, in.ZoneID)
+						}
+						in.RegionID = reg
+					}
 					changed = append(changed, "placement_group_id")
 				case "vm_spec":
 					in.VMSpec = req.VMSpec
 					nextBoot = true
 					changed = append(changed, "vm_spec")
+				case "guest_access_key_ids":
+					in.GuestAccessKeyIDs = req.GuestAccessKeyIDs
+					changed = append(changed, "guest_access_key_ids")
 				}
 			}
 			if nextBoot {
@@ -546,7 +605,7 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			// МОЛЧА — а вердикт про «доставку зеркала меток» перестал бы быть
 			// про то дерево, что есть.
 			if labelsInMask {
-				syncRegisterOwner(ctx, s.ownerRegistrar, regs)
+				ownersync.Register(ctx, s.ownerRegistrar, regs)
 			}
 			return anypb.New(protoconv.Instance(updated))
 		})
@@ -610,6 +669,10 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 					return err
 				}
 			}
+		case "guest_access_key_ids":
+			if err := validateGuestAccessKeyIDs(req.GuestAccessKeyIDs); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -623,29 +686,6 @@ func maskIntersects(mask []string, set map[string]struct{}) bool {
 		}
 	}
 	return false
-}
-
-// UpdateMetadata обновляет map metadata (delete + upsert).
-func (s *InstanceService) UpdateMetadata(ctx context.Context, instanceID string, del []string, upsert map[string]string) (*operations.Operation, error) {
-	if instanceID == "" {
-		return nil, status.Error(codes.InvalidArgument, "instance_id required")
-	}
-	// Бюджет ДЕЛЬТЫ — синхронно: отказ называет поле и не стоит строки операции.
-	// Бюджет ИТОГА СЛИЯНИЯ живёт в БД (CHECK), потому что «прочитать → сложить →
-	// проверить → записать» здесь оставляло бы окно между проверкой и записью: две
-	// одновременные правки прошли бы каждая по отдельности и превысили бюджет вместе.
-	if field, reason, ok := domain.ValidateInstanceMetadata(upsert); !ok {
-		return nil, serviceerr.InvalidArg(field, reason)
-	}
-	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
-		&computev1.UpdateInstanceMetadataMetadata{InstanceId: instanceID},
-		func(ctx context.Context) (*anypb.Any, error) {
-			updated, err := s.repo.MergeMetadata(ctx, instanceID, del, upsert)
-			if err != nil {
-				return nil, serviceerr.MapRepoErr(err)
-			}
-			return anypb.New(protoconv.Instance(updated))
-		})
 }
 
 // Start/Stop/Restart — state-машина (DB-уровневый atomic CAS).
@@ -1086,24 +1126,43 @@ func validateBootSource(bs domain.BootSource) error {
 	if bs.ID == "" {
 		return serviceerr.InvalidArg("boot_source.id", "bootSource.id is required")
 	}
-	if !hasTagOrDigest(bs.ID) {
-		return serviceerr.InvalidArg("boot_source.id",
-			"bootSource.id needs a tag or digest, e.g. 'img-<base32>:<tag>' or 'img-<base32>@sha256:<hex>'; use ImageCatalog item.bootSource")
+
+	// Ветви разведены ПО ВЛАДЕЛЬЦУ, и это не косметика: у двух источников разные
+	// формы идентификатора, потому что разные владельцы адресуют по-разному.
+	//
+	// Прежняя редакция требовала тег или дайджест от КАЖДОГО идентификатора и
+	// отсылала за примером к каталогу, которого в дереве нет ни одного вхождения.
+	// Для образа хранилища это требование неисполнимо by construction: у его
+	// контракта нет ни поля тега, ни поля дайджеста — то есть форма, которую
+	// проверка требовала, не производится владельцем вовсе.
+	switch bs.Type {
+	case bootSourceStorageImage:
+		// Образ хранилища адресуется своим неизменяемым идентификатором, и
+		// только им: он неизменяем на всю жизнь ресурса, поэтому повторный
+		// запуск через месяц берёт тот же образ без дополнительной фиксации.
+		if err := corevalidate.ResourceID("Image", "img", bs.ID); err != nil {
+			return err
+		}
+		return nil
+
+	case bootSourceRegistryImage:
+		// ОТВЕРГАЕТСЯ ЯВНО, а не принимается молча.
+		//
+		// Durable-координата образа из реестра сегодня невыразима by construction:
+		// у репозитория нет неизменяемого идентификатора, он адресуется парой
+		// (реестр, имя), а имя переименовывается отдельным глаголом. Ссылка,
+		// зафиксированная в машине, стала бы ложной после чужого переименования —
+		// то есть запуск через месяц взял бы другой образ либо не нашёл ничего.
+		//
+		// Из трёх законных исходов это второй: принять и не разрешить значило бы
+		// пообещать возможность, которой нет; снять с контракта — потерять
+		// объявленное направление, у которого есть решение и предикат возврата.
+		// Ветвь открывается, когда у репозитория появится неизменяемый
+		// идентификатор.
+		return serviceerr.InvalidArg("boot_source.type",
+			"bootSource.type registry.image is not accepted yet: a registry image has no durable address today")
 	}
 	return nil
-}
-
-// hasTagOrDigest — id несёт tag (":" в последнем path-сегменте) ИЛИ digest
-// ("@sha256:"). bare "img-<b32>" / "repo/name" без tag/digest → false (→ 400).
-func hasTagOrDigest(id string) bool {
-	if strings.Contains(id, "@sha256:") {
-		return true
-	}
-	seg := id
-	if i := strings.LastIndexByte(id, '/'); i >= 0 {
-		seg = id[i+1:]
-	}
-	return strings.Contains(seg, ":")
 }
 
 // imageKindFor — server-derived B13 imageKind по bootSource.type (COMP-1 F3).

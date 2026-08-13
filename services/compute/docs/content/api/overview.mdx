@@ -87,7 +87,7 @@ HTTP-методы; действия, не укладывающиеся в CRUD (
 
 :::note Формы действий
 Часть действий использует `:verb` в конце пути (`:start`, `:attachDisk`, `:relocate`,
-`:serialPortOutput`), часть — сегмент пути (`/updateMetadata`, `/addOneToOneNat`). Формы
+`:serialPortOutput`). Формы
 зафиксированы в контракте и меняются только осознанно. `OperationService.Get` идёт по пути
 `/operations/{id}` — **без** префикса `/compute/v1/`.
 :::
@@ -159,7 +159,7 @@ flowchart LR
 ## Асинхронные операции (Operation)
 
 **Каждая мутация** (`Create` / `Update` / `Delete` и действия `Start` / `Stop` / `Restart` /
-`AttachDisk` / `DetachDisk` / `UpdateMetadata` / …) **синхронно возвращает `Operation`**, а не
+`AttachDisk` / `DetachDisk` / …) **синхронно возвращает `Operation`**, а не
 сам ресурс. Реальная работа выполняется в worker-горутине; клиент **поллит**
 `OperationService.Get(id)` до `done: true`.
 
@@ -329,7 +329,6 @@ Kachō. БД хранит микросекунды, но клиент видит
     <tr><td><strong>Start</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:start</code></td><td>async</td></tr>
     <tr><td><strong>Stop</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:stop</code></td><td>async</td></tr>
     <tr><td><strong>Restart</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:restart</code></td><td>async</td></tr>
-    <tr><td><strong>UpdateMetadata</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;/updateMetadata</code></td><td>async</td></tr>
     <tr><td><code>GetSerialPortOutput</code></td><td><code>GET /compute/v1/instances/&#123;id&#125;:serialPortOutput</code></td><td>sync</td></tr>
     <tr><td><strong>AttachDisk</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:attachDisk</code></td><td>async</td></tr>
     <tr><td><strong>DetachDisk</strong></td><td><code>POST /compute/v1/instances/&#123;id&#125;:detachDisk</code></td><td>async</td></tr>

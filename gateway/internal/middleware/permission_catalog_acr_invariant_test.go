@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 27 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 25 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -112,12 +112,12 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
 		"kacho.cloud.iam.v1.UserService/Invite",
-		// C — compute per-resource grant (16; non-iam grant-surface).
-		// GpuCluster/HostGroup/PlacementGroup dropped with their born-dead
-		// services (never served on any listener, absent from the enforced
-		// authorization model) — their grant RPCs no longer exist to step up.
-		"kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
-		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
+		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
+		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
+		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
+		// привязками iam, как у прочих доменов. Пример полосы «чувствительное» у
+		// compute здесь поэтому отсутствует, и это не пропуск: у домена не осталось
+		// ни одного RPC, поднимающего планку подтверждения.
 		// D — group membership grant + group destroy (3; Delete = revoke-by-all, R3/B-2)
 		"kacho.cloud.iam.v1.GroupService/AddMember",
 		"kacho.cloud.iam.v1.GroupService/RemoveMember",
@@ -158,13 +158,15 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	// 27, up from 24: category F (ConditionsService Update/Delete) had its
+	// Было 27; стало 25 — с машины снята поверхность выдачи прав (два RPC полосы
+	// «чувствительное» ушли вместе с ней). Прежняя история числа: 27, up from 24:
+	// category F (ConditionsService Update/Delete) had its
 	// subject retired together with the tenant-facing condition surface (26→24),
 	// and category I (InternalInteractiveClientService Create/Update/Delete)
 	// then joined with IAM-INT-1 (24→27). The number is asserted rather than
 	// derived from the list on purpose — a silent shrink is exactly what would
 	// happen if an entry were dropped by accident.
-	require.Len(t, sensitive, 27, "the acceptance-doc sensitive set must contain exactly 27 FQNs")
+	require.Len(t, sensitive, 25, "the acceptance-doc sensitive set must contain exactly 25 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -185,7 +187,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 27, "exactly 27 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 25, "exactly 25 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -198,8 +200,8 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 		// B6 author-inert create → routine
 		"kacho.cloud.iam.v1.RoleService/Create",
 		"kacho.cloud.iam.v1.GroupService/Create",
-		// per-resource ListAccessBindings — reads → routine
-		"kacho.cloud.compute.v1.InstanceService/ListAccessBindings",
+		// per-resource ListAccessBindings — reads → routine. Compute-пример снят
+		// вместе с поверхностью выдачи на машине (см. набор «чувствительных» выше).
 		"kacho.cloud.iam.v1.AccessBindingService/ListByScope",
 		"kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 		"kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
@@ -383,10 +385,15 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	//
 	// Итог: 59→34 exempt, 209→234 routine, sensitive и total не тронуты.
 	//
-	// 2026-08-13, целевой вид storage: +14 записей, ВСЕ рутинные. 234→248 routine,
-	// 295→309 total; sensitive (27) и exempt (34) не тронуты — ни одна из
-	// четырнадцати не освобождена от проверки и ни одна не поднимает планку
-	// аутентификации.
+	// 2026-08-13, целевой вид storage: +14 записей, ВСЕ рутинные. Отсчёт ведётся
+	// от состояния ствола ПОСЛЕ производственной формы compute (см. ниже), с
+	// которым эта ветка слита: 244→258 routine, 303→317 total; sensitive (25) и
+	// exempt (34) не тронуты — ни одна из четырнадцати не освобождена от проверки
+	// и ни одна не поднимает планку аутентификации.
+	//
+	// Числа получены ЗАМЕРОМ по дереву после слияния, а не сложением двух
+	// переписей: две независимые правки каталога, сведённые арифметикой в уме,
+	// дали бы совпадение, которое нечем проверить.
 	//
 	// Состав: четыре публичных глагола (Volume/ChangeDiskType — v_update;
 	// Snapshot/ListOperations — v_list; Snapshot/Copy и Image/Copy — editor@project)
@@ -410,10 +417,20 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// наблюдателю право порождать ресурсы. Пообъектного `v_create` в платформе
 	// нет by construction (authzmap: «создать» спрашивают у родителя), поэтому
 	// форма у Copy та же, что у всякого Create.
-	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 248, n1, "routine count")
+	//
+	// Итог того перехода: 59→34 exempt, 209→234 routine.
+	//
+	// Числа ниже перемерены 2026-08-13 и изменились по двум причинам, обе
+	// названы: (а) с машины снята поверхность выдачи прав — два RPC полосы
+	// «чувствительное» и один рутинный ушли вместе с ней (27→25 sensitive);
+	// (б) заведён ключ входа в машину — шесть рутинных записей (234→235 с учётом
+	// ушедшего); (в) заведено владение машиной узлом на внутреннем слушателе — три
+	// рутинных записи (235→238); (г) заведена группа размещения — шесть рутинных
+	// записей (238→244). Итог 295→294→297→303.
+	assert.Equal(t, 25, n2, "sensitive count")
+	assert.Equal(t, 258, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 309, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 317, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

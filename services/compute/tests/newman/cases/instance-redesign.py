@@ -90,7 +90,7 @@ def _vm_body(suffix, mt="{{mtId}}", name=None, ack=True, boot=None, nic=True, ex
          "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
          "bootSource": dict(boot) if boot is not None else dict(_BOOT_STORAGE),
          "vmSpec": {"userData": "#cloud-config\n{}",
-                    "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}}}
+                    "metadataOptions": {"metadataEndpoint": "ENABLED"}}}
     if nic:
         b["networkInterfaceSpecs"] = [{"subnetId": "{{existingSubnetId}}", "securityGroupIds": ["{{existingSgId}}"]}]
     if ack:
@@ -158,7 +158,7 @@ CASES.append(Case(
                          "const j = pm.response.json();",
                          "pm.test('id matches & ins- prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('instanceId')); pm.expect(j.id).to.match(/^ins-/); });",
                          "pm.test('instanceKind VM', () => pm.expect(j.instanceKind).to.eql('VM'));",
-                         "pm.test('vmSpec present, metadataOptions ENABLED (vendor-agnostic F9)', () => { pm.expect(j.vmSpec, 'vmSpec').to.be.an('object'); pm.expect(j.vmSpec.metadataOptions.metadataEndpoint).to.eql('ENABLED'); pm.expect(j.vmSpec.metadataOptions.metadataTokenRequired).to.eql(true); });",
+                         "pm.test('vmSpec present, metadataOptions ENABLED (vendor-agnostic F9)', () => { pm.expect(j.vmSpec, 'vmSpec').to.be.an('object'); pm.expect(j.vmSpec.metadataOptions.metadataEndpoint).to.eql('ENABLED'); pm.expect(j.vmSpec.metadataOptions.metadataTokenRequired, 'ручка обязательности токена снята с контракта — её возврат означал бы, что защиту снова можно отключить').to.be.oneOf([undefined, null]); });",
                          "pm.test('containerSpec absent (oneof XOR)', () => pm.expect(j.containerSpec).to.be.oneOf([undefined, null]));",
                          "pm.test('machineTypeId canonical mt- echo == seeded', () => { pm.expect(j.machineTypeId).to.eql(pm.environment.get('mtId')); pm.expect(j.machineTypeId).to.match(/^mt-/); });",
                          "pm.test('effectiveResources° mirror vCpu=2 memoryMib=8192 gpus=0', () => { const e=j.effectiveResources||{}; pm.expect(String(e.vCpu)).to.eql('2'); pm.expect(String(e.memoryMib)).to.eql('8192'); pm.expect(String(e.gpus||0)).to.eql('0'); });",
@@ -171,24 +171,21 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="INST-RD-CR-CRUD-CONTAINER-OK",
-    title="COMP-1-02/15: Create CONTAINER (containerSpec+bootSource registry.image, БЕЗ ssh/external) → done "
-          "→ Get: instanceKind==CONTAINER, containerSpec present (command/restartPolicy ON_FAILURE), vmSpec "
-          "absent (oneof), bootSource.materializedVolume absent (ephemeral rootfs); unreachable-guard НЕ "
-          "применяется к CONTAINER (F5 exempt). [verifies COMP-1-02/15 · state + decision-table]",
-    classes=["CRUD", "STATE"], priority="P0",
+    id="INST-RD-CR-VAL-CONTAINER-REGISTRY-SOURCE-REFUSED",
+    title="Create CONTAINER с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля "
+          "'bootSource.type registry.image is not accepted yet'. СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ "
+          "НЕ КОНСТРУИРУЕТСЯ: у образа реестра нет durable-координаты (у репозитория нет неизменяемого "
+          "идентификатора), а иного источника у контейнера не бывает. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт "
+          "вместо счастливого пути — и обязан покраснеть в тот день, когда ветвь откроется. "
+          "[verifies COMP-1-02/15 частично · ECP формы источника]",
+    classes=["VAL", "NEG"], priority="P0",
     steps=[
         *_seed_mt("ctok", family="GPU", vcpu=8, mem=98304, gpus=8),
-        *_create_inst_steps("create", _container_body("ok")),
-        retry_until_authorized(Step(name="get", method="GET", path=INSTANCES + "/{{instanceId}}",
-            test_script=[*assert_status(200),
-                         "const j = pm.response.json();",
-                         "pm.test('instanceKind CONTAINER', () => pm.expect(j.instanceKind).to.eql('CONTAINER'));",
-                         "pm.test('containerSpec present (command, restartPolicy)', () => { pm.expect(j.containerSpec, 'containerSpec').to.be.an('object'); pm.expect(j.containerSpec.command).to.eql(['python','train.py']); pm.expect(j.containerSpec.restartPolicy).to.eql('ON_FAILURE'); });",
-                         "pm.test('vmSpec absent (oneof XOR)', () => pm.expect(j.vmSpec).to.be.oneOf([undefined, null]));",
-                         "pm.test('bootSource registry.image echo', () => pm.expect(j.bootSource.type).to.eql('registry.image'));",
-                         "pm.test('bootSource.materializedVolume absent for CONTAINER', () => pm.expect(j.bootSource.materializedVolume).to.be.oneOf([undefined, null]));"])),
-        *_delete_inst(),
+        Step(name="create-container-refused", method="POST", path=INSTANCES,
+             body=_container_body("ok"),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
+                          "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"]),
         *_cleanup_mt(),
     ],
 ))
@@ -339,14 +336,32 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="INST-RD-CR-VAL-BOOTSOURCE-BARE-UNTAGGED",
-    title="COMP-1-10: Create с bootSource storage.image id БЕЗ tag/digest → sync 400 "
-          "'bootSource.id needs a tag or digest ...' (grammar в тексте). [verifies COMP-1-10 · error-guessing grammar]",
+    id="INST-RD-CR-VAL-BOOTSOURCE-STORAGE-ID-FORM",
+    title="Форму идентификатора источника решает ЕГО ВЛАДЕЛЕЦ: образ хранилища адресуется своим "
+          "неизменяемым идентификатором, и голый идентификатор БЕЗ тега — законный вход (положительный "
+          "контроль), а явно-не-идентификатор отвергается синхронно по имени поля. Здесь стоял кейс, "
+          "требовавший «tag or digest» от образа хранилища: требование было неисполнимо by construction — "
+          "у его контракта нет ни поля тега, ни поля дайджеста, — и кейс закреплял дефект. "
+          "[verifies COMP-1-10 · ECP формы идентификатора]",
     classes=["VAL", "NEG"], priority="P1",
-    steps=[Step(name="cr-boot-untagged", method="POST", path=INSTANCES,
-                body=_vm_body("bare", mt=_PLACEHOLDER_MT, boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p"}),
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: needs a tag or digest', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('needs a tag or digest'));"])],
+    steps=[
+        Step(name="cr-boot-malformed", method="POST", path=INSTANCES,
+             body=_vm_body("mal", mt=_PLACEHOLDER_MT, boot={"type": "storage.image", "id": "не идентификатор"}),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m.toLowerCase()).to.include('invalid image id'); });"]),
+        # Положительный контроль в паре: без него отрицание выше зеленело бы на
+        # проверке, отвергающей ЛЮБОЙ идентификатор образа.
+        #
+        # Тип машины СЕЯТЬСЯ обязан: без него `{{mtId}}` берётся от соседнего
+        # кейса либо не задан вовсе, и «прошло» означало бы «прошло на чужой
+        # фикстуре». Созданная машина снимается — утёкший ресурс сдвигает
+        # списочные контракты соседних кейсов.
+        *_seed_mt("bareid"),
+        *_create_inst_steps("cr-boot-bare-id-ok",
+                            _vm_body("bare", boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p"})),
+        *_delete_inst(),
+        *_cleanup_mt(),
+    ],
 ))
 
 CASES.append(Case(
@@ -784,10 +799,10 @@ CASES.append(_unsupported_update_field_case(
     "ключи не доставляются в гостя; прежняя метка «вступит в силу при следующей загрузке» "
     "подтверждала приём того, чего не будет."))
 
-CASES.append(_unsupported_update_field_case(
-    "INST-RD-UPD-VAL-UNSUPPORTED-METADATA",
-    "metadata", "metadata", {"k": "v"},
-    "канал правки метаданных существует и живёт в отдельном RPC — :updateMetadata."))
+# Кейс про непринимаемое `metadata` СНЯТ вместе со своим предметом: поле снято с
+# контракта целиком (номер и имя зарезервированы), а прежнее обоснование отсылало
+# к RPC `:updateMetadata`, которого в контракте нет. Кейс, утверждающий отказ по
+# полю, которого сообщение не несёт, неконструируем by construction.
 
 CASES.append(_unsupported_update_field_case(
     "INST-RD-UPD-VAL-UNSUPPORTED-NETWORK-SETTINGS",

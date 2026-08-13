@@ -16,7 +16,7 @@ import (
 // RunOp — единая обёртка async-LRO dispatch: operations.New → opsRepo.Create →
 // operations.Run(worker) → возврат синхронного snapshot'а Operation (done=false).
 // Устраняет дублирование этой 6-строчной обвязки в каждом мутирующем RPC (Create/
-// Update/Delete/Restart/Attach/Detach/UpdateMetadata/Relocate/SimulateMaintenance/
+// Update/Delete/Restart/Attach/Detach/SimulateMaintenance/
 // lifecycle) — изменение контракта диспетчеризации (audit-tag, per-op deadline,
 // metric) правится в ОДНОМ месте, а не в скопированных блоках. Мандатный
 // async-Operation-паттерн (ban 9) и wire-контракт (LRO envelope, metadata-типы,

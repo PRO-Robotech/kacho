@@ -329,6 +329,10 @@ var hyphenFormPrefixes = []string{
 	// compute: Instance/MachineType/PlacementGroup/VolumeType (ins/mt — именованные
 	// константы: единый источник истины с NewHyphenID-генерацией).
 	PrefixInstanceHyphen, PrefixMachineTypeHyphen, "plg", "vt",
+	// compute: GuestAccessKey — публичная половина ключа входа в машину.
+	// Ресурс, а не поле машины: ключ полем нельзя ни отозвать, ни заменить, ни
+	// узнать, где ещё он используется.
+	"gak",
 	// storage: Volume/Image/Snapshot
 	"vol", "img", "snp",
 	// registry: Namespace (Repository/Tag/Image — natural/content-key, без prefix)

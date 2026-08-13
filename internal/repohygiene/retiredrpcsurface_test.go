@@ -52,6 +52,50 @@ var retiredRPCSurface = []RetiredRPC{
 		Reason: "вторая половина того же неreализованного gRPC-объявления хуков Hydra; живой путь — " +
 			"HTTP-обработчик refresh_hook_handler.go со своей формой тела",
 	},
+	// ── Волна 1 модуля вычислений (приёмка COMP-E1a) ───────────────────────
+	//
+	// Семь методов не несли реализации и отвечали отказом «не реализовано», при
+	// этом были выставлены на ТРЁХ поверхностях сразу — маршруты края, список
+	// проксирования, каталог прав. Восьмой реализован, но его предмет — свободная
+	// карта метаданных — снят той же волной.
+	//
+	// Резервирование номера и имени здесь невыразимо: грамматика принимает
+	// `reserved` только внутри message и enum, а у метода нет номера. Namesake
+	// возвращается не молча — эта перепись и есть механизм.
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/AddOneToOneNat",
+		Reason: "трансляция адреса — предмет домена сети; у неё есть публичный путь правки интерфейса",
+	},
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat",
+		Reason: "парный глагол к предыдущему, тот же владелец возможности",
+	},
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface",
+		Reason: "свойства интерфейса правит его владелец — домен сети; у потребителя остаётся только привязка",
+	},
+	{
+		FQN: "kacho.cloud.compute.v1.InstanceService/Relocate",
+		Reason: "перенос между зонами требует переноса тома, то есть согласия владельца хранилища; " +
+			"глагол одного домена этого не выражает",
+	},
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/ListAccessBindings",
+		Reason: "привязки доступа — предмет домена управления доступом, а не потребителя",
+	},
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
+		Reason: "то же основание, мутирующая половина",
+	},
+	{
+		FQN:    "kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
+		Reason: "то же основание, третий глагол той же тройки",
+	},
+	{
+		FQN: "kacho.cloud.compute.v1.InstanceService/UpdateMetadata",
+		Reason: "единственный снятый метод, который был РЕАЛИЗОВАН: снят вместе со своим предметом — " +
+			"свободной картой метаданных, которая была вторым местом об одном предмете",
+	},
 }
 
 func retiredRPCSurfaceOptions(t *testing.T) RetiredRPCSurfaceOptions {

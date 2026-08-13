@@ -100,7 +100,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/Create":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Update":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Delete":                   {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateMetadata":           {},
 	"/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput":      {},
 	"/kacho.cloud.compute.v1.InstanceService/Stop":                     {},
 	"/kacho.cloud.compute.v1.InstanceService/Start":                    {},
@@ -109,20 +108,32 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/DetachDisk":               {},
 	"/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface":   {},
-	"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat":           {},
-	"/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/ListOperations":           {},
-	"/kacho.cloud.compute.v1.InstanceService/Relocate":                 {},
 	"/kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent": {},
-	"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings":       {},
-	"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings":     {},
 	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
 	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).
 	"/kacho.cloud.compute.v1.MachineTypeService/Get":  {},
 	"/kacho.cloud.compute.v1.MachineTypeService/List": {},
+	// compute.v1 — GuestAccessKeyService (публичные ключи входа арендатора в свои
+	// машины). Чтения sync, мутации — Operation. Пообъектный тип прав
+	// (`compute_guest_access_key`) нужен потому, что запрос несёт только
+	// идентификатор ключа: проект резолвит владелец прав, а не вызывающий.
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Get":            {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/List":           {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Create":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Update":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Delete":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations": {},
+	// compute.v1 — PlacementGroupService (правила взаимного размещения машин).
+	// Пообъектный тип прав нужен по той же причине, что у ключа: запрос несёт
+	// только идентификатор группы.
+	"/kacho.cloud.compute.v1.PlacementGroupService/Get":            {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/List":           {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Create":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Update":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Delete":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/ListOperations": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 

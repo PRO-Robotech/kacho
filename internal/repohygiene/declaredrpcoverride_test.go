@@ -41,8 +41,7 @@ func TestEveryDeclaredRPCIsOverridden(t *testing.T) {
 			"Гейт не требует реализации: метод вправе отказывать. Но отказ пишется рукой — с "+
 			"причиной, с указанием владельца возможности и под пробой, утверждающей СООБЩЕНИЕ "+
 			"(у названного и унаследованного отказа код один и тот же). Образцы: "+
-			"services/compute/internal/handler/declared_but_absent.go и хвост "+
-			"services/vpc/internal/apps/kacho/api/routetable/handler.go",
+			"хвост services/vpc/internal/apps/kacho/api/routetable/handler.go",
 			m.Service, m.Method, m.Type, m.Where, m.Method)
 	}
 }

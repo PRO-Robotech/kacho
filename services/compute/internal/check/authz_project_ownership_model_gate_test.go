@@ -103,8 +103,6 @@ func ownershipGuardModelGatedRPCs() []ownershipGuardRPC {
 			&computev1.CreateInstanceRequest{ProjectId: gProjID}, gProjID},
 		{"/kacho.cloud.compute.v1.InstanceService/Update", "v_update", "compute_instance",
 			&computev1.UpdateInstanceRequest{InstanceId: gInstID}, gInstID},
-		{"/kacho.cloud.compute.v1.InstanceService/UpdateMetadata", "v_update", "compute_instance",
-			&computev1.UpdateInstanceMetadataRequest{InstanceId: gInstID}, gInstID},
 		{"/kacho.cloud.compute.v1.InstanceService/Delete", "v_delete", "compute_instance",
 			&computev1.DeleteInstanceRequest{InstanceId: gInstID}, gInstID},
 		{"/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput", "v_get", "compute_instance",

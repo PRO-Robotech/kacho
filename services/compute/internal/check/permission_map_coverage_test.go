@@ -36,6 +36,8 @@ const computeProtoPackage = protoreflect.FullName("kacho.cloud.compute.v1")
 var servedPublicServiceDescs = []grpc.ServiceDesc{
 	computev1.MachineTypeService_ServiceDesc,
 	computev1.InstanceService_ServiceDesc,
+	computev1.GuestAccessKeyService_ServiceDesc,
+	computev1.PlacementGroupService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 
@@ -46,6 +48,8 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 var servedInternalServiceDescs = []grpc.ServiceDesc{
 	computev1.InternalWatchService_ServiceDesc,
 	computev1.InternalMachineTypeService_ServiceDesc,
+	computev1.InternalRealizationService_ServiceDesc,
+	computev1.InternalNodeOwnershipService_ServiceDesc,
 }
 
 // notServedServiceNames — сервисы `kacho.cloud.compute.v1`, объявленные в proto, но

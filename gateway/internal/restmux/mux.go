@@ -514,6 +514,17 @@ func NewMux(
 		if err := computepb.RegisterMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute MachineTypeService: %w", err)
 		}
+		// GuestAccessKeyService — публичные ключи входа в машину
+		// (/compute/v1/guestAccessKeys). Только публичная половина ключа; закрытая
+		// не покидает машину арендатора и в продукте не хранится.
+		if err := computepb.RegisterGuestAccessKeyServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute GuestAccessKeyService: %w", err)
+		}
+		// PlacementGroupService — правила взаимного размещения машин
+		// (/compute/v1/placementGroups).
+		if err := computepb.RegisterPlacementGroupServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute PlacementGroupService: %w", err)
+		}
 
 		// --- compute admin — kacho-only, internal-port (9091) ---
 		// Доступен только через cluster-internal REST listener для UI/admin-tooling.

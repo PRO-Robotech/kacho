@@ -99,28 +99,21 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `labels` | 6 | map<string,string> | ≤64 записей |
 | `zone_id` | 7 | string | required; существование — peer-валидация в kacho-geo; immutable |
 | `status` | 10 | Instance.Status | state-машина, см. [страницу сайта](../../content/architecture/instance-lifecycle.mdx) |
-| `metadata` | 11 | map<string,string> | меняется только `UpdateMetadata`; **омитится из ответа List** (часть контракта) |
 | `boot_disk` | 12 | AttachedDisk | read-only зеркало привязки тома; источник истины — `volume_attachments` у kacho-storage |
 | `secondary_disks` | 13 | repeated AttachedDisk | то же зеркало |
 | `network_interfaces` | 14 | repeated NetworkInterface | строки `instance_network_interfaces`; `nic_id` — id ресурса kacho-vpc, он источник истины |
 | `fqdn` | 16 | string | output-only; `<hostname>.<region_id>.internal` либо `<id>.auto.internal` |
-| `network_settings` | 19 | NetworkSettings | на входе Create **отвергается по имени** (ускорение сети сервис не настраивает) |
-| `filesystems` | 21 | repeated AttachedFilesystem | домена Filesystem нет; `filesystem_specs` на входе Create **отвергается по имени** |
-| `local_disks` | 22 | repeated AttachedLocalDisk | host-local диски не провижнятся; `local_disk_specs` на входе Create **отвергается по имени** |
-| `serial_port_settings` | 24 | SerialPortSettings | на входе Create **отвергается по имени** |
-| `maintenance_policy` | 29 | MaintenancePolicy | обслуживания хостов сервис не планирует; на входе Create **отвергается по имени** |
-| `maintenance_grace_period` | 30 | Duration | то же |
-| `hardware_generation` | 31 | HardwareGeneration | наследуется от boot-источника; nullable |
 | `cpu_guarantee_percent` | 36 | int32 | доля гарантированного CPU; мутируется только на STOPPED |
 | `instance_kind` | 37 | InstanceKind | **сильный первый дискриминатор** (VM \| CONTAINER), required на Create |
 | `machine_type_id` | 38 | string | ссылка на MachineType-каталог; required; мутируется только на STOPPED |
 | `effective_resources` | 39 | EffectiveResources | output-only, выводится из MachineType |
 | `boot_source` | 40 | BootSource | `storage.image` \| `storage.snapshot` \| `storage.volume` — резолв у kacho-storage |
-| `placement_group_id` | 41 | string | opaque passthrough-слаг; формат-валидация `plg-`; мутируется только на STOPPED |
+| `placement_group_id` | 41 | string | ссылка на `PlacementGroup` (FK, `ON DELETE RESTRICT`); когерентность якоря проверяется внутри вставки/правки; мутируется только на STOPPED. Отсутствие ссылки — NULL, а не пустая строка |
 | `status_reason` | 42 | string | output-only; причина текущего статуса |
 | `service_account` | 43 | reference.Referrer | dependency-handle на служебную учётку (graceful-dangling) |
 | `vm_spec` | 44 | VmSpec | ветвь `oneof spec` для `instance_kind = VM` |
 | `container_spec` | 45 | ContainerSpec | ветвь `oneof spec` для `instance_kind = CONTAINER` |
+| `guest_access_key_ids` | 46 | repeated string | ссылки на `GuestAccessKey` по неизменяемому id; заменяются целиком, ключ обязан быть того же проекта (условие внутри вставки связи) |
 
 (`hostname` из `CreateInstanceRequest` хранится в `instances.hostname` для
 вычисления `fqdn` и не возвращается отдельным полем в `Instance`.)
@@ -141,26 +134,18 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `Get` | sync | ✅ | `GET /compute/v1/instances/{instance_id}?view=` (BASIC/FULL — FULL включает metadata) |
 | `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (часть контракта). filter — whitelist РОВНО `name=` (`instance_repo.go`: `filter.Parse(f.Filter, []string{"name"})`); любое другое имя поля → `INVALID_ARGUMENT` с именем поля. Расширение — COMP-3 вместе с индексом, см. `07-known-divergences.md` §12 |
 | `Create` | async | ✅ | required `zone_id`/`instance_kind`/`machine_type_id`/`boot_source` + ветвь `oneof spec` по роду + `network_interface_specs` либо `useDefaultNetwork`. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. Интерфейсы на Create **не материализуются** — форма и размещение проверяются, привязка явная (`AttachNetworkInterface`). Легаси-поля запроса **отвергаются по имени**, синхронно и первым стейтментом: `network_settings`, `filesystem_specs`, `local_disk_specs`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`, `ssh_public_keys` + четыре поля внутри `network_interface_specs[]` (`primary_v4_address_spec`, `primary_v6_address_spec`, `nic_id`, `index`). Снятые редизайном `platform_id`/`resources_spec`/`boot_disk_spec` зарезервированы в proto по номеру И имени — вернуться не могут. end status `RUNNING` |
-| `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable свободно: `name`/`description`/`labels`. Только при `STOPPED` (F10): `machine_type_id`/`cpu_guarantee_percent`/`placement_group_id`, иначе `FailedPrecondition`. `metadata` — только через `UpdateMetadata`. immutable: `zone_id`/`instance_kind`/`boot_source` |
+| `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable свободно: `name`/`description`/`labels`. Только при `STOPPED` (F10): `machine_type_id`/`cpu_guarantee_percent`/`placement_group_id`, иначе `FailedPrecondition`. immutable: `zone_id`/`instance_kind`/`boot_source` |
 | `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. Сага (`releaseAndDelete`): пометить строку `DELETING` → снять привязки интерфейсов у kacho-vpc → снять привязки томов у kacho-storage → удалить строку **последней**. Отказ владельца **не проглатывается** — операция краснеет, строка остаётся на месте. Повтор идемпотентен: списки привязок резолвятся у владельцев по id машины на каждом прогоне. Осиротевшее удаление (процесс умер посередине) добивает `FinishStuckDeletes` |
-| `UpdateMetadata` | async | ✅ | `POST /compute/v1/instances/{instance_id}/updateMetadata` body `{delete:[], upsert:{}}`. metadata `UpdateInstanceMetadataMetadata`, response `Instance`. status unchanged |
 | `GetSerialPortOutput` | **sync** | ✅ (синтетика) | `GET /compute/v1/instances/{instance_id}:serialPortOutput?port=1..4`. response `GetInstanceSerialPortOutputResponse{contents}` — синтетический текст (НЕ операция) |
 | `Stop` | async | ✅ | `POST /compute/v1/instances/{instance_id}:stop`. precondition `status ∈ {RUNNING}` → end `STOPPED`. metadata `StopInstanceMetadata`, response `Empty` |
 | `Start` | async | ✅ | precondition `status ∈ {STOPPED}` → end `RUNNING`. metadata `StartInstanceMetadata`, response `Instance` |
 | `Restart` | async | ✅ | precondition `status ∈ {RUNNING}` → end `RUNNING`. metadata `RestartInstanceMetadata`, response `Empty` |
 | `AttachDisk` | async | ✅ | `POST :attachDisk` body `{attached_disk_spec}`. precondition `status ∈ {RUNNING, STOPPED}`; disk READY & same zone & not attached. metadata `AttachInstanceDiskMetadata{instance_id, disk_id}`, response `Instance`. status unchanged |
 | `DetachDisk` | async | ✅ | `POST :detachDisk` body `oneof {disk_id, device_name}` (`exactly_one`). precondition `status ∈ {RUNNING, STOPPED}`; disk attached & not boot. metadata `DetachInstanceDiskMetadata`, response `Instance` |
-| `AddOneToOneNat` | — | 🚫 `Unimplemented` (12) | Внешний адрес — свойство ресурса `NetworkInterface` домена kacho-vpc, правится у владельца |
-| `RemoveOneToOneNat` | — | 🚫 `Unimplemented` (12) | То же основание, что у Add |
-| `UpdateNetworkInterface` | — | 🚫 `Unimplemented` (12) | То же основание: адресация и группы безопасности интерфейса правятся у владельца интерфейса, не через инстанс |
 | `AttachNetworkInterface` | async | ✅ | `POST :attachNetworkInterface` body `{attached_nic_spec:{nic_id, index?}}` — подключается **существующий** kacho-vpc NIC по id; `index` не задан → сервер атомарно занимает первый свободный слот. Прежняя форма с `subnet_id`/`network_interface_index` **зарезервирована** в proto по номерам и именам. precondition `STOPPED`. metadata `AttachInstanceNetworkInterfaceMetadata`, response `Instance` |
 | `DetachNetworkInterface` | async | ✅ | `POST :detachNetworkInterface` body — `oneof {nic_id, index}` с `(exactly_one)`; нарушение → `InvalidArgument "exactly one of nic_id or index is required"`. `network_interface_index` **зарезервирован**. precondition `STOPPED`. metadata `DetachInstanceNetworkInterfaceMetadata`, response `Instance` |
 | `ListOperations` | sync | ✅ | `GET /compute/v1/instances/{instance_id}/operations` |
-| `Relocate` | — | 🚫 `Unimplemented` (12) | Перенос машины в другую зону требует переноса её томов, а тома принадлежат kacho-storage |
 | `SimulateMaintenanceEvent` | async | ⏭️ no-op | `POST :simulateMaintenanceEvent`. metadata `SimulateInstanceMaintenanceEventMetadata`, response `Empty`. operation сразу done |
-| `ListAccessBindings` | — | 🚫 `Unimplemented` (12) | Права выдаёт kacho-iam (`AccessBindingService`), не здесь |
-| `SetAccessBindings` | — | 🚫 `Unimplemented` (12) | То же основание |
-| `UpdateAccessBindings` | — | 🚫 `Unimplemented` (12) | То же основание |
 
 ### Инварианты
 
@@ -185,7 +170,10 @@ sizing-каталог (`machine_type_id`), из которого выводит�
   описывала посемейственную валидацию сырого описания ресурсов и ссылалась на
   файл-таблицу платформ: поле снято с контракта (`reserved` в
   `proto/kacho/cloud/compute/v1/instance_service.proto`), файла нет, имя не цитируется.
-- `status_message` поле — всегда пусто (control-plane).
+- `status_reason` — человекочитаемая причина текущего статуса; на плоскости управления
+  заполняется отложенными правками («вступит в силу при следующей загрузке»), иначе пусто.
+  Поля `status_message` в контракте нет и не было — прежняя редакция называла имя, которого
+  дерево не знает.
 - State-машина статуса — [страница сайта](../../content/architecture/instance-lifecycle.mdx).
 
 ### Cross-resource links
@@ -209,6 +197,17 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 ---
 
 ## Region / Zone — сняты со сервинга (этап S7)
+
+> [!warning] Восемь методов сняты волной 1 — здесь их больше нет намеренно
+> Семь не несли реализации и отвечали отказом «не реализовано», будучи выставленными
+> на трёх поверхностях сразу; восьмой (обновление метаданных) был реализован и снят
+> вместе со своим предметом — свободной картой. Перепись снятых имён —
+> `internal/repohygiene/retiredrpcsurface.go`; резервирование номера и имени для
+> метода невыразимо грамматикой, поэтому механизм именно такой.
+>
+> Владельцы возможностей: трансляция адреса и свойства интерфейса — домен сети;
+> привязки доступа — домен управления доступом; перенос между зонами требует
+> согласия владельца тома.
 
 Здесь стояли два раздела с полями и RPC `Region`/`Zone` и утверждение «kacho-compute —
 owner Geography». С этапа S7 это неверно: Geography — домен **kacho-geo**

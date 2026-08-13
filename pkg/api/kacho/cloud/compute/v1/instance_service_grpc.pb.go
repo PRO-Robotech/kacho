@@ -11,7 +11,6 @@ package computev1
 
 import (
 	context "context"
-	access "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/access"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -29,7 +28,6 @@ const (
 	InstanceService_Create_FullMethodName                   = "/kacho.cloud.compute.v1.InstanceService/Create"
 	InstanceService_Update_FullMethodName                   = "/kacho.cloud.compute.v1.InstanceService/Update"
 	InstanceService_Delete_FullMethodName                   = "/kacho.cloud.compute.v1.InstanceService/Delete"
-	InstanceService_UpdateMetadata_FullMethodName           = "/kacho.cloud.compute.v1.InstanceService/UpdateMetadata"
 	InstanceService_GetSerialPortOutput_FullMethodName      = "/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput"
 	InstanceService_Stop_FullMethodName                     = "/kacho.cloud.compute.v1.InstanceService/Stop"
 	InstanceService_Start_FullMethodName                    = "/kacho.cloud.compute.v1.InstanceService/Start"
@@ -38,15 +36,8 @@ const (
 	InstanceService_DetachDisk_FullMethodName               = "/kacho.cloud.compute.v1.InstanceService/DetachDisk"
 	InstanceService_AttachNetworkInterface_FullMethodName   = "/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface"
 	InstanceService_DetachNetworkInterface_FullMethodName   = "/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface"
-	InstanceService_AddOneToOneNat_FullMethodName           = "/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat"
-	InstanceService_RemoveOneToOneNat_FullMethodName        = "/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat"
-	InstanceService_UpdateNetworkInterface_FullMethodName   = "/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface"
 	InstanceService_ListOperations_FullMethodName           = "/kacho.cloud.compute.v1.InstanceService/ListOperations"
-	InstanceService_Relocate_FullMethodName                 = "/kacho.cloud.compute.v1.InstanceService/Relocate"
 	InstanceService_SimulateMaintenanceEvent_FullMethodName = "/kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent"
-	InstanceService_ListAccessBindings_FullMethodName       = "/kacho.cloud.compute.v1.InstanceService/ListAccessBindings"
-	InstanceService_SetAccessBindings_FullMethodName        = "/kacho.cloud.compute.v1.InstanceService/SetAccessBindings"
-	InstanceService_UpdateAccessBindings_FullMethodName     = "/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings"
 )
 
 // InstanceServiceClient is the client API for InstanceService service.
@@ -68,8 +59,6 @@ type InstanceServiceClient interface {
 	Update(ctx context.Context, in *UpdateInstanceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified instance.
 	Delete(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Updates the metadata of the specified instance. For more information on metadata, see [VM metadata](/docs/compute/concepts/vm-metadata).
-	UpdateMetadata(ctx context.Context, in *UpdateInstanceMetadataRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Returns the serial port output of the specified Instance resource.
 	GetSerialPortOutput(ctx context.Context, in *GetInstanceSerialPortOutputRequest, opts ...grpc.CallOption) (*GetInstanceSerialPortOutputResponse, error)
 	// Stops the running instance.
@@ -96,25 +85,9 @@ type InstanceServiceClient interface {
 	// The instance must be `RUNNING` or `STOPPED` ([Instance.status]). The NIC itself
 	// (a kacho-vpc resource) is not deleted; only the binding is released.
 	DetachNetworkInterface(ctx context.Context, in *DetachInstanceNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Enables One-to-one NAT on the network interface.
-	AddOneToOneNat(ctx context.Context, in *AddInstanceOneToOneNatRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Removes One-to-one NAT from the network interface.
-	RemoveOneToOneNat(ctx context.Context, in *RemoveInstanceOneToOneNatRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Updates the specified instance network interface.
-	UpdateNetworkInterface(ctx context.Context, in *UpdateInstanceNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified instance.
 	ListOperations(ctx context.Context, in *ListInstanceOperationsRequest, opts ...grpc.CallOption) (*ListInstanceOperationsResponse, error)
-	// Moves the specified instance to another availability zone
-	//
-	// Running instance will be restarted during this operation.
-	Relocate(ctx context.Context, in *RelocateInstanceRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	SimulateMaintenanceEvent(ctx context.Context, in *SimulateInstanceMaintenanceEventRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Lists access bindings for the instance.
-	ListAccessBindings(ctx context.Context, in *access.ListAccessBindingsRequest, opts ...grpc.CallOption) (*access.ListAccessBindingsResponse, error)
-	// Sets access bindings for the instance.
-	SetAccessBindings(ctx context.Context, in *access.SetAccessBindingsRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Updates access bindings for the instance.
-	UpdateAccessBindings(ctx context.Context, in *access.UpdateAccessBindingsRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type instanceServiceClient struct {
@@ -169,16 +142,6 @@ func (c *instanceServiceClient) Delete(ctx context.Context, in *DeleteInstanceRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, InstanceService_Delete_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) UpdateMetadata(ctx context.Context, in *UpdateInstanceMetadataRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_UpdateMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -265,36 +228,6 @@ func (c *instanceServiceClient) DetachNetworkInterface(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *instanceServiceClient) AddOneToOneNat(ctx context.Context, in *AddInstanceOneToOneNatRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_AddOneToOneNat_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) RemoveOneToOneNat(ctx context.Context, in *RemoveInstanceOneToOneNatRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_RemoveOneToOneNat_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) UpdateNetworkInterface(ctx context.Context, in *UpdateInstanceNetworkInterfaceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_UpdateNetworkInterface_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *instanceServiceClient) ListOperations(ctx context.Context, in *ListInstanceOperationsRequest, opts ...grpc.CallOption) (*ListInstanceOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListInstanceOperationsResponse)
@@ -305,50 +238,10 @@ func (c *instanceServiceClient) ListOperations(ctx context.Context, in *ListInst
 	return out, nil
 }
 
-func (c *instanceServiceClient) Relocate(ctx context.Context, in *RelocateInstanceRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_Relocate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *instanceServiceClient) SimulateMaintenanceEvent(ctx context.Context, in *SimulateInstanceMaintenanceEventRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, InstanceService_SimulateMaintenanceEvent_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) ListAccessBindings(ctx context.Context, in *access.ListAccessBindingsRequest, opts ...grpc.CallOption) (*access.ListAccessBindingsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(access.ListAccessBindingsResponse)
-	err := c.cc.Invoke(ctx, InstanceService_ListAccessBindings_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) SetAccessBindings(ctx context.Context, in *access.SetAccessBindingsRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_SetAccessBindings_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *instanceServiceClient) UpdateAccessBindings(ctx context.Context, in *access.UpdateAccessBindingsRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InstanceService_UpdateAccessBindings_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -374,8 +267,6 @@ type InstanceServiceServer interface {
 	Update(context.Context, *UpdateInstanceRequest) (*operation.Operation, error)
 	// Deletes the specified instance.
 	Delete(context.Context, *DeleteInstanceRequest) (*operation.Operation, error)
-	// Updates the metadata of the specified instance. For more information on metadata, see [VM metadata](/docs/compute/concepts/vm-metadata).
-	UpdateMetadata(context.Context, *UpdateInstanceMetadataRequest) (*operation.Operation, error)
 	// Returns the serial port output of the specified Instance resource.
 	GetSerialPortOutput(context.Context, *GetInstanceSerialPortOutputRequest) (*GetInstanceSerialPortOutputResponse, error)
 	// Stops the running instance.
@@ -402,25 +293,9 @@ type InstanceServiceServer interface {
 	// The instance must be `RUNNING` or `STOPPED` ([Instance.status]). The NIC itself
 	// (a kacho-vpc resource) is not deleted; only the binding is released.
 	DetachNetworkInterface(context.Context, *DetachInstanceNetworkInterfaceRequest) (*operation.Operation, error)
-	// Enables One-to-one NAT on the network interface.
-	AddOneToOneNat(context.Context, *AddInstanceOneToOneNatRequest) (*operation.Operation, error)
-	// Removes One-to-one NAT from the network interface.
-	RemoveOneToOneNat(context.Context, *RemoveInstanceOneToOneNatRequest) (*operation.Operation, error)
-	// Updates the specified instance network interface.
-	UpdateNetworkInterface(context.Context, *UpdateInstanceNetworkInterfaceRequest) (*operation.Operation, error)
 	// Lists operations for the specified instance.
 	ListOperations(context.Context, *ListInstanceOperationsRequest) (*ListInstanceOperationsResponse, error)
-	// Moves the specified instance to another availability zone
-	//
-	// Running instance will be restarted during this operation.
-	Relocate(context.Context, *RelocateInstanceRequest) (*operation.Operation, error)
 	SimulateMaintenanceEvent(context.Context, *SimulateInstanceMaintenanceEventRequest) (*operation.Operation, error)
-	// Lists access bindings for the instance.
-	ListAccessBindings(context.Context, *access.ListAccessBindingsRequest) (*access.ListAccessBindingsResponse, error)
-	// Sets access bindings for the instance.
-	SetAccessBindings(context.Context, *access.SetAccessBindingsRequest) (*operation.Operation, error)
-	// Updates access bindings for the instance.
-	UpdateAccessBindings(context.Context, *access.UpdateAccessBindingsRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedInstanceServiceServer()
 }
 
@@ -446,9 +321,6 @@ func (UnimplementedInstanceServiceServer) Update(context.Context, *UpdateInstanc
 func (UnimplementedInstanceServiceServer) Delete(context.Context, *DeleteInstanceRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedInstanceServiceServer) UpdateMetadata(context.Context, *UpdateInstanceMetadataRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateMetadata not implemented")
-}
 func (UnimplementedInstanceServiceServer) GetSerialPortOutput(context.Context, *GetInstanceSerialPortOutputRequest) (*GetInstanceSerialPortOutputResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSerialPortOutput not implemented")
 }
@@ -473,32 +345,11 @@ func (UnimplementedInstanceServiceServer) AttachNetworkInterface(context.Context
 func (UnimplementedInstanceServiceServer) DetachNetworkInterface(context.Context, *DetachInstanceNetworkInterfaceRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method DetachNetworkInterface not implemented")
 }
-func (UnimplementedInstanceServiceServer) AddOneToOneNat(context.Context, *AddInstanceOneToOneNatRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method AddOneToOneNat not implemented")
-}
-func (UnimplementedInstanceServiceServer) RemoveOneToOneNat(context.Context, *RemoveInstanceOneToOneNatRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method RemoveOneToOneNat not implemented")
-}
-func (UnimplementedInstanceServiceServer) UpdateNetworkInterface(context.Context, *UpdateInstanceNetworkInterfaceRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateNetworkInterface not implemented")
-}
 func (UnimplementedInstanceServiceServer) ListOperations(context.Context, *ListInstanceOperationsRequest) (*ListInstanceOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
 }
-func (UnimplementedInstanceServiceServer) Relocate(context.Context, *RelocateInstanceRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method Relocate not implemented")
-}
 func (UnimplementedInstanceServiceServer) SimulateMaintenanceEvent(context.Context, *SimulateInstanceMaintenanceEventRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method SimulateMaintenanceEvent not implemented")
-}
-func (UnimplementedInstanceServiceServer) ListAccessBindings(context.Context, *access.ListAccessBindingsRequest) (*access.ListAccessBindingsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListAccessBindings not implemented")
-}
-func (UnimplementedInstanceServiceServer) SetAccessBindings(context.Context, *access.SetAccessBindingsRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method SetAccessBindings not implemented")
-}
-func (UnimplementedInstanceServiceServer) UpdateAccessBindings(context.Context, *access.UpdateAccessBindingsRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method UpdateAccessBindings not implemented")
 }
 func (UnimplementedInstanceServiceServer) mustEmbedUnimplementedInstanceServiceServer() {}
 func (UnimplementedInstanceServiceServer) testEmbeddedByValue()                         {}
@@ -607,24 +458,6 @@ func _InstanceService_Delete_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InstanceServiceServer).Delete(ctx, req.(*DeleteInstanceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_UpdateMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateInstanceMetadataRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).UpdateMetadata(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_UpdateMetadata_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).UpdateMetadata(ctx, req.(*UpdateInstanceMetadataRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -773,60 +606,6 @@ func _InstanceService_DetachNetworkInterface_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InstanceService_AddOneToOneNat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AddInstanceOneToOneNatRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).AddOneToOneNat(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_AddOneToOneNat_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).AddOneToOneNat(ctx, req.(*AddInstanceOneToOneNatRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_RemoveOneToOneNat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RemoveInstanceOneToOneNatRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).RemoveOneToOneNat(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_RemoveOneToOneNat_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).RemoveOneToOneNat(ctx, req.(*RemoveInstanceOneToOneNatRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_UpdateNetworkInterface_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateInstanceNetworkInterfaceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).UpdateNetworkInterface(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_UpdateNetworkInterface_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).UpdateNetworkInterface(ctx, req.(*UpdateInstanceNetworkInterfaceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _InstanceService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListInstanceOperationsRequest)
 	if err := dec(in); err != nil {
@@ -845,24 +624,6 @@ func _InstanceService_ListOperations_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _InstanceService_Relocate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RelocateInstanceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).Relocate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_Relocate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).Relocate(ctx, req.(*RelocateInstanceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _InstanceService_SimulateMaintenanceEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SimulateInstanceMaintenanceEventRequest)
 	if err := dec(in); err != nil {
@@ -877,60 +638,6 @@ func _InstanceService_SimulateMaintenanceEvent_Handler(srv interface{}, ctx cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InstanceServiceServer).SimulateMaintenanceEvent(ctx, req.(*SimulateInstanceMaintenanceEventRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_ListAccessBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(access.ListAccessBindingsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).ListAccessBindings(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_ListAccessBindings_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).ListAccessBindings(ctx, req.(*access.ListAccessBindingsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_SetAccessBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(access.SetAccessBindingsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).SetAccessBindings(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_SetAccessBindings_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).SetAccessBindings(ctx, req.(*access.SetAccessBindingsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InstanceService_UpdateAccessBindings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(access.UpdateAccessBindingsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InstanceServiceServer).UpdateAccessBindings(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InstanceService_UpdateAccessBindings_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InstanceServiceServer).UpdateAccessBindings(ctx, req.(*access.UpdateAccessBindingsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -961,10 +668,6 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _InstanceService_Delete_Handler,
-		},
-		{
-			MethodName: "UpdateMetadata",
-			Handler:    _InstanceService_UpdateMetadata_Handler,
 		},
 		{
 			MethodName: "GetSerialPortOutput",
@@ -999,40 +702,12 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _InstanceService_DetachNetworkInterface_Handler,
 		},
 		{
-			MethodName: "AddOneToOneNat",
-			Handler:    _InstanceService_AddOneToOneNat_Handler,
-		},
-		{
-			MethodName: "RemoveOneToOneNat",
-			Handler:    _InstanceService_RemoveOneToOneNat_Handler,
-		},
-		{
-			MethodName: "UpdateNetworkInterface",
-			Handler:    _InstanceService_UpdateNetworkInterface_Handler,
-		},
-		{
 			MethodName: "ListOperations",
 			Handler:    _InstanceService_ListOperations_Handler,
 		},
 		{
-			MethodName: "Relocate",
-			Handler:    _InstanceService_Relocate_Handler,
-		},
-		{
 			MethodName: "SimulateMaintenanceEvent",
 			Handler:    _InstanceService_SimulateMaintenanceEvent_Handler,
-		},
-		{
-			MethodName: "ListAccessBindings",
-			Handler:    _InstanceService_ListAccessBindings_Handler,
-		},
-		{
-			MethodName: "SetAccessBindings",
-			Handler:    _InstanceService_SetAccessBindings_Handler,
-		},
-		{
-			MethodName: "UpdateAccessBindings",
-			Handler:    _InstanceService_UpdateAccessBindings_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

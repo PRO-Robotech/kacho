@@ -181,6 +181,8 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,
 		NewNLBListenerResource,
+		// compute
+		NewInstanceResource,
 	}
 }
 

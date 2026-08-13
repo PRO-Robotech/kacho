@@ -156,9 +156,13 @@ type BootSource struct {
 
 // VMSpec — конфигурация VM (instance_kind = VM).
 type VMSpec struct {
-	UserData              string         `json:"user_data,omitempty"`
-	MetadataEndpoint      MetadataOption `json:"metadata_endpoint,omitempty"`
-	MetadataTokenRequired bool           `json:"metadata_token_required,omitempty"`
+	UserData         string         `json:"user_data,omitempty"`
+	MetadataEndpoint MetadataOption `json:"metadata_endpoint,omitempty"`
+
+	// Поля «требуется ли сессионный токен» здесь НЕТ, и это решение, а не
+	// пропуск: токен обязателен by construction, а ручка, которой можно
+	// отключить защиту, однажды будет отключена. Снято вместе с полем контракта
+	// (номер и имя зарезервированы навсегда).
 }
 
 // ContainerPort — объявление порта контейнера.
@@ -196,8 +200,6 @@ type Instance struct {
 	Status       InstanceStatus
 	StatusReason string
 
-	// Metadata — legacy free-form map (только на FULL view; back-compat).
-	Metadata map[string]string
 	Hostname string
 	FQDN     string
 
@@ -213,6 +215,19 @@ type Instance struct {
 	// VMSpec set при kind=VM; ContainerSpec — при kind=CONTAINER (взаимоисключающе).
 	VMSpec        *VMSpec
 	ContainerSpec *ContainerSpec
+
+	// RegionID — регион зоны машины, РЕЗОЛВНУТЫЙ У ВЛАДЕЛЬЦА Geography.
+	//
+	// Своей колонки у него нет и не должно быть: регион зоны знает geo, и
+	// хранить его копию значило бы завести второй источник истины, который
+	// разъедется молча. Поле транзиентное — заполняется на пути запроса ради
+	// когерентности с региональной группой размещения и на wire не выходит.
+	RegionID string
+
+	// Ключи входа гостя — ссылками по неизменяемому идентификатору. Материал
+	// ключа здесь не лежит и лежать не может: ключ — отдельный ресурс, и его
+	// срок жизни не совпадает со сроком жизни машины.
+	GuestAccessKeyIDs []string
 
 	// Output-only зеркала (материализуются launch-сагами COMP-2; пусто в COMP-1).
 	NetworkInterfaces []NetworkInterface
@@ -236,4 +251,102 @@ func (i *Instance) BootDiskMirror() *AttachedDisk {
 		}
 	}
 	return nil
+}
+
+// GuestAccessKey — публичная половина ключа, с которым арендатор входит в
+// машину.
+//
+// Закрытая половина здесь не хранится никогда: её место — у арендатора, а
+// хранилище закрытых ключей есть отдельный домен со своей моделью угроз.
+type GuestAccessKey struct {
+	ID          string
+	ProjectID   string
+	Name        string
+	PublicKey   string
+	Fingerprint string
+	Labels      map[string]string
+	CreatedAt   time.Time
+}
+
+// PlacementStrategy — что группа размещения делает с машинами.
+type PlacementStrategy int32
+
+// Значения зеркалят перечисление контракта; строковые имена совпадают с
+// ограничением схемы поэлементно.
+const (
+	PlacementStrategyUnspecified PlacementStrategy = 0
+	PlacementStrategySpread      PlacementStrategy = 1
+	PlacementStrategyPack        PlacementStrategy = 2
+)
+
+// PlacementAnchorType — какой координатой закреплена группа.
+type PlacementAnchorType int32
+
+const (
+	PlacementTypeUnspecified PlacementAnchorType = 0
+	PlacementTypeZonal       PlacementAnchorType = 1
+	PlacementTypeRegional    PlacementAnchorType = 2
+)
+
+// PlacementGroup — правило взаимного размещения машин.
+//
+// Числового параметра разнесения здесь нет: он описывает нашу раскладку железа,
+// а не намерение арендатора. Намерений ровно два, и оба выразимы стратегией.
+type PlacementGroup struct {
+	ID            string
+	ProjectID     string
+	Name          string
+	Description   string
+	Labels        map[string]string
+	CreatedAt     time.Time
+	Strategy      PlacementStrategy
+	PlacementType PlacementAnchorType
+	ZoneID        string
+	RegionID      string
+}
+
+// StrategyName переводит стратегию в имя, которое принимает схема.
+// Неизвестное значение даёт пустую строку — её отвергнет ограничение схемы, а
+// не молча запишет.
+func (s PlacementStrategy) StrategyName() string {
+	switch s {
+	case PlacementStrategySpread:
+		return "SPREAD"
+	case PlacementStrategyPack:
+		return "PACK"
+	}
+	return ""
+}
+
+// ParsePlacementStrategy — обратное отображение; ok=false на неизвестном.
+func ParsePlacementStrategy(name string) (PlacementStrategy, bool) {
+	switch name {
+	case "SPREAD":
+		return PlacementStrategySpread, true
+	case "PACK":
+		return PlacementStrategyPack, true
+	}
+	return PlacementStrategyUnspecified, false
+}
+
+// PlacementTypeName переводит якорь в имя, которое принимает схема.
+func (p PlacementAnchorType) PlacementTypeName() string {
+	switch p {
+	case PlacementTypeZonal:
+		return "ZONAL"
+	case PlacementTypeRegional:
+		return "REGIONAL"
+	}
+	return ""
+}
+
+// ParsePlacementType — обратное отображение; ok=false на неизвестном.
+func ParsePlacementType(name string) (PlacementAnchorType, bool) {
+	switch name {
+	case "ZONAL":
+		return PlacementTypeZonal, true
+	case "REGIONAL":
+		return PlacementTypeRegional, true
+	}
+	return PlacementTypeUnspecified, false
 }

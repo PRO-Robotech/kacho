@@ -36,7 +36,6 @@ func TestInstance_ProjectsExpectedFields(t *testing.T) {
 		ZoneID:              "ru-central1-b",
 		Status:              domain.InstanceStatusStopped,
 		StatusReason:        "takes effect on next boot",
-		Metadata:            map[string]string{"k": "v"},
 		CPUGuaranteePercent: 50,
 		InstanceKind:        domain.InstanceKindVM,
 		MachineTypeID:       "mt-std2",
@@ -64,7 +63,6 @@ func TestInstance_ProjectsExpectedFields(t *testing.T) {
 	assert.Equal(t, in.ZoneID, out.GetZoneId())
 	assert.Equal(t, computev1.Instance_Status(in.Status), out.GetStatus())
 	assert.Equal(t, in.StatusReason, out.GetStatusReason())
-	assert.Equal(t, in.Metadata, out.GetMetadata())
 	assert.Equal(t, in.FQDN, out.GetFqdn())
 	assert.Equal(t, int32(50), out.GetCpuGuaranteePercent())
 

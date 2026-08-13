@@ -24,7 +24,7 @@ import dedent from 'ts-dedent'
 
 **Operation** — асинхронная долгоиграющая операция. Каждая **мутация** в Kachō Compute
 (`Create` / `Update` / `Delete`, а также `Start` / `Stop` / `Restart` / `AttachDisk` /
-`DetachDisk` / `UpdateMetadata` / `AttachNetworkInterface` / …) выполняется **не синхронно**:
+`DetachDisk` / `AttachNetworkInterface` / …) выполняется **не синхронно**:
 RPC сразу возвращает `Operation` с `done: false`, а реальная работа идёт в worker-горутине.
 Клиент **поллит** статус операции по её `id`, пока не получит `done: true`.
 

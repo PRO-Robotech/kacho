@@ -100,6 +100,12 @@ var tfCoverage = map[string]string{
 
 	// compute
 	"InstanceService": "kacho_compute_instance",
+	// Оба заведены производственной формой compute (#284) и ресурса пока не имеют:
+	// долг назван предметом ниже, в tfPending. Пустой строкой («осознанное
+	// отсутствие») их объявлять нельзя — это была бы неправда: оба ресурса типовые
+	// и декларативному управлению поддаются.
+	"GuestAccessKeyService": "kacho_compute_guest_access_key",
+	"PlacementGroupService": "kacho_compute_placement_group",
 
 	// storage
 	"VolumeService":   "kacho_storage_volume",
@@ -123,7 +129,11 @@ var tfCoverage = map[string]string{
 // спецификации машины). Общий каркас плоских ресурсов их не выражает, и втискивать их туда
 // значило бы сделать каркас условным — то есть перестать понимать, что он делает.
 var tfPending = map[string]string{
-	"InstanceService": "PRO-Robotech/kacho#235",
+	// Запись про машину СНЯТА: ресурс `kacho_compute_instance` появился в реестре
+	// провайдера вместе с производственной формой compute, и гейт объявил долг
+	// истёкшим сам — ровно как обещано абзацем выше.
+	"GuestAccessKeyService": "PRO-Robotech/kacho#288",
+	"PlacementGroupService": "PRO-Robotech/kacho#288",
 }
 
 // tfExtraResources — ресурсы провайдера, у которых НЕТ своего создающего сервиса.

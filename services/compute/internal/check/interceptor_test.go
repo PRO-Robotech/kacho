@@ -326,7 +326,13 @@ func TestPermissionMap_CoverageSnapshot(t *testing.T) {
 	// + InternalMachineType + Operation + InternalWatch. The floor guards against a
 	// silent drift in registrations, so a deliberate retire moves it — by exactly
 	// what the retire removed, and no further.
-	if len(m) < 25 {
+	//
+	// Lowered 25 → 17 when eight InstanceService methods left the contract: seven
+	// carried no implementation and answered UNIMPLEMENTED while being exposed on
+	// three surfaces at once, and UpdateMetadata went with its subject — the
+	// free-form metadata map. Moved by exactly eight, per the rule above: a floor
+	// that moves further than the retire would stop guarding what it guards.
+	if len(m) < 17 {
 		t.Errorf("PermissionMap слишком мала (%d entries): подозрение на drift регистраций", len(m))
 	}
 }

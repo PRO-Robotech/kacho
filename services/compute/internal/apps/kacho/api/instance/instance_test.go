@@ -136,17 +136,28 @@ func TestInstance_COMP_1_01_CreateVM(t *testing.T) {
 }
 
 // COMP-1-02: Create CONTAINER → containerSpec present (command/restartPolicy), vmSpec absent.
-func TestInstance_COMP_1_02_CreateContainer(t *testing.T) {
+// COMP-1-02: контейнерная нагрузка ОТВЕРГАЕТСЯ — у образа реестра нет durable-
+// координаты (репозиторий не несёт неизменяемого идентификатора и адресуется
+// парой, чьё имя переименовывается отдельным глаголом). Отказ синхронный и по
+// имени поля: принять и не резолвить значило бы пообещать возможность, которой
+// нет.
+//
+// Проба была «контейнер создаётся» и стала «контейнер отвергается» — предмет
+// сменился вместе с контрактом, а не исчез. Положительный контроль ниже:
+// без него отрицание зеленело бы на сломанном создании вообще.
+func TestInstance_COMP_1_02_ContainerRefusedUntilDurableImageAddress(t *testing.T) {
 	k := newInstanceSvc(t, true)
-	op, err := k.svc.Create(context.Background(), baseContainerReq())
+	ctx := context.Background()
+
+	_, err := k.svc.Create(ctx, baseContainerReq())
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "registry.image is not accepted yet")
+
+	// (+) машина из образа хранилища проходит тем же путём
+	op, err := k.svc.Create(ctx, baseCreateReq())
 	require.NoError(t, err)
-	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
-	require.Equal(t, computev1.InstanceKind_CONTAINER, in.InstanceKind)
-	require.NotNil(t, in.GetContainerSpec())
-	require.Equal(t, []string{"python", "train.py"}, in.GetContainerSpec().Command)
-	require.Equal(t, computev1.RestartPolicy_ON_FAILURE, in.GetContainerSpec().RestartPolicy)
-	require.Nil(t, in.GetVmSpec())
-	require.Nil(t, in.BootSource.MaterializedVolume, "CONTAINER ephemeral rootfs — no materializedVolume")
+	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
 }
 
 // COMP-1-03: kind ↔ spec mismatch + missing kind → sync InvalidArgument (spoken XOR).
@@ -245,7 +256,11 @@ func TestInstance_COMP_1_08_CPUGuarantee(t *testing.T) {
 	_, err = k.svc.Create(ctx, over)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
-	gpu := baseContainerReq()
+	// Фикстура переведена с контейнерной нагрузки на машину: контейнерный вид
+	// теперь отвергается по отсутствию durable-координаты образа, а предмет
+	// ЭТОЙ пробы — семейство типоразмера, а не вид нагрузки.
+	gpu := baseCreateReq()
+	gpu.Name = "vm-gpu"
 	gpu.MachineTypeID = testMTGpu
 	gpu.CPUGuaranteePercent = 50 // accepted-and-ignored for GPU family
 	op, err = k.svc.Create(ctx, gpu)
@@ -268,12 +283,21 @@ func TestInstance_COMP_1_09_BootSourceGrammar(t *testing.T) {
 	require.Equal(t, computev1.ImageKind_STORAGE_IMAGE, in.BootSource.ImageKind, "server-derived imageKind routes storage")
 	require.Empty(t, in.BootSource.ResolvedDigest, "resolvedDigest empty in COMP-1 (resolve=COMP-2)")
 
-	// bare-untagged → 400 with grammar.
+	// Голый идентификатор образа хранилища ПРОХОДИТ, и это исправление, а не
+	// послабление. Прежняя проба закрепляла требование тега или дайджеста от
+	// каждого идентификатора — требование, неисполнимое by construction: у
+	// контракта образа хранилища нет ни поля тега, ни поля дайджеста, то есть
+	// форма, которую проверка требовала, владельцем не производится.
+	//
+	// Образ хранилища адресуется своим неизменяемым идентификатором, и этого
+	// достаточно: он неизменяем на всю жизнь ресурса, поэтому повторный запуск
+	// через месяц берёт тот же образ без дополнительной фиксации.
 	bare := baseCreateReq()
+	bare.Name = "vm-bare"
 	bare.BootSource = domain.BootSource{Type: bootSourceStorageImage, ID: "img-9k2m4x7q1n8p"}
-	_, err = k.svc.Create(ctx, bare)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "needs a tag or digest")
+	opBare, err := k.svc.Create(ctx, bare)
+	require.NoError(t, err)
+	require.Nil(t, portmock.AwaitOpDone(t, k.ops, opBare.ID).Error)
 
 	// unknown type → 400.
 	badType := baseCreateReq()
@@ -358,10 +382,12 @@ func TestInstance_COMP_1_14_UnreachableGuard(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
 
-	// CONTAINER без ssh/external → OK (guard exempt).
-	op, err = k.svc.Create(ctx, baseContainerReq())
-	require.NoError(t, err)
-	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
+	// Здесь стояла четвёртая ветвь: контейнерная нагрузка освобождена от стража
+	// достижимости. Она снята вместе со своим предметом — контейнерный вид
+	// отвергается раньше, чем страж успевает высказаться, поэтому проба
+	// утверждала бы исход, которого на этом пути больше не бывает. Освобождение
+	// вернётся вместе с видом нагрузки: у обоих один предикат возврата.
+
 }
 
 // COMP-1-16: ни networkInterfaceSpecs, ни useDefaultNetwork → FailedPrecondition runbook.
@@ -601,17 +627,6 @@ func TestInstance_Legacy_AttachDisk_Happy(t *testing.T) {
 	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
 	require.Len(t, in.SecondaryDisks, 1)
 	require.Equal(t, "voldata1", in.SecondaryDisks[0].VolumeId)
-}
-
-func TestInstance_Legacy_UpdateMetadata(t *testing.T) {
-	k := newInstanceSvc(t, true)
-	in0 := seedInst(k.repo, seedID, domain.InstanceStatusRunning)
-	in0.Metadata = map[string]string{"a": "1", "b": "2"}
-	op, err := k.svc.UpdateMetadata(context.Background(), seedID, []string{"a"}, map[string]string{"c": "3"})
-	require.NoError(t, err)
-	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
-	require.NotContains(t, in.Metadata, "a")
-	require.Equal(t, "3", in.Metadata["c"])
 }
 
 func TestInstance_Legacy_Delete_ReleasesNicAndVolume(t *testing.T) {
