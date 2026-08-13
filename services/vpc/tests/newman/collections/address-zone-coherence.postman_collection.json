@@ -371,7 +371,7 @@
           ]
         },
         {
-          "name": "poll-op-1030",
+          "name": "poll-op-1035",
           "request": {
             "method": "GET",
             "header": [
@@ -434,7 +434,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya769",
+          "name": "get-known-zone-rya776",
           "request": {
             "method": "GET",
             "header": [
@@ -486,7 +486,7 @@
           ]
         },
         {
-          "name": "cleanup-known-zone-rya770",
+          "name": "cleanup-known-zone-rya777",
           "request": {
             "method": "DELETE",
             "header": [
@@ -545,7 +545,7 @@
           ]
         },
         {
-          "name": "poll-op-1031",
+          "name": "poll-op-1036",
           "request": {
             "method": "GET",
             "header": [
@@ -664,7 +664,7 @@
           ]
         },
         {
-          "name": "poll-op-1032",
+          "name": "poll-op-1037",
           "request": {
             "method": "GET",
             "header": [
@@ -732,7 +732,7 @@
           ]
         },
         {
-          "name": "cleanup-anycast-rya771",
+          "name": "cleanup-anycast-rya778",
           "request": {
             "method": "DELETE",
             "header": [
@@ -791,7 +791,7 @@
           ]
         },
         {
-          "name": "poll-op-1033",
+          "name": "poll-op-1038",
           "request": {
             "method": "GET",
             "header": [

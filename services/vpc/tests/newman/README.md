@@ -11,6 +11,8 @@ test design (ECP / BVA / decision tables / state transition / pairwise / error g
 ```
 tests/newman/
 ├── README.md                — этот файл
+├── setup.sh                 — ПОСЕВ суиты: гоняет setup-папки коллекции и выгружает id фикстур
+│                              в файл окружения (нужен для прогона ОДИНОЧНОГО кейса, см. ниже)
 ├── cases/                   — ИСТОЧНИК ИСТИНЫ: декларативные case-наборы (Python), по сервису
 │   ├── {network,subnet,address,route-table,security-group,gateway,operation}.py  — публичные RPC
 │   └── {internal-pool,internal-cloud}.py  — internal/admin IPAM RPC (kacho-only)
@@ -20,6 +22,10 @@ tests/newman/
 │   └── local.postman_environment.json   — local stand (port-forward api-gateway → 18080)
 ├── scripts/
 │   ├── gen.py                — генератор коллекций из cases/* (Postman v2.1 JSON)
+│   ├── contract_texts.py     — сверка: текст отказа объявлен один раз в прод-коде, страница
+│   │                           арендатора и e2e-кейс цитируют его дословно (зовёт validate-cases.py)
+│   ├── selftest_contract_texts.py — инъекция в обе стороны для сверки выше (стенд не нужен)
+│   ├── setup_selftest.sh     — инъекция в обе стороны для посева setup.sh (стенд не нужен)
 │   ├── run.sh                — прогон одного/всех сервисов целиком (newman + JSON reporter → out/)
 │   ├── run-incremental.sh    — прогон ПО ОДНОМУ кейсу за раз + зачистка ресурсов после каждого (низкий resource-footprint); --resume / --cleanup-only
 │   └── run-incremental.js    — драйвер (newman library API — без per-case process startup; env SERVICES=... ограничивает список сервисов)
@@ -55,6 +61,37 @@ python3 scripts/gen.py            # все сервисы; или: python3 scrip
 # Требует KACHO_VPC_DEFAULT_SG_INLINE=true (default) — иначе кейсы default-SG краснеют.
 #   результат → out/incremental/{progress.tsv, summary.txt, failed/<id>.json}.
 ```
+
+### Прогон ОДИНОЧНОГО кейса (`--folder`) — сначала посев
+
+`newman --folder <кейс>` исполняет **только названную точку входа**: setup-элементы
+коллекции (резолв зон, фикстуры суиты) в неё не входят. Кейс, зависящий от фикстуры,
+без посева падает по чужой причине — тело запроса уезжает с неразрешённым
+`{{имя}}`, и виноватым выглядит невиновный.
+
+```bash
+./setup.sh                                        # один раз: сеет фикстуры и патчит окружение
+newman run collections/gateway.postman_collection.json \
+  -e environments/local.postman_environment.json --folder GW-CR-CRUD-OK
+```
+
+`setup.sh` гоняет **те же самые** setup-папки коллекции (`_SETUP-GW-ANCHOR` и резолв
+зон) и выгружает полученные id в файл окружения — второго объявления фикстуры нет, и
+разойтись посеву с суитой негде. Полному прогону (`./scripts/run.sh`) посев не нужен:
+setup-папки исполняются первыми в самой коллекции.
+
+Успехом считаются **числа**, а не «newman отработал»: вердикт выносит та же функция,
+что судит прогон суиты, плюс проверка, что выгруженные id **непусты**. Пустой id
+записался бы в окружение молча и уронил бы суиту далеко от места, где посев не
+состоялся.
+
+### Регенерация коллекций — только ПОЛНЫМ прогоном генератора
+
+`python3 scripts/gen.py` без аргументов и `python3 scripts/gen.py <сервис>` дают
+**разные** файлы: суффиксы имён шагов (`poll-op-NNNN`, `…-ryaNNN`) — сквозные
+счётчики процесса, и при частичном прогоне они смещаются у всех остальных коллекций.
+Поэтому коммитится результат ПОЛНОГО прогона; частичный годится для быстрой проверки
+своего файла, но не для фиксации.
 
 ## Принципы
 

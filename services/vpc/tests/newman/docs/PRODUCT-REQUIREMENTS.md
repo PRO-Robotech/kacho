@@ -268,6 +268,30 @@ prefix /N"`. Касается `Create.ipv4_cidr_primary`/`v4_cidr_blocks` и `Ad
 - Validated-by: `SUB-CIDR-ADD-V6-OK`, `SUB-CIDR-ADD-V6-NEG-HOSTBITS`, `SUB-CIDR-REMOVE-V6-OK`
 - Проверка: `internal/apps/kacho/api/subnet/` AddCidrBlocks/RemoveCidrBlocks (family-aware: v4→`v4_cidr_blocks`, v6→`v6_cidr_blocks`); `validateCIDRPrefix` (host-bits для обеих семей).
 
+### REQ-CIDR-11 — Subnet: диапазон поверх зарезервированного платформой отвергается синхронно [P0]
+Часть адресного пространства обслуживает саму платформу; подсеть поверх такого диапазона
+проходила бы все проверки и НЕ РАБОТАЛА БЫ. Поэтому объявляемый префикс, пересекающийся со
+служебным диапазоном, отвергается **синхронно**, до создания `Operation`:
+`InvalidArgument`, текст — `"<slot> <value> overlaps an address range reserved by the platform"`.
+
+- Проверка стоит на **обоих** глаголах, которыми диапазон подсети объявляется — `Create` и
+  `:add-cidr-blocks`. `Update` набор не меняет (soft-immutable), `:remove-cidr-blocks` только
+  сужает — им проверка не нужна.
+- Пересечение ловится в **обе стороны вложенности**: и подсеть внутри служебного диапазона,
+  и подсеть шире него. Соседство границами пересечением НЕ является — примыкающий вплотную
+  префикс законен.
+- Отказ называет **слот присланного набора и присланное значение** и **не раскрывает**
+  перечень служебных диапазонов: карта служебного адресного пространства на публичной
+  поверхности не появляется (`security.md` §«Инфра-чувствительные данные»).
+- Перечень задаётся **посадкой** (`deploy/values.yaml`, `dataplane.reservedPrefixes`), а не
+  константой продукта; необъявленный перечень означает «не сужаем», и боевая посадка с ним
+  не стартует (страж `config.ValidateReservedPrefixes`).
+- Validated-by: `SUB-CR-CONF-RESERVED-OVERLAP`, `SUB-ACB-CONF-RESERVED-OVERLAP`
+- Проверка: `internal/apps/kacho/api/subnet/reserved_prefixes.go` (`validateSubnetNotReserved`,
+  зовётся из `create.go` и `add_cidr_blocks.go` ДО вызова к `kacho-geo`);
+  `internal/domain/reserved_prefixes.go` (`Overlaps` — обе стороны вложенности);
+  страница арендатора — `docs/content/api/subnet.mdx` §Create / §AddCidrBlocks.
+
 ---
 
 ## E. IPAM / Address allocation

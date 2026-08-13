@@ -18,6 +18,16 @@ tests/newman/scripts/validate-cases.py — MANDATORY case-uniqueness validation.
        (b) быть помеченным в case-файле тегом-комментарием  `# index: <ref>`
            (на строке с `id="..."`, либо на 1-2 строках выше) — это значит
            «инстанс известного паттерна <ref>, отдельная запись в индексе не нужна».
+  3. Текст отказа, который кейс утверждает наружу, разошелся со своим ЕДИНСТВЕННЫМ
+     объявлением в прод-коде — либо с ним разошлась страница арендатора, обещающая
+     тот же текст (`scripts/contract_texts.py`).
+
+     Почему третья проверка живет здесь, а не отдельным шагом: этот файл CI зовет
+     для КАЖДОЙ суиты на каждом PR, а у сверки документации собственного места в
+     конвейере нет. Проверка, которую никто не зовет, — это текст, а не гейт;
+     собранная тут, она исполняется столько же раз, сколько первые две. Предмет
+     общий — обещание, данное наружу: кейс и страница обещают одно и то же, но
+     покраснеть умеет только кейс.
 
   Исключение: case-файлы `internal-*.py` (admin/IPAM RPC, prefix `IPL-*`/
   `CLD-*`) — CASES-INDEX каталогизирует их отдельной заметкой,
@@ -144,15 +154,25 @@ def main() -> int:
             f"`# index: <pattern-ref>`."
         )
 
+    # ---- (3) текст контракта: одно объявление, дословные цитаты ----
+    import contract_texts  # noqa: E402 — lazy, sys.path подправлен выше
+
+    ct_findings, ct_census = contract_texts.audit()
+    errors.extend(ct_findings)
+
     if errors:
         sys.stderr.write("validate-cases: FAIL\n")
         for e in errors:
             sys.stderr.write("  - " + e + "\n")
+        sys.stderr.write("  " + contract_texts.format_census(ct_census) + "\n")
         return 1
     print(
         f"validate-cases: OK — {len(seen)} уникальных case-id, нет дублей, "
         f"все каталогизированы (CASES-INDEX / # index:)"
     )
+    # Перепись печатается и на зелёном: «ноль расхождений» обязано быть отличимо
+    # от «ноль прочитанного».
+    print(contract_texts.format_census(ct_census))
     return 0
 
 

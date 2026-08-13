@@ -1,49 +1,28 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для GatewayService."""
+"""Case-set для GatewayService.
+
+ЯКОРЬ РАЗМЕЩЕНИЯ СУИТЫ — В ПОСЕВЕ, А НЕ В КЕЙСЕ. Шлюз без подсети не создаётся
+ВОВСЕ (`subnetId` обязателен, он же якорь размещения), а NAT-шлюз обязан стоять в
+подсети, несущей IPv4, поэтому почти каждый кейс ниже читает `{{gwAnchorSubId}}`.
+Заводит его setup-папка коллекции `_SETUP-GW-ANCHOR` (объявлена в
+`scripts/gen.py`, исполняется первой в полном прогоне) — не кейс.
+
+ПРОГОН ОДИНОЧНОГО КЕЙСА. `--folder <кейс>` исполняет только названную точку
+входа, поэтому окружение для него готовится заранее, ОДНОЙ командой:
+
+    ./setup.sh && newman run collections/gateway.postman_collection.json \\
+        -e environments/local.postman_environment.json --folder GW-CR-CRUD-OK
+
+`setup.sh` гоняет ту же самую setup-папку и выгружает id якоря в файл окружения,
+поэтому объявление якоря остаётся одно, а отладка одиночного кейса больше не
+упирается в фикстуру, которой в её точке входа нет. Без этого шага тело запроса
+уезжает с неразрешённым `{{gwAnchorSubId}}` и кейс падает, называя виновником
+невиновного.
+"""
 
 CASES = []
-
-# Якорь размещения суиты. Шлюз без подсети не создаётся ВОВСЕ (`subnetId` обязателен,
-# он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Поэтому
-# суита начинается с фикстуры, и она УТВЕРЖДАЕТ каждый свой шаг: шаг, создающий предмет
-# кейса без утверждения, при отказе оставляет переменную пустой, кейс идёт дальше по
-# несозданному ресурсу и падает через два-три шага, называя виновником невиновного.
-#
-# ОГРАНИЧЕНИЕ, названное прямо: якорь заводится ПЕРВЫМ кейсом коллекции, а не посевом
-# суиты, поэтому прогон одного кейса через `--folder` его не получит. Полный прогон
-# коллекции — получает. Перенос якоря в посев суиты — отдельная работа по `setup.sh`,
-# и до неё это ограничение читается здесь, а не выясняется по падению.
-CASES.append(Case(
-    id="GW-FIXTURE-ANCHOR",
-    # index: fixture
-    title="Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4",
-    classes=["CRUD"], priority="P0",
-    steps=[
-        Step(name="anchor-net", method="POST", path="/vpc/v1/networks",
-             body={"projectId": "{{_suiteProjectId}}", "name": "gw-anchor-net-{{runId}}"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.networkId", "gwAnchorNetId")]),
-        poll_operation_until_done(),
-        Step(name="anchor-subnet", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{gwAnchorNetId}}",
-                   "name": "gw-anchor-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "ipv4CidrPrimary": "10.71.0.0/24"},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.subnetId", "gwAnchorSubId")]),
-        poll_operation_until_done(),
-        retry_until_authorized(Step(name="anchor-verify", method="GET",
-             path="/vpc/v1/subnets/{{gwAnchorSubId}}",
-             test_script=[*assert_status(200),
-                          "pm.test('якорь создан и несёт IPv4', () => {",
-                          "  const j = pm.response.json();",
-                          "  pm.expect(j.id, pm.response.text()).to.eql(pm.environment.get('gwAnchorSubId'));",
-                          "  pm.expect(j.ipv4CidrPrimary, 'IPv4 у якоря').to.be.a('string').and.not.empty;",
-                          "});"])),
-    ],
-))
-
 
 CASES.append(Case(
     id="GW-CR-CRUD-OK",
@@ -437,7 +416,7 @@ CASES.append(conformance_lifecycle_pack("GW", "/vpc/v1/gateways",
 
 CASES.append(Case(
     id="GW-CR-VAL-MISSING-ANCHOR",
-    # index: GW-FIXTURE-ANCHOR
+    # index: GW-ANCHOR-01
     title="Create Gateway без subnetId → 400 InvalidArgument 'subnet_id: required'",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-noanchor", method="POST", path="/vpc/v1/gateways",
@@ -453,7 +432,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="GW-CR-CONF-EGRESS-ONLY-NEEDS-V6",
-    # index: GW-FIXTURE-ANCHOR
+    # index: GW-ANCHOR-01
     title="Шлюз «только исход» в подсети без IPv6 → отказ по состоянию якоря",
     classes=["CONF", "NEG"], priority="P1",
     steps=[

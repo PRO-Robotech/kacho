@@ -1722,6 +1722,177 @@ CASES.append(Case(
 ))
 
 
+# ---------------------------------------------------------------------------
+# Диапазоны, зарезервированные платформой (SUB-*-CONF-RESERVED-*)
+# ---------------------------------------------------------------------------
+#
+# ПРЕДМЕТ. Часть адресного пространства обслуживает саму платформу. Подсеть
+# арендатора поверх такого диапазона проходит все проверки контура и НЕ РАБОТАЕТ,
+# причём симптом выглядит сетевым, а причина лежит в перекрытии. Продукт отвергает
+# такой ввод синхронно, до создания Operation, и текст отказа — часть контракта
+# (`services/vpc/internal/apps/kacho/api/subnet/reserved_prefixes.go`,
+# `reservedOverlapMsg`). Дословность цитаты ниже держит третья проверка
+# `scripts/validate-cases.py` (`scripts/contract_texts.py`): разойдётся текст в
+# коде и здесь — покраснеет она, а не прогон против стенда.
+#
+# ЧЕМ ПРОВЕРЯЕТСЯ ПЕРЕСЕЧЕНИЕ ЗДЕСЬ. Перечень служебных диапазонов задаёт ПОСАДКА
+# (`services/vpc/deploy/values.yaml`, `dataplane.reservedPrefixes`), и профиль
+# объявляет своим базовым составом ровно то, что зарезервировано на ЛЮБОЙ посадке —
+# link-local обоих семейств. Кейсы берут именно этот базовый диапазон: он не
+# описывает физику конкретного стенда (это стандарт адресации, а не служебная
+# топология) и уже объявлен в том же публичном дереве, поэтому кейс ничего не
+# раскрывает сверх профиля. Замер 2026-08-13: `reservedPrefixes` объявлен ровно в
+# одном файле дерева, ни один профиль зонтичного чарта его не переопределяет —
+# значит на всех посадках состав один и тот же.
+#
+# ПОЧЕМУ СЕТЬ ОБЪЯВЛЯЕТ 169.254.0.0/15. План сети обязан покрывать ОБА префикса —
+# и отвергаемый, и законный, — иначе положительный контроль упирался бы в другую
+# проверку («subnet CIDR ... is not within any network CIDR block», в worker'е), и
+# пара «отказ/проход» перестала бы отличать предмет от плана адресации. /15 берёт
+# служебный /16 и ровно столько же адресов рядом с ним.
+_RESERVED_NET_SUPERNET = "169.254.0.0/15"
+# Внутри служебного диапазона.
+_RESERVED_INSIDE = "169.254.10.0/24"
+# Рядом, за его границей — законный ввод.
+_RESERVED_LEGAL = "169.255.10.0/24"
+_RESERVED_LEGAL_2 = "169.255.11.0/24"
+
+# Текст отказа — ЦЕЛИКОМ и ДОСЛОВНО. Равенство (а не «содержит») здесь несёт
+# второе утверждение: в ответе нет ничего, кроме имени слота и присланного
+# значения, — то есть перечень служебных диапазонов отказом не раскрывается.
+_RESERVED_MSG_V4_INSIDE = (
+    f"v4_cidr_blocks[0] {_RESERVED_INSIDE} overlaps an address range reserved by the platform"
+)
+
+
+def _make_reserved_net(name_suffix):
+    """Сеть, чей план ПЕРЕКРЫВАЕТ служебный диапазон и оставляет место рядом с ним."""
+    return [
+        Step(name="pre-create-net", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"sub-{name_suffix}-{{{{runId}}}}",
+                   "ipv4CidrBlocks": [_RESERVED_NET_SUPERNET]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
+        poll_operation_until_done(),
+    ]
+
+
+CASES.append(Case(
+    id="SUB-CR-CONF-RESERVED-OVERLAP",
+    title="Create subnet поверх диапазона, зарезервированного платформой → sync 400 + точный текст; законный префикс той же сети проходит",
+    classes=["CONF", "NEG", "VAL"], priority="P0",
+    steps=[
+        *_make_reserved_net("resv"),
+        Step(
+            name="create-over-reserved",
+            method="POST",
+            path="/vpc/v1/subnets",
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sub-resv-{{runId}}", "zoneId": "{{existingZoneId}}",
+                  "ipv4CidrPrimary": _RESERVED_INSIDE},
+            test_script=[
+                # Отказ СИНХРОННЫЙ: тело — flat {code,message}, а не Operation.
+                # Проверять только код нельзя — 400 приходит и от формата, и от
+                # размера, и от размещения; предмет утверждает текст.
+                *assert_status(400),
+                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                "pm.test('текст отказа — дословный контракт, и в нём НЕТ ничего, кроме слота и "
+                "присланного значения', () => pm.expect(String(pm.response.json().message || ''))"
+                f".to.eql('{_RESERVED_MSG_V4_INSIDE}'));",
+                # Операция не создаётся вовсе: у синхронного отказа нет id, который
+                # можно было бы опросить. Утверждение отделяет «отвергнуто до
+                # записи» от «принято и упало в worker'е».
+                "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+            ],
+        ),
+        # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ — тот же запрос, тот же план сети, отличается ТОЛЬКО
+        # префикс. Без него отказ выше зеленел бы и на реализации, отвергающей любую
+        # подсеть в этой сети, и — что тоньше — на реализации, отвергающей всё, что
+        # лежит рядом со служебным диапазоном (касание границ пересечением не является).
+        Step(
+            name="legal-prefix-passes",
+            method="POST",
+            path="/vpc/v1/subnets",
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sub-resv-ok-{{runId}}", "zoneId": "{{existingZoneId}}",
+                  "ipv4CidrPrimary": _RESERVED_LEGAL},
+            test_script=[*assert_status(200), *assert_operation_envelope(),
+                         *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
+        ),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="get-confirms-legal",
+            method="GET", path="/vpc/v1/subnets/{{subId}}",
+            test_script=[*assert_status(200),
+                         "pm.test('законный префикс записан', () => pm.expect("
+                         + SUBNET_V4_CIDRS + f").to.include('{_RESERVED_LEGAL}'));"])),
+        retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        _cleanup_net(),
+    ],
+))
+
+
+CASES.append(Case(
+    id="SUB-ACB-CONF-RESERVED-OVERLAP",
+    title="AddCidrBlocks служебного диапазона к уже созданной подсети → sync 400 + точный текст; законный блок тем же глаголом проходит",
+    classes=["CONF", "NEG", "VAL"], priority="P0",
+    steps=[
+        # Второй и последний глагол, которым диапазон подсети ОБЪЯВЛЯЕТСЯ. Закрыть
+        # только Create значило бы починить громкий подслучай: подсеть создаётся
+        # законным блоком, а служебный добавляется вторым запросом.
+        *_make_reserved_net("resvacb"),
+        Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-resvacb-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": _RESERVED_LEGAL},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="add-reserved-block",
+            method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
+            body={"ipv4CidrBlocks": [_RESERVED_INSIDE]},
+            test_script=[
+                *assert_status(400),
+                *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                "pm.test('текст отказа — дословный контракт', () => "
+                "pm.expect(String(pm.response.json().message || ''))"
+                f".to.eql('{_RESERVED_MSG_V4_INSIDE}'));",
+                "pm.test('операция не создана', () => pm.expect(pm.response.json().id).to.be.undefined);",
+            ])),
+        # NB обёртка на ОТРИЦАНИИ — исключение, и оно обосновано: это ПЕРВОЕ
+        # обращение к своей только что созданной подсети, то есть окно видимости
+        # владельца (403/404) здесь реально и даёт ложный красный. Маскировки нет:
+        # ждётся только полоса видимости, 400 терминален и есть предмет кейса, а по
+        # исчерпании бюджета настоящие утверждения исполняются на том коде, который
+        # пришёл, — не сошедшийся отказ по-прежнему валит кейс.
+        # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ тем же глаголом на той же подсети.
+        retry_until_authorized(Step(
+            name="add-legal-block",
+            method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
+            body={"ipv4CidrBlocks": [_RESERVED_LEGAL_2]},
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="verify-blocks",
+            method="GET", path="/vpc/v1/subnets/{{subId}}",
+            test_script=[*assert_status(200),
+                         "pm.test('законный блок добавлен, служебный — нет', () => {",
+                         "  const c = " + SUBNET_V4_CIDRS + ";",
+                         f"  pm.expect(c, JSON.stringify(c)).to.include('{_RESERVED_LEGAL_2}');",
+                         f"  pm.expect(c, JSON.stringify(c)).to.not.include('{_RESERVED_INSIDE}');",
+                         "});"])),
+        retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        _cleanup_net(),
+    ],
+))
+
+
 # VPC-1 F7 — the Subnet CIDR shape this suite writes against.
 #
 # Create takes an immutable primary anchor (`ipv4CidrPrimary` / `ipv6CidrPrimary`);

@@ -507,6 +507,19 @@ NIC-ресурс и `used_by`-колонки сохранены, но через
 | `SUB-LUA-STATE-FRAGMENT` | STATE | P2 | 1 (sub) | Allocate 5 → delete middle 3 → ListUsedAddresses count decreased by exactly 3 (fragmentation handling). |
 | `SUB-CR-NEG-ROLLBACK-NO-RESOURCE-IN-GET` | NEG,STATE | P1 | 1 (sub) | Failed Subnet.Create (parent network NF) → Get(<reserved-id>) → 404, List не включает. Async rollback verified. |
 
+### Диапазоны, зарезервированные платформой
+
+Оба кейса держат ПАРУ «отказ + положительный контроль» в одном кейсе и в одной сети:
+план сети покрывает и служебный диапазон, и законный префикс рядом с ним, поэтому
+отказ нельзя объяснить планом адресации. Текст отказа утверждается РАВЕНСТВОМ —
+это же утверждение о нераскрытии: в ответе нет ничего, кроме слота и присланного
+значения. Дословность цитаты держит `scripts/validate-cases.py` (проверка 3).
+
+| Pattern | Classes | P | Apps | Что проверяет |
+|---|---|---|---|---|
+| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
+| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
+
 ### Address release / idempotency
 
 | Pattern | Classes | P | Apps | Что проверяет |
@@ -969,7 +982,7 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 > к нему — кейсы ассёртят это как контракт, а legacy DB-выбор RT (`subnet_auto_pick_rt_trg` 0017,
 > `rt_auto_assoc_subnets_trg` 0019) снят.| `SG-CR-VAL-RULE-NO-TARGET` | NEG,VAL | P1 | 2 (sg) | Create SG с правилом без цели → 400, отказ называет `rule_specs[0].target`; то же правило с целью проходит. Verifies SG-RULE-TARGET-01. |
 
-| `GW-FIXTURE-ANCHOR` | GW-ANCHOR-01 | CRUD | P0 | Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. Шлюз без подсети не создаётся вовсе (`subnetId` обязателен и неизменяем, он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Фикстура утверждает каждый свой шаг. |
+| `_SETUP-GW-ANCHOR` (GW-ANCHOR-01) | GW-ANCHOR-01 | fixture | P0 | **Не кейс, а посев** (setup-папка коллекции, объявлена в `scripts/gen.py`). Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. Шлюз без подсети не создаётся вовсе (`subnetId` обязателен и неизменяем, он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Утверждает каждый свой шаг. Прежде заводился ПЕРВЫМ кейсом коллекции — тогда `--folder <кейс>` якоря не получал, и кейс, зелёный в полной суите, краснел в отладке, обвиняя невиновного; для одиночного прогона окружение готовит `./setup.sh` (гоняет эту же папку и выгружает id). |
 | `RT-GW-NEXTHOP-RESOLVES` | RT-GW-01 | CRUD,CONF | P0 | Статический маршрут через шлюз: ссылка РЕЗОЛВИТСЯ. Положительный контроль (когерентный шлюз проходит, `gatewayId` виден в чтении) плюс три отказа — отсутствующий шлюз → NOT_FOUND «Gateway … not found»; шлюз чужой сети → FAILED_PRECONDITION; семейство назначения не совпадает с видом шлюза → FAILED_PRECONDITION. |
 | `RT-GW-NEXTHOP-EXCLUSIVE` | RT-GW-02 | VAL,NEG | P1 | Следующий узел — ровно одна ветвь: маршрут без адреса и без шлюза отвергается, называя обе возможности; мусорный `gatewayId` — терминальный отказ формата «invalid gateway id …», а не полоса существования. |
 | `RT-GW-NAMED-NOT-DELETABLE` | RT-GW-03 | STATE,NEG | P1 | Шлюз, названный живым маршрутом, не удаляется (FAILED_PRECONDITION «gateway is in use»); после снятия маршрута — удаляется. Обратное направление того же внешнего ключа. |
