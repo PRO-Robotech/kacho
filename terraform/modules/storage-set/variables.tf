@@ -80,7 +80,6 @@ variable "volumes" {
     zone_id            = string
     size_bytes         = optional(number)
     disk_type_id       = optional(string)
-    block_size         = optional(number)
     source_snapshot_id = optional(string)
     source_image_id    = optional(string)
     description        = optional(string, "")

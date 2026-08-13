@@ -34,7 +34,6 @@ resource "kacho_storage_volume" "this" {
   zone_id      = each.value.zone_id
   disk_type_id = each.value.disk_type_id
   size_bytes   = each.value.size_bytes
-  block_size   = each.value.block_size
 
   # Источники — ВНЕШНИЕ идентификаторы: ссылка на снимок этого же модуля замкнула бы граф
   # блоков (снимок уже ссылается на том), и конфигурация была бы отвергнута циклом.
