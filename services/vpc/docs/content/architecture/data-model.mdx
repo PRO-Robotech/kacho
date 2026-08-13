@@ -66,7 +66,7 @@ EXCLUDE / generated-колонки / индексы / триггеры — inlin
     <tr><td><code>address\_references</code></td><td>1↔1 backref «кто использует адрес»</td><td><code>address\_id</code></td><td>—</td></tr>
     <tr><td><code>route\_tables</code></td><td>RouteTable</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
     <tr><td><code>security\_groups</code></td><td>SecurityGroup + правила (jsonb)</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
-    <tr><td><code>gateways</code></td><td>Gateway (shared egress)</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
+    <tr><td><code>gateways</code></td><td>Gateway (вид: NAT / EGRESS_ONLY; FK на подсеть-якорь)</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
     <tr><td><code>network\_interfaces</code></td><td>NetworkInterface (first-class NIC, отдельно от Instance)</td><td><code>id</code></td><td>partial <code>UNIQUE</code> + <code>mac\_address</code> cloud-wide</td></tr>
     <tr><td><code>address\_pools</code></td><td><em>(admin)</em> глобальный пул CIDR для IPAM</td><td><code>id</code></td><td>partial <code>UNIQUE</code> на default-pool</td></tr>
     <tr><td><code>operations</code></td><td>Long-running async-операции (LRO)</td><td><code>id</code></td><td>—</td></tr>

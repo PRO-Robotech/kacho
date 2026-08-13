@@ -63,6 +63,7 @@ helper-функции). Дальше — обычные инкрементные
 | 0025 | `0025_addresses_read_path.sql` | чтения по адресам стоят столько, сколько отдают: страница адресов подсети читалась дизъюнкцией по jsonb |
 | 0026 | `0026_addresses_external_v6_global_uniq.sql` | внешний IPv6 глобально уникален, как и внешний IPv4 (ban #10 — инвариант на DB-уровне) |
 | 0027 | `0027_security_group_rules_domain.sql` | область значений правила SG (протокол, диапазон портов) — конструкцией базы, а не только синхронной проверкой |
+| 0029 | `0029_retired_contract_columns_and_rule_targets.sql` | снятое с контракта пережило свои строки: DROP `subnets.dhcp_options` и `networks.route_distinguisher` (читателей ноль), плюс нормализация правил SG со снятой ветвью цели — `self_security_group` выражается живой ветвью (цель = сама группа), правило без выразимой цели снимается (оно не разрешало ничего и блокировало правку группы). Числа по каждому виду печатаются в NOTICE |
 
 ⚠️ Запреты:
 - НЕ редактировать примененную миграцию. Только новая, со следующим свободным номером.
@@ -114,8 +115,6 @@ v6_cidr_blocks                 TEXT[] NOT NULL DEFAULT '{}'   -- [1] = якор�
 v4_cidr_primary                CIDR GENERATED ALWAYS AS (v4_cidr_blocks[1]) STORED
 v6_cidr_primary                CIDR GENERATED STORED
 route_table_id                 TEXT NULL FK ON DELETE SET NULL
-dhcp_options                   JSONB   -- baseline-колонка БЕЗ контракта: поле снято из
-                                       -- Subnet/Create/Update (номера и имя зарезервированы)
 
 subnets_project_id_name_key      UNIQUE (project_id, name) WHERE name <> ''
 subnets_placement_type_chk       CHECK (placement_type IN ('ZONAL','REGIONAL'))          -- 0012

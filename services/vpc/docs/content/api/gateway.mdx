@@ -15,21 +15,26 @@ import dedent from 'ts-dedent'
 
 # Gateway
 
-**Gateway** — это управляемая Kachō точка выхода ваших сетей во внешний мир. Вместо
-того чтобы заводить отдельный egress-узел в каждой сети и держать его конфигурацию
-синхронной вручную, вы создаете один shared egress-шлюз на уровне проекта и
-переиспользуете его как next-hop в маршрутах любых своих сетей. Это снимает с команды
-рутину по дублированию инфраструктуры выхода и дает единую, предсказуемую границу
-исходящего трафика для всего проекта.
+**Gateway** — управляемая Kachō точка выхода трафика подсети во внешний мир. Вы
+объявляете НАМЕРЕНИЕ («машины этих подсетей выходят наружу») и ссылаетесь на шлюз как на
+следующий узел в маршрутах, вместо того чтобы держать собственный egress-узел и его
+конфигурацию.
 
-Абстракция намеренно сделана **project-level и shared**: один `Gateway` обслуживает
-маршруты из разных `Network` одного проекта. Так egress становится переиспользуемым
-ресурсом, а не свойством конкретной сети — вы описываете «куда выходить» один раз и
-ссылаетесь на это из таблиц маршрутизации там, где нужно.
+**Вид шлюза выбирается при создании и неизменяем** (`oneof gateway`), потому что смена
+вида — это другой шлюз:
 
-В отличие от `Subnet` / `RouteTable` / `SecurityGroup`, шлюз **не привязан к Network** —
-у него есть только `project_id`. Конфигурация типа шлюза задается через `oneof gateway`;
-на текущем этапе доступен единственный вариант — `sharedEgressGateway` (общий egress).
+- `natGateway` — публичная трансляция исходящего IPv4;
+- `egressOnlyGateway` — «только исход» для IPv6: трафик изнутри наружу разрешён,
+  входящие соединения не устанавливаются, публичный адрес не выделяется.
+
+**Шлюз привязан к подсети** (`subnetId`, обязателен и неизменяем). Эта привязка — она же
+его якорь размещения: собственной зоны или региона шлюз не несёт, он наследует
+размещение подсети — так же, как сетевой интерфейс и адрес. Отсюда правила ссылки из
+маршрута (см. ниже): та же сеть, совпадающая зона, совпадающее семейство.
+
+Подсеть привязки обязана нести CIDR-блок того семейства, которое обслуживает выбранный
+вид: у `natGateway` — IPv4, у `egressOnlyGateway` — IPv6. Иначе `Create` отвечает
+`FailedPrecondition` («Subnet … has no IPv4 CIDR block»).
 
 :::note Строгое имя (отличие от прочих VPC-ресурсов)
 Имя Gateway валидируется **строгим** контрактом: только lowercase, **без uppercase и
@@ -50,7 +55,9 @@ underscore** (regex `^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$`; пустая стр�
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
-    <tr><td><code>sharedEgressGateway</code></td><td><code>SharedEgressGateway</code></td><td>Спецификация шлюза (вариант <code>oneof gateway</code>); общий egress-шлюз</td></tr>
+    <tr><td><code>subnetId</code></td><td><code>{TYPES.string}</code></td><td>Подсеть привязки; она же якорь размещения. Обязателен, неизменяем</td></tr>
+    <tr><td><code>natGateway</code></td><td><code>NatGateway</code></td><td>Вариант <code>oneof gateway</code>: публичная трансляция исходящего IPv4</td></tr>
+    <tr><td><code>egressOnlyGateway</code></td><td><code>EgressOnlyGateway</code></td><td>Вариант <code>oneof gateway</code>: «только исход» для IPv6</td></tr>
   </tbody>
 </table>
 
@@ -70,24 +77,38 @@ crockford-base32, тип ресурса читается по префиксу. 
 ```mermaid
 flowchart LR
   subgraph project["Project"]
-    GW["Gateway (gtw…)\nshared egress"]
     subgraph netA["Network A"]
+      SUB["Subnet (зона A)"]
+      GW["Gateway (gtw…)\nвид: nat | egress-only"]
       RTa["RouteTable A\n0.0.0.0/0 → GW"]
     end
     subgraph netB["Network B"]
-      RTb["RouteTable B\n0.0.0.0/0 → GW"]
+      RTb["RouteTable B\n0.0.0.0/0 → ✗"]
     end
   end
+  SUB --- GW
   RTa --> GW
-  RTb --> GW
+  RTb -.->|"другая сеть: FailedPrecondition"| GW
   GW --> Internet["Внешний мир"]
 ```
 
-:::note Next-hop в маршруте — текущая фаза
-В контракте `RouteTable` next-hop через `gateway_id` зарезервирован в `oneof next_hop`;
-на текущем этапе маршруты задают next-hop через `nextHopAddress`. Сам ресурс `Gateway`
-создается и управляется уже сейчас и готов к привязке, как только включится
-`gateway_id`-вариант next-hop.
+:::note Ссылка из маршрута РЕЗОЛВИТСЯ
+`StaticRoute.next_hop` — ровно одна из двух ветвей: `nextHopAddress` либо `gatewayId`.
+Ни одной и обе сразу — отказ, называющий поле.
+
+Названный шлюз проверяется на пути запроса: нет строки → `NotFound` «Gateway … not
+found»; есть, но не годится → `FailedPrecondition`. Годится он, когда выполнены все три
+условия:
+
+- **та же сеть** — подсеть привязки шлюза принадлежит сети этой таблицы маршрутизации;
+- **когерентное размещение** — зональная подсеть таблицы и зональная подсеть шлюза в
+  ОДНОЙ зоне; региональная (anycast) подсеть зоны не несёт и из зональной сверки
+  исключена by construction;
+- **семейство** — IPv4-назначение идёт через `natGateway`, IPv6-назначение через
+  `egressOnlyGateway`.
+
+Шлюз, названный живым маршрутом, **не удаляется**: `FailedPrecondition` «gateway is in
+use». Сначала снимите маршрут.
 :::
 
 ---
@@ -116,10 +137,11 @@ flowchart LR
       "id": "{gatewayId}",
       "projectId": "{projectId}",
       "name": "egress-gw",
-      "description": "Общий egress-шлюз",
+      "description": "Выход наружу для подсетей сети",
       "labels": { "env": "prod" },
       "createdAt": "2026-06-06T14:27:00Z",
-      "sharedEgressGateway": {}
+      "subnetId": "{subnetId}",
+      "natGateway": {}
     }
   `}
 </CodeBlock>
@@ -170,7 +192,8 @@ flowchart LR
           "projectId": "{projectId}",
           "name": "egress-gw",
           "createdAt": "2026-06-06T14:27:00Z",
-          "sharedEgressGateway": {}
+          "subnetId": "{subnetId}",
+          "natGateway": {}
         }
       ],
       "nextPageToken": ""
@@ -210,7 +233,9 @@ flowchart LR
     <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
-    <tr><td><code>sharedEgressGatewaySpec</code></td><td>нет</td><td><code>SharedEgressGatewaySpec</code></td><td>Спецификация типа шлюза (вариант <code>oneof gateway</code>); пустой объект для shared-egress</td></tr>
+    <tr><td><code>subnetId</code></td><td><b>да</b></td><td><code>{TYPES.string}</code></td><td>Подсеть привязки и якорь размещения. Неизменяема</td></tr>
+    <tr><td><code>natGatewaySpec</code></td><td><b>да</b>*</td><td><code>NatGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: трансляция исходящего IPv4. Пустой объект</td></tr>
+    <tr><td><code>egressOnlyGatewaySpec</code></td><td><b>да</b>*</td><td><code>EgressOnlyGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: «только исход» для IPv6. Пустой объект</td></tr>
   </tbody>
 </table>
 
@@ -225,7 +250,8 @@ flowchart LR
         "projectId": "{projectId}",
         "name": "egress-gw",
         "labels": { "env": "prod" },
-        "sharedEgressGatewaySpec": {}
+        "subnetId": "{subnetId}",
+        "natGatewaySpec": {}
       }'
   `}
 </CodeBlock>
@@ -269,8 +295,10 @@ flowchart LR
 
 <ApiOperation method="PATCH" endpoint="/vpc/v1/gateways/{gatewayId}" async>
 
-Изменяет mutable-поля шлюза (`name`, `description`, `labels`, `sharedEgressGatewaySpec`).
-Поле `projectId` — immutable. Возвращает `Operation` (async). Соблюдается
+Изменяет mutable-поля шлюза (`name`, `description`, `labels`).
+Immutable: `projectId`, `subnetId` и вид шлюза (ветвь `oneof gateway`) — их имена в
+`updateMask` отвергаются с конвенционным текстом «&lt;field&gt; is immutable after
+Gateway.Create». Возвращает `Operation` (async). Соблюдается
 `update_mask`-дисциплина: неизвестное поле или immutable в маске → `InvalidArgument`;
 пустая маска = full-PATCH (применяются все mutable-поля, immutable из тела
 игнорируются).
@@ -284,7 +312,7 @@ flowchart LR
     <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Новое имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short} (полная замена набора)</td></tr>
-    <tr><td><code>sharedEgressGatewaySpec</code></td><td>нет</td><td><code>SharedEgressGatewaySpec</code></td><td>Новая спецификация типа шлюза (вариант <code>oneof gateway</code>)</td></tr>
+    <tr><td colSpan="4">Вида шлюза и подсети привязки в запросе изменения <b>нет</b>: оба неизменяемы после <code>Create</code>. Имя <code>natGateway</code> / <code>egressOnlyGateway</code> / <code>subnetId</code> в <code>updateMask</code> → <code>InvalidArgument</code> «&lt;field&gt; is immutable after Gateway.Create»</td></tr>
   </tbody>
 </table>
 
@@ -437,9 +465,11 @@ flowchart LR
 
 ## Типичные сценарии
 
-- **Единый выход для всего проекта.** Создаете один shared egress-шлюз и ссылаетесь на
-  него из маршрутов всех сетей проекта — выход управляется в одном месте, конфигурация
-  не дублируется по сетям.
+- **Выход наружу для подсетей одной сети.** Заводите шлюз в подсети сети и ссылаетесь на
+  него из маршрутов таблиц ЭТОЙ ЖЕ сети. Ссылка из таблицы другой сети отвергается —
+  трафик не пересекает границу сети.
+- **Двойной стек — два шлюза.** IPv4 наружу обслуживает `natGateway`, IPv6 —
+  `egressOnlyGateway`; маршрут каждого семейства называет свой.
 - **Разделение окружений метками.** Помечаете шлюзы (`env: prod` / `env: staging`) и
   находите нужный через `List` с `filter=name="…"`, а группировку и поиск ведете по
   `labels`.
@@ -462,8 +492,10 @@ flowchart LR
 :::
 
 :::tip Best practices
-- Давайте шлюзу осмысленное `name` и поддерживайте `labels` (`env`, `team`) — это
-  главный способ навигации, отдельного «типа» у shared-egress пока нет.
+- Давайте шлюзу осмысленное `name` и поддерживайте `labels` (`env`, `team`) — по ним
+  ведётся навигация; вид шлюза виден в проекции ветвью `oneof`.
+- Выбирайте вид осознанно: он неизменяем, и смена вида означает новый шлюз с новым
+  идентификатором, а значит и правку всех маршрутов, которые его называли.
 - Все мутации асинхронные: дожидайтесь `done: true` в `Operation`, прежде чем строить
   на шлюз маршруты в автоматизации.
 - Для воспроизводимых стендов держите создание шлюза в одном описании инфраструктуры

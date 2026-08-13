@@ -72,10 +72,25 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 	if err := serviceerr.FromValidation(g.Validate()); err != nil {
 		return nil, err
 	}
-	// gateway-type oneof обязателен. Сейчас единственный тип — shared_egress
-	// (SharedEgressGatewaySpec).
-	if g.GatewayType != domain.GatewayTypeSharedEgress {
-		return nil, status.Error(codes.InvalidArgument, "Illegal argument gateway")
+	// Ветвь oneof `gateway` ОБЯЗАТЕЛЬНА и отвергается ИМЕНЕМ ПОЛЯ: шлюз без вида
+	// не несёт поведения, которое можно создать. Проверка идёт по набору
+	// известных видов, а не «не пусто»: неизвестное значение (например пришедшее
+	// из старого клиента) обязано получить отказ, а не уехать в CHECK базы
+	// фиксированным INTERNAL.
+	switch g.GatewayType {
+	case domain.GatewayTypeNat, domain.GatewayTypeEgressOnly:
+	default:
+		return nil, serviceerr.InvalidArg("gateway", "gateway: required")
+	}
+	// Якорь размещения обязателен и проверяется по формату СВОЕГО id первым
+	// стейтментом: подсеть принадлежит vpc, значит id own-owned. Существование и
+	// когерентность семейства решает оператор вставки (repo), не проверка здесь —
+	// иначе между проверкой и записью подсеть могла бы исчезнуть.
+	if g.SubnetID == "" {
+		return nil, serviceerr.InvalidArg("subnet_id", "subnet_id: required")
+	}
+	if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, g.SubnetID); err != nil {
+		return nil, err
 	}
 
 	// Sync project.Exists precheck тут не делаем — он race-prone: между sync-проверкой
@@ -122,12 +137,10 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 		return nil, status.Errorf(codes.NotFound, "Project %s not found", g.ProjectID)
 	}
 
-	gtype := g.GatewayType
-	if gtype == "" {
-		gtype = domain.GatewayTypeSharedEgress
-	}
+	// Вид шлюза уже проверен по закрытому набору в Execute — подстановки по
+	// умолчанию здесь НЕТ и быть не может: молчаливый выбор вида за вызывающего
+	// означал бы шлюз, делающий не то, о чём просили.
 	g.ID = gwID
-	g.GatewayType = gtype
 
 	w, err := u.repo.Writer(ctx)
 	if err != nil {

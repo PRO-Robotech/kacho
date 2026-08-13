@@ -44,7 +44,7 @@ project-level (обязательный `projectId`), у каждого — св
     <tr><td><strong>Address</strong></td><td><code>adr</code></td><td>Выделенный IP — внутренний (из подсети) или внешний (из пула); основа адресации нагрузок</td><td>public</td></tr>
     <tr><td><strong>RouteTable</strong></td><td><code>rtb</code></td><td>Набор маршрутов сети; ассоциируется с подсетями (явно или авто)</td><td>public</td></tr>
     <tr><td><strong>SecurityGroup</strong></td><td><code>sgr</code></td><td>Правила сетевого доступа (ingress/egress) к нагрузке; принадлежит сети</td><td>public</td></tr>
-    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз shared-egress на уровне проекта</td><td>public</td></tr>
+    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Выход наружу: трансляция исходящего IPv4 либо «только исход» IPv6; привязан к подсети</td><td>public</td></tr>
     <tr><td><strong>NetworkInterface</strong></td><td><code>nic</code></td><td>Сетевой интерфейс нагрузки: связывает адрес(а), группы безопасности и MAC (≤1 IPv4 / ≤1 IPv6)</td><td>public</td></tr>
     <tr><td><strong>AddressPool</strong></td><td><code>apl</code></td><td>Глобальный пул CIDR для аллокации внешних адресов — администрирование IPAM</td><td><strong>internal</strong></td></tr>
   </tbody>

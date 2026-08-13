@@ -10,6 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
@@ -77,47 +79,68 @@ func validateStaticRoutes(routes []domain.StaticRoute) error {
 			return serviceerr.InvalidArg(dpField,
 				dpField+" must have zero host-bits (use the network address "+prefix.Masked().String()+")")
 		}
+		// Следующий узел — РОВНО ОДИН из двух: адрес либо шлюз. Ветвь выбирает
+		// вызывающий (oneof `next_hop`), поэтому required-проверка обязана быть
+		// на ОБЕИХ сторонах и на их сумме: «ни одного» и «оба» одинаково не имеют
+		// смысла. Проверять только адрес — значит отвечать про соседнюю ветвь тому,
+		// кто её не посылал (этот дефект здесь уже был).
 		nhField := fmt.Sprintf("static_routes[%d].next_hop_address", i)
-		if r.NextHopAddress == "" {
-			return serviceerr.InvalidArg(nhField, nhField+" is required")
-		}
-		if _, err := netip.ParseAddr(r.NextHopAddress); err != nil {
-			return serviceerr.InvalidArg(nhField, nhField+" must be a valid IP address (IPv4 or IPv6)")
+		gwField := fmt.Sprintf("static_routes[%d].gateway_id", i)
+		switch {
+		case r.NextHopAddress == "" && r.GatewayID == "":
+			return serviceerr.InvalidArg(nhField,
+				fmt.Sprintf("static_routes[%d]: next_hop_address or gateway_id is required", i))
+		case r.NextHopAddress != "" && r.GatewayID != "":
+			return serviceerr.InvalidArg(gwField,
+				fmt.Sprintf("static_routes[%d]: next_hop_address and gateway_id are mutually exclusive", i))
+		case r.GatewayID != "":
+			// Формат СВОЕГО id проверяется синхронно и первым — до всякого обращения
+			// к БД (api-conventions §malformed-id). Шлюз принадлежит vpc, значит id
+			// own-owned: явный мусор обязан получить терминальный INVALID_ARGUMENT, а
+			// не отказ полосы существования.
+			if err := corevalidate.ResourceID("gateway", ids.PrefixGateway, r.GatewayID); err != nil {
+				return err
+			}
+		default:
+			if _, err := netip.ParseAddr(r.NextHopAddress); err != nil {
+				return serviceerr.InvalidArg(nhField, nhField+" must be a valid IP address (IPv4 or IPv6)")
+			}
 		}
 	}
 	return nil
 }
 
-// staticRoutesFromProto — proto-маршруты в domain, с ЯВНЫМ отказом по ветке
-// следующего перехода, которой у сервиса нет.
+// staticRoutesFromProto — proto-маршруты в domain. ОБЕ ветви следующего узла
+// читаются.
 //
-// `StaticRoute.next_hop` — oneof из двух ветвей: адрес и `gateway_id`. Реализован
-// адрес. Пока разбор читал только его, выбранный вызывающим `gateway_id` не читал
-// НИКТО (api-conventions.md, «Принято-и-проигнорировано — ЗАПРЕЩЕНО»): маршрут
-// доезжал до валидации с пустым следующим переходом и получал отказ по имени
-// СОСЕДНЕЙ ветки, которую вызывающий не посылал. Теперь ветка отвергается своим
-// именем и синхронно — исход №2 правила.
+// `StaticRoute.next_hop` — oneof из двух ветвей: адрес и `gateway_id`. Прежде
+// читался только адрес, поэтому выбранный вызывающим `gateway_id` не читал НИКТО:
+// маршрут доезжал до валидации с пустым следующим узлом и получал отказ по имени
+// СОСЕДНЕЙ ветви, которую вызывающий не посылал. Ветвь была вынужденно объявлена
+// «не принимается» (исход №2 правила «принято-и-проигнорировано»), потому что
+// резолвить шлюз было нечем: у шлюза не было ни якоря размещения, ни вида, с
+// которым можно сверить маршрут.
 //
-// Поле оставлено на контракте намеренно: край REST молча выбрасывает неизвестные
-// ключи тела, поэтому его удаление вернуло бы именованный отказ обратно в
-// невнятный «next_hop_address is required». Тот же довод записан у compute над
-// `CreateInstanceRequest.ssh_public_keys`.
+// Теперь есть и то и другое (миграция 0030), и ветвь РЕАЛИЗОВАНА — исход №1:
+// существование шлюза держит внешний ключ, а сеть, семейство и когерентность
+// размещения проверяет сам оператор записи ссылки
+// (`routeTableWriter.insertGatewayRef`).
+//
+// `GetGatewayId()`/`GetNextHopAddress()` возвращают пустую строку для невыбранной
+// ветви — это и есть дискриминатор для доменной записи, поэтому отдельный флаг
+// «какая ветвь выбрана» не нужен: взаимоисключение проверяет
+// `validateStaticRoutes`, и «ни одной ветви» оно тоже отвергает.
 func staticRoutesFromProto(in []*vpcv1.StaticRoute) ([]domain.StaticRoute, error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
 	out := make([]domain.StaticRoute, 0, len(in))
-	for i, sr := range in {
-		if _, ok := sr.GetNextHop().(*vpcv1.StaticRoute_GatewayId); ok {
-			field := fmt.Sprintf("static_routes[%d].gateway_id", i)
-			return nil, serviceerr.InvalidArg(field,
-				field+" is not supported: route the next hop by IP address "+
-					"(static_routes[].next_hop_address)")
-		}
+	for _, sr := range in {
 		out = append(out, domain.StaticRoute{
 			Labels:            sr.Labels,
 			DestinationPrefix: sr.GetDestinationPrefix(),
 			NextHopAddress:    sr.GetNextHopAddress(),
+			GatewayID:         sr.GetGatewayId(),
 		})
 	}
 	return out, nil

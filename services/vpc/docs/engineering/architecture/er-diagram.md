@@ -31,7 +31,6 @@ erDiagram
     text description
     jsonb labels
     text default_security_group_id "FK → security_groups ON DELETE SET NULL (mig 0005)"
-    text route_distinguisher
     text_array ipv4_cidr_blocks "объявленный супернет (mig 0015); кардинальность CHECK (0016)"
     text_array ipv6_cidr_blocks "объявленный супернет (mig 0015)"
     text default_route_table_id "FK → route_tables (mig 0015 объявила, 0017 сделала действующей)"
@@ -52,7 +51,6 @@ erDiagram
     text_array v4_cidr_blocks "[1] = якорь ipv4_cidr_primary контракта"
     text_array v6_cidr_blocks "[1] = якорь ipv6_cidr_primary контракта"
     text route_table_id "FK → route_tables.id ON DELETE SET NULL"
-    jsonb dhcp_options "baseline-колонка БЕЗ контракта — поле снято из proto (VPC-1-43)"
     cidr v4_cidr_primary "GENERATED STORED from v4_cidr_blocks[1]"
     cidr v6_cidr_primary "GENERATED STORED from v6_cidr_blocks[1]"
     timestamptz created_at

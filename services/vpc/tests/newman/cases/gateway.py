@@ -5,6 +5,46 @@
 
 CASES = []
 
+# Якорь размещения суиты. Шлюз без подсети не создаётся ВОВСЕ (`subnetId` обязателен,
+# он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Поэтому
+# суита начинается с фикстуры, и она УТВЕРЖДАЕТ каждый свой шаг: шаг, создающий предмет
+# кейса без утверждения, при отказе оставляет переменную пустой, кейс идёт дальше по
+# несозданному ресурсу и падает через два-три шага, называя виновником невиновного.
+#
+# ОГРАНИЧЕНИЕ, названное прямо: якорь заводится ПЕРВЫМ кейсом коллекции, а не посевом
+# суиты, поэтому прогон одного кейса через `--folder` его не получит. Полный прогон
+# коллекции — получает. Перенос якоря в посев суиты — отдельная работа по `setup.sh`,
+# и до неё это ограничение читается здесь, а не выясняется по падению.
+CASES.append(Case(
+    id="GW-FIXTURE-ANCHOR",
+    # index: fixture
+    title="Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4",
+    classes=["CRUD"], priority="P0",
+    steps=[
+        Step(name="anchor-net", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-anchor-net-{{runId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkId", "gwAnchorNetId")]),
+        poll_operation_until_done(),
+        Step(name="anchor-subnet", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{gwAnchorNetId}}",
+                   "name": "gw-anchor-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": "10.71.0.0/24"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.subnetId", "gwAnchorSubId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="anchor-verify", method="GET",
+             path="/vpc/v1/subnets/{{gwAnchorSubId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('якорь создан и несёт IPv4', () => {",
+                          "  const j = pm.response.json();",
+                          "  pm.expect(j.id, pm.response.text()).to.eql(pm.environment.get('gwAnchorSubId'));",
+                          "  pm.expect(j.ipv4CidrPrimary, 'IPv4 у якоря').to.be.a('string').and.not.empty;",
+                          "});"])),
+    ],
+))
+
+
 CASES.append(Case(
     id="GW-CR-CRUD-OK",
     title="Create gateway + Get",
@@ -13,7 +53,7 @@ CASES.append(Case(
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-cr-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -33,7 +73,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="cr", method="POST", path="/vpc/v1/gateways",
-             body={"name": "gw-nf-{{runId}}", "sharedEgressGatewaySpec": {}},
+             body={"name": "gw-nf-{{runId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_unscoped_rejected()]),
     ],
 ))
@@ -109,7 +149,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-gw", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-lop-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -134,7 +174,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-gw", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-upd-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -182,7 +222,7 @@ CASES.append(Case(
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-delok-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -208,7 +248,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-bad-project", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{garbageRmId}}", "name": "gw-fnf-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -237,51 +277,54 @@ CASES.append(Case(
 # (`corevalidate.NameGateway`: только строчные буквы, цифры и дефис, без
 # заглавных и подчёркиваний). Это by-design, объявленное независимо от прогона:
 # см. `services/vpc/docs/engineering/architecture/07-known-divergences.md` §22.
-CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}, strict_name=True))
-CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
-CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
+CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}, strict_name=True))
+CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(updatemask_decision_table("GW", "/vpc/v1/gateways"))
 CASES.extend(filter_syntax_block("GW", "/vpc/v1/gateways"))
 CASES.append(pagination_roundtrip("GW", "/vpc/v1/gateways"))
 
 CASES.extend(update_happy_per_field("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(perf_baseline_block("GW", "/vpc/v1/gateways"))
 CASES.extend(verbatim_text_pack("GW", "Gateway", "/vpc/v1/gateways"))
 CASES.extend(authz_caller_headers_block("GW", "/vpc/v1/gateways"))
 
 CASES.append(update_happy_multi_field("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
-CASES.append(cross_project_resource_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+CASES.append(cross_project_resource_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(list_filter_match_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(neg_invalid_types_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(http_method_not_allowed_block("GW", "/vpc/v1/gateways"))
 CASES.extend(malformed_body_block("GW", "/vpc/v1/gateways"))
 
 # NB: имена Gateway НЕ уникальны — дубль-имя создается успешно;
 # поэтому generated alreadyexists_dup_name_for("GW", ...) здесь не применяется.
 CASES.extend(update_mask_partial_block("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(perf_baseline_get_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(list_total_size_check_block("GW", "/vpc/v1/gateways"))
 CASES.extend(headers_content_type_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 
 # v10 Gateway-specific
 CASES.append(Case(
     id="GW-CR-VAL-MISSING-TYPE",
-    title="Create Gateway без gateway-type oneof → 400 InvalidArgument 'Illegal argument gateway'",
+    title="Create Gateway без ветви вида → 400 InvalidArgument 'gateway: required'",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-notype", method="POST", path="/vpc/v1/gateways",
-                body={"projectId": "{{_suiteProjectId}}", "name": "gw-nt-{{runId}}"},
+                body={"projectId": "{{_suiteProjectId}}", "name": "gw-nt-{{runId}}",
+                      "subnetId": "{{gwAnchorSubId}}"},
                 test_script=[
-                    # без gateway-type oneof (или с нераспознанным телом)
-                    # → 400 InvalidArgument "Illegal argument gateway".
+                    # Ветвь вида обязательна и отвергается ИМЕНЕМ ПОЛЯ. Якорь в теле
+                    # ЕСТЬ — иначе кейс не отличал бы отказ по виду от отказа по якорю
+                    # и зеленел бы на любом из двух.
                     *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                    "pm.test('mentions gateway', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('gateway'));",
+                    "pm.test('отказ называет поле вида', () => "
+                    "pm.expect(String(pm.response.json().message || '')).to.eql('gateway: required'));",
                 ])],
 ))
 
@@ -382,12 +425,43 @@ CASES.append(Case(
 # `GW-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 CASES.extend(required_fields_matrix("GW", "/vpc/v1/gateways",
     {"projectId": "{{_suiteProjectId}}", "name": "gw-req-{{runId}}",
-     "sharedEgressGatewaySpec": {}},
+     "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
     ["projectId"]))
 CASES.extend(immutable_fields_matrix("GW", "/vpc/v1/gateways",
     ["project_id"]))
 
 CASES.extend(security_injection_block("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(conformance_lifecycle_pack("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+
+CASES.append(Case(
+    id="GW-CR-VAL-MISSING-ANCHOR",
+    # index: GW-FIXTURE-ANCHOR
+    title="Create Gateway без subnetId → 400 InvalidArgument 'subnet_id: required'",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[Step(name="cr-noanchor", method="POST", path="/vpc/v1/gateways",
+                body={"projectId": "{{_suiteProjectId}}", "name": "gw-na-{{runId}}",
+                      "natGatewaySpec": {}},
+                test_script=[
+                    # Ветвь вида в теле ЕСТЬ — отказ обязан быть про якорь, а не про вид.
+                    *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('отказ называет поле якоря', () => "
+                    "pm.expect(String(pm.response.json().message || '')).to.eql('subnet_id: required'));",
+                ])],
+))
+
+CASES.append(Case(
+    id="GW-CR-CONF-EGRESS-ONLY-NEEDS-V6",
+    # index: GW-FIXTURE-ANCHOR
+    title="Шлюз «только исход» в подсети без IPv6 → отказ по состоянию якоря",
+    classes=["CONF", "NEG"], priority="P1",
+    steps=[
+        Step(name="cr-eo-on-v4", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-eo-{{runId}}",
+                   "subnetId": "{{gwAnchorSubId}}", "egressOnlyGatewaySpec": {}},
+             test_script=[*assert_refused_sync_or_async(
+                 "шлюз «только исход» в подсети без IPv6", sync_codes=(400, 403, 404))]),
+        poll_operation_until_done(must_fail=True),
+    ],
+))

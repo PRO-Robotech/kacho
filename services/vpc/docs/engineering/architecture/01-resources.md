@@ -78,7 +78,6 @@ erDiagram
 | `v6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | то же для IPv6: `[1]` = `ipv6_cidr_primary`; v4-only подсеть легальна |
 | `v4_cidr_primary` / `v6_cidr_primary` | cidr GENERATED STORED | производные от `[1]`; нужны EXCLUDE-констрейнтам |
 | `route_table_id` | text NULL FK→`route_tables` | не задан на Create → подставляется `network.default_route_table_id` |
-| `dhcp_options` | jsonb | **колонка осталась от baseline, контракта у неё больше нет**: поле снято из `Subnet`/`Create`/`Update` (номера и имя зарезервированы, VPC-1-43). Ни один RPC его не принимает и не отдаёт |
 
 **Инварианты**:
 - CIDR подсети обязан лежать **внутри объявленного супернета сети**
@@ -242,10 +241,40 @@ Firewall rules. **`network_id` обязателен на Create и immutable п�
 | `rules` | jsonb array; область значений правила (протокол, диапазон портов) держится CHECK'ами на DB-уровне — миграция `0027_security_group_rules_domain.sql` |
 
 **RPC специфика**:
-- `UpdateRules` — полный replace массива.
+- `Update` с маской `rule_specs` — ПОЛНАЯ замена массива правил
+  (`applySGMask` подставляет `sg.Rules = assignRuleIDs(...)` целиком).
+- `UpdateRules` — ИНКРЕМЕНТАЛЬНО: снять по `deletion_rule_ids`, добавить
+  `addition_rule_specs`, одной транзакцией.
+  > [!note] Здесь стояло «UpdateRules — полный replace массива» — это про `Update`
+  > Полную замену делает `Update` с маской `rule_specs`; у `UpdateRules` в запросе
+  > вообще нет поля полного списка — только пара «снять по id / добавить спеки»
+  > (`UpdateSecurityGroupRulesRequest`), и use-case складывает их в один атомарный
+  > пересчёт (`internal/apps/kacho/api/securitygroup/update_rules.go`). Страница
+  > сайта (`docs/content/api/security-group.mdx`, таблица «Update vs UpdateRules vs
+  > UpdateRule») говорила верно всё это время — два места об одном предмете, из
+  > которых неверным было инженерное.
 - `UpdateRule` — патч одного правила по `rule_id`.
 - Optimistic concurrency через `xmin::text` (zero-overhead, без отдельной
   колонки).
+
+**Снятие правила — операция с немедленным эффектом на трафик.** Фильтрация ведётся с
+учётом состояния: обратный трафик установленного соединения разрешается, пока это
+соединение покрыто действующим правилом. Снятое правило (по `deletion_rule_ids` либо
+исчезнувшее из полного списка `rule_specs`) обрывает соединения, которые разрешались
+**только им**; покрытые более широким оставшимся правилом — продолжают работать. Это
+свойство исполнителя трафика, а не контура: контур снимает правило, и наблюдаемое
+следствие у арендатора — разрыв текущих соединений, а не «новые не пойдут». Оно
+объявлено арендатору в контракте (комментарий `SecurityGroup.rules` в
+`proto/kacho/cloud/vpc/v1/security_group.proto`) и на странице сайта — правьте все три
+места вместе.
+
+Предпосылка этого утверждения объявляется посадкой и держится стражем старта: боевой
+режим требует объявленных семейств отслеживания состояния
+(`dataplane.executor.state-tracking-families`, случай S5-05 в
+`internal/apps/kacho/config/guardrail_executor_profile_test.go`). Стенд, где отслеживания
+нет, не поднимается — то есть посадки, на которой это утверждение было бы ложным, не
+существует. Сделаете отслеживание необязательным — утверждение выше станет ложным молча,
+и править придётся его, а не только стража.
 
 ### Gateway
 
@@ -254,7 +283,8 @@ Shared egress (NAT-style), не привязан к Network.
 | Поле | Замечания |
 |---|---|
 | `id` (prefix `gtw`), `project_id` | UNIQUE(project_id, name) WHERE name<>'' |
-| `shared_egress_gateway` | nested message |
+| `nat_gateway` / `egress_only_gateway` | ветви `oneof gateway`, взаимоисключающие |
+| `subnet_id` | TEXT NOT NULL, FK на подсеть-якорь (ON DELETE RESTRICT) |
 
 ## Internal/admin ресурсы (kacho-only, глобальные)
 

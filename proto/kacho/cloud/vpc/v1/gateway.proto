@@ -36,12 +36,53 @@ message Gateway {
   // Each key must match the regular expression `[a-z][-_./\\@0-9a-z]*`.
   map<string, string> labels = 6;
 
-  // Gateway specification
+  // ID of the subnet the gateway is attached to. Required at creation time and
+  // immutable afterwards.
+  //
+  // This is the gateway's binding AND its placement anchor: the gateway does not
+  // carry a zone or a region of its own, it inherits placement from the subnet —
+  // the same way a NetworkInterface and an Address do. A static route may name
+  // this gateway as its next hop only from a route table of the same network, and
+  // only when placement stays coherent (zonal to zonal — same zone; a REGIONAL
+  // anycast subnet carries no zone and is therefore out of the zonal comparison
+  // by construction).
+  string subnet_id = 8;
+
+  // What the gateway does. Chosen at creation time, immutable afterwards:
+  // changing the kind of a gateway means a different gateway.
   oneof gateway {
-    SharedEgressGateway shared_egress_gateway = 7;
+    // Public egress translation for IPv4.
+    NatGateway nat_gateway = 9;
+
+    // Egress-only reachability for IPv6.
+    EgressOnlyGateway egress_only_gateway = 10;
   }
+
+  // 7 held the single previous arm, `shared_egress_gateway`, whose message
+  // carried no field at all. `nat_gateway` states the same intent by its name and
+  // is answerable for it: the anchor subnet must carry IPv4, and an IPv6
+  // destination cannot be routed through it.
+  reserved 7;
+  reserved "shared_egress_gateway";
 }
 
-// Shared Egress Gateway configuration
-message SharedEgressGateway {
+// Public egress translation for IPv4: instances of the subnets that route
+// through this gateway reach outside, translated to a public address; inbound
+// connections are not established by the translation itself.
+//
+// The arm carries no parameter of its own — the intent is the whole of it. What
+// the arm decides is checked, not merely recorded: the anchor subnet must carry
+// an IPv4 CIDR block (there is nothing to translate otherwise), and a static
+// route naming this gateway must have an IPv4 destination.
+message NatGateway {
+}
+
+// Egress-only reachability for IPv6: traffic leaves outward, inbound connections
+// are not established. No public address is allocated — the absence of inbound
+// reachability is the whole point of the arm, which is why it carries no address
+// parameter.
+//
+// The anchor subnet must carry an IPv6 CIDR block, and a static route naming this
+// gateway must have an IPv6 destination.
+message EgressOnlyGateway {
 }

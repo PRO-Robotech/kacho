@@ -22,7 +22,7 @@ import (
 
 // subnetReader — Get/List/AddressesBySubnet поверх произвольной pgx.Tx
 // (read-only или RW). Не имеет своего state кроме tx. SQL/scan-семантика вынесена
-// в общие helpers (SubnetCols / ScanSubnet / IsExclusionViolation / MarshalDhcp /
+// в общие helpers (SubnetCols / ScanSubnet / IsExclusionViolation /
 // AddressCols / ScanAddress).
 type subnetReader struct {
 	tx pgx.Tx
@@ -242,15 +242,10 @@ func (w *subnetWriter) Insert(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 	if err != nil {
 		return nil, err
 	}
-	dhcpJSON, err := helpers.MarshalDhcp(s.DhcpOptions)
-	if err != nil {
-		return nil, err
-	}
-
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
-		INSERT INTO subnets (id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, dhcp_options, placement_type, region_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO subnets (id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, placement_type, region_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING %s`, helpers.SubnetCols)
 
 	row := w.tx.QueryRow(ctx, q,
@@ -258,7 +253,7 @@ func (w *subnetWriter) Insert(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 		s.NetworkID, s.ZoneID,
 		pgtype.Array[string]{Elements: s.V4CidrBlocks, Valid: true, Dims: []pgtype.ArrayDimension{{Length: safeconv.IntToInt32(len(s.V4CidrBlocks)), LowerBound: 1}}},
 		pgtype.Array[string]{Elements: s.V6CidrBlocks, Valid: true, Dims: []pgtype.ArrayDimension{{Length: safeconv.IntToInt32(len(s.V6CidrBlocks)), LowerBound: 1}}},
-		helpers.NullableStr(s.RouteTableID), dhcpJSON,
+		helpers.NullableStr(s.RouteTableID),
 		string(s.PlacementType), s.RegionID,
 	)
 	result, err := helpers.ScanSubnet(row)
@@ -275,7 +270,7 @@ func (w *subnetWriter) Insert(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 }
 
 // Update — UPDATE subnets RETURNING. Мутирует name/description/labels/
-// route_table_id/dhcp_options. v4_cidr_blocks здесь НЕ обновляется (soft-immutable
+// route_table_id. v4_cidr_blocks здесь НЕ обновляется (soft-immutable
 // на Update path): даже если service-слой пропустит модифицированный s.V4CidrBlocks,
 // репо его не перезапишет. Реальное изменение CIDR — через SetCidrBlocks
 // (AddCidrBlocks/RemoveCidrBlocks).
@@ -286,19 +281,14 @@ func (w *subnetWriter) Update(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 	if err != nil {
 		return nil, err
 	}
-	dhcpJSON, err := helpers.MarshalDhcp(s.DhcpOptions)
-	if err != nil {
-		return nil, err
-	}
-
 	q := fmt.Sprintf(`
-		UPDATE subnets SET name=$2, description=$3, labels=$4, route_table_id=$5, dhcp_options=$6
+		UPDATE subnets SET name=$2, description=$3, labels=$4, route_table_id=$5
 		WHERE id=$1
 		RETURNING %s`, helpers.SubnetCols)
 
 	row := w.tx.QueryRow(ctx, q,
 		s.ID, string(s.Name), string(s.Description), labelsJSON,
-		helpers.NullableStr(s.RouteTableID), dhcpJSON,
+		helpers.NullableStr(s.RouteTableID),
 	)
 	result, err := helpers.ScanSubnet(row)
 	if err != nil {

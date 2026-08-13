@@ -129,11 +129,16 @@ Malformed JSON → `400`. Неверный тип поля (`description`=чис
 - Validated-by: `*-CR-BVA-DESC-MAX-256`/`-OVER-257`, `*-CR-BVA-LABELS-MAX-64`/`-OVER-65`, `*-CR-VAL-LABELS-INVALID-KEY-CHAR`, `*-CR-VAL-LABELS-UPPERCASE-KEY`
 - Проверка: самовалидирующиеся domain-типы `RcDescription`/`LabelKey`/`LabelVal` в `internal/domain/types.go` (метод `Validate`) + их вызовы из `Validate()` каждого ресурса. Отдельного файла-валидатора в сервисе нет — проверка живёт в самом типе поля.
 
-### REQ-VAL-04 — DhcpOptions / static_routes валидация [P1]
-Subnet `dhcp_options`: `domain_name` по RFC 1123 (invalid → `400`); `domain_name_servers[]`/`ntp_servers[]` — валидные IP (invalid → `400`).
+### REQ-VAL-04 — static_routes валидация [P1]
 RouteTable `static_routes[]`: непустой `destination_prefix` (валидный CIDR) и `next_hop_address` (валидный IP) — иначе `400`.
-- Validated-by: `*-CR-VAL-DHCP-DOMAIN-INVALID`/`-OK`, `*-CR-VAL-DHCP-NS-INVALID-IP`/`-OK`, `*-CR-VAL-DHCP-NTP-INVALID-IP`/`-OK`, `*-CR-VAL-ROUTE-EMPTY-HOP`/`-EMPTY-PREFIX`/`-INVALID-HOP`/`-INVALID-PREFIX`/`-OK`
-- Проверка: `internal/apps/kacho/api/subnet/` (DhcpOptions), `internal/apps/kacho/api/routetable/` (static_routes) — sync-валидация.
+- Validated-by: `*-CR-VAL-ROUTE-EMPTY-HOP`/`-EMPTY-PREFIX`/`-INVALID-HOP`/`-INVALID-PREFIX`/`-OK`
+- Проверка: `internal/apps/kacho/api/routetable/` (static_routes) — sync-валидация.
+
+> Здесь же требовались параметры DHCP подсети (`domain_name` по RFC 1123, IP в списках
+> DNS/NTP) и назывались шесть кейсов `*-CR-VAL-DHCP-*`. **Ни одного из них в наборе нет**:
+> поле снято с контракта `Subnet` (номера и имя зарезервированы), а колонка и Go-тип —
+> миграцией 0029. Требование пережило свой предмет и держало в перечне «проверено» шесть
+> имён без кейсов; предикат, которым это видно: `grep -rn CR-VAL-DHCP cases/`.
 
 ---
 

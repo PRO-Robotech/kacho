@@ -78,7 +78,7 @@ func seedGatewaysLabeled(t *testing.T, kr *kachomock.Repository, projectID strin
 			ID:          id,
 			ProjectID:   projectID,
 			Name:        domain.RcNameVPC("gw-" + id),
-			GatewayType: domain.GatewayTypeSharedEgress,
+			GatewayType: domain.GatewayTypeNat,
 		}
 		if _, ierr := w.Gateways().Insert(context.Background(), g); ierr != nil {
 			require.NoError(t, ierr)

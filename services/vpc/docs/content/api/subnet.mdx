@@ -74,7 +74,6 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
     <tr><td><code>ipv4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv4CidrBlocks.short} (soft-immutable в Update; меняется через :add-cidr-blocks/:remove-cidr-blocks)</td></tr>
     <tr><td><code>ipv6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv6CidrBlocks.short} (soft-immutable в Update)</td></tr>
     <tr><td><code>routeTableId</code></td><td><code>{TYPES.string}</code></td><td>id привязанной RouteTable (если не задан — авто-ассоциация с самой ранней RT сети)</td></tr>
-    <tr><td><code>dhcpOptions</code></td><td><code>DhcpOptions</code></td><td>DHCP-параметры подсети: <code>domainName</code>, <code>domainNameServers[]</code>, <code>ntpServers[]</code></td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
   </tbody>
 </table>
@@ -235,7 +234,6 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
     <tr><td><code>ipv4CidrPrimary</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.ipv4CidrPrimary.short}</td></tr>
     <tr><td><code>ipv6CidrPrimary</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.ipv6CidrPrimary.short}</td></tr>
     <tr><td><code>routeTableId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>id привязываемой RouteTable</td></tr>
-    <tr><td><code>dhcpOptions</code></td><td>нет</td><td><code>DhcpOptions</code></td><td>DHCP-параметры (<code>domainName</code> по RFC 1123, IP в <code>domainNameServers[]</code> / <code>ntpServers[]</code>)</td></tr>
   </tbody>
 </table>
 
@@ -323,8 +321,8 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
 
 <ApiOperation method="PATCH" endpoint="/vpc/v1/subnets/{subnetId}" async>
 
-Изменяет mutable-поля подсети (`name`, `description`, `labels`, `route_table_id`,
-`dhcp_options`). Поля `network_id`, `placement_type`, `zone_id`, `region_id` —
+Изменяет mutable-поля подсети (`name`, `description`, `labels`, `route_table_id`).
+Поля `network_id`, `placement_type`, `zone_id`, `region_id` —
 hard-immutable (явно в `update_mask` → `InvalidArgument "<field> is immutable after
 Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutable (принимаются,
 но no-op).
@@ -339,7 +337,6 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>routeTableId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>id привязываемой RouteTable</td></tr>
-    <tr><td><code>dhcpOptions</code></td><td>нет</td><td><code>DhcpOptions</code></td><td>DHCP-параметры подсети</td></tr>
   </tbody>
 </table>
 
@@ -581,8 +578,6 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
   смогут получать адреса обоих семейств (≤ 1 v4 и ≤ 1 v6 на интерфейс).
 - **Аудит занятости.** `ListUsedAddresses` показывает, какие адреса заняты и какие ресурсы
   на них ссылаются (`references`) — удобно перед сжатием диапазона или удалением подсети.
-- **DHCP-параметры.** Через `dhcpOptions` (`domainName`, `domainNameServers[]`,
-  `ntpServers[]`) задаются сетевые настройки, раздаваемые ресурсам подсети.
 
 ## Подводные камни
 

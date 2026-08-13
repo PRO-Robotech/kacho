@@ -212,7 +212,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | Файл | Тип | Заметки |
 |---|---|---|
 | `network.go` | `Network` | `default_security_group_id` поле строкой |
-| `subnet.go` | `Subnet` + `DhcpOptions` | CIDR-блоки строками, не `net.IPNet` |
+| `subnet.go` | `Subnet` | CIDR-блоки строками, не `net.IPNet` |
 | `address.go` | `Address`, `ExternalIpv4Spec`, `InternalIpv4Spec`, `AddressRequirements` | JSONB-формы для external/internal |
 | `route_table.go` | `RouteTable` + `StaticRoute` | StaticRoute хранится как jsonb-массив |
 | `security_group.go` | `SecurityGroup` + `SecurityGroupRule` | Rules embedded в jsonb |
@@ -575,8 +575,8 @@ admin-заголовка. Привилегию выдаёт и отзывает 
 
 | Ресурс | ID prefix | Доп. поля | Особенности |
 |---|---|---|---|
-| Network | `net` | `default_security_group_id`, `ipv4_cidr_blocks`/`ipv6_cidr_blocks` (объявленный супернет), `default_route_table_id`, `route_distinguisher`, `vrf_id` (internal-only) | группа правил по умолчанию создаётся в воркере Create БЕЗУСЛОВНО; супернет ограничивает CIDR подсетей; `default_route_table_id` — источник истины о RT подсети без явной ссылки; `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
-| Subnet | `sub` | `network_id`, `placement_type` (`ZONAL`\|`REGIONAL`), `zone_id`\|`region_id`, `v4_cidr_blocks[]`/`v6_cidr_blocks[]` (элемент `[1]` — якорь `ipv4_cidr_primary`/`ipv6_cidr_primary` контракта), `route_table_id` | Размещение — дискриминатор, обязателен и immutable, пара зона/регион взаимоисключается CHECK'ом; якорь CIDR immutable, дополнительные блоки — `:add/:remove-cidr-blocks`; неперекрытие ВСЕХ блоков — EXCLUDE на child-таблице `subnet_cidr_blocks`; `zone_id`/`region_id` — id-строки домена geo (без FK). Колонка `dhcp_options` осталась от baseline, контракта у неё нет |
+| Network | `net` | `default_security_group_id`, `ipv4_cidr_blocks`/`ipv6_cidr_blocks` (объявленный супернет), `default_route_table_id`, `vrf_id` (internal-only) | группа правил по умолчанию создаётся в воркере Create БЕЗУСЛОВНО; супернет ограничивает CIDR подсетей; `default_route_table_id` — источник истины о RT подсети без явной ссылки; `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
+| Subnet | `sub` | `network_id`, `placement_type` (`ZONAL`\|`REGIONAL`), `zone_id`\|`region_id`, `v4_cidr_blocks[]`/`v6_cidr_blocks[]` (элемент `[1]` — якорь `ipv4_cidr_primary`/`ipv6_cidr_primary` контракта), `route_table_id` | Размещение — дискриминатор, обязателен и immutable, пара зона/регион взаимоисключается CHECK'ом; якорь CIDR immutable, дополнительные блоки — `:add/:remove-cidr-blocks`; неперекрытие ВСЕХ блоков — EXCLUDE на child-таблице `subnet_cidr_blocks`; `zone_id`/`region_id` — id-строки домена geo (без FK) |
 | Address | `adr` | `addr_type`, `ip_version`, `reserved`, `used`, `used_by`, `deletion_protection`, `external_ipv4` (jsonb), `internal_ipv4` (jsonb), `internal_ipv6` (jsonb) | Generated `internal_subnet_id` (из `internal_ipv4` ИЛИ `internal_ipv6`) → FK `addresses_internal_subnet_fkey ON DELETE RESTRICT`; `internal_ipv6_address_spec` + `InternalAddressService.AllocateInternalIPv6`; `Delete` used-адреса (referrer=NIC) → `FailedPrecondition` |
 | NetworkInterface | `nic` | `subnet_id` (FK RESTRICT), `mac_address`, `v4_address_ids[]`/`v6_address_ids[]` (ссылки на Address по id), `security_group_ids[]`, `used_by` (Reference — Attach/Detach), `status` enum | first-class самостоятельный сетевой интерфейс (отдельный от Instance); может быть создан без адресов; один Address ≤ на одном NIC (referrer-rows `address_references`, `referrer_type="network_interface"`); проекция чисто control-plane (lean) — инфра-полей у kacho-vpc нет |
 | RouteTable | `rtb` | `network_id`, `static_routes` (jsonb-массив) | Static-routes embedded |
@@ -683,8 +683,8 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | Таблица | Колонки (ключевые) |
 |---|---|
 | `operations` | `id text PK`, `description`, `created_at`, `created_by`, `done`, `metadata_type`, `metadata_data bytea`, `resource_id`, `response_type`, `response_data bytea`, `error_*` |
-| `networks` | `id text PK`, `project_id`, `created_at`, `name`, `description`, `labels jsonb`, `default_security_group_id`, `route_distinguisher`, `vrf_id bigint` (internal-only) |
-| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `placement_type text` (CHECK `ZONAL`\|`REGIONAL`), `zone_id text` / `region_id text` (без FK — geography→geo, взаимоисключаются CHECK'ом), `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `route_table_id`, `dhcp_options jsonb` (без контракта), `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
+| `networks` | `id text PK`, `project_id`, `created_at`, `name`, `description`, `labels jsonb`, `default_security_group_id`, `vrf_id bigint` (internal-only) |
+| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `placement_type text` (CHECK `ZONAL`\|`REGIONAL`), `zone_id text` / `region_id text` (без FK — geography→geo, взаимоисключаются CHECK'ом), `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `route_table_id`, `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
 | `addresses` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `addr_type smallint`, `ip_version smallint`, `reserved`, `used`, `used_by_type/id/name`, `deletion_protection`, `external_ipv4 jsonb`, `internal_ipv4 jsonb`, `internal_ipv6 jsonb`, `internal_subnet_id text GENERATED` (из `internal_ipv4` ИЛИ `internal_ipv6`) |
 | `network_interfaces` | `id text PK` (`nic…`), `project_id`, `created_at`, `name`, `labels`, `subnet_id text NOT NULL FK→subnets ON DELETE RESTRICT`, `mac_address text`, `v4_address_ids text[]`, `v6_address_ids text[]`, `security_group_ids text[]`, `used_by_type/id/name text`, `status smallint` |
 | `address_references` | `address_id text PK FK→addresses ON DELETE CASCADE`, `referrer_type text` (`compute_instance` \| `network_interface`), `referrer_id`, `referrer_name`, `attached_at` |

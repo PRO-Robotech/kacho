@@ -120,3 +120,39 @@ declared:
       оба поля сообщения сняты, и оставлять его значило бы держать пустую разновидность —
       тот же дефект, что у пустого варианта шлюза
     issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/vpc/v1/gateway.proto
+    symbol: shared_egress_gateway
+    reason: >-
+      единственная ветвь вида шлюза не несла ни одного поля и ни на чём не ветвилась;
+      заменена двумя ветвями, отвечающими за то, что называют, — семейством якорной
+      подсети и семейством назначения маршрутов, которым разрешено идти через шлюз
+    issue: kacho#246
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/gateway.proto
+    symbol: SharedEgressGateway
+    reason: >-
+      сообщение снятой ветви; держать его значило бы оставить пустую разновидность,
+      на которую ничто не ссылается
+    issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/vpc/v1/gateway_service.proto
+    symbol: shared_egress_gateway_spec
+    reason: >-
+      спецификация снятой ветви в запросах создания и изменения; на пути изменения она
+      вдобавок не имела читателя вовсе — вид шлюза неизменяем после создания
+    issue: kacho#246
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/gateway_service.proto
+    symbol: SharedEgressGatewaySpec
+    reason: >-
+      сообщение спецификации снятой ветви; замена — NatGatewaySpec и EgressOnlyGatewaySpec
+    issue: kacho#246
+  - rule: ONEOF_NO_DELETE
+    path: kacho/cloud/vpc/v1/gateway_service.proto
+    symbol: gateway
+    reason: >-
+      ветвь вида шлюза снята с ЗАПРОСА ИЗМЕНЕНИЯ целиком: вид выбирается при создании и
+      неизменяем, поэтому читателя у неё быть не могло, а принято-и-проигнорировано —
+      не исход; номер и имя зарезервированы
+    issue: kacho#246

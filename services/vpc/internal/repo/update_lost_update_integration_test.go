@@ -253,11 +253,30 @@ func TestIntegration_Gateway_GetForUpdate_TakesRowLock(t *testing.T) {
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
+	// Якорь размещения: шлюз без подсети не создаётся (FK, миграция 0030), а
+	// NAT-шлюз обязан стоять в подсети с блоком IPv4 — вид сверяется с якорем
+	// внутри самой вставки.
+	netID := ids.NewID(ids.PrefixNetwork)
+	subID := ids.NewID(ids.PrefixSubnet)
+	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		if _, e := w.Networks().Insert(ctx, &domain.Network{
+			ID: netID, ProjectID: "f-gw", Name: domain.RcNameVPC("net-gw0"),
+		}); e != nil {
+			return e
+		}
+		_, e := w.Subnets().Insert(ctx, &domain.Subnet{
+			ID: subID, ProjectID: "f-gw", Name: domain.RcNameVPC("sub-gw0"),
+			NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: "zone-gw",
+			V4CidrBlocks: []string{"10.78.0.0/24"},
+		})
+		return e
+	}))
+
 	gwID := ids.NewID(ids.PrefixGateway)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Gateways().Insert(ctx, &domain.Gateway{
 			ID: gwID, ProjectID: "f-gw", Name: domain.RcNameVPC("gw0"),
-			GatewayType: domain.GatewayTypeSharedEgress,
+			GatewayType: domain.GatewayTypeNat, SubnetID: subID,
 		})
 		return e
 	}))

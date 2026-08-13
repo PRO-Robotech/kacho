@@ -162,9 +162,46 @@ func TestFlatSpecFieldsExistInTheContractTheyAreSentIn(t *testing.T) {
 			t.Errorf("%s: в контракте изменения нет поля идентификатора %q",
 				spec.tfName, spec.updateIDField)
 		}
+		// Атрибут выбора ветви oneof в контракте создания ОТСУТСТВУЕТ by construction:
+		// краю уходит не он, а пустое сообщение ветви, которую он называет. Поэтому у
+		// него своя проверка — сильнее, а не слабее: обязаны существовать ВСЕ ветви,
+		// которые он умеет называть, и сам атрибут обязан быть объявлен в описании
+		// (иначе выбор нельзя ни задать, ни увидеть в схеме).
+		if spec.kindAttr != "" {
+			if len(spec.kindArms) == 0 {
+				t.Errorf("%s: объявлен атрибут вида %q, но ни одной ветви не названо — "+
+					"выбор невозможен by construction", spec.tfName, spec.kindAttr)
+			}
+			declared := false
+			for _, f := range spec.fields {
+				if f.name == spec.kindAttr {
+					declared = true
+				}
+			}
+			if !declared {
+				t.Errorf("%s: атрибут вида %q не объявлен среди полей — его нет в схеме, "+
+					"и задать вид нечем", spec.tfName, spec.kindAttr)
+			}
+			for value, arm := range spec.kindArms {
+				checked++
+				field, msg := arm()
+				if !hasContractField(create, field) {
+					t.Errorf("%s: ветви %q сопоставлено поле %q, которого нет в контракте "+
+						"создания %s", spec.tfName, value, field,
+						create.ProtoReflect().Descriptor().FullName())
+					continue
+				}
+				if msg == nil {
+					t.Errorf("%s: ветвь %q не несёт сообщения — краю уйдёт пустой выбор",
+						spec.tfName, value)
+				}
+			}
+		}
 		for _, f := range spec.fields {
 			checked++
 			switch {
+			case spec.kindAttr != "" && f.name == spec.kindAttr:
+				// Проверен выше, своей проверкой.
 			case f.computed:
 				// Вычисляемое в запрос не уходит вовсе — контракту запроса оно не адресовано.
 			case f.updateOnly:

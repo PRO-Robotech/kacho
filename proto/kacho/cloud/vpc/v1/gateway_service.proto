@@ -185,7 +185,14 @@ message ListGatewayOperationsResponse {
   string next_page_token = 2;
 }
 
-message SharedEgressGatewaySpec {
+// Specification of a public IPv4 egress-translation gateway. Carries no
+// parameter: choosing the arm IS the specification. See [NatGateway].
+message NatGatewaySpec {
+}
+
+// Specification of an IPv6 egress-only gateway. Carries no parameter — no public
+// address is allocated, which is the point of the arm. See [EgressOnlyGateway].
+message EgressOnlyGatewaySpec {
 }
 
 message CreateGatewayRequest {
@@ -204,10 +211,32 @@ message CreateGatewayRequest {
   // Gateway labels as `key:value` pairs.
   map<string, string> labels = 4 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
-  // Gateway configuration specification
+  // ID of the subnet to attach the gateway to. Required — it is both the
+  // gateway's binding and its placement anchor (see [Gateway.subnet_id]).
+  // Immutable after creation.
+  //
+  // The subnet must belong to the same project as the gateway (a subnet of
+  // another project answers as absent) and must carry a CIDR block of the family
+  // the chosen arm serves.
+  string subnet_id = 6 [(required) = true, (length) = "<=50"];
+
+  // What the gateway does. Required — a gateway with no arm has no behaviour to
+  // create, and an omitted arm is refused synchronously with INVALID_ARGUMENT
+  // naming `gateway`. Immutable after creation.
   oneof gateway {
-    SharedEgressGatewaySpec shared_egress_gateway_spec = 5;
+    // Public egress translation for IPv4.
+    NatGatewaySpec nat_gateway_spec = 7;
+
+    // Egress-only reachability for IPv6.
+    EgressOnlyGatewaySpec egress_only_gateway_spec = 8;
   }
+
+  // 5 held `shared_egress_gateway_spec` — the single previous arm, whose message
+  // carried no field. Replaced by the two arms above, which are answerable for
+  // what they claim (family of the anchor subnet, family of the routes that may
+  // name the gateway).
+  reserved 5;
+  reserved "shared_egress_gateway_spec";
 }
 
 message CreateGatewayMetadata {
@@ -240,10 +269,15 @@ message UpdateGatewayRequest {
   // 3. Send the new set in this field.
   map<string, string> labels = 5 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
-  // New Gateway configuration specification
-  oneof gateway {
-    SharedEgressGatewaySpec shared_egress_gateway_spec = 6;
-  }
+  // 6 held `shared_egress_gateway_spec`, an arm of a `gateway` oneof on the
+  // UPDATE request. The kind of a gateway is chosen at creation time and is
+  // immutable, so nothing on the update path could ever read it — accepted and
+  // ignored is not a lawful outcome, and the number and the name are held here
+  // instead. Naming `nat_gateway` / `egress_only_gateway` / `subnet_id` in
+  // `update_mask` is refused with INVALID_ARGUMENT
+  // "<field> is immutable after Gateway.Create".
+  reserved 6;
+  reserved "shared_egress_gateway_spec";
 }
 
 message UpdateGatewayMetadata {

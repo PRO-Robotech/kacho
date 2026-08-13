@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -57,6 +58,22 @@ type flatSpec struct {
 	// deleteHint — что мешает удалению. Говорится ЗАРАНЕЕ: иначе причина выясняется
 	// перебором.
 	deleteHint string
+
+	// kindAttr / kindArms — выбор ВЕТВИ oneof, которую плоским значением задать
+	// нельзя: ветвь не несёт полей, поэтому «значение» у неё отсутствует by
+	// construction, а выбор — есть, и он меняет поведение ресурса.
+	//
+	// kindAttr — имя атрибута в конфигурации (обычная обязательная строка, объявляется
+	// в fields как все прочие); kindArms — значение этого атрибута → имя поля-ветви в
+	// запросе создания и пустое сообщение этой ветви. Обратное направление (ответ края →
+	// значение атрибута) выводится из того, какая ветвь пришла в ответе: иначе
+	// перечитывание молча стирало бы выбор и давало вечное расхождение плана.
+	//
+	// Неизвестное значение — ОТКАЗ с перечнем допустимых, а не тихое «ветвь не выбрана»:
+	// тихий пропуск отдал бы краю запрос без ветви и превратил опечатку в отказ края,
+	// который вызывающий прочитал бы как дефект продукта.
+	kindAttr string
+	kindArms map[string]func() (string, proto.Message)
 
 	newCreate func() proto.Message
 	newUpdate func() proto.Message
@@ -331,6 +348,19 @@ func (r *flatResource) applyWire(ctx context.Context, st setter, raw []byte) err
 	}
 	for _, f := range r.spec.fields {
 		v := w[lowerCamel(f.name)]
+		if r.spec.kindAttr != "" && f.name == r.spec.kindAttr {
+			// Атрибута с таким именем в ответе нет и быть не может: край отдаёт ВЕТВЬ.
+			// Значение выводится из того, какая ветвь пришла; ни одной — оставляем
+			// пустым, и это отдельный исход, а не «первая по списку».
+			v = nil
+			for name, armFn := range r.spec.kindArms {
+				field, _ := armFn()
+				if _, present := w[lowerCamel(field)]; present {
+					v = name
+					break
+				}
+			}
+		}
 		var val attr.Value
 		switch f.kind {
 		case fBool:
@@ -387,7 +417,7 @@ func lowerCamel(s string) string {
 func (r *flatResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	body := r.spec.newCreate()
 	for _, f := range r.spec.fields {
-		if f.computed || f.updateOnly {
+		if f.computed || f.updateOnly || (r.spec.kindAttr != "" && f.name == r.spec.kindAttr) {
 			continue
 		}
 		v, ok, err := r.valueOf(ctx, planGetter{req.Plan}, f)
@@ -399,6 +429,25 @@ func (r *flatResource) Create(ctx context.Context, req resource.CreateRequest, r
 			continue
 		}
 		if err := setProtoField(body, f.name, v); err != nil {
+			resp.Diagnostics.AddError("Описание ресурса разошлось с контрактом", err.Error())
+			return
+		}
+	}
+	if r.spec.kindAttr != "" {
+		var kind types.String
+		resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root(r.spec.kindAttr), &kind)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		arm, ok := r.spec.kindArms[kind.ValueString()]
+		if !ok {
+			resp.Diagnostics.AddError("Вид ресурса не распознан",
+				fmt.Sprintf("%s = %q; допустимы: %s",
+					r.spec.kindAttr, kind.ValueString(), strings.Join(sortedKeys(r.spec.kindArms), ", ")))
+			return
+		}
+		field, msg := arm()
+		if err := setProtoField2(body, field, msg); err != nil {
 			resp.Diagnostics.AddError("Описание ресурса разошлось с контрактом", err.Error())
 			return
 		}
@@ -666,4 +715,16 @@ func sameValue(a, b any) bool {
 		return true
 	}
 	return false
+}
+
+// sortedKeys — детерминированный перечень допустимых значений для текста отказа.
+// Порядок обхода map в Go случаен, и без сортировки один и тот же отказ печатался бы
+// каждый раз иначе — расхождение, которое читается как изменение поведения.
+func sortedKeys(m map[string]func() (string, proto.Message)) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

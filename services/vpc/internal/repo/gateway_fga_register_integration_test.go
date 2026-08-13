@@ -19,11 +19,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	gwapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
+
+// seedGatewayAnchorSQL заводит сеть и ЗОНАЛЬНУЮ подсеть с блоком IPv4 прямо в БД
+// и возвращает id подсети — якорь размещения шлюза (`gateways.subnet_id` NOT NULL
+// + FK, миграция 0030). Предмет этих проб — намерение регистрации, а не якорь,
+// поэтому он ставится минимальным SQL, без прогона use-case'ов подсети.
+func seedGatewayAnchorSQL(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID string) string {
+	t.Helper()
+	netID := ids.NewID(ids.PrefixNetwork)
+	subID := ids.NewID(ids.PrefixSubnet)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO kacho_vpc.networks (id, project_id, name) VALUES ($1, $2, $3)`,
+		netID, projectID, "net-anchor")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO kacho_vpc.subnets (id, project_id, name, network_id, placement_type, zone_id, v4_cidr_blocks)
+		 VALUES ($1, $2, $3, $4, 'ZONAL', $5, $6)`,
+		subID, projectID, "sub-anchor", netID, "zone-a", []string{"10.79.0.0/24"})
+	require.NoError(t, err)
+	return subID
+}
 
 // singleGatewayID возвращает единственный id gateway в проекте.
 func singleGatewayID(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID string) string {
@@ -56,10 +77,12 @@ func TestGatewayRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *testing.T) {
 	updateUC := gwapp.NewUpdateGatewayUseCase(r, or)
 
 	// --- Create Gateway с labels ---
+	anchor := seedGatewayAnchorSQL(ctx, t, pool, "prj-A")
 	op, err := createUC.Execute(ctx, domain.Gateway{
 		ProjectID:   "prj-A",
 		Name:        domain.RcNameVPC("gw-okun"),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		GatewayType: domain.GatewayTypeNat,
+		SubnetID:    anchor,
 		Labels:      domain.LabelsFromMap(map[string]string{"gw": "okun"}),
 	})
 	require.NoError(t, err)
@@ -121,9 +144,11 @@ func TestGatewayRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	createUC := gwapp.NewCreateGatewayUseCase(r, pc, or)
 	updateUC := gwapp.NewUpdateGatewayUseCase(r, or)
 
+	anchor := seedGatewayAnchorSQL(ctx, t, pool, "prj-A")
 	op, err := createUC.Execute(ctx, domain.Gateway{
 		ProjectID: "prj-A", Name: domain.RcNameVPC("gw-fp"),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		GatewayType: domain.GatewayTypeNat,
+		SubnetID:    anchor,
 		Labels:      domain.LabelsFromMap(map[string]string{"gw": "treska"}),
 	})
 	require.NoError(t, err)

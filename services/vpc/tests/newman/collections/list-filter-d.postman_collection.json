@@ -128,7 +128,7 @@
       "description": "class:AUTHZ | class:CONF | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer-rya1021",
+          "name": "List subnets as subset-viewer-rya1030",
           "request": {
             "method": "GET",
             "header": [
@@ -203,7 +203,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P0",
       "item": [
         {
-          "name": "List subnets as subset-viewer (hidden absent)-rya1022",
+          "name": "List subnets as subset-viewer (hidden absent)-rya1031",
           "request": {
             "method": "GET",
             "header": [
@@ -398,7 +398,7 @@
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
-          "name": "List subnets as no-grant subject-rya1023",
+          "name": "List subnets as no-grant subject-rya1032",
           "request": {
             "method": "GET",
             "header": [

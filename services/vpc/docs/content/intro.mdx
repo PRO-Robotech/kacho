@@ -161,7 +161,7 @@ Kachō VPC управляет **8 типами ресурсов** (7 публи�
     <tr><td><strong>Address</strong></td><td><code>adr</code></td><td>IP-адрес: внутренний (в подсети) или внешний (из пула)</td></tr>
     <tr><td><strong>RouteTable</strong></td><td><code>rtb</code></td><td>Таблица маршрутов; авто-ассоциируется с подсетями сети</td></tr>
     <tr><td><strong>SecurityGroup</strong></td><td><code>sgr</code></td><td>Группа безопасности с правилами ingress/egress; принадлежит Network</td></tr>
-    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз (shared egress) — project-level</td></tr>
+    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз выхода наружу — привязан к подсети, вид выбирается при создании</td></tr>
     <tr><td><strong>NetworkInterface</strong></td><td><code>nic</code></td><td>Сетевой интерфейс в подсети: ≤1 IPv4 / ≤1 IPv6, авто-аллокация MAC</td></tr>
     <tr><td><strong>AddressPool</strong></td><td><code>apl</code></td><td><em>(internal/admin)</em> Глобальный пул CIDR для аллокации внешних IP</td></tr>
   </tbody>

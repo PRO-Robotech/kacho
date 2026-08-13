@@ -186,12 +186,6 @@
 | `*-CR-VAL-CIDR-HOSTBITS` | VAL | P0 | 1 (sub) | Create с host-bits в CIDR (10.0.0.5/24) → InvalidArgument |
 | `*-CR-VAL-CIDR-REQUIRED` | VAL | P0 | 1 (sub) | Create без v4_cidr_blocks → InvalidArgument |
 | `*-CR-VAL-DESC-INT-TYPE` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | Create с description=число → 400 |
-| `*-CR-VAL-DHCP-DOMAIN-INVALID` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-DOMAIN-INVALID |
-| `*-CR-VAL-DHCP-DOMAIN-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-DOMAIN-OK |
-| `*-CR-VAL-DHCP-NS-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-INVALID-IP |
-| `*-CR-VAL-DHCP-NS-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-OK |
-| `*-CR-VAL-DHCP-NTP-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-INVALID-IP |
-| `*-CR-VAL-DHCP-NTP-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-OK |
 | `*-CR-VAL-EMPTY-BODY` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с пустым body → 400 |
 | `*-CR-VAL-EXT-WITH-SUBNET-FK` | NEG,VAL | P1 | 1 (add) | Create external + internal со заданным subnet_id → 400 oneof |
 | `*-CR-VAL-PROJECT-REQUIRED` | VAL | P0 | 2 (gat,net) | Create без project → InvalidArgument |
@@ -975,3 +969,9 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 > к нему — кейсы ассёртят это как контракт, а legacy DB-выбор RT (`subnet_auto_pick_rt_trg` 0017,
 > `rt_auto_assoc_subnets_trg` 0019) снят.| `SG-CR-VAL-RULE-NO-TARGET` | NEG,VAL | P1 | 2 (sg) | Create SG с правилом без цели → 400, отказ называет `rule_specs[0].target`; то же правило с целью проходит. Verifies SG-RULE-TARGET-01. |
 
+| `GW-FIXTURE-ANCHOR` | GW-ANCHOR-01 | CRUD | P0 | Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. Шлюз без подсети не создаётся вовсе (`subnetId` обязателен и неизменяем, он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Фикстура утверждает каждый свой шаг. |
+| `RT-GW-NEXTHOP-RESOLVES` | RT-GW-01 | CRUD,CONF | P0 | Статический маршрут через шлюз: ссылка РЕЗОЛВИТСЯ. Положительный контроль (когерентный шлюз проходит, `gatewayId` виден в чтении) плюс три отказа — отсутствующий шлюз → NOT_FOUND «Gateway … not found»; шлюз чужой сети → FAILED_PRECONDITION; семейство назначения не совпадает с видом шлюза → FAILED_PRECONDITION. |
+| `RT-GW-NEXTHOP-EXCLUSIVE` | RT-GW-02 | VAL,NEG | P1 | Следующий узел — ровно одна ветвь: маршрут без адреса и без шлюза отвергается, называя обе возможности; мусорный `gatewayId` — терминальный отказ формата «invalid gateway id …», а не полоса существования. |
+| `RT-GW-NAMED-NOT-DELETABLE` | RT-GW-03 | STATE,NEG | P1 | Шлюз, названный живым маршрутом, не удаляется (FAILED_PRECONDITION «gateway is in use»); после снятия маршрута — удаляется. Обратное направление того же внешнего ключа. |
+| `GW-CR-VAL-MISSING-ANCHOR` | GW-ANCHOR-02 | VAL,NEG | P1 | Create шлюза без `subnetId` → 400 «subnet_id: required». Ветвь вида в теле есть — отказ обязан быть про якорь, а не про вид. |
+| `GW-CR-CONF-EGRESS-ONLY-NEEDS-V6` | GW-ANCHOR-03 | CONF,NEG | P1 | Шлюз «только исход» (IPv6) в подсети без IPv6-блока → отказ по состоянию якоря. Вид сверяется с якорем ВНУТРИ вставки, а не проверкой до неё. |

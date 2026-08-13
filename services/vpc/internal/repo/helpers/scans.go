@@ -31,7 +31,9 @@ type Scannable interface {
 const NetworkCols = `id, project_id, created_at, name, description, labels, COALESCE(default_security_group_id, '') AS default_security_group_id, COALESCE(vrf_id, 0) AS vrf_id, ipv4_cidr_blocks, ipv6_cidr_blocks, COALESCE(default_route_table_id, '') AS default_route_table_id`
 
 // SubnetCols — список колонок таблицы subnets в порядке, ожидаемом ScanSubnet.
-const SubnetCols = `id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, dhcp_options, placement_type, region_id`
+// Колонки `dhcp_options` нет: снята вместе с типом в миграции 0029 (контракта у
+// неё не было, значение никто не задавал и не читал).
+const SubnetCols = `id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, placement_type, region_id`
 
 // AddressCols — список колонок таблицы addresses в порядке, ожидаемом ScanAddress.
 const AddressCols = `id, project_id, created_at, name, description, labels, addr_type, ip_version, reserved, used, deletion_protection, external_ipv4, internal_ipv4, internal_ipv6, external_ipv6`
@@ -44,7 +46,9 @@ const RouteTableCols = `id, project_id, created_at, name, description, labels, n
 const SGCols = `id, project_id, network_id, created_at, name, description, labels, default_for_network, rules`
 
 // GatewayCols — список колонок таблицы gateways в порядке, ожидаемом ScanGateway.
-const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type`
+// `subnet_id` — привязка шлюза и его якорь размещения (миграция 0030): NOT NULL,
+// поэтому сканируется в обычную строку, без Nullable-обёртки.
+const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type, subnet_id`
 
 // NICCols — список колонок таблицы network_interfaces в порядке, ожидаемом ScanNI.
 const NICCols = `id, project_id, created_at, name, description, labels, subnet_id,
@@ -87,7 +91,7 @@ func ScanNetwork(row Scannable) (*kachorepo.NetworkRecord, error) {
 // ScanSubnet — row-scanner для SubnetRecord.
 func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 	var s kachorepo.SubnetRecord
-	var labelsJSON, dhcpJSON []byte
+	var labelsJSON []byte
 	var v4, v6 pgtype.Array[string]
 	var routeTableID *string
 	var name string
@@ -96,7 +100,7 @@ func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 
 	err := row.Scan(
 		&s.ID, &s.ProjectID, &s.CreatedAt, &name, &description, &labelsJSON,
-		&s.NetworkID, &s.ZoneID, &v4, &v6, &routeTableID, &dhcpJSON,
+		&s.NetworkID, &s.ZoneID, &v4, &v6, &routeTableID,
 		&placementType, &s.RegionID,
 	)
 	if err != nil {
@@ -118,13 +122,6 @@ func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 	}
 	if routeTableID != nil {
 		s.RouteTableID = *routeTableID
-	}
-	if dhcpJSON != nil {
-		var dhcp domain.DhcpOptions
-		if err := UnmarshalJSONB(dhcpJSON, &dhcp, "Subnet.dhcp_options"); err != nil {
-			return nil, err
-		}
-		s.DhcpOptions = &dhcp
 	}
 	return &s, nil
 }
@@ -259,7 +256,7 @@ func ScanGateway(row Scannable) (*kachorepo.GatewayRecord, error) {
 
 	err := row.Scan(
 		&g.ID, &g.ProjectID, &g.CreatedAt, &name, &description, &labelsJSON,
-		&gatewayType,
+		&gatewayType, &g.SubnetID,
 	)
 	if err != nil {
 		return nil, err

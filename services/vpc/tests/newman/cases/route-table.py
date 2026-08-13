@@ -578,3 +578,167 @@ CASES.append(Case(
         poll_operation_until_done(),
     ],
 ))
+
+
+# ---------------------------------------------------------------------------------------
+# Следующий узел маршрута ЧЕРЕЗ ШЛЮЗ.
+#
+# Ветвь `gateway_id` прежде отвергалась синхронно: резолвить шлюз было нечем — у шлюза не
+# было ни якоря размещения, ни вида, с которым можно сверить маршрут. Теперь есть и то и
+# другое, и ветвь резолвится: существование держит внешний ключ, а сеть, семейство и
+# когерентность размещения — сам оператор записи.
+#
+# Каждый кейс здесь заводит СВОЮ сеть, подсеть и шлюз: суита не должна зависеть от порядка
+# и от чужих фикстур.
+# ---------------------------------------------------------------------------------------
+
+
+def _gw_fixture(suffix, cidr, zone="{{existingZoneId}}", net_var="netId", sub_var="gwSubId",
+                gw_var="gwId", spec=None):
+    """Сеть + зональная подсеть + шлюз. Каждый шаг УТВЕРЖДАЕТ свой исход.
+
+    Шаг, создающий предмет кейса без утверждения, при отказе оставляет переменную пустой:
+    кейс идёт дальше по несозданному ресурсу и падает через два-три шага, называя
+    виновником невиновного.
+    """
+    spec = spec or {"natGatewaySpec": {}}
+    return [
+        Step(name=f"gwfx-net-{suffix}", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"rtgw-{suffix}-net-{{{{runId}}}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to=net_var, id_expr="j.metadata && j.metadata.networkId"),
+        Step(name=f"gwfx-sub-{suffix}", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{%s}}" % net_var,
+                   "name": f"rtgw-{suffix}-sub-{{{{runId}}}}", "zoneId": zone,
+                   "ipv4CidrPrimary": cidr},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to=sub_var, id_expr="j.metadata && j.metadata.subnetId"),
+        Step(name=f"gwfx-gw-{suffix}", method="POST", path="/vpc/v1/gateways",
+             body=dict({"projectId": "{{_suiteProjectId}}", "name": f"rtgw-{suffix}-gw-{{{{runId}}}}",
+                        "subnetId": "{{%s}}" % sub_var}, **spec),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to=gw_var, id_expr="j.metadata && j.metadata.gatewayId"),
+    ]
+
+
+CASES.append(Case(
+    id="RT-GW-NEXTHOP-RESOLVES",
+    title="Статический маршрут через шлюз: ссылка резолвится; отсутствующий шлюз, чужая сеть и чужое семейство отвергаются",
+    classes=["CRUD", "CONF"], priority="P0",
+    steps=[
+        *_gw_fixture("ok", "10.72.0.0/24"),
+        # Таблица создаётся В ТОЙ ЖЕ сети и получает маршрут через шлюз.
+        Step(name="rt-create", method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rtgw-ok-rt-{{runId}}",
+                   "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{gwId}}"}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to="rtId", id_expr="j.metadata && j.metadata.routeTableId"),
+        # Ссылка ДОЕХАЛА до ресурса — иначе кейс варьировал бы ничем.
+        retry_until_authorized(Step(name="rt-verify", method="GET", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('маршрут несёт именно тот шлюз', () => {",
+                          "  const r = (pm.response.json().staticRoutes || [])[0] || {};",
+                          "  pm.expect(r.gatewayId, pm.response.text()).to.eql(pm.environment.get('gwId'));",
+                          "  pm.expect(r.nextHopAddress || '', 'ветвь ровно одна').to.eql('');",
+                          "});"])),
+        # (1) Шлюза нет — полоса direct-read своего id, контрактный тон.
+        retry_until_authorized(Step(name="rt-absent-gw", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
+             body={"updateMask": "static_routes",
+                   "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{garbageVpcId}}"}]},
+             test_script=[*assert_refused_sync_or_async("маршрут через несуществующий шлюз",
+                                                        sync_codes=(400, 403, 404))])),
+        poll_operation_until_done(must_fail=True),
+        # (2) Шлюз ЧУЖОЙ сети — предусловие на состояние, не «не найден».
+        *_gw_fixture("alien", "10.73.0.0/24", net_var="alienNetId", sub_var="alienSubId", gw_var="alienGwId"),
+        retry_until_authorized(Step(name="rt-alien-net", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
+             body={"updateMask": "static_routes",
+                   "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{alienGwId}}"}]},
+             test_script=[*assert_refused_sync_or_async("маршрут через шлюз чужой сети",
+                                                        sync_codes=(400, 403, 404))])),
+        poll_operation_until_done(must_fail=True),
+        # (3) Семейство назначения не то, которое обслуживает вид шлюза.
+        retry_until_authorized(Step(name="rt-family", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
+             body={"updateMask": "static_routes",
+                   "staticRoutes": [{"destinationPrefix": "::/0", "gatewayId": "{{gwId}}"}]},
+             test_script=[*assert_refused_sync_or_async("IPv6-назначение через шлюз трансляции IPv4",
+                                                        sync_codes=(400, 403, 404))])),
+        poll_operation_until_done(must_fail=True),
+        retry_until_authorized(Step(name="rtgw-cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+    ],
+))
+
+CASES.append(Case(
+    id="RT-GW-NEXTHOP-EXCLUSIVE",
+    title="Следующий узел — ровно одна ветвь: ни одной отвергается, мусорный gatewayId — терминальный отказ формата",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        *_net_steps("gwx"),
+        Step(name="rt-no-nexthop", method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rtgw-nn-{{runId}}",
+                   "staticRoutes": [{"destinationPrefix": "10.90.0.0/24"}]},
+             test_script=[
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет ОБЕ возможности', () => {",
+                 "  const m = String(pm.response.json().message || '') + JSON.stringify(pm.response.json());",
+                 "  pm.expect(m).to.contain('next_hop_address');",
+                 "  pm.expect(m).to.contain('gateway_id');",
+                 "});"]),
+        Step(name="rt-garbage-gw", method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rtgw-gg-{{runId}}",
+                   "staticRoutes": [{"destinationPrefix": "10.91.0.0/24", "gatewayId": "not-an-id"}]},
+             test_script=[
+                 # Терминальный отказ ФОРМАТА своего id: «повтори позже» на вход, который
+                 # валидным не станет никогда, был бы ложью, а «Gateway  not found» —
+                 # утверждением об отсутствии ресурса, которого вызывающий не называл.
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('назван формат идентификатора шлюза', () => "
+                 "pm.expect(String(pm.response.json().message || '')).to.contain(\"invalid gateway id\"));"]),
+        # Положительный контроль: законный маршрут по адресу проходит — иначе оба
+        # отрицания зеленели бы на обработчике, отвергающем любой маршрут.
+        Step(name="rt-address-ok", method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rtgw-ok-{{runId}}",
+                   "staticRoutes": [{"destinationPrefix": "10.92.0.0/24", "nextHopAddress": "10.92.0.1"}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to="rtId", id_expr="j.metadata && j.metadata.routeTableId"),
+        retry_until_authorized(Step(name="rtgw-x-cleanup", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        _cleanup_net_lenient(),
+    ],
+))
+
+CASES.append(Case(
+    id="RT-GW-NAMED-NOT-DELETABLE",
+    title="Шлюз, названный живым маршрутом, не удаляется; после снятия маршрута — удаляется",
+    classes=["STATE", "NEG"], priority="P1",
+    steps=[
+        *_gw_fixture("del", "10.74.0.0/24"),
+        Step(name="rt-with-gw", method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "rtgw-del-rt-{{runId}}",
+                   "staticRoutes": [{"destinationPrefix": "0.0.0.0/0", "gatewayId": "{{gwId}}"}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to="rtId", id_expr="j.metadata && j.metadata.routeTableId"),
+        retry_until_authorized(Step(name="gw-delete-refused", method="DELETE", path="/vpc/v1/gateways/{{gwId}}",
+             test_script=[*assert_refused_sync_or_async("удаление шлюза, названного живым маршрутом",
+                                                        sync_codes=(400, 403, 404))])),
+        poll_operation_until_done(must_fail=True),
+        # Снятие маршрута снимает и ссылку — тот же шлюз становится удаляемым.
+        retry_until_authorized(Step(name="rt-drop-routes", method="PATCH", path="/vpc/v1/routeTables/{{rtId}}",
+             body={"updateMask": "static_routes", "staticRoutes": []},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="gw-delete-now-ok", method="DELETE", path="/vpc/v1/gateways/{{gwId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="rtgw-del-cleanup", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+    ],
+))
