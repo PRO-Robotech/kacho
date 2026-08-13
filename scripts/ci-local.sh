@@ -86,8 +86,12 @@ go_group() {
     run "провайдер: test" bash -c "cd '$ROOT/terraform' && go test ./... -count=1"
 
     if command -v golangci-lint > /dev/null; then
-        run "golangci-lint" golangci-lint run
-        run "провайдер: golangci-lint" bash -c "cd '$ROOT/terraform' && golangci-lint run"
+        # Кэш линтера привязывается к КОРНЮ ЭТОЙ копии. Общий кэш между рабочими
+        # копиями отравляет результат: линтер отдаёт вердикт, посчитанный по
+        # чужому дереву, и «зелено» перестаёт что-либо значить.
+        mkdir -p "$ROOT/.cache/golangci-lint"
+        GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "golangci-lint" golangci-lint run
+        GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "провайдер: golangci-lint" bash -c "cd terraform && golangci-lint run"
     else
         echo -e "\n== golangci-lint\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
     fi
