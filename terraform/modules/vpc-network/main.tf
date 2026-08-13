@@ -272,9 +272,6 @@ resource "kacho_vpc_address" "external_ipv4" {
   external_ipv4 = {
     address = each.value.external_ipv4.address
     zone_id = each.value.external_ipv4.zone_id
-    requirements = each.value.external_ipv4.requirements == null ? null : {
-      ddos_protection_provider = each.value.external_ipv4.requirements.ddos_protection_provider
-    }
   }
 }
 
@@ -290,9 +287,6 @@ resource "kacho_vpc_address" "external_ipv6" {
   external_ipv6 = {
     address = each.value.external_ipv6.address
     zone_id = each.value.external_ipv6.zone_id
-    requirements = each.value.external_ipv6.requirements == null ? null : {
-      ddos_protection_provider = each.value.external_ipv6.requirements.ddos_protection_provider
-    }
   }
 }
 

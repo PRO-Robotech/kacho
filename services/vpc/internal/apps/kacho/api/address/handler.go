@@ -164,12 +164,6 @@ func createInputFromProto(req *vpcv1.CreateAddressRequest) CreateInput {
 			Address: ext.Address,
 			ZoneID:  ext.ZoneId,
 		}
-		if r := ext.GetRequirements(); r != nil {
-			in.ExternalSpec.Requirements = &AddrRequirements{
-				DdosProtectionProvider: r.DdosProtectionProvider,
-				OutgoingSmtpCapability: r.OutgoingSmtpCapability,
-			}
-		}
 	} else if intSpec := req.GetInternalIpv4AddressSpec(); intSpec != nil {
 		in.InternalSpec = &InternalAddrSpec{
 			Address:  intSpec.Address,
@@ -185,12 +179,6 @@ func createInputFromProto(req *vpcv1.CreateAddressRequest) CreateInput {
 		in.ExternalIpv6Spec = &ExternalAddrSpec{
 			Address: ext6.Address,
 			ZoneID:  ext6.ZoneId,
-		}
-		if r := ext6.GetRequirements(); r != nil {
-			in.ExternalIpv6Spec.Requirements = &AddrRequirements{
-				DdosProtectionProvider: r.DdosProtectionProvider,
-				OutgoingSmtpCapability: r.OutgoingSmtpCapability,
-			}
 		}
 	}
 

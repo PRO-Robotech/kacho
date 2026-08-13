@@ -141,7 +141,24 @@ message ExternalIpv4Address {
   string zone_id = 2;
 
   // Parameters of the allocated address, for example DDoS Protection.
-  AddressRequirements requirements = 3;
+  // 3 — requirements, СНЯТО с контракта вместе с сообщением AddressRequirements.
+  //
+  // Сообщение несло РОВНО ДВА поля, и оба сняты, поэтому оставлять его значило бы
+  // держать пустую разновидность — тот же дефект, что у пустого варианта шлюза.
+  //
+  // Что было в этих полях:
+  //   - защита от распределённых атак: словарь допустимых значений в ОБЩЕМ фундаменте
+  //     называл имя конкретного ВНЕШНЕГО поставщика, то есть публичное поле опознавало
+  //     конкретную оснастку; при этом ни одна ветвь на значении не ветвилась —
+  //     принято-и-проигнорировано;
+  //   - возможность исходящей почты: у поля не было ни одного законного непустого
+  //     входа (любое непустое значение отвергалось всегда), то есть поле не несло
+  //     ничего.
+  //
+  // Целая подсистема защиты от атак заводится своим доменом со своей приёмкой, а не
+  // полем в чужом сообщении. Разрывы объявлены в proto/declared-breaks.yaml.
+  reserved 3;
+  reserved "requirements";
 }
 
 message InternalIpv4Address {
@@ -180,17 +197,26 @@ message ExternalIpv6Address {
 
   // Parameters of the allocated address. Same wire shape as for
   // ExternalIpv4Address, even if some attributes are not relevant for v6.
-  AddressRequirements requirements = 3;
+  // 3 — requirements, СНЯТО с контракта вместе с сообщением AddressRequirements.
+  //
+  // Сообщение несло РОВНО ДВА поля, и оба сняты, поэтому оставлять его значило бы
+  // держать пустую разновидность — тот же дефект, что у пустого варианта шлюза.
+  //
+  // Что было в этих полях:
+  //   - защита от распределённых атак: словарь допустимых значений в ОБЩЕМ фундаменте
+  //     называл имя конкретного ВНЕШНЕГО поставщика, то есть публичное поле опознавало
+  //     конкретную оснастку; при этом ни одна ветвь на значении не ветвилась —
+  //     принято-и-проигнорировано;
+  //   - возможность исходящей почты: у поля не было ни одного законного непустого
+  //     входа (любое непустое значение отвергалось всегда), то есть поле не несло
+  //     ничего.
+  //
+  // Целая подсистема защиты от атак заводится своим доменом со своей приёмкой, а не
+  // полем в чужом сообщении. Разрывы объявлены в proto/declared-breaks.yaml.
+  reserved 3;
+  reserved "requirements";
 }
 
-
-message AddressRequirements {
-  // DDoS protection provider ID.
-  string ddos_protection_provider = 1;
-
-  // Capability to send SMTP traffic.
-  string outgoing_smtp_capability = 2;
-}
 
 // DnsRecord used to live here, referenced only by the withdrawn `dns_records` field
 // above. With that gone nothing referenced it, and keeping it would advertise a shape

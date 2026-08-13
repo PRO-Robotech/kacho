@@ -418,12 +418,10 @@ variable "addresses" {
     external_ipv4 = optional(object({
       address      = optional(string)
       zone_id      = optional(string)
-      requirements = optional(object({ ddos_protection_provider = optional(string) }))
     }))
     external_ipv6 = optional(object({
       address      = optional(string)
       zone_id      = optional(string)
-      requirements = optional(object({ ddos_protection_provider = optional(string) }))
     }))
     internal_ipv4 = optional(object({
       subnet  = string

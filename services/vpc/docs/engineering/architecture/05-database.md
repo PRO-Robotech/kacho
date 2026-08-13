@@ -145,7 +145,7 @@ CIDR задаётся якорем на Create (immutable); дополнител
 id, project_id                  TEXT NOT NULL
 addr_type                      smallint  (1=ext, 2=int)
 ip_version                     smallint
-external_ipv4                  JSONB     (address, zone_id, address_pool_id, requirements)
+external_ipv4                  JSONB     (address, zone_id, address_pool_id) — блок требований снят с контракта
 external_ipv6                  JSONB
 internal_ipv4                  JSONB     (address, subnet_id)
 internal_ipv6                  JSONB     (address, subnet_id)

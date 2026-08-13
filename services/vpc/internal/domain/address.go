@@ -25,9 +25,8 @@ const (
 
 // ExternalIpv4Spec — параметры внешнего IPv4-адреса.
 type ExternalIpv4Spec struct {
-	Address      string               `json:"address"` // например 203.0.113.X
-	ZoneID       string               `json:"zone_id"`
-	Requirements *AddressRequirements `json:"requirements,omitempty"`
+	Address string `json:"address"` // например 203.0.113.X
+	ZoneID  string `json:"zone_id"`
 	// AddressPoolID — internal-only поле, заполняется allocator'ом при
 	// AllocateExternalIP. Держит UNIQUE (pool_id, ip) constraint и observability
 	// ("из какого пула выделили"). Не сериализуется в публичный VPC API
@@ -35,21 +34,13 @@ type ExternalIpv4Spec struct {
 	AddressPoolID string `json:"address_pool_id,omitempty"`
 }
 
-// AddressRequirements — требования к выделенному внешнему IP (DDoS-provider,
-// возможность отправки SMTP).
-type AddressRequirements struct {
-	DdosProtectionProvider string `json:"ddos_protection_provider,omitempty"`
-	OutgoingSmtpCapability string `json:"outgoing_smtp_capability,omitempty"`
-}
-
-// Equal — deep equality. nil/nil считается равным.
-func (r *AddressRequirements) Equal(other *AddressRequirements) bool {
-	if r == nil || other == nil {
-		return r == other
-	}
-	return r.DdosProtectionProvider == other.DdosProtectionProvider &&
-		r.OutgoingSmtpCapability == other.OutgoingSmtpCapability
-}
+// Тип требований к внешнему адресу СНЯТ вместе с обоими своими полями.
+//
+// Полей было ровно два, и оба сняты с контракта: словарь защиты от распределённых
+// атак в общем фундаменте называл конкретного ВНЕШНЕГО поставщика и ни на чём не
+// ветвился, а у возможности исходящей почты не было ни одного законного непустого
+// входа. Оставить тип значило бы держать пустую структуру, которая ничего не
+// выражает, — и поле-ссылку на неё в двух спецификациях.
 
 // Equal — deep equality для ExternalIpv4Spec. nil/nil — равны.
 func (s *ExternalIpv4Spec) Equal(other *ExternalIpv4Spec) bool {
@@ -58,7 +49,6 @@ func (s *ExternalIpv4Spec) Equal(other *ExternalIpv4Spec) bool {
 	}
 	return s.Address == other.Address &&
 		s.ZoneID == other.ZoneID &&
-		s.Requirements.Equal(other.Requirements) &&
 		s.AddressPoolID == other.AddressPoolID
 }
 
@@ -94,9 +84,8 @@ func (s *InternalIpv6Spec) Equal(other *InternalIpv6Spec) bool {
 // Адрес выделяется sparse counter-based аллокатором из глобального AddressPool
 // с v6 CIDR.
 type ExternalIpv6Spec struct {
-	Address      string               `json:"address"` // например 2001:db8::5
-	ZoneID       string               `json:"zone_id"`
-	Requirements *AddressRequirements `json:"requirements,omitempty"`
+	Address string `json:"address"` // например 2001:db8::5
+	ZoneID  string `json:"zone_id"`
 	// AddressPoolID — internal-only (как у v4 spec); заполняется allocator'ом
 	// при AllocateExternalIPv6, держит UNIQUE (pool_id, ip) constraint и
 	// observability.
@@ -110,7 +99,6 @@ func (s *ExternalIpv6Spec) Equal(other *ExternalIpv6Spec) bool {
 	}
 	return s.Address == other.Address &&
 		s.ZoneID == other.ZoneID &&
-		s.Requirements.Equal(other.Requirements) &&
 		s.AddressPoolID == other.AddressPoolID
 }
 

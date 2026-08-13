@@ -112,7 +112,7 @@ External (project-scoped public IP) или internal (IP в Subnet).
 | `project_id` | text NOT NULL | |
 | `addr_type` | smallint | 0=unspec, 1=external, 2=internal |
 | `ip_version` | smallint | |
-| `external_ipv4` | jsonb | `{address, zone_id, address_pool_id, requirements}` |
+| `external_ipv4` | jsonb | `{address, zone_id, address_pool_id}` — блок требований снят с контракта вместе с обоими полями |
 | `internal_ipv4` | jsonb | `{address, subnet_id}` |
 | `internal_ipv6` | jsonb | `{address, subnet_id}` (oneof `Address.internal_ipv6_address` — `{address, oneof scope{subnet_id}}`) |
 | `internal_subnet_id` | text computed | derived из `internal_ipv4->>'subnet_id'` **ИЛИ** `internal_ipv6->>'subnet_id'` — для UNIQUE per subnet + FK `addresses_internal_subnet_fkey` (и v4-, и v6-internal-адрес блокирует свою подсеть) |

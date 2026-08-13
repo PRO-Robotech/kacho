@@ -270,30 +270,6 @@ var allowedDdosProviders = map[string]struct{}{
 	"advanced": {},
 }
 
-// DdosProvider проверяет ddos_protection_provider — whitelist.
-func DdosProvider(field, value string) error {
-	if _, ok := allowedDdosProviders[value]; !ok {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, "Invalid DDoS protection provider.").
-			Err()
-	}
-	return nil
-}
-
-// SmtpCapability проверяет outgoing_smtp_capability.
-//
-// Контракт валидации: отвергаем любое непустое значение с
-// "Illegal argument Invalid SMTP capability." (обычным tenant'ам нельзя ее
-// включить). Empty string — OK.
-func SmtpCapability(field, value string) error { //nolint:revive // стабильное имя публичного API (потребляется сервисами); переименование — ломающее изменение
-	if value != "" {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, "Invalid SMTP capability.").
-			Err()
-	}
-	return nil
-}
-
 // UpdateMask проверяет, что все field-ы в mask содержатся в known.
 //
 // Используется в *.Update методах: каждый сервис указывает свой набор

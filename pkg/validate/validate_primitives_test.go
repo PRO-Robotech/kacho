@@ -270,42 +270,6 @@ func TestDhcpDomainName(t *testing.T) {
 	}
 }
 
-func TestDdosProvider(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{name: "empty-ok", input: ""},
-		{name: "qrator-ok", input: "qrator"},
-		{name: "advanced-ok", input: "advanced"},
-		{name: "unknown-rejected", input: "acme", wantErr: true},
-		{name: "case-sensitive-rejected", input: "Qrator", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := DdosProvider("ddos_protection_provider", tc.input)
-			if tc.wantErr {
-				requireInvalidArgument(t, err, tc.input)
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.input, err)
-			}
-		})
-	}
-}
-
-func TestSmtpCapability(t *testing.T) {
-	// Контракт: любое непустое значение отвергается (tenant не может включить SMTP).
-	if err := SmtpCapability("outgoing_smtp_capability", ""); err != nil {
-		t.Fatalf("empty must be OK, got: %v", err)
-	}
-	for _, v := range []string{"enabled", "true", "1", "on"} {
-		requireInvalidArgument(t, SmtpCapability("outgoing_smtp_capability", v), v)
-	}
-}
-
 func TestUpdateMask(t *testing.T) {
 	known := map[string]struct{}{"name": {}, "description": {}, "labels": {}}
 
@@ -332,3 +296,9 @@ func TestUpdateMask(t *testing.T) {
 		requireInvalidArgument(t, UpdateMask("update_mask", []string{"zone_id"}, known), "zone_id")
 	})
 }
+
+// Пробы проверок защиты от распределённых атак и возможности исходящей почты СНЯТЫ
+// вместе с самими проверками: их единственный потребитель — сервис сети — снял оба поля
+// с контракта. Словарь допустимых значений первой называл имя конкретного ВНЕШНЕГО
+// поставщика, то есть публичное поле опознавало конкретную оснастку, и при этом ни одна
+// ветвь на значении не ветвилась. У второй не было ни одного законного непустого входа.

@@ -829,7 +829,6 @@ run "external_address_fields_survive_assembly" {
         external_ipv4 = {
           address      = "203.0.113.7"
           zone_id      = "ru-central1-a"
-          requirements = { ddos_protection_provider = "qrator" }
         }
       }
       "probe-vip-global" = {
@@ -846,19 +845,11 @@ run "external_address_fields_survive_assembly" {
     condition     = kacho_vpc_address.external_ipv4["probe-vip"].external_ipv4.zone_id == "ru-central1-a"
     error_message = "зона внешнего адреса потеряна при сборке"
   }
-  assert {
-    condition     = kacho_vpc_address.external_ipv4["probe-vip"].external_ipv4.requirements.ddos_protection_provider == "qrator"
-    error_message = "требования к адресу потеряны при сборке"
-  }
   # Пустая зона законна — это адрес из глобального пула. Парный контроль к утверждению выше:
   # без него «зона доехала» зеленело бы и на модуле, который подставляет зону сам.
   assert {
     condition     = kacho_vpc_address.external_ipv4["probe-vip-global"].external_ipv4.zone_id == null
     error_message = "модуль подставил зону адресу, для которого её не называли"
-  }
-  assert {
-    condition     = kacho_vpc_address.external_ipv4["probe-vip-global"].external_ipv4.requirements == null
-    error_message = "модуль заказал требования к адресу, о которых не просили"
   }
 }
 

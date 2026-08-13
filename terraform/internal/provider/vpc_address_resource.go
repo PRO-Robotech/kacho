@@ -70,19 +70,14 @@ type addressModel struct {
 // полей, и совпадение не случайно — контракт прямо объявляет внешний v6 зеркалом v4.
 // Разойдутся наборы — разойдутся и типы.
 type addrExternalModel struct {
-	Address      types.String `tfsdk:"address"`
-	ZoneID       types.String `tfsdk:"zone_id"`
-	Requirements types.Object `tfsdk:"requirements"`
+	Address types.String `tfsdk:"address"`
+	ZoneID  types.String `tfsdk:"zone_id"`
 }
 
 // addrInternalModel — внутренний адрес, v4 и v6 тоже одинаковы по форме.
 type addrInternalModel struct {
 	Address  types.String `tfsdk:"address"`
 	SubnetID types.String `tfsdk:"subnet_id"`
-}
-
-type addrRequirementsModel struct {
-	DdosProtectionProvider types.String `tfsdk:"ddos_protection_provider"`
 }
 
 // addrUsedByModel — кто держит адрес. Только чтение.
@@ -120,15 +115,10 @@ func (r *addressResource) Configure(_ context.Context, req resource.ConfigureReq
 // молча не собрался бы, и спецификация пропала бы из состояния — то есть ресурс выглядел бы
 // как адрес без вида.
 
-func addrRequirementsAttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{"ddos_protection_provider": types.StringType}
-}
-
 func addrExternalAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"address":      types.StringType,
-		"zone_id":      types.StringType,
-		"requirements": types.ObjectType{AttrTypes: addrRequirementsAttrTypes()},
+		"address": types.StringType,
+		"zone_id": types.StringType,
 	}
 }
 
@@ -180,18 +170,6 @@ func addrExternalSpecAttribute(family, doc string) schema.SingleNestedAttribute 
 				MarkdownDescription: "Зона, из которой берётся адрес. **Пустая зона законна** " +
 					"и означает адрес из глобального пула, зоне не принадлежащий, — в отличие от " +
 					"подсети, где якорь размещения обязателен."},
-			"requirements": schema.SingleNestedAttribute{Optional: true,
-				MarkdownDescription: "Требования к выдаваемому адресу.\n\n" +
-					"Контракт несёт здесь ещё и разрешение на исходящий SMTP, но край принимает " +
-					"по нему ТОЛЬКО пустое значение — то есть выбора нет, и ручки, у которой " +
-					"один законный ответ, в провайдере тоже нет. Появится выбор — появится поле.",
-				Attributes: map[string]schema.Attribute{
-					"ddos_protection_provider": schema.StringAttribute{Optional: true,
-						MarkdownDescription: "Поставщик защиты от DDoS. Список ведёт край; на " +
-							"2026-08-12 это `qrator` и `advanced` либо пусто. Своей копии списка " +
-							"провайдер не держит намеренно: негодное значение край отвергает " +
-							"синхронно и называет поле, а вторая копия разошлась бы с первой молча."},
-				}},
 		},
 	}
 }
@@ -395,24 +373,10 @@ func addrInternalSpecOf(ctx context.Context, o types.Object) (*addrInternalModel
 	return &m, nil
 }
 
-// addrRequirementsToProto — требования к адресу. Пустое и неизвестное дают nil: край отличает
-// «не задано» от «задано пустым», и слать пустое вместо отсутствия значило бы объявить
-// требования там, где их не заказывали.
-//
-// Неразобранный блок — ОТКАЗ, а не nil. Вернуть здесь nil значило бы завести адрес без
-// защиты, которую у него попросили, и отчитаться успехом: заказанное молча не применилось бы,
-// а узналось бы это по последствиям.
-func addrRequirementsToProto(ctx context.Context, o types.Object) (*vpcv1.AddressRequirements, error) {
-	if o.IsNull() || o.IsUnknown() {
-		return nil, nil
-	}
-	var m addrRequirementsModel
-	if diags := o.As(ctx, &m, basetypes.ObjectAsOptions{}); diags.HasError() {
-		return nil, fmt.Errorf("requirements: блок задан, но его значение не прочиталось: %v",
-			diags.Errors())
-	}
-	return &vpcv1.AddressRequirements{DdosProtectionProvider: m.DdosProtectionProvider.ValueString()}, nil
-}
+// Преобразование требований СНЯТО вместе с самим блоком: оба его поля сняты с
+// контракта (словарь защиты от атак в общем фундаменте называл конкретного внешнего
+// поставщика и ни на чём не ветвился; у возможности исходящей почты не было ни одного
+// законного непустого входа), а сообщение с нулём полей — пустая разновидность.
 
 // addressCreateBody собирает запрос создания и ВЫБИРАЕТ ветку по своему условию.
 //
@@ -435,15 +399,10 @@ func addressCreateBody(ctx context.Context, plan *addressModel) (*vpcv1.CreateAd
 		if err != nil || s == nil {
 			return nil, addrSpecDecodeErr("external_ipv4", err)
 		}
-		reqs, err := addrRequirementsToProto(ctx, s.Requirements)
-		if err != nil {
-			return nil, addrSpecDecodeErr("external_ipv4", err)
-		}
 		body.AddressSpec = &vpcv1.CreateAddressRequest_ExternalIpv4AddressSpec{
 			ExternalIpv4AddressSpec: &vpcv1.ExternalIpv4AddressSpec{
-				Address:      s.Address.ValueString(),
-				ZoneId:       s.ZoneID.ValueString(),
-				Requirements: reqs,
+				Address: s.Address.ValueString(),
+				ZoneId:  s.ZoneID.ValueString(),
 			}}
 	case !plan.InternalIPv4.IsNull():
 		s, err := addrInternalSpecOf(ctx, plan.InternalIPv4)
@@ -472,15 +431,10 @@ func addressCreateBody(ctx context.Context, plan *addressModel) (*vpcv1.CreateAd
 		if err != nil || s == nil {
 			return nil, addrSpecDecodeErr("external_ipv6", err)
 		}
-		reqs, err := addrRequirementsToProto(ctx, s.Requirements)
-		if err != nil {
-			return nil, addrSpecDecodeErr("external_ipv6", err)
-		}
 		body.AddressSpec = &vpcv1.CreateAddressRequest_ExternalIpv6AddressSpec{
 			ExternalIpv6AddressSpec: &vpcv1.ExternalIpv6AddressSpec{
-				Address:      s.Address.ValueString(),
-				ZoneId:       s.ZoneID.ValueString(),
-				Requirements: reqs,
+				Address: s.Address.ValueString(),
+				ZoneId:  s.ZoneID.ValueString(),
 			}}
 	default:
 		return nil, fmt.Errorf("не задана ни одна спецификация адреса. Вид выбирается ровно " +
@@ -538,11 +492,8 @@ type addressWire struct {
 }
 
 type addrExternalWire struct {
-	Address      string `json:"address"`
-	ZoneID       string `json:"zoneId"`
-	Requirements *struct {
-		DdosProtectionProvider string `json:"ddosProtectionProvider"`
-	} `json:"requirements"`
+	Address string `json:"address"`
+	ZoneID  string `json:"zoneId"`
 }
 
 type addrInternalWire struct {
@@ -551,17 +502,6 @@ type addrInternalWire struct {
 }
 
 func (w *addrExternalWire) toObject() (types.Object, error) {
-	req := types.ObjectNull(addrRequirementsAttrTypes())
-	if w.Requirements != nil {
-		v, diags := types.ObjectValue(addrRequirementsAttrTypes(), map[string]attr.Value{
-			"ddos_protection_provider": strOrNull(w.Requirements.DdosProtectionProvider),
-		})
-		if diags.HasError() {
-			return types.ObjectNull(addrExternalAttrTypes()),
-				fmt.Errorf("требования края не укладываются в объект: %v", diags.Errors())
-		}
-		req = v
-	}
 	// `address` пишется ЗНАЧЕНИЕМ даже когда край вернул пустую строку, а `zone_id` — null.
 	//
 	// Разница не косметическая. `address` — вычисляемое поле: null в состоянии на следующем
@@ -570,9 +510,8 @@ func (w *addrExternalWire) toObject() (types.Object, error) {
 	// адрес пересоздавался бы каждым apply. У `zone_id` вычисляемости нет, и пустая строка
 	// вместо null разошлась бы с настройкой, где зона не задана.
 	obj, diags := types.ObjectValue(addrExternalAttrTypes(), map[string]attr.Value{
-		"address":      types.StringValue(w.Address),
-		"zone_id":      strOrNull(w.ZoneID),
-		"requirements": req,
+		"address": types.StringValue(w.Address),
+		"zone_id": strOrNull(w.ZoneID),
 	})
 	if diags.HasError() {
 		return types.ObjectNull(addrExternalAttrTypes()),

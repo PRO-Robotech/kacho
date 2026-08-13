@@ -660,9 +660,7 @@ type ExternalIpv4AddressSpec struct {
 	// Value of address.
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"` // if unspecified, one will be automatically allocated from other params
 	// Availability zone from which the address will be allocated.
-	ZoneId string `protobuf:"bytes,2,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"` // only if address unspecified
-	// Parameters of the allocated address, for example DDoS Protection.
-	Requirements  *AddressRequirements `protobuf:"bytes,3,opt,name=requirements,proto3" json:"requirements,omitempty"`
+	ZoneId        string `protobuf:"bytes,2,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"` // only if address unspecified
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -709,13 +707,6 @@ func (x *ExternalIpv4AddressSpec) GetZoneId() string {
 		return x.ZoneId
 	}
 	return ""
-}
-
-func (x *ExternalIpv4AddressSpec) GetRequirements() *AddressRequirements {
-	if x != nil {
-		return x.Requirements
-	}
-	return nil
 }
 
 type InternalIpv4AddressSpec struct {
@@ -879,11 +870,7 @@ type ExternalIpv6AddressSpec struct {
 	// Length cap is generous since v6 textual form can reach 39 chars.
 	Address string `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
 	// Availability zone from which the address will be allocated.
-	ZoneId string `protobuf:"bytes,2,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"` // only if address unspecified
-	// Parameters of the allocated address. Same shape as v4 even if some
-	// attributes (e.g. SMTP capability) may not apply for v6 — kept symmetric
-	// for client-side ergonomics.
-	Requirements  *AddressRequirements `protobuf:"bytes,3,opt,name=requirements,proto3" json:"requirements,omitempty"`
+	ZoneId        string `protobuf:"bytes,2,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"` // only if address unspecified
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -930,13 +917,6 @@ func (x *ExternalIpv6AddressSpec) GetZoneId() string {
 		return x.ZoneId
 	}
 	return ""
-}
-
-func (x *ExternalIpv6AddressSpec) GetRequirements() *AddressRequirements {
-	if x != nil {
-		return x.Requirements
-	}
-	return nil
 }
 
 type CreateAddressMetadata struct {
@@ -1415,11 +1395,10 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0e\n" +
 	"\faddress_specJ\x04\b\a\x10\n" +
-	"J\x04\b\v\x10\fR\x10dns_record_specs\"\x99\x01\n" +
+	"J\x04\b\v\x10\fR\x10dns_record_specs\"`\n" +
 	"\x17ExternalIpv4AddressSpec\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
-	"\azone_id\x18\x02 \x01(\tR\x06zoneId\x12K\n" +
-	"\frequirements\x18\x03 \x01(\v2'.kacho.cloud.vpc.v1.AddressRequirementsR\frequirements\"u\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"u\n" +
 	"\x17InternalIpv4AddressSpec\x12\"\n" +
 	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=16R\aaddress\x12'\n" +
 	"\tsubnet_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bsubnetIdB\r\n" +
@@ -1427,11 +1406,10 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\x17InternalIpv6AddressSpec\x12\"\n" +
 	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=16R\aaddress\x12'\n" +
 	"\tsubnet_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bsubnetIdB\r\n" +
-	"\x05scope\x12\x04\xc0\xc11\x01\"\xad\x01\n" +
+	"\x05scope\x12\x04\xc0\xc11\x01\"t\n" +
 	"\x17ExternalIpv6AddressSpec\x12\"\n" +
 	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=45R\aaddress\x12!\n" +
-	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneId\x12K\n" +
-	"\frequirements\x18\x03 \x01(\v2'.kacho.cloud.vpc.v1.AddressRequirementsR\frequirements\"6\n" +
+	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"6\n" +
 	"\x15CreateAddressMetadata\x12\x1d\n" +
 	"\n" +
 	"address_id\x18\x01 \x01(\tR\taddressId\"\x9d\x04\n" +
@@ -1528,9 +1506,8 @@ var file_kacho_cloud_vpc_v1_address_service_proto_goTypes = []any{
 	nil,                                   // 18: kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntry
 	nil,                                   // 19: kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
 	(*Address)(nil),                       // 20: kacho.cloud.vpc.v1.Address
-	(*AddressRequirements)(nil),           // 21: kacho.cloud.vpc.v1.AddressRequirements
-	(*fieldmaskpb.FieldMask)(nil),         // 22: google.protobuf.FieldMask
-	(*operation.Operation)(nil),           // 23: kacho.cloud.operation.Operation
+	(*fieldmaskpb.FieldMask)(nil),         // 21: google.protobuf.FieldMask
+	(*operation.Operation)(nil),           // 22: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	20, // 0: kacho.cloud.vpc.v1.ListAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.Address
@@ -1540,28 +1517,26 @@ var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
 	8,  // 4: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv4_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv4AddressSpec
 	9,  // 5: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv6AddressSpec
 	10, // 6: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
-	21, // 7: kacho.cloud.vpc.v1.ExternalIpv4AddressSpec.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
-	21, // 8: kacho.cloud.vpc.v1.ExternalIpv6AddressSpec.requirements:type_name -> kacho.cloud.vpc.v1.AddressRequirements
-	22, // 9: kacho.cloud.vpc.v1.UpdateAddressRequest.update_mask:type_name -> google.protobuf.FieldMask
-	19, // 10: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
-	23, // 11: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 12: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
-	2,  // 13: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
-	6,  // 14: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
-	12, // 15: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
-	14, // 16: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
-	16, // 17: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
-	20, // 18: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
-	3,  // 19: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
-	23, // 20: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
-	23, // 21: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
-	23, // 22: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
-	17, // 23: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
-	18, // [18:24] is the sub-list for method output_type
-	12, // [12:18] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	21, // 7: kacho.cloud.vpc.v1.UpdateAddressRequest.update_mask:type_name -> google.protobuf.FieldMask
+	19, // 8: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
+	22, // 9: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 10: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
+	2,  // 11: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
+	6,  // 12: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
+	12, // 13: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
+	14, // 14: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
+	16, // 15: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
+	20, // 16: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
+	3,  // 17: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
+	22, // 18: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
+	22, // 19: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
+	22, // 20: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
+	17, // 21: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_address_service_proto_init() }

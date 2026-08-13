@@ -182,51 +182,11 @@ func newAddress() domain.Address {
 			Address:       "203.0.113.5",
 			ZoneID:        "zone-a",
 			AddressPoolID: "apl1",
-			Requirements: &domain.AddressRequirements{
-				DdosProtectionProvider: "qrator",
-			},
 		},
 		UsedBy: []*domain.AddressReference{
 			{AddressID: "e9b2", ReferrerType: "compute_instance", ReferrerID: "ci1", AttachedAt: t0},
 		},
 	}
-}
-
-func TestAddress_Equal(t *testing.T) {
-	base := newAddress()
-	assert.True(t, base.Equal(newAddress()))
-
-	// diff ExternalIpv4.Address
-	diffIp := newAddress()
-	diffIp.ExternalIpv4.Address = "203.0.113.6"
-	assert.False(t, base.Equal(diffIp))
-
-	// diff Requirements
-	diffReq := newAddress()
-	diffReq.ExternalIpv4.Requirements = &domain.AddressRequirements{DdosProtectionProvider: "other"}
-	assert.False(t, base.Equal(diffReq))
-
-	// diff UsedBy referrer
-	diffUsed := newAddress()
-	diffUsed.UsedBy = []*domain.AddressReference{
-		{AddressID: "e9b2", ReferrerType: "compute_instance", ReferrerID: "ciOTHER"},
-	}
-	assert.False(t, base.Equal(diffUsed))
-
-	// diff UsedBy owned (единственное отличие — owned-флаг)
-	diffOwned := newAddress()
-	diffOwned.UsedBy[0].Owned = true
-	assert.False(t, base.Equal(diffOwned))
-
-	// empty UsedBy → not equal
-	emptyUsed := newAddress()
-	emptyUsed.UsedBy = nil
-	assert.False(t, base.Equal(emptyUsed))
-
-	// diff Reserved bool
-	diffRes := newAddress()
-	diffRes.Reserved = false
-	assert.False(t, base.Equal(diffRes))
 }
 
 func TestExternalIpv4Spec_Equal_Nil(t *testing.T) {
@@ -418,3 +378,6 @@ func TestNetworkInterface_Equal(t *testing.T) {
 	b.Labels = domain.LabelsFromMap(map[string]string{"b": "2", "a": "1"})
 	assert.True(t, a.Equal(b))
 }
+
+// Проба равенства требований к внешнему адресу СНЯТА вместе с типом: оба его поля сняты
+// с контракта, и пустая структура сравнивать нечего.

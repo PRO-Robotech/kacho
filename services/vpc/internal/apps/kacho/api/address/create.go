@@ -29,15 +29,8 @@ import (
 
 // ExternalAddrSpec — спецификация внешнего адреса.
 type ExternalAddrSpec struct {
-	Address      string
-	ZoneID       string
-	Requirements *AddrRequirements
-}
-
-// AddrRequirements — параметры внешнего IP (DDoS provider, SMTP capability).
-type AddrRequirements struct {
-	DdosProtectionProvider string
-	OutgoingSmtpCapability string
+	Address string
+	ZoneID  string
 }
 
 // InternalAddrSpec — спецификация внутреннего адреса (v4/v6 одинаковый shape).
@@ -173,23 +166,6 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 	}
 	if err := serviceerr.FromValidation(addrForValidate.Validate()); err != nil {
 		return nil, err
-	}
-
-	// requirements.ddos_protection_provider — только из whitelist;
-	// requirements.outgoing_smtp_capability — только пустое.
-	if in.ExternalSpec != nil && in.ExternalSpec.Requirements != nil {
-		if err := corevalidate.DdosProvider(
-			"external_ipv4_address_spec.requirements.ddos_protection_provider",
-			in.ExternalSpec.Requirements.DdosProtectionProvider,
-		); err != nil {
-			return nil, err
-		}
-		if err := corevalidate.SmtpCapability(
-			"external_ipv4_address_spec.requirements.outgoing_smtp_capability",
-			in.ExternalSpec.Requirements.OutgoingSmtpCapability,
-		); err != nil {
-			return nil, err
-		}
 	}
 
 	// Явный внешний адрес: формат и семейство проверяются СИНХРОННО, первым
@@ -396,18 +372,6 @@ func (u *CreateAddressUseCase) validateInternalIPv6InSubnet(ctx context.Context,
 	)
 }
 
-// mapRequirements — общий маппинг spec-Requirements → domain для external-family
-// (v4 и v6 несут одинаковый AddrRequirements). nil → nil (поле остается пустым).
-func mapRequirements(r *AddrRequirements) *domain.AddressRequirements {
-	if r == nil {
-		return nil
-	}
-	return &domain.AddressRequirements{
-		DdosProtectionProvider: r.DdosProtectionProvider,
-		OutgoingSmtpCapability: r.OutgoingSmtpCapability,
-	}
-}
-
 // validateExternalZone — placement-coherence existence-check `zone_id`
 // external-адреса через geo (зеркало subnet.validateZoneID). Условная:
 //   - пустой zone_id → пропуск (anycast из global-пула, зоне-независим — в
@@ -464,9 +428,8 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 		a.Type = domain.AddressTypeExternal
 		a.IpVersion = domain.IpVersionIPv4
 		a.ExternalIpv4 = &domain.ExternalIpv4Spec{
-			Address:      in.ExternalSpec.Address,
-			ZoneID:       in.ExternalSpec.ZoneID,
-			Requirements: mapRequirements(in.ExternalSpec.Requirements),
+			Address: in.ExternalSpec.Address,
+			ZoneID:  in.ExternalSpec.ZoneID,
 		}
 	case in.InternalSpec != nil:
 		a.Type = domain.AddressTypeInternal
@@ -494,9 +457,8 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 		a.Type = domain.AddressTypeExternal
 		a.IpVersion = domain.IpVersionIPv6
 		a.ExternalIpv6 = &domain.ExternalIpv6Spec{
-			Address:      in.ExternalIpv6Spec.Address,
-			ZoneID:       in.ExternalIpv6Spec.ZoneID,
-			Requirements: mapRequirements(in.ExternalIpv6Spec.Requirements),
+			Address: in.ExternalIpv6Spec.Address,
+			ZoneID:  in.ExternalIpv6Spec.ZoneID,
 		}
 	default:
 		// Ни одна ветвь oneof не выбрана. Раньше сюда падала внешняя IPv6 —
