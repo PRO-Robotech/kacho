@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
 // ErrHeldByAnotherNode — машину исполняет другой узел, и его аренда жива.
@@ -100,24 +98,3 @@ func (r *InstanceRepo) ReleaseInstance(ctx context.Context, instanceID, nodeID s
 	}
 	return nil
 }
-
-// BindingOf возвращает действующую привязку машины либо nil.
-//
-// Отдаётся вызывающему для внутренней проекции — на публичную идентификатор
-// узла не выходит никогда.
-func (r *InstanceRepo) BindingOf(ctx context.Context, instanceID string) (*NodeBinding, error) {
-	const q = `SELECT instance_id, node_id, claimed_seq_no, lease_until
-		         FROM instance_node_bindings WHERE instance_id = $1`
-	var b NodeBinding
-	err := r.pool.QueryRow(ctx, q, instanceID).
-		Scan(&b.InstanceID, &b.NodeID, &b.ClaimedSeqNo, &b.LeaseUntil)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, wrapPgErr(err, "Instance", instanceID)
-	}
-	return &b, nil
-}
-
-var _ = ports.ErrInternal

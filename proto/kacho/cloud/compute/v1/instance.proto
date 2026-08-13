@@ -102,7 +102,6 @@ message Instance {
   // sagas + transition to RUNNING are a follow-on, COMP-2).
   Status status = 10;
 
-
   // Output-only launch mirrors — materialized by the COMP-2 attach sagas; empty in
   // COMP-1, which persists the durable record without materialize.
   AttachedDisk boot_disk = 12;
@@ -111,7 +110,6 @@ message Instance {
 
   // A domain name of the instance. Output-only (server-derived).
   string fqdn = 16;
-
 
   // Guaranteed CPU baseline per vCPU, in percent.
   //   0        = best-effort / burstable (no guarantee);
@@ -176,7 +174,6 @@ message Instance {
   reserved "metadata", "network_settings", "filesystems", "local_disks",
     "serial_port_settings", "maintenance_policy", "maintenance_grace_period",
     "hardware_generation";
-
 
   // Ключи входа гостя, действующие на этой машине.
   //
@@ -318,21 +315,6 @@ enum RestartPolicy {
   ALWAYS = 3;
 }
 
-message Resources {
-  // The amount of memory available to the instance, specified in bytes.
-  int64 memory = 1;
-
-  // The number of cores available to the instance.
-  int64 cores = 2;
-
-  // Baseline level of CPU performance with the ability to burst performance above that baseline level.
-  // This field sets baseline performance for each core.
-  int64 core_fraction = 3;
-
-  // The number of GPUs available to the instance.
-  int64 gpus = 4;
-}
-
 message AttachedDisk {
   enum Mode {
     MODE_UNSPECIFIED = 0;
@@ -362,49 +344,9 @@ message AttachedDisk {
   string volume_id = 4;
 }
 
-message AttachedLocalDisk {
-  // Size of the disk, specified in bytes.
-  int64 size = 1;
-
-  // Serial number that is reflected into the /dev/disk/by-id/ tree
-  // of a Linux operating system running within the instance.
-  //
-  // This value can be used to reference the device for mounting, resizing, and so on, from within the instance.
-  string device_name = 2;
-
-  oneof type {
-    // Local disk configuration
-    PhysicalLocalDisk physical_local_disk = 3;
-  }
-}
-
 message PhysicalLocalDisk {
   // Key encryption key info.
   KMSKey kms_key = 1;
-}
-
-message AttachedFilesystem {
-  enum Mode {
-    MODE_UNSPECIFIED = 0;
-
-    // Read-only access.
-    READ_ONLY = 1;
-
-    // Read/Write access.
-    READ_WRITE = 2;
-  }
-
-  // Access mode to the filesystem.
-  Mode mode = 1;
-
-  // Name of the device representing the filesystem on the instance.
-  //
-  // The name should be used for referencing the filesystem from within the instance
-  // when it's being mounted, resized etc.
-  string device_name = 2;
-
-  // ID of the filesystem that is attached to the instance.
-  string filesystem_id = 3;
 }
 
 message NetworkInterface {
@@ -485,11 +427,6 @@ enum IpVersion {
   IPV6 = 2;
 }
 
-message SchedulingPolicy {
-  // True for short-lived compute instances. For more information, see [Preemptible VMs](/docs/compute/concepts/preemptible-vm).
-  bool preemptible = 1;
-}
-
 message NetworkSettings {
   enum Type {
     TYPE_UNSPECIFIED = 0;
@@ -506,11 +443,6 @@ message NetworkSettings {
 
   // Network Type
   Type type = 1;
-}
-
-message GpuSettings {
-  // Attach instance to specified GPU cluster.
-  string gpu_cluster_id = 1;
 }
 
 // PlacementPolicy WAS DECLARED HERE AND IS WITHDRAWN WHOLE — it was an orphan.

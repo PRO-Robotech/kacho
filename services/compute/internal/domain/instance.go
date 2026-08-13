@@ -200,8 +200,6 @@ type Instance struct {
 	Status       InstanceStatus
 	StatusReason string
 
-	// Metadata — legacy free-form map (только на FULL view; back-compat).
-	Metadata map[string]string
 	Hostname string
 	FQDN     string
 

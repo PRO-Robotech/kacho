@@ -784,10 +784,10 @@ CASES.append(_unsupported_update_field_case(
     "ключи не доставляются в гостя; прежняя метка «вступит в силу при следующей загрузке» "
     "подтверждала приём того, чего не будет."))
 
-CASES.append(_unsupported_update_field_case(
-    "INST-RD-UPD-VAL-UNSUPPORTED-METADATA",
-    "metadata", "metadata", {"k": "v"},
-    "канал правки метаданных существует и живёт в отдельном RPC — :updateMetadata."))
+# Кейс про непринимаемое `metadata` СНЯТ вместе со своим предметом: поле снято с
+# контракта целиком (номер и имя зарезервированы), а прежнее обоснование отсылало
+# к RPC `:updateMetadata`, которого в контракте нет. Кейс, утверждающий отказ по
+# полю, которого сообщение не несёт, неконструируем by construction.
 
 CASES.append(_unsupported_update_field_case(
     "INST-RD-UPD-VAL-UNSUPPORTED-NETWORK-SETTINGS",

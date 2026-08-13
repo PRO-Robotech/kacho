@@ -3,8 +3,6 @@
 
 package domain
 
-import "fmt"
-
 // Пределы кратности повторяемых полей запроса создания машины.
 //
 // # Почему предел вообще нужен
@@ -75,45 +73,10 @@ const (
 // user-data, ключи, короткие пометки) и на три порядка ниже потолка поля БД.
 // 64 ключа — столько же, сколько у меток; длина ключа 128 байт.
 const (
-	// MaxInstanceMetadataKeys — предел числа ключей карты.
-	MaxInstanceMetadataKeys = 64
 	// MaxInstanceMetadataKeyLen — предел длины ключа в байтах.
 	MaxInstanceMetadataKeyLen = 128
-	// MaxInstanceMetadataBytes — предел СУММАРНОГО размера карты в байтах
-	// (сериализованное представление; тем же предикатом её меряет CHECK в БД).
-	MaxInstanceMetadataBytes = 256 * 1024
 )
 
-// ValidateInstanceMetadata проверяет бюджет свободной карты данных машины.
-//
-// Возвращает имя поля и человекочитаемую причину; в gRPC-статус их переводит
-// вызывающий слой (тон и код — по конвенции сервиса).
-//
-// Меряется СЕРИАЛИЗОВАННЫЙ размер («ключ=значение» плюс разделители) — тем же
-// предикатом, которым бюджет накопленной карты меряет CHECK в БД. Разойдись они,
-// синхронный отказ и отказ БД говорили бы о разном.
-func ValidateInstanceMetadata(m map[string]string) (field, reason string, ok bool) {
-	if len(m) > MaxInstanceMetadataKeys {
-		return "metadata", fmt.Sprintf("metadata must contain at most %d keys (got %d)",
-			MaxInstanceMetadataKeys, len(m)), false
-	}
-	total := 0
-	for k, v := range m {
-		if len(k) > MaxInstanceMetadataKeyLen {
-			return "metadata", fmt.Sprintf("metadata key must be at most %d bytes (got %d)",
-				MaxInstanceMetadataKeyLen, len(k)), false
-		}
-		total += len(k) + len(v) + metadataPairOverhead
-	}
-	if total > MaxInstanceMetadataBytes {
-		return "metadata", fmt.Sprintf("metadata must be at most %d bytes in total (got %d)",
-			MaxInstanceMetadataBytes, total), false
-	}
-	return "", "", true
-}
-
-// metadataPairOverhead — накладные байты одной пары в сериализованном виде
 // (кавычки, двоеточие, запятая). Учитываются, чтобы синхронная оценка не была
 // заметно ОПТИМИСТИЧНЕЕ той, что делает БД: иначе запрос проходил бы проверку и
 // падал на записи.
-const metadataPairOverhead = 6

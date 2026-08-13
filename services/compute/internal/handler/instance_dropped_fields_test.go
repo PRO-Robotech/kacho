@@ -86,9 +86,10 @@ var updateDroppedFieldCases = []struct {
 	{"ssh_public_keys", func(r *computev1.UpdateInstanceRequest) {
 		r.SshPublicKeys = []string{"ssh-ed25519 AAAA user@h"}
 	}},
-	{"metadata", func(r *computev1.UpdateInstanceRequest) {
-		r.Metadata = map[string]string{"k": "v"}
-	}},
+	// Поля `metadata` здесь БОЛЬШЕ НЕТ, и это не пропуск: оно снято с контракта
+	// целиком (номер и имя зарезервированы). Кейс, ставивший его, стал
+	// неконструируемым by construction — сообщение такого поля не несёт, — а
+	// значит проба про «непринимаемое поле» о нём высказаться не может.
 	{"network_settings", func(r *computev1.UpdateInstanceRequest) {
 		r.NetworkSettings = &computev1.NetworkSettings{Type: computev1.NetworkSettings_SOFTWARE_ACCELERATED}
 	}},

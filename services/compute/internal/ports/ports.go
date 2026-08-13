@@ -103,11 +103,6 @@ type InstanceRepo interface {
 	// release-payload delete-саги). Отсутствует → ErrNotFound. Ставится ПЕРЕД
 	// release'ом привязок, чтобы конкурентный AttachDisk-гейт видел DELETING и падал.
 	MarkDeleting(ctx context.Context, id string) (*domain.Instance, error)
-	// MergeMetadata атомарно применяет delete+upsert дельту к map metadata одним
-	// SQL-statement'ом (within-service-инвариант на DB-уровне, project-rule 10 —
-	// не Go-side read-modify-write, иначе second-writer-wins под concurrency).
-	// Возвращает обновлённую ВМ.
-	MergeMetadata(ctx context.Context, id string, del []string, upsert map[string]string) (*domain.Instance, error)
 	// Delete удаляет строку ВМ (+ outbox DELETED + FGA unregister-intent) в одной
 	// writer-tx. Это ФИНАЛЬНЫЙ шаг delete-саги: том/NIC-привязки уже сняты через
 	// storage.Detach/vpc.Detach в use-case ДО этого вызова (compute local

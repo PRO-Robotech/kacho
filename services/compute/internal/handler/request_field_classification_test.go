@@ -59,7 +59,7 @@ var rejectedRequestFields = map[protoreflect.FullName][]string{
 		"ssh_public_keys",
 	},
 	"kacho.cloud.compute.v1.UpdateInstanceRequest": {
-		"ssh_public_keys", "metadata", "network_settings",
+		"ssh_public_keys", "network_settings",
 		"maintenance_policy", "maintenance_grace_period", "serial_port_settings",
 	},
 	"kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest": {"port"},

@@ -416,8 +416,19 @@ message CreateInstanceRequest {
     (length) = "<=50"
   ];
 
-  // The metadata `key:value` pairs assigned to this instance (legacy free-form).
-  map<string, string> metadata = 8;
+  // Поле 8 держало свободную карту данных машины.
+  //
+  // СНЯТО С КОНТРАКТА, номер и имя зарезервированы навсегда. Оно принималось,
+  // писалось в базу и НЕ ВОЗВРАЩАЛОСЬ НИКОГДА: чтение снято вместе с полем
+  // ответа, правка — вместе со своим RPC, а приём остался. Вызывающий получал
+  // успех и был уверен, что его данные применены, — тот самый исход, которого
+  // быть не должно.
+  //
+  // Замены не требуется: конфигурация гостя едет `user_data` и выдаётся службой
+  // метаданных, а вторая карта, которую можно записать и нельзя прочитать, хуже
+  // отсутствующей.
+  reserved 8;
+  reserved "metadata";
 
   // Network interfaces to attach (F6 launch skeleton). Either this OR
   // use_default_network must be set; content is structurally validated in COMP-1,
@@ -562,8 +573,12 @@ message UpdateInstanceRequest {
     (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
   ];
 
-  // The metadata `key:value` pairs; the existing set is completely replaced (legacy).
-  map<string, string> metadata = 8;
+  // Поле 8 держало свободную карту данных машины — снято вместе с приёмом на
+  // создании. Отказ, стоявший здесь, отсылал к RPC `UpdateMetadata`, которого в
+  // контракте нет: вызывающему называли адрес возможности, которого не
+  // существует.
+  reserved 8;
+  reserved "metadata";
 
   // ID of the service account used inside the instance (LIVE-mutable, F4).
   string service_account_id = 9 [(length) = "<=50"];
@@ -626,17 +641,6 @@ message DeleteInstanceRequest {
 message DeleteInstanceMetadata {
   // ID of the instance that is being deleted.
   string instance_id = 1;
-}
-
-message UpdateInstanceMetadataRequest {
-  // ID of the instance that is being updated.
-  string instance_id = 1;
-
-  // List of keys to be deleted.
-  repeated string delete = 2;
-
-  // The metadata `key:value` pairs that will be added or updated to this instance.
-  map<string, string> upsert = 3;
 }
 
 message UpdateInstanceMetadataMetadata {
@@ -828,72 +832,14 @@ message DetachInstanceNetworkInterfaceMetadata {
   string nic_id = 3;
 }
 
-// Enables One-to-one NAT on the network interface.
-message AddInstanceOneToOneNatRequest {
-  // ID of the instance to enable One-to-One NAT on.
-  string instance_id = 1;
-
-  // The index of the network interface to enable One-to-One NAT on.
-  string network_interface_index = 2;
-
-  // The network address that is assigned to the instance for this network interface.
-  string internal_address = 3; // optional
-
-  // An external IP address configuration.
-  // If not specified, then this instance will have no external internet access.
-  OneToOneNatSpec one_to_one_nat_spec = 4;
-}
-
 message AddInstanceOneToOneNatMetadata {
   // ID of the instance.
   string instance_id = 1;
 }
 
-message RemoveInstanceOneToOneNatRequest {
-  // ID of the instance to remove One-to-one NAT.
-  string instance_id = 1;
-
-  // The index of the network interface to remove One-to-One NAT from.
-  string network_interface_index = 2;
-
-  // The network address that is assigned to the instance for this network interface.
-  string internal_address = 3; // optional
-}
-
 message RemoveInstanceOneToOneNatMetadata {
   // ID of the instance.
   string instance_id = 1;
-}
-
-message UpdateInstanceNetworkInterfaceRequest {
-  // ID of the instance that is being updated.
-  string instance_id = 1 [(required) = true];
-
-  // The index of the network interface to be updated.
-  string network_interface_index = 2 [(required) = true];
-
-  // Field mask that specifies which attributes of the instance should be updated.
-  google.protobuf.FieldMask update_mask = 3;
-
-  // ID of the subnet.
-  string subnet_id = 4;
-
-  // Primary IPv4 address that will be assigned to the instance for this network interface.
-  PrimaryAddressSpec primary_v4_address_spec = 5;
-
-  // Primary IPv6 address that will be assigned to the instance for this network interface. IPv6 not available yet.
-  PrimaryAddressSpec primary_v6_address_spec = 6;
-
-  // ID's of security groups attached to the interface.
-  repeated string security_group_ids = 7;
-}
-
-message UpdateInstanceNetworkInterfaceMetadata {
-  // ID of the instant network interface that is being updated.
-  string instance_id = 1;
-
-  // The index of the network interface.
-  string network_interface_index = 2;
 }
 
 message SimulateInstanceMaintenanceEventRequest {
@@ -933,37 +879,6 @@ message ListInstanceOperationsResponse {
   // for the [ListInstanceOperationsRequest.page_token] query parameter in the next list request.
   // Each subsequent list request will have its own [next_page_token] to continue paging through the results.
   string next_page_token = 2;
-}
-
-message ResourcesSpec {
-  // The amount of memory available to the instance, specified in bytes.
-  int64 memory = 1 [
-    (required) = true,
-    (value) = "<=274877906944"
-  ];
-
-  // The number of cores available to the instance.
-  int64 cores = 2 [
-    (required) = true,
-    (value) = "2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,40,44,48,52,56,60,64,68,72,76,80"
-  ];
-
-  // Baseline level of CPU performance with the ability to burst performance above that baseline level.
-  // This field sets baseline performance for each core.
-  //
-  // For example, if you need only 5% of the CPU performance, you can set core_fraction=5.
-  // For more information, see [Levels of core performance](/docs/compute/concepts/performance-levels).
-  int64 core_fraction = 3 [(value) = "0,5,20,50,100"];
-
-  // The number of GPUs available to the instance.
-  int64 gpus = 4 [(value) = "0,1,2,4"];
-
-  // Guaranteed CPU baseline per vCPU, in percent (INPUT sizing).
-  //   0        = best-effort / burstable (no guarantee);
-  //   1..100   = guaranteed percentage (CHECK 0..100; per-platform set).
-  // Mirrors the output [kacho.cloud.compute.v1.Instance.cpu_guarantee_percent].
-  // Sizing is mutable only while the instance is STOPPED (server-enforced).
-  int32 cpu_guarantee_percent = 5 [(value) = "0-100"];
 }
 
 message AttachedDiskSpec {
@@ -1127,69 +1042,6 @@ message OneToOneNatSpec {
   // stay reserved.
   reserved 3;
   reserved "dns_record_specs";
-}
-
-// DnsRecordSpec used to live here, referenced only by the two withdrawn
-// `dns_record_specs` fields above. With those gone nothing referenced it, and keeping it
-// would advertise a shape the service has no way to honour. Nothing is reserved for the
-// message itself: a message no field points at was never on the wire.
-
-message RelocateInstanceRequest {
-  // ID of the instance to move.
-  //
-  // To get the instance ID, make a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-
-  // ID of the availability zone to move the instance to.
-  //
-  // To get the zone ID, make a [ZoneService.List] request.
-  string destination_zone_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-
-  // Network configuration for the instance. Specifies how the network interface is configured
-  // to interact with other services on the internal network and on the internet.
-  // Currently only one network interface is supported per instance.
-  repeated NetworkInterfaceSpec network_interface_specs = 3 [
-    (size) = "1",
-    (required) = true
-  ];
-
-  // Boot disk placement policy configuration in target zone. Must be specified if disk has placement policy.
-  DiskPlacementPolicy boot_disk_placement = 4;
-
-  // Secondary disk placement policy configurations in target zone. Must be specified for each disk that has placement policy.
-  repeated DiskPlacementPolicyChange secondary_disk_placements = 5;
-}
-
-message RelocateInstanceMetadata {
-  // ID of the instance that is being moved.
-  string instance_id = 1;
-
-  // ID of the availability zone that the instance is being moved from.
-  string source_zone_id = 2;
-
-  // ID of the availability zone that the instance is being moved to.
-  string destination_zone_id = 3;
-}
-
-message GuestStopInstanceMetadata {
-  // ID of the instance that was stopped from guest OS.
-  string instance_id = 1;
-}
-
-message PreemptInstanceMetadata {
-  // ID of the instance that is being preempted.
-  string instance_id = 1;
-}
-
-message CrashInstanceMetadata {
-  // ID of the instance that was crashed.
-  string instance_id = 1;
 }
 
 // Placement policy of a volume backing an instance, in the target zone.

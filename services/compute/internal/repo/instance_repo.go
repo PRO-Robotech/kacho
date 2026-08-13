@@ -41,7 +41,7 @@ func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo { return &InstanceRepo{po
 // сняты миграцией 0016). effective_resources распакованы в eff_* скаляры;
 // boot_source — bs_* скаляры; vm_spec/container_spec — JSONB.
 const instanceCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
-	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
 	`instance_kind, machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
 	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
 
@@ -54,7 +54,7 @@ const instanceCols = `id, project_id, created_at, name, description, labels, zon
 // на каждую машину дало бы запрос на строку списка — цена, которую платит
 // вызывающий за то, что мы разложили связь по двум таблицам, а не он.
 const instanceSelectCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
-	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
 	`instance_kind, COALESCE(machine_type_id,'') AS machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
 	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec, ` +
 	`COALESCE((SELECT array_agg(g.guest_access_key_id ORDER BY g.guest_access_key_id) ` +
@@ -179,7 +179,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	}
 
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,NULLIF($24,''),$25,$26) RETURNING ` + instanceSelectCols
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULLIF($15,''),$16,$17,$18,$19,$20,$21,$22,NULLIF($23,''),$24,$25) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, nil, wrapPgErr(err, "Instance", in.Name)
@@ -503,27 +503,6 @@ func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Ins
 	return in, nil
 }
 
-// MergeMetadata атомарно применяет delete+upsert дельту к map metadata одним
-// SQL-statement'ом + outbox UPDATED (within-service-инвариант на DB-уровне).
-func (r *InstanceRepo) MergeMetadata(ctx context.Context, id string, del []string, upsert map[string]string) (*domain.Instance, error) {
-	upsertJSON, err := marshalJSONB(orEmptyMap(upsert), "Instance.metadata.upsert")
-	if err != nil {
-		return nil, err
-	}
-	delKeys := del
-	if delKeys == nil {
-		delKeys = []string{}
-	}
-	return r.mutateAndReload(ctx, id, "UPDATED", func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx,
-			`UPDATE instances
-			    SET metadata = (COALESCE(metadata, '{}'::jsonb) - $2::text[]) || $3::jsonb
-			  WHERE id = $1`,
-			id, delKeys, upsertJSON)
-		return err
-	})
-}
-
 // Delete удаляет строку ВМ + outbox DELETED + FGA unregister-intent в одной
 // writer-tx. ФИНАЛЬНЫЙ шаг delete-саги — том/NIC-привязки уже сняты в use-case
 // (storage.Detach/vpc.Detach) ДО этого вызова; строка инстанса удаляется ПОСЛЕДНЕЙ,
@@ -614,46 +593,10 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ---- internal helpers ----
-
-func (r *InstanceRepo) mutateAndReload(ctx context.Context, id, eventType string, mutate func(context.Context, pgx.Tx) error) (*domain.Instance, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return nil, ports.ErrInternal
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM instances WHERE id = $1)`, id).Scan(&exists); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	if !exists {
-		return nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
-	}
-	if err := mutate(ctx, tx); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
-	in, err := scanInstance(tx.QueryRow(ctx, q, id))
-	if err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	if err := emitCompute(ctx, tx, "Instance", in.ID, eventType, instancePayload(in)); err != nil {
-		return nil, ports.ErrInternal
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	return in, nil
-}
-
 // ---- scan / args ----
 
 func instanceInsertArgs(in *domain.Instance) ([]any, error) {
 	labelsJSON, err := marshalJSONB(orEmptyMap(in.Labels), "Instance.labels")
-	if err != nil {
-		return nil, err
-	}
-	mdJSON, err := marshalJSONB(orEmptyMap(in.Metadata), "Instance.metadata")
 	if err != nil {
 		return nil, err
 	}
@@ -668,7 +611,7 @@ func instanceInsertArgs(in *domain.Instance) ([]any, error) {
 	return []any{
 		in.ID, in.ProjectID, in.CreatedAt, in.Name, in.Description, labelsJSON, in.ZoneID,
 		instanceStatusName(in.Status), in.StatusReason,
-		mdJSON, in.Hostname, in.FQDN, in.CPUGuaranteePercent, in.ServiceAccountID,
+		in.Hostname, in.FQDN, in.CPUGuaranteePercent, in.ServiceAccountID,
 		int32(in.InstanceKind), in.MachineTypeID,
 		in.EffectiveResources.VCPU, in.EffectiveResources.MemoryMiB, in.EffectiveResources.GPUs, in.EffectiveResources.GPUType,
 		in.BootSource.Type, in.BootSource.ID, int32(in.BootSource.ImageKind), in.PlacementGroupID,
@@ -696,7 +639,7 @@ func marshalSpecJSONB(v any, field string) ([]byte, error) {
 
 func scanInstance(row scannable) (*domain.Instance, error) {
 	var in domain.Instance
-	var labelsJSON, mdJSON, vmSpecJSON, ctrSpecJSON []byte
+	var labelsJSON, vmSpecJSON, ctrSpecJSON []byte
 	// Колонка NULLable: отсутствие ссылки представлено NULL-ом, а не пустой
 	// строкой. Доменный тип остаётся строкой, и NULL читается как "" — так же,
 	// как это уже сделано для типа машины.
@@ -706,7 +649,7 @@ func scanInstance(row scannable) (*domain.Instance, error) {
 	if err := row.Scan(
 		&in.ID, &in.ProjectID, &in.CreatedAt, &in.Name, &in.Description, &labelsJSON, &in.ZoneID,
 		&statusName, &in.StatusReason,
-		&mdJSON, &in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
+		&in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
 		&kind, &in.MachineTypeID,
 		&in.EffectiveResources.VCPU, &in.EffectiveResources.MemoryMiB, &in.EffectiveResources.GPUs, &in.EffectiveResources.GPUType,
 		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &placementGroupID,
@@ -718,9 +661,6 @@ func scanInstance(row scannable) (*domain.Instance, error) {
 		in.PlacementGroupID = *placementGroupID
 	}
 	if err := unmarshalJSONB(labelsJSON, &in.Labels, "Instance.labels"); err != nil {
-		return nil, err
-	}
-	if err := unmarshalJSONB(mdJSON, &in.Metadata, "Instance.metadata"); err != nil {
 		return nil, err
 	}
 	in.Status = instanceStatusFromName(statusName)

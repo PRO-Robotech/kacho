@@ -62,7 +62,6 @@ type CreateInstanceReq struct {
 	Description string
 	Labels      map[string]string
 	ZoneID      string
-	Metadata    map[string]string
 	Hostname    string
 
 	InstanceKind        domain.InstanceKind
@@ -268,9 +267,6 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	// накопленное, поэтому потолок размера сообщения хранимое не ограничивает —
 	// карта росла бы от вызова к вызову, и каждая правка навсегда клала бы весь
 	// выросший блоб ещё и в две неподчищаемые служебные таблицы.
-	if field, reason, ok := domain.ValidateInstanceMetadata(req.Metadata); !ok {
-		return serviceerr.InvalidArg(field, reason)
-	}
 	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
 		return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
@@ -409,7 +405,6 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		// OQ1 — resting-status PROVISIONING persisted (durable; launch-сага NIC/Volume +
 		// переход к RUNNING — COMP-2). Operation.done = durability, не materialize (ban 9).
 		Status:              domain.InstanceStatusProvisioning,
-		Metadata:            req.Metadata,
 		Hostname:            req.Hostname,
 		FQDN:                fqdn(instanceID, req.Hostname),
 		CPUGuaranteePercent: req.CPUGuaranteePercent,

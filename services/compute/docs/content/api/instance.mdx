@@ -280,7 +280,7 @@ Instance](/architecture/instance-lifecycle).
 Изменяет mutable-поля инстанса. `name`, `description`, `labels`, `serviceAccountId` —
 меняются в любом статусе. `machineTypeId`, `cpuGuaranteePercent` и `placementGroupId` —
 **только когда инстанс STOPPED**. `vmSpec` применяется со следующей загрузки. `instanceKind`,
-`zoneId` и `bootSource` — **immutable**. `metadata` меняется отдельным RPC `UpdateMetadata`.
+`zoneId` и `bootSource` — **immutable**. Свободной карты `metadata` у машины нет: конфигурация гостя задаётся через `userData`.
 
 Поле `sshPublicKeys` **не принимается вовсе** и отвергается синхронно: сервис ничего не кладёт
 внутрь гостя, поэтому принять ключи и не применить их значило бы обещать возможность, которой
@@ -378,33 +378,11 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 
 ---
 
-## UpdateMetadata
-
-<ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}/updateMetadata" async>
-
-Изменяет пользовательскую метадату инстанса: `delete[]` удаляет ключи, `upsert{}` добавляет
-или обновляет. Отдельный RPC (не `Update`), потому что метадата — самостоятельная сущность.
-
-#### Пример запроса
-
-<CodeBlock language="bash">
-  {dedent`
-    curl -X POST http://localhost:18080/compute/v1/instances/{instanceId}/updateMetadata \\
-      -H 'Authorization: Bearer <JWT>' \\
-      -H 'Content-Type: application/json' \\
-      -d '{
-        "upsert": { "ssh-keys": "user:ssh-ed25519 AAAA..." },
-        "delete": ["old-key"]
-      }'
-  `}
-</CodeBlock>
-
-<Restrictions items={[{ label: 'metadata', rules: RESTRICTIONS.metadata }]} />
-<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
-
----
+<!-- Раздел `UpdateMetadata` снят вместе со своим предметом: ни RPC, ни маршрута
+края, ни поля `metadata` в контракте больше нет. Документ, публикующий маршрут,
+которого край не обслуживает, хуже отсутствующего: арендатор идёт по нему и
+получает отказ, не понимая, что возможности не существует. Конфигурация гостя
+задаётся через `userData` и выдаётся службой метаданных. -->
 
 ## GetSerialPortOutput
 
@@ -516,18 +494,19 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 
 </ApiOperation>
 
-:::warning Изменение интерфейса и one-to-one NAT через Instance недоступны
-`updateNetworkInterface`, `addOneToOneNat` и `removeOneToOneNat` объявлены в контракте, но
-отвечают **`UNIMPLEMENTED`** (HTTP 501). Это не пробел в описании и не временный сбой: адрес,
-NAT и группы безопасности — свойства ресурса `NetworkInterface`, который принадлежит
-**kacho-vpc**, и правятся там же, а не через инстанс. Инстанс их зеркалит.
+:::warning Изменение интерфейса, one-to-one NAT, перенос и выдача прав через Instance не существуют
+Этих операций **нет в контракте**: их не объявляет ни один метод, и вызов не получит даже
+отказа — он получит отсутствие метода. Прежняя редакция этой страницы обещала
+`UNIMPLEMENTED` (HTTP 501) по шести адресам, то есть описывала ответ, которого продукт не
+производит: арендатор шёл за отказом и не находил ни отказа, ни возможности.
 
-По той же причине `UNIMPLEMENTED` отвечает `relocate` (перенос машины в другую зону требует
-переноса её томов, а тома принадлежат kacho-storage) и тройка `listAccessBindings` /
-`setAccessBindings` / `updateAccessBindings` (права выдаёт kacho-iam).
+Причина отсутствия — **решение о владельце**, и она прежняя: адрес, NAT и группы
+безопасности суть свойства ресурса `NetworkInterface` домена **kacho-vpc** и правятся там;
+перенос машины в другую зону требует переноса её томов, а тома принадлежат
+**kacho-storage**; права выдаёт **kacho-iam** своими привязками. Инстанс сетевой интерфейс
+зеркалит, а не владеет им.
 
-Отказ здесь — **решение о владельце**, а не отложенная доделка: он останется отказом и
-после того, как соответствующая возможность появится у владельца.
+Возможность появится у владельца — и вызывать её будут у него, а не через машину.
 :::
 
 :::note Источник истины сетевого интерфейса — kacho-vpc

@@ -228,9 +228,11 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 // `ssh_public_keys` вдобавок штамповал метку «вступит в силу при следующей
 // загрузке»: продукт не просто игнорировал параметр, он подтверждал его приём.
 //
-// `metadata` не «легаси-мусор»: канал правки метаданных существует и живёт в
-// отдельном RPC (UpdateMetadata), поэтому отказ здесь — не потеря возможности, а
-// указание на настоящий канал.
+// Здесь стоял отказ по `metadata`, отсылавший к RPC `UpdateMetadata`. Такого RPC
+// в контракте НЕТ — он снят волной 1, — а поле снято целиком вместе с приёмом на
+// создании. Отказ, называющий адрес возможности, которого не существует, хуже
+// молчания: вызывающий уходит искать и не находит, а способа задать эти данные у
+// него нет вовсе.
 //
 // Форма отказа и её обоснование — общие с RejectUnsupportedCreateFields.
 // Вызывается ПЕРВЫМ стейтментом Update: иначе поле, названное в маске, ответило
@@ -247,9 +249,6 @@ func RejectUnsupportedUpdateFields(req *computev1.UpdateInstanceRequest) error {
 			"sshPublicKeys is not accepted: a key carried as a field lives exactly as long as the "+
 				"instance and can be neither revoked nor replaced — reference GuestAccessKey resources "+
 				"by id in guestAccessKeyIds instead")
-	}
-	if len(req.GetMetadata()) > 0 {
-		add("metadata", "metadata is not updated here: use InstanceService.UpdateMetadata")
 	}
 	if req.GetNetworkSettings() != nil {
 		add("network_settings", "networkSettings is not supported: compute does not configure network acceleration")
@@ -298,7 +297,6 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		Description:            req.Description,
 		Labels:                 req.Labels,
 		ZoneID:                 req.ZoneId,
-		Metadata:               req.Metadata,
 		Hostname:               req.Hostname,
 		InstanceKind:           domain.InstanceKind(req.InstanceKind), // #nosec G115 -- proto enum зеркалит domain
 		MachineTypeID:          req.MachineTypeId,
