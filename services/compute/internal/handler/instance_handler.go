@@ -24,14 +24,16 @@ import (
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
 //
-// Семь RPC объявлены контрактом и НЕ несут реализации; каждый переопределён в
-// хвосте файла и отвечает `UNIMPLEMENTED` с названной причиной и адресом
-// владельца возможности. Прежде они наследовались от заглушки, то есть
-// вызывающий получал `method X not implemented`: страница документации причину
-// называла, а клиент API не узнавал её никогда — а он и есть тот, кто
-// сталкивается с ограничением. Разбор — docs/engineering/architecture/07-known-divergences.md.
-// AttachNetworkInterface/DetachNetworkInterface — реализованы (S4, NIC-attach saga →
-// kacho-vpc InternalNetworkInterfaceService).
+// Восемь методов СНЯТЫ волной 1 вместе с файлом их отказов: семь не несли
+// реализации, восьмой (обновление метаданных) реализован, но его предмет —
+// свободная карта — снят той же волной. Владельцы возможностей названы в
+// контракте; перепись снятых имён — internal/repohygiene/retiredrpcsurface.go.
+//
+// Привязка и отвязка сетевого интерфейса ОСТАЮТСЯ публичными и реализованы: у
+// домена сети глагол привязки живёт только на внутреннем слушателе, публичного
+// пути у арендатора нет и не будет — иначе цикл между доменами. Формула, чтобы
+// асимметрия не завелась снова: привязка — глагол потребителя, свойства — глагол
+// владельца.
 type InstanceHandler struct {
 	computev1.UnimplementedInstanceServiceServer
 	svc        *instance.InstanceService
@@ -53,12 +55,7 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 	if err != nil {
 		return nil, err
 	}
-	p := protoconv.Instance(in)
-	// GetInstanceRequest.view — metadata возвращается только при view=FULL.
-	if req.View != computev1.InstanceView_FULL {
-		p.Metadata = nil
-	}
-	return p, nil
+	return protoconv.Instance(in), nil
 }
 
 // List возвращает список ВМ в проекте.
@@ -84,11 +81,7 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	}
 	resp := &computev1.ListInstancesResponse{NextPageToken: nextToken}
 	for _, in := range visible {
-		p := protoconv.Instance(in)
-		// metadata всегда опускается в List response (в ListInstancesRequest
-		// нет view-параметра — это документировано в instance.proto комментарии к Instance.metadata).
-		p.Metadata = nil
-		resp.Instances = append(resp.Instances, p)
+		resp.Instances = append(resp.Instances, protoconv.Instance(in))
 	}
 	return resp, nil
 }
@@ -201,7 +194,10 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	// запущена и недостижима» снималось списком ключей, который никуда не доедет,
 	// то есть страж отпускал ровно тот случай, ради которого заведён.
 	if len(req.GetSshPublicKeys()) > 0 {
-		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+		add("ssh_public_keys",
+			"sshPublicKeys is not accepted: a key carried as a field lives exactly as long as the "+
+				"instance and can be neither revoked nor replaced — reference GuestAccessKey resources "+
+				"by id in guestAccessKeyIds instead")
 	}
 	// containerSpec.exitCode — восьмое поле того же класса, найденное обходом
 	// полей внутри `oneof` (прежде обход их не раскрывал). Код возврата —
@@ -232,9 +228,11 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 // `ssh_public_keys` вдобавок штамповал метку «вступит в силу при следующей
 // загрузке»: продукт не просто игнорировал параметр, он подтверждал его приём.
 //
-// `metadata` не «легаси-мусор»: канал правки метаданных существует и живёт в
-// отдельном RPC (UpdateMetadata), поэтому отказ здесь — не потеря возможности, а
-// указание на настоящий канал.
+// Здесь стоял отказ по `metadata`, отсылавший к RPC `UpdateMetadata`. Такого RPC
+// в контракте НЕТ — он снят волной 1, — а поле снято целиком вместе с приёмом на
+// создании. Отказ, называющий адрес возможности, которого не существует, хуже
+// молчания: вызывающий уходит искать и не находит, а способа задать эти данные у
+// него нет вовсе.
 //
 // Форма отказа и её обоснование — общие с RejectUnsupportedCreateFields.
 // Вызывается ПЕРВЫМ стейтментом Update: иначе поле, названное в маске, ответило
@@ -247,10 +245,10 @@ func RejectUnsupportedUpdateFields(req *computev1.UpdateInstanceRequest) error {
 		n++
 	}
 	if len(req.GetSshPublicKeys()) > 0 {
-		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
-	}
-	if len(req.GetMetadata()) > 0 {
-		add("metadata", "metadata is not updated here: use InstanceService.UpdateMetadata")
+		add("ssh_public_keys",
+			"sshPublicKeys is not accepted: a key carried as a field lives exactly as long as the "+
+				"instance and can be neither revoked nor replaced — reference GuestAccessKey resources "+
+				"by id in guestAccessKeyIds instead")
 	}
 	if req.GetNetworkSettings() != nil {
 		add("network_settings", "networkSettings is not supported: compute does not configure network acceleration")
@@ -299,7 +297,6 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		Description:            req.Description,
 		Labels:                 req.Labels,
 		ZoneID:                 req.ZoneId,
-		Metadata:               req.Metadata,
 		Hostname:               req.Hostname,
 		InstanceKind:           domain.InstanceKind(req.InstanceKind), // #nosec G115 -- proto enum зеркалит domain
 		MachineTypeID:          req.MachineTypeId,
@@ -311,6 +308,7 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		AssignExternalAddress:  req.AssignExternalAddress,
 		AcknowledgeUnreachable: req.AcknowledgeUnreachable,
 		NetworkInterfaceSpecs:  nicSpecsFromProto(req.NetworkInterfaceSpecs),
+		GuestAccessKeyIDs:      req.GuestAccessKeyIds,
 		SecondaryVolumeSpecs:   secVolSpecsFromProto(req.SecondaryVolumeSpecs),
 	}
 	switch sp := req.Spec.(type) {
@@ -349,24 +347,10 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 		CPUGuaranteePercent: req.CpuGuaranteePercent,
 		PlacementGroupID:    req.PlacementGroupId,
 		VMSpec:              vmSpecFromProto(req.VmSpec),
+		GuestAccessKeyIDs:   req.GuestAccessKeyIds,
 		UpdateMask:          mask,
 	}
 	op, err := h.svc.Update(ctx, ur)
-	if err != nil {
-		return nil, err
-	}
-	return operationToProto(op), nil
-}
-
-// UpdateMetadata инициирует обновление metadata ВМ.
-func (h *InstanceHandler) UpdateMetadata(ctx context.Context, req *computev1.UpdateInstanceMetadataRequest) (*operationpb.Operation, error) {
-	if req.InstanceId == "" {
-		return nil, status.Error(codes.InvalidArgument, "instance_id required")
-	}
-	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
-		return nil, err
-	}
-	op, err := h.svc.UpdateMetadata(ctx, req.InstanceId, req.Delete, req.Upsert)
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +565,6 @@ func vmSpecFromProto(v *computev1.VmSpec) *domain.VMSpec {
 	out := &domain.VMSpec{UserData: v.UserData}
 	if mo := v.MetadataOptions; mo != nil {
 		out.MetadataEndpoint = domain.MetadataOption(mo.MetadataEndpoint) // #nosec G115 -- proto enum зеркалит domain
-		out.MetadataTokenRequired = mo.MetadataTokenRequired
 	}
 	return out
 }

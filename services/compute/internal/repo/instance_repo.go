@@ -41,7 +41,7 @@ func NewInstanceRepo(pool *pgxpool.Pool) *InstanceRepo { return &InstanceRepo{po
 // сняты миграцией 0016). effective_resources распакованы в eff_* скаляры;
 // boot_source — bs_* скаляры; vm_spec/container_spec — JSONB.
 const instanceCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
-	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
 	`instance_kind, machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
 	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
 
@@ -50,10 +50,15 @@ const instanceCols = `id, project_id, created_at, name, description, labels, zon
 // а NOT NULL с пустой строкой по умолчанию не FK-able), тогда как domain-тип
 // остаётся `string`. NULL («тип не задан») читается как "" — как и до 0017.
 // Симметрично на записи — NULLIF (см. Insert/Update).
+// Набор ключей входа читается ТЕМ ЖЕ стейтментом, подзапросом. Отдельное чтение
+// на каждую машину дало бы запрос на строку списка — цена, которую платит
+// вызывающий за то, что мы разложили связь по двум таблицам, а не он.
 const instanceSelectCols = `id, project_id, created_at, name, description, labels, zone_id, status, status_reason, ` +
-	`metadata, hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
+	`hostname, fqdn, cpu_guarantee_percent, service_account_id, ` +
 	`instance_kind, COALESCE(machine_type_id,'') AS machine_type_id, eff_vcpu, eff_memory_mib, eff_gpus, eff_gpu_type, ` +
-	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec`
+	`bs_type, bs_id, bs_image_kind, placement_group_id, vm_spec, container_spec, ` +
+	`COALESCE((SELECT array_agg(g.guest_access_key_id ORDER BY g.guest_access_key_id) ` +
+	`FROM instance_guest_access_keys g WHERE g.instance_id = instances.id), '{}') AS guest_access_key_ids`
 
 // Get возвращает ВМ по id. AttachedDisks НЕ заполняются здесь — это зеркало из
 // kacho-storage, use-case подтягивает его на чтении (graceful-degrade).
@@ -147,13 +152,68 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Списание предела — В ТОМ ЖЕ стейтменте, что вставка. Разнесённые
+	// «спросить» и «списать» схлопываются под конкуренцией: два создателя
+	// прочитают одно и то же свободное место и оба пройдут, а потолок
+	// выродится в частоту, умноженную на число параллельных пар.
+	//
+	// Строка счётчика блокируется обновлением, поэтому второй писатель ждёт
+	// коммита первого и видит его результат. Превышение ловится ограничением
+	// схемы, а не сравнением в коде: сравнение защищает только тот путь,
+	// который через него проходит.
+	if err := chargeProjectQuota(ctx, tx, in.ProjectID); err != nil {
+		return nil, nil, err
+	}
+
+	// Когерентность размещения — УСЛОВИЕ САМОЙ ВСТАВКИ, а не вопрос перед ней.
+	//
+	// Строка появляется либо когерентной, либо не появляется вовсе. Проверка
+	// «прочитал группу → сравнил → вставил» разъезжается под конкуренцией и
+	// защищает ровно тот путь, который через неё проходит.
+	//
+	// Ноль строк из вставки означает: группа не той зоны, не того региона, не
+	// того проекта либо её нет. Все четыре исхода отвечают ОДИНАКОВО — иначе по
+	// различию ответов читался бы состав чужого проекта.
+	if err := checkPlacementCoherence(ctx, tx, in); err != nil {
+		return nil, nil, err
+	}
+
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceSelectCols
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NULLIF($15,''),$16,$17,$18,$19,$20,$21,$22,NULLIF($23,''),$24,$25) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, nil, wrapPgErr(err, "Instance", in.Name)
 	}
+	// Связь с ключами входа — в той же транзакции, что сама машина. Иначе
+	// машина существовала бы с пустым набором ключей ровно до второй записи, а
+	// на её отказе — навсегда: в неё было бы некому войти, и это выглядело бы
+	// как успешное создание.
+	if err := replaceGuestKeyBindings(ctx, tx, created.ID, created.ProjectID, in.GuestAccessKeyIDs); err != nil {
+		return nil, nil, err
+	}
+	// Набор перечитывается, а не зеркалится из входа: вставка идёт ПОСЛЕ строки
+	// машины, поэтому подзапрос в её RETURNING видел пустой набор — а отдать
+	// вызывающему вход вместо записанного значило бы подтвердить то, чего мы не
+	// проверяли.
+	if created.GuestAccessKeyIDs, err = guestKeyIDsOf(ctx, tx, created.ID); err != nil {
+		return nil, nil, err
+	}
 	if err := emitCompute(ctx, tx, "Instance", created.ID, "CREATED", instancePayload(created)); err != nil {
+		return nil, nil, ports.ErrInternal
+	}
+	// Журнал — В ТОЙ ЖЕ транзакции. Провайдер про наши принадлежности не знает,
+	// значит «кто это сделал» способны записать только мы, и только здесь: после
+	// коммита запись теряется ровно при том отказе, ради которого журнал нужен.
+	actor, onBehalf := auditPrincipals(ctx)
+	if err := emitAudit(ctx, tx, AuditEvent{
+		EventType:    "instance.create",
+		ResourceType: "Instance",
+		ResourceID:   created.ID,
+		ProjectID:    created.ProjectID,
+		Actor:        actor,
+		OnBehalfOf:   onBehalf,
+		Payload:      map[string]any{"name": created.Name, "zone_id": created.ZoneID},
+	}); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
 	// FGA owner-tuple register-intent for the Instance in the SAME writer-tx,
@@ -211,6 +271,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	// первым (always-reject). CAS `AND status='STOPPED'` — DB-level backstop
 	// (defense-in-depth; NOT software Get→check→UPDATE), актуален в COMP-2.
 	requireStopped := false
+	checkGroupCoherence := false
 	if _, ok := ch["machine_type_id"]; ok {
 		// NULLable FK-колонка (0017) — "" пишется как NULL, см. instanceSelectCols.
 		us.addNullIfEmpty("machine_type_id", in.MachineTypeID)
@@ -221,7 +282,8 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		requireStopped = true
 	}
 	if _, ok := ch["placement_group_id"]; ok {
-		us.add("placement_group_id", in.PlacementGroupID)
+		us.addNullIfEmpty("placement_group_id", in.PlacementGroupID)
+		checkGroupCoherence = true
 		requireStopped = true
 	}
 
@@ -230,6 +292,16 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		return nil, nil, ports.ErrInternal
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Когерентность размещения проверяется и на правке — в ТОЙ ЖЕ транзакции.
+	// Проверка только на создании защищала бы ровно один путь: перевести машину
+	// в группу другой зоны можно было бы правкой, и результат был бы тем же
+	// несогласованным размещением, только заведённым позже.
+	if checkGroupCoherence {
+		if err := checkPlacementCoherence(ctx, tx, in); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	var updated *domain.Instance
 	if us.empty() {
@@ -258,6 +330,18 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		}
 		return nil, nil, wrapPgErr(err, "Instance", in.ID)
 	}
+	// Набор ключей входа заменяется ЦЕЛИКОМ и только когда маска его назвала.
+	// Не названный маской набор не трогается — иначе правка имени машины молча
+	// снимала бы с неё все ключи, и это выглядело бы как успешное переименование.
+	if _, ok := ch["guest_access_key_ids"]; ok {
+		if err := replaceGuestKeyBindings(ctx, tx, updated.ID, updated.ProjectID, in.GuestAccessKeyIDs); err != nil {
+			return nil, nil, err
+		}
+		if updated.GuestAccessKeyIDs, err = guestKeyIDsOf(ctx, tx, updated.ID); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	if err := emitCompute(ctx, tx, "Instance", updated.ID, "UPDATED", instancePayload(updated)); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
@@ -338,7 +422,9 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 // ЧЕМ ОСТАТОК ЗАКРЫТ СЕГОДНЯ — и чем НЕ закрыт (перемерено 2026-08-07).
 // Прежняя редакция отсылала к «компенсации инициатора (compensation-outbox) и
 // sweeper'у владельца привязки». Ни того, ни другого в дереве НЕТ:
-// `git grep -ln compensation_outbox` даёт 9 файлов и ни одного под services/compute
+// `git grep -ln compensation_outbox` даёт 10 файлов и ни одного под services/compute
+// (число включает ЭТОТ файл: слово в комментарии само стало совпадением — поэтому
+// предикат о собственном отсутствии предмета обязан вычитать место, где он написан)
 // (совпадения принадлежат iam и относятся к другому предмету — компенсации
 // регистрации провайдера); sweeper'а, реклеймящего отвязанные ресурсы, у vpc и
 // storage — 0 файлов. То есть комментарий называл механизм существующим и
@@ -417,27 +503,6 @@ func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Ins
 	return in, nil
 }
 
-// MergeMetadata атомарно применяет delete+upsert дельту к map metadata одним
-// SQL-statement'ом + outbox UPDATED (within-service-инвариант на DB-уровне).
-func (r *InstanceRepo) MergeMetadata(ctx context.Context, id string, del []string, upsert map[string]string) (*domain.Instance, error) {
-	upsertJSON, err := marshalJSONB(orEmptyMap(upsert), "Instance.metadata.upsert")
-	if err != nil {
-		return nil, err
-	}
-	delKeys := del
-	if delKeys == nil {
-		delKeys = []string{}
-	}
-	return r.mutateAndReload(ctx, id, "UPDATED", func(ctx context.Context, tx pgx.Tx) error {
-		_, err := tx.Exec(ctx,
-			`UPDATE instances
-			    SET metadata = (COALESCE(metadata, '{}'::jsonb) - $2::text[]) || $3::jsonb
-			  WHERE id = $1`,
-			id, delKeys, upsertJSON)
-		return err
-	})
-}
-
 // Delete удаляет строку ВМ + outbox DELETED + FGA unregister-intent в одной
 // writer-tx. ФИНАЛЬНЫЙ шаг delete-саги — том/NIC-привязки уже сняты в use-case
 // (storage.Detach/vpc.Detach) ДО этого вызова; строка инстанса удаляется ПОСЛЕДНЕЙ,
@@ -497,6 +562,25 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 		return wrapPgErr(err, "Instance", id)
 	}
 	// instance_network_interfaces (same-DB cascade child) снимается FK CASCADE.
+
+	// Возврат предела — в ТОЙ ЖЕ транзакции, что удаление строки. Возврат вне
+	// её оставил бы счётчик завышенным при откате: проект платил бы местом за
+	// машину, которой нет.
+	if err := refundProjectQuota(ctx, tx, projectID); err != nil {
+		return err
+	}
+
+	actorDel, onBehalfDel := auditPrincipals(ctx)
+	if err := emitAudit(ctx, tx, AuditEvent{
+		EventType:    "instance.delete",
+		ResourceType: "Instance",
+		ResourceID:   id,
+		ProjectID:    projectID,
+		Actor:        actorDel,
+		OnBehalfOf:   onBehalfDel,
+	}); err != nil {
+		return ports.ErrInternal
+	}
 	if err := emitCompute(ctx, tx, "Instance", id, "DELETED", map[string]any{"id": id}); err != nil {
 		return ports.ErrInternal
 	}
@@ -509,46 +593,10 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ---- internal helpers ----
-
-func (r *InstanceRepo) mutateAndReload(ctx context.Context, id, eventType string, mutate func(context.Context, pgx.Tx) error) (*domain.Instance, error) {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return nil, ports.ErrInternal
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM instances WHERE id = $1)`, id).Scan(&exists); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	if !exists {
-		return nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
-	}
-	if err := mutate(ctx, tx); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	q := fmt.Sprintf(`SELECT %s FROM instances WHERE id = $1`, instanceSelectCols)
-	in, err := scanInstance(tx.QueryRow(ctx, q, id))
-	if err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	if err := emitCompute(ctx, tx, "Instance", in.ID, eventType, instancePayload(in)); err != nil {
-		return nil, ports.ErrInternal
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, wrapPgErr(err, "Instance", id)
-	}
-	return in, nil
-}
-
 // ---- scan / args ----
 
 func instanceInsertArgs(in *domain.Instance) ([]any, error) {
 	labelsJSON, err := marshalJSONB(orEmptyMap(in.Labels), "Instance.labels")
-	if err != nil {
-		return nil, err
-	}
-	mdJSON, err := marshalJSONB(orEmptyMap(in.Metadata), "Instance.metadata")
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +611,7 @@ func instanceInsertArgs(in *domain.Instance) ([]any, error) {
 	return []any{
 		in.ID, in.ProjectID, in.CreatedAt, in.Name, in.Description, labelsJSON, in.ZoneID,
 		instanceStatusName(in.Status), in.StatusReason,
-		mdJSON, in.Hostname, in.FQDN, in.CPUGuaranteePercent, in.ServiceAccountID,
+		in.Hostname, in.FQDN, in.CPUGuaranteePercent, in.ServiceAccountID,
 		int32(in.InstanceKind), in.MachineTypeID,
 		in.EffectiveResources.VCPU, in.EffectiveResources.MemoryMiB, in.EffectiveResources.GPUs, in.EffectiveResources.GPUType,
 		in.BootSource.Type, in.BootSource.ID, int32(in.BootSource.ImageKind), in.PlacementGroupID,
@@ -591,24 +639,28 @@ func marshalSpecJSONB(v any, field string) ([]byte, error) {
 
 func scanInstance(row scannable) (*domain.Instance, error) {
 	var in domain.Instance
-	var labelsJSON, mdJSON, vmSpecJSON, ctrSpecJSON []byte
+	var labelsJSON, vmSpecJSON, ctrSpecJSON []byte
+	// Колонка NULLable: отсутствие ссылки представлено NULL-ом, а не пустой
+	// строкой. Доменный тип остаётся строкой, и NULL читается как "" — так же,
+	// как это уже сделано для типа машины.
+	var placementGroupID *string
 	var statusName string
 	var kind, imageKind int32
 	if err := row.Scan(
 		&in.ID, &in.ProjectID, &in.CreatedAt, &in.Name, &in.Description, &labelsJSON, &in.ZoneID,
 		&statusName, &in.StatusReason,
-		&mdJSON, &in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
+		&in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
 		&kind, &in.MachineTypeID,
 		&in.EffectiveResources.VCPU, &in.EffectiveResources.MemoryMiB, &in.EffectiveResources.GPUs, &in.EffectiveResources.GPUType,
-		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &in.PlacementGroupID,
-		&vmSpecJSON, &ctrSpecJSON,
+		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &placementGroupID,
+		&vmSpecJSON, &ctrSpecJSON, &in.GuestAccessKeyIDs,
 	); err != nil {
 		return nil, err
 	}
-	if err := unmarshalJSONB(labelsJSON, &in.Labels, "Instance.labels"); err != nil {
-		return nil, err
+	if placementGroupID != nil {
+		in.PlacementGroupID = *placementGroupID
 	}
-	if err := unmarshalJSONB(mdJSON, &in.Metadata, "Instance.metadata"); err != nil {
+	if err := unmarshalJSONB(labelsJSON, &in.Labels, "Instance.labels"); err != nil {
 		return nil, err
 	}
 	in.Status = instanceStatusFromName(statusName)

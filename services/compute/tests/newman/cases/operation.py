@@ -57,7 +57,7 @@ def _inst_body(suffix, project="{{_suiteProjectId}}", mt="{{mtId}}"):
             "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
             "bootSource": dict(_BOOT_STORAGE),
             "vmSpec": {"userData": "#cloud-config\n{}",
-                       "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+                       "metadataOptions": {"metadataEndpoint": "ENABLED"}},
             "acknowledgeUnreachable": True,
             "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
                                        "securityGroupIds": ["{{existingSgId}}"]}]}

@@ -140,7 +140,7 @@
           ]
         },
         {
-          "name": "poll-op-155",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [
@@ -204,7 +204,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya215",
+          "name": "assert-op-success-rya210",
           "request": {
             "method": "GET",
             "header": [
@@ -294,7 +294,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secdins{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"acknowledgeUnreachable\": true, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"labels\": {\"suite\": \"sec-d\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secdins{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"acknowledgeUnreachable\": true, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"labels\": {\"suite\": \"sec-d\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -331,7 +331,7 @@
           ]
         },
         {
-          "name": "poll-op-156",
+          "name": "poll-op-154",
           "request": {
             "method": "GET",
             "header": [
@@ -377,7 +377,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya216",
+          "name": "assert-op-success-rya211",
           "request": {
             "method": "GET",
             "header": [
@@ -427,7 +427,7 @@
           ]
         },
         {
-          "name": "get-rya214",
+          "name": "get-rya209",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "delete-rya217",
+          "name": "delete-rya212",
           "request": {
             "method": "DELETE",
             "header": [
@@ -548,7 +548,7 @@
           ]
         },
         {
-          "name": "poll-op-157",
+          "name": "poll-op-155",
           "request": {
             "method": "GET",
             "header": [
@@ -594,7 +594,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya218",
+          "name": "assert-op-success-rya213",
           "request": {
             "method": "GET",
             "header": [
@@ -644,7 +644,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya219",
+          "name": "get-after-delete-rya214",
           "request": {
             "method": "GET",
             "header": [
@@ -698,7 +698,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya220",
+          "name": "cleanup-mt-rya215",
           "request": {
             "method": "DELETE",
             "header": [
@@ -775,7 +775,7 @@
           ]
         },
         {
-          "name": "poll-op-158",
+          "name": "poll-op-156",
           "request": {
             "method": "GET",
             "header": [

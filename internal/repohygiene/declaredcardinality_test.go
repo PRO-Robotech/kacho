@@ -63,6 +63,17 @@ var cardinalityEnforcer = map[string]enforcer{
 		file:  "services/compute/internal/domain/constants.go",
 		ident: "MaxSecondaryVolumeSpecsPerInstance",
 	},
+	// Ключи входа: один исполнитель на оба запроса. Предел проверяется общей
+	// функцией, которую зовут и создание, и правка, — поэтому запись здесь одна
+	// по существу и две по ключу.
+	"CreateInstanceRequest.guest_access_key_ids": {
+		file:  "services/compute/internal/domain/constants.go",
+		ident: "MaxGuestAccessKeysPerInstance",
+	},
+	"UpdateInstanceRequest.guest_access_key_ids": {
+		file:  "services/compute/internal/domain/constants.go",
+		ident: "MaxGuestAccessKeysPerInstance",
+	},
 }
 
 // unreadFields — освобождения: поле не читает ни одна строка прод-кода, поэтому
@@ -70,41 +81,11 @@ var cardinalityEnforcer = map[string]enforcer{
 // присутствие которого в прод-дереве означает, что читатель появился и
 // освобождение истекло.
 var unreadFields = map[string]exemption{
-	"ContainerSolutionSpec.secrets": {
-		why:    "конфигурация приложения не читается ни одной строкой прод-кода compute — гейтить нечего",
-		reader: "GetApplication(",
-	},
-	"ContainerSolutionSpec.environment": {
-		why:    "конфигурация приложения не читается ни одной строкой прод-кода compute — гейтить нечего",
-		reader: "GetApplication(",
-	},
-	"BackupSpec.initial_policy_ids": {
-		why:    "конфигурация приложения не читается ни одной строкой прод-кода compute — гейтить нечего",
-		reader: "GetApplication(",
-	},
-	"RelocateInstanceRequest.network_interface_specs": {
-		// Перемещение машины отвечает ЯВНЫМ отказом: перенос в другую зону тянет
-		// перенос томов, а тома у storage. Запрос при этом не читается — параметр
-		// объявлен пустым именем, то есть прочитать его нельзя по построению.
-		why: "перемещение машины отвечает явным отказом и запроса НЕ читает " +
-			"(services/compute/internal/handler/declared_but_absent.go) — принимать нечего",
-		// Признак — метаданные операции, а НЕ существование метода.
-		//
-		// Здесь стояло `) Relocate(`, и оно истекло в тот день, когда отказ стал
-		// явным: метод появился, читателя не появилось. Предикат приближал предмет
-		// («поле не читается») через прокси («метода нет»), и прокси сломался
-		// раньше предмета — послабление объявило себя просроченным на изменении,
-		// которое ничего не изменило по существу.
-		//
-		// Геттер поля тоже не годится: `GetNetworkInterfaceSpecs(` читается в
-		// `Create` — то же имя поля у другого сообщения, — и предикат промахнулся
-		// бы в обратную сторону, объявив послабление истёкшим всегда.
-		//
-		// Метаданные операции появляются РОВНО при реализации: любая мутирующая
-		// операция этого сервиса создаёт Operation со своим типом метаданных, и
-		// отказ его не строит. Проверено: вхождений в прод-дереве compute — 0.
-		reader: "RelocateInstanceMetadata",
-	},
+	// Записи про конфигурацию приложения и про перемещение машины СНЯТЫ вместе со
+	// своим предметом: сообщения `ContainerSolutionSpec`, `BackupSpec` и
+	// `RelocateInstanceRequest` больше не объявлены — они остались от снятых полей
+	// и снятого RPC и не были достижимы ни одним путём. Гейт объявил их
+	// просроченными сам, в том же прогоне, — послабление истекло от факта.
 }
 
 type exemption struct {

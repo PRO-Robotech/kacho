@@ -234,29 +234,6 @@ func (r *InstanceRepo) ListStuckDeleting(_ context.Context, olderThan time.Durat
 	return out, nil
 }
 
-// MergeMetadata атомарно применяет delete+upsert дельту (под r.mu — зеркалит
-// row-level-lock атомарность DB-адаптера: read+merge+write под одним локом).
-func (r *InstanceRepo) MergeMetadata(_ context.Context, id string, del []string, upsert map[string]string) (*domain.Instance, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	in, ok := r.data[id]
-	if !ok {
-		return nil, ports.ErrNotFound
-	}
-	md := map[string]string{}
-	for k, v := range in.Metadata {
-		md[k] = v
-	}
-	for _, k := range del {
-		delete(md, k)
-	}
-	for k, v := range upsert {
-		md[k] = v
-	}
-	in.Metadata = md
-	return in, nil
-}
-
 // Delete удаляет строку ВМ (финальный шаг delete-саги; привязки уже сняты в
 // use-case через storage/vpc Detach). Нет инстанса → NotFound.
 func (r *InstanceRepo) Delete(_ context.Context, id string) error {

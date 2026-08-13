@@ -39,6 +39,9 @@ var hideExistenceReachableTypes = map[string]string{
 	// Snapshot left with the retired block-storage duplicate: no catalog entry
 	// anchors those object types any more, so nothing can reach their row.
 	"compute_instance": "Instance %s not found", // instance_repo.go
+	// Ключ входа в машину — services/compute/internal/repo/guest_access_key_repo.go.
+	"compute_guest_access_key": "GuestAccessKey %s not found",
+	"compute_placement_group":  "PlacementGroup %s not found",
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
 	"vpc_network":           "Network %s not found",
 	"vpc_subnet":            "Subnet %s not found",

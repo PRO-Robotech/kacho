@@ -5,12 +5,9 @@ syntax = "proto3";
 
 package kacho.cloud.compute.v1;
 
-import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/compute/v1/kek.proto";
-import "kacho/cloud/compute/v1/hardware_generation.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
-import "kacho/cloud/compute/v1/maintenance.proto";
 import "kacho/cloud/reference/reference.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -105,28 +102,14 @@ message Instance {
   // sagas + transition to RUNNING are a follow-on, COMP-2).
   Status status = 10;
 
-  // Free-form metadata `key:value` pairs (returned only on the FULL view). Redesign
-  // VM configuration moves to vm_spec.user_data; this stays for back-compat.
-  map<string, string> metadata = 11;
-
   // Output-only launch mirrors — materialized by the COMP-2 attach sagas; empty in
   // COMP-1, which persists the durable record without materialize.
   AttachedDisk boot_disk = 12;
   repeated AttachedDisk secondary_disks = 13;
   repeated NetworkInterface network_interfaces = 14;
-  repeated AttachedFilesystem filesystems = 21;
-  repeated AttachedLocalDisk local_disks = 22;
 
   // A domain name of the instance. Output-only (server-derived).
   string fqdn = 16;
-
-  // Legacy network/serial/maintenance/hardware surface (retained; not part of the
-  // COMP-1 sizing/boot retire).
-  NetworkSettings network_settings = 19;
-  SerialPortSettings serial_port_settings = 24;
-  MaintenancePolicy maintenance_policy = 29;
-  google.protobuf.Duration maintenance_grace_period = 30;
-  HardwareGeneration hardware_generation = 31;
 
   // Guaranteed CPU baseline per vCPU, in percent.
   //   0        = best-effort / burstable (no guarantee);
@@ -169,15 +152,67 @@ message Instance {
     // CONTAINER configuration (instance_kind = CONTAINER).
     ContainerSpec container_spec = 45;
   }
+
+  // ── Волна 1: восемь полей сняты с резервированием номера И имени ──────────
+  //
+  // Семь из них не имели ни одного писателя во всём непроверочном дереве:
+  // сервер ПРОИЗВОДИЛ их в каждом ответе и не заполнял никогда, а вход по ним
+  // уже отвергался по имени. То есть контракт говорил «не приму» и одновременно
+  // «отдам» — а отдавал пустоту, и вызывающий не мог отличить «нет данных» от
+  // «не реализовано».
+  //
+  // Восьмое (`metadata`) — свободная карта, снятая вместе со своим глаголом.
+  //
+  // Отдельно про поколение оборудования: оно несло топологию шин, то есть
+  // раскладку по железу. Такие данные живут только на внутренней проекции
+  // (правило об инфра-чувствительных данных), и на публичной их не должно быть
+  // независимо от того, заполняются они или нет.
+  //
+  // Резервируются номер И имя: иначе номер вернётся с чужим смыслом, а имя —
+  // с чужой формой, и байты старого клиента будут прочитаны как новое поле.
+  reserved 11, 19, 21, 22, 24, 29, 30, 31;
+  reserved "metadata", "network_settings", "filesystems", "local_disks",
+    "serial_port_settings", "maintenance_policy", "maintenance_grace_period",
+    "hardware_generation";
+
+  // Ключи входа гостя, действующие на этой машине.
+  //
+  // ССЫЛКИ ПО НЕИЗМЕНЯЕМОМУ ИДЕНТИФИКАТОРУ, а не материал ключа. Материал,
+  // положенный сюда, жил бы ровно столько, сколько машина: его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Ключ — отдельный
+  // ресурс (`GuestAccessKeyService`), и здесь стоит связь с ним.
+  //
+  // Набор ЗАМЕНЯЕТСЯ целиком при правке: «добавить один» и «оставить как есть»
+  // выразимы через полный набор, а частичные глаголы на списке ссылок дали бы
+  // два способа сказать одно.
+  repeated string guest_access_key_ids = 46;
 }
 
 // InstanceKind — the strong first discriminator (F1). VM and CONTAINER have distinct
 // lifecycles; the value gates exactly one nested spec and is immutable after Create.
 enum InstanceKind {
   INSTANCE_KIND_UNSPECIFIED = 0;
+
   // Virtual machine: persistent OS from a storage.image, vm_spec.
   VM = 1;
+
   // Container job: ephemeral rootfs from a registry.image, container_spec.
+  //
+  // NOT CREATABLE TODAY, and the refusal is explicit rather than silent. A
+  // container job takes its rootfs from a registry image, and a registry image
+  // has no durable address here: the repository carries no immutable id and is
+  // addressed by (registry, name), while the name is renamed by its own verb. A
+  // reference pinned into a machine would therefore go stale on someone else's
+  // rename — the relaunch a month later would take a different image, or none.
+  //
+  // Create with this kind is refused synchronously, naming the field. That is
+  // the second of the three lawful outcomes: accepting the value and never
+  // resolving it would promise a capability that does not exist.
+  //
+  // The value stays on the contract because the direction is decided and its
+  // return has a predicate: an immutable repository id lands at the owner. It
+  // is not deferred work with nobody responsible — the owner is named and the
+  // condition is checkable.
   CONTAINER = 2;
 }
 
@@ -280,21 +315,6 @@ enum RestartPolicy {
   ALWAYS = 3;
 }
 
-message Resources {
-  // The amount of memory available to the instance, specified in bytes.
-  int64 memory = 1;
-
-  // The number of cores available to the instance.
-  int64 cores = 2;
-
-  // Baseline level of CPU performance with the ability to burst performance above that baseline level.
-  // This field sets baseline performance for each core.
-  int64 core_fraction = 3;
-
-  // The number of GPUs available to the instance.
-  int64 gpus = 4;
-}
-
 message AttachedDisk {
   enum Mode {
     MODE_UNSPECIFIED = 0;
@@ -324,49 +344,9 @@ message AttachedDisk {
   string volume_id = 4;
 }
 
-message AttachedLocalDisk {
-  // Size of the disk, specified in bytes.
-  int64 size = 1;
-
-  // Serial number that is reflected into the /dev/disk/by-id/ tree
-  // of a Linux operating system running within the instance.
-  //
-  // This value can be used to reference the device for mounting, resizing, and so on, from within the instance.
-  string device_name = 2;
-
-  oneof type {
-    // Local disk configuration
-    PhysicalLocalDisk physical_local_disk = 3;
-  }
-}
-
 message PhysicalLocalDisk {
   // Key encryption key info.
   KMSKey kms_key = 1;
-}
-
-message AttachedFilesystem {
-  enum Mode {
-    MODE_UNSPECIFIED = 0;
-
-    // Read-only access.
-    READ_ONLY = 1;
-
-    // Read/Write access.
-    READ_WRITE = 2;
-  }
-
-  // Access mode to the filesystem.
-  Mode mode = 1;
-
-  // Name of the device representing the filesystem on the instance.
-  //
-  // The name should be used for referencing the filesystem from within the instance
-  // when it's being mounted, resized etc.
-  string device_name = 2;
-
-  // ID of the filesystem that is attached to the instance.
-  string filesystem_id = 3;
 }
 
 message NetworkInterface {
@@ -447,11 +427,6 @@ enum IpVersion {
   IPV6 = 2;
 }
 
-message SchedulingPolicy {
-  // True for short-lived compute instances. For more information, see [Preemptible VMs](/docs/compute/concepts/preemptible-vm).
-  bool preemptible = 1;
-}
-
 message NetworkSettings {
   enum Type {
     TYPE_UNSPECIFIED = 0;
@@ -468,11 +443,6 @@ message NetworkSettings {
 
   // Network Type
   Type type = 1;
-}
-
-message GpuSettings {
-  // Attach instance to specified GPU cluster.
-  string gpu_cluster_id = 1;
 }
 
 // PlacementPolicy WAS DECLARED HERE AND IS WITHDRAWN WHOLE — it was an orphan.
@@ -510,8 +480,19 @@ message MetadataOptions {
   // Whether the instance metadata endpoint is reachable from the guest.
   MetadataOption metadata_endpoint = 7;
 
-  // Whether a session token is required to read metadata (hardened IMDS-equivalent).
-  bool metadata_token_required = 8;
+  // Поле 8 держало «требуется ли сессионный токен для чтения метаданных».
+  //
+  // СНЯТО С КОНТРАКТА, номер и имя зарезервированы навсегда. Токен обязателен
+  // BY CONSTRUCTION: ручки, снимающей эту обязательность, не существует, потому
+  // что ручка, которой можно отключить защиту, однажды будет отключена — и
+  // отключена она будет там, где отладка идёт под давлением, а не там, где о ней
+  // помнят.
+  //
+  // Снято именно СНЯТИЕМ, а не сменой умолчания: пока поле стоит в контракте, оно
+  // подпадает под запрет «принято-и-проигнорировано» — вызывающий получает успех
+  // и уверен, что его параметр применён.
+  reserved 8;
+  reserved "metadata_token_required";
 }
 
 enum MetadataOption {

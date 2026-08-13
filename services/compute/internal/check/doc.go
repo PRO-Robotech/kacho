@@ -1,47 +1,41 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package check содержит kacho-compute per-service Check-interceptor wiring.
+// Package check — провязка пообъектной проверки прав для kacho-compute.
 //
-// Состав:
+// # Состав (перепись, а не память: `git ls-files services/compute/internal/check`)
 //
-//   - permission_map.go   — RPCMap для ВСЕХ выставленных RPC kacho-compute
-//     (Disk, Image, Snapshot, Instance, DiskType, MachineType + Operation +
-//     Internal* на :9091). Region/Zone serving снят — Geography принадлежит
-//     kacho-geo (миграция 0011).
+//   - permission_map.go — карта `<gRPC FullMethod>` → требуемое право. Она
+//     ВЫВОДИТСЯ из аннотаций proto (`catalogderive.MustDerive`), а не выписана:
+//     сервис заявляет здесь только то, какие proto-пакеты он обслуживает.
+//     Поэтому «сервис спрашивает не то, что объявлено оператору» перестало быть
+//     выразимым — двух объявлений больше нет.
 //
-//     access-bindings RPC (`{Disk,Image,Instance,Snapshot}Service/
-//     {List,Set,Update}AccessBindings`) ЗДЕСЬ ЕСТЬ, хотя handler'ы — AAA-скелет
-//     (не переопределены → codes.Unimplemented). Раньше они были опущены «их
-//     авторизует сама kacho-iam» — но регистрация ServiceServer поднимает ВЕСЬ
-//     ServiceDesc, включая унаследованные из Unimplemented* методы, поэтому они
-//     проходят через тот же authz-интерсептор: без записи в карте он fail-close'ил
-//     их как DecisionUnmapped → `permission denied (rpc not mapped)`, т.е. дыра в
-//     проводке маскировалась под authz-отказ. Записи зеркалят gateway
-//     permission_catalog.json 1:1 (relation + unscoped project-scope), так что оба
-//     тира выносят одно и то же решение. Гейт против повторения —
-//     permission_map_coverage_test.go (обход proto-generated ServiceDesc).
+//   - check_client.go — адаптер поверх `iamv1.InternalIAMServiceClient.Check`.
 //
-//   - check_client.go     — gRPC adapter поверх `iamv1.InternalIAMServiceClient.Check`.
+// # Что здесь стояло раньше и почему снято
 //
-//   - factory.go          — фабрика, собирающая `*authz.Interceptor` из
-//     (IAMConn, Breakglass). nil-conn + Breakglass=false → ErrIAMConnNotConfigured
-//     (graceful start без kacho-iam в dev).
+// Прежняя редакция описывала состав пакета, которого нет: файл `factory.go`,
+// конструктор `check.NewInterceptor(check.Options{…})` и ошибку
+// `ErrIAMConnNotConfigured`. Ни одного из трёх символов в дереве не существует —
+// пример провязки, приведённый здесь, НЕ КОМПИЛИРОВАЛСЯ. Перехватчик собирается
+// общим `pkg/authz`, и композиционный корень (`cmd/compute/main.go`) зовёт его.
 //
-// Wiring (composition root — `cmd/compute/main.go`):
+// Там же перечислялись записи карты для `Disk`/`Image`/`Snapshot`/`DiskType` и
+// RPC `{…}Service/{List,Set,Update}AccessBindings` с пояснением, что их
+// обработчики — «скелет, отвечающий Unimplemented». Раскол блочного хранения
+// завершён, поверхность выдачи прав на машине снята: ни одного такого контракта
+// в `proto/kacho/cloud/compute/v1/` нет, и карта их не содержит — она их и не
+// может содержать, потому что выводится из аннотаций.
 //
-//	authzIntr, err := check.NewInterceptor(check.Options{
-//	    ServiceName: "kacho-compute",
-//	    IAMConn:     iamConn,        // *grpc.ClientConn к kacho-iam:9091
-//	    Breakglass:  cfg.AuthZBreakglass,
-//	    Logger:      logger,
-//	})
-//	if err != nil { return err }
-//	if authzIntr != nil {
-//	    publicUnary = append(publicUnary, authzIntr.Unary())
-//	    publicStream = append(publicStream, authzIntr.Stream())
-//	}
+// Цена этого текста была конкретной: читатель, провязывающий проверку прав по
+// нему, писал невкомпилируемый вызов, а проверяющий полноту прав искал записи,
+// которых не может быть.
 //
-// Cache-invalidation (LISTEN/NOTIFY → `kacho_iam_subjects`) — НЕ wired в
-// этом MVP. TTL=5s + outbox-drain≤2s = ≤10s revoke propagation.
+// # Что осталось верным и почему это важно
+//
+// Регистрация сервера поднимает ВЕСЬ дескриптор сервиса, включая методы, которые
+// обработчик не переопределил. Такие RPC остаются выставленными и проходят через
+// тот же перехватчик — значит запись в карте обязана быть у каждого. Свойство
+// держит `permission_map_coverage_test.go` (обход дескрипторов), а не эта проза.
 package check

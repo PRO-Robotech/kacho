@@ -1,0 +1,120 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// InternalNodeOwnershipService — узел берёт машину в работу и отпускает её.
+//
+// # Зачем это контракт, а не внутреннее дело узла
+//
+// «Нет автоматического переноса, значит двух писателей не бывает» — довод
+// НЕВЕРНЫЙ, и это выяснено до, а не после. Остаются ручное восстановление,
+// повтор после разделения сети и перезапуск агента: в каждом из трёх случаев
+// второй узел может решить, что машина его. Владение обязано быть предметом
+// договора между узлом и плоскостью управления, а не соглашением по умолчанию.
+//
+// # Только внутренний слушатель
+//
+// :9091, взаимный TLS. Идентификатор узла — инфра-чувствительные сведения: на
+// публичную поверхность он не выходит никогда, потому что раскрывает, какие
+// машины разных арендаторов стоят на одном железе.
+service InternalNodeOwnershipService {
+
+  // ClaimInstance — узел берёт машину в работу.
+  //
+  // Обмен АТОМАРЕН и идемпотентен для того же узла: агент, перезапустившийся и
+  // не помнящий о себе, не должен терять свою же машину. Машину, которую держит
+  // другой узел с живой арендой, взять НЕЛЬЗЯ — ответ отказом по состоянию, а
+  // не ошибкой: это штатный исход гонки, при котором проигравший просто ничего
+  // не делает.
+  rpc ClaimInstance(ClaimInstanceRequest) returns (ClaimInstanceResponse) {
+    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.claim";
+    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_instance"
+      from_request_field: "instance_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // RenewLease — узел продлевает аренду.
+  //
+  // Продление — ТОТ ЖЕ обмен: узел, чья аренда уже перехвачена, продлить её не
+  // может и узнаёт об этом отказом. Отдельного «просто продлить» не существует
+  // намеренно: оно было бы записью без условия, то есть возвращало бы владение
+  // тому, у кого его отобрали.
+  rpc RenewLease(RenewLeaseRequest) returns (ClaimInstanceResponse) {
+    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.renewLease";
+    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_instance"
+      from_request_field: "instance_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // ReleaseInstance — узел отпускает машину.
+  //
+  // Снимает ТОЛЬКО свою привязку. Узел, отпускающий чужую машину, — это тот же
+  // второй писатель, только с другой стороны: он вернул бы её в свободные, пока
+  // законный владелец ещё исполняет.
+  //
+  // Идемпотентен: отпустить уже отпущенную — успех, а не отказ. Агент,
+  // повторяющий отпускание после обрыва ответа, не должен получать ошибку на
+  // действие, которое уже исполнено.
+  rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse) {
+    option (kacho.iam.authz.v1.permission)        = "compute.internal_instances.release";
+    option (kacho.iam.authz.v1.required_relation) = "realization_writer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_instance"
+      from_request_field: "instance_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+message ClaimInstanceRequest {
+  // Машина, которую узел берёт в работу.
+  string instance_id = 1;
+
+  // Узел, который её берёт. Инфра-чувствительное: на публичную поверхность не
+  // выходит никогда.
+  string node_id = 2;
+
+  // Номер события доставки, по которому узел взял машину. Служит признаком
+  // поколения привязки: отчёт со старым номером не воскрешает снятую привязку.
+  int64 delivery_sequence_no = 3;
+
+  // До какого момента узел просит аренду. Узел ОБЯЗАН продлить её раньше и
+  // остановить машину, если не сумел: истечение аренды само по себе не даёт
+  // права на перехват, оно лишь открывает окно с запасом.
+  google.protobuf.Timestamp lease_until = 4;
+}
+
+message RenewLeaseRequest {
+  string instance_id = 1;
+  string node_id = 2;
+  int64 delivery_sequence_no = 3;
+  google.protobuf.Timestamp lease_until = 4;
+}
+
+message ClaimInstanceResponse {
+  // Действующая привязка после обмена.
+  string node_id = 1;
+  int64 delivery_sequence_no = 2;
+  google.protobuf.Timestamp lease_until = 3;
+}
+
+message ReleaseInstanceRequest {
+  string instance_id = 1;
+  string node_id = 2;
+}
+
+message ReleaseInstanceResponse {}
