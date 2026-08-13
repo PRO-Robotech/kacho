@@ -52,6 +52,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/nodeownership"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/realization"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
@@ -95,6 +96,7 @@ type services struct {
 	instance       *instance.InstanceService
 	guestAccessKey *guestaccesskey.Service
 	realization    *realization.Service
+	nodeOwnership  *nodeownership.Service
 }
 
 func runServe(cfg config.Config) error {
@@ -886,7 +888,8 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 		instance:    instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
 		guestAccessKey: guestaccesskey.NewService(
 			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil),
-		realization: realization.NewService(instanceRepo),
+		realization:   realization.NewService(instanceRepo),
+		nodeOwnership: nodeownership.NewService(instanceRepo),
 	}
 }
 
@@ -1103,4 +1106,5 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *p
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
+	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))
 }

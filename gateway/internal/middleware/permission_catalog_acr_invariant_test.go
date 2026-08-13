@@ -389,11 +389,12 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// названы: (а) с машины снята поверхность выдачи прав — два RPC полосы
 	// «чувствительное» и один рутинный ушли вместе с ней (27→25 sensitive);
 	// (б) заведён ключ входа в машину — шесть рутинных записей (234→235 с учётом
-	// ушедшего). Итог 295→294.
+	// ушедшего); (в) заведено владение машиной узлом на внутреннем слушателе — три
+	// рутинных записи (235→238). Итог 295→294→297.
 	assert.Equal(t, 25, n2, "sensitive count")
-	assert.Equal(t, 235, n1, "routine count")
+	assert.Equal(t, 238, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 294, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 297, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

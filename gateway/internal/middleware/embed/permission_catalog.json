@@ -240,6 +240,36 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kacho.cloud.compute.v1.InternalNodeOwnershipService/ClaimInstance",
+    "permission": "compute.internal_instances.claim",
+    "required_relation": "realization_writer",
+    "scope_extractor": {
+      "object_type": "compute_instance",
+      "from_request_field": "instance_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.InternalNodeOwnershipService/ReleaseInstance",
+    "permission": "compute.internal_instances.release",
+    "required_relation": "realization_writer",
+    "scope_extractor": {
+      "object_type": "compute_instance",
+      "from_request_field": "instance_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
+    "fqn": "kacho.cloud.compute.v1.InternalNodeOwnershipService/RenewLease",
+    "permission": "compute.internal_instances.renewLease",
+    "required_relation": "realization_writer",
+    "scope_extractor": {
+      "object_type": "compute_instance",
+      "from_request_field": "instance_id"
+    },
+    "required_acr_min": "1"
+  },
+  {
     "fqn": "kacho.cloud.compute.v1.InternalRealizationService/ReportInstanceRealization",
     "permission": "compute.instances.reportRealization",
     "required_relation": "realization_writer",

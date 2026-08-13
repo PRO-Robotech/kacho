@@ -48,6 +48,7 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 	computev1.InternalWatchService_ServiceDesc,
 	computev1.InternalMachineTypeService_ServiceDesc,
 	computev1.InternalRealizationService_ServiceDesc,
+	computev1.InternalNodeOwnershipService_ServiceDesc,
 }
 
 // notServedServiceNames — сервисы `kacho.cloud.compute.v1`, объявленные в proto, но
