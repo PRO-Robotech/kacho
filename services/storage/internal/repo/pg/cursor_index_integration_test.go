@@ -199,8 +199,12 @@ func TestIntegration_SnapshotsCursorIndex_PageDoesNotReadTheWholeProject(t *test
 	ctx := context.Background()
 	pool := newTestPool(t)
 
+	// Форма пинится С АЛИАСОМ: у снимка FROM перестал быть одной таблицей
+	// (зеркало томов-потребителей приезжает подзапросом), и без алиаса ссылка на
+	// created_at стала бы неоднозначной. Пин ведёт за продуктом, а не наоборот —
+	// иначе проба доказывала бы что-то о себе.
 	requireRepoShape(t, "snapshot_repo.go",
-		"(created_at, id) > ($%d, $%d)", "ORDER BY created_at ASC, id ASC")
+		"(s.created_at, s.id) > ($%d, $%d)", "ORDER BY s.created_at ASC, s.id ASC")
 
 	projects := seedTenantRows(t, ctx, pool, `
 		INSERT INTO snapshots (id, project_id, name, source_volume_id, size_bytes, state, created_at)

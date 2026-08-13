@@ -202,29 +202,43 @@ func (r *DiskTypeBindingRepo) List(ctx context.Context, pageSize int64, pageToke
 // получает ALREADY_EXISTS — повтор её запроса уже увидит новое состояние и займёт
 // следующий номер.
 //
-// Вытесняющая часть НАМЕРЕННО не связана с вставляющей выборкой: свяжи их, и первая
-// регистрация пары (вытеснять нечего, ноль строк) не вставила бы ничего вовсе.
-// Отдельным стейтментом она быть не может — это вернуло бы то самое окно.
+// Вытеснение и вставка — ДВА оператора в ОДНОЙ транзакции, а не изменяющие CTE
+// одного оператора.
+//
+// Прежняя редакция делала это одним оператором и обосновывала выбор тем, что
+// иначе появилось бы окно между вытеснением и вставкой. Обоснование неверно, и
+// цена ошибки была не теоретической: части изменяющего CTE работают с ОДНИМ
+// снимком и НЕ видят изменений друг друга над целевой таблицей, а порядок их
+// выполнения не определён. Поэтому проверка частичного уникального индекса
+// («действующая ревизия одна на пару класс×зона») видела прежнюю строку ещё
+// действующей, и ВТОРАЯ регистрация пары падала уникальностью — то есть смена
+// условий обслуживания класса не работала вовсе, притом что оператор выглядел
+// атомарным и читался как таковой.
+//
+// Окна у двух операторов внутри транзакции нет by construction: UPDATE берёт
+// блокировку строки, INSERT идёт следом, коммит один. Конкурент на ту же пару
+// ждёт коммита на той же строке и видит её уже вытесненной.
+const bindingSupersedeSQL = `
+	UPDATE disk_type_bindings
+	   SET status = 'SUPERSEDED'
+	 WHERE disk_type_id = $1::text AND zone_id = $2::text AND status = 'ACTIVE'`
+
+// Номер следующей ревизии считается ВНУТРИ вставки, а не выбирается заранее:
+// выбери его вызывающий или отдельный SELECT — и он устареет ровно между чтением
+// и записью. Агрегат по пустому набору даёт NULL, поэтому COALESCE обязателен:
+// первая регистрация пары обязана пройти, а не вставить ноль строк.
 const bindingRegisterSQL = `
-	WITH superseded AS (
-		UPDATE disk_type_bindings
-		   SET status = 'SUPERSEDED'
-		 WHERE disk_type_id = $2::text AND zone_id = $3::text AND status = 'ACTIVE'
-		RETURNING id
-	), next_revision AS (
-		SELECT COALESCE(max(revision), 0) + 1 AS revision
-		  FROM disk_type_bindings
-		 WHERE disk_type_id = $2::text AND zone_id = $3::text
-	)
 	INSERT INTO disk_type_bindings
 		(id, disk_type_id, zone_id, backend_id, revision, pool, namespace_template,
 		 cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image, cap_clone_keeps_parent,
 		 cap_online_grow, cap_multi_attach, cap_encryption_at_rest, trash_ttl_seconds,
 		 qos, status)
-	SELECT $1::text, $2::text, $3::text, $4::text, n.revision, $5::text, $6::text,
+	SELECT $1::text, $2::text, $3::text, $4::text,
+	       COALESCE(max(b.revision), 0) + 1, $5::text, $6::text,
 	       $7::boolean, $8::boolean, $9::boolean, $10::boolean, $11::boolean, $12::boolean,
 	       $13::boolean, $14::bigint, $15::jsonb, 'ACTIVE'
-	  FROM next_revision n
+	  FROM disk_type_bindings b
+	 WHERE b.disk_type_id = $2::text AND b.zone_id = $3::text
 	RETURNING `
 
 // Register заводит НОВУЮ ревизию привязки на пару (класс, зона) и тем же стейтментом
@@ -257,7 +271,26 @@ func (r *DiskTypeBindingRepo) Register(ctx context.Context, b *domain.DiskTypeBi
 	if err != nil {
 		return nil, storageerr.ErrInternal
 	}
-	created, serr := scanDiskTypeBinding(r.pool.QueryRow(ctx,
+	tx, terr := r.pool.Begin(ctx)
+	if terr != nil {
+		return nil, storageerr.ErrInternal
+	}
+	// Откат — на всяком пути, кроме успешного коммита: без него отказ вставки
+	// оставил бы прежнюю ревизию вытесненной, а новой не появилось бы, и пара
+	// осталась бы БЕЗ действующей ревизии — то есть класс перестал бы
+	// обслуживаться молча.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, uerr := tx.Exec(ctx, bindingSupersedeSQL, b.DiskTypeID, b.ZoneID); uerr != nil {
+		return nil, mapDiskTypeBindingErr(uerr, dtbErrCtx{
+			bindingID:  b.ID,
+			diskTypeID: b.DiskTypeID,
+			zoneID:     b.ZoneID,
+			backendID:  b.BackendID,
+		})
+	}
+
+	created, serr := scanDiskTypeBinding(tx.QueryRow(ctx,
 		bindingRegisterSQL+diskTypeBindingCols,
 		b.ID, b.DiskTypeID, b.ZoneID, b.BackendID,
 		b.Locator.Pool, b.Locator.NamespaceTemplate,
@@ -267,6 +300,17 @@ func (r *DiskTypeBindingRepo) Register(ctx context.Context, b *domain.DiskTypeBi
 		b.Capabilities.EncryptionAtRest, b.Capabilities.TrashTTLSeconds, qos))
 	if serr != nil {
 		return nil, mapDiskTypeBindingErr(serr, dtbErrCtx{
+			bindingID:  b.ID,
+			diskTypeID: b.DiskTypeID,
+			zoneID:     b.ZoneID,
+			backendID:  b.BackendID,
+		})
+	}
+	if cerr := tx.Commit(ctx); cerr != nil {
+		// Отложенные ограничения приходят из COMMIT, а не из оператора, поэтому
+		// ошибка коммита маршрутизируется тем же классификатором, а не общей
+		// внутренней: иначе нарушение ссылки уехало бы в INTERNAL.
+		return nil, mapDiskTypeBindingErr(cerr, dtbErrCtx{
 			bindingID:  b.ID,
 			diskTypeID: b.DiskTypeID,
 			zoneID:     b.ZoneID,
