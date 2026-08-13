@@ -187,8 +187,15 @@ var exemptFiles = map[string]string{
 
 	"services/compute/internal/commentlint/commentlint_test.go": "the sibling comment guard: it declares tokens of its own",
 
-	"proto/kacho/cloud/compute/v1/instance.proto":                     "reserves the retired gce_*/aws_* field names so they can never be reused; dropping the reservation would re-open the hole",
-	"pkg/api/kacho/cloud/compute/v1/instance.pb.go":                   "generated from the proto above, and echoes its retirement note",
+	"proto/kacho/cloud/compute/v1/instance.proto":   "reserves the retired gce_*/aws_* field names so they can never be reused; dropping the reservation would re-open the hole",
+	"pkg/api/kacho/cloud/compute/v1/instance.pb.go": "generated from the proto above, and echoes its retirement note",
+	// Второй ВЫХОД той же генерации — модуль провайдера IaC. Он появился, когда у
+	// провайдера завёлся ресурс машины: выход, порождённый «на будущее», в это
+	// дерево не кладут. Причина послабления та же, что у первого выхода, и она
+	// структурная: снять её можно только сняв резервирование имён в самом proto,
+	// а это открыло бы повторное использование имён, которые повторно
+	// использовать нельзя никогда.
+	"terraform/internal/api/kacho/cloud/compute/v1/instance.pb.go":    "the same generation, second output (IaC provider module); echoes the same retirement note",
 	"services/compute/internal/migrations/0016_instance_redesign.sql": "an applied migration whose comment records that retirement; applied migrations are never edited",
 
 	"services/compute/tests/newman/cases/instance-redesign.py":                            "conformance case asserting those tokens are ABSENT from responses",
