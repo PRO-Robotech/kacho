@@ -6,18 +6,18 @@
 
 | Коллекция | Кейсов | Стадия |
 |---|---:|---|
-| volume | 41 | S1 (CS1-S1-*) |
-| **image** | **43** | **redesign STOR-1 (F9..F14, NET-NEW `img-`)** |
-| snapshot | 24 | S3 (CS1-S3-*) |
+| volume | 46 | S1 (CS1-S1-*) + STOR-P (`:changeDiskType`, снятое поле в маске) |
+| **image** | **49** | **redesign STOR-1 (F9..F14, NET-NEW `img-`) + STOR-P (`:copy`)** |
+| snapshot | 34 | S3 (CS1-S3-*) + STOR-P (`:copy`, `:listOperations`, зона в маске) |
 | disk-type | 8 | S2 (CS1-S2-*) |
 | operation | 8 | OperationService (OpsProxy sop) |
 | authz | 13 | INV-10 public authz (fixture-gated) |
 | authz-catalog | 18 | матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции) |
 | internal-volume | 4 | S4 INV-7a external-absence |
 | sec-d | 4 | SEC-D owner-tuple через iam (outbox → RegisterResource) |
-| **Всего** | **163** | |
+| **Всего** | **184** | |
 
-`scripts/validate-cases.py` → OK (163 уникальных case-id, нет дублей, все
+`scripts/validate-cases.py` → OK (184 уникальных case-id, нет дублей, все
 каталогизированы). `python3 scripts/gen.py` → OK (9 коллекций).
 
 Таблица выше — не заметка «на память»: её сверяет с самими коллекциями гейт
