@@ -239,7 +239,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 //
 // RED (регрессия, которую вносит F3, если её не закрыть): после провижна default
 // RT `checkNetworkEmpty` видит одну route_tables-строку и КАЖДЫЙ Network.Delete
-// отвечает FAILED_PRECONDITION "Network <id> is not empty" — сеть нельзя удалить
+// отвечает FAILED_PRECONDITION "Network <id> is not empty (route tables: N)" — сеть нельзя удалить
 // вообще никогда.
 func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	if testing.Short() {
@@ -294,7 +294,11 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
-	assert.Equal(t, "Network "+withTenantRT.Id+" is not empty", st.Message())
+	// Отказ ПЕРЕЧИСЛЯЕТ мешающее по видам и числам: прежний текст называл только
+	// факт непустоты, и арендатор выяснял радиус перебором. Идентификаторы
+	// дочерних в текст не попадают — число координатой не является, перечень
+	// идентификаторов чужих объектов ею становится.
+	assert.Equal(t, "Network "+withTenantRT.Id+" is not empty (route tables: 1)", st.Message())
 }
 
 // TestIntegration_Network_DefaultRT_FKOnDelete — within-service ссылка
