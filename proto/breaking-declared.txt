@@ -19,9 +19,20 @@
 #
 # Формат: «файл:строка:колонка:текст находки» — ровно как печатает проверка.
 
-kacho/cloud/storage/v1/disk_type.proto:22:1:Previously present field "5" with name "performance_tier" on message "DiskType" was deleted.
-kacho/cloud/storage/v1/disk_type_service.proto:155:1:Previously present field "5" with name "performance_tier" on message "CreateDiskTypeRequest" was deleted.
-kacho/cloud/storage/v1/disk_type_service.proto:194:1:Previously present field "5" with name "performance_tier" on message "UpdateDiskTypeRequest" was deleted.
-kacho/cloud/storage/v1/internal_image_service.proto:132:1:Previously present reserved range "[2,15]" on message "ImageInternal" is missing values: [2,6] were removed.
-kacho/cloud/storage/v1/volume.proto:19:1:Previously present field "11" with name "block_size" on message "Volume" was deleted.
-kacho/cloud/storage/v1/volume_service.proto:213:1:Previously present field "8" with name "block_size" on message "CreateVolumeRequest" was deleted.
+# Записи storage СНЯТЫ: их предмет влит в ствол, основание сравнения сдвинулось,
+# и находок по ним больше нет. Проверка потребовала этого сама — ровно как
+# обещано абзацем выше.
+
+# Сироты контракта compute. Снимаются вместе со своим предметом: у каждого из
+# трёх был ровно один вход, и он снят раньше.
+#
+#   PhysicalLocalDisk        — держатель, который его нёс, снят волной 1;
+#   DiskPlacementPolicy      — единственным вызывающим был снятый перенос машины;
+#   DiskPlacementPolicyChange — то же, парное сообщение того же острова.
+#
+# Ни одно из трёх не достижимо ни от запроса, ни от ответа, ни от метаданных
+# операции: предикат достижимости замыканием даёт по ним ноль. Номера и имена
+# полей, которые на них ссылались, зарезервированы там, где они стояли.
+kacho/cloud/compute/v1/instance.proto:1:1:Previously present message "PhysicalLocalDisk" was deleted from file.
+kacho/cloud/compute/v1/instance_service.proto:1:1:Previously present message "DiskPlacementPolicy" was deleted from file.
+kacho/cloud/compute/v1/instance_service.proto:1:1:Previously present message "DiskPlacementPolicyChange" was deleted from file.
