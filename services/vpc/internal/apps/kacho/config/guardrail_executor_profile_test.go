@@ -18,10 +18,13 @@ package config
 // отказывает всегда.
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
 // prodExecutorCfg — законная боевая посадка с полностью объявленным профилем.
@@ -210,6 +213,70 @@ func TestValidateExecutorProfile_Production_NamedSetReferenceNotDeclared_Fails(t
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dataplane.executor.named-set-reference-in-rule")
 }
+
+// S5-14: объявленный полезный размер кадра НИЖЕ обещания продукта → отказ старта.
+//
+// Обещание — величина продукта (domain.GuaranteedPayloadFloorBytes), а не
+// настройка: арендатор читает его в документации и рассчитывает на него, не зная
+// ни этого стенда, ни его исполнителя. Посадка, объявившая меньше, делает обещание
+// ложным для каждого, кто на неё придёт, — и делает это молча: контур принимает
+// тот же трафик, что и раньше.
+//
+// Отказ обязан назвать ОБА числа: объявленное и обещанное. Без объявленного
+// оператор не знает, что чинить; без обещанного — до какой величины.
+func TestValidateExecutorProfile_Production_PayloadBelowProductFloor_Fails(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.GuaranteedPayloadBytes = domain.GuaranteedPayloadFloorBytes - 1
+
+	err := c.ValidateExecutorProfile()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dataplane.executor.guaranteed-payload-bytes")
+	assert.Contains(t, err.Error(), "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES")
+	assert.Contains(t, err.Error(), strconv.Itoa(domain.GuaranteedPayloadFloorBytes-1),
+		"отказ обязан назвать ОБЪЯВЛЕННОЕ число — иначе непонятно, что чинить")
+	assert.Contains(t, err.Error(), strconv.Itoa(domain.GuaranteedPayloadFloorBytes),
+		"отказ обязан назвать ОБЕЩАННОЕ число — иначе непонятно, до какой величины чинить")
+	assert.Contains(t, err.Error(), "mode production")
+}
+
+// S5-15 (положительный контроль к S5-14): РОВНО обещание проходит.
+//
+// Без этой пары отрицание зеленело бы на страже, который отвергает любое значение:
+// граница включающая, и это часть обещания — «не ниже», а не «строго выше».
+func TestValidateExecutorProfile_Production_PayloadExactlyAtProductFloor_Passes(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.GuaranteedPayloadBytes = domain.GuaranteedPayloadFloorBytes
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}
+
+// S5-16 (второй положительный контроль): исполнитель, проносящий БОЛЬШЕ обещанного,
+// законен. Обещание — нижняя граница, а не равенство: контур не вправе требовать от
+// посадки ровно своё число.
+func TestValidateExecutorProfile_Production_PayloadAboveProductFloor_Passes(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.GuaranteedPayloadBytes = domain.GuaranteedPayloadFloorBytes + 50
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}
+
+// S5-17: на dev нижняя граница не требуется — по той же причине, что и весь блок
+// требований к посадке (S5-04): исполнителя там нет вовсе, обещать нечего и некому.
+//
+// Это НЕ послабление: любой РАЗВЁРНУТЫЙ стенд работает в боевом режиме (core rule
+// #16). Отличие от S5-11 существенно: отрицательное число — негодное ОБЪЯВЛЕНИЕ и
+// отвергается в любом режиме, а 1200 — объявление годное, но недостаточное для
+// обещания, то есть требование к посадке.
+func TestValidateExecutorProfile_Dev_PayloadBelowProductFloor_Passes(t *testing.T) {
+	c := prodCfg(ModeDev, "kacho-iam.kacho.svc:9091")
+	c.Dataplane.Executor.GuaranteedPayloadBytes = domain.GuaranteedPayloadFloorBytes - 200
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}
+
+// Объявление ЧАРТА сверяется с обещанием там, где уже живёт читатель файла
+// значений — `services/vpc/deploy/executor_profile_test.go`. Второй разбор YAML
+// здесь был бы вторым предикатом об одном предмете, и разошёлся бы он молча.
 
 // S5-13: страж входит в агрегатор старта. Агрегатор выглядит как «полная проверка
 // старта», поэтому пропущенная в нём проверка — ловушка: тот, кто переведёт на

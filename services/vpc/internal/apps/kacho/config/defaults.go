@@ -166,4 +166,19 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("dataplane.executor.guaranteed-bandwidth-per-interface-mbps", 0)
 	v.SetDefault("dataplane.executor.connection-limit-per-interface", 0)
 	v.SetDefault("dataplane.executor.tenant-settable-bandwidth-limit", false)
+
+	// dataplane.reserved-prefixes — адресные диапазоны, которые платформа держит
+	// ЗА СОБОЙ (служебные адреса узлов, адреса служб внутри подсети, точка
+	// получения метаданных экземпляра).
+	//
+	// Умолчание — ПУСТО, и это осознанно противоположно «удобному»: перечень,
+	// вписанный сюда, описывал бы один стенд и выглядел бы работающей защитой на
+	// всех остальных. Пустой перечень при этом не резервирует ничего, поэтому
+	// боевая посадка на нём НЕ ПОДНИМАЕТСЯ (ValidateReservedPrefixes называет
+	// ручку в отказе), а значение объявляет чарт.
+	//
+	// Ключ объявлен здесь ещё и для того, чтобы его видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_DATAPLANE__RESERVED_PREFIXES` не доехал бы до поля вовсе.
+	v.SetDefault("dataplane.reserved-prefixes", []string{})
 }

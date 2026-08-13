@@ -49,6 +49,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрирует DTO-трансферы (init); boot-check ниже
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
@@ -92,6 +93,18 @@ func main() {
 	// разных арендаторов, здесь и останавливается.
 	if err := cfg.ValidateExecutorProfile(); err != nil {
 		log.Fatalf("config validate (dataplane executor profile): %v", err)
+	}
+	// S6 boot-guard: перечень адресных диапазонов, которые платформа держит ЗА
+	// СОБОЙ (служебные адреса узлов, адреса служб внутри подсети, точка получения
+	// метаданных экземпляра). Подсеть арендатора поверх такого диапазона проходит
+	// все проверки контура и не работает, причём симптом выглядит сетевым. Перечень
+	// зависит от посадки, поэтому объявляется настройкой — а у настройки есть
+	// состояние «не задана», и оно НЕ безобидно: пустой перечень означает «не
+	// сужаем», а не «нечего сужать», то есть проверка на пути запроса исполняется на
+	// каждом создании подсети и не отвергает ничего. Боевая посадка здесь и
+	// останавливается.
+	if err := cfg.ValidateReservedPrefixes(); err != nil {
+		log.Fatalf("config validate (dataplane reserved prefixes): %v", err)
 	}
 
 	if len(os.Args) >= 2 {
@@ -171,11 +184,19 @@ func runServe(cfg config.Config) error {
 	// процесс живёт с boot-time окружением). Семейства печатаются НОРМАЛИЗОВАННЫМ
 	// значением — тем же, что читал страж, — иначе журнал показывал бы «v4,,» там,
 	// где страж видел «не объявлено».
+	//
+	// Рядом с объявленным полезным размером кадра печатается ОБЕЩАНИЕ ПРОДУКТА
+	// (`product_payload_floor_bytes`): это единственная гарантия профиля, у которой
+	// есть нижняя граница, обещанная арендатору, и читающий журнал обязан видеть обе
+	// величины в одной строке — иначе объявленное число нечем сопоставить с тем, на
+	// что арендатор рассчитывает. Стенд с объявлением НИЖЕ обещания страж (S5, выше)
+	// до этой точки уже не пустил; строка ниже — наблюдаемость, а не проверка.
 	logger.Info("dataplane executor profile declared",
 		"overlapping_tenant_addresses", cfg.Dataplane.Executor.OverlappingTenantAddresses,
 		"state_tracking_families", cfg.StateTrackingFamilies().String(),
 		"named_set_reference_in_rule", cfg.Dataplane.Executor.NamedSetReferenceInRule,
 		"guaranteed_payload_bytes", cfg.Dataplane.Executor.GuaranteedPayloadBytes,
+		"product_payload_floor_bytes", domain.GuaranteedPayloadFloorBytes,
 		"guaranteed_bandwidth_per_interface_mbps", cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
 		"connection_limit_per_interface", cfg.Dataplane.Executor.ConnectionLimitPerInterface,
 		"tenant_settable_bandwidth_limit", cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
@@ -925,14 +946,24 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Subnet use-case'ы работают через CQRS-Repository (kachoRepo). niAdapter
 	// передается в Delete для precondition-check «нет привязанных NIC».
-	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar)
+	// Перечень служебных диапазонов читается ОДНИМ методом настроек — тем же,
+	// который спрашивает страж старта (cfg.ValidateReservedPrefixes выше). Поэтому
+	// «страж пропустил» ⟺ «путь запроса сверяется с тем же перечнем»; своя сборка
+	// значения здесь дала бы два места об одном предмете. Оба глагола, объявляющих
+	// диапазон подсети (Create и :addCidrBlocks), получают его — второй не менее
+	// важен: без него обход занимает один дополнительный запрос. Провязку держит
+	// гейт reserved_prefixes_wiring_test.go.
+	reservedPrefixes := cfg.ReservedPrefixes()
+	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).
+		WithRegistrar(registrar).
+		WithReservedPrefixes(reservedPrefixes)
 	subnetHandler := subnetapp.NewHandler(
 		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
 		subnetapp.NewGetSubnetUseCase(kachoRepo),
 		subnetapp.NewListSubnetsUseCase(kachoRepo, listFilter),
-		subnetapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo),
+		subnetapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo).WithReservedPrefixes(reservedPrefixes),
 		subnetapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
 		subnetapp.NewListUsedAddressesUseCase(kachoRepo, addressAdapter),
 		subnetapp.NewListOperationsUseCase(opsRepo),

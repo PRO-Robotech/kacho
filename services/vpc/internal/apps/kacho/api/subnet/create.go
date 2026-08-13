@@ -39,6 +39,21 @@ type CreateSubnetUseCase struct {
 	regionReg     RegionRegistry
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
+	reserved      domain.ReservedPrefixes
+}
+
+// WithReservedPrefixes подключает перечень адресных диапазонов, которые платформа
+// держит за собой (объявляется посадкой, см. `dataplane.reserved-prefixes`).
+//
+// Нулевое значение не резервирует ничего — так работают внутрипроцессные фикстуры,
+// у которых посадки нет вовсе. Боевая посадка без объявленного перечня НЕ
+// ПОДНИМАЕТСЯ (`config.Config.ValidateReservedPrefixes`), а то, что композиционный
+// корень действительно отдаёт сюда значение из настроек, держит гейт
+// `cmd/vpc/reserved_prefixes_wiring_test.go`: без него провязка могла бы пропасть
+// молча, оставив проверку, которая не отвергает ничего.
+func (u *CreateSubnetUseCase) WithReservedPrefixes(r domain.ReservedPrefixes) *CreateSubnetUseCase {
+	u.reserved = r
+	return u
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
@@ -109,6 +124,15 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 		if err := validateSubnetV6CIDR(fmt.Sprintf("v6_cidr_blocks[%d]", i), c); err != nil {
 			return nil, err
 		}
+	}
+	// Ни один объявляемый диапазон не пересекается с адресным пространством,
+	// которое платформа держит за собой (`dataplane.reserved-prefixes`). Стоит
+	// ПОСЛЕ поэлементной проверки формата — она даёт этой проверке её предпосылку
+	// (разбираемое каноническое значение) — и ДО вызова к владельцу Geography: ввод
+	// поверх служебного диапазона не станет законным ни при каком ответе соседа,
+	// поэтому платить за него сетевым вызовом нечем.
+	if err := validateSubnetNotReserved(u.reserved, s.V4CidrBlocks, s.V6CidrBlocks); err != nil {
+		return nil, err
 	}
 	// Domain-self-validation: Name/Description/Labels валидируются через newtypes
 	// внутри domain — use-case-слой не зовет corevalidate напрямую.

@@ -35,6 +35,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
 // executorProfileKey — одна возможность исполнителя: ключ чарта (camelCase),
@@ -132,6 +134,42 @@ func TestChartDeclaresOverlappingTenantAddressesSupported(t *testing.T) {
 			"исполнитель не изолирует одинаковые адреса разных арендаторов, включать "+
 			"пересечение нельзя: диапазоны у vpc уникальны лишь в пределах сети", vpcValues)
 	}
+}
+
+// Базовый профиль чарта обязан объявлять полезный размер кадра НЕ МЕНЬШЕ обещания
+// продукта.
+//
+// Обещание живёт одной именованной величиной в домене (`domain.GuaranteedPayloadFloorBytes`)
+// и адресовано арендатору: он читает его в документации и рассчитывает на него, не
+// зная ни этого стенда, ни его исполнителя. Чарт объявляет то, что исполнитель
+// стенда действительно проносит. Это два места об одном предмете, поэтому они
+// сверяются механически: посадка, объявившая меньше обещанного, НЕ СТАРТУЕТ
+// (config.ValidateExecutorProfile), а стоковый профиль обязан подниматься — иначе
+// «отрендерится» снова начнёт означать «поднимется».
+//
+// Проба читает ОБЪЯВЛЕНИЕ файла значений, а не рендер, по тому же доводу, что и
+// соседние: helm в этой среде недоступен, и проба, требующая внешнего инструмента,
+// пропустилась бы там, где он не поставлен.
+func TestChartDeclaresAtLeastTheProductPayloadFloor(t *testing.T) {
+	profile, found := executorProfileFromValues(t, vpcValues)
+	if !found {
+		t.Fatalf("%s не объявляет dataplane.executor — сверять обещание не с чем", vpcValues)
+	}
+	declared, ok := profile["guaranteedPayloadBytes"].(int)
+	if !ok {
+		t.Fatalf("%s: dataplane.executor.guaranteedPayloadBytes объявлен не числом "+
+			"(получено %#v) — величина, заданная не числом, до сравнения с обещанием не доходит",
+			vpcValues, profile["guaranteedPayloadBytes"])
+	}
+	if declared < domain.GuaranteedPayloadFloorBytes {
+		t.Fatalf("%s объявляет dataplane.executor.guaranteedPayloadBytes: %d при обещании "+
+			"продукта %d байт — стоковая боевая посадка с этим объявлением НЕ СТАРТУЕТ. "+
+			"Либо исполнитель стенда проносит не меньше обещанного, либо обещание неверно и "+
+			"правится вместе с документацией, которая его называет",
+			vpcValues, declared, domain.GuaranteedPayloadFloorBytes)
+	}
+	t.Logf("объявлено %d байт при обещании %d — обещание выполнимо на стоковой посадке",
+		declared, domain.GuaranteedPayloadFloorBytes)
 }
 
 // Каждый объявленный ключ обязан иметь ЧИТАТЕЛЯ в шаблоне.

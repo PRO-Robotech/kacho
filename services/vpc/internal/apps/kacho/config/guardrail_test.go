@@ -54,6 +54,12 @@ func prodCfg(mode Mode, iamEndpoint string) Config {
 		ConnectionLimitPerInterface:         65536,
 		TenantSettableBandwidthLimit:        false,
 	}
+	// Перечень служебных диапазонов объявлен — по той же причине и с той же
+	// оговоркой: фикстура обязана быть не снисходительнее продукта. Пока страж
+	// требует объявления, фикстура с пустым перечнем утверждала бы «всё защищено»
+	// на посадке, которая не поднимается (S6 держит собственный набор случаев в
+	// guardrail_reserved_prefixes_test.go).
+	c.Dataplane.ReservedPrefixes = []string{"169.254.0.0/16", "fe80::/10"}
 	return c
 }
 

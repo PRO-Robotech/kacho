@@ -11,6 +11,7 @@ import (
 	"go.uber.org/multierr"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
 // Frozen-тексты boot-гардрейлов. Это часть контракта (наблюдаемый отказ старта),
@@ -132,10 +133,48 @@ const (
 		"tenant about what the executor will hold"
 	errExecutorGuaranteeNegative = "%s must not be negative (env %s, got %d) — a negative number is not " +
 		"«no limit», it is an unusable declaration"
+	// %[1]s = Mode.String(), %[2]d = объявлено, %[3]d = обещано продуктом.
+	//
+	// Оба числа обязательны: без объявленного оператор не знает, ЧТО чинить, без
+	// обещанного — ДО КАКОЙ величины. Имя инкапсуляции и арифметика вычета сюда не
+	// попадают намеренно — по величине накладных расходов опознаётся сетевая
+	// фабрика (см. godoc domain.GuaranteedPayloadFloorBytes).
+	errExecutorPayloadBelowProductFloor = "mode %[1]s: dataplane.executor.guaranteed-payload-bytes=%[2]d is " +
+		"below the payload floor this product promises the tenant (%[3]d bytes, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES) — the promise is a product-wide lower bound " +
+		"the tenant reads in the documentation and cannot verify against this stand, so a stand whose executor " +
+		"carries less makes it false for everyone who arrives here, and makes it false SILENTLY (the control " +
+		"plane keeps accepting the same traffic). Either point this stand at an executor that carries at least " +
+		"the promised payload, or raise the declaration to what the executor actually holds; lowering the " +
+		"promise is a product decision and changes the documentation that states it"
 	errExecutorTenantLimitWithoutBand = "dataplane.executor.tenant-settable-bandwidth-limit=true while " +
 		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps is not declared (got %d) — the declaration " +
 		"contradicts itself: a tenant-settable limit is a ceiling under the guaranteed band, and there is no " +
 		"band to limit against. Declare the guaranteed band, or drop the tenant-settable limit"
+
+	// S6-гардрейлы (перечень адресных диапазонов, которые платформа держит за
+	// собой, см. dataplane.go `ReservedPrefixes`).
+	//
+	// Тексты читает оператор, которому стенд отказал в старте, поэтому они обязаны
+	// называть ручку — и ключ файла настроек, и переменную окружения: посадка
+	// задаёт перечень то так, то так, а искать имя в исходниках оператор не обязан.
+	// Это рантайм-диагностика, и требование сдержанности к публичным артефактам к
+	// ней не относится. Сами служебные диапазоны отказ НЕ печатает — их незачем
+	// пересказывать тому, у кого они и так в файле настроек.
+	// %s = Mode.String().
+	errReservedPrefixesRequired = "mode %s: dataplane.reserved-prefixes is not declared " +
+		"(env KACHO_VPC_DATAPLANE__RESERVED_PREFIXES) — part of the address space serves the platform " +
+		"itself (node service addresses, in-subnet service addresses, the instance metadata endpoint), and " +
+		"an EMPTY list means «we do not narrow», not «there is nothing to narrow»: every tenant prefix is " +
+		"then accepted, including one laid over a service range, and the result is a product that «sometimes " +
+		"does not work» with the investigation going into the network instead of into the overlap. Declare the " +
+		"ranges this stand keeps for itself. Note that a lone comma is NOT a declaration — it normalises to " +
+		"zero entries, and the guard reads the same normalised value the rest of the process reads"
+	// errReservedPrefixUnusable — негодное ОБЪЯВЛЕНИЕ, отвергается в любом режиме.
+	// %s = запись оператора (в кавычках), %s = причина от доменного конструктора.
+	errReservedPrefixUnusable = "dataplane.reserved-prefixes: entry %s is unusable (%s) — a silently " +
+		"dropped entry would leave a range the operator considers reserved and the control plane does not, " +
+		"so a tenant subnet laid over it would be accepted; fix the entry or drop it"
 )
 
 // Validate проверяет инварианты Config — чистая функция без побочных эффектов и без
@@ -526,6 +565,19 @@ func (c Config) ValidateExecutorProfile() error {
 				c.AuthN.Mode, g.knob, g.env, g.value))
 		}
 	}
+	// Полезный размер кадра — единственная гарантия профиля, у которой есть
+	// ОБЕЩАНИЕ ПРОДУКТА (domain.GuaranteedPayloadFloorBytes): арендатор читает
+	// нижнюю границу в документации и рассчитывает на неё, не зная ни этого стенда,
+	// ни его исполнителя. Поэтому здесь проверяется не только «объявлено», но и «не
+	// меньше обещанного».
+	//
+	// Ноль отсеян выше как ОТСУТСТВИЕ гарантии, и второй отказ про то же число
+	// назвал бы оператору две проблемы там, где она одна. Граница ВКЛЮЧАЮЩАЯ —
+	// обещание звучит «не ниже», и ровно обещанное законно.
+	if p := e.GuaranteedPayloadBytes; p > 0 && p < domain.GuaranteedPayloadFloorBytes {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorPayloadBelowProductFloor,
+			c.AuthN.Mode, p, domain.GuaranteedPayloadFloorBytes))
+	}
 	return errs
 }
 
@@ -560,6 +612,64 @@ func (c Config) executorGuarantees() []executorGuarantee {
 	}
 }
 
+// ValidateReservedPrefixes — boot-гардрейл S6: перечень адресных диапазонов,
+// которые платформа держит ЗА СОБОЙ (секция `dataplane.reserved-prefixes`, см.
+// dataplane.go).
+//
+// # Что здесь проверяется и почему у этого обязан быть страж, а не умолчание
+//
+// Часть адресного пространства обслуживает саму платформу: служебные адреса узлов,
+// адреса служб внутри подсети, точка получения метаданных экземпляра. Подсеть
+// арендатора, объявленная поверх такого диапазона, проходит все проверки контура и
+// не работает — причём симптом выглядит сетевым, а причина лежит в перекрытии.
+//
+// Перечень нельзя зашить в код: у разных посадок платформы служебные диапазоны
+// разные, и литерал описывал бы один стенд, оставаясь ложью про остальные. А раз
+// это настройка, у неё есть состояние «не задана», и оно НЕ безобидно: пустой
+// перечень означает «не сужаем», а не «нечего сужать» — проверка на пути запроса
+// присутствует, исполняется на каждом создании подсети и не отвергает ничего.
+// Поэтому боевая посадка с необъявленным перечнем не поднимается.
+//
+// # Два разных вида отказа, и они разделены НАМЕРЕННО (как в S5)
+//
+//   - ПОСАДКА (перечень не объявлен) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур, где датаплейна нет вовсе; любой
+//     РАЗВЁРНУТЫЙ стенд работает в боевом режиме (core rule #16), поэтому
+//     освобождение dev не оставляет дыры ни на одном стенде.
+//   - ОБЪЯВЛЕНИЕ (запись, которая диапазоном стать не может) — негодно САМО ПО
+//     СЕБЕ, вне зависимости от посадки, и отвергается в любом режиме. Это опечатка
+//     или самопротиворечие, а не выбор оператора: приняв её молча, мы получили бы
+//     диапазон, который оператор считает зарезервированным, а контур — нет.
+//
+// Предикат непустоты — ТОТ ЖЕ, что читает путь запроса
+// (Config.ReservedPrefixes().IsDeclared()), а не длина сырой настройки: одинокая
+// запятая разбирается в две пустые записи, то есть «непусто» по длине и «пусто» по
+// существу. Разошедшись здесь, страж и читатель разошлись бы ровно там, где
+// расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями сразу: оператор обязан увидеть полный
+// список за один прогон, а не чинить перечень по одной записи за перезапуск.
+func (c Config) ValidateReservedPrefixes() error {
+	var errs error
+
+	reserved := c.ReservedPrefixes()
+
+	// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+	for _, bad := range reserved.Rejected() {
+		errs = multierr.Append(errs, fmt.Errorf(errReservedPrefixUnusable,
+			strconv.Quote(bad.Entry), bad.Reason))
+	}
+
+	// (2) Требование к ПОСАДКЕ — только там, где датаплейн есть.
+	if !c.AuthN.Mode.IsProduction() {
+		return errs
+	}
+	if !reserved.IsDeclared() {
+		errs = multierr.Append(errs, fmt.Errorf(errReservedPrefixesRequired, c.AuthN.Mode))
+	}
+	return errs
+}
+
 // ValidateBoot — единый boot-валидатор: агрегирует Validate (S1 + базовые
 // инварианты), ValidateServerMTLS (S2) и ValidatePeerTransport (S4) в один multierr,
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
@@ -573,15 +683,18 @@ func (c Config) executorGuarantees() []executorGuarantee {
 // «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
 // вместо явной пары вызовов, тихо остался бы без проверки фильтра.
 //
-// S5 (ValidateExecutorProfile) входит сюда по той же причине и с того же дня, что
-// заведён сам: проверка, не попавшая в агрегатор, становится той самой ловушкой.
+// S5 (ValidateExecutorProfile) и S6 (ValidateReservedPrefixes) входят сюда по той
+// же причине и каждый с того же дня, что заведён сам: проверка, не попавшая в
+// агрегатор, становится той самой ловушкой.
 func (c Config) ValidateBoot(m MTLSConfig) error {
 	return multierr.Append(
 		multierr.Append(
 			multierr.Append(
-				multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
-				c.ValidateListFilter()),
-			c.ValidateExecutorProfile()),
+				multierr.Append(
+					multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+					c.ValidateListFilter()),
+				c.ValidateExecutorProfile()),
+			c.ValidateReservedPrefixes()),
 		c.ValidatePeerTransport(m),
 	)
 }
