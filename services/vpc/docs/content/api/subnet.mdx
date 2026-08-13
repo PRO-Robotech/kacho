@@ -24,8 +24,9 @@ import dedent from 'ts-dedent'
 планируете адресацию приложения — разбиваете сеть на сегменты под разные зоны, ярусы
 или команды.
 
-Способ размещения подсети задается дискриминатором `placementType` (обязателен и
-immutable):
+Способ размещения подсети выражен дискриминатором `placementType`. Он **output-only**:
+вызывающий задаёт `zoneId` ЛИБО `regionId`, а дискриминатор сервер выводит и возвращает при
+чтении. Immutable на всю жизнь подсети:
 
 - **ZONAL** — подсеть живет в одной зоне доступности (`zoneId`); адреса unicast,
   привязаны к зоне. Классический сегмент под ресурсы конкретной зоны.
@@ -70,8 +71,8 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
     <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
-    <tr><td><code>v4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v4CidrBlocks.short} (soft-immutable в Update; меняется через :add-cidr-blocks/:remove-cidr-blocks)</td></tr>
-    <tr><td><code>v6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v6CidrBlocks.short} (soft-immutable в Update)</td></tr>
+    <tr><td><code>ipv4CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv4CidrBlocks.short} (soft-immutable в Update; меняется через :add-cidr-blocks/:remove-cidr-blocks)</td></tr>
+    <tr><td><code>ipv6CidrBlocks</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.ipv6CidrBlocks.short} (soft-immutable в Update)</td></tr>
     <tr><td><code>routeTableId</code></td><td><code>{TYPES.string}</code></td><td>id привязанной RouteTable (если не задан — авто-ассоциация с самой ранней RT сети)</td></tr>
     <tr><td><code>dhcpOptions</code></td><td><code>DhcpOptions</code></td><td>DHCP-параметры подсети: <code>domainName</code>, <code>domainNameServers[]</code>, <code>ntpServers[]</code></td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
@@ -111,13 +112,15 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
       "id": "{subnetId}",
       "projectId": "{projectId}",
       "networkId": "{networkId}",
-      "placementType": "ZONAL",
       "zoneId": "region-1-a",
       "name": "prod-subnet-a",
       "description": "Подсеть прод-зоны A",
       "labels": { "env": "prod" },
-      "v4CidrBlocks": ["10.0.0.0/24"],
-      "v6CidrBlocks": [],
+      "ipv4CidrPrimary": "10.0.0.0/24",
+      "ipv4CidrBlocks": ["10.0.0.0/24"],
+      "ipv6CidrPrimary": "",
+      "ipv6CidrBlocks": [],
+      "placementType": "ZONAL",
       "routeTableId": "{routeTableId}",
       "createdAt": "2026-06-06T14:27:00Z"
     }
@@ -174,10 +177,11 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
           "id": "{subnetId}",
           "projectId": "{projectId}",
           "networkId": "{networkId}",
-          "placementType": "ZONAL",
           "zoneId": "region-1-a",
           "name": "prod-subnet-a",
-          "v4CidrBlocks": ["10.0.0.0/24"],
+          "ipv4CidrPrimary": "10.0.0.0/24",
+          "ipv4CidrBlocks": ["10.0.0.0/24"],
+          "placementType": "ZONAL",
           "createdAt": "2026-06-06T14:27:00Z"
         }
       ],
@@ -197,11 +201,19 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
 
 <ApiOperation method="POST" endpoint="/vpc/v1/subnets" async>
 
-Создает подсеть в указанной сети. Возвращает `Operation` (async). `placementType`
-обязателен и определяет пару полей размещения: **ZONAL** → задается `zoneId` (а `regionId`
-должен быть пуст); **REGIONAL** → задается `regionId` (а `zoneId` должен быть пуст).
-Пропущенный/`UNSPECIFIED` `placementType`, лишнее поле размещения и несуществующая
-зона/регион отклоняются **синхронно** (`InvalidArgument`); несуществующая сеть, дубль имени
+Создает подсеть в указанной сети. Возвращает `Operation` (async).
+
+`placementType` **не задаётся вызывающим** — он выводится сервером из того, что из двух полей
+размещения заполнено: `zoneId` → **ZONAL** (подсеть в одной зоне), `regionId` → **REGIONAL**
+(префикс анонсируется по региону). Непустой `placementType` в теле отвергается синхронно:
+`InvalidArgument "placement_type is server-derived; set zone_id or region_id instead"`.
+Оба поля размещения сразу или ни одного — тоже синхронный отказ.
+
+Хотя бы один адресный якорь обязателен: `ipv4CidrPrimary` либо `ipv6CidrPrimary`. Пустыми оба
+быть не могут (из такой подсети нельзя выделить ни один адрес), одно — можно: v4-only и v6-only
+подсети законны. Размер IPv4-подсети — в диапазоне `/16../28` включительно с обеих сторон.
+
+Несуществующая зона/регион отклоняются **синхронно** (`InvalidArgument`); несуществующая сеть, дубль имени
 и пересечение CIDR — тоже синхронно (`NOT_FOUND "Network %s not found"` / `ALREADY_EXISTS` /
 `FAILED_PRECONDITION "Subnet CIDRs can not overlap"`). В worker'е: проверка существования
 проекта → вставка Subnet (FK + EXCLUDE + CHECK-размещения — атомарный backstop) → запись
@@ -214,14 +226,14 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
     <tr><td><code>networkId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.networkId.short}</td></tr>
-    <tr><td><code>placementType</code></td><td><strong>да</strong></td><td><code>SubnetPlacementType</code></td><td>{DICTIONARY.placementType.short}</td></tr>
-    <tr><td><code>zoneId</code></td><td>для ZONAL</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}; при <code>ZONAL</code> обязателен, <code>regionId</code> пуст</td></tr>
-    <tr><td><code>regionId</code></td><td>для REGIONAL</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}; при <code>REGIONAL</code> обязателен, <code>zoneId</code> пуст</td></tr>
+    <tr><td><code>placementType</code></td><td><strong>не задаётся</strong></td><td><code>SubnetPlacementType</code></td><td>выводится сервером из <code>zoneId</code>/<code>regionId</code>; непустое значение в теле отвергается</td></tr>
+    <tr><td><code>zoneId</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}; задан ⇒ размещение <code>ZONAL</code>, <code>regionId</code> пуст</td></tr>
+    <tr><td><code>regionId</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}; задан ⇒ размещение <code>REGIONAL</code>, <code>zoneId</code> пуст</td></tr>
     <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
-    <tr><td><code>v4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v4CidrBlocks.short} (опционально; CIDR можно добавить позже через :add-cidr-blocks)</td></tr>
-    <tr><td><code>v6CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.v6CidrBlocks.short}</td></tr>
+    <tr><td><code>ipv4CidrPrimary</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.ipv4CidrPrimary.short}</td></tr>
+    <tr><td><code>ipv6CidrPrimary</code></td><td>одно из двух</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.ipv6CidrPrimary.short}</td></tr>
     <tr><td><code>routeTableId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>id привязываемой RouteTable</td></tr>
     <tr><td><code>dhcpOptions</code></td><td>нет</td><td><code>DhcpOptions</code></td><td>DHCP-параметры (<code>domainName</code> по RFC 1123, IP в <code>domainNameServers[]</code> / <code>ntpServers[]</code>)</td></tr>
   </tbody>
@@ -240,10 +252,9 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
       -d '{
         "projectId": "{projectId}",
         "networkId": "{networkId}",
-        "placementType": "ZONAL",
         "zoneId": "region-1-a",
         "name": "prod-subnet-a",
-        "v4CidrBlocks": ["10.0.0.0/24"],
+        "ipv4CidrPrimary": "10.0.0.0/24",
         "labels": { "env": "prod" }
       }'
   `}
@@ -260,10 +271,9 @@ ID подсети — префикс `sub` + 17 символов crockford-base3
       -d '{
         "projectId": "{projectId}",
         "networkId": "{networkId}",
-        "placementType": "REGIONAL",
         "regionId": "region-1",
         "name": "prod-subnet-regional",
-        "v4CidrBlocks": ["10.1.0.0/24"]
+        "ipv4CidrBlocks": ["10.1.0.0/24"]
       }'
   `}
 </CodeBlock>
@@ -407,8 +417,8 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
 <table>
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>v4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Добавляемые IPv4 CIDR-блоки; host-биты = 0</td></tr>
-    <tr><td><code>v6CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Добавляемые IPv6 CIDR-блоки</td></tr>
+    <tr><td><code>ipv4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Добавляемые IPv4 CIDR-блоки; host-биты = 0</td></tr>
+    <tr><td><code>ipv6CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Добавляемые IPv6 CIDR-блоки</td></tr>
   </tbody>
 </table>
 
@@ -420,7 +430,7 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
       -H 'Authorization: Bearer <JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
-        "v4CidrBlocks": ["10.0.1.0/24"]
+        "ipv4CidrBlocks": ["10.0.1.0/24"]
       }'
   `}
 </CodeBlock>
@@ -443,8 +453,8 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
 <table>
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>v4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Удаляемые IPv4 CIDR-блоки</td></tr>
-    <tr><td><code>v6CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Удаляемые IPv6 CIDR-блоки</td></tr>
+    <tr><td><code>ipv4CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Удаляемые IPv4 CIDR-блоки</td></tr>
+    <tr><td><code>ipv6CidrBlocks</code></td><td>нет</td><td><code>{TYPES.stringArray}</code></td><td>Удаляемые IPv6 CIDR-блоки</td></tr>
   </tbody>
 </table>
 
@@ -456,7 +466,7 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
       -H 'Authorization: Bearer <JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
-        "v4CidrBlocks": ["10.0.1.0/24"]
+        "ipv4CidrBlocks": ["10.0.1.0/24"]
       }'
   `}
 </CodeBlock>
@@ -567,7 +577,7 @@ Subnet.Create"`). Поля `v4_cidr_blocks` / `v6_cidr_blocks` — soft-immutabl
 - **Расширение без простоя.** Когда диапазона перестает хватать, добавьте новый CIDR-блок
   через `:add-cidr-blocks` — это штатный путь увеличить адресное пространство подсети, не
   пересоздавая ее и не трогая уже выданные адреса.
-- **Dual-stack (IPv4 + IPv6).** Задайте и `v4CidrBlocks`, и `v6CidrBlocks` — интерфейсы
+- **Dual-stack (IPv4 + IPv6).** Задайте и `ipv4CidrBlocks`, и `ipv6CidrBlocks` — интерфейсы
   смогут получать адреса обоих семейств (≤ 1 v4 и ≤ 1 v6 на интерфейс).
 - **Аудит занятости.** `ListUsedAddresses` показывает, какие адреса заняты и какие ресурсы
   на них ссылаются (`references`) — удобно перед сжатием диапазона или удалением подсети.
@@ -603,7 +613,7 @@ placement"`). Сменить тип размещения нельзя — соз
 :::
 
 :::note CIDR не меняются через Update
-В `Update` поля `v4CidrBlocks` / `v6CidrBlocks` принимаются в `updateMask`, но их
+В `Update` поля `ipv4CidrBlocks` / `ipv6CidrBlocks` принимаются в `updateMask`, но их
 применение — **no-op** (запрос успешен, набор CIDR не меняется). Единственный способ
 изменить диапазоны — `:add-cidr-blocks` / `:remove-cidr-blocks`. Поля `networkId`,
 `placementType`, `zoneId`, `regionId` — hard-immutable: явное указание в `updateMask` →

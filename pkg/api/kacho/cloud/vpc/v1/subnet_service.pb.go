@@ -231,9 +231,22 @@ type CreateSubnetRequest struct {
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the network to create subnet in.
 	NetworkId string `protobuf:"bytes,5,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
-	// Placement discriminator (required; UNSPECIFIED → InvalidArgument). ZONAL →
-	// set zone_id; REGIONAL → set region_id (anycast prefix across the region).
-	// Enforced in the handler (enum-required + zone/region consistency).
+	// Placement discriminator — SERVER-DERIVED, НЕ ВХОД.
+	//
+	// Поле остаётся в запросе, но любое непустое значение ОТВЕРГАЕТСЯ синхронно:
+	// `INVALID_ARGUMENT "placement_type is server-derived; set zone_id or region_id
+	// instead"`. Дискриминатор выводится из того, ЧТО ИЗ ДВУХ задано: `zone_id` → ZONAL,
+	// `region_id` → REGIONAL; оба или ни одного — отказ.
+	//
+	// ПОЧЕМУ ПОЛЕ НЕ СНЯТО, хотя вход всегда отвергается. Снятие дало бы вызывающему,
+	// который его прислал, МОЛЧАЛИВЫЙ сброс: разбор тела на крае отбрасывает неизвестные
+	// ключи, и вместо «так нельзя, задайте зону» он получил бы успех с выведенным не тем
+	// размещением. Явный отказ по имени поля — исход лучше снятия ровно здесь, и это
+	// осознанный выбор из трёх, а не отсрочка.
+	//
+	// Прежний текст этого комментария утверждал ОБРАТНОЕ: «required; UNSPECIFIED →
+	// InvalidArgument… enforced in the handler». Он описывал замысел, которого код не
+	// исполняет ни в одной ветви, и читался чаще прочего — это авторитетное место.
 	PlacementType SubnetPlacementType `protobuf:"varint,13,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.vpc.v1.SubnetPlacementType" json:"placement_type,omitempty"`
 	// ID of the availability zone (set iff placement_type == ZONAL).
 	// To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
