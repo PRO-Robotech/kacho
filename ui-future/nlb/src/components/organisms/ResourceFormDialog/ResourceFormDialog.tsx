@@ -258,7 +258,7 @@ export function computeUpdateMask(
     // отвергает `rules` в Update mask с reason="unknown field").
     if (f.editHidden) continue;
     // createOnly — поле задаётся только при Create (нет Update-семантики на
-    // бэкенде), напр. networks.create_default_security_group. В edit-форме оно
+    // бэкенде), напр. instances.assign_external_address. В edit-форме оно
     // скрыто, но в update_mask попадать НЕ должно — иначе backend отвергает
     // `unknown field in update_mask` (KAC-239).
     if (f.createOnly) continue;

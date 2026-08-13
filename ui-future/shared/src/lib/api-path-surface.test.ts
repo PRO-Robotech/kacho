@@ -35,6 +35,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { stripComments } from "@shared/test/strip-comments";
 import { REGISTRY } from "./resource-registry";
 
 // cwd прогона — каталог приложения (ui-future/<app>), одинаково у всех девяти:
@@ -58,52 +59,10 @@ function walk(dir: string, match: RegExp, out: string[] = []): string[] {
   return out;
 }
 
-/**
- * Убирает комментарии, СОХРАНЯЯ строковые литералы.
- *
- * Гейт обязан читать исполняемую часть, а не текст: путь, названный в
- * объяснительном комментарии («такого маршрута больше нет»), — это разбор, а не
- * вызов, и падать на нём значило бы запретить объяснять.
- */
-function stripComments(src: string): string {
-  let out = "";
-  let i = 0;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '"' || c === "'" || c === "`") {
-      const quote = c;
-      out += c;
-      i++;
-      while (i < src.length) {
-        if (src[i] === "\\") {
-          out += src[i] + (src[i + 1] ?? "");
-          i += 2;
-          continue;
-        }
-        out += src[i];
-        if (src[i] === quote) {
-          i++;
-          break;
-        }
-        i++;
-      }
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "/") {
-      while (i < src.length && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && src[i + 1] === "*") {
-      i += 2;
-      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
+// `stripComments` (снятие комментариев с сохранением строковых литералов) живёт
+// в `@shared/test/strip-comments`: тем же предикатом читают исходники и другие
+// пробы (напр. белые списки фильтра в Go-дереве), а две редакции одного
+// разборщика разошлись бы молча — оба ведь возвращают «текст» на любом входе.
 
 /**
  * Нормализует путь к сегментам сопоставления: снимает query, а всякую

@@ -53,10 +53,12 @@ export function refOptionExtra(refResource: string, row: Record<string, unknown>
       return ext4 || int4 || ext6 || int6 || "";
     }
     case "gateways": {
-      // Gateway proto: shared_egress_gateway oneof + ip / used_by; показываем
-      // тип шлюза если name пустое.
-      const sg = row.shared_egress_gateway as Record<string, unknown> | undefined;
-      if (sg) return "shared-egress";
+      // Вид шлюза — ветвь oneof (`nat_gateway` | `egress_only_gateway`), и она же
+      // единственное, что стоит показать вместо пустого имени: она говорит, ЧТО
+      // шлюз делает. Ни одной ветви — пусто, а не «по умолчанию NAT»: выдать виду
+      // имя наугад значило бы соврать о поведении.
+      if (row.nat_gateway) return "nat";
+      if (row.egress_only_gateway) return "egress-only";
       return "";
     }
     case "networks": {

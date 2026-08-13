@@ -34,7 +34,7 @@ interface BaseField {
   // Используется когда поле управляется отдельным action'ом на DetailPage
   // (например, Subnet.ipv4_cidr_blocks → :add-cidr-blocks/:remove-cidr-blocks).
   editHidden?: boolean;
-  // Create-only — поле только для Create (напр. create_default_security_group):
+  // Create-only — поле только для Create (напр. instances.assign_external_address):
   // в Edit не рендерится (ресурс такого поля не имеет). KAC-239. Семантически
   // = editHidden; отдельное имя для читаемости registry.
   createOnly?: boolean;

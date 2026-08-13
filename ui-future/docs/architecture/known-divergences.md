@@ -419,3 +419,57 @@ parse-after-redirect and the matching regression test.
 typed `ApiError` client, promote `auth.ts` + `api-client.ts` into
 `shared/src/utils` and extend the `@shared` alias to `host`/`dashboard`, deleting
 the private copies.
+
+## Server-side narrowing of the related-child tab lands in `@shared` only
+
+**Status:** accepted / bounded residual — measured per package, one live gap
+(nlb `listeners`), with a stated closure that is not "copy it four times".
+
+A resource card's related-child tab used to read the child's list **page** for
+the whole project and narrow it in the browser (`all.filter(…)` on
+`spec.related[].filterField`). What the tab then showed was the intersection
+«children of this parent» × «first page of the project's list», presented as the
+whole list: a network whose subnets did not make the first page rendered an
+incomplete tab and said nothing about it, while the child's own list page has had
+a cursor continuation all along — one question with two answers.
+
+Two things now close that in `@shared`:
+
+- `spec.related[].serverFilterField` (declared in `shared/src/lib/resource-spec.ts`)
+  names the field the child's **owner** accepts in its list `filter` expression;
+  `shared/src/components/organisms/ResourceShell/ResourceShell.tsx` sends it as
+  `filter=<field>="<parentId>"`, so the server narrows and the page is exact. The
+  declaration is held against the owner's whitelist — read out of the service's
+  production code — by `shared/src/lib/related-server-filter-parity.test.ts`; the
+  request shape is pinned by
+  `shared/src/components/organisms/ResourceShell/ResourceShell.related.test.tsx`.
+- Where no such field exists, the cursor continuation is rendered in the same form
+  the list page uses, and the "create the first one" invitation is withheld while a
+  cursor remains — an empty read page is not evidence of an empty child list.
+
+**What the other four copies do.** Five packages carry a `ResourceShell`
+(`git ls-files 'ui-future/*/src/components/organisms/ResourceShell/ResourceShell.tsx'`
+→ compute, nlb, registry, shared, storage); only the `@shared` one has the two
+behaviours above. Measured 2026-08-13, per package `related` edges:
+
+- **compute, storage** — zero related edges. Nothing to truncate.
+- **registry** — two edges, both **path-scoped** children (`apiPath` carries
+  `{registryId}` / `{repository}`), so the owner narrows by the path segment and no
+  foreign parent's rows are involved. `repositories` additionally declares
+  `loadAllPages` (every page is read); `tags` does not, so a repository with more
+  tags than one page still shows a truncated tab there.
+- **nlb** — one edge (`load-balancers` → `listeners`), project-scoped and narrowed
+  in the browser. Its owner's filter whitelist accepts `name` only
+  (`services/nlb/internal/apps/kacho/api/shared/namefilter.go`), so there is no
+  server field to declare: the fix for that tab is the continuation, and it is not
+  in this change.
+
+**Why the change was not copied into the forks.** The console rule for this class
+says the real closure is de-forking, not tiling: a fourth and fifth copy means the
+next edit again reaches exactly one of them, silently. The residual is written
+here with its predicate instead of being inherited unnoticed.
+
+**Revisit trigger:** when `nlb`'s `ResourceShell` is folded into `@shared` (or its
+listeners tab is touched for any other reason), the continuation arrives with it.
+If `ListListeners` ever accepts `load_balancer_id` in its filter whitelist, that
+edge should declare `serverFilterField` — the parity probe holds it from then on.

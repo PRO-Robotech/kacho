@@ -31,12 +31,15 @@ describe("dependency-graph", () => {
     expect(hasDependencyResolver("route-tables")).toBe(false);
   });
 
-  it("builds a network subtree, narrowing string/array/nested backend fields", async () => {
-    list.mockImplementation((path: string): Promise<Payload> => {
-      if (path.endsWith("/subnets") && path.includes("/networks/"))
+  /** Записывает КАЖДЫЙ запрос: предмет части утверждений — сам запрос, а не дерево. */
+  function recordNetworkSubtree(): { path: string; query?: Record<string, string> }[] {
+    const calls: { path: string; query?: Record<string, string> }[] = [];
+    list.mockImplementation((path: string, query?: Record<string, string>): Promise<Payload> => {
+      calls.push({ path, query });
+      if (path === "/vpc/v1/subnets")
         return Promise.resolve({ subnets: [{ id: "sn-1", name: "sub", project_id: "p1" }] });
-      if (path.endsWith("/route_tables")) return Promise.resolve({ route_tables: [] });
-      if (path.endsWith("/security_groups"))
+      if (path === "/vpc/v1/routeTables") return Promise.resolve({ route_tables: [] });
+      if (path === "/vpc/v1/securityGroups")
         return Promise.resolve({
           security_groups: [
             { id: "sg-default", name: "def", default_for_network: true },
@@ -51,6 +54,41 @@ describe("dependency-graph", () => {
         return Promise.resolve({ network_interfaces: [{ id: "ni-1", name: "n1", subnet_id: "sn-1" }] });
       return Promise.resolve({});
     });
+    return calls;
+  }
+
+  it("дети сети спрашиваются ПЛОСКИМИ списками, сужёнными по родителю на сервере", async () => {
+    // Три под-перечисления сети (`/vpc/v1/networks/{id}/{subnets,route_tables,
+    // security_groups}`) сняты с контракта как вторые пути к одному ответу.
+    // Замена — тот же плоский список ресурса с `network_id` в выражении фильтра;
+    // он стоит в белом списке каждого из трёх владельцев.
+    const calls = recordNetworkSubtree();
+
+    await loadDependents("networks", { id: "net-1", project_id: "p1" });
+
+    const byNetwork = { pageSize: "1000", project_id: "p1", filter: 'network_id="net-1"' };
+    expect(calls.filter((c) => c.path === "/vpc/v1/subnets").map((c) => c.query)).toEqual([byNetwork]);
+    expect(calls.filter((c) => c.path === "/vpc/v1/routeTables").map((c) => c.query)).toEqual([byNetwork]);
+    expect(calls.filter((c) => c.path === "/vpc/v1/securityGroups").map((c) => c.query)).toEqual([byNetwork]);
+    // Снятого под-перечисления консоль не спрашивает ни в одной форме: такой
+    // запрос доехал бы до края и вернул 404, а дерево связей просто оказалось бы
+    // пустым — то есть диалог удаления сообщал бы «ничего не мешает».
+    expect(calls.filter((c) => c.path.includes("/networks/"))).toEqual([]);
+  });
+
+  it("без проекта дети сети не спрашиваются вовсе — плоский список требует project_id", async () => {
+    // `project_id` у плоского списка обязателен (у снятого под-перечисления его
+    // не было: область бралась из сегмента пути). Без проекта спрашивать нечем,
+    // и три отказа подряд не превратились бы в дерево; авторитетный запрет
+    // остаётся за сервером (FK RESTRICT на самом удалении).
+    const calls = recordNetworkSubtree();
+
+    expect(await loadDependents("networks", { id: "net-1", project_id: null })).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("builds a network subtree, narrowing string/array/nested backend fields", async () => {
+    recordNetworkSubtree();
 
     const tree = await loadDependents("networks", { id: "net-1", project_id: "p1" });
 
