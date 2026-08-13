@@ -522,7 +522,15 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	require.NoError(t, gerr, "in-use disk type still present")
 
 	require.NoError(t, vr.Delete(ctx, vol.ID))
-	require.NoError(t, dr.Delete(ctx, "block-temp"), "delete allowed once no volume references it")
+
+	// Том ушёл, но класс всё ещё СВЯЗАН: на него ссылается ревизия привязки, и
+	// ссылка эта — RESTRICT. Это верно по существу: удалив класс под живой
+	// ревизией, мы оставили бы её висеть на том, чего нет. Поэтому снимается и
+	// она — тем же порядком, каким заводилась.
+	_, derr := pool.Exec(ctx, `DELETE FROM disk_type_bindings WHERE disk_type_id = $1`, "block-temp")
+	require.NoError(t, derr)
+
+	require.NoError(t, dr.Delete(ctx, "block-temp"), "delete allowed once nothing references it")
 	_, gerr = dr.Get(ctx, "block-temp")
 	require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound))
 

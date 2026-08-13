@@ -81,6 +81,7 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 		SourceImage: img.ID,
 	}, imageRegionFixture)
 	require.NoError(t, err)
+	confirmReady(t, pool, reconciler.KindVolume, boot.ID, boot.SizeBytes)
 
 	// Delete Image, засевшего в томе → проходит (provenance SET NULL, не RESTRICT).
 	require.NoError(t, ir.Delete(ctx, img.ID), "deleting a seeded image must succeed (SET NULL, not RESTRICT)")

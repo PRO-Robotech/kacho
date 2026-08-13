@@ -16,6 +16,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -140,7 +141,10 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	// Состояние ЧУЖОГО тома не должно просвечивать: не-READY чужой том обязан
 	// отдавать тот же "not found", а не "is not ready" (иначе state-oracle).
 	t.Run("snapshot from foreign non-ready volume leaks no state", func(t *testing.T) {
-		notReady := mkVolume(t, pool, vr, projVictim, "victim-vol-creating", 2<<30)
+		// Предмет пробы — том В НАМЕРЕНИИ, поэтому здесь помощник, который его
+		// НЕ подтверждает: mkVolume доводит том до пригодности, и с ним проба
+		// утверждала бы о состоянии, которого в ней нет.
+		notReady := mkVolumeCreating(t, vr, projVictim, "victim-vol-creating", 2<<30)
 		_, uerr := pool.Exec(ctx, `UPDATE volumes SET state='CREATING' WHERE id=$1`, notReady.ID)
 		require.NoError(t, uerr)
 
@@ -163,6 +167,8 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromSnap.SizeBytes, "size derived from own snapshot")
+		// Образ рождается в намерении; засевает тома только пригодный.
+		confirmReady(t, pool, reconciler.KindImage, ownImgFromSnap.ID, ownImgFromSnap.SizeBytes)
 
 		ownImgFromVol, _, err := ir.Insert(ctx, &domain.Image{
 			ID: ids.NewID(domain.PrefixImage), ProjectID: projAttacker, Name: "own-img-vol",
@@ -170,6 +176,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		}, fixtureRegionZones)
 		require.NoError(t, err)
 		require.EqualValues(t, 4<<30, ownImgFromVol.SizeBytes, "size derived from own volume")
+		confirmReady(t, pool, reconciler.KindImage, ownImgFromVol.ID, ownImgFromVol.SizeBytes)
 
 		bootVol, _, err := vr.Insert(ctx, &domain.Volume{
 			ID: ids.NewID(domain.PrefixVolume), ProjectID: projAttacker, Name: "own-boot",
