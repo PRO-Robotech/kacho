@@ -1063,24 +1063,43 @@ func validateBootSource(bs domain.BootSource) error {
 	if bs.ID == "" {
 		return serviceerr.InvalidArg("boot_source.id", "bootSource.id is required")
 	}
-	if !hasTagOrDigest(bs.ID) {
-		return serviceerr.InvalidArg("boot_source.id",
-			"bootSource.id needs a tag or digest, e.g. 'img-<base32>:<tag>' or 'img-<base32>@sha256:<hex>'; use ImageCatalog item.bootSource")
+
+	// Ветви разведены ПО ВЛАДЕЛЬЦУ, и это не косметика: у двух источников разные
+	// формы идентификатора, потому что разные владельцы адресуют по-разному.
+	//
+	// Прежняя редакция требовала тег или дайджест от КАЖДОГО идентификатора и
+	// отсылала за примером к каталогу, которого в дереве нет ни одного вхождения.
+	// Для образа хранилища это требование неисполнимо by construction: у его
+	// контракта нет ни поля тега, ни поля дайджеста — то есть форма, которую
+	// проверка требовала, не производится владельцем вовсе.
+	switch bs.Type {
+	case bootSourceStorageImage:
+		// Образ хранилища адресуется своим неизменяемым идентификатором, и
+		// только им: он неизменяем на всю жизнь ресурса, поэтому повторный
+		// запуск через месяц берёт тот же образ без дополнительной фиксации.
+		if err := corevalidate.ResourceID("Image", "img", bs.ID); err != nil {
+			return err
+		}
+		return nil
+
+	case bootSourceRegistryImage:
+		// ОТВЕРГАЕТСЯ ЯВНО, а не принимается молча.
+		//
+		// Durable-координата образа из реестра сегодня невыразима by construction:
+		// у репозитория нет неизменяемого идентификатора, он адресуется парой
+		// (реестр, имя), а имя переименовывается отдельным глаголом. Ссылка,
+		// зафиксированная в машине, стала бы ложной после чужого переименования —
+		// то есть запуск через месяц взял бы другой образ либо не нашёл ничего.
+		//
+		// Из трёх законных исходов это второй: принять и не разрешить значило бы
+		// пообещать возможность, которой нет; снять с контракта — потерять
+		// объявленное направление, у которого есть решение и предикат возврата.
+		// Ветвь открывается, когда у репозитория появится неизменяемый
+		// идентификатор.
+		return serviceerr.InvalidArg("boot_source.type",
+			"bootSource.type registry.image is not accepted yet: a registry image has no durable address today")
 	}
 	return nil
-}
-
-// hasTagOrDigest — id несёт tag (":" в последнем path-сегменте) ИЛИ digest
-// ("@sha256:"). bare "img-<b32>" / "repo/name" без tag/digest → false (→ 400).
-func hasTagOrDigest(id string) bool {
-	if strings.Contains(id, "@sha256:") {
-		return true
-	}
-	seg := id
-	if i := strings.LastIndexByte(id, '/'); i >= 0 {
-		seg = id[i+1:]
-	}
-	return strings.Contains(seg, ":")
 }
 
 // imageKindFor — server-derived B13 imageKind по bootSource.type (COMP-1 F3).

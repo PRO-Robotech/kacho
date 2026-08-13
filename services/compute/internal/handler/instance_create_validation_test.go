@@ -110,15 +110,33 @@ func TestInstanceHandler_Create_MissingMachineType(t *testing.T) {
 	require.Contains(t, status.Convert(err).Message(), "machineTypeId is required")
 }
 
-// TestInstanceHandler_Create_BareBootSourceID — bootSource.id без tag/digest (F3
-// grammar) → sync InvalidArgument (bare "img-x" двусмыслен без :tag / @digest).
-func TestInstanceHandler_Create_BareBootSourceID(t *testing.T) {
+// TestInstanceHandler_Create_BootSourceByOwner — форма идентификатора источника
+// решается ВЛАДЕЛЬЦЕМ, а не одним правилом на оба вида.
+//
+// Прежняя проба (`..._BareBootSourceID`) требовала тег или дайджест от каждого
+// идентификатора и закрепляла дефект: у контракта образа хранилища нет ни поля
+// тега, ни поля дайджеста, то есть форма, которую проверка требовала,
+// владельцем не производится вовсе.
+//
+// Отрицание идёт в паре с положительным: без пары «отвергнуто» неотличимо от
+// «создание сломано вообще».
+func TestInstanceHandler_Create_BootSourceByOwner(t *testing.T) {
 	h, _ := newInstanceHandlerForValidation(t)
-	req := validCreateReq()
-	req.BootSource = &computev1.BootSource{Type: "storage.image", Id: "img-x"} // no tag/digest
-	_, err := h.Create(context.Background(), req)
-	require.Equal(t, codes.InvalidArgument, status.Code(err),
-		"bare bootSource.id (no tag/digest) must be sync InvalidArgument")
+
+	// (+) образ хранилища адресуется своим неизменяемым идентификатором — этого
+	// достаточно, он неизменяем на всю жизнь ресурса
+	ok := validCreateReq()
+	ok.BootSource = &computev1.BootSource{Type: "storage.image", Id: "img-9k2m4x7q1n8p"}
+	_, err := h.Create(context.Background(), ok)
+	require.NotEqual(t, codes.InvalidArgument, status.Code(err),
+		"a storage image id needs no tag: its owner produces neither tag nor digest")
+
+	// (−) образ реестра отвергается по имени поля: durable-координаты нет
+	reg := validCreateReq()
+	reg.BootSource = &computev1.BootSource{Type: "registry.image", Id: "repo/name:tag"}
+	_, err = h.Create(context.Background(), reg)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "registry.image is not accepted yet")
 }
 
 // TestInstanceHandler_Create_VMUnreachableGuard — VM без external-адреса И без

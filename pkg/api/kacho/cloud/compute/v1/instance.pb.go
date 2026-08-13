@@ -36,6 +36,22 @@ const (
 	// Virtual machine: persistent OS from a storage.image, vm_spec.
 	InstanceKind_VM InstanceKind = 1
 	// Container job: ephemeral rootfs from a registry.image, container_spec.
+	//
+	// NOT CREATABLE TODAY, and the refusal is explicit rather than silent. A
+	// container job takes its rootfs from a registry image, and a registry image
+	// has no durable address here: the repository carries no immutable id and is
+	// addressed by (registry, name), while the name is renamed by its own verb. A
+	// reference pinned into a machine would therefore go stale on someone else's
+	// rename — the relaunch a month later would take a different image, or none.
+	//
+	// Create with this kind is refused synchronously, naming the field. That is
+	// the second of the three lawful outcomes: accepting the value and never
+	// resolving it would promise a capability that does not exist.
+	//
+	// The value stays on the contract because the direction is decided and its
+	// return has a predicate: an immutable repository id lands at the owner. It
+	// is not deferred work with nobody responsible — the owner is named and the
+	// condition is checkable.
 	InstanceKind_CONTAINER InstanceKind = 2
 )
 
