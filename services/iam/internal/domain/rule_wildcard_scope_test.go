@@ -114,7 +114,7 @@ func TestMaterializingSelectors_RolePersistence_ExpandsWildcard(t *testing.T) {
 func TestOwnerRoleSelector_MigrationLockstep(t *testing.T) {
 	const migrationRuleFP = "3a9a54c3276716602674c9995c9321bea53a5ae693684842a389a80ecb1c80c4"
 	migrationObjectTypes := []string{
-		"compute.guestAccessKey", "compute.instance",
+		"compute.guestAccessKey", "compute.instance", "compute.placementGroup",
 		"iam.accessBinding", "iam.account", "iam.group", "iam.project",
 		"iam.role", "iam.serviceAccount", "iam.user",
 		"loadbalancer.listeners", "loadbalancer.networkLoadBalancers", "loadbalancer.targetGroups",
@@ -152,7 +152,7 @@ func TestSystemWildcardRoleSelectors_MigrationLockstep(t *testing.T) {
 	// migration 0074 removed the retired compute block-storage types (mirror of the owner
 	// selector list in TestOwnerRoleSelector_MigrationLockstep).
 	migrationObjectTypes := []string{
-		"compute.guestAccessKey", "compute.instance",
+		"compute.guestAccessKey", "compute.instance", "compute.placementGroup",
 		"iam.accessBinding", "iam.account", "iam.group", "iam.project",
 		"iam.role", "iam.serviceAccount", "iam.user",
 		"loadbalancer.listeners", "loadbalancer.networkLoadBalancers", "loadbalancer.targetGroups",

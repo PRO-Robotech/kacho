@@ -32,4 +32,5 @@ var PageRelations = map[string][]string{
 	// зелёное, будучи пустым.
 	"compute_instance":         {"v_get"},
 	"compute_guest_access_key": {"v_get"},
+	"compute_placement_group":  {"v_get"},
 }

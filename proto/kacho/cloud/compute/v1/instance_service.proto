@@ -1203,7 +1203,17 @@ message CrashInstanceMetadata {
 message DiskPlacementPolicy {
   // Placement group ID.
   string placement_group_id = 1;
-  int64 placement_group_partition = 2;
+
+  // Поле 2 держало числовой параметр разнесения.
+  //
+  // СНЯТО С КОНТРАКТА, номер и имя зарезервированы навсегда. Число описывает
+  // НАШУ раскладку железа, а не намерение арендатора: опубликовав его, мы
+  // обязались бы держать эту раскладку неизменной и потеряли бы право менять
+  // собственную инфраструктуру, ничего не сломав снаружи. Намерение выражается
+  // стратегией группы (разнести либо сблизить) — двумя значениями и без единого
+  // числа.
+  reserved 2;
+  reserved "placement_group_partition";
 }
 
 message DiskPlacementPolicyChange {

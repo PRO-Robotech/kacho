@@ -1,0 +1,173 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.compute.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "kacho/cloud/compute/v1/placement_group.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
+
+// PlacementGroupService — правила взаимного размещения машин.
+service PlacementGroupService {
+
+  rpc Get(GetPlacementGroupRequest) returns (PlacementGroup) {
+    option (google.api.http) = {
+      get: "/compute/v1/placementGroups/{placement_group_id}"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.get";
+    option (kacho.iam.authz.v1.required_relation) = "v_get";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_placement_group"
+      from_request_field: "placement_group_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc List(ListPlacementGroupsRequest) returns (ListPlacementGroupsResponse) {
+    option (google.api.http) = {
+      get: "/compute/v1/placementGroups"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc Create(CreatePlacementGroupRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/compute/v1/placementGroups"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.create";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Update — правка косметической части.
+  //
+  // Стратегия и якорь размещения НЕИЗМЕНЯЕМЫ: смена любого из них меняет смысл
+  // размещения уже стоящих машин, а перекладывать их задним числом мы не будем.
+  // Нужна другая стратегия — заводится другая группа.
+  rpc Update(UpdatePlacementGroupRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/compute/v1/placementGroups/{placement_group_id}"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.update";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_placement_group"
+      from_request_field: "placement_group_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Delete — снятие группы.
+  //
+  // Группа, в которой стоят машины, не снимается: снятие означало бы, что
+  // правило размещения перестало действовать, а машины остались размещёнными по
+  // нему. Отказ называет машины — арендатор видит радиус до, а не после.
+  rpc Delete(DeletePlacementGroupRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      delete: "/compute/v1/placementGroups/{placement_group_id}"
+    };
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.delete";
+    option (kacho.iam.authz.v1.required_relation) = "v_delete";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_placement_group"
+      from_request_field: "placement_group_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc ListOperations(ListPlacementGroupOperationsRequest) returns (ListPlacementGroupOperationsResponse) {
+    option (google.api.http) = {get: "/compute/v1/placementGroups/{placement_group_id}/operations"};
+    option (kacho.iam.authz.v1.permission)        = "compute.placement_group_operations.listOperations";
+    option (kacho.iam.authz.v1.required_relation) = "v_list";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "compute_placement_group"
+      from_request_field: "placement_group_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+message GetPlacementGroupRequest {
+  string placement_group_id = 1;
+}
+
+message ListPlacementGroupsRequest {
+  string project_id = 1;
+  int64 page_size = 2;
+  string page_token = 3;
+  string filter = 4;
+}
+
+message ListPlacementGroupsResponse {
+  repeated PlacementGroup placement_groups = 1;
+  string next_page_token = 2;
+}
+
+message CreatePlacementGroupRequest {
+  string project_id = 1;
+  string name = 2;
+  string description = 3;
+  map<string, string> labels = 4;
+
+  // Что группа делает с машинами. Обязательно: группа без стратегии не
+  // описывает ни одного намерения.
+  PlacementGroup.Strategy strategy = 5;
+
+  // Якорь размещения. Обязателен и взаимоисключающ: ровно одна координата.
+  PlacementGroup.PlacementType placement_type = 6;
+  string zone_id = 7;
+  string region_id = 8;
+}
+
+message CreatePlacementGroupMetadata {
+  string placement_group_id = 1;
+}
+
+message UpdatePlacementGroupRequest {
+  string placement_group_id = 1;
+  google.protobuf.FieldMask update_mask = 2;
+  string name = 3;
+  string description = 4;
+  map<string, string> labels = 5;
+}
+
+message UpdatePlacementGroupMetadata {
+  string placement_group_id = 1;
+}
+
+message DeletePlacementGroupRequest {
+  string placement_group_id = 1;
+}
+
+message DeletePlacementGroupMetadata {
+  string placement_group_id = 1;
+}
+
+message ListPlacementGroupOperationsRequest {
+  string placement_group_id = 1;
+  int64 page_size = 2;
+  string page_token = 3;
+}
+
+message ListPlacementGroupOperationsResponse {
+  repeated operation.Operation operations = 1;
+  string next_page_token = 2;
+}

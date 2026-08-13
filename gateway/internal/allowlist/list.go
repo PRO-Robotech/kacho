@@ -125,6 +125,15 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.GuestAccessKeyService/Update":         {},
 	"/kacho.cloud.compute.v1.GuestAccessKeyService/Delete":         {},
 	"/kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations": {},
+	// compute.v1 — PlacementGroupService (правила взаимного размещения машин).
+	// Пообъектный тип прав нужен по той же причине, что у ключа: запрос несёт
+	// только идентификатор группы.
+	"/kacho.cloud.compute.v1.PlacementGroupService/Get":            {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/List":           {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Create":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Update":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Delete":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/ListOperations": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 

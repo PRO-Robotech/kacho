@@ -368,6 +368,21 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
 		return nil, serviceerr.MapZoneRefErr(err, req.ZoneID)
 	}
+	// Регион зоны резолвится У ВЛАДЕЛЬЦА и только когда он нужен — то есть когда
+	// машина названа группой размещения. Спрашивать его всегда значило бы платить
+	// лишним обращением к соседу на КАЖДОМ создании ради ветки, которой чаще
+	// всего нет.
+	//
+	// Выводить регион из имени зоны запрещено: имена произвольны, выводимой связи
+	// между ними нет, а строковая деривация молча отдаёт пустоту и превращает
+	// проверку когерентности в тождественно-истинную.
+	var regionID string
+	if req.PlacementGroupID != "" {
+		var rerr error
+		if regionID, rerr = s.zones.RegionOfZone(ctx, req.ZoneID); rerr != nil {
+			return nil, serviceerr.MapZoneRefErr(rerr, req.ZoneID)
+		}
+	}
 	// Машина создаётся в своей зоне — её интерфейсы обязаны быть в той же зоне.
 	// Проверяется ЗДЕСЬ, на пути создания (до Insert), а не откладывается до
 	// launch-саги: иначе инстанс с интерфейсом в чужой зоне становится durable.
@@ -403,6 +418,7 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		EffectiveResources:  mt.EffectiveResources,
 		BootSource:          bs,
 		PlacementGroupID:    req.PlacementGroupID,
+		RegionID:            regionID,
 		ServiceAccountID:    req.ServiceAccountID,
 		VMSpec:              req.VMSpec,
 		ContainerSpec:       req.ContainerSpec,
@@ -552,6 +568,16 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 					changed = append(changed, "cpu_guarantee_percent")
 				case "placement_group_id":
 					in.PlacementGroupID = req.PlacementGroupID
+					// Регион зоны машины — тот же авторитетный резолв, что на
+					// создании, и по той же причине: без него региональная группа
+					// сверялась бы с пустой строкой, то есть не сверялась бы.
+					if req.PlacementGroupID != "" {
+						reg, rerr := s.zones.RegionOfZone(ctx, in.ZoneID)
+						if rerr != nil {
+							return nil, serviceerr.MapZoneRefErr(rerr, in.ZoneID)
+						}
+						in.RegionID = reg
+					}
 					changed = append(changed, "placement_group_id")
 				case "vm_spec":
 					in.VMSpec = req.VMSpec

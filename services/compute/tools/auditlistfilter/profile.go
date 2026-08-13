@@ -90,6 +90,12 @@ var Profile = listfiltergate.Profile{
 			Shape: listfiltergate.ParentGate,
 			Gate:  "svc.Get",
 		},
+		// Группа размещения: та же форма, что у ключа входа.
+		"placement_group.List": {Shape: listfiltergate.RowFilter},
+		"placement_group.ListOperations": {
+			Shape: listfiltergate.ParentGate,
+			Gate:  "svc.Get",
+		},
 		"machine_type.List": {
 			Shape: listfiltergate.ClusterScoped,
 			Reason: "cluster-wide sizing catalog (COMP-1 F7): every authenticated caller reads " +

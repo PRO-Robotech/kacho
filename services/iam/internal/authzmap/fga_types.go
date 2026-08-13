@@ -283,6 +283,7 @@ var typeVerbRelations = map[string][]string{
 	// Ключ входа: канонический набор. `v_list` спрашивает список операций ключа —
 	// та же форма, что у прочих ресурсов продукта с асинхронными мутациями.
 	"compute_guest_access_key":  objectVerbRelations,
+	"compute_placement_group":   objectVerbRelations,
 	"vpc_network":               objectVerbRelations,
 	"vpc_subnet":                objectVerbRelations,
 	"vpc_address":               objectVerbRelations,
@@ -389,6 +390,7 @@ var objectTypes = map[string]string{
 	// compute
 	"compute.instance":       "compute_instance",
 	"compute.guestAccessKey": "compute_guest_access_key",
+	"compute.placementGroup": "compute_placement_group",
 
 	// vpc
 	"vpc.network":          "vpc_network",

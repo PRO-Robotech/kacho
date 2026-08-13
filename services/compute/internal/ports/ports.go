@@ -183,6 +183,23 @@ type MachineTypeRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// PlacementGroupUpdate — резолвнутый набор изменений одной правки группы.
+//
+// Стратегии и якоря размещения здесь НЕТ, и это не пропуск: смена любого из них
+// поменяла бы смысл размещения уже стоящих машин, а перекладывать их задним
+// числом мы не будем. Нужна другая стратегия — заводится другая группа.
+type PlacementGroupUpdate struct {
+	Name        *string
+	Description *string
+	Labels      map[string]string
+	LabelsSet   bool
+}
+
+// Touched сообщает, называет ли правка хоть одну колонку.
+func (u PlacementGroupUpdate) Touched() bool {
+	return u.Name != nil || u.Description != nil || u.LabelsSet
+}
+
 // GuestAccessKeyUpdate — резолвнутый набор изменений одной правки ключа.
 // nil-поле означает «колонку не трогать»; LabelsSet отличает «метки названы
 // маской» от «не названы» (пустая карта — законное значение).

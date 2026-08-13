@@ -629,7 +629,6 @@ func TestInstance_Legacy_AttachDisk_Happy(t *testing.T) {
 	require.Equal(t, "voldata1", in.SecondaryDisks[0].VolumeId)
 }
 
-
 func TestInstance_Legacy_Delete_ReleasesNicAndVolume(t *testing.T) {
 	k := newInstanceSvc(t, true)
 	seedInst(k.repo, seedID, domain.InstanceStatusRunning)

@@ -3640,10 +3640,9 @@ func (x *CrashInstanceMetadata) GetInstanceId() string {
 type DiskPlacementPolicy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Placement group ID.
-	PlacementGroupId        string `protobuf:"bytes,1,opt,name=placement_group_id,json=placementGroupId,proto3" json:"placement_group_id,omitempty"`
-	PlacementGroupPartition int64  `protobuf:"varint,2,opt,name=placement_group_partition,json=placementGroupPartition,proto3" json:"placement_group_partition,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	PlacementGroupId string `protobuf:"bytes,1,opt,name=placement_group_id,json=placementGroupId,proto3" json:"placement_group_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DiskPlacementPolicy) Reset() {
@@ -3681,13 +3680,6 @@ func (x *DiskPlacementPolicy) GetPlacementGroupId() string {
 		return x.PlacementGroupId
 	}
 	return ""
-}
-
-func (x *DiskPlacementPolicy) GetPlacementGroupPartition() int64 {
-	if x != nil {
-		return x.PlacementGroupPartition
-	}
-	return 0
 }
 
 type DiskPlacementPolicyChange struct {
@@ -4045,10 +4037,9 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"instanceId\"8\n" +
 	"\x15CrashInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"\x7f\n" +
+	"instanceId\"d\n" +
 	"\x13DiskPlacementPolicy\x12,\n" +
-	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupId\x12:\n" +
-	"\x19placement_group_partition\x18\x02 \x01(\x03R\x17placementGroupPartition\"\x95\x01\n" +
+	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupIdJ\x04\b\x02\x10\x03R\x19placement_group_partition\"\x95\x01\n" +
 	"\x19DiskPlacementPolicyChange\x12\x17\n" +
 	"\adisk_id\x18\x01 \x01(\tR\x06diskId\x12_\n" +
 	"\x15disk_placement_policy\x18\x02 \x01(\v2+.kacho.cloud.compute.v1.DiskPlacementPolicyR\x13diskPlacementPolicy2\xc0!\n" +

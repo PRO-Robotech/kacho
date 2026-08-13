@@ -61,6 +61,7 @@ var hideExistenceNotFoundFormats = map[string]string{
 	// расхождение — примета, по которой отличают «нет доступа» от «нет
 	// объекта», то есть ровно то, что скрытие закрывает.
 	"compute_guest_access_key": "GuestAccessKey %s not found",
+	"compute_placement_group":  "PlacementGroup %s not found",
 	// vpc
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

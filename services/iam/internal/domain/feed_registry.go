@@ -33,6 +33,8 @@ var labelSelectableTypes = map[string]struct{}{
 	// AllMaterializableTypes() его не содержал бы, селекторы системных ролей его
 	// не проецировали бы, и создатель получал бы отказ на СВОЁМ свежем ключе.
 	"compute.guestAccessKey": {},
+	// Группа размещения несёт свои метки тем же путём.
+	"compute.placementGroup": {},
 
 	// vpc — mirror-fed via vpc→iam RegisterResource extended payload.
 	"vpc.network":          {},

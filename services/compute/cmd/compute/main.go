@@ -53,6 +53,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/nodeownership"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/placementgroup"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/realization"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
@@ -97,6 +98,7 @@ type services struct {
 	guestAccessKey *guestaccesskey.Service
 	realization    *realization.Service
 	nodeOwnership  *nodeownership.Service
+	placementGroup *placementgroup.Service
 }
 
 func runServe(cfg config.Config) error {
@@ -136,7 +138,17 @@ func runServe(cfg config.Config) error {
 		}
 	}()
 
-	svcs := buildServices(pool, projectClient, geoZones, subnetPlacement, nicClient, storageClient, opsRepo)
+	// Регион спрашивается у ТОГО ЖЕ владельца Geography, что и зона, — поэтому
+	// вторая половина берётся у уже собранного носителя, а не собирается заново
+	// вторым соединением. Носитель, её не несущий, — отказ в старте, а не тихая
+	// деградация: группа с региональным якорем иначе заводилась бы против
+	// региона, существование которого никто не подтвердил.
+	geoRegions, ok := geoZones.(placementgroup.RegionRegistry)
+	if !ok {
+		return fmt.Errorf("носитель Geography не отвечает на вопрос о регионе: " +
+			"группа размещения с региональным якорем не может быть проверена")
+	}
+	svcs := buildServices(pool, projectClient, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Fail-closed boot-gate: when KACHO_COMPUTE_REQUIRE_IAM=true, mutating Create is
 	// refused and readiness is NotReady until the register-drainer is IAM-connected.
@@ -288,6 +300,7 @@ func runServe(cfg config.Config) error {
 		defer closeReg()
 		svcs.instance.WithOwnerRegistrar(reg)
 		svcs.guestAccessKey.WithOwnerRegistrar(reg)
+		svcs.placementGroup.WithOwnerRegistrar(reg)
 		logger.Info("owner-tuple sync-registrar enabled (Instance/GuestAccessKey Create)")
 	}
 
@@ -879,7 +892,7 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geoZones instance.ZoneRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
+func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
 	instanceRepo := repo.NewInstanceRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
@@ -890,6 +903,8 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil),
 		realization:   realization.NewService(instanceRepo),
 		nodeOwnership: nodeownership.NewService(instanceRepo),
+		placementGroup: placementgroup.NewService(
+			repo.NewPlacementGroupRepo(pool), opsRepo, projectClient, geoZones, geoRegions),
 	}
 }
 
@@ -904,6 +919,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	computev1.RegisterGuestAccessKeyServiceServer(srv, handler.NewGuestAccessKeyHandler(svcs.guestAccessKey, listFilter))
+	computev1.RegisterPlacementGroupServiceServer(srv, handler.NewPlacementGroupHandler(svcs.placementGroup, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 

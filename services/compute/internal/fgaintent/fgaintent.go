@@ -90,6 +90,7 @@ type Payload struct {
 var fgaTypeByKind = map[string]string{
 	"Instance":       "compute_instance",
 	"GuestAccessKey": "compute_guest_access_key",
+	"PlacementGroup": "compute_placement_group",
 }
 
 // FGAType returns the compute_* FGA object type for a resource_kind, or "" if the

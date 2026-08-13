@@ -220,3 +220,23 @@ func GuestAccessKey(k *domain.GuestAccessKey) *computev1.GuestAccessKey {
 		CreatedAt:   ts(k.CreatedAt),
 	}
 }
+
+// PlacementGroup конвертирует domain.PlacementGroup → computev1.PlacementGroup.
+//
+// Числового параметра разнесения в ответе нет и быть не может: его нет ни в
+// доменной сущности, ни в контракте — свойство держится составом типов, а не
+// внимательностью этой функции.
+func PlacementGroup(g *domain.PlacementGroup) *computev1.PlacementGroup {
+	return &computev1.PlacementGroup{
+		Id:            g.ID,
+		ProjectId:     g.ProjectID,
+		Name:          g.Name,
+		Description:   g.Description,
+		CreatedAt:     ts(g.CreatedAt),
+		Labels:        g.Labels,
+		Strategy:      computev1.PlacementGroup_Strategy(g.Strategy),           // #nosec G115 -- domain зеркалит контракт
+		PlacementType: computev1.PlacementGroup_PlacementType(g.PlacementType), // #nosec G115 -- domain зеркалит контракт
+		ZoneId:        g.ZoneID,
+		RegionId:      g.RegionID,
+	}
+}

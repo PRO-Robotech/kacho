@@ -108,7 +108,7 @@ sizing-каталог (`machine_type_id`), из которого выводит�
 | `machine_type_id` | 38 | string | ссылка на MachineType-каталог; required; мутируется только на STOPPED |
 | `effective_resources` | 39 | EffectiveResources | output-only, выводится из MachineType |
 | `boot_source` | 40 | BootSource | `storage.image` \| `storage.snapshot` \| `storage.volume` — резолв у kacho-storage |
-| `placement_group_id` | 41 | string | opaque passthrough-слаг; формат-валидация `plg-`; мутируется только на STOPPED |
+| `placement_group_id` | 41 | string | ссылка на `PlacementGroup` (FK, `ON DELETE RESTRICT`); когерентность якоря проверяется внутри вставки/правки; мутируется только на STOPPED. Отсутствие ссылки — NULL, а не пустая строка |
 | `status_reason` | 42 | string | output-only; причина текущего статуса |
 | `service_account` | 43 | reference.Referrer | dependency-handle на служебную учётку (graceful-dangling) |
 | `vm_spec` | 44 | VmSpec | ветвь `oneof spec` для `instance_kind = VM` |

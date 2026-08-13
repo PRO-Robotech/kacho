@@ -90,6 +90,7 @@ var validResourceTypes = map[ResourceType]struct{}{
 	"vpc_network_interface":     {},
 	"compute_instance":          {},
 	"compute_guest_access_key":  {},
+	"compute_placement_group":   {},
 	"loadbalancer_nlb":          {},
 	"loadbalancer_target_group": {},
 	"iam_account":               {},

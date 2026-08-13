@@ -9,6 +9,7 @@ package authzfilter
 const (
 	ResourceTypeInstance       = "compute_instance"
 	ResourceTypeGuestAccessKey = "compute_guest_access_key"
+	ResourceTypePlacementGroup = "compute_placement_group"
 )
 
 // Compute-domain action strings. Format: `<domain>.<resource>.<verb>`.
@@ -33,6 +34,7 @@ const (
 const (
 	ActionInstanceRead       = "compute.instances.list"
 	ActionGuestAccessKeyRead = "compute.guest_access_keys.list"
+	ActionPlacementGroupRead = "compute.placement_groups.list"
 )
 
 // PerObjectTypes — пообъектные типы прав, которые поднимает compute.
@@ -41,4 +43,4 @@ const (
 // процесса, формы сокрытия существования). Выписанный второй раз, он разошёлся
 // бы молча — и разошёлся бы именно там, где расхождение означает неполную карту
 // скрытия, то есть отличимый ответ на «нет доступа».
-var PerObjectTypes = []string{ResourceTypeInstance, ResourceTypeGuestAccessKey}
+var PerObjectTypes = []string{ResourceTypeInstance, ResourceTypeGuestAccessKey, ResourceTypePlacementGroup}

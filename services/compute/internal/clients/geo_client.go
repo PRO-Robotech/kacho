@@ -43,6 +43,10 @@ const defaultZoneCallTimeout = 5 * time.Second
 // реального caller'а; retry.OnUnavailable сглаживает транзиентные обрывы.
 type GeoClient struct {
 	zones geov1.ZoneServiceClient
+	// regions — тот же владелец Geography, другой его сервис. Регион нужен
+	// группе размещения с РЕГИОНАЛЬНЫМ якорем: у неё зоны нет by construction,
+	// и проверить её координату зональным вопросом нельзя.
+	regions geov1.RegionServiceClient
 	// timeout — per-call deadline applied to every Get attempt (defaultZoneCallTimeout
 	// unless overridden, e.g. by a test seam via direct field assignment).
 	timeout time.Duration
@@ -51,13 +55,43 @@ type GeoClient struct {
 // NewGeoClient создаёт GeoClient поверх gRPC-conn к kacho-geo (:9090,
 // public ZoneService.Get).
 func NewGeoClient(conn *grpc.ClientConn) *GeoClient {
-	return &GeoClient{zones: geov1.NewZoneServiceClient(conn), timeout: defaultZoneCallTimeout}
+	return &GeoClient{
+		zones:   geov1.NewZoneServiceClient(conn),
+		regions: geov1.NewRegionServiceClient(conn),
+		timeout: defaultZoneCallTimeout,
+	}
 }
 
 // NewGeoClientWith создаёт GeoClient поверх готового geov1.ZoneServiceClient
 // (seam для unit-тестов с fake-клиентом).
 func NewGeoClientWith(zones geov1.ZoneServiceClient) *GeoClient {
 	return &GeoClient{zones: zones, timeout: defaultZoneCallTimeout}
+}
+
+// NewGeoClientWithBoth — шов для проб, которым нужны обе половины владельца.
+func NewGeoClientWithBoth(zones geov1.ZoneServiceClient, regions geov1.RegionServiceClient) *GeoClient {
+	return &GeoClient{zones: zones, regions: regions, timeout: defaultZoneCallTimeout}
+}
+
+// GetRegion валидирует существование region_id через geo.v1.RegionService.Get.
+//
+// Полосы отказа — те же, что у зоны, и по той же причине: отказ владельца в
+// правах и негодная по его мнению ссылка обязаны приезжать терминальным
+// отказом, а не «повтори позже». Недоступность владельца — fail-closed на
+// мутации: регион, существование которого мы не подтвердили, принять нельзя.
+func (c *GeoClient) GetRegion(ctx context.Context, regionID string) error {
+	return retry.OnUnavailable(ctx, func(ctx context.Context) error {
+		callCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+		_, rerr := c.regions.Get(auth.PropagateOutgoing(callCtx), &geov1.GetRegionRequest{RegionId: regionID})
+		if rerr != nil {
+			if peer.Classify(rerr).RefusedReference() {
+				return ports.ErrNotFound
+			}
+			return rerr
+		}
+		return nil
+	})
 }
 
 // GetZone валидирует существование zone_id через geo.v1.ZoneService.Get.

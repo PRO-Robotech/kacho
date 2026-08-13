@@ -172,6 +172,8 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"compute_instance": "Instance %s not found",
 	// Ключ входа в машину — services/compute/internal/repo/guest_access_key_repo.go.
 	"compute_guest_access_key": "GuestAccessKey %s not found",
+	// Группа размещения — services/compute/internal/repo/placement_group_repo.go.
+	"compute_placement_group": "PlacementGroup %s not found",
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

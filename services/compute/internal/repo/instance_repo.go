@@ -165,8 +165,21 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 		return nil, nil, err
 	}
 
+	// Когерентность размещения — УСЛОВИЕ САМОЙ ВСТАВКИ, а не вопрос перед ней.
+	//
+	// Строка появляется либо когерентной, либо не появляется вовсе. Проверка
+	// «прочитал группу → сравнил → вставил» разъезжается под конкуренцией и
+	// защищает ровно тот путь, который через неё проходит.
+	//
+	// Ноль строк из вставки означает: группа не той зоны, не того региона, не
+	// того проекта либо её нет. Все четыре исхода отвечают ОДИНАКОВО — иначе по
+	// различию ответов читался бы состав чужого проекта.
+	if err := checkPlacementCoherence(ctx, tx, in); err != nil {
+		return nil, nil, err
+	}
+
 	const qIns = `INSERT INTO instances (` + instanceCols + `)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING ` + instanceSelectCols
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NULLIF($16,''),$17,$18,$19,$20,$21,$22,$23,NULLIF($24,''),$25,$26) RETURNING ` + instanceSelectCols
 	created, err := scanInstance(tx.QueryRow(ctx, qIns, insertArgs...))
 	if err != nil {
 		return nil, nil, wrapPgErr(err, "Instance", in.Name)
@@ -258,6 +271,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 	// первым (always-reject). CAS `AND status='STOPPED'` — DB-level backstop
 	// (defense-in-depth; NOT software Get→check→UPDATE), актуален в COMP-2.
 	requireStopped := false
+	checkGroupCoherence := false
 	if _, ok := ch["machine_type_id"]; ok {
 		// NULLable FK-колонка (0017) — "" пишется как NULL, см. instanceSelectCols.
 		us.addNullIfEmpty("machine_type_id", in.MachineTypeID)
@@ -268,7 +282,8 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		requireStopped = true
 	}
 	if _, ok := ch["placement_group_id"]; ok {
-		us.add("placement_group_id", in.PlacementGroupID)
+		us.addNullIfEmpty("placement_group_id", in.PlacementGroupID)
+		checkGroupCoherence = true
 		requireStopped = true
 	}
 
@@ -277,6 +292,16 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		return nil, nil, ports.ErrInternal
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Когерентность размещения проверяется и на правке — в ТОЙ ЖЕ транзакции.
+	// Проверка только на создании защищала бы ровно один путь: перевести машину
+	// в группу другой зоны можно было бы правкой, и результат был бы тем же
+	// несогласованным размещением, только заведённым позже.
+	if checkGroupCoherence {
+		if err := checkPlacementCoherence(ctx, tx, in); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	var updated *domain.Instance
 	if us.empty() {
@@ -672,6 +697,10 @@ func marshalSpecJSONB(v any, field string) ([]byte, error) {
 func scanInstance(row scannable) (*domain.Instance, error) {
 	var in domain.Instance
 	var labelsJSON, mdJSON, vmSpecJSON, ctrSpecJSON []byte
+	// Колонка NULLable: отсутствие ссылки представлено NULL-ом, а не пустой
+	// строкой. Доменный тип остаётся строкой, и NULL читается как "" — так же,
+	// как это уже сделано для типа машины.
+	var placementGroupID *string
 	var statusName string
 	var kind, imageKind int32
 	if err := row.Scan(
@@ -680,10 +709,13 @@ func scanInstance(row scannable) (*domain.Instance, error) {
 		&mdJSON, &in.Hostname, &in.FQDN, &in.CPUGuaranteePercent, &in.ServiceAccountID,
 		&kind, &in.MachineTypeID,
 		&in.EffectiveResources.VCPU, &in.EffectiveResources.MemoryMiB, &in.EffectiveResources.GPUs, &in.EffectiveResources.GPUType,
-		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &in.PlacementGroupID,
+		&in.BootSource.Type, &in.BootSource.ID, &imageKind, &placementGroupID,
 		&vmSpecJSON, &ctrSpecJSON, &in.GuestAccessKeyIDs,
 	); err != nil {
 		return nil, err
+	}
+	if placementGroupID != nil {
+		in.PlacementGroupID = *placementGroupID
 	}
 	if err := unmarshalJSONB(labelsJSON, &in.Labels, "Instance.labels"); err != nil {
 		return nil, err

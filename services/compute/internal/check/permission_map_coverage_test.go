@@ -37,6 +37,7 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 	computev1.MachineTypeService_ServiceDesc,
 	computev1.InstanceService_ServiceDesc,
 	computev1.GuestAccessKeyService_ServiceDesc,
+	computev1.PlacementGroupService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 
