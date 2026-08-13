@@ -105,6 +105,12 @@ type SecurityGroupRule struct {
 	// той же Network, что и владеющая правилом SG (валидация —
 	// `securitygroup.validateSGTargetSameNetwork`).
 	SecurityGroupID string
+	// CidrGroupID — третья ветвь цели: именованный набор префиксов
+	// (`vpc.CidrGroup`). Набор обязан лежать в ТОМ ЖЕ проекте, что и группа
+	// правил, и быть непустым — валидация `securitygroup.validateSGTargetCidrGroup`.
+	// Ссылка держится внешним ключом (миграция 0035), поэтому набор с живой
+	// ссылкой не удаляется.
+	CidrGroupID string
 }
 
 // Validate проверяет description/labels rule'а. Direction-семантика и
@@ -131,5 +137,6 @@ func (r SecurityGroupRule) Equal(other SecurityGroupRule) bool {
 		r.ProtocolNumber == other.ProtocolNumber &&
 		stringSlicesEqual(r.V4CidrBlocks, other.V4CidrBlocks) &&
 		stringSlicesEqual(r.V6CidrBlocks, other.V6CidrBlocks) &&
-		r.SecurityGroupID == other.SecurityGroupID
+		r.SecurityGroupID == other.SecurityGroupID &&
+		r.CidrGroupID == other.CidrGroupID
 }

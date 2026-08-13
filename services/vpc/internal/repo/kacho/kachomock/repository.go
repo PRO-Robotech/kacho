@@ -70,6 +70,8 @@ type Repository struct {
 	// outboxEmitErr — тест-хук отказа outbox-emit (см. SetOutboxEmitErr).
 	outboxEmitErr error
 	gateways      map[string]*kacho.GatewayRecord
+	// cidrGroups — именованные наборы префиксов.
+	cidrGroups map[string]*kacho.CidrGroupRecord
 	// addressPools — admin-only ресурс.
 	addressPools map[string]*kacho.AddressPoolRecord
 	// netDefBinds — explicit-биндинги pool ↔ network (network_default).
@@ -115,6 +117,7 @@ func NewRepository() *Repository {
 		addresses:          make(map[string]*kacho.AddressRecord),
 		references:         make(map[string]*domain.AddressReference),
 		gateways:           make(map[string]*kacho.GatewayRecord),
+		cidrGroups:         make(map[string]*kacho.CidrGroupRecord),
 		addressPools:       make(map[string]*kacho.AddressPoolRecord),
 		netDefBinds:        make(map[string]string),
 		allocatedInCidr:    make(map[string]int64),
@@ -379,6 +382,11 @@ func (r *Repository) Reader(_ context.Context) (kacho.RepositoryReader, error) {
 	for k, v := range r.netDefBinds {
 		ndSnap[k] = v
 	}
+	cgSnap := make(map[string]*kacho.CidrGroupRecord, len(r.cidrGroups))
+	for id, g := range r.cidrGroups {
+		cp := *g
+		cgSnap[id] = &cp
+	}
 	return &readerImpl{
 		netSnap:     netSnap,
 		sgSnap:      sgSnap,
@@ -390,6 +398,7 @@ func (r *Repository) Reader(_ context.Context) (kacho.RepositoryReader, error) {
 		gwSnap:      gwSnap,
 		apSnap:      apSnap,
 		ndSnap:      ndSnap,
+		cgSnap:      cgSnap,
 	}, nil
 }
 
@@ -449,18 +458,25 @@ func (r *Repository) Writer(_ context.Context) (kacho.RepositoryWriter, error) {
 	for k, v := range r.netDefBinds {
 		localNDs[k] = v
 	}
+	localCGs := make(map[string]*kacho.CidrGroupRecord, len(r.cidrGroups))
+	for id, g := range r.cidrGroups {
+		cp := *g
+		localCGs[id] = &cp
+	}
 	return &writerImpl{
-		parent:     r,
-		local:      localNets,
-		localSGs:   localSGs,
-		localSubs:  localSubs,
-		localRTs:   localRTs,
-		localNIs:   localNIs,
-		localAddrs: localAddrs,
-		localRefs:  localRefs,
-		localGWs:   localGWs,
-		localAPs:   localAPs,
-		localNDs:   localNDs,
+		parent:       r,
+		local:        localNets,
+		localSGs:     localSGs,
+		localSubs:    localSubs,
+		localRTs:     localRTs,
+		localNIs:     localNIs,
+		localAddrs:   localAddrs,
+		localRefs:    localRefs,
+		localGWs:     localGWs,
+		localAPs:     localAPs,
+		localNDs:     localNDs,
+		localCGs:     localCGs,
+		deletedCGIDs: make(map[string]struct{}),
 	}, nil
 }
 
@@ -481,6 +497,7 @@ type readerImpl struct {
 	gwSnap      map[string]*kacho.GatewayRecord
 	apSnap      map[string]*kacho.AddressPoolRecord
 	ndSnap      map[string]string
+	cgSnap      map[string]*kacho.CidrGroupRecord
 }
 
 func (rd *readerImpl) Networks() kacho.NetworkReaderIface {
@@ -519,6 +536,10 @@ func (rd *readerImpl) AddressPoolBindings() kacho.AddressPoolBindingReaderIface 
 	return &addressPoolBindingReader{netDef: rd.ndSnap}
 }
 
+func (rd *readerImpl) CidrGroups() kacho.CidrGroupReaderIface {
+	return &cidrGroupReader{snap: rd.cgSnap, sgSnap: rd.sgSnap}
+}
+
 func (rd *readerImpl) Close() error { return nil }
 
 // writerImpl — write-«TX». local-* — working set'ы, окончательно мерж'атся в
@@ -539,6 +560,7 @@ type writerImpl struct {
 	localGWs  map[string]*kacho.GatewayRecord
 	localAPs  map[string]*kacho.AddressPoolRecord
 	localNDs  map[string]string
+	localCGs  map[string]*kacho.CidrGroupRecord
 	// localFreelistAdds — буфер AddCidrToFreelist-вызовов, flush в
 	// parent.freelistAddedCidrs на Commit.
 	localFreelistAdds map[string][]string
@@ -553,6 +575,7 @@ type writerImpl struct {
 	deletedGWIDs      map[string]struct{} // Gateway deletions
 	deletedAPIDs      map[string]struct{} // AddressPool deletions
 	deletedNDIDs      map[string]struct{} // NetworkDefault binding deletions
+	deletedCGIDs      map[string]struct{} // CidrGroup deletions
 	finalised         bool
 }
 
@@ -591,6 +614,10 @@ func (w *writerImpl) AddressPools() kacho.AddressPoolWriterIface {
 
 func (w *writerImpl) AddressPoolBindings() kacho.AddressPoolBindingWriterIface {
 	return &addressPoolBindingWriter{w: w}
+}
+
+func (w *writerImpl) CidrGroups() kacho.CidrGroupWriterIface {
+	return &cidrGroupWriter{w: w}
 }
 
 func (w *writerImpl) Outbox() kacho.OutboxEmitter {
@@ -693,6 +720,13 @@ func (w *writerImpl) Commit() error {
 	}
 	for k, v := range w.localNDs {
 		w.parent.netDefBinds[k] = v
+	}
+	// Удалить + apply CidrGroup.
+	for id := range w.deletedCGIDs {
+		delete(w.parent.cidrGroups, id)
+	}
+	for id, g := range w.localCGs {
+		w.parent.cidrGroups[id] = g
 	}
 	// Flush freelist-add записей (для AddCidrBlocks unit-теста).
 	for poolID, cidrs := range w.localFreelistAdds {

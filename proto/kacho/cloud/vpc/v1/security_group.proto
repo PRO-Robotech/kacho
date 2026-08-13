@@ -116,12 +116,21 @@ message SecurityGroupRule {
         // Target of the security rule.
         option (exactly_one) = true;
 
-        // CIDR blocks to allow to recieve or send traffic. 
+        // CIDR blocks to allow to recieve or send traffic.
         CidrBlocks cidr_blocks = 8;
 
         // ID of the security group to add rule to.
         string security_group_id = 9;
 
+        // ID of the CidrGroup whose members this rule allows traffic to or from.
+        //
+        // The third branch of the target exists so that a list repeated across
+        // many rules stops being copied into each of them: the rule names the
+        // set, the set is edited once. The group must belong to the same project
+        // as the security group, and it must not be empty — an empty referenced
+        // set is refused at the door rather than quietly widening or narrowing
+        // what the rule allows.
+        string cidr_group_id = 11;
     }
 
     enum Direction {

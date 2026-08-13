@@ -97,15 +97,35 @@ SG-target правило может ссылаться лишь на SG **той
     <tr><td><code>ports</code></td><td><code>PortRange</code></td><td>Диапазон портов <code>&#123;fromPort, toPort&#125;</code> (0..65535). Пусто = любой порт</td></tr>
     <tr><td><code>protocolName</code></td><td><code>{TYPES.string}</code></td><td>Имя протокола (<code>TCP</code>/<code>UDP</code>/<code>ICMP</code>, IANA). Oneof <code>protocol</code> с <code>protocolNumber</code>; пусто = любой</td></tr>
     <tr><td><code>protocolNumber</code></td><td><code>{TYPES.int64}</code></td><td>Номер протокола (IANA). Альтернатива <code>protocolName</code></td></tr>
-    <tr><td><code>cidrBlocks</code></td><td><code>{TYPES.cidrSpec}</code></td><td>Target = CIDR-блоки <code>&#123;v4CidrBlocks[], v6CidrBlocks[]&#125;</code>. Oneof <code>target</code> — ровно один из двух</td></tr>
+    <tr><td><code>cidrBlocks</code></td><td><code>{TYPES.cidrSpec}</code></td><td>Target = CIDR-блоки <code>&#123;v4CidrBlocks[], v6CidrBlocks[]&#125;</code>. Oneof <code>target</code> — ровно одна из трёх ветвей</td></tr>
     <tr><td><code>securityGroupId</code></td><td><code>{TYPES.string}</code></td><td>Target = другая SG (<strong>только same-network</strong>). Oneof <code>target</code></td></tr>
+    <tr><td><code>cidrGroupId</code></td><td><code>{TYPES.string}</code></td><td>Target = именованный набор префиксов <code>CidrGroup</code> (<strong>того же проекта</strong>, <strong>непустой</strong>). Oneof <code>target</code></td></tr>
   </tbody>
 </table>
 
 :::note Target правила — `exactly_one`
-В каждом правиле задается **ровно один** target: `cidrBlocks` **или** `securityGroupId`.
-Ноль или оба → `InvalidArgument`. Для цели-группы она обязана принадлежать **той же** сети
-(`network_id`), иначе правило отвергается (`InvalidArgument`).
+В каждом правиле задается **ровно один** target: `cidrBlocks`, `securityGroupId`
+**или** `cidrGroupId`. Ноль или больше одного → `InvalidArgument`. Для цели-группы правил
+она обязана принадлежать **той же** сети (`network_id`), иначе правило отвергается
+(`InvalidArgument`).
+:::
+
+:::info Именованный набор префиксов как цель
+`cidrGroupId` существует ради одного: перечень сетей, повторяющийся в двадцати правилах,
+правится **один раз**. Набор (`CidrGroup`, идентификатор `cdg-…`) заводится в проекте
+отдельно, правило ссылается на него, и правка состава набора действует во всех правилах,
+которые на него ссылаются.
+
+Две границы, о которых стоит знать заранее:
+
+* набор обязан лежать **в том же проекте**, что и группа правил;
+* набор обязан быть **непустым** — и пока на него ссылается хотя бы одно правило, снять
+  его последний префикс нельзя (`FAILED_PRECONDITION`). Пустой набор в ссылке либо
+  заставил бы правило исчезнуть целиком, либо заставил бы фильтр молча пропасть из него:
+  первое сужает разрешение незаметно, второе — расширяет.
+
+Удалить набор, на который ссылается живое правило, тоже нельзя: отказ
+(`FAILED_PRECONDITION`) перечисляет, сколько групп правил и сколько правил его держат.
 :::
 
 ---

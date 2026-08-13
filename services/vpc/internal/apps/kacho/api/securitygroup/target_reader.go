@@ -61,3 +61,24 @@ func sgTargetReader(override SecurityGroupReader, r Repo) SecurityGroupReader {
 	}
 	return repoSecurityGroupReader{repo: r}
 }
+
+// repoCidrGroupReader — читатель именованных наборов, ВЫВЕДЕННЫЙ из уже
+// обязательного `Repo`, по той же причине, что и его сосед выше: у проверки
+// ссылки правила на набор не должно быть состояния «порт не передан», потому что
+// такое состояние значит «разрешено всё» и от «настроена и разрешила» неотличимо.
+//
+// Он обслуживает СИНХРОННЫЙ путь (быстрый отказ до создания операции). Путь
+// записи зовёт ту же проверку с писателем ОТКРЫТОЙ транзакции — только там
+// блокировки делают ответ гоночно-стойким; см. validateSGTargetCidrGroup.
+type repoCidrGroupReader struct{ repo Repo }
+
+// Get — чтение через свежую Reader-TX (та же форма, что у остальных read-путей
+// пакета).
+func (r repoCidrGroupReader) Get(ctx context.Context, id string) (*kachorepo.CidrGroupRecord, error) {
+	rd, err := r.repo.Reader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.CidrGroups().Get(ctx, id)
+}

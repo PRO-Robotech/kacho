@@ -403,10 +403,17 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// интерактивной сессии не имеет вовсе. Отношения при этом РАЗНЫЕ у чтения и
 	// записи: право смотреть намерение не даёт права объявлять применённым что
 	// угодно.
+	// ЧИСЛА ПЕРЕМЕРЕНЫ ещё раз — заведён ресурс «именованный набор префиксов»
+	// (`vpc.v1.CidrGroupService`, восемь публичных методов: чтение, список,
+	// история операций, создание, правка, два глагола состава, удаление). Все
+	// восемь — рутинной полосы (ACR «1»), потому что ни один не меняет посадку
+	// безопасности вызывающего: набор адресуется его же проектом и гейтится
+	// пообъектно. Изменились ровно два числа: routine 228→236 и total 289→297;
+	// sensitive и exempt не тронуты.
 	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 228, n1, "routine count")
+	assert.Equal(t, 236, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 289, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 297, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

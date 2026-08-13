@@ -163,8 +163,8 @@ func TestHideExistenceFormsCoverEveryObjectScopedTypeAndComeFromTheProducer(t *t
 // адаптера решателя (`internal/check`), где тот же вывод жил рядом с ним.
 func TestHiddenTypesAreResourcesNotHierarchyAnchors(t *testing.T) {
 	want := []string{
-		"vpc_address", "vpc_gateway", "vpc_network", "vpc_network_interface",
-		"vpc_route_table", "vpc_security_group", "vpc_subnet",
+		"vpc_address", "vpc_cidr_group", "vpc_gateway", "vpc_network",
+		"vpc_network_interface", "vpc_route_table", "vpc_security_group", "vpc_subnet",
 	}
 	assert.Equal(t, want, hiddenObjectTypes(),
 		"скрывающие типы — ресурсы домена, и только они")

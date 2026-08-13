@@ -43,9 +43,10 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 		if r.FromPort != 0 || r.ToPort != 0 {
 			pr.Ports = &vpcv1.PortRange{FromPort: r.FromPort, ToPort: r.ToPort}
 		}
-		// target — oneof {cidr_blocks | security_group_id},
-		// взаимоисключающее. Все три ветки обязаны сериализоваться, иначе Get/List
-		// отдаёт rule с Target=nil (SG-target/predefined приходили undefined).
+		// target — oneof {cidr_blocks | security_group_id | cidr_group_id},
+		// взаимоисключающее. КАЖДАЯ ветвь обязана сериализоваться, иначе Get/List
+		// отдаёт правило с Target=nil — то есть правило, которое сервер принял и
+		// сохранил, читается как правило без цели.
 		switch {
 		case len(r.V4CidrBlocks) > 0 || len(r.V6CidrBlocks) > 0:
 			pr.Target = &vpcv1.SecurityGroupRule_CidrBlocks{
@@ -57,6 +58,10 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 		case r.SecurityGroupID != "":
 			pr.Target = &vpcv1.SecurityGroupRule_SecurityGroupId{
 				SecurityGroupId: r.SecurityGroupID,
+			}
+		case r.CidrGroupID != "":
+			pr.Target = &vpcv1.SecurityGroupRule_CidrGroupId{
+				CidrGroupId: r.CidrGroupID,
 			}
 		}
 		p.Rules = append(p.Rules, pr)

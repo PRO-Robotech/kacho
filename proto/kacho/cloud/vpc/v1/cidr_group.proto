@@ -1,0 +1,64 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.vpc.v1;
+
+import "google/protobuf/timestamp.proto";
+import "kacho/cloud/reference/reference.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
+
+// A CidrGroup resource — a named set of CIDR prefixes that security group rules
+// point at instead of carrying their own copy of the list.
+//
+// Why the resource exists: a rule today names its target either as an inline set
+// of blocks or as another security group. A tenant whose office ranges appear in
+// twenty rules edits twenty places, and sooner or later edits not all of them.
+// The named set makes the list ITSELF the subject: edit it once, every rule that
+// references it follows.
+//
+// Addressing is by the immutable `id` (`cdg-<crockford-base32>`); `name` is a
+// cosmetic project-scoped label and never addresses anything.
+message CidrGroup {
+  // ID of the CIDR group. Immutable for the lifetime of the resource.
+  string id = 1;
+
+  // ID of the project that the CIDR group belongs to. Immutable after Create.
+  string project_id = 2;
+
+  // Creation timestamp in [RFC3339](https://www.ietf.org/rfc/rfc3339.txt) text format.
+  google.protobuf.Timestamp created_at = 3;
+
+  // Name of the CIDR group. Unique within the project (an empty name forms no
+  // duplicate). Cosmetic — it never appears in a URL or in a reference.
+  // Value must match the regular expression ``\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?``.
+  string name = 4;
+
+  // Description of the CIDR group. 0-256 characters long.
+  string description = 5;
+
+  // Resource labels as `key:value` pairs. No more than 64 per resource.
+  map<string, string> labels = 6;
+
+  // Current IPv4 members of the set, canonical network form (host bits zero).
+  //
+  // The two families are SEPARATE fields rather than one list with a derived
+  // family, and that is a decision, not formatting: a member of the wrong family
+  // is refused at the door, before the write, so the state is not expressible at
+  // all. Mutated only via :add-cidr-blocks / :remove-cidr-blocks — Update does
+  // not touch the membership.
+  repeated string v4_cidr_blocks = 7;
+
+  // Current IPv6 members of the set. Mirror of v4_cidr_blocks.
+  repeated string v6_cidr_blocks = 8;
+
+  // ° Total number of members across both families. Output-only.
+  int32 cidr_block_count = 9;
+
+  // ° Consumers of this CIDR group — the security groups whose rules point at
+  // it. Output-only, derived on read from the reference rows the database keeps
+  // for those rules, so it names what actually holds the group, not an intent.
+  repeated kacho.cloud.reference.Reference used_by = 10;
+}

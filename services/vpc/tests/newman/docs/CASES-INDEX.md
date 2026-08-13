@@ -237,6 +237,7 @@
 | `*-DEL-NEG-HAS-SUBNETS` | CONF,NEG,STATE | P0 | 1 (net) | Delete Network c Subnet → FailedPrecondition (FK RESTRICT) |
 | `*-DEL-NEG-NF-INVALID-PREFIX` | NEG,STATE | P1 | 1 (net) | Delete с id без VPC-префикса → sync 404 |
 | `*-DEL-STATE-DEFAULT-SG` | NEG,STATE | P1 | 1 (sec) | Delete default-SG напрямую → должен fail (нельзя delete default SG в обход) |
+| `CDG-DEL-NEG-REFERENCED` | NEG,CONF,STATE | P0 | 1 (cdg) | Delete именованного набора префиксов, на который ссылается правило группы (`ruleSpecs[].cidrGroupId`) → 400 `FAILED_PRECONDITION`; отказ перечисляет мешающее ВИДАМИ И ЧИСЛАМИ (`security groups: 1, rules: 1`) и НЕ несёт идентификаторов правил. Держит внешний ключ RESTRICT с проекции ссылок (миграция 0035). Парный положительный контроль в том же кейсе: снятие группы правил освобождает набор, и тот же вызов его удаляет. |
 | `SG-DEL-NEG-NIC-ATTACHED` | NEG,STATE,CONF | P0 | 1 (sec) | Delete SG, прилинкованного к NIC через `security_group_ids[]` → `FailedPrecondition`. Объявление known-failing снято 2026-07-31 вместе с предметом: ref-check реализован в writer-TX репозитория, разбор — в docs/RESULTS.md. Verifies REQ-SG-DEL-NIC-REFCHECK. |
 
 ### Get
@@ -407,6 +408,7 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-UPD-AUTHZ-NF-SYNC` | AUTHZ,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update несуществующего → sync 404 от AuthZ-Get |
 | `*-UPD-CONF-FULLTEXT` | CONF,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update garbage → точный текст 'Subnet .. not found' |
 | `*-UPD-CONF-NF-TEXT` | CONF,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update несуществующего Subnet → точный текст 'Subnet .. not found' |
+| `CDG-UPD-NEG-COMPOSITION-VIA-MASK` | NEG,VAL,STATE | P1 | 1 (cdg) | Update именованного набора с маской состава (`v4CidrBlocks`) → 400 `INVALID_ARGUMENT`, и отказ ОТПРАВЛЯЕТ к глаголам (`AddCidrBlocks/RemoveCidrBlocks`), а не объявляет состав неизменяемым. Парный положительный контроль: косметическая правка тем же вызовом проходит, состав не тронут. |
 | `*-UPD-CRUD-DESC` | CRUD | P2 | 6 (add,gat,net,rou,sec,sub) | Update happy description |
 | `*-UPD-CRUD-DESCRIPTION` | CRUD | P1 | 1 (net) | Update description через mask → success + новое значение видно |
 | `*-UPD-CRUD-LABELS` | CRUD | P2 | 6 (add,gat,net,rou,sec,sub) | Update happy labels |

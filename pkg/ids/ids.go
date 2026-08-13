@@ -305,6 +305,14 @@ const (
 	// NewHyphenID("ic") → "ic-<17-base32>" (20 символов). Двухсимвольный prefix
 	// — в пределах 2..3 инварианта NewHyphenID (как `mt`).
 	PrefixInteractiveClientHyphen = "ic"
+	// PrefixCidrGroupHyphen — vpc CidrGroup (`cdg-…`): именованный набор
+	// префиксов, на который ссылается правило группы безопасности.
+	// NewHyphenID("cdg") → "cdg-<17-base32>".
+	//
+	// Почему не `grp`/`aps`: `grp` занят группой iam, а имя ресурса выбрано
+	// `CidrGroup` (§9.1.0 плана) — `Cidr` уже слово этого продукта, поэтому и
+	// префикс выведен из него, а не придуман.
+	PrefixCidrGroupHyphen = "cdg"
 )
 
 // hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
@@ -338,6 +346,10 @@ var hyphenFormPrefixes = []string{
 	// SecurityGroup sgr→scg и Gateway gtw→gwy — reconcile при VPC-1 prefix-миграции
 	// (тогда добавить scg/gwy сюда; router аддитивен, старые остаются валидны).
 	"net", "sub", "sgr", "rtb", "gtw", "nic", "adr", "apl",
+	// vpc: CidrGroup — первый ресурс домена, который АДРЕСУЕТСЯ дефисной формой
+	// (`cdg-…`), а не только классифицируется ею. Именованная константа: единый
+	// источник истины с генерацией через NewHyphenID.
+	PrefixCidrGroupHyphen,
 	// nlb: LoadBalancer/Listener/TargetGroup
 	"nlb", "lst", "tgr",
 	// geo — НАМЕРЕННО отсутствует: Region/Zone используют human-slug (ru-central1,

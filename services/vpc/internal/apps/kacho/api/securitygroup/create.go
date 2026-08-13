@@ -139,6 +139,13 @@ func (u *CreateSecurityGroupUseCase) Execute(ctx context.Context, sg domain.Secu
 		func(i int) string { return fmt.Sprintf("rule_specs[%d].security_group_id", i) }); err != nil {
 		return nil, err
 	}
+	// Ссылка правила на именованный набор: набор того же проекта и непустой.
+	// Быстрый отказ с именем поля; настоящий (гоночно-стойкий) отказ живёт внутри
+	// writer-транзакции doCreate — см. комментарий validateSGTargetCidrGroup.
+	if err := validateSGTargetCidrGroup(ctx, repoCidrGroupReader{repo: u.repo}, sg.ProjectID, sg.Rules,
+		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); err != nil {
+		return nil, err
+	}
 	name := string(sg.Name)
 	if name != "" {
 		rd, err := u.repo.Reader(ctx)
@@ -218,6 +225,14 @@ func (u *CreateSecurityGroupUseCase) doCreate(ctx context.Context, sgID string, 
 	created, err := w.SecurityGroups().Insert(ctx, &sg)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
+	}
+	// Ссылка на именованный набор проверяется ПОСЛЕ записи правил и В ЭТОЙ ЖЕ
+	// транзакции: запись поставила строки проекции ссылок, и их внешний ключ
+	// удерживает набор от опустошения конкурентом. Проверка до записи отвечала бы
+	// по снимку, который конкурент уже переписывает.
+	if verr := validateSGTargetCidrGroup(ctx, w.CidrGroups(), sg.ProjectID, created.Rules,
+		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); verr != nil {
+		return nil, verr
 	}
 	if err := w.Outbox().Emit(ctx, "SecurityGroup", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))

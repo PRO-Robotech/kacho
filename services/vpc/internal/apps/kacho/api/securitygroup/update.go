@@ -137,6 +137,12 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	// Ссылка правила на именованный набор — ПОСЛЕ записи правил и в этой же
+	// транзакции: см. validateSGTargetCidrGroup о том, почему порядок несущий.
+	if verr := validateSGTargetCidrGroup(ctx, w.CidrGroups(), string(updated.ProjectID), updated.Rules,
+		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); verr != nil {
+		return nil, verr
+	}
 	if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}

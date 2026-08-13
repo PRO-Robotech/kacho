@@ -47,6 +47,7 @@ var hideExistenceReachableTypes = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	"vpc_cidr_group":        "CidrGroup %s not found",
 	// storage — services/storage/internal/repo/pg/*.go (serviceerr strips the
 	// sentinel prefix, so the repo format is the wire text). Reachable since
 	// storage's object-self reads moved from the tier onto `v_get`.

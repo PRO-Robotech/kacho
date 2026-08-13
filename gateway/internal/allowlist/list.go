@@ -31,6 +31,16 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks":    {}, // :verb supernet growth (redesign-2026)
 	"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks": {}, // :verb supernet shrink (redesign-2026)
 	"/kacho.cloud.vpc.v1.NetworkService/ListOperations":   {},
+	// vpc.v1 — CidrGroupService (именованный набор префиксов; цель правила
+	// группы безопасности вместо копии перечня в каждом правиле)
+	"/kacho.cloud.vpc.v1.CidrGroupService/Get":              {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/List":             {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Create":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Update":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Delete":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":    {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks": {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":   {},
 	// vpc.v1 — SubnetService
 	"/kacho.cloud.vpc.v1.SubnetService/Get":               {},
 	"/kacho.cloud.vpc.v1.SubnetService/List":              {},

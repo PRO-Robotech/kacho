@@ -259,8 +259,11 @@ message SecurityGroupRuleSpec {
 
         // ID of the security group to add rule to.
         string security_group_id = 8;
-        
-        // string subnet_id = .. ;
+
+        // ID of the CidrGroup whose members this rule allows traffic to or from.
+        // Same-project and non-empty are both required — see the field of the
+        // same name on SecurityGroupRule.
+        string cidr_group_id = 10;
     }
 }
 

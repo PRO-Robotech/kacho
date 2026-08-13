@@ -29,6 +29,7 @@ const (
 	ResourceTypeAddress          = "vpc_address"
 	ResourceTypeGateway          = "vpc_gateway"
 	ResourceTypeNetworkInterface = "vpc_network_interface"
+	ResourceTypeCidrGroup        = "vpc_cidr_group"
 )
 
 // Action-строки VPC-домена. Формат `<domain>.<resource>.<verb>` из IAM permission
@@ -53,4 +54,5 @@ const (
 	ActionAddressList          = "vpc.addresses.list"
 	ActionGatewayList          = "vpc.gateways.list"
 	ActionNetworkInterfaceList = "vpc.networkInterfaces.list"
+	ActionCidrGroupList        = "vpc.cidrGroups.list"
 )

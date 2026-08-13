@@ -183,6 +183,9 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	// CidrGroup — текст слоя хранения vpc дословно
+	// (services/vpc/internal/repo/kacho/pg/cidr_group.go).
+	"vpc_cidr_group": "CidrGroup %s not found",
 	// storage — services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go.
 	// These three became reachable the moment storage's object-self reads moved off
 	// the tier onto `v_get`: before that, HidesExistenceOnDeny answered false for

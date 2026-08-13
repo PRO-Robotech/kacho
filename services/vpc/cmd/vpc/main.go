@@ -36,6 +36,7 @@ import (
 
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
+	cidrgroupapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
 	dataplaneapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
@@ -108,6 +109,18 @@ func main() {
 	if err := cfg.ValidateReservedPrefixes(); err != nil {
 		log.Fatalf("config validate (dataplane reserved prefixes): %v", err)
 	}
+	// S7 boot-guard: величины допуска запросов на каждом листенере. Стоимость
+	// запроса здесь высокая по построению — три строки в базе на мутацию, до
+	// полной страницы объектов с проверкой прав партиями на чтение, — поэтому
+	// неограниченный темп бьёт не в сеть, а в базу, и один вызывающий занимает
+	// процесс, обслуживающий всех. Величина исполняется ведром В ПРОЦЕССЕ (при N
+	// репликах эффективный предел равен N × объявленного), значит её объявляет
+	// посадка; а у настройки есть состояние «не задана», и оно НЕ безобидно:
+	// нулевые величины означают «не ограничиваем», а не «ограничивать нечего».
+	// Боевая посадка здесь и останавливается.
+	if err := cfg.ValidateRequestRateLimits(); err != nil {
+		log.Fatalf("config validate (request rate limits): %v", err)
+	}
 
 	if len(os.Args) >= 2 {
 		switch os.Args[1] {
@@ -142,6 +155,9 @@ type services struct {
 	networkInternal          *networkinternal.Service
 	networkInterfaceHandler  *niapp.Handler
 	networkInterfaceInternal *nicinternal.Service
+	// cidrGroupHandler — именованные наборы префиксов: предмет, на который
+	// ссылается правило группы безопасности вместо своей копии перечня.
+	cidrGroupHandler *cidrgroupapp.Handler
 	// dataplaneHandler — шов с исполнителем датаплейна: поток намерения и приём
 	// подтверждения применения (:9091, запрет #6). На публичный слушатель НЕ
 	// регистрируется: поток несёт намерение по всем арендаторам сразу и
@@ -518,6 +534,16 @@ func runServe(cfg config.Config) error {
 		gracefulTimeout = 10 * time.Second
 	}
 
+	// Ограничитель допуска запросов — по одному на листенер, с РАЗНЫМИ ключами и
+	// разными величинами (см. admission.go). Собирается ДО постановки задач:
+	// негодное объявление обязано остановить старт, а не всплыть на первом
+	// запросе. Величины уже одобрены стражем S7 выше; здесь читается ТО ЖЕ
+	// значение.
+	admission, err := buildAdmission(cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	// Отдельный контекст слушателей. Носитель гасит ОБА слушателя по отмене СВОЕГО
 	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
 	// этой отмены, а не одновременно с ней: kubelet перестаёт слать трафик до
@@ -576,8 +602,12 @@ func runServe(cfg config.Config) error {
 		// наравне с публичным — это его свойство, а не наше.
 		func() error {
 			serr := servicehost.Serve(serveCtx, desc,
-				func(reg grpc.ServiceRegistrar) { registerPublicServices(reg, svcs, opsRepo) },
-				func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs) },
+				func(reg grpc.ServiceRegistrar) {
+					registerPublicServices(guard(admission.public, reg), svcs, opsRepo)
+				},
+				func(reg grpc.ServiceRegistrar) {
+					registerInternalServices(guard(admission.internal, reg), svcs)
+				},
 			)
 			close(serveDone)
 			triggerShutdown()
@@ -597,6 +627,16 @@ func runServe(cfg config.Config) error {
 		// растёт, и узнают об этом по месту на диске.
 		func() error {
 			svcs.dataplaneCompactor.Run(serveCtx)
+			return nil
+		},
+		// Счёт допущенных и отвергнутых по каждому листенеру. Ставится задачей
+		// носителя по той же причине, что и уплотнение журнала: тот же контекст,
+		// что у слушателей, поэтому гашение процесса гасит и её.
+		//
+		// Отчёт печатается ВСЕГДА, включая нули: «ноль отказов за всю жизнь
+		// контроля» обязано быть заметно, иначе мёртвый ограничитель невидим.
+		func() error {
+			admission.report(serveCtx, logger)
 			return nil
 		},
 		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →
@@ -1065,6 +1105,22 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		niapp.NewListOperationsUseCase(opsRepo),
 	)
 
+	// CidrGroup — use-case-структура. Форма ровно та же, что у сети: чтение
+	// синхронно, мутации через операцию, состав правится глаголами. Потолок
+	// состава и отсутствие затирания живут в writer'е репозитория (условный
+	// инкремент счётчика под блокировкой строки), а не в этих use-case'ах.
+	cgHandler := cidrgroupapp.NewHandler(
+		cidrgroupapp.NewCreateCidrGroupUseCase(kachoRepo, projectClient, opsRepo).
+			WithLogger(logger).WithRegistrar(registrar),
+		cidrgroupapp.NewUpdateCidrGroupUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
+		cidrgroupapp.NewDeleteCidrGroupUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewGetCidrGroupUseCase(kachoRepo),
+		cidrgroupapp.NewListCidrGroupsUseCase(kachoRepo, listFilter),
+		cidrgroupapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewListOperationsUseCase(opsRepo),
+	)
+
 	return &services{
 		networkHandler:          netHandler,
 		subnetHandler:           subnetHandler,
@@ -1088,6 +1144,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		networkInterfaceInternal: nicinternal.NewService(kachoRepo).
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
+		cidrGroupHandler:   cgHandler,
 		dataplaneHandler:   dataplaneHandler,
 		dataplaneCompactor: dataplaneapp.NewCompactor(dataplaneStore, logger.With("component", "dataplane-compaction")),
 	}
@@ -1102,6 +1159,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	vpcv1.RegisterSecurityGroupServiceServer(srv, svcs.securityGroupHandler)
 	vpcv1.RegisterGatewayServiceServer(srv, svcs.gatewayHandler)
 	vpcv1.RegisterNetworkInterfaceServiceServer(srv, svcs.networkInterfaceHandler)
+	vpcv1.RegisterCidrGroupServiceServer(srv, svcs.cidrGroupHandler)
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 

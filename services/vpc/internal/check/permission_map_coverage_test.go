@@ -39,6 +39,7 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 	vpcv1.SecurityGroupService_ServiceDesc,
 	vpcv1.GatewayService_ServiceDesc,
 	vpcv1.NetworkInterfaceService_ServiceDesc,
+	vpcv1.CidrGroupService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 

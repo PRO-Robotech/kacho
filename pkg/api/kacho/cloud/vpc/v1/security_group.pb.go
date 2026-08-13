@@ -251,6 +251,7 @@ type SecurityGroupRule struct {
 	//
 	//	*SecurityGroupRule_CidrBlocks
 	//	*SecurityGroupRule_SecurityGroupId
+	//	*SecurityGroupRule_CidrGroupId
 	Target        isSecurityGroupRule_Target `protobuf_oneof:"target"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -360,6 +361,15 @@ func (x *SecurityGroupRule) GetSecurityGroupId() string {
 	return ""
 }
 
+func (x *SecurityGroupRule) GetCidrGroupId() string {
+	if x != nil {
+		if x, ok := x.Target.(*SecurityGroupRule_CidrGroupId); ok {
+			return x.CidrGroupId
+		}
+	}
+	return ""
+}
+
 type isSecurityGroupRule_Target interface {
 	isSecurityGroupRule_Target()
 }
@@ -374,9 +384,23 @@ type SecurityGroupRule_SecurityGroupId struct {
 	SecurityGroupId string `protobuf:"bytes,9,opt,name=security_group_id,json=securityGroupId,proto3,oneof"`
 }
 
+type SecurityGroupRule_CidrGroupId struct {
+	// ID of the CidrGroup whose members this rule allows traffic to or from.
+	//
+	// The third branch of the target exists so that a list repeated across
+	// many rules stops being copied into each of them: the rule names the
+	// set, the set is edited once. The group must belong to the same project
+	// as the security group, and it must not be empty — an empty referenced
+	// set is refused at the door rather than quietly widening or narrowing
+	// what the rule allows.
+	CidrGroupId string `protobuf:"bytes,11,opt,name=cidr_group_id,json=cidrGroupId,proto3,oneof"`
+}
+
 func (*SecurityGroupRule_CidrBlocks) isSecurityGroupRule_Target() {}
 
 func (*SecurityGroupRule_SecurityGroupId) isSecurityGroupRule_Target() {}
+
+func (*SecurityGroupRule_CidrGroupId) isSecurityGroupRule_Target() {}
 
 type PortRange struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -508,7 +532,7 @@ const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\aused_by\x18\v \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\x06status\"\xfe\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\x06status\"\xa4\x05\n" +
 	"\x11SecurityGroupRule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12I\n" +
@@ -519,7 +543,8 @@ const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\x0fprotocol_number\x18\a \x01(\x03R\x0eprotocolNumber\x12A\n" +
 	"\vcidr_blocks\x18\b \x01(\v2\x1e.kacho.cloud.vpc.v1.CidrBlocksH\x00R\n" +
 	"cidrBlocks\x12,\n" +
-	"\x11security_group_id\x18\t \x01(\tH\x00R\x0fsecurityGroupId\x1a9\n" +
+	"\x11security_group_id\x18\t \x01(\tH\x00R\x0fsecurityGroupId\x12$\n" +
+	"\rcidr_group_id\x18\v \x01(\tH\x00R\vcidrGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"?\n" +
@@ -587,6 +612,7 @@ func file_kacho_cloud_vpc_v1_security_group_proto_init() {
 	file_kacho_cloud_vpc_v1_security_group_proto_msgTypes[1].OneofWrappers = []any{
 		(*SecurityGroupRule_CidrBlocks)(nil),
 		(*SecurityGroupRule_SecurityGroupId)(nil),
+		(*SecurityGroupRule_CidrGroupId)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

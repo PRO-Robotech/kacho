@@ -80,6 +80,12 @@ func (u *UpdateRulesUseCase) Execute(ctx context.Context, in UpdateRulesInput) (
 	if err := u.validateAdditionsSameNetwork(ctx, in.SecurityGroupID, in.AdditionRuleSpecs, addFieldFor); err != nil {
 		return nil, err
 	}
+	// Ссылка добавляемого правила на именованный набор: быстрый отказ с именем
+	// поля. Гоночно-стойкая проверка — внутри writer-транзакции ниже.
+	cgFieldFor := func(i int) string { return fmt.Sprintf("addition_rule_specs[%d].cidr_group_id", i) }
+	if err := u.validateAdditionsCidrGroup(ctx, in.SecurityGroupID, in.AdditionRuleSpecs, cgFieldFor); err != nil {
+		return nil, err
+	}
 
 	op, err := operations.NewFromContext(
 		ctx,
@@ -108,6 +114,12 @@ func (u *UpdateRulesUseCase) Execute(ctx context.Context, in UpdateRulesInput) (
 		updated, uerr := w.SecurityGroups().UpdateRules(ctx, in.SecurityGroupID, in.DeletionRuleIDs, add)
 		if uerr != nil {
 			return nil, serviceerr.MapRepoErr(uerr)
+		}
+		// Ссылка на именованный набор — ПОСЛЕ записи правил и в этой же
+		// транзакции: см. validateSGTargetCidrGroup о том, почему порядок несущий.
+		if verr := validateSGTargetCidrGroup(ctx, w.CidrGroups(), string(updated.ProjectID), updated.Rules,
+			cgFieldFor); verr != nil {
+			return nil, verr
 		}
 		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
@@ -144,4 +156,32 @@ func (u *UpdateRulesUseCase) validateAdditionsSameNetwork(ctx context.Context, s
 		return serviceerr.MapRepoErr(err)
 	}
 	return validateSGTargetSameNetwork(ctx, u.sgReader, owner.NetworkID, additions, fieldFor)
+}
+
+// validateAdditionsCidrGroup — синхронный fast-fail для добавляемых правил со
+// ссылкой на именованный набор: проект берётся у самой редактируемой группы
+// (владение неизменяемо). Нет таких правил — ни одного чтения.
+//
+// Отсутствие редактируемой группы здесь НЕ ошибка: основной путь вернёт NotFound
+// из воркера, и дублировать этот ответ значило бы завести второй источник одного
+// утверждения.
+func (u *UpdateRulesUseCase) validateAdditionsCidrGroup(ctx context.Context, sgID string, additions []domain.SecurityGroupRule, fieldFor func(i int) string) error {
+	hasTarget := false
+	for _, r := range additions {
+		if r.CidrGroupID != "" {
+			hasTarget = true
+			break
+		}
+	}
+	if !hasTarget {
+		return nil
+	}
+	owner, err := u.sgReader.Get(ctx, sgID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil
+		}
+		return serviceerr.MapRepoErr(err)
+	}
+	return validateSGTargetCidrGroup(ctx, repoCidrGroupReader{repo: u.repo}, string(owner.ProjectID), additions, fieldFor)
 }

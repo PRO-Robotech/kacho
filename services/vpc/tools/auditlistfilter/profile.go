@@ -93,6 +93,7 @@ var Profile = listfiltergate.Profile{
 
 	Listings: map[string]listfiltergate.Listing{
 		"address.List":          {Shape: listfiltergate.RowFilter},
+		"cidrgroup.List":        {Shape: listfiltergate.RowFilter},
 		"gateway.List":          {Shape: listfiltergate.RowFilter},
 		"network.List":          {Shape: listfiltergate.RowFilter},
 		"networkinterface.List": {Shape: listfiltergate.RowFilter},
@@ -101,6 +102,7 @@ var Profile = listfiltergate.Profile{
 		"subnet.List":           {Shape: listfiltergate.RowFilter},
 
 		"address.ListOperations":          parentGate(),
+		"cidrgroup.ListOperations":        parentGate(),
 		"gateway.ListOperations":          parentGate(),
 		"network.ListOperations":          parentGate(),
 		"networkinterface.ListOperations": parentGate(),
