@@ -32,7 +32,7 @@ func TestGetMalformedID(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll()).WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Get(context.Background(), "not-a-snp-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -54,7 +54,7 @@ func TestGetWellFormedDelegates(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll()).WithInstallPrefix(testInstallPrefix)
 	got, err := uc.Get(context.Background(), wantID)
 	if err != nil || got != want {
 		t.Fatalf("Get = (%+v, %v)", got, err)
@@ -73,7 +73,7 @@ func TestCreatePeerValidatesProject(t *testing.T) {
 			return sentinel
 		},
 	}
-	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, nil)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, nil).WithInstallPrefix(testInstallPrefix)
 	s := &domain.Snapshot{ProjectID: "prj-1", SourceVolumeID: "vol00000000000000000"}
 	_, err := uc.Create(context.Background(), s)
 	if !errors.Is(err, sentinel) {
@@ -90,7 +90,7 @@ func TestCreateRejectsMissingSource(t *testing.T) {
 			return nil
 		},
 	}
-	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Create(context.Background(), &domain.Snapshot{ProjectID: "prj-1"})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Create missing source code = %v, want InvalidArgument", status.Code(err))
@@ -109,7 +109,7 @@ func TestListRequiresProjectID(t *testing.T) {
 			return nil, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll()).WithInstallPrefix(testInstallPrefix)
 	_, _, err := uc.List(context.Background(), snapshot.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -129,7 +129,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 			return []*domain.Snapshot{{ID: "snp00000000000000000", ProjectID: p.ProjectID}}, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll()).WithInstallPrefix(testInstallPrefix)
 	got, _, err := uc.List(narrowtest.Caller(), snapshot.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -142,7 +142,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 // TestUpdateImmutableField — immutable-поле в маске → sync InvalidArgument
 // "<field> is immutable after Snapshot.Create" (immutable-switch ДО UpdateMask).
 func TestUpdateImmutableField(t *testing.T) {
-	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	for _, f := range []string{"source_volume_id", "project_id", "size_bytes"} {
 		_, err := uc.Update(context.Background(), "snp00000000000000000", []string{f}, "", "", nil)
 		if status.Code(err) != codes.InvalidArgument {
@@ -157,7 +157,7 @@ func TestUpdateImmutableField(t *testing.T) {
 
 // TestUpdateMalformedID — malformed snp-id первым стейтментом → sync InvalidArgument.
 func TestUpdateMalformedID(t *testing.T) {
-	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Update(context.Background(), "bad-snp", nil, "x", "", nil)
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Update malformed code = %v, want InvalidArgument", status.Code(err))
@@ -169,7 +169,7 @@ func TestUpdateMalformedID(t *testing.T) {
 
 // TestDeleteMalformedID — malformed snp-id → sync InvalidArgument (repo не вызывается).
 func TestDeleteMalformedID(t *testing.T) {
-	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Delete(context.Background(), "nope")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Delete malformed code = %v, want InvalidArgument", status.Code(err))
@@ -193,7 +193,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus)
+	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Snapshot{
 		ProjectID: "prj-1", Name: "snap-a", SourceVolumeID: "vol00000000000000000",
@@ -224,7 +224,7 @@ func TestDeleteLROMarksDoneEmpty(t *testing.T) {
 		DeleteFunc: func(context.Context, string) error { return nil },
 	}
 	ops := repomock.NewOpsRepo()
-	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Delete(context.Background(), "snp00000000000000000")
 	if err != nil {
@@ -249,7 +249,7 @@ func TestCreateLRORepoErrorMarksError(t *testing.T) {
 	}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus)
+	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Snapshot{
 		ProjectID: "prj-1", SourceVolumeID: "vol00000000000000000",
@@ -292,7 +292,7 @@ func TestCreateRejectsOverLongDescriptionSynchronously(t *testing.T) {
 			return nil
 		},
 	}
-	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	s := &domain.Snapshot{
 		ProjectID:      "prj-1",
@@ -315,7 +315,7 @@ func TestCreateRejectsTooManyLabelsSynchronously(t *testing.T) {
 			return nil
 		},
 	}
-	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	labels := make(map[string]string, 65) // предел 64
 	for i := 0; i < 65; i++ {
@@ -348,7 +348,7 @@ func TestCreateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
 	// Валидный вход доходит до создания операции, поэтому здесь нужен настоящий
 	// репозиторий операций: с пустым вызов падает ещё до утверждения, и тест
 	// краснел бы по причине, к границе отношения не имеющей.
-	uc := snapshot.New(repo, iam, repomock.NewOpsRepo(), serviceerr.ToStatus)
+	uc := snapshot.New(repo, iam, repomock.NewOpsRepo(), serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	labels := make(map[string]string, 64)
 	for i := 0; i < 64; i++ {

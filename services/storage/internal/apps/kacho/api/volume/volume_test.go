@@ -35,7 +35,7 @@ func TestGetDelegatesToReader(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, nil)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, nil).WithInstallPrefix(testInstallPrefix)
 	got, err := uc.Get(context.Background(), wantID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -54,7 +54,7 @@ func TestGetMalformedID(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Get(context.Background(), "not-a-vol-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -76,7 +76,7 @@ func TestListRequiresProjectID(t *testing.T) {
 			return nil, "", nil
 		},
 	}
-	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	_, _, err := uc.List(narrowtest.Caller(), volume.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -97,7 +97,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 		},
 	}
 	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{},
-		nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+		nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix).WithListFilter(narrowtest.AllowingAll())
 	got, _, err := uc.List(narrowtest.Caller(), volume.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -110,7 +110,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 // TestUpdateImmutableField — immutable-поле в маске → sync InvalidArgument
 // "<field> is immutable after Volume.Create" (immutable-switch ДО UpdateMask, S1-05).
 func TestUpdateImmutableField(t *testing.T) {
-	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	for _, f := range []string{"zone_id", "disk_type_id", "block_size", "source_snapshot_id", "used_by"} {
 		_, err := uc.Update(context.Background(), "vol00000000000000000", []string{f}, "", "", nil, 0)
 		if status.Code(err) != codes.InvalidArgument {
@@ -139,7 +139,7 @@ func TestCreatePeerValidatesZone(t *testing.T) {
 	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error { return nil },
 	}
-	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, geo, iam, nil, nil)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, geo, iam, nil, nil).WithInstallPrefix(testInstallPrefix)
 	v := &domain.Volume{ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1}
 	_, err := uc.Create(context.Background(), v)
 	if !errors.Is(err, sentinel) {
@@ -166,7 +166,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	geo := &repomock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", Name: "vol-a", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1 << 30,
@@ -203,7 +203,7 @@ func TestUpdateLROAppliesAndMarksDone(t *testing.T) {
 		},
 	}
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Update(context.Background(), id, []string{"name"}, "renamed", "", nil, 0)
 	if err != nil {
@@ -229,7 +229,7 @@ func TestDeleteLROMarksDoneEmpty(t *testing.T) {
 		DeleteFunc: func(context.Context, string) error { return nil },
 	}
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Delete(context.Background(), "vol00000000000000000")
 	if err != nil {
@@ -255,7 +255,7 @@ func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	geo := &repomock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1 << 30,
@@ -269,5 +269,65 @@ func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	}
 	if done.Error == nil || done.Error.GetCode() != int32(codes.FailedPrecondition) {
 		t.Fatalf("op error = %v, want FailedPrecondition", done.Error)
+	}
+}
+
+// testInstallPrefix — префикс установки для проб.
+//
+// Он обязателен на пути создания: имя объекта у бэкенда выводится из него и
+// неизменяемого идентификатора тома, и без префикса два развёртывания на одном
+// кластере хранилища усыновили бы объекты друг друга. Пробы задают его явно, а не
+// получают умолчанием, — чтобы отсутствие префикса оставалось наблюдаемым отказом
+// (см. TestCreateWithoutInstallPrefixIsRefused).
+const testInstallPrefix = "kctest"
+
+// TestCreateWithoutInstallPrefixIsRefused — посадка без префикса установки не
+// создаёт томов, и отказ говорит о СЕРВИСЕ, а не о запросе.
+//
+// Арендатор не сделал ничего неверного: сервис в этой посадке не способен исполнить
+// запрос. Код FAILED_PRECONDITION или INVALID_ARGUMENT отправил бы его чинить свой
+// ввод, которого чинить нечего.
+// TestCreateWithoutDataPlaneNeedsNoInstallPrefix — обратная сторона того же
+// правила, и без неё отрицание выше означало бы «отказываем всегда».
+//
+// Префикс даёт ИМЯ объекту у бэкенда. Плоскости данных нет — объекта не будет,
+// имя выводить не для чего, и требовать префикс беспредметно. Отказ Unavailable
+// в такой посадке говорил бы «сервис недоступен» там, где он исправен: именно
+// это и роняло сквозные прогоны на стенде без кластера хранения.
+func TestCreateWithoutDataPlaneNeedsNoInstallPrefix(t *testing.T) {
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	// dataPlane НЕ объявлена и префикса нет — сочетание, штатное для платформы
+	// только управляющей плоскости.
+	// Предмет пробы — ОТСУТСТВИЕ отказа по неспособности сервиса, а не успех
+	// создания: успех потребовал бы поднять весь путь записи, и проба стала бы
+	// о другом. Поэтому паника на неполном дублёре ловится и не засчитывается
+	// за отказ — нас интересует ровно код Unavailable.
+	defer func() { _ = recover() }()
+
+	_, err := uc.Create(context.Background(), &domain.Volume{
+		ID: "vol00000000000000000", ProjectID: "prj-1", Name: "v",
+		ZoneID: "region-1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
+	})
+	if err != nil && status.Code(err) == codes.Unavailable {
+		t.Fatalf("посадка без плоскости данных НЕ должна отвечать «сервис недоступен»: %v", err)
+	}
+}
+
+func TestCreateWithoutInstallPrefixIsRefused(t *testing.T) {
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).
+		// Отказ ждут ТАМ, ГДЕ плоскость данных объявлена: без неё имя объекта
+		// выводить не для чего, и требование префикса беспредметно.
+		WithDataPlane(true)
+
+	_, err := uc.Create(context.Background(), &domain.Volume{
+		ProjectID: "prj-1", ZoneID: "ru-central1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
+	})
+	if err == nil {
+		t.Fatal("посадка без префикса установки обязана отказывать в создании тома")
+	}
+	if got := status.Code(err); got != codes.Unavailable {
+		t.Errorf("код %s: отказ обязан говорить о неспособности сервиса, а не о неверном вводе", got)
 	}
 }

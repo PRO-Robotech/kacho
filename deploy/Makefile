@@ -9,7 +9,8 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo e2e-newman stand-provenance
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage e2e-newman stand-provenance \
+        managed-image-pins managed-image-pins-check
 
 SHELL := bash
 
@@ -429,6 +430,12 @@ dev-up: preflight
 	echo "    к geo на пути запроса, fail-closed). Поднятый стенд без этого шага"; \
 	echo "    непригоден, и ни один «под Ready» этого не показывает."; \
 	$(MAKE) --no-print-directory seed-geo; \
+	echo "=== базовый каталог хранения (кластер данных, классы, привязки) ==="; \
+	echo "    Каталог классов тоже стартует ПУСТЫМ: класс не предлагается раньше,"; \
+	echo "    чем объявлено, ЧЕМ он обслуживается. Пока он пуст, каждое создание тома"; \
+	echo "    отвечает «класс не найден». Зоны привязок спрашиваются у geo, поэтому"; \
+	echo "    шаг идёт СТРОГО после посева каталога размещения."; \
+	$(MAKE) --no-print-directory seed-storage; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -678,6 +685,28 @@ helm-lint:
 	( cd helm/umbrella && helm dep update >/dev/null )
 	cd helm/umbrella && helm lint -f values.dev.yaml
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ПИНЫ ОБРАЗОВ ПРОФИЛЯ УПРАВЛЯЕМОГО КЛАСТЕРА — ПОРОЖДАЮТСЯ, А НЕ ПИШУТСЯ РУКОЙ.
+#
+# Профиль объявлял себя порождаемым, а порождающего в дереве не было ни одного:
+# указание «правится порождающий» без координаты правку не переадресует, а
+# отменяет. Теперь координата есть, и она исполняемая.
+#
+#   make managed-image-pins REF=<коммит main>   — переписать пины от коммита
+#   make managed-image-pins-check               — пины сходятся с записью профиля
+#
+# REF по умолчанию HEAD. Порождающий ОТКАЗЫВАЕТ, если коммит не входит в ветку,
+# чьё имя несёт тег: образ с таким тегом публикует сборка этой ветки, и для
+# стороннего коммита его нет — отказ здесь дешевле, чем ImagePullBackOff через
+# минуты после успешного «helm upgrade».
+REF ?= HEAD
+
+managed-image-pins:
+	@bash scripts/gen-managed-image-pins.sh --ref $(REF)
+
+managed-image-pins-check:
+	@bash scripts/gen-managed-image-pins.sh --check
+
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
 # against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
 # api-gateway points at the in-cluster Hydra JWKS endpoint. No kind cluster needed.
@@ -718,9 +747,11 @@ helm-lint:
 # самопроверка и запись без предмета одинаково роняют прогон.
 #
 # --verify-discovery — ДОКАЗАТЕЛЬСТВО САМОГО ОБХОДА: что предикат читает разбор
-# аргумента, а не слово в прозе; что находит все три законные формы в любом
-# каталоге; что не находит сам себя; и что расхождение состава видно в ОБЕ
-# стороны. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
+# аргумента, а не слово в прозе; что находит КАЖДУЮ законную форму разбора в
+# любом каталоге; что не находит сам себя; и что расхождение состава видно в ОБЕ
+# стороны. Сколько форм законно — знает САМ обход (SELFTEST_PARSE в
+# scripts/run-gate-self-tests.sh) и печатает числом; здесь это число не
+# дублируется: копия отставала от него молча и уже отстала однажды. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
 # доказывал всё, кроме себя. Идёт ПЕРВЫМ: пустой или ослепший обход делает
 # зелёный основного прохода бессмысленным.
 gate-self-test:
@@ -1226,3 +1257,22 @@ seed-nlb:
 # guard-kind-context: цель ПИШЕТ в базу активного контекста.
 seed-geo: guard-kind-context
 	@bash ./scripts/seed-geo-baseline.sh
+
+# ─── Базовый каталог блочного хранения (кластер данных, классы, привязки) ──
+#
+# Тот же класс беды, что у пустого каталога geo, и то же решение. Каталог
+# классов стартует пустым осознанно: класс без действующей ревизии привязки —
+# обещание ёмкости, которой никто не дал, поэтому посев из миграции снят, а
+# продукт поставляется пустым. Следствие: свежий стенд не создаёт ни одного
+# тома, и «под Ready» этого не показывает.
+#
+# ПОРЯДОК ЗНАЧИМ: привязка называет зону, зоны заводит seed-geo. Отсюда цель
+# стоит в `dev-up` строго после него, а сам скрипт спрашивает зоны у владельца
+# и падает, если открытых нет, — а не пишет ноль привязок молча.
+#
+# ПОЧЕМУ НЕ АДМИН-RPC: та же причина, что у geo (бутстрап-токен + Hydra +
+# проброс портов; вторая копия этой машинерии разъехалась бы с первой молча).
+#
+# guard-kind-context: цель ПИШЕТ в базу активного контекста.
+seed-storage: guard-kind-context
+	@POSTURE_SKIP="$(POSTURE_SKIP)" bash ./scripts/seed-storage-catalog.sh

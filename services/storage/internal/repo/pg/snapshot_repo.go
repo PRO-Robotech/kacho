@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
@@ -26,28 +28,68 @@ import (
 // (атомарно, ban #16).
 type SnapshotRepo struct {
 	pool *pgxpool.Pool
+	// readyOnCommit — см. VolumeRepo: без плоскости данных фиксация записи
+	// сама есть готовность.
+	readyOnCommit bool
 }
 
 // NewSnapshotRepo создаёт SnapshotRepo поверх pgxpool.
 func NewSnapshotRepo(pool *pgxpool.Pool) *SnapshotRepo { return &SnapshotRepo{pool: pool} }
 
-// snapshotSelectCols — общий проекционный список для Get/List. source_volume_id
-// nullable (FK SET NULL) → COALESCE в ”.
+// WithReadyOnCommit — см. VolumeRepo.WithReadyOnCommit: плоскости данных нет,
+// сверять не с чем, и фиксация записи сама есть готовность.
+func (r *SnapshotRepo) WithReadyOnCommit(v bool) *SnapshotRepo { r.readyOnCommit = v; return r }
+
+// snapshotSelectCols — общий проекционный список для Get/List.
+//
+// source_volume_id nullable (FK SET NULL) → COALESCE в ”. Размещение, ревизия
+// политики и имя объекта читаются ИЗ СВОЕЙ строки, а не добираются через том:
+// ссылка на том обнуляется при его удалении, и всё, что берётся через неё,
+// исчезает у пережившего снимка ровно тогда, когда становится нужным.
+//
+// Перечень засеянных томов собирается ОДНИМ коррелированным подзапросом, а не
+// вторым обращением на строку: страница по контракту доходит до тысячи строк, и
+// запрос на строку превратил бы её в тысячу обращений. Индекс
+// volumes_source_snapshot_idx заведён миграцией 0003 именно под этот вывод.
 const snapshotSelectCols = `
-	id, project_id, created_at, name, description, labels,
-	COALESCE(source_volume_id, ''), size_bytes, state`
+	s.id, s.project_id, s.created_at, s.updated_at, s.name, s.description, s.labels,
+	COALESCE(s.source_volume_id, ''), COALESCE(s.source_snapshot_id, ''),
+	s.size_bytes, s.state, s.zone_id, s.status_reason,
+	COALESCE(s.binding_id, ''), COALESCE(s.backend_object, ''),
+	COALESCE(b.namespace_template, ''),
+	COALESCE((SELECT array_agg(sv.id ORDER BY sv.created_at, sv.id)
+	            FROM volumes sv WHERE sv.source_snapshot_id = s.id), '{}')`
+
+// snapshotFrom — источник строк проекции. Ревизия политики подтягивается слева:
+// у строк прежней схемы её нет, и отсутствие ревизии не должно скрывать сам снимок.
+const snapshotFrom = `
+	FROM snapshots s
+	LEFT JOIN disk_type_bindings b ON b.id = s.binding_id`
 
 // scanSnapshot читает одну строку snapshotSelectCols в domain.Snapshot, деривя Status
-// из state (§1.4; 1:1, у снапшота нет attach-derive).
+// из state (1:1, у снимка нет attach-derive).
+//
+// Единица изоляции арендатора не хранится колонкой, а ВЫВОДИТСЯ из шаблона
+// унаследованной ревизии и собственного проекта. Обе величины на снимке неизменяемы,
+// поэтому вывод даёт ровно то пространство, в котором лежит том-источник, и
+// разойтись с ним не может; хранимая копия такой гарантии не даёт — она бы просто
+// стала вторым местом об одном факте. Без ревизии пространства нет вовсе: назвать
+// его было бы утверждением об объекте, которого никто не создавал.
 func scanSnapshot(row pgx.Row) (*domain.Snapshot, error) {
 	var (
 		s          domain.Snapshot
 		labelsJSON []byte
 		state      string
+		reason     string
+		bindingID  string
+		backendObj string
+		nsTemplate string
+		seeded     []string
 	)
 	if err := row.Scan(
-		&s.ID, &s.ProjectID, &s.CreatedAt, &s.Name, &s.Description, &labelsJSON,
-		&s.SourceVolumeID, &s.SizeBytes, &state,
+		&s.ID, &s.ProjectID, &s.CreatedAt, &s.UpdatedAt, &s.Name, &s.Description, &labelsJSON,
+		&s.SourceVolumeID, &s.SourceSnapshotID, &s.SizeBytes, &state, &s.ZoneID, &reason,
+		&bindingID, &backendObj, &nsTemplate, &seeded,
 	); err != nil {
 		return nil, err
 	}
@@ -57,12 +99,19 @@ func scanSnapshot(row pgx.Row) (*domain.Snapshot, error) {
 		}
 	}
 	s.Status = domain.SnapshotStatusFromState(state)
+	s.StatusReason = domain.StatusReason(reason)
+	s.Backend.BindingID = bindingID
+	s.Backend.BackendObject = backendObj
+	if bindingID != "" {
+		s.Backend.BackendNamespace = blockbackend.NamespaceOfProject(nsTemplate, s.ProjectID)
+	}
+	s.SeededVolumeIDs = seeded
 	return &s, nil
 }
 
 // Get реализует snapshot.Repo: снимок по id.
 func (r *SnapshotRepo) Get(ctx context.Context, id string) (*domain.Snapshot, error) {
-	q := `SELECT ` + snapshotSelectCols + ` FROM snapshots WHERE id = $1`
+	q := `SELECT ` + snapshotSelectCols + snapshotFrom + ` WHERE s.id = $1`
 	s, err := scanSnapshot(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
 		return nil, mapSnapshotErr(err, snapErrCtx{snapshotID: id})
@@ -82,10 +131,10 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 		conds = append(conds, fmt.Sprintf(cond, len(args)))
 	}
 	if p.ProjectID != "" {
-		add("project_id = $%d", p.ProjectID)
+		add("s.project_id = $%d", p.ProjectID)
 	}
 	if p.Filter != "" {
-		add("name = $%d", p.Filter)
+		add("s.name = $%d", p.Filter)
 	}
 	if p.PageToken != "" {
 		cur, derr := decodePageToken(p.PageToken)
@@ -93,15 +142,15 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 			return nil, "", derr
 		}
 		args = append(args, cur.createdAt, cur.id)
-		conds = append(conds, fmt.Sprintf("(created_at, id) > ($%d, $%d)", len(args)-1, len(args)))
+		conds = append(conds, fmt.Sprintf("(s.created_at, s.id) > ($%d, $%d)", len(args)-1, len(args)))
 	}
 	where := ""
 	if len(conds) > 0 {
 		where = "WHERE " + strings.Join(conds, " AND ")
 	}
 	args = append(args, p.PageSize+1)
-	q := fmt.Sprintf(`SELECT %s FROM snapshots %s
-		ORDER BY created_at ASC, id ASC LIMIT $%d`, snapshotSelectCols, where, len(args))
+	q := fmt.Sprintf(`SELECT %s%s %s
+		ORDER BY s.created_at ASC, s.id ASC LIMIT $%d`, snapshotSelectCols, snapshotFrom, where, len(args))
 
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -128,34 +177,71 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 	return out, next, nil
 }
 
-// snapshotInsertCAS — атомарная вставка-если-можно: source volume существует, лежит В
-// ТОМ ЖЕ проекте, что снимок, И READY; size_bytes снимается из volumes на момент;
-// state→READY сразу (§1.4). project-предикат обязателен: без него caller снимал бы
-// снапшот с ЧУЖОГО приватного тома и вычитывал его содержимое (cross-project
-// disclosure/BOLA). 0 rows → disambiguation (том не резолвится в проекте / не READY).
-// partial UNIQUE(name) collision → 23505 (не 0-row).
+// snapshotInsertCAS — атомарная вставка-если-можно: том-источник существует, лежит В
+// ТОМ ЖЕ проекте, что снимок, И готов; size_bytes, ЗОНА и ревизия политики снимаются
+// с той же строки тома ТЕМ ЖЕ стейтментом.
+//
+// Размещение и политика берутся здесь, а не вторым запросом, по той же причине, по
+// какой здесь же проверяется готовность: между чтением и записью том может смениться,
+// и снимок унаследовал бы зону, которой у источника уже нет. Своя зона снимку нужна
+// потому, что он ПЕРЕЖИВАЕТ том: ссылка на источник обнуляется, и добираемая через
+// неё зона исчезает — а с ней вырождается в тождественно истинную проверка
+// когерентности при восстановлении.
+//
+// Состояние рождения — СОЗДАВАЕМЫЙ. Готовым снимок объявляет сверщик, увидев объект
+// у бэкенда: операция фиксирует намерение, а исход провижининга несёт статус
+// ресурса. Объявить готовность здесь значило бы утверждать о плоскости данных то,
+// чего никто не проверял, — и засев тома из такого снимка склонировал бы объект,
+// которого ещё нет.
+//
+// project-предикат обязателен: без него caller снимал бы снимок с ЧУЖОГО приватного
+// тома и вычитывал его содержимое (cross-project disclosure/BOLA). 0 rows →
+// disambiguation (том не резолвится в проекте / не готов). partial UNIQUE(name)
+// collision → 23505 (не 0-row).
 const snapshotInsertCAS = `
-	INSERT INTO snapshots (id, project_id, name, description, labels, source_volume_id, size_bytes, state)
-	SELECT $1, $2, $3, $4, $5::jsonb, v.id, v.size_bytes, 'READY'
+	INSERT INTO snapshots (id, project_id, name, description, labels, source_volume_id,
+	                       size_bytes, state, zone_id, status_reason, binding_id, backend_object)
+	SELECT $1, $2, $3, $4, $5::jsonb, v.id, v.size_bytes, '%s',
+	       v.zone_id, $7::text, v.binding_id, $8::text
 	  FROM volumes v
 	 WHERE v.id = $6 AND v.project_id = $2 AND v.state = 'READY'
-	RETURNING created_at, size_bytes`
+	RETURNING created_at, updated_at, size_bytes, zone_id, COALESCE(binding_id, '')`
 
 // Insert реализует snapshot.Repo: from-READY-volume CAS + fga_register-intent в
 // той же tx. Никакого Get→check→INSERT (том мог смениться) — только атомарный
-// INSERT…SELECT. Existence + state-инвариант — на DB (ban #10).
+// INSERT…SELECT. Existence, готовность источника, зона и ревизия политики — на DB
+// (ban #10).
+//
+// Имя объекта у бэкенда приходит от use-case: оно выводится из НЕИЗМЕНЯЕМОГО
+// идентификатора снимка и префикса установки, поэтому повтор идемпотентен by
+// construction. Пустое имя пишется NULL, а не пустой строкой: частичная
+// уникальность имени объекта считает пустую строку значением, и два снимка без
+// имени столкнулись бы друг с другом вместо того, чтобы остаться безымянными.
 func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, []ownerregister.Registration, error) {
 	var regs []ownerregister.Registration
 	labels, err := json.Marshal(nonNilLabels(s.Labels))
 	if err != nil {
 		return nil, nil, storageerr.ErrInternal
 	}
+	var backendObject *string
+	if s.Backend.BackendObject != "" {
+		obj := s.Backend.BackendObject
+		backendObject = &obj
+	}
 	created := *s
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		serr := tx.QueryRow(ctx, snapshotInsertCAS,
-			s.ID, s.ProjectID, s.Name, s.Description, labels, s.SourceVolumeID).
-			Scan(&created.CreatedAt, &created.SizeBytes)
+		var (
+			createdAt, updatedAt time.Time
+			zoneID, bindingID    string
+		)
+		serr := tx.QueryRow(ctx, fmt.Sprintf(snapshotInsertCAS, bornState(r.readyOnCommit)),
+			s.ID, s.ProjectID, s.Name, s.Description, labels, s.SourceVolumeID,
+			string(s.StatusReason), backendObject).
+			Scan(&createdAt, &updatedAt, &created.SizeBytes, &zoneID, &bindingID)
 		if serr == nil {
+			created.CreatedAt, created.UpdatedAt = createdAt, updatedAt
+			created.ZoneID = zoneID
+			created.Backend.BindingID = bindingID
 			// owner-tuple register-intent в той же writer-TX (SEC-D): project#project@storage_snapshot.
 			reg, eerr := emitFGARegister(ctx, tx, fgaregister.EventRegister,
 				fgaregister.SnapshotItem(s.ProjectID, s.ID, s.Labels))
@@ -175,7 +261,7 @@ func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.
 			snapshotID: s.ID, snapshotName: s.Name, sourceVolumeID: s.SourceVolumeID,
 		})
 	}
-	created.Status = domain.SnapshotStatusFromState("READY")
+	created.Status = domain.SnapshotStatusFromState("CREATING")
 	return &created, regs, nil
 }
 
@@ -282,3 +368,83 @@ func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
 }
 
 var _ snapshot.Repo = (*SnapshotRepo)(nil)
+
+// copySnapshotSQL — копия снимка в ДРУГУЮ зону одним стейтментом.
+//
+// Все предусловия внутри: источник лежит в проекте вызывающего (иначе строка не
+// матчится и ответ байт-в-байт равен настоящему промаху — чужой снимок не
+// подтверждается существованием), источник ГОТОВ, а в целевой зоне есть действующая
+// ревизия привязки ТОГО ЖЕ класса, на котором лежит источник.
+//
+// Класс берётся у ревизии источника, а не у вызывающего: копия обязана лечь на тот же
+// продуктовый класс, иначе она молча сменила бы арендатору гарантии — и он узнал бы
+// об этом по счёту либо по производительности, а не из ответа.
+const copySnapshotSQL = `
+	WITH src AS (
+		SELECT s.id, s.size_bytes, s.state, b.disk_type_id
+		  FROM snapshots s
+		  LEFT JOIN disk_type_bindings b ON b.id = s.binding_id
+		 WHERE s.id = $6 AND s.project_id = $2
+	), target AS (
+		SELECT tb.id,
+		       CASE WHEN tb.namespace_template = '' THEN $2::text
+		            ELSE replace(tb.namespace_template, '{projectId}', $2::text) END AS ns
+		  FROM disk_type_bindings tb, src
+		 WHERE tb.disk_type_id = src.disk_type_id AND tb.zone_id = $7 AND tb.status = 'ACTIVE'
+	)
+	INSERT INTO snapshots
+		(id, project_id, name, description, labels, source_snapshot_id, size_bytes, state,
+		 zone_id, binding_id, backend_object, backend_namespace)
+	SELECT $1, $2, $3, $4, $5::jsonb, src.id, src.size_bytes, '%s',
+	       $7, target.id, $8, target.ns
+	  FROM src, target
+	 WHERE src.state = 'READY'
+	RETURNING created_at, size_bytes`
+
+// Copy реализует snapshot.Repo: копия снимка в другую зону. Копия рождается
+// СОЗДАВАЕМОЙ — материализует её сверщик, а этот вызов фиксирует намерение.
+func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error) {
+	labels, err := json.Marshal(nonNilLabels(s.Labels))
+	if err != nil {
+		return nil, storageerr.ErrInternal
+	}
+	created := *s
+	err = r.pool.QueryRow(ctx, fmt.Sprintf(copySnapshotSQL, bornState(r.readyOnCommit)),
+		s.ID, s.ProjectID, s.Name, s.Description, labels, sourceID, targetZone, s.Backend.BackendObject).
+		Scan(&created.CreatedAt, &created.SizeBytes)
+	if err == nil {
+		created.ZoneID = targetZone
+		created.Status = domain.SnapshotStatusCreating
+		return &created, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapSnapshotErr(err, snapErrCtx{snapshotID: s.ID, sourceVolumeID: sourceID})
+	}
+	return nil, r.copyUnavailable(ctx, sourceID, targetZone)
+}
+
+// copyUnavailable разбирает нулевую выборку копии: каждая причина своим текстом.
+// Чужой проект остаётся неотличим от промаха — подтверждать существование чужого
+// снимка отдельным текстом значило бы отвечать на вопрос, который не задавали.
+func (r *SnapshotRepo) copyUnavailable(ctx context.Context, sourceID, targetZone string) error {
+	var state, diskType string
+	err := r.pool.QueryRow(ctx, `
+		SELECT s.state, COALESCE(b.disk_type_id, '')
+		  FROM snapshots s LEFT JOIN disk_type_bindings b ON b.id = s.binding_id
+		 WHERE s.id = $1`, sourceID).Scan(&state, &diskType)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, sourceID)
+		}
+		return mapSnapshotErr(err, snapErrCtx{snapshotID: sourceID})
+	}
+	if state != "READY" {
+		return fmt.Errorf("%w: Snapshot %s is not ready", storageerr.ErrFailedPrecondition, sourceID)
+	}
+	if diskType == "" {
+		return fmt.Errorf("%w: Snapshot %s has no placement and cannot be copied",
+			storageerr.ErrFailedPrecondition, sourceID)
+	}
+	return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+		storageerr.ErrFailedPrecondition, diskType, targetZone)
+}

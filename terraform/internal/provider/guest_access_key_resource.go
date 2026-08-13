@@ -18,7 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	computev1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/compute/v1"
+	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -180,7 +180,7 @@ func (r *guestAccessKeyResource) Read(ctx context.Context, req resource.ReadRequ
 	// доступа, потому что край скрывает существование. Убрать ключ из состояния по
 	// неразличённому ответу значит на следующем применении завести второй — а прежний
 	// останется жить, и войти им по-прежнему смогут.
-	verdict, verr := r.c.ConfirmAbsence(ctx, guestAccessKeysPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, guestAccessKeysPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -270,7 +270,7 @@ func (r *guestAccessKeyResource) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	case client.OutcomeNotFound:
-		verdict, _ := r.c.ConfirmAbsence(ctx, guestAccessKeysPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, guestAccessKeysPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление ключа не подтверждено",

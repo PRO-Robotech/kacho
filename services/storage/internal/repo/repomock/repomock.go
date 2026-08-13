@@ -11,6 +11,7 @@ package repomock
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -52,11 +53,12 @@ func (m *VolumeReader) ListAttachments(ctx context.Context, instanceIDs []string
 
 // VolumeWriter — мок volume.Writer на функциях-полях.
 type VolumeWriter struct {
-	InsertFunc func(ctx context.Context, v *domain.Volume) (*domain.Volume, error)
-	UpdateFunc func(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error)
-	DeleteFunc func(ctx context.Context, id string) error
-	AttachFunc func(ctx context.Context, a *domain.VolumeAttachment) error
-	DetachFunc func(ctx context.Context, volumeID, instanceID string) error
+	ChangeDiskTypeFn func(ctx context.Context, id, diskTypeID string) (*domain.Volume, error)
+	InsertFunc       func(ctx context.Context, v *domain.Volume) (*domain.Volume, error)
+	UpdateFunc       func(ctx context.Context, id string, u volume.VolumeUpdate) (*domain.Volume, error)
+	DeleteFunc       func(ctx context.Context, id string) error
+	AttachFunc       func(ctx context.Context, a *domain.VolumeAttachment) error
+	DetachFunc       func(ctx context.Context, volumeID, instanceID string) error
 }
 
 // Insert — zoneRegionID (регион зоны тома) энфорсится в SQL-CAS реального repo;
@@ -147,9 +149,11 @@ func (m *ImageReader) GetInternal(ctx context.Context, id string) (*domain.Image
 
 // ImageWriter — мок image.Writer на функциях-полях.
 type ImageWriter struct {
-	InsertFunc func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
-	UpdateFunc func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
-	DeleteFunc func(ctx context.Context, id string) error
+	CopyFn       func(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error)
+	InsertFunc   func(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error)
+	UpdateFunc   func(ctx context.Context, id string, u image.ImageUpdate) (*domain.Image, error)
+	DeleteFunc   func(ctx context.Context, id string) error
+	RegisterFunc func(ctx context.Context, i *domain.Image) (*domain.Image, error)
 }
 
 func (m *ImageWriter) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error) {
@@ -171,8 +175,21 @@ func (m *ImageWriter) Update(ctx context.Context, id string, u image.ImageUpdate
 }
 func (m *ImageWriter) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 
+// Register — регистрация образа, внесённого в хранилище вне облака. Владение
+// регистрируется той же транзакцией, что и строка, поэтому мок возвращает
+// регистрацию так же, как Insert: проба, ждущая её, не должна зеленеть на моке,
+// который её не отдаёт.
+func (m *ImageWriter) Register(ctx context.Context, i *domain.Image) (*domain.Image, []ownerregister.Registration, error) {
+	res, err := m.RegisterFunc(ctx, i)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, mockRegistrations(fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels)), nil
+}
+
 // SnapshotRepo — мок snapshot.Repo на функциях-полях.
 type SnapshotRepo struct {
+	CopyFn     func(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error)
 	GetFunc    func(ctx context.Context, id string) (*domain.Snapshot, error)
 	ListFunc   func(ctx context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error)
 	InsertFunc func(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error)
@@ -210,7 +227,7 @@ type DiskTypeRepo struct {
 	GetFunc    func(ctx context.Context, id string) (*domain.DiskType, error)
 	ListFunc   func(ctx context.Context, p disktype.Pagination) ([]*domain.DiskType, string, error)
 	InsertFunc func(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error)
-	UpdateFunc func(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error)
+	UpdateFunc func(ctx context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error)
 	DeleteFunc func(ctx context.Context, id string) error
 }
 
@@ -223,8 +240,8 @@ func (m *DiskTypeRepo) List(ctx context.Context, p disktype.Pagination) ([]*doma
 func (m *DiskTypeRepo) Insert(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error) {
 	return m.InsertFunc(ctx, d)
 }
-func (m *DiskTypeRepo) Update(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
-	return m.UpdateFunc(ctx, id, name, description, zoneIDs, performanceTier)
+func (m *DiskTypeRepo) Update(ctx context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error) {
+	return m.UpdateFunc(ctx, id, u)
 }
 func (m *DiskTypeRepo) Delete(ctx context.Context, id string) error { return m.DeleteFunc(ctx, id) }
 
@@ -406,6 +423,34 @@ func AwaitOpDone(t TestingT, r *OpsRepo, opID string) *operations.Operation {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// ChangeDiskType — подстановка смены класса. Дублёр обязан выполнять контракт
+// настоящего: незаданная функция ОТКАЗЫВАЕТ, а не отвечает успехом. Молча принявший
+// вызов дублёр прятал бы ровно тот путь, ради которого его подставляют.
+func (w *VolumeWriter) ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error) {
+	if w.ChangeDiskTypeFn != nil {
+		return w.ChangeDiskTypeFn(ctx, id, diskTypeID)
+	}
+	return nil, errors.New("repomock: ChangeDiskTypeFn is not set")
+}
+
+// Copy — подстановка копирования снимка. Незаданная функция ОТКАЗЫВАЕТ: дублёр,
+// молча отвечающий успехом там, где настоящий делает работу, прячет ровно тот путь,
+// ради которого его подставляют.
+func (r *SnapshotRepo) Copy(ctx context.Context, s *domain.Snapshot, sourceID, targetZone string) (*domain.Snapshot, error) {
+	if r.CopyFn != nil {
+		return r.CopyFn(ctx, s, sourceID, targetZone)
+	}
+	return nil, errors.New("repomock: CopyFn is not set")
+}
+
+// Copy — подстановка копирования образа. Незаданная функция ОТКАЗЫВАЕТ.
+func (w *ImageWriter) Copy(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error) {
+	if w.CopyFn != nil {
+		return w.CopyFn(ctx, i, sourceID, targetZones)
+	}
+	return nil, errors.New("repomock: image CopyFn is not set")
 }
 
 // Compile-time проверки соответствия портам.

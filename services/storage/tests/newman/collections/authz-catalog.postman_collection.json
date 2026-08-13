@@ -780,7 +780,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -841,7 +841,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -911,7 +911,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -981,7 +981,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1051,7 +1051,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1121,7 +1121,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"performanceTier\": \"balanced\"}",
+              "raw": "{\"id\": \"sdt-authz-probe-{{runId}}\", \"name\": \"sdt-authz-probe-{{runId}}\", \"description\": \"newman catalog-authz probe (must never be created)\", \"tier\": \"BALANCED\"}",
               "options": {
                 "raw": {
                   "language": "json"

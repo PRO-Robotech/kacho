@@ -17,31 +17,44 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 
 | Ресурс | Публичные методы | Страница |
 |---|---|---|
-| `Volume` | `Get`, `List`, `Create`, `Update`, `Delete`, `ListOperations` | [Volume](/api/volume) |
-| `Snapshot` | `Get`, `List`, `Create`, `Update`, `Delete` | [Snapshot](/api/snapshot) |
-| `Image` | `Get`, `List`, `Create`, `Update`, `Delete`, `ListOperations` | [Image](/api/image) |
+| `Volume` | `Get`, `List`, `Create`, `Update`, `Delete`, `ChangeDiskType`, `ListOperations` | [Volume](/api/volume) |
+| `Snapshot` | `Get`, `List`, `Create`, `Copy`, `Update`, `Delete`, `ListOperations` | [Snapshot](/api/snapshot) |
+| `Image` | `Get`, `List`, `Create`, `Copy`, `Update`, `Delete`, `ListOperations` | [Image](/api/image) |
 | `DiskType` | `Get`, `List` | [DiskType](/api/disk-type) |
 
-Администрирование каталога, инфраструктурные проекции и служебные вызовы между сервисами
-живут на внутреннем листенере — [Внутренний API](/api/internal).
+Регистрация классов и бэкендов, ревизии политики, инфраструктурные проекции и служебные
+вызовы между сервисами живут на внутреннем листенере —
+[Внутренний API](/api/internal).
 
 ## Пути
 
 | Метод | Путь |
 |---|---|
 | `GET` | `/storage/v1/volumes` · `/storage/v1/volumes/{volumeId}` · `/storage/v1/volumes/{volumeId}/operations` |
-| `POST` | `/storage/v1/volumes` |
+| `POST` | `/storage/v1/volumes` · `/storage/v1/volumes/{volumeId}:changeDiskType` |
 | `PATCH` | `/storage/v1/volumes/{volumeId}` |
 | `DELETE` | `/storage/v1/volumes/{volumeId}` |
-| `GET` | `/storage/v1/snapshots` · `/storage/v1/snapshots/{snapshotId}` |
-| `POST` | `/storage/v1/snapshots` |
+| `GET` | `/storage/v1/snapshots` · `/storage/v1/snapshots/{snapshotId}` · `/storage/v1/snapshots/{snapshotId}/operations` |
+| `POST` | `/storage/v1/snapshots` · `/storage/v1/snapshots/{snapshotId}:copy` |
 | `PATCH` | `/storage/v1/snapshots/{snapshotId}` |
 | `DELETE` | `/storage/v1/snapshots/{snapshotId}` |
 | `GET` | `/storage/v1/images` · `/storage/v1/images/{imageId}` · `/storage/v1/images/{imageId}/operations` |
-| `POST` | `/storage/v1/images` |
+| `POST` | `/storage/v1/images` · `/storage/v1/images/{imageId}:copy` |
 | `PATCH` | `/storage/v1/images/{imageId}` |
 | `DELETE` | `/storage/v1/images/{imageId}` |
 | `GET` | `/storage/v1/diskTypes` · `/storage/v1/diskTypes/{diskTypeId}` |
+
+Действия, которые не сводятся к CRUD, адресуются суффиксом `:verb` — `:changeDiskType`,
+`:copy`. Каждое возвращает `Operation`.
+
+:::note У `:copy` в теле обязателен `projectId`
+Копия — **новый** ресурс, поэтому право на неё спрашивается как на создание: `editor` на
+**проекте** из тела запроса, а не чтение источника. Отсюда обязательный `projectId`: он
+выглядит выводимым из источника, но именно он — объект вопроса о правах.
+
+Проект обязан совпадать с проектом источника; расхождение отвечает тем же текстом, что и
+несуществующий источник. Разбор — на странице [Snapshot](/api/snapshot#copy).
+:::
 
 ## Форма ресурса
 
@@ -56,12 +69,19 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 
 ## Синхронное и асинхронное
 
-`Get` и `List` отвечают синхронно. `Create`, `Update`, `Delete` возвращают `Operation` —
-клиент поллит `OperationService.Get(id)` до `done`. Метода подписки на изменения не
-существует.
+`Get` и `List` отвечают синхронно. `Create`, `Update`, `Delete` и действия `:verb`
+возвращают `Operation` — клиент поллит `OperationService.Get(id)` до `done`. Метода
+подписки на изменения не существует.
 
-Единственное исключение — администрирование каталога типов диска: оно синхронно и
-возвращает ресурс. Обоснование — в разделе [Операции](/architecture/operations).
+Исключение — **административные** методы внутреннего листенера: регистрация классов,
+бэкендов, ревизий привязки и внесённых образов синхронна и возвращает сам ресурс. За
+записью в справочник не стоит длящейся работы, и заворачивать её в операцию значило бы
+заставить администратора поллить готовое. Обоснование — в разделе
+[Операции](/architecture/operations).
+
+`Operation.done` означает «намерение закоммичено», и только это: ресурс создаётся в
+`CREATING`, а готовность объявляет сверщик, увидев объект у бэкенда. Опрашивать нужно и
+`done` операции, и `status` ресурса — они отвечают на разные вопросы.
 
 ## Ошибки
 
@@ -106,7 +126,7 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 сужается по правам на каждый объект тем же отношением, на котором гейтится `Get`.
 «Видно в списке» и «`Get` разрешён» — один и тот же вопрос, заданный один раз.
 
-Каталог типов диска через фильтр не проходит — это глобальный справочник без
+Каталог классов диска через фильтр не проходит — это глобальный справочник без
 индивидуальных владельцев.
 
 Подробнее — [Права и полосы доступа](/architecture/authz).
@@ -120,6 +140,12 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 | `Image` | `img` + 17 символов |
 | `Operation` | `sop` + 17 символов |
 | `DiskType` | читаемый slug |
+| `StorageBackend` (внутренний) | `sb-` + crockford-base32 |
+| `DiskTypeBinding` (внутренний) | `dtb-` + crockford-base32 |
+
+Два последних — дефисная форма префикса: она новее слитной и различима по самому дефису
+(в крокфордовом теле его не бывает). Обе формы валидны; сервисы переходят на дефисную по
+одному, в собственном редизайне.
 
 Идентификатор неизменен всю жизнь ресурса: операции смены не существует. Именно он
 участвует в ссылках и в области выдачи прав. Имя (`name`) — косметическая метка проекта,
@@ -127,9 +153,20 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 
 ## Поля, снятые с контракта
 
-Поле запроса, на которое сервис не смотрит, здесь не принимается молча. Параметр
-сортировки (`order_by`) был **снят** со всех списочных запросов с резервированием номера
-и имени — а не оставлен принимаемым и игнорируемым.
+Поле запроса, на которое сервис не смотрит, здесь не принимается молча.
+
+| Поле | Где было | Почему снято |
+|---|---|---|
+| `order_by` | все списочные запросы | Принималось и не применялось |
+| `blockSize` | `Volume` | Хранилось и возвращалось, но **ни один путь не читал его значение**, чтобы сделать что-то иначе. Размер блока задаёт бэкенд вместе с классом диска, а не арендатор по каждому тому |
+
+У обоих **номер и имя зарезервированы**: слот не переиспользуется, иначе старый клиент,
+всё ещё шлющий поле, попал бы в поле с другим смыслом. Запрос, несущий снятое поле,
+отвергается как неизвестное.
 
 Причина: принять параметр и не применить его хуже, чем отказать. Отказ виден сразу, а
-несделанное — только по последствиям.
+несделанное — только по последствиям. Особенно когда возвращается назад собственный ввод
+вызывающего: зеркало легко принять за подтверждение применения.
+
+Законных исходов три — реализовать, отвергать явно, снять с контракта. Молча принять и
+выбросить — не исход.

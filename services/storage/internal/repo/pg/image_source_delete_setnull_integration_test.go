@@ -34,7 +34,7 @@ func TestImageSourceSnapshotDeleteSetNull(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-provenance", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "prov-from-snap", "ru-central1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "prov-from-snap", "ru-central1", snapID)
 	require.Equal(t, snapID, img.SourceSnapshot, "image seeded from snapshot")
 
 	// Delete снапшота, засевшего образ → должно ПРОЙТИ (provenance SET NULL, не RESTRICT):
@@ -65,27 +65,29 @@ func TestImageSourceVolumeDeleteSetNull(t *testing.T) {
 	vr := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	srcVol := mkVolume(t, vr, "prj-1", "golden-src-vol", 32<<30)
+	srcVolID := imgFixtureVolumeRow(t, pool, "prj-1", "golden-src-vol", "region-1-a", "", 32<<30)
 	img, _, err := ir.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "prov-from-vol",
-		RegionID: "ru-central1", SourceVolume: srcVol.ID,
+		RegionID: "ru-central1", SourceVolume: srcVolID,
 	}, fixtureRegionZones)
 	require.NoError(t, err)
-	require.Equal(t, srcVol.ID, img.SourceVolume, "image seeded directly from volume")
+	require.Equal(t, srcVolID, img.SourceVolume, "image seeded directly from volume")
 
 	// Delete тома, засевшего образ → ПРОХОДИТ (provenance SET NULL, не 23514 abort).
-	require.NoError(t, vr.Delete(ctx, srcVol.ID),
+	require.NoError(t, vr.Delete(ctx, srcVolID),
 		"deleting a volume that seeded an image must succeed (SET NULL, not 23514 abort)")
 
 	// Том ушёл.
-	_, verr := vr.Get(ctx, srcVol.ID)
+	_, verr := vr.Get(ctx, srcVolID)
 	require.True(t, stderrors.Is(verr, storageerr.ErrNotFound), "volume hard-deleted, got %v", verr)
 
-	// Image цел: source_volume_id очищен, всё ещё READY.
+	// Image цел: source_volume_id очищен, состояние не тронуто — каким родился, таким
+	// и остался (образ этой пробы заводится напрямую и до готовности не доводится:
+	// предмет здесь — происхождение, а не готовность).
 	got, err := ir.Get(ctx, img.ID)
 	require.NoError(t, err, "image must survive deletion of its source volume")
 	require.Empty(t, got.SourceVolume, "source_volume_id SET NULL (provenance cleared)")
 	require.Empty(t, got.SourceSnapshot, "no snapshot source appears")
-	require.Equal(t, domain.ImageStatusReady, got.Status, "image state untouched by source delete")
+	require.Equal(t, img.Status, got.Status, "image state untouched by source delete")
 	require.EqualValues(t, 32<<30, got.SizeBytes, "block data (size) untouched by source delete")
 }

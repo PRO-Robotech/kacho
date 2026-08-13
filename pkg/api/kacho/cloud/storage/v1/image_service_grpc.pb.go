@@ -28,6 +28,7 @@ const (
 	ImageService_Create_FullMethodName         = "/kacho.cloud.storage.v1.ImageService/Create"
 	ImageService_Update_FullMethodName         = "/kacho.cloud.storage.v1.ImageService/Update"
 	ImageService_Delete_FullMethodName         = "/kacho.cloud.storage.v1.ImageService/Delete"
+	ImageService_Copy_FullMethodName           = "/kacho.cloud.storage.v1.ImageService/Copy"
 	ImageService_ListOperations_FullMethodName = "/kacho.cloud.storage.v1.ImageService/ListOperations"
 )
 
@@ -56,6 +57,18 @@ type ImageServiceClient interface {
 	// source_image_id is cleared (FK ON DELETE SET NULL, provenance, not a live
 	// dependency).
 	Delete(ctx context.Context, in *DeleteImageRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Копирует образ в другой регион: создаётся НОВЫЙ образ в целевом регионе, исходный
+	// не изменяется.
+	//
+	// Это единственный законный путь переноса образа между регионами. Образ REGIONAL
+	// (anycast), region_id неизменяем после Create — «переехать» существующей строкой
+	// нечем, перенос возможен только новой.
+	//
+	// Гейт — `editor@project`, как у всякого Create: копия есть НОВЫЙ ресурс, а
+	// право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
+	// отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
+	// образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
+	Copy(ctx context.Context, in *CopyImageRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified image.
 	ListOperations(ctx context.Context, in *ListImageOperationsRequest, opts ...grpc.CallOption) (*ListImageOperationsResponse, error)
 }
@@ -118,6 +131,16 @@ func (c *imageServiceClient) Delete(ctx context.Context, in *DeleteImageRequest,
 	return out, nil
 }
 
+func (c *imageServiceClient) Copy(ctx context.Context, in *CopyImageRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ImageService_Copy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *imageServiceClient) ListOperations(ctx context.Context, in *ListImageOperationsRequest, opts ...grpc.CallOption) (*ListImageOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListImageOperationsResponse)
@@ -153,6 +176,18 @@ type ImageServiceServer interface {
 	// source_image_id is cleared (FK ON DELETE SET NULL, provenance, not a live
 	// dependency).
 	Delete(context.Context, *DeleteImageRequest) (*operation.Operation, error)
+	// Копирует образ в другой регион: создаётся НОВЫЙ образ в целевом регионе, исходный
+	// не изменяется.
+	//
+	// Это единственный законный путь переноса образа между регионами. Образ REGIONAL
+	// (anycast), region_id неизменяем после Create — «переехать» существующей строкой
+	// нечем, перенос возможен только новой.
+	//
+	// Гейт — `editor@project`, как у всякого Create: копия есть НОВЫЙ ресурс, а
+	// право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
+	// отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
+	// образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
+	Copy(context.Context, *CopyImageRequest) (*operation.Operation, error)
 	// Lists operations for the specified image.
 	ListOperations(context.Context, *ListImageOperationsRequest) (*ListImageOperationsResponse, error)
 	mustEmbedUnimplementedImageServiceServer()
@@ -179,6 +214,9 @@ func (UnimplementedImageServiceServer) Update(context.Context, *UpdateImageReque
 }
 func (UnimplementedImageServiceServer) Delete(context.Context, *DeleteImageRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedImageServiceServer) Copy(context.Context, *CopyImageRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Copy not implemented")
 }
 func (UnimplementedImageServiceServer) ListOperations(context.Context, *ListImageOperationsRequest) (*ListImageOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
@@ -294,6 +332,24 @@ func _ImageService_Delete_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ImageService_Copy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CopyImageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ImageServiceServer).Copy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ImageService_Copy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ImageServiceServer).Copy(ctx, req.(*CopyImageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ImageService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListImageOperationsRequest)
 	if err := dec(in); err != nil {
@@ -338,6 +394,10 @@ var ImageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _ImageService_Delete_Handler,
+		},
+		{
+			MethodName: "Copy",
+			Handler:    _ImageService_Copy_Handler,
 		},
 		{
 			MethodName: "ListOperations",

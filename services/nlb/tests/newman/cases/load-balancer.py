@@ -93,7 +93,11 @@ def _cidr_alloc_pre():
         # v6 anchor for a dualstack subnet, from the SAME run-scoped entropy: a ULA /64
         # under fd00::/8 keyed on the two octets, so parallel runs land in distinct blocks
         # exactly as the v4 side does.
-        "pm.environment.set('_subnetCidr6', 'fd' + (__oct2 % 256).toString(16) + ':'"
+        # Дополнение до двух цифр обязательно: без него значение < 16 даёт ОДНУ
+        # цифру, и `fd`+`c` = `fdc:` уезжает из fd00::/8, который комментарий выше
+        # объявляет. Тот же дефект — в placement-coherence.py, где он и был найден
+        # по красному прогону; здесь он ждал своего значения энтропии.
+        "pm.environment.set('_subnetCidr6', 'fd' + (__oct2 % 256).toString(16).padStart(2, '0') + ':'"
         " + (__oct3 % 256).toString(16) + '::/64');",
     ]
 

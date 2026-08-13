@@ -577,6 +577,159 @@ func (x *DeleteImageMetadata) GetImageId() string {
 	return ""
 }
 
+// CopyImageRequest — копия образа в другом регионе. Источник запросом не изменяется.
+type CopyImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Проект, в котором создаётся копия. Он же обязан быть проектом источника.
+	//
+	// Обязателен, хотя выводим из источника: именно он — объект вопроса о правах.
+	// «Создать» спрашивают у родителя (`editor@project`); пообъектного `v_create`
+	// в платформе нет. Причина полностью изложена у CopySnapshotRequest — здесь
+	// не пересказывается, чтобы два места об одном предмете не разошлись.
+	ProjectId string `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// ID образа-источника.
+	ImageId string `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"`
+	// ID региона, в котором создаётся копия. Peer-валидируется у kacho-geo, как region_id
+	// на Create.
+	//
+	// Обязателен и называется вызывающим: перенос — предмет этого глагола, и пустое
+	// значение пришлось бы угадывать, а угаданное умолчание неотличимо от опечатки.
+	TargetRegionId string `protobuf:"bytes,2,opt,name=target_region_id,json=targetRegionId,proto3" json:"target_region_id,omitempty"`
+	// Имя копии. Пустое допустимо — адресуется копия своим новым id, имя косметическое.
+	//
+	// Имя источника не наследуется: оно уникально в паре с проектом, а копия остаётся в
+	// проекте источника — унаследованное имя столкнулось бы с ним самим.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Описание копии.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as `key:value` pairs.
+	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CopyImageRequest) Reset() {
+	*x = CopyImageRequest{}
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CopyImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CopyImageRequest) ProtoMessage() {}
+
+func (x *CopyImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CopyImageRequest.ProtoReflect.Descriptor instead.
+func (*CopyImageRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CopyImageRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *CopyImageRequest) GetImageId() string {
+	if x != nil {
+		return x.ImageId
+	}
+	return ""
+}
+
+func (x *CopyImageRequest) GetTargetRegionId() string {
+	if x != nil {
+		return x.TargetRegionId
+	}
+	return ""
+}
+
+func (x *CopyImageRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CopyImageRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CopyImageRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+type CopyImageMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID НОВОГО образа — той самой копии, а не источника (источник назван в пути
+	// запроса).
+	//
+	// Идентификатор выделяется при ПРИЁМЕ операции, поэтому читать его можно только при
+	// done=true И отсутствии error: на отказавшей операции он указывает на ресурс,
+	// которого нет.
+	ImageId       string `protobuf:"bytes,1,opt,name=image_id,json=imageId,proto3" json:"image_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CopyImageMetadata) Reset() {
+	*x = CopyImageMetadata{}
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CopyImageMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CopyImageMetadata) ProtoMessage() {}
+
+func (x *CopyImageMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CopyImageMetadata.ProtoReflect.Descriptor instead.
+func (*CopyImageMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CopyImageMetadata) GetImageId() string {
+	if x != nil {
+		return x.ImageId
+	}
+	return ""
+}
+
 type ListImageOperationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Image resource to list operations for.
@@ -592,7 +745,7 @@ type ListImageOperationsRequest struct {
 
 func (x *ListImageOperationsRequest) Reset() {
 	*x = ListImageOperationsRequest{}
-	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -604,7 +757,7 @@ func (x *ListImageOperationsRequest) String() string {
 func (*ListImageOperationsRequest) ProtoMessage() {}
 
 func (x *ListImageOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -617,7 +770,7 @@ func (x *ListImageOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImageOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListImageOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListImageOperationsRequest) GetImageId() string {
@@ -653,7 +806,7 @@ type ListImageOperationsResponse struct {
 
 func (x *ListImageOperationsResponse) Reset() {
 	*x = ListImageOperationsResponse{}
-	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -665,7 +818,7 @@ func (x *ListImageOperationsResponse) String() string {
 func (*ListImageOperationsResponse) ProtoMessage() {}
 
 func (x *ListImageOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_storage_v1_image_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -678,7 +831,7 @@ func (x *ListImageOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImageOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListImageOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListImageOperationsResponse) GetOperations() []*operation.Operation {
@@ -743,6 +896,19 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\x12DeleteImageRequest\x12'\n" +
 	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"0\n" +
 	"\x13DeleteImageMetadata\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xd7\x03\n" +
+	"\x10CopyImageRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
+	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x126\n" +
+	"\x10target_region_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0etargetRegionId\x129\n" +
+	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
+	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x91\x01\n" +
+	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.storage.v1.CopyImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\".\n" +
+	"\x11CopyImageMetadata\x12\x19\n" +
 	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x98\x01\n" +
 	"\x1aListImageOperationsRequest\x12'\n" +
 	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x12'\n" +
@@ -754,8 +920,7 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb8\n" +
-	"\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x9a\f\n" +
 	"\fImageService\x12\xb5\x01\n" +
 	"\x03Get\x12'.kacho.cloud.storage.v1.GetImageRequest\x1a\x1d.kacho.cloud.storage.v1.Image\"f\x8a\xb5\x18\x12storage.images.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/storage/v1/images/{image_id}\x12\xb8\x01\n" +
@@ -771,7 +936,11 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\x13UpdateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\":\x01*2\x1d/storage/v1/images/{image_id}\x12\xf5\x01\n" +
 	"\x06Delete\x12*.kacho.cloud.storage.v1.DeleteImageRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x15storage.images.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x13DeleteImageMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/storage/v1/images/{image_id}\x12\xf8\x01\n" +
+	"\x13DeleteImageMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/storage/v1/images/{image_id}\x12\xdf\x01\n" +
+	"\x04Copy\x12(.kacho.cloud.storage.v1.CopyImageRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x13storage.images.copy\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1a\n" +
+	"\x11CopyImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02':\x01*\"\"/storage/v1/images/{image_id}:copy\x12\xf8\x01\n" +
 	"\x0eListOperations\x122.kacho.cloud.storage.v1.ListImageOperationsRequest\x1a3.kacho.cloud.storage.v1.ListImageOperationsResponse\"}\x8a\xb5\x18\x1dstorage.images.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/storage/v1/images/{image_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
@@ -787,7 +956,7 @@ func file_kacho_cloud_storage_v1_image_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_storage_v1_image_service_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_image_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_kacho_cloud_storage_v1_image_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_kacho_cloud_storage_v1_image_service_proto_goTypes = []any{
 	(*GetImageRequest)(nil),             // 0: kacho.cloud.storage.v1.GetImageRequest
 	(*ListImagesRequest)(nil),           // 1: kacho.cloud.storage.v1.ListImagesRequest
@@ -798,37 +967,43 @@ var file_kacho_cloud_storage_v1_image_service_proto_goTypes = []any{
 	(*UpdateImageMetadata)(nil),         // 6: kacho.cloud.storage.v1.UpdateImageMetadata
 	(*DeleteImageRequest)(nil),          // 7: kacho.cloud.storage.v1.DeleteImageRequest
 	(*DeleteImageMetadata)(nil),         // 8: kacho.cloud.storage.v1.DeleteImageMetadata
-	(*ListImageOperationsRequest)(nil),  // 9: kacho.cloud.storage.v1.ListImageOperationsRequest
-	(*ListImageOperationsResponse)(nil), // 10: kacho.cloud.storage.v1.ListImageOperationsResponse
-	nil,                                 // 11: kacho.cloud.storage.v1.CreateImageRequest.LabelsEntry
-	nil,                                 // 12: kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntry
-	(*Image)(nil),                       // 13: kacho.cloud.storage.v1.Image
-	(*fieldmaskpb.FieldMask)(nil),       // 14: google.protobuf.FieldMask
-	(*operation.Operation)(nil),         // 15: kacho.cloud.operation.Operation
+	(*CopyImageRequest)(nil),            // 9: kacho.cloud.storage.v1.CopyImageRequest
+	(*CopyImageMetadata)(nil),           // 10: kacho.cloud.storage.v1.CopyImageMetadata
+	(*ListImageOperationsRequest)(nil),  // 11: kacho.cloud.storage.v1.ListImageOperationsRequest
+	(*ListImageOperationsResponse)(nil), // 12: kacho.cloud.storage.v1.ListImageOperationsResponse
+	nil,                                 // 13: kacho.cloud.storage.v1.CreateImageRequest.LabelsEntry
+	nil,                                 // 14: kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntry
+	nil,                                 // 15: kacho.cloud.storage.v1.CopyImageRequest.LabelsEntry
+	(*Image)(nil),                       // 16: kacho.cloud.storage.v1.Image
+	(*fieldmaskpb.FieldMask)(nil),       // 17: google.protobuf.FieldMask
+	(*operation.Operation)(nil),         // 18: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_storage_v1_image_service_proto_depIdxs = []int32{
-	13, // 0: kacho.cloud.storage.v1.ListImagesResponse.images:type_name -> kacho.cloud.storage.v1.Image
-	11, // 1: kacho.cloud.storage.v1.CreateImageRequest.labels:type_name -> kacho.cloud.storage.v1.CreateImageRequest.LabelsEntry
-	14, // 2: kacho.cloud.storage.v1.UpdateImageRequest.update_mask:type_name -> google.protobuf.FieldMask
-	12, // 3: kacho.cloud.storage.v1.UpdateImageRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntry
-	15, // 4: kacho.cloud.storage.v1.ListImageOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 5: kacho.cloud.storage.v1.ImageService.Get:input_type -> kacho.cloud.storage.v1.GetImageRequest
-	1,  // 6: kacho.cloud.storage.v1.ImageService.List:input_type -> kacho.cloud.storage.v1.ListImagesRequest
-	3,  // 7: kacho.cloud.storage.v1.ImageService.Create:input_type -> kacho.cloud.storage.v1.CreateImageRequest
-	5,  // 8: kacho.cloud.storage.v1.ImageService.Update:input_type -> kacho.cloud.storage.v1.UpdateImageRequest
-	7,  // 9: kacho.cloud.storage.v1.ImageService.Delete:input_type -> kacho.cloud.storage.v1.DeleteImageRequest
-	9,  // 10: kacho.cloud.storage.v1.ImageService.ListOperations:input_type -> kacho.cloud.storage.v1.ListImageOperationsRequest
-	13, // 11: kacho.cloud.storage.v1.ImageService.Get:output_type -> kacho.cloud.storage.v1.Image
-	2,  // 12: kacho.cloud.storage.v1.ImageService.List:output_type -> kacho.cloud.storage.v1.ListImagesResponse
-	15, // 13: kacho.cloud.storage.v1.ImageService.Create:output_type -> kacho.cloud.operation.Operation
-	15, // 14: kacho.cloud.storage.v1.ImageService.Update:output_type -> kacho.cloud.operation.Operation
-	15, // 15: kacho.cloud.storage.v1.ImageService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 16: kacho.cloud.storage.v1.ImageService.ListOperations:output_type -> kacho.cloud.storage.v1.ListImageOperationsResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	16, // 0: kacho.cloud.storage.v1.ListImagesResponse.images:type_name -> kacho.cloud.storage.v1.Image
+	13, // 1: kacho.cloud.storage.v1.CreateImageRequest.labels:type_name -> kacho.cloud.storage.v1.CreateImageRequest.LabelsEntry
+	17, // 2: kacho.cloud.storage.v1.UpdateImageRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 3: kacho.cloud.storage.v1.UpdateImageRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntry
+	15, // 4: kacho.cloud.storage.v1.CopyImageRequest.labels:type_name -> kacho.cloud.storage.v1.CopyImageRequest.LabelsEntry
+	18, // 5: kacho.cloud.storage.v1.ListImageOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 6: kacho.cloud.storage.v1.ImageService.Get:input_type -> kacho.cloud.storage.v1.GetImageRequest
+	1,  // 7: kacho.cloud.storage.v1.ImageService.List:input_type -> kacho.cloud.storage.v1.ListImagesRequest
+	3,  // 8: kacho.cloud.storage.v1.ImageService.Create:input_type -> kacho.cloud.storage.v1.CreateImageRequest
+	5,  // 9: kacho.cloud.storage.v1.ImageService.Update:input_type -> kacho.cloud.storage.v1.UpdateImageRequest
+	7,  // 10: kacho.cloud.storage.v1.ImageService.Delete:input_type -> kacho.cloud.storage.v1.DeleteImageRequest
+	9,  // 11: kacho.cloud.storage.v1.ImageService.Copy:input_type -> kacho.cloud.storage.v1.CopyImageRequest
+	11, // 12: kacho.cloud.storage.v1.ImageService.ListOperations:input_type -> kacho.cloud.storage.v1.ListImageOperationsRequest
+	16, // 13: kacho.cloud.storage.v1.ImageService.Get:output_type -> kacho.cloud.storage.v1.Image
+	2,  // 14: kacho.cloud.storage.v1.ImageService.List:output_type -> kacho.cloud.storage.v1.ListImagesResponse
+	18, // 15: kacho.cloud.storage.v1.ImageService.Create:output_type -> kacho.cloud.operation.Operation
+	18, // 16: kacho.cloud.storage.v1.ImageService.Update:output_type -> kacho.cloud.operation.Operation
+	18, // 17: kacho.cloud.storage.v1.ImageService.Delete:output_type -> kacho.cloud.operation.Operation
+	18, // 18: kacho.cloud.storage.v1.ImageService.Copy:output_type -> kacho.cloud.operation.Operation
+	12, // 19: kacho.cloud.storage.v1.ImageService.ListOperations:output_type -> kacho.cloud.storage.v1.ListImageOperationsResponse
+	13, // [13:20] is the sub-list for method output_type
+	6,  // [6:13] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_image_service_proto_init() }
@@ -843,7 +1018,7 @@ func file_kacho_cloud_storage_v1_image_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_image_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_image_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

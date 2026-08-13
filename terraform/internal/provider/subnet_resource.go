@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -18,7 +19,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	vpcv1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/vpc/v1"
+	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -163,10 +165,20 @@ func (r *subnetResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 	// placement_type НЕ отправляется: край выводит его сам и отвергает попытку задать.
 
-	raw, _ := json.Marshal(map[string]any{
-		"projectId": body.ProjectId, "networkId": body.NetworkId, "name": body.Name,
-		"zoneId": body.ZoneId, "regionId": body.RegionId, "ipv4CidrPrimary": body.Ipv4CidrPrimary,
-	})
+	// Ключ идемпотентности считается по ТЕЛУ ЗАПРОСА ЦЕЛИКОМ, а не по рукописной выборке
+	// полей. Здесь стояла карта из шести полей, и это делало ОТКАЗ ЛИПКИМ по всем
+	// остальным: край ключ соблюдает и на повтор с тем же ключом возвращает ту же
+	// операцию, поэтому правка метки или описания после отвергнутого создания
+	// воспроизводила прежний отказ — пользователь правит настройку и уверен, что правка
+	// не применилась.
+	//
+	// Байты берутся ТОЙ ЖЕ функцией, что и отправка: вторая сериализация разошлась бы с
+	// первой молча, и разошлась бы именно там, где расхождение не видно.
+	raw, err := client.MarshalBody(body)
+	if err != nil {
+		resp.Diagnostics.AddError("Тело запроса не собрано", err.Error())
+		return
+	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
 		"kacho_vpc_subnet", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
@@ -198,6 +210,10 @@ func (r *subnetResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	// Идентификатор в состояние ДО первого обратного чтения — см. пояснение у сети.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт по сообщению на каждое
+	// поле вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -231,7 +247,7 @@ func (r *subnetResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	verdict, verr := r.c.ConfirmAbsence(ctx, subnetsPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, subnetsPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -332,7 +348,7 @@ func (r *subnetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 			}
 		}
 	case client.OutcomeNotFound:
-		verdict, _ := r.c.ConfirmAbsence(ctx, subnetsPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, subnetsPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление подсети не подтверждено",
@@ -343,7 +359,20 @@ func (r *subnetResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 }
 
+// ImportState принимает идентификатор ресурса.
+//
+// Формат проверяется ЗДЕСЬ, общим каталогом префиксов платформы (pkg/ids) — до любого
+// обращения к краю. Это та же дисциплина, что у сервисов: заведомо негодный идентификатор
+// получает терминальный отказ с внятным текстом, а не уезжает в сеть, чтобы вернуться
+// оттуда «ресурс не найден» — ответом, который для строки, не являющейся идентификатором,
+// не значит ничего.
 func (r *subnetResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if !ids.IsValid(req.ID, ids.PrefixSubnet) {
+		resp.Diagnostics.AddError("Негодный идентификатор подсети",
+			"Строка "+strconv.Quote(req.ID)+" не является идентификатором подсети Kachō: "+
+				"он начинается с «"+ids.PrefixSubnet+"» и состоит из знаков crockford-base32.")
+		return
+	}
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 

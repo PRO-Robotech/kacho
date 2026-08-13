@@ -1,0 +1,27 @@
+# Объявленные ломающие изменения контракта — перечень С ПРЕДМЕТОМ.
+#
+# ЗАЧЕМ ЭТОТ ФАЙЛ. Конвенции продукта разрешают снять поле с контракта: удалить
+# из proto с резервированием номера И имени, объявив слом в сообщении коммита.
+# Проверка совместимости про это решение не знает и роняет прогон. Исходов было
+# два, и оба плохие: уронить ствол либо ослабить проверку навсегда, вырезав файл
+# из её области. Здесь заведён третий: назвать КАЖДУЮ ожидаемую находку поимённо.
+#
+# КАК ЭТО ЧИТАЕТСЯ ПРОВЕРКОЙ (scripts/buf-breaking-declared.sh):
+#   находка есть, строки нет   → ОТКАЗ. Незаявленный слом не проезжает.
+#   находка есть, строка есть  → пропуск. Слом объявлен здесь и в коммите.
+#   строка есть, находки нет   → ОТКАЗ. Записи больше нечего исключать.
+#
+# Последнее — не придирка, а то, ради чего перечень вообще может существовать.
+# После вливания в ствол основание сравнения сдвигается, находки исчезают, и
+# записи становятся ложью. Проверка обязана этого потребовать: перечень, который
+# переживает свой предмет, молча прикроет следующий слом. Поэтому ВЛИВ ЭТУ ВЕТКУ,
+# ОПУСТОШИТЕ ФАЙЛ — прогон следующего изменения не даст об этом забыть.
+#
+# Формат: «файл:строка:колонка:текст находки» — ровно как печатает проверка.
+
+kacho/cloud/storage/v1/disk_type.proto:22:1:Previously present field "5" with name "performance_tier" on message "DiskType" was deleted.
+kacho/cloud/storage/v1/disk_type_service.proto:155:1:Previously present field "5" with name "performance_tier" on message "CreateDiskTypeRequest" was deleted.
+kacho/cloud/storage/v1/disk_type_service.proto:194:1:Previously present field "5" with name "performance_tier" on message "UpdateDiskTypeRequest" was deleted.
+kacho/cloud/storage/v1/internal_image_service.proto:132:1:Previously present reserved range "[2,15]" on message "ImageInternal" is missing values: [2,6] were removed.
+kacho/cloud/storage/v1/volume.proto:19:1:Previously present field "11" with name "block_size" on message "Volume" was deleted.
+kacho/cloud/storage/v1/volume_service.proto:213:1:Previously present field "8" with name "block_size" on message "CreateVolumeRequest" was deleted.

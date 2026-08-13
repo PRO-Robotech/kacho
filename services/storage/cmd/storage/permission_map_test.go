@@ -27,6 +27,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -39,8 +40,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 )
@@ -291,29 +294,50 @@ func TestPermissionMapObjectAndProjectScope(t *testing.T) {
 	}
 }
 
-// TestNoTenantDataOnTheClusterSingleton — на синглтон `cluster` можно вешать ТОЛЬКО
-// глобальный справочник.
+// TestNoTenantDataOnTheClusterSingleton — на синглтон `cluster` можно вешать
+// справочник и админ-поверхность, но НЕ данные конкретных тенантов.
 //
-// `cluster.viewer` включает userset `user:*`, и бутстрап кластера НАМЕРЕННО пишет
-// `cluster:<root>#viewer@user:*`, чтобы справочник (регионы, зоны, типы дисков)
-// читал любой аутентифицированный субъект. Поэтому cluster-`viewer` на RPC,
-// отдающем данные КОНКРЕТНЫХ тенантов, — не проверка, а её видимость: пропускает
-// всех. Ровно так перечисление привязок отдавало строки том↔машина для любых
-// названных машин, из чужих проектов и аккаунтов.
+// # Что здесь на самом деле опасно
 //
-// Перечень берётся ИЗ САМОЙ КАРТЫ, поэтому НОВЫЙ RPC, повешенный на синглтон,
-// обязан быть здесь оправдан явно — тихо он не появится.
+// Опасен не тип объекта, а ОТНОШЕНИЕ. `cluster.viewer` объявлен как
+// `[user, user:*, service_account] or …`, и бутстрап кластера НАМЕРЕННО пишет
+// `cluster:<root>#viewer@user:*`, чтобы глобальный справочник (регионы, зоны, типы
+// дисков) читал любой аутентифицированный субъект. Поэтому кластерный `viewer` на
+// RPC, отдающем данные конкретных тенантов, — не проверка, а её видимость:
+// пропускает всех. Ровно так перечисление привязок отдавало строки том↔машина для
+// любых названных машин, из чужих проектов и аккаунтов.
+//
+// Админ-отношения того же типа (`system_admin`, `editor`, `admin`) подстановкой
+// НЕ выполнимы: в их объявлении `user:*` нет. Кластерный синглтон для них — верный
+// предмет вопроса: администрируемая сущность одна на кластер, и спрашивать про неё
+// пообъектно не о чем.
+//
+// # Гейт проверяет СВОЮ предпосылку
+//
+// Разделение выше верно ровно до тех пор, пока `user:*` стоит там, где стоит
+// сейчас. Модель — чужой файл, она меняется без нас, и молчаливое добавление
+// подстановки в админ-отношение обессмыслило бы всю проверку, оставив её зелёной.
+// Поэтому перечень выполнимых подстановкой отношений ВЫВОДИТСЯ ИЗ МОДЕЛИ, а не
+// выписывается здесь.
 func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
-	// Записи, для которых кластерный синглтон — правильный предмет вопроса:
-	// глобальный admin-curated каталог, одинаковый для всех тенантов.
-	clusterCatalog := map[string]bool{
-		"/kacho.cloud.storage.v1.DiskTypeService/Get":            true,
-		"/kacho.cloud.storage.v1.DiskTypeService/List":           true,
-		"/kacho.cloud.storage.v1.InternalDiskTypeService/Create": true,
-		"/kacho.cloud.storage.v1.InternalDiskTypeService/Update": true,
-		"/kacho.cloud.storage.v1.InternalDiskTypeService/Delete": true,
+	wildcard := wildcardSatisfiableClusterRelations(t)
+	if len(wildcard) != 1 || !wildcard["viewer"] {
+		t.Fatalf("предпосылка гейта изменилась: подстановкой на cluster выполнимы %v, "+
+			"а разделение ниже построено на том, что это ровно `viewer`", keysOf(wildcard))
 	}
-	seen := 0
+
+	// Записи, для которых кластерный синглтон — правильный предмет вопроса ПРИ
+	// выполнимом подстановкой отношении: глобальный admin-curated каталог,
+	// одинаковый для всех тенантов и читаемый каждым.
+	clusterCatalog := map[string]bool{
+		"/kacho.cloud.storage.v1.DiskTypeService/Get":  true,
+		"/kacho.cloud.storage.v1.DiskTypeService/List": true,
+	}
+	// Отношения админ-поверхности: подстановкой не выполнимы, поэтому кластерный
+	// синглтон для них законен без поимённого перечня.
+	adminTier := map[string]bool{"system_admin": true, "editor": true, "admin": true}
+
+	var seenWildcard, seenAdmin int
 	for fullMethod, entry := range permissionMap(t) {
 		// Тип объекта восстанавливается вызовом извлекателя на НУЛЕВОМ запросе
 		// метода (тот же приём, которым сверяется каталог края) — сам извлекатель
@@ -322,22 +346,87 @@ func TestNoTenantDataOnTheClusterSingleton(t *testing.T) {
 		if !ok || objType != "cluster" {
 			continue // пообъектная запись: её извлекатель читает поле запроса
 		}
-		seen++
-		if !clusterCatalog[fullMethod] {
-			t.Errorf("%s анкерит проверку на кластерном синглтоне, а это позволено только "+
-				"глобальному каталогу типов дисков: `cluster:<root>#viewer@user:*` пишет бутстрап "+
-				"кластера, поэтому кластерный `viewer` пропускает каждого аутентифицированного "+
-				"субъекта. RPC, отдающий тенантские строки, обязан быть пообъектным либо "+
-				"scope_filtered", fullMethod)
+		switch {
+		case wildcard[entry.Relation]:
+			seenWildcard++
+			if !clusterCatalog[fullMethod] {
+				t.Errorf("%s спрашивает на кластерном синглтоне отношение %q, выполнимое "+
+					"подстановкой `user:*`, — такая проверка пропускает КАЖДОГО "+
+					"аутентифицированного субъекта. Это позволено только глобальному "+
+					"справочнику; RPC, отдающий тенантские строки, обязан быть пообъектным "+
+					"либо scope_filtered", fullMethod, entry.Relation)
+			}
+		case adminTier[entry.Relation]:
+			seenAdmin++
+		default:
+			t.Errorf("%s спрашивает на кластерном синглтоне отношение %q, которое не "+
+				"объявлено ни справочным, ни админским — классифицируй его явно, а не "+
+				"полагайся на умолчание", fullMethod, entry.Relation)
 		}
 	}
-	// Анти-вакуум: восстановление типа идёт через proto-реестр и на неудаче молча
-	// отдаёт «нет ответа». Если бы оно перестало работать, обход не проверил бы
-	// НИЧЕГО и остался зелёным.
-	if seen != len(clusterCatalog) {
-		t.Fatalf("обход увидел %d кластерных записей вместо %d — проверка ничего не утверждает",
-			seen, len(clusterCatalog))
+
+	// Анти-вакуум по ОБЕИМ полосам: восстановление типа идёт через proto-реестр и
+	// на неудаче молча отдаёт «нет ответа». Если бы оно перестало работать, обход
+	// не проверил бы НИЧЕГО и остался зелёным.
+	if seenWildcard != len(clusterCatalog) {
+		t.Fatalf("обход увидел %d справочных кластерных записей вместо %d — проверка ничего не утверждает",
+			seenWildcard, len(clusterCatalog))
 	}
+	if seenAdmin == 0 {
+		t.Fatal("обход не увидел ни одной админской кластерной записи — вторая полоса проверки пуста")
+	}
+	t.Logf("осмотрено кластерных записей: справочных %d, админских %d", seenWildcard, seenAdmin)
+}
+
+// wildcardSatisfiableClusterRelations читает МОДЕЛЬ и отвечает, какие отношения
+// типа `cluster` выполнимы подстановкой `user:*`.
+//
+// Читается именно объявление, а не память автора: подстановка, добавленная в
+// админ-отношение, обессмыслила бы разделение выше — и сделала бы это молча.
+func wildcardSatisfiableClusterRelations(t *testing.T) map[string]bool {
+	t.Helper()
+	const modelPath = "../../../../proto/kacho/cloud/iam/v1/fga_model.fga"
+	raw, err := os.ReadFile(modelPath)
+	if err != nil {
+		t.Fatalf("модель прав не прочитана (%s): %v", modelPath, err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	out := map[string]bool{}
+	inCluster := false
+	scanned := 0
+	for _, ln := range lines {
+		trimmed := strings.TrimSpace(ln)
+		if strings.HasPrefix(trimmed, "type ") {
+			inCluster = trimmed == "type cluster"
+			continue
+		}
+		if !inCluster || !strings.HasPrefix(trimmed, "define ") {
+			continue
+		}
+		scanned++
+		name, body, found := strings.Cut(strings.TrimPrefix(trimmed, "define "), ":")
+		if !found {
+			continue
+		}
+		if strings.Contains(body, "user:*") {
+			out[strings.TrimSpace(name)] = true
+		}
+	}
+	if scanned == 0 {
+		t.Fatalf("в модели не найдено ни одного отношения типа cluster — предпосылка не прочитана, а не подтверждена")
+	}
+	t.Logf("предпосылка: прочитано отношений типа cluster — %d, выполнимых подстановкой — %d", scanned, len(out))
+	return out
+}
+
+// keysOf — имена ключей для сообщения об изменившейся предпосылке.
+func keysOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // TestListAttachmentsIsScopeFiltered — привязки томов авторизуются на уровне
@@ -474,6 +563,16 @@ func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
 		"KACHO_STORAGE_DB_SSLMODE":             "require",
 		"KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE": "true",
 		"KACHO_STORAGE_LIST_FILTER_ENABLED":    "false", // ослаблено ровно одно измерение
+		// Плоскость данных — часть боевой посадки, и без неё старт отказывает по
+		// СВОЕЙ причине. Здесь она объявлена, чтобы отказ ниже относился ровно к
+		// сужателю: проба, где отвергается сразу два измерения, не отличает одно
+		// от другого и зеленела бы при снятии любого из них.
+		"KACHO_STORAGE_BLOCK_BACKEND_KIND":               "CEPH_RBD",
+		"KACHO_STORAGE_BLOCK_BACKEND_INSTALL_PREFIX":     "kc7f",
+		"KACHO_STORAGE_BLOCK_BACKEND_CREDENTIALS_DIR":    "/etc/kacho/storage/credentials",
+		"KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT":       "30s",
+		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL": "15s",
+		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH":    "100",
 	})
 	err := cfg.Validate()
 	if err == nil {
@@ -530,7 +629,8 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
-		registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler)
+		registerInternal(r, volumeUC, imageUC, diskTypeUC,
+			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
 	})
 
 	if len(public) == 0 || len(internal) == 0 {

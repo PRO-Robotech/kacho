@@ -87,7 +87,14 @@ def _assert_env_placement_coherent(suffix):
 
 
 def _pre_source_volume(suffix):
-    """Создать READY-том (источник образа/снапшота); сохраняет sourceVolumeId."""
+    """Создать том-источник и ДОЖДАТЬСЯ его пригодности; сохраняет sourceVolumeId.
+
+    Захват образа берёт источник ТОЛЬКО в состоянии READY (`imageCaptureCAS`), а
+    `Operation.done` о существовании объекта у плоскости данных не говорит ничего:
+    готовность объявляет сверщик. Без ожидания каждый образ этой суиты отвергался
+    бы предусловием, и падал бы шаг, сделавший ровно то, что положено при неготовом
+    источнике.
+    """
     return [
         *_assert_env_placement_coherent(suffix),
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL,
@@ -96,13 +103,15 @@ def _pre_source_volume(suffix):
                    "sizeBytes": _SRC_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "sourceVolumeId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(), assert_op_success(),
+        wait_until_ready_step(f"pre-vol-{suffix}-ready", f"{VOL}/{{{{sourceVolumeId}}}}",
+                              ready="AVAILABLE", subject="Том-источник"),
     ]
 
 
 def _pre_source_snapshot(suffix):
-    """Создать READY-том + снапшот из него (источник образа); сохраняет sourceSnapshotId
-    (+ sourceVolumeId для cleanup)."""
+    """Создать том-источник, снять с него снимок и ДОЖДАТЬСЯ пригодности снимка;
+    сохраняет sourceSnapshotId (+ sourceVolumeId для cleanup)."""
     return [
         *_pre_source_volume(suffix),
         Step(name=f"pre-snap-{suffix}", method="POST", path=SNP,
@@ -110,7 +119,9 @@ def _pre_source_snapshot(suffix):
                    "name": f"snap-imgsrc-{suffix}-{{{{runId}}}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "sourceSnapshotId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(), assert_op_success(),
+        wait_until_ready_step(f"pre-snap-{suffix}-ready", f"{SNP}/{{{{sourceSnapshotId}}}}",
+                              ready="READY", subject="Снимок-источник"),
     ]
 
 
@@ -142,9 +153,14 @@ def _cleanup_source_snapshot():
 
 CASES.append(Case(
     id="IMG-CR-CRUD-OK",
-    title="Create Image из sourceVolumeId → Operation(img metadata) → poll READY → Get: img-prefix, regionId, placementType REGIONAL, format STANDARD, sizeBytes/minDiskBytes derived, createdAt sec",
+    title="Create Image из sourceVolumeId → Operation(img metadata) → ДОЖДАТЬСЯ пригодности (её объявляет сверщик) → Get: img-prefix, regionId, placementType REGIONAL, format STANDARD, statusReason не заполнена, sizeBytes/minDiskBytes derived, createdAt sec",
     classes=["CRUD", "CONF"], priority="P1",
     # verifies STOR-1-20, STOR-1-24
+    #
+    # Здесь стояло «status READY (control-plane immediate)». Это утверждение
+    # пережило свой предмет: образ рождается СОЗДАВАЕМЫМ — строка закоммичена,
+    # объекта у бэкенда ещё нет, — и готовым его объявляет сверщик. «Немедленно»
+    # описывало не контракт, а то, успел ли обход.
     steps=[
         *_pre_source_volume("crok"),
         Step(name="create", method="POST", path=IMG,
@@ -155,19 +171,18 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{IMG}/{{{{imageId}}}}",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
+        wait_until_ready(Step(name="get", method="GET", path=f"{IMG}/{{{{imageId}}}}",
+             test_script=["const j = pm.response.json();",
                           "pm.test('id matches & img prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('imageId')); pm.expect(j.id).to.match(/^img/); });",
                           "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('regionId matches', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
                           "pm.test('placementType REGIONAL (anycast const)', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                           "pm.test('format STANDARD (native single-tier enum)', () => pm.expect(j.format).to.eql('STANDARD'));",
-                          "pm.test('status READY (control-plane immediate)', () => pm.expect(j.status).to.eql('READY'));",
+                          "pm.test('statusReason не заполнена у готового образа', () => pm.expect(String(j.statusReason)).to.eql('STATUS_REASON_UNSPECIFIED'));",
                           "pm.test('sourceVolumeId matches', () => pm.expect(j.sourceVolumeId).to.eql(pm.environment.get('sourceVolumeId')));",
                           "pm.test('sizeBytes derived from source (10 GiB)', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_SRC_SIZE) + "'));",
                           "pm.test('minDiskBytes derived from source', () => pm.expect(String(j.minDiskBytes)).to.eql('" + str(_SRC_SIZE) + "'));",
-                          *assert_created_at_seconds()])),
+                          *assert_created_at_seconds()]), ready="READY", subject="Image"),
         *_cleanup(f"{IMG}/{{{{imageId}}}}"),
         *_cleanup_source_volume(),
     ],
@@ -175,7 +190,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-CRUD-FROM-SNAPSHOT-OK",
-    title="Create Image из sourceSnapshotId (snapshot-путь source-oneof) → poll READY → Get sourceSnapshotId, status READY",
+    title="Create Image из sourceSnapshotId (snapshot-путь source-oneof) → ДОЖДАТЬСЯ пригодности → Get sourceSnapshotId, sourceVolumeId пуст",
     classes=["CRUD", "CONF"], priority="P1",
     # verifies STOR-1-24
     steps=[
@@ -186,12 +201,11 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{IMG}/{{{{imageId}}}}",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
+        wait_until_ready(Step(name="get", method="GET", path=f"{IMG}/{{{{imageId}}}}",
+             test_script=["const j = pm.response.json();",
                           "pm.test('sourceSnapshotId matches', () => pm.expect(j.sourceSnapshotId).to.eql(pm.environment.get('sourceSnapshotId')));",
-                          "pm.test('sourceVolumeId empty (oneof)', () => pm.expect(j.sourceVolumeId || '').to.eql(''));",
-                          "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));"])),
+                          "pm.test('sourceVolumeId empty (oneof)', () => pm.expect(j.sourceVolumeId || '').to.eql(''));"]),
+             ready="READY", subject="Image"),
         *_cleanup(f"{IMG}/{{{{imageId}}}}"),
         *_cleanup_source_snapshot(),
     ],
@@ -279,7 +293,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-GET-NEG-MALFORMED-ID",
-    title="Get malformed imageId 'not-an-img-id' → sync 400 INVALID_ARGUMENT 'invalid image id ...' (первым стейтментом, до repo)",
+    title="Get malformed imageId 'not-an-img-id' → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (первым стейтментом, до repo)",
     classes=["NEG", "VAL", "CONF"], priority="P0",
     # verifies STOR-1-21
     steps=[Step(name="get-malformed", method="GET", path=f"{IMG}/not-an-img-id",
@@ -673,7 +687,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-VOL-CR-SOURCE-IMAGE-OK",
-    title="Create boot-Volume c sourceImageId (материализация из Image) → poll → Get: sourceImageId==image, status AVAILABLE (regional-coherent zone∈image.region)",
+    title="Create boot-Volume c sourceImageId (материализация из готового Image) → ДОЖДАТЬСЯ пригодности тома → Get: sourceImageId==image (regional-coherent zone∈image.region)",
     classes=["CRUD", "CONF", "STATE"], priority="P1",
     # verifies STOR-1-18
     steps=[
@@ -683,6 +697,11 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
+        # Засев тома читает образ и берёт его ТОЛЬКО готовым: неготовый источник
+        # отвергается тем же текстом, что настоящий промах (hide-existence), и без
+        # ожидания расследование ушло бы в «образа нет» вместо «образ ещё не готов».
+        wait_until_ready_step("image-ready", f"{IMG}/{{{{imageId}}}}",
+                              ready="READY", subject="Образ-источник"),
         Step(name="cr-boot-vol", method="POST", path=VOL,
              body={"projectId": "{{_suiteProjectId}}", "name": "vol-boot-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
@@ -690,11 +709,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "bootVolumeId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get-boot", method="GET", path=f"{VOL}/{{{{bootVolumeId}}}}",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
-                          "pm.test('sourceImageId materialised', () => pm.expect(j.sourceImageId).to.eql(pm.environment.get('imageId')));",
-                          "pm.test('status AVAILABLE', () => pm.expect(j.status).to.eql('AVAILABLE'));"])),
+        wait_until_ready(Step(name="get-boot", method="GET", path=f"{VOL}/{{{{bootVolumeId}}}}",
+             test_script=["const j = pm.response.json();",
+                          "pm.test('sourceImageId materialised', () => pm.expect(j.sourceImageId).to.eql(pm.environment.get('imageId')));"]),
+             ready="AVAILABLE", subject="Загрузочный том"),
         *_cleanup(f"{VOL}/{{{{bootVolumeId}}}}"),
         *_cleanup(f"{IMG}/{{{{imageId}}}}"),
         *_cleanup_source_volume(),
@@ -751,35 +769,109 @@ CASES.append(Case(
 _ALT_REGION = "qa-stor-{{runId}}"
 _ALT_ZONE = "qa-stor-{{runId}}-a"
 
+# Второй регион для копии образа. Отдельные идентификаторы, а не переиспользование
+# кейса выше: два кейса, делящих одну посеянную географию, зависели бы от порядка
+# исполнения и разошлись бы при первом же параллельном прогоне.
+_COPY_REGION = "qa-cpy-{{runId}}"
+_COPY_ZONE = "qa-cpy-{{runId}}-a"
+
+
+def _seed_alt_placement(prefix, region_id, zone_id, region_js):
+    """Посеять ВТОРОЙ регион, зону в нём и действующую ревизию привязки класса.
+
+    Базовый стенд несёт ровно один регион, и с одним регионом ни когерентность, ни
+    перенос между регионами проверить нечем. География заводится через
+    cluster-internal админ-слушатель (Internal*Service на публичном муксе нет,
+    ban #6), идентификаторы run-scoped, уборка — в конце кейса.
+
+    РЕВИЗИЯ ПРИВЯЗКИ ОБЯЗАТЕЛЬНА, и это следствие смены контракта. Класс диска не
+    обслуживается в зоне, у которой нет действующей ревизии: посев стенда пишет
+    ревизии на зоны, существовавшие в момент подъёма, а свежепосеянная зона по
+    построению пуста. Без неё том в этой зоне не создаётся вовсе, и кейс падал бы
+    на сборке фикстуры, ничего не сказав о своём предмете.
+
+    `region_js` — выражение, вычисляющее ожидаемый идентификатор региона в
+    тест-скрипте: имена run-scoped, поэтому сравнивать приходится с вычисленным
+    значением, а не с литералом.
+    """
+    return [
+        # Операция geo здесь НЕ опрашивается намеренно: её идентификатор не
+        # маршрутизируется публичным прокси операций (kacho#55), поэтому ожидание —
+        # на материализации РЕСУРСА, что этому кейсу и нужно.
+        Step(name=f"{prefix}-region-create", method="POST", path="/geo/v1/internal/regions",
+             internal=True,
+             body={"id": region_id, "name": f"QA Storage {prefix} Region {{{{runId}}}}", "status": "UP"},
+             test_script=[*assert_status(200)]),
+        retry_until_authorized(Step(name=f"{prefix}-region-confirm", method="GET",
+             path=f"/geo/v1/regions/{region_id}",
+             test_script=[*assert_status(200)])),
+        Step(name=f"{prefix}-zone-create", method="POST", path="/geo/v1/internal/zones",
+             internal=True,
+             body={"id": zone_id, "regionId": region_id,
+                   "name": f"QA Storage {prefix} Zone {{{{runId}}}}", "status": "UP"},
+             test_script=[*assert_status(200)]),
+        retry_until_authorized(Step(name=f"{prefix}-zone-confirm", method="GET",
+             path=f"/geo/v1/zones/{zone_id}",
+             test_script=[*assert_status(200),
+                          f"pm.test('посеянная зона лежит в посеянном регионе', () => pm.expect(pm.response.json().regionId).to.eql({region_js}));"])),
+        # Предусловие фикстуры вслух: своя зона суиты НЕ должна лежать в посеянном
+        # регионе, иначе кейс не доказывал бы ничего.
+        Step(name=f"{prefix}-env-zone-region", method="GET", path="/geo/v1/zones/{{existingZoneId}}",
+             test_script=[*assert_status(200),
+                          f"pm.test('зона суиты — в ДРУГОМ регионе, чем посеянный', () => pm.expect(pm.response.json().regionId).to.not.eql({region_js}));"]),
+        # Кластер данных РЕЗОЛВИТСЯ, а не пинится: его идентификатор — строка посева
+        # стенда, и литерал здесь был бы ссылкой в пустоту ровно так же, как ею стал
+        # слаг класса после снятия посева из миграции.
+        Step(name=f"{prefix}-backend-resolve", method="GET",
+             path="/storage/v1/storageBackends?pageSize=1000", internal=True,
+             test_script=[*assert_status(200),
+                          "pm.environment.set('altBackendId', '');",
+                          "const bs = (pm.response.json().storageBackends || []).filter(b => String(b.status) === 'ACTIVE');",
+                          "pm.test('на стенде объявлен хотя бы один действующий кластер данных "
+                          "(его заводит шаг подъёма: make -C deploy seed-storage)', () => pm.expect(bs.length).to.be.at.least(1));",
+                          "if (bs.length) { pm.environment.set('altBackendId', String(bs[0].id)); }"]),
+        Step(name=f"{prefix}-binding-create", method="POST", path="/storage/v1/diskTypeBindings",
+             internal=True,
+             body={"diskTypeId": "{{existingDiskTypeId}}", "zoneId": zone_id,
+                   "backendId": "{{altBackendId}}",
+                   "locator": {"pool": f"kacho-{prefix}-{{{{runId}}}}",
+                               "namespaceTemplate": "proj-{projectId}"},
+                   "capabilities": {"snapshots": True, "cloneFromSnapshot": True,
+                                    "cloneFromImage": True, "cloneKeepsParent": True,
+                                    "onlineGrow": True, "multiAttach": False,
+                                    "encryptionAtRest": False, "trashTtlSeconds": 0}},
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('ревизия привязки заведена и ДЕЙСТВУЕТ', () => { pm.expect(String(j.id)).to.match(/^dtb-/); pm.expect(String(j.status)).to.eql('ACTIVE'); });",
+                          "pm.test('первая ревизия пары (класс, зона) несёт номер 1', () => pm.expect(Number(j.revision)).to.eql(1));",
+                          f"pm.test('ревизия объявлена в посеянной зоне', () => pm.expect(String(j.zoneId)).to.eql({region_js} + '-a'));"]),
+    ]
+
+
+def _teardown_alt_placement(prefix, region_id, zone_id):
+    """Снять посеянную географию, изнутри наружу (регион с зонами не удаляется).
+
+    Ревизия привязки не снимается — и это контракт, а не недосмотр: ревизия
+    неизменяема и append-only, глагола удаления у неё нет вовсе. Она объясняет, на
+    каких условиях создавались ресурсы, которых уже нет; идентификаторы run-scoped,
+    поэтому со следующим прогоном она не столкнётся.
+    """
+    return [
+        Step(name=f"{prefix}-zone-cleanup", method="DELETE",
+             path=f"/geo/v1/internal/zones/{zone_id}", internal=True),
+        Step(name=f"{prefix}-region-cleanup", method="DELETE",
+             path=f"/geo/v1/internal/regions/{region_id}", internal=True),
+    ]
+
+
 CASES.append(Case(
     id="IMG-VOL-CR-SOURCE-IMAGE-FOREIGN-REGION-NAMED",
     title="Create boot-Volume из СВОЕГО образа ЧУЖОГО региона → Operation error FAILED_PRECONDITION 'Volume and Image must be in the same region' (не hide-existence: образ вызывающему виден)",
     classes=["NEG", "CONF"], priority="P0",
     # verifies STOR-1-18 (regional coherence), data-integrity.md §Placement-coherence
     steps=[
-        # A second region + one zone in it (zone id must start with "<regionId>-").
-        # The geo Operation is deliberately NOT polled here: a geo op-id does not
-        # route through the public /operations proxy (kacho#55), so the wait is on
-        # the RESOURCE materialising — which is what this case actually needs.
-        Step(name="alt-region-create", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": _ALT_REGION, "name": "QA Storage Alt Region {{runId}}", "status": "UP"},
-             test_script=[*assert_status(200)]),
-        retry_until_authorized(Step(name="alt-region-confirm", method="GET",
-             path=f"/geo/v1/regions/{_ALT_REGION}",
-             test_script=[*assert_status(200)])),
-        Step(name="alt-zone-create", method="POST", path="/geo/v1/internal/zones", internal=True,
-             body={"id": _ALT_ZONE, "regionId": _ALT_REGION,
-                   "name": "QA Storage Alt Zone {{runId}}", "status": "UP"},
-             test_script=[*assert_status(200)]),
-        retry_until_authorized(Step(name="alt-zone-confirm", method="GET",
-             path=f"/geo/v1/zones/{_ALT_ZONE}",
-             test_script=[*assert_status(200),
-                          "pm.test('alt zone belongs to the alt region', () => pm.expect(pm.response.json().regionId).to.eql('qa-stor-' + pm.environment.get('runId')));"])),
-        # Fixture precondition spoken out loud: the suite's own zone must NOT live in
-        # the freshly seeded region, otherwise the case would prove nothing.
-        Step(name="env-zone-region", method="GET", path="/geo/v1/zones/{{existingZoneId}}",
-             test_script=[*assert_status(200),
-                          "pm.test('suite zone is in a DIFFERENT region than the seeded one', () => pm.expect(pm.response.json().regionId).to.not.eql('qa-stor-' + pm.environment.get('runId')));"]),
+        *_seed_alt_placement("alt", _ALT_REGION, _ALT_ZONE,
+                             "('qa-stor-' + pm.environment.get('runId'))"),
         # Source volume in the alt zone → image in the alt region (Image.Create itself
         # requires the source volume's zone to belong to the image's region).
         Step(name="alt-src-vol", method="POST", path=VOL,
@@ -789,12 +881,20 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "altSourceVolumeId")]),
         poll_operation_until_done(), assert_op_success(),
+        wait_until_ready_step("alt-src-vol-ready", f"{VOL}/{{{{altSourceVolumeId}}}}",
+                              ready="AVAILABLE", subject="Том-источник чужого региона"),
         Step(name="alt-image", method="POST", path=IMG,
              body={"projectId": "{{_suiteProjectId}}", "regionId": _ALT_REGION,
                    "name": "img-altregion-{{runId}}", "sourceVolumeId": "{{altSourceVolumeId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "altImageId")]),
         poll_operation_until_done(), assert_op_success(),
+        # Готовность образа обязательна ИМЕННО ДЛЯ ЭТОГО кейса: сервис разбирает
+        # нулевую выборку по порядку и о неготовом источнике говорит раньше, чем о
+        # регионе. Без ожидания кейс получил бы «Image … is not ready» и объявил бы
+        # сломанной проверку когерентности, которая при этом исправна.
+        wait_until_ready_step("alt-image-ready", f"{IMG}/{{{{altImageId}}}}",
+                              ready="READY", subject="Образ чужого региона"),
         # The refusal: boot volume in the suite's zone (other region) from that image.
         Step(name="cr-boot-cross-region", method="POST", path=VOL,
              body={"projectId": "{{_suiteProjectId}}", "name": "vol-bootxreg-{{runId}}",
@@ -812,12 +912,7 @@ CASES.append(Case(
                           "pm.test('and it really is in the other region', () => pm.expect(pm.response.json().regionId).to.eql('qa-stor-' + pm.environment.get('runId')));"])),
         *_cleanup(f"{IMG}/{{{{altImageId}}}}"),
         *_cleanup(f"{VOL}/{{{{altSourceVolumeId}}}}"),
-        # Teardown of the seeded geography, innermost first (a region with zones is
-        # not deletable). Best-effort, and likewise not op-polled (kacho#55).
-        Step(name="alt-zone-cleanup", method="DELETE", path=f"/geo/v1/internal/zones/{_ALT_ZONE}",
-             internal=True),
-        Step(name="alt-region-cleanup", method="DELETE", path=f"/geo/v1/internal/regions/{_ALT_REGION}",
-             internal=True),
+        *_teardown_alt_placement("alt", _ALT_REGION, _ALT_ZONE),
     ],
 ))
 
@@ -837,6 +932,11 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "crossSourceVolumeId")]),
         poll_operation_until_done(), assert_op_success(),
+        # Захват образа берёт источник только готовым — иначе фикстура чужого проекта
+        # не собралась бы вовсе, а кейс упал бы на её сборке, ничего не сказав о том,
+        # ради чего написан.
+        wait_until_ready_step("cross-src-vol-ready", f"{VOL}/{{{{crossSourceVolumeId}}}}",
+                              ready="AVAILABLE", subject="Том-источник чужого проекта"),
         # Same region as the home project's zone — so ONLY the project differs and the
         # answer cannot be attributed to placement.
         Step(name="cross-image", method="POST", path=IMG,
@@ -881,6 +981,8 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(), assert_op_success(),
+        wait_until_ready_step("image-ready", f"{IMG}/{{{{imageId}}}}",
+                              ready="READY", subject="Образ-источник"),
         Step(name="cr-boot-vol", method="POST", path=VOL,
              body={"projectId": "{{_suiteProjectId}}", "name": "vol-bootsn-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
@@ -888,9 +990,12 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "bootVolumeId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get-boot-pre", method="GET", path=f"{VOL}/{{{{bootVolumeId}}}}",
-             test_script=[*assert_status(200),
-                          "pm.test('precond sourceImageId set', () => pm.expect(pm.response.json().sourceImageId).to.eql(pm.environment.get('imageId')));"])),
+        # Предмет кейса — что ЖИВОЙ том переживает удаление своего образа. Значит
+        # том обязан быть живым (пригодным) ДО удаления: иначе «том цел» ниже
+        # утверждалось бы о строке, объекта за которой ещё нет.
+        wait_until_ready(Step(name="get-boot-pre", method="GET", path=f"{VOL}/{{{{bootVolumeId}}}}",
+             test_script=["pm.test('precond sourceImageId set', () => pm.expect(pm.response.json().sourceImageId).to.eql(pm.environment.get('imageId')));"]),
+             ready="AVAILABLE", subject="Загрузочный том"),
         retry_until_authorized(Step(name="del-image", method="DELETE", path=f"{IMG}/{{{{imageId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
@@ -936,7 +1041,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-LOP-NEG-MALFORMED-ID",
-    title="ListOperations malformed imageId → sync 400 INVALID_ARGUMENT 'invalid image id ...' (парити с Get)",
+    title="ListOperations malformed imageId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (парити с Get)",
     classes=["NEG", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-21
     steps=[Step(name="lop-malformed", method="GET", path=f"{IMG}/not-an-img/operations",
@@ -1018,4 +1123,134 @@ CASES.append(Case(
         *_cleanup(f"{IMG}/{{{{imageId}}}}"),
         *_cleanup_source_volume(),
     ],
+))
+
+
+# ===========================================================================
+# Copy — копия образа в ДРУГОЙ регион
+#   (POST /storage/v1/images/{imageId}:copy, editor@project)
+#
+# Единственный законный путь переноса образа между регионами: `regionId`
+# неизменяем после Create, «переехать» существующей строкой нечем. Гейт —
+# `editor@project` из `projectId` ТЕЛА, как у всякого Create: копия есть НОВЫЙ
+# ресурс, занимающий квоту, имя и деньги, а форма «v_get на источник» отдала бы
+# наблюдателю проекта право неограниченно порождать образы.
+# ===========================================================================
+
+CASES.append(Case(
+    id="IMG-COPY-CRUD-OK",
+    title="Copy готового образа в ДРУГОЙ регион → Operation(новый img) → копия в целевом регионе, своим id и своим именем, sourceImageId==источник (родитель копии, происхождение ровно одно); источник не изменился",
+    classes=["CRUD", "CONF", "STATE"], priority="P1",
+    # verifies STOR-1-20 (regional placement), STOR-1-24
+    steps=[
+        *_seed_alt_placement("cpy", _COPY_REGION, _COPY_ZONE,
+                             "('qa-cpy-' + pm.environment.get('runId'))"),
+        # Источник — обычный образ домашнего региона суиты.
+        *_pre_source_volume("copyok"),
+        Step(name="cr-image", method="POST", path=IMG,
+             body=_img_body("copysrc", sourceVolumeId="{{sourceVolumeId}}"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # Копия читает данные источника: `copyImageSQL` берёт только READY-строку.
+        wait_until_ready_step("copy-src-ready", f"{IMG}/{{{{imageId}}}}",
+                              ready="READY", subject="Образ-источник"),
+        retry_until_authorized(Step(name="copy", method="POST", path=f"{IMG}/{{{{imageId}}}}:copy",
+             body={"projectId": "{{_suiteProjectId}}", "targetRegionId": _COPY_REGION,
+                   "name": "img-copy-{{runId}}", "description": "newman copy",
+                   "labels": {"suite": "newman"}},
+             test_script=[*assert_status(200), *assert_operation_envelope(),
+                          "const m = pm.response.json().metadata || {};",
+                          "pm.test('metadata.imageId — НОВЫЙ образ, не источник', () => { pm.expect(String(m.imageId)).to.match(/^img/); pm.expect(String(m.imageId)).to.not.eql(String(pm.environment.get('imageId'))); });",
+                          *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "imageCopyId")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
+        poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="get-copy", method="GET", path=f"{IMG}/{{{{imageCopyId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('копия лежит в ЦЕЛЕВОМ регионе', () => pm.expect(String(j.regionId)).to.eql('qa-cpy-' + pm.environment.get('runId')));",
+                          # Копия называет НЕПОСРЕДСТВЕННОГО РОДИТЕЛЯ. Поле выставлено контрактом
+                          # вместе с этим изменением: вставка копии писала его с самого начала,
+                          # но проекция чтения его не выбирала, а домен не признавал третьим
+                          # видом происхождения — оттого глагол не работал ни разу.
+                          "pm.test('копия помнит источник', () => pm.expect(String(j.sourceImageId)).to.eql(String(pm.environment.get('imageId'))));",
+                          "pm.test('происхождение ровно одно: снятие не заполнено', () => { pm.expect(String(j.sourceVolumeId || '')).to.eql(''); pm.expect(String(j.sourceSnapshotId || '')).to.eql(''); });",
+                          "pm.test('копия несёт своё имя', () => pm.expect(j.name).to.match(/^img-copy-/));",
+                          "pm.test('placementType REGIONAL и у копии', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
+                          "pm.test('sizeBytes унаследован от источника', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_SRC_SIZE) + "'));"])),
+        Step(name="verify-source-intact", method="GET", path=f"{IMG}/{{{{imageId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('регион источника не изменился копированием', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
+                          "pm.test('источник остался READY', () => pm.expect(j.status).to.eql('READY'));"]),
+        *_cleanup(f"{IMG}/{{{{imageCopyId}}}}"),
+        *_cleanup(f"{IMG}/{{{{imageId}}}}"),
+        *_cleanup_source_volume(),
+        *_teardown_alt_placement("cpy", _COPY_REGION, _COPY_ZONE),
+    ],
+))
+
+CASES.append(Case(
+    id="IMG-COPY-VAL-PROJECT-REQUIRED",
+    title="Copy без projectId → rejected (400 InvalidArgument ИЛИ 403 authz-first, unscoped): право «создать» спрашивают у родителя, и назвать его обязан вызывающий",
+    classes=["VAL", "NEG", "AUTHZ"], priority="P0",
+    # verifies STOR-1-20
+    steps=[Step(name="copy-np", method="POST", path=f"{IMG}/{{{{garbageImageId}}}}:copy",
+                body={"targetRegionId": "{{existingRegionId}}", "name": "img-copy-np-{{runId}}"},
+                test_script=[*assert_unscoped_rejected()])],
+))
+
+CASES.append(Case(
+    id="IMG-COPY-VAL-TARGET-REGION-REQUIRED",
+    title="Copy без targetRegionId → sync 400 INVALID_ARGUMENT 'target_region_id: required' (угаданное умолчание неотличимо от опечатки)",
+    classes=["VAL", "NEG", "CONF"], priority="P0",
+    # verifies STOR-1-20
+    steps=[Step(name="copy-nr", method="POST", path=f"{IMG}/{{{{garbageImageId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "name": "img-copy-nr-{{runId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("target_region_id: required")])],
+))
+
+CASES.append(Case(
+    id="IMG-COPY-NEG-TARGET-REGION-UNKNOWN",
+    title="Copy в несуществующий регион → sync 400 FAILED_PRECONDITION 'unknown region id ...' (существование региона спрашивается у владельца географии на пути запроса)",
+    classes=["NEG", "CONF", "VAL"], priority="P1",
+    # verifies STOR-1-20
+    # # requires peer-validation enabled (geo peer reachable)
+    steps=[Step(name="copy-badregion", method="POST", path=f"{IMG}/{{{{garbageImageId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetRegionId": "region-nope-9",
+                      "name": "img-copy-br-{{runId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                             *_assert_msg("unknown region id 'region-nope-9'")])],
+))
+
+CASES.append(Case(
+    id="IMG-COPY-NEG-MALFORMED-ID",
+    title="Copy по malformed imageId → sync 400 INVALID_ARGUMENT 'invalid image id ...' (первым стейтментом; конкретный тип — область Copy проектная, край путь не разбирает)",
+    classes=["NEG", "VAL", "CONF"], priority="P0",
+    # verifies STOR-1-21
+    # ТЕКСТ ЗДЕСЬ КОНКРЕТНЕЕ, ЧЕМ У Get, И ЭТО СЛЕДСТВИЕ ПОЛОСЫ, А НЕ РАСХОЖДЕНИЕ.
+    # Край разбирает лишь те идентификаторы, которыми САМ ограничивает область. У
+    # Get областью служит сам ресурс — край видит его id, находит негодным и
+    # отвечает своей РОДОВОЙ формулировкой («тип мне неизвестен»). У Copy областью
+    # служит ПРОЕКТ (иначе читатель проекта заводил бы ресурсы), поэтому путь до
+    # края не разбирается и на негодный id отвечает ВЛАДЕЛЕЦ — конкретным типом,
+    # как и предписывает конвенция «invalid <ресурс> id '<X>'».
+    steps=[Step(name="copy-malformed", method="POST", path=f"{IMG}/not-an-img-id:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetRegionId": "{{existingRegionId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("invalid image id 'not-an-img-id'")])],
+))
+
+CASES.append(Case(
+    id="IMG-COPY-NEG-SOURCE-NOTFOUND",
+    title="Copy well-formed-но-нет образа → sync 404 NOT_FOUND 'Image <id> not found' (источник резолвится ДО заведения операции)",
+    classes=["NEG", "CONF"], priority="P1",
+    # verifies STOR-1-21
+    steps=[Step(name="copy-nx", method="POST", path=f"{IMG}/{{{{garbageImageId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetRegionId": "{{existingRegionId}}",
+                      "name": "img-copy-nx-{{runId}}"},
+                test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                             *_assert_msg("Image img00000000000000000 not found")])],
 ))

@@ -3,16 +3,28 @@
 
 """Case-set для SnapshotService (kacho-storage) — stage S3 CS1-S3-*.
 
-Covered public RPCs: Get, List, Create (from-READY-volume), Update, Delete
-(REST /storage/v1/snapshots; async мутации → Operation, poll /operations/{sop…}).
+Covered public RPCs: Get, List, Create (from-READY-volume), Copy, Update, Delete,
+ListOperations (REST /storage/v1/snapshots; async мутации → Operation, poll
+/operations/{sop…}).
 
 id-prefix Snapshot = `snp`. Snapshot.sizeBytes снят из volumes атомарным
 INSERT…SELECT (не из payload) — на момент снапшота. Error-тексты §0.2 assert'ятся
 behaviour-level.
 
+ЗОНА У СНИМКА СВОЯ. `zoneId` наследуется от тома-источника на Create, output-only
+и НЕИЗМЕНЯЕМА. Своя она потому, что ссылка на источник обнуляется при удалении
+тома: зона, добираемая через источник, однажды стала бы пустой строкой, и проверка
+когерентности выродилась бы в тождественно-истинную ровно в тот день, когда том
+удалили.
+
+ИСТОЧНИК ОБЯЗАН БЫТЬ ГОТОВ. Снимок снимается только с готового тома, а готовность
+объявляет СВЕРЩИК, увидев объект у плоскости данных, — не `Operation.done`. Поэтому
+фикстура источника ЖДЁТ пригодности (`wait_until_ready`) и падает, назвав
+состояние: иначе предмет кейса отвергался бы предусловием, а виновником назывался
+бы шаг, сделавший ровно то, что положено при неготовом источнике.
+
 Не-black-box (integration-only, НЕ здесь): from-non-READY-volume (CS1-S3-02
-первый When) — control-plane финализирует Volume READY мгновенно (§0.1, DoD
-caveat), не-READY достижимо только DB-seed → integration-тест. from-MISSING
+первый When) — состояние источника здесь не подделать. from-MISSING
 sourceVolumeId (CS1-S3-02 второй When) — provokable через public API, включён.
 """
 
@@ -34,7 +46,12 @@ def _assert_msg(substr):
 
 
 def _pre_volume(suffix="src"):
-    """Создать READY-том (source для снапшота); сохраняет sourceVolumeId."""
+    """Создать том-источник и ДОЖДАТЬСЯ его пригодности; сохраняет sourceVolumeId.
+
+    Ожидание — не перестраховка: `snapshotInsertCAS` берёт только том в состоянии
+    READY, а `Operation.done` о состоянии объекта у плоскости данных не говорит
+    ничего. Без ожидания каждый снимок этой суиты отвергался бы предусловием.
+    """
     return [
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL,
              body={"projectId": "{{_suiteProjectId}}", "name": f"vol-snapsrc-{suffix}-{{{{runId}}}}",
@@ -42,7 +59,9 @@ def _pre_volume(suffix="src"):
                    "sizeBytes": _VOL_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "sourceVolumeId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(), assert_op_success(),
+        wait_until_ready_step(f"pre-vol-{suffix}-ready", f"{VOL}/{{{{sourceVolumeId}}}}",
+                              ready="AVAILABLE", subject="Том-источник"),
     ]
 
 
@@ -67,9 +86,14 @@ def _snap_body(suffix, **over):
 
 CASES.append(Case(
     id="SNP-CR-CRUD-OK",
-    title="Create Snapshot из READY-тома → Operation(snp metadata) → poll → Get: snp-prefix, sourceVolumeId, status READY, sizeBytes==vol.sizeBytes, createdAt sec",
+    title="Create Snapshot из готового тома → Operation(snp metadata) → ДОЖДАТЬСЯ пригодности → Get: snp-prefix, sourceVolumeId, zoneId унаследована от тома, statusReason не заполнена, sizeBytes==vol.sizeBytes, createdAt sec",
     classes=["CRUD", "CONF"], priority="P1",
     # verifies CS1-S3-01
+    #
+    # Прежняя редакция требовала READY сразу после `done`. Снимок рождается
+    # СОЗДАВАЕМЫМ: строка закоммичена, объекта у бэкенда ещё нет, и готовым его
+    # объявляет сверщик. Утверждение «READY немедленно» говорило не о контракте, а
+    # о том, успел ли обход.
     steps=[
         *_pre_volume("crok"),
         Step(name="create", method="POST", path=SNP,
@@ -80,15 +104,15 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(), assert_op_success(),
-        retry_until_authorized(Step(name="get", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
-             test_script=[*assert_status(200),
-                          "const j = pm.response.json();",
+        wait_until_ready(Step(name="get", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=["const j = pm.response.json();",
                           "pm.test('id matches & snp prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('snapshotId')); pm.expect(j.id).to.match(/^snp/); });",
                           "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('sourceVolumeId matches', () => pm.expect(j.sourceVolumeId).to.eql(pm.environment.get('sourceVolumeId')));",
-                          "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
+                          "pm.test('zoneId унаследована от тома-источника', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
+                          "pm.test('statusReason не заполнена у готового снимка', () => pm.expect(String(j.statusReason)).to.eql('STATUS_REASON_UNSPECIFIED'));",
                           "pm.test('sizeBytes == source volume size (snapshotted)', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_VOL_SIZE) + "'));",
-                          *assert_created_at_seconds()])),
+                          *assert_created_at_seconds()]), ready="READY", subject="Snapshot"),
         Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_source_volume(),
@@ -480,4 +504,226 @@ CASES.append(Case(
         poll_operation_until_done(),
         *_cleanup_source_volume(),
     ],
+))
+
+
+# ---------------------------------------------------------------------------
+# zoneId — НОВОЕ поле снимка: наследуется от тома-источника, output-only,
+#   неизменяемое. Правки через маску быть не может: перенос между зонами
+#   выражается КОПИЕЙ, а не сменой якоря у существующей строки — иначе уже
+#   засеянные ею тома ссылались бы на источник, размещения которого больше нет.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-UPD-MASK-ZONE-REJECTED",
+    title="Update mask=zoneId → СИНХРОННЫЙ 400 INVALID_ARGUMENT: якорь размещения снимка правкой не меняется (перенос — только Copy)",
+    classes=["STATE", "VAL", "CONF", "NEG"], priority="P1",
+    # verifies CS1-S3-05
+    #
+    # Текст отказа НЕ пинится намеренно: `zoneId` не входит в набор изменяемых
+    # полей, поэтому отказ приходит полосой известного набора маски, а не перечнем
+    # неизменяемых. Обе полосы — отказ, и обе сохраняют смысл утверждения; пин на
+    # одну из них залочил бы внутреннюю очерёдность проверок вместо контракта.
+    steps=[Step(name="patch-zone", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
+                body={"updateMask": "zoneId"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
+))
+
+# ---------------------------------------------------------------------------
+# Copy — перенос снимка в другую зону НОВОЙ строкой
+#   (POST /storage/v1/snapshots/{snapshotId}:copy, editor@project)
+#
+# Право спрашивается у РОДИТЕЛЯ — `editor@project` из `projectId` ТЕЛА, ровно как
+# у Create, и потому `projectId` обязателен, хотя выглядит выводимым из источника:
+# именно он — объект вопроса о правах. Гейт «v_get на источник» отвергнут
+# осознанно (роль наблюдателя материализует чтение на каждый объект проекта, и
+# такой гейт дал бы читателю право неограниченно порождать снимки).
+# ---------------------------------------------------------------------------
+
+_COPY_ZONES_DIFFER = [
+    "pm.test('предусловие фикстуры: целевая зона ОТЛИЧАЕТСЯ от зоны источника "
+    "(иначе перенос нечем отличить от дубликата)', () => {",
+    "  pm.expect(String(pm.environment.get('existingZoneAltId')),",
+    "    'existingZoneAltId').to.not.eql(String(pm.environment.get('existingZoneId')));",
+    "});",
+]
+
+CASES.append(Case(
+    id="SNP-COPY-CRUD-OK",
+    title="Copy готового снимка в другую зону → Operation(новый snp + sourceSnapshotId) → копия в ЦЕЛЕВОЙ зоне со своим id и своим именем; источник не изменился",
+    classes=["CRUD", "CONF", "STATE"], priority="P1",
+    # verifies CS1-S3-01
+    steps=[
+        *_pre_volume("copyok"),
+        Step(name="create-src", method="POST", path=SNP, body=_snap_body("copysrc"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # Копия читает данные источника: `copySnapshotSQL` берёт только READY-строку.
+        wait_until_ready(Step(name="src-ready", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=_COPY_ZONES_DIFFER), ready="READY", subject="Снимок-источник"),
+        retry_until_authorized(Step(name="copy", method="POST", path=f"{SNP}/{{{{snapshotId}}}}:copy",
+             body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "{{existingZoneAltId}}",
+                   "name": "snap-copy-{{runId}}", "description": "newman copy",
+                   "labels": {"suite": "newman"}},
+             test_script=[*assert_status(200), *assert_operation_envelope(),
+                          "const m = pm.response.json().metadata || {};",
+                          "pm.test('metadata.snapshotId — НОВЫЙ снимок, не источник', () => { pm.expect(String(m.snapshotId)).to.match(/^snp/); pm.expect(String(m.snapshotId)).to.not.eql(String(pm.environment.get('snapshotId'))); });",
+                          "pm.test('metadata.sourceSnapshotId — источник', () => pm.expect(String(m.sourceSnapshotId)).to.eql(String(pm.environment.get('snapshotId'))));",
+                          *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotCopyId")]),
+            budget=30, interval_ms=500, retry_on=(403,)),
+        poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="get-copy", method="GET", path=f"{SNP}/{{{{snapshotCopyId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('копия лежит в ЦЕЛЕВОЙ зоне', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneAltId')));",
+                          "pm.test('копия несёт своё имя, а не имя источника', () => pm.expect(j.name).to.match(/^snap-copy-/));",
+                          "pm.test('projectId копии — проект источника', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
+                          # Происхождение копии не проверял никто, а столбец родителя вставка
+                          # писала с самого начала — просто не выходил наружу и не признавался
+                          # доменом, отчего глагол не работал ни разу.
+                          "pm.test('копия помнит родителя-снимок', () => pm.expect(String(j.sourceSnapshotId)).to.eql(String(pm.environment.get('snapshotId'))));",
+                          "pm.test('происхождение ровно одно: том не заполнен', () => pm.expect(String(j.sourceVolumeId || '')).to.eql(''));",
+                          "pm.test('sizeBytes унаследован от источника', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_VOL_SIZE) + "'));"])),
+        Step(name="verify-source-intact", method="GET", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200),
+                          "const j = pm.response.json();",
+                          "pm.test('зона источника не изменилась копированием', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
+                          "pm.test('источник остался READY', () => pm.expect(j.status).to.eql('READY'));"]),
+        Step(name="del-copy", method="DELETE", path=f"{SNP}/{{{{snapshotCopyId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_source_volume(),
+    ],
+))
+
+CASES.append(Case(
+    id="SNP-COPY-VAL-PROJECT-REQUIRED",
+    title="Copy без projectId → rejected (400 InvalidArgument ИЛИ 403 authz-first, unscoped): право «создать» спрашивают у родителя, и назвать его обязан вызывающий",
+    classes=["VAL", "NEG", "AUTHZ"], priority="P0",
+    # verifies CS1-S3-03
+    steps=[Step(name="copy-np", method="POST", path=f"{SNP}/{{{{garbageSnapshotId}}}}:copy",
+                body={"targetZoneId": "{{existingZoneId}}", "name": "snap-copy-np-{{runId}}"},
+                test_script=[*assert_unscoped_rejected()])],
+))
+
+CASES.append(Case(
+    id="SNP-COPY-VAL-TARGET-ZONE-REQUIRED",
+    title="Copy без targetZoneId → sync 400 INVALID_ARGUMENT 'target_zone_id: required' (умолчание «та же зона» превратило бы перенос в дубликатор без предмета)",
+    classes=["VAL", "NEG", "CONF"], priority="P0",
+    # verifies CS1-S3-03
+    steps=[Step(name="copy-nz", method="POST", path=f"{SNP}/{{{{garbageSnapshotId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "name": "snap-copy-nz-{{runId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("target_zone_id: required")])],
+))
+
+CASES.append(Case(
+    id="SNP-COPY-NEG-TARGET-ZONE-UNKNOWN",
+    title="Copy в несуществующую зону → sync 400 FAILED_PRECONDITION 'unknown zone id ...' (существование зоны спрашивается у владельца географии на пути запроса)",
+    classes=["NEG", "CONF", "VAL"], priority="P1",
+    # verifies CS1-S3-03
+    # # requires peer-validation enabled (geo peer reachable)
+    steps=[Step(name="copy-badzone", method="POST", path=f"{SNP}/{{{{garbageSnapshotId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "region-9-z",
+                      "name": "snap-copy-bz-{{runId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                             *_assert_msg("unknown zone id 'region-9-z'")])],
+))
+
+CASES.append(Case(
+    id="SNP-COPY-NEG-MALFORMED-ID",
+    title="Copy по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid snapshot id ...' (первым стейтментом; конкретный тип — область Copy проектная, край путь не разбирает)",
+    classes=["NEG", "VAL", "CONF"], priority="P0",
+    # verifies CS1-S3-04
+    # ТЕКСТ ЗДЕСЬ КОНКРЕТНЕЕ, ЧЕМ У Get, И ЭТО СЛЕДСТВИЕ ПОЛОСЫ, А НЕ РАСХОЖДЕНИЕ.
+    # Край разбирает лишь те идентификаторы, которыми САМ ограничивает область. У
+    # Get областью служит сам ресурс — край видит его id, находит негодным и
+    # отвечает своей РОДОВОЙ формулировкой («тип мне неизвестен»). У Copy областью
+    # служит ПРОЕКТ (иначе читатель проекта заводил бы ресурсы), поэтому путь до
+    # края не разбирается и на негодный id отвечает ВЛАДЕЛЕЦ — конкретным типом,
+    # как и предписывает конвенция «invalid <ресурс> id '<X>'».
+    steps=[Step(name="copy-malformed", method="POST", path=f"{SNP}/nope:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "{{existingZoneId}}"},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("invalid snapshot id 'nope'")])],
+))
+
+CASES.append(Case(
+    id="SNP-COPY-NEG-SOURCE-NOTFOUND",
+    title="Copy well-formed-но-нет снимка → sync 404 NOT_FOUND 'Snapshot <id> not found' (источник резолвится ДО заведения операции)",
+    classes=["NEG", "CONF"], priority="P1",
+    # verifies CS1-S3-04
+    steps=[Step(name="copy-nx", method="POST", path=f"{SNP}/{{{{garbageSnapshotId}}}}:copy",
+                body={"projectId": "{{_suiteProjectId}}", "targetZoneId": "{{existingZoneId}}",
+                      "name": "snap-copy-nx-{{runId}}"},
+                test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                             *_assert_msg("Snapshot snp00000000000000000 not found")])],
+))
+
+# ---------------------------------------------------------------------------
+# ListOperations — журнал операций снимка
+#   (GET /storage/v1/snapshots/{snapshotId}/operations, v_list)
+#
+# Мутации асинхронны, поэтому «что с моим снимком происходило» отвечается только
+# журналом: клиент, потерявший идентификатор операции, иначе не восстановит ни её
+# исход, ни причину отказа. У тома и образа журнал был, у снимка — нет.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="SNP-LOP-CRUD-OK",
+    title="ListOperations снимка → ≥1 операция (создание), каждая с sop-id; после правки в журнале ≥2",
+    classes=["CRUD"], priority="P1",
+    # verifies CS1-S3-01
+    steps=[
+        *_pre_volume("lop"),
+        Step(name="cr", method="POST", path=SNP, body=_snap_body("lop"),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
+        poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="list-ops", method="GET",
+             path=f"{SNP}/{{{{snapshotId}}}}/operations?pageSize=10",
+             test_script=[*assert_status(200),
+                          "const ops = pm.response.json().operations || [];",
+                          "pm.test('журнал содержит хотя бы операцию создания', () => pm.expect(ops.length).to.be.at.least(1));",
+                          "pm.test('идентификаторы операций с префиксом sop', () => ops.forEach(o => pm.expect(String(o.id)).to.match(/^sop/)));",
+                          "pm.environment.set('snapOpsBefore', String(ops.length));"])),
+        Step(name="patch", method="PATCH", path=f"{SNP}/{{{{snapshotId}}}}",
+             body={"updateMask": "description", "description": "lop-conf"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="list-ops-after", method="GET",
+             path=f"{SNP}/{{{{snapshotId}}}}/operations?pageSize=10",
+             test_script=[*assert_status(200),
+                          "const ops = pm.response.json().operations || [];",
+                          "pm.test('правка добавила запись в журнал', () => pm.expect(ops.length).to.be.above(parseInt(pm.environment.get('snapOpsBefore') || '0', 10)));"]),
+        Step(name="del-snap", method="DELETE", path=f"{SNP}/{{{{snapshotId}}}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        *_cleanup_source_volume(),
+    ],
+))
+
+CASES.append(Case(
+    id="SNP-LOP-NEG-MALFORMED-ID",
+    title="ListOperations по malformed snapshotId → sync 400 INVALID_ARGUMENT 'invalid resource id ...' (парити с Get и с томом/образом)",
+    classes=["NEG", "VAL", "CONF"], priority="P1",
+    # verifies CS1-S3-04
+    steps=[Step(name="lop-malformed", method="GET", path=f"{SNP}/nope/operations",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *_assert_msg("invalid resource id 'nope'")])],
+))
+
+CASES.append(Case(
+    id="SNP-LOP-BVA-PAGESIZE-OVER-MAX",
+    title="ListOperations снимка pageSize=1001 (> max 1000) → 400 INVALID_ARGUMENT (validate.PageSize; парити со списком снимков)",
+    classes=["BVA", "VAL", "PAGE", "NEG"], priority="P1",
+    # verifies CS1-S3-04
+    steps=[Step(name="lop-ps-over", method="GET",
+                path=f"{SNP}/{{{{garbageSnapshotId}}}}/operations?pageSize=1001",
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))

@@ -26,7 +26,8 @@ import (
 // A valid source is supplied so the reject is provably the BVA, not "source required".
 // Sync-reject happens before peer calls (geo/iam mocks with nil funcs would panic).
 func TestCreateBVADescriptionLabels(t *testing.T) {
-	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).
+		WithInstallPrefix(testInstallPrefix)
 
 	base := func() *domain.Image {
 		return &domain.Image{

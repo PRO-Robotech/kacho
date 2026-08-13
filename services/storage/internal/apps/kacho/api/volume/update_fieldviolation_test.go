@@ -57,7 +57,7 @@ func TestUpdateOverLimitNamesTheField(t *testing.T) {
 			},
 		}
 		return volume.New(&repomock.VolumeReader{}, writer,
-			&repomock.PeerClient{}, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
+			&repomock.PeerClient{}, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	}
 
 	cases := []struct {
@@ -130,7 +130,7 @@ func TestUpdateSkipsFieldsOutsideTheMask(t *testing.T) {
 	}
 	ops := repomock.NewOpsRepo()
 	uc := volume.New(&repomock.VolumeReader{}, writer,
-		&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+		&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Update(context.Background(), volUpdID, []string{"name"},
 		"renamed", strings.Repeat("x", 257), updLabels(65), 0)
@@ -163,7 +163,7 @@ func TestUpdateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
 		}
 		ops := repomock.NewOpsRepo()
 		uc := volume.New(&repomock.VolumeReader{}, writer,
-			&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+			&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 		op, err := uc.Update(context.Background(), volUpdID, mask,
 			"", strings.Repeat("x", 256), atLimit, 0)

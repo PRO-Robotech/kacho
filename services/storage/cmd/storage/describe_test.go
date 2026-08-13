@@ -45,8 +45,10 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
@@ -436,7 +438,10 @@ func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
 		func(r grpc.ServiceRegistrar) {
 			registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 		},
-		func(r grpc.ServiceRegistrar) { registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler) },
+		func(r grpc.ServiceRegistrar) {
+			registerInternal(r, volumeUC, imageUC, diskTypeUC,
+				storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
+		},
 	}
 }
 

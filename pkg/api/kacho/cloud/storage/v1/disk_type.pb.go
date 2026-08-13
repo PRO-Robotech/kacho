@@ -24,8 +24,162 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// PerformanceTier — ярус класса. ЗАКРЫТЫЙ словарь, а не свободная строка.
+//
+// Причина не косметическая. Публичную поверхность от инфра-лексики стережёт гейт
+// двухпроекционности, а он перечисляет ИМЕНА полей — значение вида "nvme-fast"
+// или "pool-b-replicated" проходит сквозь него целиком. Словарь закрывает канал
+// по значениям: то, что закрыто по именам, перестаёт быть открыто по значениям.
+//
+// Ярус НЕ обещает чисел. Чем он обеспечен физически, решает ревизия привязки,
+// поэтому ни IOPS, ни пропускной способности здесь нет. Порядок номеров — не
+// шкала: сравнивать ярусы по значению перечисления нельзя.
+type DiskType_PerformanceTier int32
+
+const (
+	// Ярус не объявлен. Законное состояние: класс вправе его не называть, и это
+	// отличается от «назван неизвестным», который отвергается на входе.
+	DiskType_PERFORMANCE_TIER_UNSPECIFIED DiskType_PerformanceTier = 0
+	// Ёмкость: объём дешевле отклика.
+	DiskType_CAPACITY DiskType_PerformanceTier = 1
+	// Общего назначения: без перекоса в одну сторону.
+	DiskType_BALANCED DiskType_PerformanceTier = 2
+	// Отклик: класс заведён ради задержки и частоты операций.
+	DiskType_FAST DiskType_PerformanceTier = 3
+	// Одна копия: избыточности нет. Это свойство КЛАССА, выбираемое осознанно, а не
+	// авария — поэтому оно и названо в каталоге, а не выясняется после потери данных.
+	DiskType_SINGLE DiskType_PerformanceTier = 4
+	// Предельный ввод-вывод: верхний ярус каталога.
+	DiskType_IO_MAX DiskType_PerformanceTier = 5
+)
+
+// Enum value maps for DiskType_PerformanceTier.
+var (
+	DiskType_PerformanceTier_name = map[int32]string{
+		0: "PERFORMANCE_TIER_UNSPECIFIED",
+		1: "CAPACITY",
+		2: "BALANCED",
+		3: "FAST",
+		4: "SINGLE",
+		5: "IO_MAX",
+	}
+	DiskType_PerformanceTier_value = map[string]int32{
+		"PERFORMANCE_TIER_UNSPECIFIED": 0,
+		"CAPACITY":                     1,
+		"BALANCED":                     2,
+		"FAST":                         3,
+		"SINGLE":                       4,
+		"IO_MAX":                       5,
+	}
+)
+
+func (x DiskType_PerformanceTier) Enum() *DiskType_PerformanceTier {
+	p := new(DiskType_PerformanceTier)
+	*p = x
+	return p
+}
+
+func (x DiskType_PerformanceTier) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiskType_PerformanceTier) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_storage_v1_disk_type_proto_enumTypes[0].Descriptor()
+}
+
+func (DiskType_PerformanceTier) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_storage_v1_disk_type_proto_enumTypes[0]
+}
+
+func (x DiskType_PerformanceTier) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiskType_PerformanceTier.Descriptor instead.
+func (DiskType_PerformanceTier) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_disk_type_proto_rawDescGZIP(), []int{0, 0}
+}
+
+// Lifecycle — состояние обращения класса. Отвечает на ЕДИНСТВЕННЫЙ вопрос:
+// принимает ли класс НОВЫЕ тома. Существующие тома живут при любом значении —
+// правка справочника не отзывает уже выданное и не трогает чужие данные.
+//
+// Меняется отдельным глаголом (`InternalDiskTypeService.SetLifecycle`), а не полем
+// правки: пустая маска у `Update` означает полную замену изменяемых полей, поэтому
+// состояние в его теле молча возвращало бы выведенный класс в обращение — правкой
+// описания, которая об этом не заявляла.
+type DiskType_Lifecycle int32
+
+const (
+	// Состояние не названо. Отвергается: умолчание проставляет край на Create в
+	// одном названном месте, а домен не угадывает намерение администратора —
+	// иначе опечатка была бы принята за решение открыть класс.
+	DiskType_LIFECYCLE_UNSPECIFIED DiskType_Lifecycle = 0
+	// Класс принимает новые тома.
+	DiskType_ACTIVE DiskType_Lifecycle = 1
+	// Существующие тома живут и обновляются, новые не создаются:
+	// FAILED_PRECONDITION "DiskType <id> is not accepting new volumes".
+	DiskType_DEPRECATED DiskType_Lifecycle = 2
+	// Класс выведен из обращения. Удаление разрешено при нуле ссылающихся томов;
+	// пока том есть — FAILED_PRECONDITION "DiskType <id> is in use" (FK RESTRICT).
+	DiskType_RETIRED DiskType_Lifecycle = 3
+)
+
+// Enum value maps for DiskType_Lifecycle.
+var (
+	DiskType_Lifecycle_name = map[int32]string{
+		0: "LIFECYCLE_UNSPECIFIED",
+		1: "ACTIVE",
+		2: "DEPRECATED",
+		3: "RETIRED",
+	}
+	DiskType_Lifecycle_value = map[string]int32{
+		"LIFECYCLE_UNSPECIFIED": 0,
+		"ACTIVE":                1,
+		"DEPRECATED":            2,
+		"RETIRED":               3,
+	}
+)
+
+func (x DiskType_Lifecycle) Enum() *DiskType_Lifecycle {
+	p := new(DiskType_Lifecycle)
+	*p = x
+	return p
+}
+
+func (x DiskType_Lifecycle) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiskType_Lifecycle) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_storage_v1_disk_type_proto_enumTypes[1].Descriptor()
+}
+
+func (DiskType_Lifecycle) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_storage_v1_disk_type_proto_enumTypes[1]
+}
+
+func (x DiskType_Lifecycle) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiskType_Lifecycle.Descriptor instead.
+func (DiskType_Lifecycle) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_disk_type_proto_rawDescGZIP(), []int{0, 1}
+}
+
 // A DiskType resource — a read-only catalog entry describing a class of storage a
 // Volume can be provisioned on. Owned by kacho-storage.
+//
+// Класс несёт ПОЛИТИКУ, а не косметику: ярус, состояние обращения, границы размера,
+// способности. Он — РЕГИСТРАЦИЯ того, что провайдер действительно даёт, поэтому
+// заранее выдуманного каталога не существует, а пустой каталог — законное состояние:
+// пока класс не зарегистрирован, том не создаётся.
+//
+// Чего здесь нет и не будет: числа производительности, координата бэкенда, пул,
+// шаблон пространства имён, номер ревизии привязки. Они меняются вместе с бэкендом,
+// а класс обязан переживать его смену, поэтому живут на ревизии привязки (:9091).
+// Публиковать числа без энфорсмента значило бы обещать без исполнителя.
 type DiskType struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the disk type. A slug set explicitly by an admin (e.g. "network-ssd").
@@ -40,10 +194,17 @@ type DiskType struct {
 	// refused with FAILED_PRECONDITION "DiskType <id> is not offered in zone <zone>".
 	// An EMPTY list means the type is not zone-scoped and is offered in every zone.
 	ZoneIds []string `protobuf:"bytes,4,rep,name=zone_ids,json=zoneIds,proto3" json:"zone_ids,omitempty"`
-	// Performance tier of the disk type (e.g. "standard", "high"). Optional.
-	PerformanceTier string `protobuf:"bytes,5,opt,name=performance_tier,json=performanceTier,proto3" json:"performance_tier,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Ярус класса. Необъявленный ярус законен; неизвестный — отвергается на входе.
+	Tier DiskType_PerformanceTier `protobuf:"varint,6,opt,name=tier,proto3,enum=kacho.cloud.storage.v1.DiskType_PerformanceTier" json:"tier,omitempty"`
+	// Состояние обращения класса.
+	Lifecycle DiskType_Lifecycle `protobuf:"varint,7,opt,name=lifecycle,proto3,enum=kacho.cloud.storage.v1.DiskType_Lifecycle" json:"lifecycle,omitempty"`
+	// Способности класса. Output-only: выводятся пересечением действующих ревизий
+	// привязки и на вход не принимаются.
+	Capabilities *DiskType_Capabilities `protobuf:"bytes,8,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// Границы размера тома, объявленные классом.
+	Limits        *DiskType_SizeLimits `protobuf:"bytes,9,opt,name=limits,proto3" json:"limits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DiskType) Reset() {
@@ -104,24 +265,248 @@ func (x *DiskType) GetZoneIds() []string {
 	return nil
 }
 
-func (x *DiskType) GetPerformanceTier() string {
+func (x *DiskType) GetTier() DiskType_PerformanceTier {
 	if x != nil {
-		return x.PerformanceTier
+		return x.Tier
 	}
-	return ""
+	return DiskType_PERFORMANCE_TIER_UNSPECIFIED
+}
+
+func (x *DiskType) GetLifecycle() DiskType_Lifecycle {
+	if x != nil {
+		return x.Lifecycle
+	}
+	return DiskType_LIFECYCLE_UNSPECIFIED
+}
+
+func (x *DiskType) GetCapabilities() *DiskType_Capabilities {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *DiskType) GetLimits() *DiskType_SizeLimits {
+	if x != nil {
+		return x.Limits
+	}
+	return nil
+}
+
+// Capabilities — что класс умеет. Публичны НАМЕРЕННО: способность, которую нельзя
+// прочитать заранее, превращает полноту API в непредсказуемость — арендатор узнаёт
+// об отсутствии снимков отказом, уже написав код.
+//
+// Output-only. Источник истины — действующие ревизии привязки (:9091); класс
+// выводит способности их ПЕРЕСЕЧЕНИЕМ, консервативно: класс предлагается в
+// нескольких зонах, а зоны могут обслуживаться разными бэкендами. Поэтому
+// способности не принимаются на вход Create/Update — иначе у одного факта было бы
+// два источника, и они разошлись бы молча.
+//
+// Сюда выходят только те способности, которые арендатор может ПРИМЕНИТЬ своим
+// вызовом. Зависимость клона от родителя и срок корзины остаются на ревизии: они
+// называют устройство плоскости данных, а не доступное действие.
+type DiskType_Capabilities struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// С тома этого класса можно снять снимок.
+	Snapshots bool `protobuf:"varint,1,opt,name=snapshots,proto3" json:"snapshots,omitempty"`
+	// Том этого класса можно засеять из снимка.
+	CloneFromSnapshot bool `protobuf:"varint,2,opt,name=clone_from_snapshot,json=cloneFromSnapshot,proto3" json:"clone_from_snapshot,omitempty"`
+	// Загрузочный том этого класса можно материализовать из образа.
+	CloneFromImage bool `protobuf:"varint,3,opt,name=clone_from_image,json=cloneFromImage,proto3" json:"clone_from_image,omitempty"`
+	// Размер тома можно увеличить, не отсоединяя его от машины.
+	OnlineGrow bool `protobuf:"varint,4,opt,name=online_grow,json=onlineGrow,proto3" json:"online_grow,omitempty"`
+	// Том допускает одновременную привязку к нескольким машинам.
+	MultiAttach bool `protobuf:"varint,5,opt,name=multi_attach,json=multiAttach,proto3" json:"multi_attach,omitempty"`
+	// Данные шифруются в покое.
+	EncryptionAtRest bool `protobuf:"varint,6,opt,name=encryption_at_rest,json=encryptionAtRest,proto3" json:"encryption_at_rest,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DiskType_Capabilities) Reset() {
+	*x = DiskType_Capabilities{}
+	mi := &file_kacho_cloud_storage_v1_disk_type_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiskType_Capabilities) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiskType_Capabilities) ProtoMessage() {}
+
+func (x *DiskType_Capabilities) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_disk_type_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiskType_Capabilities.ProtoReflect.Descriptor instead.
+func (*DiskType_Capabilities) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_disk_type_proto_rawDescGZIP(), []int{0, 0}
+}
+
+func (x *DiskType_Capabilities) GetSnapshots() bool {
+	if x != nil {
+		return x.Snapshots
+	}
+	return false
+}
+
+func (x *DiskType_Capabilities) GetCloneFromSnapshot() bool {
+	if x != nil {
+		return x.CloneFromSnapshot
+	}
+	return false
+}
+
+func (x *DiskType_Capabilities) GetCloneFromImage() bool {
+	if x != nil {
+		return x.CloneFromImage
+	}
+	return false
+}
+
+func (x *DiskType_Capabilities) GetOnlineGrow() bool {
+	if x != nil {
+		return x.OnlineGrow
+	}
+	return false
+}
+
+func (x *DiskType_Capabilities) GetMultiAttach() bool {
+	if x != nil {
+		return x.MultiAttach
+	}
+	return false
+}
+
+func (x *DiskType_Capabilities) GetEncryptionAtRest() bool {
+	if x != nil {
+		return x.EncryptionAtRest
+	}
+	return false
+}
+
+// SizeLimits — границы размера тома, объявленные КЛАССОМ и энфорсящиеся на
+// Volume.Create/Update. Ноль означает «класс не сужает»: отсутствие границы
+// отличается от границы, равной нулю, и различие выражено самим значением, а не
+// отдельным флагом присутствия.
+type DiskType_SizeLimits struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Наименьший размер тома в байтах. 0 — класс не сужает снизу.
+	MinSizeBytes int64 `protobuf:"varint,1,opt,name=min_size_bytes,json=minSizeBytes,proto3" json:"min_size_bytes,omitempty"`
+	// Наибольший размер тома в байтах. 0 — класс не сужает сверху.
+	MaxSizeBytes int64 `protobuf:"varint,2,opt,name=max_size_bytes,json=maxSizeBytes,proto3" json:"max_size_bytes,omitempty"`
+	// Шаг размера в байтах: размер тома обязан быть ему кратен. 0 — кратность не
+	// требуется. Границы, если объявлены, сами кратны шагу (DB-CHECK).
+	SizeStepBytes int64 `protobuf:"varint,3,opt,name=size_step_bytes,json=sizeStepBytes,proto3" json:"size_step_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiskType_SizeLimits) Reset() {
+	*x = DiskType_SizeLimits{}
+	mi := &file_kacho_cloud_storage_v1_disk_type_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiskType_SizeLimits) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiskType_SizeLimits) ProtoMessage() {}
+
+func (x *DiskType_SizeLimits) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_disk_type_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiskType_SizeLimits.ProtoReflect.Descriptor instead.
+func (*DiskType_SizeLimits) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_disk_type_proto_rawDescGZIP(), []int{0, 1}
+}
+
+func (x *DiskType_SizeLimits) GetMinSizeBytes() int64 {
+	if x != nil {
+		return x.MinSizeBytes
+	}
+	return 0
+}
+
+func (x *DiskType_SizeLimits) GetMaxSizeBytes() int64 {
+	if x != nil {
+		return x.MaxSizeBytes
+	}
+	return 0
+}
+
+func (x *DiskType_SizeLimits) GetSizeStepBytes() int64 {
+	if x != nil {
+		return x.SizeStepBytes
+	}
+	return 0
 }
 
 var File_kacho_cloud_storage_v1_disk_type_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_disk_type_proto_rawDesc = "" +
 	"\n" +
-	"&kacho/cloud/storage/v1/disk_type.proto\x12\x16kacho.cloud.storage.v1\"\x96\x01\n" +
+	"&kacho/cloud/storage/v1/disk_type.proto\x12\x16kacho.cloud.storage.v1\"\xed\a\n" +
 	"\bDiskType\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
-	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12)\n" +
-	"\x10performance_tier\x18\x05 \x01(\tR\x0fperformanceTierBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12D\n" +
+	"\x04tier\x18\x06 \x01(\x0e20.kacho.cloud.storage.v1.DiskType.PerformanceTierR\x04tier\x12H\n" +
+	"\tlifecycle\x18\a \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleR\tlifecycle\x12Q\n" +
+	"\fcapabilities\x18\b \x01(\v2-.kacho.cloud.storage.v1.DiskType.CapabilitiesR\fcapabilities\x12C\n" +
+	"\x06limits\x18\t \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limits\x1a\xf8\x01\n" +
+	"\fCapabilities\x12\x1c\n" +
+	"\tsnapshots\x18\x01 \x01(\bR\tsnapshots\x12.\n" +
+	"\x13clone_from_snapshot\x18\x02 \x01(\bR\x11cloneFromSnapshot\x12(\n" +
+	"\x10clone_from_image\x18\x03 \x01(\bR\x0ecloneFromImage\x12\x1f\n" +
+	"\vonline_grow\x18\x04 \x01(\bR\n" +
+	"onlineGrow\x12!\n" +
+	"\fmulti_attach\x18\x05 \x01(\bR\vmultiAttach\x12,\n" +
+	"\x12encryption_at_rest\x18\x06 \x01(\bR\x10encryptionAtRest\x1a\x80\x01\n" +
+	"\n" +
+	"SizeLimits\x12$\n" +
+	"\x0emin_size_bytes\x18\x01 \x01(\x03R\fminSizeBytes\x12$\n" +
+	"\x0emax_size_bytes\x18\x02 \x01(\x03R\fmaxSizeBytes\x12&\n" +
+	"\x0fsize_step_bytes\x18\x03 \x01(\x03R\rsizeStepBytes\"q\n" +
+	"\x0fPerformanceTier\x12 \n" +
+	"\x1cPERFORMANCE_TIER_UNSPECIFIED\x10\x00\x12\f\n" +
+	"\bCAPACITY\x10\x01\x12\f\n" +
+	"\bBALANCED\x10\x02\x12\b\n" +
+	"\x04FAST\x10\x03\x12\n" +
+	"\n" +
+	"\x06SINGLE\x10\x04\x12\n" +
+	"\n" +
+	"\x06IO_MAX\x10\x05\"O\n" +
+	"\tLifecycle\x12\x19\n" +
+	"\x15LIFECYCLE_UNSPECIFIED\x10\x00\x12\n" +
+	"\n" +
+	"\x06ACTIVE\x10\x01\x12\x0e\n" +
+	"\n" +
+	"DEPRECATED\x10\x02\x12\v\n" +
+	"\aRETIRED\x10\x03J\x04\b\x05\x10\x06R\x10performance_tierBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_disk_type_proto_rawDescOnce sync.Once
@@ -135,16 +520,25 @@ func file_kacho_cloud_storage_v1_disk_type_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_storage_v1_disk_type_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_disk_type_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_kacho_cloud_storage_v1_disk_type_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_kacho_cloud_storage_v1_disk_type_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_kacho_cloud_storage_v1_disk_type_proto_goTypes = []any{
-	(*DiskType)(nil), // 0: kacho.cloud.storage.v1.DiskType
+	(DiskType_PerformanceTier)(0), // 0: kacho.cloud.storage.v1.DiskType.PerformanceTier
+	(DiskType_Lifecycle)(0),       // 1: kacho.cloud.storage.v1.DiskType.Lifecycle
+	(*DiskType)(nil),              // 2: kacho.cloud.storage.v1.DiskType
+	(*DiskType_Capabilities)(nil), // 3: kacho.cloud.storage.v1.DiskType.Capabilities
+	(*DiskType_SizeLimits)(nil),   // 4: kacho.cloud.storage.v1.DiskType.SizeLimits
 }
 var file_kacho_cloud_storage_v1_disk_type_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0, // 0: kacho.cloud.storage.v1.DiskType.tier:type_name -> kacho.cloud.storage.v1.DiskType.PerformanceTier
+	1, // 1: kacho.cloud.storage.v1.DiskType.lifecycle:type_name -> kacho.cloud.storage.v1.DiskType.Lifecycle
+	3, // 2: kacho.cloud.storage.v1.DiskType.capabilities:type_name -> kacho.cloud.storage.v1.DiskType.Capabilities
+	4, // 3: kacho.cloud.storage.v1.DiskType.limits:type_name -> kacho.cloud.storage.v1.DiskType.SizeLimits
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_disk_type_proto_init() }
@@ -157,13 +551,14 @@ func file_kacho_cloud_storage_v1_disk_type_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_disk_type_proto_rawDesc), len(file_kacho_cloud_storage_v1_disk_type_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   1,
+			NumEnums:      2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_cloud_storage_v1_disk_type_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_storage_v1_disk_type_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_storage_v1_disk_type_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_storage_v1_disk_type_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_storage_v1_disk_type_proto = out.File

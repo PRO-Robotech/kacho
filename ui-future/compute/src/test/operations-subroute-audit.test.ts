@@ -190,7 +190,12 @@ describe("согласие каждого реестра со стволом", (
       // и подмаршрута операций ствол им не объявляет — как и каталогу geo.
       registry: ["regions", "repositories", "tags"],
       shared: ["address-pools", "compute-regions", "compute-zones", "disk-types", "machine-types", "regions", "zones"],
-      storage: ["disk-types", "regions", "snapshots", "zones"],
+      // `snapshots` отсюда УШЁЛ: производственный контракт storage объявил
+      // `GET /storage/v1/snapshots/{snapshot_id}/operations`, и вкладка у снимка
+      // появилась — то есть перечень сузился по факту дерева, а не по решению
+      // этого теста. Утверждение выше («консоль считает подмаршрут существующим
+      // ровно там, где его несёт proto») подтверждает совпадение в обе стороны.
+      storage: ["disk-types", "regions", "zones"],
     });
   });
 });

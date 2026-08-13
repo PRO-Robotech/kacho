@@ -47,6 +47,8 @@ func ToStatus(err error) error {
 		return status.Error(codes.AlreadyExists, strip(err, storageerr.ErrAlreadyExists))
 	case errors.Is(err, storageerr.ErrFailedPrecondition):
 		return status.Error(codes.FailedPrecondition, strip(err, storageerr.ErrFailedPrecondition))
+	case errors.Is(err, storageerr.ErrResourceExhausted):
+		return status.Error(codes.ResourceExhausted, strip(err, storageerr.ErrResourceExhausted))
 	case errors.Is(err, storageerr.ErrInvalidArg):
 		return status.Error(codes.InvalidArgument, strip(err, storageerr.ErrInvalidArg))
 	case errors.Is(err, storageerr.ErrUnimplemented):

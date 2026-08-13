@@ -31,8 +31,10 @@ import (
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
@@ -41,6 +43,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/operationresolver"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -196,16 +199,50 @@ func runServe(cfg config.Config) error {
 	// ── use-cases (repo → use-case → handler). CQRS reader/writer связываются
 	// раздельно (сейчас обе стороны — один pg-adapter). errStatus — transport-
 	// mapper sentinel→gRPC, инжектится из handler-слоя (serviceerr.ToStatus). ──
-	volumeRepo := pg.NewVolumeRepo(pool)
-	snapshotRepo := pg.NewSnapshotRepo(pool)
-	imageRepo := pg.NewImageRepo(pool)
+	// Состояние рождения ресурса читается ИЗ ТОГО ЖЕ признака, что и проводка
+	// сверщика: вид плоскости данных объявлен — ресурс рождается в намерении, и
+	// пригодным его делает сверщик; не объявлен — сверять не с чем, и фиксация
+	// записи сама есть готовность.
+	//
+	// Признак ОДИН на оба решения намеренно. Разведи их — и появится посадка, где
+	// ресурс ждёт подтверждения от сверщика, которого никто не запускал: том
+	// остаётся создаваемым навсегда при здоровом рапорте сервиса. Kachō —
+	// платформа только управляющей плоскости, поэтому «плоскости данных нет» —
+	// это штатная посадка, а не неполная.
+	// dataPlane — ТОТ ЖЕ признак, из которого поднимается сверщик и берётся
+	// состояние рождения ресурса. Одно решение на все три места: разведи их — и
+	// появится посадка, где префикс требуется, а объекта, которому он даёт имя,
+	// не будет никогда.
+	dataPlane := cfg.BlockBackendKind != ""
+
+	readyOnCommit := !dataPlane
+
+	volumeRepo := pg.NewVolumeRepo(pool).
+		WithProjectBytesLimit(cfg.ProjectProvisionedBytesLimit).
+		WithReadyOnCommit(readyOnCommit)
+	snapshotRepo := pg.NewSnapshotRepo(pool).WithReadyOnCommit(readyOnCommit)
+	imageRepo := pg.NewImageRepo(pool).WithReadyOnCommit(readyOnCommit)
 	diskTypeRepo := pg.NewDiskTypeRepo(pool)
 	geoClient := clients.NewGeoClient(geoConn)
 	iamClient := clients.NewIAMClient(iamConn)
-	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
-	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus)
-	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus)
+	// Префикс установки — свойство РАЗВЁРТЫВАНИЯ, не ресурса: он отличает объекты
+	// этого облака от объектов соседнего в общем кластере хранилища. Боевой страж
+	// старта не пропускает посадку с бэкендом и без префикса.
+	volumeUC := volume.New(volumeRepo, volumeRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
+	snapshotUC := snapshot.New(snapshotRepo, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix).
+		WithGeo(geoClient)
+	imageUC := image.New(imageRepo, imageRepo, geoClient, iamClient, opsRepo, serviceerr.ToStatus).
+		WithDataPlane(dataPlane).
+		WithInstallPrefix(cfg.BlockBackendInstallPrefix)
 	diskTypeUC := disktype.New(diskTypeRepo)
+	storageBackendRepo := pg.NewStorageBackendRepo(pool)
+	diskTypeBindingRepo := pg.NewDiskTypeBindingRepo(pool)
+	storageBackendUC := storagebackend.New(storageBackendRepo)
+	diskTypeBindingUC := disktypebinding.New(diskTypeBindingRepo, storageBackendRepo)
 
 	volumeUC.WithListFilter(narrower).WithInstanceGate(narrower)
 	snapshotUC.WithListFilter(narrower)
@@ -259,6 +296,39 @@ func runServe(cfg config.Config) error {
 	}, logger)
 	go lroReconciler.Run(ctx)
 
+	// ── сверщик плоскости данных ─────────────────────────────────────────────
+	//
+	// Единственный производитель готовности ресурса: операция фиксирует намерение и
+	// завершается, а объявить ресурс готовым вправе только тот, кто УВИДЕЛ объект.
+	// Без него ресурс остаётся создаваемым навсегда — поэтому вид бэкенда, объявленный
+	// без работоспособного адаптера, роняет старт, а не молча заводит петлю, которая
+	// каждый проход берёт работу и ничего не делает.
+	if cfg.BlockBackendKind != "" {
+		opener := clients.NewBackendOpener(blockBackendFactories(cfg.BlockBackendCallTimeout),
+			clients.NewDirCredentials(cfg.BlockBackendCredentialsDir))
+		if !opener.Supports(cfg.BlockBackendKind) {
+			return fmt.Errorf("storage backend kind %q is configured but this build carries no "+
+				"adapter for it (adapters present: %v): every volume registered on it would stay "+
+				"in CREATING forever while the service reported itself healthy",
+				cfg.BlockBackendKind, opener.Kinds())
+		}
+		dataPlane := reconciler.New(reconciler.NewStore(pool), opener, reconciler.Config{
+			Interval:    cfg.BlockBackendReconcileInterval,
+			Batch:       cfg.BlockBackendReconcileBatch,
+			CallTimeout: cfg.BlockBackendCallTimeout,
+			Logger:      logger,
+		})
+		go dataPlane.Run(ctx)
+		logger.Info("storage data-plane reconciler started",
+			"kind", cfg.BlockBackendKind, "interval", cfg.BlockBackendReconcileInterval,
+			"batch", cfg.BlockBackendReconcileBatch)
+	} else {
+		// Названо вслух: без плоскости данных ресурсы остаются control-plane-записями.
+		// Создать их при этом нельзя — класс не предлагается без действующей ревизии
+		// привязки, а её нет без бэкенда, — поэтому «создаваемый навсегда» невозможен.
+		logger.Info("storage data-plane reconciler is not started: no block backend configured")
+	}
+
 	// ── cluster-internal diagnostic HTTP (/healthz, /metrics). Пустой addr отключает. ──
 	//
 	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
@@ -286,7 +356,7 @@ func runServe(cfg config.Config) error {
 			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
 		},
 		func(reg grpc.ServiceRegistrar) {
-			registerInternal(reg, volumeUC, imageUC, diskTypeUC, opHandler)
+			registerInternal(reg, volumeUC, imageUC, diskTypeUC, storageBackendUC, diskTypeBindingUC, opHandler)
 		},
 	)
 
@@ -538,11 +608,17 @@ func registerInternal(
 	volumeUC *volume.UseCase,
 	imageUC *image.UseCase,
 	diskTypeUC *disktype.UseCase,
+	storageBackendUC *storagebackend.UseCase,
+	diskTypeBindingUC *disktypebinding.UseCase,
 	opHandler operationpb.OperationServiceServer,
 ) {
 	storagev1.RegisterInternalVolumeServiceServer(reg, handler.NewInternalVolumeHandler(volumeUC))
 	storagev1.RegisterInternalImageServiceServer(reg, handler.NewInternalImageHandler(imageUC))
 	storagev1.RegisterInternalDiskTypeServiceServer(reg, handler.NewInternalDiskTypeHandler(diskTypeUC))
+	storagev1.RegisterInternalStorageBackendServiceServer(reg,
+		handler.NewInternalStorageBackendHandler(storageBackendUC))
+	storagev1.RegisterInternalDiskTypeBindingServiceServer(reg,
+		handler.NewInternalDiskTypeBindingHandler(diskTypeBindingUC))
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 

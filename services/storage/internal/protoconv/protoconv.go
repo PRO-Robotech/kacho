@@ -26,6 +26,10 @@ import (
 // (generic reference.Reference; source of truth = volume_attachments).
 const referrerInstanceType = "compute.instance"
 
+// referrerVolumeType — kind референса тома в used_by снимка и образа: какие тома
+// засеяны из этого источника.
+const referrerVolumeType = "storage.volume"
+
 // Volume конвертирует domain.Volume → storagev1.Volume. Output-only коллекции
 // attachments/used_by деривятся из domain.Attachments (repo derive-on-read). Публичная
 // проекция lean (INV-7): инфра-полей нет — они только в internal-проекции :9091.
@@ -44,10 +48,17 @@ func Volume(v *domain.Volume) *storagev1.Volume {
 		ZoneId:           v.ZoneID,
 		DiskTypeId:       v.DiskTypeID,
 		SizeBytes:        v.SizeBytes,
-		BlockSize:        v.BlockSize,
 		SourceSnapshotId: v.SourceSnapshot,
 		SourceImageId:    v.SourceImage,
 		Status:           storagev1.Volume_Status(v.Status),
+		StatusReason:     statusReason(v.StatusReason),
+	}
+	// Потребление отдаётся, ТОЛЬКО если бэкенд его сообщил. Ноль на этом месте
+	// был бы утверждением о пустом томе — а «не сказали» и «пусто» разные факты,
+	// и поле объявлено необязательным именно чтобы их различать.
+	if v.Observation.HasUsedBytes {
+		used := v.Observation.UsedBytes
+		out.UsedBytes = &used
 	}
 	for i := range v.Attachments {
 		a := &v.Attachments[i]
@@ -113,10 +124,36 @@ func Snapshot(s *domain.Snapshot) *storagev1.Snapshot {
 		Name:           s.Name,
 		Description:    s.Description,
 		Labels:         s.Labels,
+		UpdatedAt:      ts(s.UpdatedAt),
+		ZoneId:         s.ZoneID,
 		SourceVolumeId: s.SourceVolumeID,
-		SizeBytes:      s.SizeBytes,
-		Status:         storagev1.Snapshot_Status(s.Status),
+		// Родитель копии: у снимка, снятого с тома, он пуст — происхождение ровно одно.
+		SourceSnapshotId: s.SourceSnapshotID,
+		SizeBytes:        s.SizeBytes,
+		Status:           storagev1.Snapshot_Status(s.Status),
+		StatusReason:     statusReason(s.StatusReason),
+		UsedBy:           seededBy(s.SeededVolumeIDs),
 	}
+}
+
+// seededBy собирает обобщённую проекцию «кем используется» из идентификаторов
+// томов, засеянных этим источником.
+//
+// Поле нужно арендатору ДО удаления: если бэкенд объявил зависимость клона от
+// родителя, удаление источника с живыми детьми отвергается, и вызывающий обязан
+// иметь возможность узнать, кто эти дети, а не выяснять это отказом.
+func seededBy(volumeIDs []string) []*referencev1.Reference {
+	if len(volumeIDs) == 0 {
+		return nil
+	}
+	out := make([]*referencev1.Reference, 0, len(volumeIDs))
+	for _, id := range volumeIDs {
+		out = append(out, &referencev1.Reference{
+			Referrer: &referencev1.Referrer{Type: referrerVolumeType, Id: id},
+			Type:     referencev1.Reference_USED_BY,
+		})
+	}
+	return out
 }
 
 // Image конвертирует domain.Image → storagev1.Image. Публичная проекция lean
@@ -139,10 +176,14 @@ func Image(i *domain.Image) *storagev1.Image {
 		PlacementType:    storagev1.Image_PlacementType(i.Placement),
 		SourceSnapshotId: i.SourceSnapshot,
 		SourceVolumeId:   i.SourceVolume,
-		SizeBytes:        i.SizeBytes,
-		MinDiskBytes:     i.MinDiskBytes,
-		Format:           storagev1.Image_Format(i.Format),
-		Status:           storagev1.Image_Status(i.Status),
+		// Родитель копии: у образа, снятого со снимка либо тома, он пуст.
+		SourceImageId: i.SourceImageID,
+		SizeBytes:     i.SizeBytes,
+		MinDiskBytes:  i.MinDiskBytes,
+		Format:        storagev1.Image_Format(i.Format),
+		Status:        storagev1.Image_Status(i.Status),
+		StatusReason:  statusReason(i.StatusReason),
+		UsedBy:        seededBy(i.SeededVolumeIDs),
 	}
 }
 
@@ -152,15 +193,227 @@ func DiskType(d *domain.DiskType) *storagev1.DiskType {
 		return nil
 	}
 	return &storagev1.DiskType{
-		Id:              d.ID,
-		Name:            d.Name,
-		Description:     d.Description,
-		ZoneIds:         d.ZoneIDs,
-		PerformanceTier: d.PerformanceTier,
+		Id:          d.ID,
+		Name:        d.Name,
+		Description: d.Description,
+		ZoneIds:     d.ZoneIDs,
+		Tier:        diskTypeTier(d.PerformanceTier),
+		Lifecycle:   diskTypeLifecycle(d.Lifecycle),
+		Capabilities: &storagev1.DiskType_Capabilities{
+			Snapshots:         d.Capabilities.Snapshots,
+			CloneFromSnapshot: d.Capabilities.CloneFromSnapshot,
+			CloneFromImage:    d.Capabilities.CloneFromImage,
+			OnlineGrow:        d.Capabilities.OnlineGrow,
+			MultiAttach:       d.Capabilities.MultiAttach,
+			EncryptionAtRest:  d.Capabilities.EncryptionAtRest,
+		},
+		Limits: &storagev1.DiskType_SizeLimits{
+			MinSizeBytes:  d.Limits.MinSizeBytes,
+			MaxSizeBytes:  d.Limits.MaxSizeBytes,
+			SizeStepBytes: d.Limits.SizeStepBytes,
+		},
+	}
+}
+
+// diskTypeTier переводит ярус в перечисление контракта. Неизвестное значение даёт
+// UNSPECIFIED, а не выдумку: домен уже отверг бы такой ярус на записи, и если он
+// всё же встретился на чтении, честнее сказать «не назван», чем назначить.
+func diskTypeTier(t domain.PerformanceTier) storagev1.DiskType_PerformanceTier {
+	switch t {
+	case domain.TierCapacity:
+		return storagev1.DiskType_CAPACITY
+	case domain.TierBalanced:
+		return storagev1.DiskType_BALANCED
+	case domain.TierFast:
+		return storagev1.DiskType_FAST
+	case domain.TierSingle:
+		return storagev1.DiskType_SINGLE
+	case domain.TierIOMax:
+		return storagev1.DiskType_IO_MAX
+	default:
+		return storagev1.DiskType_PERFORMANCE_TIER_UNSPECIFIED
+	}
+}
+
+// diskTypeLifecycle переводит состояние обращения класса.
+func diskTypeLifecycle(l domain.DiskTypeLifecycle) storagev1.DiskType_Lifecycle {
+	switch l {
+	case domain.LifecycleActive:
+		return storagev1.DiskType_ACTIVE
+	case domain.LifecycleDeprecated:
+		return storagev1.DiskType_DEPRECATED
+	case domain.LifecycleRetired:
+		return storagev1.DiskType_RETIRED
+	default:
+		return storagev1.DiskType_LIFECYCLE_UNSPECIFIED
+	}
+}
+
+// statusReason переводит причину состояния. Словарь ЗАКРЫТ с обеих сторон:
+// значение, которого нет в перечислении контракта, не превращается в текст — оно
+// становится «не названо», и это видно.
+func statusReason(r domain.StatusReason) storagev1.StatusReason {
+	switch r {
+	case domain.ReasonBackendUnavailable:
+		return storagev1.StatusReason_BACKEND_UNAVAILABLE
+	case domain.ReasonBackendRejected:
+		return storagev1.StatusReason_BACKEND_REJECTED
+	case domain.ReasonBackendCapacityExhausted:
+		return storagev1.StatusReason_BACKEND_CAPACITY_EXHAUSTED
+	case domain.ReasonSourceNotReady:
+		return storagev1.StatusReason_SOURCE_NOT_READY
+	case domain.ReasonPreconditionFailed:
+		return storagev1.StatusReason_PRECONDITION_FAILED
+	case domain.ReasonInternalError:
+		return storagev1.StatusReason_INTERNAL_ERROR
+	default:
+		return storagev1.StatusReason_STATUS_REASON_UNSPECIFIED
 	}
 }
 
 // ts — единый timestamp-формат Kachō: усечение до секунд перед проекцией в proto.
 func ts(t time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(t.Truncate(time.Second))
+}
+
+// TierFromProto переводит ярус из контракта в домен. Обратное направление
+// diskTypeTier; держится рядом с ним намеренно — пара конверсий, разъехавшаяся по
+// файлам, расходится и по значениям.
+func TierFromProto(t storagev1.DiskType_PerformanceTier) domain.PerformanceTier {
+	switch t {
+	case storagev1.DiskType_CAPACITY:
+		return domain.TierCapacity
+	case storagev1.DiskType_BALANCED:
+		return domain.TierBalanced
+	case storagev1.DiskType_FAST:
+		return domain.TierFast
+	case storagev1.DiskType_SINGLE:
+		return domain.TierSingle
+	case storagev1.DiskType_IO_MAX:
+		return domain.TierIOMax
+	default:
+		return ""
+	}
+}
+
+// LifecycleFromProto переводит состояние обращения класса в домен. UNSPECIFIED
+// даёт пустое значение, а НЕ ACTIVE: умолчание проставляет use-case в одном
+// названном месте, и конверсия не вправе решать это за него — иначе опечатка
+// администратора стала бы намерением.
+func LifecycleFromProto(l storagev1.DiskType_Lifecycle) domain.DiskTypeLifecycle {
+	switch l {
+	case storagev1.DiskType_ACTIVE:
+		return domain.LifecycleActive
+	case storagev1.DiskType_DEPRECATED:
+		return domain.LifecycleDeprecated
+	case storagev1.DiskType_RETIRED:
+		return domain.LifecycleRetired
+	default:
+		return ""
+	}
+}
+
+// SizeLimitsFromProto переводит границы размера в домен. Отсутствие сообщения —
+// «класс не сужает», а не нулевые границы.
+func SizeLimitsFromProto(l *storagev1.DiskType_SizeLimits) domain.SizeLimits {
+	if l == nil {
+		return domain.SizeLimits{}
+	}
+	return domain.SizeLimits{
+		MinSizeBytes:  l.GetMinSizeBytes(),
+		MaxSizeBytes:  l.GetMaxSizeBytes(),
+		SizeStepBytes: l.GetSizeStepBytes(),
+	}
+}
+
+// StorageBackend конвертирует domain.StorageBackend → storagev1.StorageBackend.
+//
+// Ресурс инфра-чувствителен ЦЕЛИКОМ и живёт только на внутреннем листенере, поэтому
+// «lean-проекции» у него нет: скрывать от администратора координату бэкенда, которой
+// он же и управляет, было бы не защитой, а помехой. Учётный материал при этом не
+// проходит и здесь — поле несёт ССЫЛКУ.
+func StorageBackend(b *domain.StorageBackend) *storagev1.StorageBackend {
+	if b == nil {
+		return nil
+	}
+	return &storagev1.StorageBackend{
+		Id:             b.ID,
+		Name:           b.Name,
+		Kind:           backendKind(b.Kind),
+		Description:    b.Description,
+		ZoneIds:        b.ZoneIDs,
+		Endpoint:       b.Endpoint,
+		CredentialsRef: string(b.CredentialsRef),
+		Status:         backendStatus(b.Status),
+		CreatedAt:      ts(b.CreatedAt),
+		UpdatedAt:      ts(b.UpdatedAt),
+	}
+}
+
+func backendKind(k domain.BackendKind) storagev1.StorageBackend_BackendKind {
+	if k == domain.BackendKindCephRBD {
+		return storagev1.StorageBackend_CEPH_RBD
+	}
+	return storagev1.StorageBackend_BACKEND_KIND_UNSPECIFIED
+}
+
+func backendStatus(s domain.BackendStatus) storagev1.StorageBackend_Status {
+	switch s {
+	case domain.BackendStatusActive:
+		return storagev1.StorageBackend_ACTIVE
+	case domain.BackendStatusDraining:
+		return storagev1.StorageBackend_DRAINING
+	case domain.BackendStatusDisabled:
+		return storagev1.StorageBackend_DISABLED
+	default:
+		return storagev1.StorageBackend_STATUS_UNSPECIFIED
+	}
+}
+
+// DiskTypeBinding конвертирует domain.DiskTypeBinding → storagev1.DiskTypeBinding.
+func DiskTypeBinding(b *domain.DiskTypeBinding) *storagev1.DiskTypeBinding {
+	if b == nil {
+		return nil
+	}
+	return &storagev1.DiskTypeBinding{
+		Id:         b.ID,
+		DiskTypeId: b.DiskTypeID,
+		ZoneId:     b.ZoneID,
+		BackendId:  b.BackendID,
+		// Номер ревизии ограничен CHECK > 0 и растёт по одному: переполнения
+		// int32 здесь не бывает by construction.
+		Revision:  int32(b.Revision),
+		Locator:   &storagev1.BackendLocator{Pool: b.Locator.Pool, NamespaceTemplate: b.Locator.NamespaceTemplate},
+		Status:    bindingStatus(b.Status),
+		CreatedAt: ts(b.CreatedAt),
+		Capabilities: &storagev1.BindingCapabilities{
+			Snapshots:         b.Capabilities.Snapshots,
+			CloneFromSnapshot: b.Capabilities.CloneFromSnapshot,
+			CloneFromImage:    b.Capabilities.CloneFromImage,
+			CloneKeepsParent:  b.Capabilities.CloneKeepsParent,
+			OnlineGrow:        b.Capabilities.OnlineGrow,
+			MultiAttach:       b.Capabilities.MultiAttach,
+			EncryptionAtRest:  b.Capabilities.EncryptionAtRest,
+			TrashTtlSeconds:   b.Capabilities.TrashTTLSeconds,
+		},
+		Qos: &storagev1.BindingQoS{
+			BaselineIops:            b.QoS.BaselineIOPS,
+			IopsPerGib:              b.QoS.IOPSPerGiB,
+			MaxIops:                 b.QoS.MaxIOPS,
+			BaselineThroughputMibps: b.QoS.BaselineThroughputMiBps,
+			ThroughputPerGibMibps:   b.QoS.ThroughputPerGiBMiBps,
+			MaxThroughputMibps:      b.QoS.MaxThroughputMiBps,
+		},
+	}
+}
+
+func bindingStatus(s domain.BindingStatus) storagev1.DiskTypeBinding_Status {
+	switch s {
+	case domain.BindingStatusActive:
+		return storagev1.DiskTypeBinding_ACTIVE
+	case domain.BindingStatusSuperseded:
+		return storagev1.DiskTypeBinding_SUPERSEDED
+	default:
+		return storagev1.DiskTypeBinding_STATUS_UNSPECIFIED
+	}
 }

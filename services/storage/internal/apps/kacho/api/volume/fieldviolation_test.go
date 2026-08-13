@@ -71,7 +71,7 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 	}
 	newUC := func() *volume.UseCase {
 		return volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
-			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	}
 
 	cases := []struct {

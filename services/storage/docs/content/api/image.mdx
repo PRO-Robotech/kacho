@@ -26,6 +26,16 @@ import dedent from 'ts-dedent'
 «зона тома входит в регион образа».
 :::
 
+:::info Откуда образ берётся на чистой установке
+Публичный `Create` делает образ **только** из тома или снимка, а на свежей установке нет
+ни того, ни другого — значит первая машина не запустилась бы by construction.
+
+Первый образ вносит команда провайдера **вне облака**, а облако регистрирует уже лежащий
+объект: `InternalImageService.Register` на внутреннем листенере, доступный администратору
+услуги. Блоб-конвейера у платформы нет и он не проектируется — см.
+[Внутренний API](/api/internal).
+:::
+
 ## Поля ресурса
 
 <table>
@@ -41,21 +51,36 @@ import dedent from 'ts-dedent'
     <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}</td></tr>
     <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
     <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
-    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер образа в байтах (output-only)</td></tr>
+    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>Образ, с которого этот <b>скопирован</b> (заполняет <code>:copy</code>, на вход не принимается); immutable. Третий вид происхождения рядом со снимком и томом — взаимоисключающий с ними</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер образа в байтах (output-only); у зарегистрированного образа приходит от регистрации</td></tr>
     <tr><td><code>minDiskBytes</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.minDiskBytes.short}</td></tr>
     <tr><td><code>format</code></td><td><code>{TYPES.imageFormat}</code></td><td>{DICTIONARY.format.short}</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.imageStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>statusReason</code></td><td><code>{TYPES.statusReason}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
+    <tr><td><code>usedBy</code></td><td><code>{TYPES.reference}</code></td><td>{DICTIONARY.seededBy.short}</td></tr>
   </tbody>
 </table>
 
 ### Статусы
 
 <StatusTable values={[
-  { code: 'CREATING', desc: 'Образ создаётся' },
+  { code: 'CREATING', desc: 'Намерение зафиксировано, объект у бэкенда ещё не подтверждён — состояние, в котором образ рождается' },
   { code: 'READY', desc: 'Образ готов — из него можно засеять том' },
   { code: 'DELETING', desc: 'Образ удаляется' },
-  { code: 'ERROR', desc: 'Образ столкнулся с проблемой' },
+  { code: 'ERROR', desc: 'Образ столкнулся с проблемой; причину называет statusReason' },
 ]} />
+
+Готовность объявляет **сверщик**, увидев объект у бэкенда, а не сама операция.
+
+`statusReason` отвечает на то, на что один `status` ответить не может: `ERROR` не
+различает «бэкенд не ответил, сверщик вернётся» и «отказал по существу, идентичный повтор
+не пройдёт», — а арендатор решает по этой разнице, ждать ему или звать оператора. Словарь
+общий для всех ресурсов сервиса и перечислен на странице [Volume](/api/volume).
+
+`usedBy` перечисляет тома, засеянные этим образом. Он нужен **до** удаления, а не после:
+удаление образа проходит и очищает происхождение засеянных томов — блочные данные живут,
+родословная теряется. Без этого списка арендатор стирает связь, не видя, у скольких
+томов.
 
 ## Минимальный размер тома
 
@@ -146,7 +171,69 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 Зона источника обязана входить в регион образа, а сам источник — принадлежать тому же
 проекту. См. [Когерентность размещения](/architecture/placement-coherence).
 
+Источник обязан быть `READY`: снимок в `CREATING` отвергается
+`FAILED_PRECONDITION` `Snapshot <id> is not ready`, том — `Volume <id> is not ready`.
+
 <Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Copy
+
+<ApiOperation method="POST" endpoint="/storage/v1/images/{imageId}:copy" async>
+
+Копирует образ в другой регион. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.copyProjectId.short}</td></tr>
+    <tr><td><code>targetRegionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.targetRegionId.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>своё имя копии; пустое допустимо — копия адресуется своим новым id</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/images/img-a1b2c3d4e5f6g7h8j:copy \\
+      -d '{
+        "projectId": "prj-…",
+        "targetRegionId": "region-2",
+        "name": "base-image-r2"
+      }'
+  `}
+</CodeBlock>
+
+Создаётся **новый** образ в целевом регионе; исходный не изменяется. Копия остаётся в
+проекте источника, поэтому имя источника не наследуется — унаследованное, оно столкнулось
+бы с ним самим по уникальности пары «проект, имя».
+
+Это **единственный законный путь переноса образа между регионами**: `regionId` неизменяем
+после создания, «переехать» существующей строкой нечем.
+
+Целевой регион обязателен и называется вызывающим: перенос — предмет этого глагола, а
+угаданное умолчание неотличимо от опечатки.
+
+:::info Право спрашивается на **создание в проекте**, а не на чтение источника
+Гейт `Copy` — `editor` на **проекте** из тела запроса, как у всякого `Create`: копия есть
+новый ресурс, а право создавать в Kachō спрашивают у родителя. Отсюда обязательный
+`projectId` — он и есть объект вопроса о правах.
+
+Форма «`v_get` на источник» отвергнута осознанно: она отдала бы наблюдателю проекта право
+порождать образы. `projectId` обязан совпадать с проектом образа, а расхождение отвечает
+тем же текстом, что несуществующий образ (`Image <id> not found`). Полный разбор — на
+странице [Snapshot](/api/snapshot#copy), здесь он не дублируется.
+:::
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
 
 </ApiOperation>
 
@@ -160,7 +247,7 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 
 Изменяемые поля: `name`, `description`, `labels`.
 
-Неизменяемые: `projectId`, `regionId`, `sourceSnapshotId`, `sourceVolumeId`. Попытка
+Неизменяемые: `projectId`, `regionId`, `sourceSnapshotId`, `sourceVolumeId`, `sourceImageId`. Попытка
 изменить их через `updateMask` → `INVALID_ARGUMENT`
 (`<field> is immutable after Image.Create`).
 
@@ -178,7 +265,14 @@ InvalidArgument: Volume size %d is less than image min_disk_bytes %d
 
 Тома, засеянные из этого образа, удалению **не мешают** и не страдают: ссылка
 `sourceImageId` обнуляется, блочные данные тома остаются нетронутыми. Это происхождение,
-а не живая зависимость.
+а не живая зависимость. Их состав виден заранее в `usedBy` — смотреть туда до удаления
+дешевле, чем узнавать по последствиям.
+
+Исключение — бэкенд, объявивший, что клон удерживает родителя: тогда объект образа с
+живыми потомками он снять откажется. Отказ **асинхронный** — запрос принимается, образ
+уходит в `DELETING`, а конфликт всплывает у сверщика: `ERROR` с
+`statusReason: BACKEND_REJECTED`. Синхронного предусловия на этот случай нет: состав
+клонов знает плоскость данных, а не наша строка.
 
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
 

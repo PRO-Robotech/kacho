@@ -73,7 +73,7 @@ func TestConfirmAbsenceDistinguishesFourCases(t *testing.T) {
 			defer srv.Close()
 
 			c := mustClient(t, srv.URL)
-			got, err := c.ConfirmAbsence(context.Background(), "/vpc/v1/networks", "prj1", "my-net")
+			got, err := c.ConfirmAbsence(context.Background(), "/vpc/v1/networks", ScopeProject, "prj1", "my-net")
 			if err != nil && tc.want != VerdictAmbiguous {
 				t.Fatalf("неожиданная ошибка: %v", err)
 			}
@@ -95,7 +95,7 @@ func TestConfirmAbsenceRefusesToConcludeOnNonEnvelope(t *testing.T) {
 	defer srv.Close()
 
 	c := mustClient(t, srv.URL)
-	got, _ := c.ConfirmAbsence(context.Background(), "/vpc/v1/networks", "prj1", "my-net")
+	got, _ := c.ConfirmAbsence(context.Background(), "/vpc/v1/networks", ScopeProject, "prj1", "my-net")
 	if got == VerdictGone {
 		t.Error("ответ чужого прокси принят за удаление ресурса")
 	}

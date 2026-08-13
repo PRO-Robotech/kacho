@@ -49,7 +49,14 @@ def _cidr_pre():
         "var __run = (pm.environment.get('runId') || 'x0');",
         "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = (__h * 31 + __run.charCodeAt(i)) & 0xffff; }",
         "pm.environment.set('_zcV4Cidr', '10.' + (150 + (__h % 40)) + '.' + (__seq % 250) + '.0/24');",
-        "pm.environment.set('_zcV6Cidr', 'fd' + (10 + (__h % 80)).toString(16) + ':' + (__seq % 9000).toString(16) + '::/64');",
+        # ПЕРВАЯ ГРУППА ДОПОЛНЯЕТСЯ ДО ДВУХ ЦИФР — иначе адрес выпадает из fd00::/8.
+        # Значение 10..89 при шестнадцатеричной записи даёт ОДНУ цифру, пока оно
+        # меньше 16: 'fd' + 'c' = `fdc:` — это `0fdc::`, то есть не локальный адрес
+        # и не внутри супернета сети (`fd00::/8`, seed-nlb-fixtures.sh). Сеть
+        # отвергала подсеть текстом «not within any network CIDR block», и красное
+        # зависело от runId — примерно один прогон из тринадцати, отчего беда
+        # читалась как недетерминизм, а не как ошибка формулы.
+        "pm.environment.set('_zcV6Cidr', 'fd' + (10 + (__h % 80)).toString(16).padStart(2, '0') + ':' + (__seq % 9000).toString(16) + '::/64');",
     ]
 
 

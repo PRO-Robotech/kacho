@@ -121,10 +121,18 @@ func TestSnapshotValidate(t *testing.T) {
 }
 
 func TestDiskTypeValidate(t *testing.T) {
-	if err := (DiskType{ID: "network-ssd", Name: "SSD"}).Validate(); err != nil {
+	// Состояние обращения обязано быть НАЗВАНО. Умолчание проставляет край
+	// (use-case) перед валидацией — домен не угадывает намерение админа: класс,
+	// заведённый с опечаткой в этом поле, иначе молча оказался бы принимающим
+	// новые тома. См. disk_type_policy_test.go.
+	valid := DiskType{ID: "network-ssd", Name: "SSD", Lifecycle: LifecycleActive}
+	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid disk_type rejected: %v", err)
 	}
-	if err := (DiskType{Name: "SSD"}).Validate(); err == nil {
+	if err := (DiskType{Name: "SSD", Lifecycle: LifecycleActive}).Validate(); err == nil {
 		t.Error("disk_type without id should be rejected")
+	}
+	if err := (DiskType{ID: "network-ssd", Name: "SSD"}).Validate(); err == nil {
+		t.Error("disk_type without lifecycle should be rejected")
 	}
 }

@@ -24,7 +24,7 @@ import (
 
 func TestListOperations_ReturnsOnlyCallerOwnRows(t *testing.T) {
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	resID := ids.NewID(domain.PrefixVolume)
 
 	me := operations.Principal{Type: "user", ID: "usr-me", DisplayName: "me@kacho.local"}
@@ -57,7 +57,7 @@ func TestListOperations_ReturnsOnlyCallerOwnRows(t *testing.T) {
 // Без ключа владения выдача пуста: несуженный откат запрещён.
 func TestListOperations_UnidentifiedCallerGetsNoRows(t *testing.T) {
 	ops := repomock.NewOpsRepo()
-	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 	resID := ids.NewID(domain.PrefixVolume)
 
 	other := operations.Principal{Type: "user", ID: "usr-other", DisplayName: "other@kacho.local"}

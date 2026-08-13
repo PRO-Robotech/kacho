@@ -22,7 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	computev1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/compute/v1"
+	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -214,7 +214,7 @@ func (r *placementGroupResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	verdict, verr := r.c.ConfirmAbsence(ctx, placementGroupsPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, placementGroupsPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -308,7 +308,7 @@ func (r *placementGroupResource) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	case client.OutcomeNotFound:
-		verdict, _ := r.c.ConfirmAbsence(ctx, placementGroupsPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, placementGroupsPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление группы не подтверждено",

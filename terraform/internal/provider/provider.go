@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/x509"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -86,26 +87,30 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 	var roots *x509.CertPool
 	if caPath != "" {
-		// Путь называет ОПЕРАТОР — в своей конфигурации или своём окружении, — и
-		// провайдер исполняется его же правами. Файл, который он вправе назвать, он
-		// вправе и прочитать: границы полномочий здесь не пересекается, поэтому
-		// разбор источника считает опасным то, что опасным не является.
+		// Путь называет САМ оператор в своей конфигурации, и провайдер работает от его
+		// имени: обхода границы тут нет by construction — читать чужое ему нечем, прав
+		// ровно столько же, сколько у запустившего.
 		//
-		// Ограничивать путь корнем было бы хуже, а не строже: бандл внутреннего
-		// центра сертификации лежит там, где его положил оператор (/etc/ssl,
-		// каталог задачи, смонтированный секрет), и назначенный нами корень
-		// означал бы отказ читать законный файл — то есть подталкивал бы к
-		// отключению проверки сертификата, которого у провайдера нет вовсе.
-		pem, err := os.ReadFile(caPath) // #nosec G304,G703 -- путь из конфигурации оператора, права процесса — его же
+		// Тем не менее путь нормализуется и проверяется на обычный файл: так каталог или
+		// устройство дают внятный отказ вместо невнятной ошибки чтения, а `..` в записи
+		// не меняет смысла молча.
+		clean := filepath.Clean(caPath)
+		if st, err := os.Stat(clean); err != nil || !st.Mode().IsRegular() {
+			resp.Diagnostics.AddError("Файл корней доверия не читается",
+				"Атрибут ca_bundle указывает на "+clean+", но это не обычный файл. "+
+					"Укажите путь к PEM-файлу с сертификатами.")
+			return
+		}
+		pem, err := os.ReadFile(clean) // #nosec G304 G703 -- путь задан оператором в его же конфигурации; нормализован и проверен на обычный файл строкой выше
 		if err != nil {
 			resp.Diagnostics.AddError("Не читается файл корней доверия",
-				"Атрибут ca_bundle указывает на "+caPath+", но файл не прочитан: "+err.Error())
+				"Атрибут ca_bundle указывает на "+clean+", но файл не прочитан: "+err.Error())
 			return
 		}
 		roots = x509.NewCertPool()
 		if !roots.AppendCertsFromPEM(pem) {
 			resp.Diagnostics.AddError("В файле корней доверия нет сертификатов",
-				"Файл "+caPath+" прочитан, но ни одного сертификата в формате PEM в нём нет. "+
+				"Файл "+clean+" прочитан, но ни одного сертификата в формате PEM в нём нет. "+
 					"Пустой набор корней означал бы, что доверять нечему, и каждое соединение "+
 					"отвергалось бы — это молчаливая поломка, поэтому она названа здесь.")
 			return
@@ -147,24 +152,45 @@ func (p *kachoProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		// vpc
 		NewNetworkResource,
 		NewSubnetResource,
+		newFlatResource(vpcNetworkInterfaceSpec),
+		newFlatResource(vpcGatewaySpec),
+		NewVPCAddressResource,
+		NewVPCRouteTableResource,
+		NewVPCSecurityGroupResource,
+		// iam
+		NewIAMProjectResource,
+		NewIAMGroupResource,
+		NewIAMServiceAccountResource,
+		NewIAMSAKeyResource,
+		newFlatResource(iamAccountSpec),
+		NewIAMRoleResource,
+		NewIAMAccessBindingResource,
+		NewIAMUserInvitationResource,
+		NewIAMUserTokenResource,
+		// storage
+		newFlatResource(storageVolumeSpec),
+		newFlatResource(storageSnapshotSpec),
+		newFlatResource(storageImageSpec),
+		// registry
+		newFlatResource(registryRegistrySpec),
+		NewRegistryRepositoryResource,
+		// nlb
+		NewNLBTargetGroupResource,
+		NewNLBLoadBalancerResource,
+		NewNLBListenerResource,
+		// compute
 		NewInstanceResource,
-		NewGuestAccessKeyResource,
-		NewPlacementGroupResource,
 	}
 }
 
-// DataSources — то, чем конфигурация ЧИТАЕТ облако, ничего в нём не заводя.
-//
-// Сегодня здесь один источник — каталог размеров машин, и он не про удобство:
-// без него конфигурация обязана нести идентификатор типа, а идентификаторы у
-// разных установок разные. То есть конфигурация без источника данных
-// непереносима by construction.
+// Data-sources появятся в TF-2 вместе с остальными ресурсами vpc: их путь чтения тот же,
+// и заводить их до того, как многошаговое чтение доказано на ресурсах, значило бы
+// размножить непроверенное.
 func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		NewMachineTypeDataSource,
-	}
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

@@ -10,6 +10,7 @@ import type { Column } from "@shared/components/organisms/ResourceTable";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
+import { ResourceLink } from "@shared/components/molecules/ResourceLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 import { referrerHref, referrerMeta } from "@shared/lib/referrer";
@@ -36,6 +37,18 @@ const REFERRER_SPEC: Record<string, string> = {
 // "references" (used_by → /projects/<projectId>/compute/instances/<id> и т.п.).
 export interface FormatCellOpts {
   projectId?: string | null;
+  /** База пути карточки для колонки имени. Нужна вложенным таблицам, где
+   *  ресурс адресуется через родителя (`/networks/<id>/route-tables/<id>`). */
+  nameBasePath?: string | null;
+  /** Полный адрес карточки для строки — когда путь не «база + идентификатор»
+   *  (список со своим `childRoute`). Задаётся ТЕМ ЖЕ выражением, каким прежде
+   *  считался переход по клику на строку: иначе ссылка повела бы в другое место,
+   *  чем вёл клик, и подмена одного другим молча сменила бы адресацию. */
+  nameHref?: (row: Record<string, unknown>) => string | null;
+  /** Иконка типа рядом с именем — только во ВЛОЖЕННЫХ таблицах, где в одном
+   *  окне соседствуют разные типы. В списке самого ресурса тип и так назван
+   *  заголовком страницы, и колонка иконок была бы столбцом одинаковых значков. */
+  nameIcon?: boolean;
 }
 
 // ReferrerLink — общий рендер одного referrer'а как «{label} {id}» (plain text,
@@ -104,11 +117,62 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+
+// ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку: иконка
+// типа + собственное содержимое колонки (обычно копируемое имя).
+//
+// Прежде имя было плоским текстом, а переход давал только клик по строке: у
+// строки нет ни адреса, ни вида ссылки — её нельзя открыть в новой вкладке и по
+// ней не видно, что она куда-то ведёт. Имя ресурса — самая частая точка перехода
+// в консоли, и вести себя она должна как ссылка.
+//
+// Собственная отрисовка колонки СОХРАНЯЕТСЯ внутри ссылки, а не заменяется:
+// копирование имени по клику остаётся (оно гасит событие и до перехода не
+// доходит). Запроса здесь нет — имя пришло со строкой; тем и отличается от
+// `RefNameLink`, который резолвит ЧУЖОЙ идентификатор.
+function ResourceNameCell({
+  spec,
+  row,
+  opts,
+  identityPath,
+}: {
+  spec: ResourceSpec;
+  row: Record<string, unknown>;
+  opts: FormatCellOpts;
+  /** Поле, по которому ресурс узнают: обычно `name`, у пользователя — почта. */
+  identityPath: string;
+}): ReactNode {
+  const idRaw = getByPath(row, "id");
+  const nameRaw = getByPath(row, identityPath);
+  return (
+    <ResourceLink
+      specId={spec.id}
+      id={typeof idRaw === "string" ? idRaw : ""}
+      name={typeof nameRaw === "string" ? nameRaw : ""}
+      href={opts.nameHref ? opts.nameHref(row) : opts.nameBasePath && idRaw ? `${opts.nameBasePath}/${typeof idRaw === "string" ? idRaw : ""}` : undefined}
+      projectId={opts.projectId}
+      icon={opts.nameIcon}
+      copy
+    />
+  );
+}
+
 export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}): Column<Record<string, unknown>>[] {
-  return reorderNameIdFirst(spec.columns).map((c) => ({
+  const ordered = reorderNameIdFirst(spec.columns);
+  // Колонка ИДЕНТИЧНОСТИ — та, по которой пользователь узнаёт ресурс и через
+  // которую в него заходит. Обычно это `name`, но не у всех: у пользователя имени
+  // нет вовсе, его узнают по почте. Правило «поле называется name» оставляло
+  // такие ресурсы без перехода — поэтому при отсутствии `name` идентичностью
+  // считается ПЕРВАЯ колонка, а её порядок уже нормализован выше.
+  const identityPath = ordered.find((c) => c.path === "name")?.path ?? ordered[0]?.path;
+  return ordered.map((c) => ({
     header: c.header,
     className: c.className,
-    cell: (row) => (c.render ? c.render(row) : formatCellByFormat(c, row, opts)),
+    cell: (row) => {
+      const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
+      // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
+      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, identityPath: identityPath ?? "name" }) : inner;
+    },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
 }

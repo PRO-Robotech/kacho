@@ -82,17 +82,34 @@ const (
 	VolumeStatusInUse
 	VolumeStatusDeleting
 	VolumeStatusError
+	// VolumeStatusMigrating — том переезжает в другой класс.
+	//
+	// Состояние ВЫВОДИТСЯ из расхождения ревизий привязки (желаемая назначена,
+	// действующая ещё прежняя), а не хранится колонкой — той же линией, которой
+	// привязанность выводится из наличия строки привязки. Хранить его значило бы
+	// завести второй источник истины об одном факте.
+	VolumeStatusMigrating
 )
 
 // Validate проверяет, что статус — известное значение.
 func (s VolumeStatus) Validate() error {
 	switch s {
 	case VolumeStatusUnspecified, VolumeStatusCreating, VolumeStatusAvailable,
-		VolumeStatusInUse, VolumeStatusDeleting, VolumeStatusError:
+		VolumeStatusInUse, VolumeStatusDeleting, VolumeStatusError, VolumeStatusMigrating:
 		return nil
 	default:
 		return errors.New("volume status is out of range")
 	}
+}
+
+// DeriveMigrating — статус тома, у которого назначена другая ревизия привязки.
+// Переезд перекрывает готовность и привязанность: пока данные едут, «доступен» было
+// бы утверждением о том, чего сейчас нет.
+func DeriveMigrating(state string, migrating bool) (VolumeStatus, bool) {
+	if migrating && (state == "READY") {
+		return VolumeStatusMigrating, true
+	}
+	return VolumeStatusUnspecified, false
 }
 
 // DeriveStatus вычисляет wire-Status из persisted state + наличия attachment
@@ -134,16 +151,25 @@ type Volume struct {
 	ZoneID         string
 	DiskTypeID     string
 	SizeBytes      int64
-	BlockSize      int64
 	SourceSnapshot string
 	// SourceImage — id образа (Image), из которого материализован boot-Volume (F9).
 	// Immutable; same-DB FK → images ON DELETE SET NULL (provenance, не live-dependency).
 	// Взаимоисключение с SourceSnapshot: том засевается из ОДНОГО источника.
 	SourceImage string
 	Status      VolumeStatus
-	Attachments []VolumeAttachment // output-only (0..1: PK volume_id → ≤1 attach)
+	Attachments []VolumeAttachment // output-only, выводится из строк привязки
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// StatusReason — почему том оказался в своём состоянии. Публичное поле,
+	// закрытый словарь: свободная строка на этом месте была бы прямым каналом
+	// утечки текста бэкенда наружу.
+	StatusReason StatusReason
+
+	// Placement и Observation — ИНФРА-проекция: ни одно их поле не выходит на
+	// публичную поверхность, они живут только на внутреннем листенере.
+	Backend     Placement
+	Observation Observation
 }
 
 // Validate проверяет domain-инварианты Volume перед созданием. Порядок выдаёт

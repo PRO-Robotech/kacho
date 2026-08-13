@@ -44,8 +44,13 @@ Configurable values (umbrella values.yaml — `opaSidecar.*`):
   bundlePollMaxSec  — max poll delay (default 3900 ~65min).
   bundleResource    — bundle resource path (default `bundle.tar.gz`).
   signingKeyId      — JWS `kid` claim that OPA uses to pick the verification key.
-  iamInternalHost   — DNS of kacho-iam internal Service.
-  iamInternalPort   — port 9091.
+  iamInternalPort   — bundle port on LOOPBACK (the sidecar and kacho-iam share a
+                      pod, and the URL below is built from 127.0.0.1). There is
+                      deliberately no host knob: a Service name here would route
+                      to Ready pods only, and the pod is Ready only after the
+                      bundle loads. The `iamInternalHost` line that used to stand
+                      here named a Service, contradicted the URL three dozen lines
+                      below and was read by nothing.
 */}}
 apiVersion: v1
 kind: ConfigMap

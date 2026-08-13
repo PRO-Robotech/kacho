@@ -7,9 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"reflect"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 // flexInt64 — 64-битное целое, приходящее с края ЛИБО числом, ЛИБО строкой.
@@ -148,6 +151,183 @@ func diffSets(have, want []string) (add, remove []string) {
 		}
 	}
 	return add, remove
+}
+
+// fieldMask — маска обновления из путей. Пустую маску провайдер не отправляет никогда,
+// поэтому функция вызывается только на непустом наборе.
+func fieldMask(paths []string) *fieldmaskpb.FieldMask {
+	return &fieldmaskpb.FieldMask{Paths: paths}
+}
+
+// enumOf — числовое значение перечисления по его имени из сгенерённой таблицы.
+//
+// Таблица берётся у СГЕНЕРЁННОГО типа, а не переписывается: своя копия разошлась бы с
+// контрактом молча, и опечатка в имени варианта проходила бы как «значение не задано».
+// Неизвестное имя даёт ноль — «не задано», и край отвечает на него своим отказом с
+// перечнем допустимых, что вызывающему полезнее нашей догадки.
+func enumOf(v types.String, table map[string]int32) int32 {
+	if v.IsNull() || v.IsUnknown() {
+		return 0
+	}
+	return table[v.ValueString()]
+}
+
+// sealUnknowns заменяет ВСЕ неизвестные значения модели на null.
+//
+// Зачем. Идентификатор пишется в состояние сразу после создания — иначе сорвавшееся
+// обратное чтение оставило бы созданный ресурс вне управления навсегда. Но план несёт
+// неизвестные значения вычисляемых полей, а Terraform требует, чтобы после apply
+// неизвестных не осталось НИ ОДНОГО: он отвечает на каждое отдельным «invalid result
+// object», и настоящая причина — одна строка про неудавшееся чтение — тонет среди них.
+//
+// null здесь честнее неизвестного: значение действительно не получено. Следующий план
+// увидит расхождение с настройкой и предложит его закрыть — то есть ресурс останется
+// управляемым, а не потеряется.
+//
+// Обход рефлексией, а не по полю на ресурс: полей десятки, ресурсов шесть, и забытое
+// поле давало бы ровно ту же ошибку, только реже и в чужой отладке.
+func sealUnknowns(model any) {
+	sealValue(reflect.ValueOf(model))
+}
+
+func sealValue(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			sealValue(v.Elem())
+		}
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			sealValue(v.Index(i))
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Field(i)
+			if !f.CanSet() {
+				continue
+			}
+			if sealed, ok := nullOfUnknown(f.Interface()); ok {
+				f.Set(reflect.ValueOf(sealed))
+				continue
+			}
+			sealValue(f)
+		}
+	}
+}
+
+// nullOfUnknown — null того же типа, если значение неизвестно.
+//
+// Перечисление типов явное: обобщённого «null этого типа» у attr.Value нет, а выдумывать
+// его через рефлексию значило бы получить молчаливый промах на первом же новом типе.
+// Второе значение отличает «заменили» от «не наш тип» — без него ветка обхода не знала бы,
+// идти ли внутрь.
+func nullOfUnknown(x any) (any, bool) {
+	switch v := x.(type) {
+	case types.String:
+		if v.IsUnknown() {
+			return types.StringNull(), true
+		}
+		return nil, false
+	case types.Int64:
+		if v.IsUnknown() {
+			return types.Int64Null(), true
+		}
+		return nil, false
+	case types.Bool:
+		if v.IsUnknown() {
+			return types.BoolNull(), true
+		}
+		return nil, false
+	case types.Map:
+		if v.IsUnknown() {
+			return types.MapNull(v.ElementType(context.Background())), true
+		}
+		return nil, false
+	case types.List:
+		if v.IsUnknown() {
+			return types.ListNull(v.ElementType(context.Background())), true
+		}
+		return nil, false
+	case types.Set:
+		if v.IsUnknown() {
+			return types.SetNull(v.ElementType(context.Background())), true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
+// Пересоздающие модификаторы для типов, у которых их нет в стандартном наборе фреймворка.
+//
+// Заведены не «для полноты»: у ключа служебной учётки КАЖДОЕ поле входа пересоздаёт
+// ресурс, потому что изменяющей операции у выпущенного ключа не существует. Без этих
+// модификаторов правка метки или срока прошла бы как изменение — и молча не применилась.
+type mapRequiresReplace struct{}
+
+func (mapRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (m mapRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+func (mapRequiresReplace) PlanModifyMap(_ context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type listRequiresReplace struct{}
+
+func (listRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (l listRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return l.Description(ctx)
+}
+func (listRequiresReplace) PlanModifyList(_ context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type int64RequiresReplace struct{}
+
+func (int64RequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (i int64RequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return i.Description(ctx)
+}
+func (int64RequiresReplace) PlanModifyInt64(_ context.Context, req planmodifier.Int64Request, resp *planmodifier.Int64Response) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
+}
+
+type boolRequiresReplace struct{}
+
+func (boolRequiresReplace) Description(context.Context) string {
+	return "изменение пересоздаёт ресурс"
+}
+func (b boolRequiresReplace) MarkdownDescription(ctx context.Context) string {
+	return b.Description(ctx)
+}
+func (boolRequiresReplace) PlanModifyBool(_ context.Context, req planmodifier.BoolRequest, resp *planmodifier.BoolResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	if !req.PlanValue.Equal(req.StateValue) {
+		resp.RequiresReplace = true
+	}
 }
 
 // stringsFromList — значение Terraform в набор строк.

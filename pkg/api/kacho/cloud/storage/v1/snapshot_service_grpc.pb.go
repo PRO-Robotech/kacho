@@ -23,11 +23,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SnapshotService_Get_FullMethodName    = "/kacho.cloud.storage.v1.SnapshotService/Get"
-	SnapshotService_List_FullMethodName   = "/kacho.cloud.storage.v1.SnapshotService/List"
-	SnapshotService_Create_FullMethodName = "/kacho.cloud.storage.v1.SnapshotService/Create"
-	SnapshotService_Update_FullMethodName = "/kacho.cloud.storage.v1.SnapshotService/Update"
-	SnapshotService_Delete_FullMethodName = "/kacho.cloud.storage.v1.SnapshotService/Delete"
+	SnapshotService_Get_FullMethodName            = "/kacho.cloud.storage.v1.SnapshotService/Get"
+	SnapshotService_List_FullMethodName           = "/kacho.cloud.storage.v1.SnapshotService/List"
+	SnapshotService_Create_FullMethodName         = "/kacho.cloud.storage.v1.SnapshotService/Create"
+	SnapshotService_Copy_FullMethodName           = "/kacho.cloud.storage.v1.SnapshotService/Copy"
+	SnapshotService_Update_FullMethodName         = "/kacho.cloud.storage.v1.SnapshotService/Update"
+	SnapshotService_Delete_FullMethodName         = "/kacho.cloud.storage.v1.SnapshotService/Delete"
+	SnapshotService_ListOperations_FullMethodName = "/kacho.cloud.storage.v1.SnapshotService/ListOperations"
 )
 
 // SnapshotServiceClient is the client API for SnapshotService service.
@@ -44,12 +46,50 @@ type SnapshotServiceClient interface {
 	List(ctx context.Context, in *ListSnapshotsRequest, opts ...grpc.CallOption) (*ListSnapshotsResponse, error)
 	// Creates a snapshot of the specified volume.
 	Create(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Копирует снимок в другую зону. Создаёт НОВЫЙ снимок; исходный не меняется —
+	// ни его зона, ни состояние, ни состав засеянных им томов.
+	//
+	// # Почему копия, а не «перенос»
+	//
+	// Зона тома неизменяема, значит восстановить снимок в чужой зоне нельзя by
+	// construction. Копия — единственный законный путь провести данные через
+	// границу размещения: сначала снимок оказывается в целевой зоне, и только
+	// потом из него засевается том. Глагола «сменить зону снимку» не существует и
+	// не заводится: он означал бы, что уже засеянные тома ссылаются на источник,
+	// размещения которого больше нет.
+	//
+	// Гейт спрашивает право СОЗДАВАТЬ В ПРОЕКТЕ — `editor@project`, ровно как у
+	// Create, и это не формальность.
+	//
+	// Соблазн спросить про источник (v_get на снимок, «кто вправе читать, тот
+	// вправе копировать») выглядит естественно и НЕВЕРЕН: копия — новый ресурс,
+	// она занимает квоту, имя и деньги. Роль наблюдателя материализует v_get на
+	// КАЖДЫЙ объект проекта, поэтому такой гейт дал бы читателю право
+	// неограниченно порождать снимки — повышение привилегии из чтения в запись,
+	// неотличимое в дифе от обычной строки каталога.
+	//
+	// Пообъектного `v_create` в платформе нет вовсе (см. authzmap: «создать» —
+	// операция не над объектом, которого ещё нет, а над родителем), поэтому
+	// единственная законная форма — та же, что у всякого Create.
+	//
+	// Читаемость источника при этом не теряется: `project_id` обязан совпадать с
+	// проектом снимка, а роль, дающая editor в проекте, материализует и v_get на
+	// его объекты. Копировать чужое из другого проекта нельзя by construction.
+	Copy(ctx context.Context, in *CopySnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified snapshot.
 	//
 	// Values of omitted parameters are not changed.
 	Update(ctx context.Context, in *UpdateSnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified snapshot.
 	Delete(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Отдаёт журнал операций этого снимка.
+	//
+	// Мутации асинхронны и возвращают Operation, поэтому «что с моим снимком
+	// происходило» отвечается только журналом: клиент, потерявший идентификатор
+	// операции, иначе не восстановит ни её исход, ни причину отказа. У тома и
+	// образа такой журнал есть — у снимка его не было, и паритет между тремя
+	// ресурсами одного домена держится перечнем методов, а не памятью.
+	ListOperations(ctx context.Context, in *ListSnapshotOperationsRequest, opts ...grpc.CallOption) (*ListSnapshotOperationsResponse, error)
 }
 
 type snapshotServiceClient struct {
@@ -90,6 +130,16 @@ func (c *snapshotServiceClient) Create(ctx context.Context, in *CreateSnapshotRe
 	return out, nil
 }
 
+func (c *snapshotServiceClient) Copy(ctx context.Context, in *CopySnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, SnapshotService_Copy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *snapshotServiceClient) Update(ctx context.Context, in *UpdateSnapshotRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
@@ -110,6 +160,16 @@ func (c *snapshotServiceClient) Delete(ctx context.Context, in *DeleteSnapshotRe
 	return out, nil
 }
 
+func (c *snapshotServiceClient) ListOperations(ctx context.Context, in *ListSnapshotOperationsRequest, opts ...grpc.CallOption) (*ListSnapshotOperationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSnapshotOperationsResponse)
+	err := c.cc.Invoke(ctx, SnapshotService_ListOperations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SnapshotServiceServer is the server API for SnapshotService service.
 // All implementations must embed UnimplementedSnapshotServiceServer
 // for forward compatibility.
@@ -124,12 +184,50 @@ type SnapshotServiceServer interface {
 	List(context.Context, *ListSnapshotsRequest) (*ListSnapshotsResponse, error)
 	// Creates a snapshot of the specified volume.
 	Create(context.Context, *CreateSnapshotRequest) (*operation.Operation, error)
+	// Копирует снимок в другую зону. Создаёт НОВЫЙ снимок; исходный не меняется —
+	// ни его зона, ни состояние, ни состав засеянных им томов.
+	//
+	// # Почему копия, а не «перенос»
+	//
+	// Зона тома неизменяема, значит восстановить снимок в чужой зоне нельзя by
+	// construction. Копия — единственный законный путь провести данные через
+	// границу размещения: сначала снимок оказывается в целевой зоне, и только
+	// потом из него засевается том. Глагола «сменить зону снимку» не существует и
+	// не заводится: он означал бы, что уже засеянные тома ссылаются на источник,
+	// размещения которого больше нет.
+	//
+	// Гейт спрашивает право СОЗДАВАТЬ В ПРОЕКТЕ — `editor@project`, ровно как у
+	// Create, и это не формальность.
+	//
+	// Соблазн спросить про источник (v_get на снимок, «кто вправе читать, тот
+	// вправе копировать») выглядит естественно и НЕВЕРЕН: копия — новый ресурс,
+	// она занимает квоту, имя и деньги. Роль наблюдателя материализует v_get на
+	// КАЖДЫЙ объект проекта, поэтому такой гейт дал бы читателю право
+	// неограниченно порождать снимки — повышение привилегии из чтения в запись,
+	// неотличимое в дифе от обычной строки каталога.
+	//
+	// Пообъектного `v_create` в платформе нет вовсе (см. authzmap: «создать» —
+	// операция не над объектом, которого ещё нет, а над родителем), поэтому
+	// единственная законная форма — та же, что у всякого Create.
+	//
+	// Читаемость источника при этом не теряется: `project_id` обязан совпадать с
+	// проектом снимка, а роль, дающая editor в проекте, материализует и v_get на
+	// его объекты. Копировать чужое из другого проекта нельзя by construction.
+	Copy(context.Context, *CopySnapshotRequest) (*operation.Operation, error)
 	// Updates the specified snapshot.
 	//
 	// Values of omitted parameters are not changed.
 	Update(context.Context, *UpdateSnapshotRequest) (*operation.Operation, error)
 	// Deletes the specified snapshot.
 	Delete(context.Context, *DeleteSnapshotRequest) (*operation.Operation, error)
+	// Отдаёт журнал операций этого снимка.
+	//
+	// Мутации асинхронны и возвращают Operation, поэтому «что с моим снимком
+	// происходило» отвечается только журналом: клиент, потерявший идентификатор
+	// операции, иначе не восстановит ни её исход, ни причину отказа. У тома и
+	// образа такой журнал есть — у снимка его не было, и паритет между тремя
+	// ресурсами одного домена держится перечнем методов, а не памятью.
+	ListOperations(context.Context, *ListSnapshotOperationsRequest) (*ListSnapshotOperationsResponse, error)
 	mustEmbedUnimplementedSnapshotServiceServer()
 }
 
@@ -149,11 +247,17 @@ func (UnimplementedSnapshotServiceServer) List(context.Context, *ListSnapshotsRe
 func (UnimplementedSnapshotServiceServer) Create(context.Context, *CreateSnapshotRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
 }
+func (UnimplementedSnapshotServiceServer) Copy(context.Context, *CopySnapshotRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Copy not implemented")
+}
 func (UnimplementedSnapshotServiceServer) Update(context.Context, *UpdateSnapshotRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Update not implemented")
 }
 func (UnimplementedSnapshotServiceServer) Delete(context.Context, *DeleteSnapshotRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedSnapshotServiceServer) ListOperations(context.Context, *ListSnapshotOperationsRequest) (*ListSnapshotOperationsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
 }
 func (UnimplementedSnapshotServiceServer) mustEmbedUnimplementedSnapshotServiceServer() {}
 func (UnimplementedSnapshotServiceServer) testEmbeddedByValue()                         {}
@@ -230,6 +334,24 @@ func _SnapshotService_Create_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SnapshotService_Copy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CopySnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapshotServiceServer).Copy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapshotService_Copy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapshotServiceServer).Copy(ctx, req.(*CopySnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SnapshotService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateSnapshotRequest)
 	if err := dec(in); err != nil {
@@ -266,6 +388,24 @@ func _SnapshotService_Delete_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SnapshotService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSnapshotOperationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SnapshotServiceServer).ListOperations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SnapshotService_ListOperations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SnapshotServiceServer).ListOperations(ctx, req.(*ListSnapshotOperationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SnapshotService_ServiceDesc is the grpc.ServiceDesc for SnapshotService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -286,12 +426,20 @@ var SnapshotService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SnapshotService_Create_Handler,
 		},
 		{
+			MethodName: "Copy",
+			Handler:    _SnapshotService_Copy_Handler,
+		},
+		{
 			MethodName: "Update",
 			Handler:    _SnapshotService_Update_Handler,
 		},
 		{
 			MethodName: "Delete",
 			Handler:    _SnapshotService_Delete_Handler,
+		},
+		{
+			MethodName: "ListOperations",
+			Handler:    _SnapshotService_ListOperations_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

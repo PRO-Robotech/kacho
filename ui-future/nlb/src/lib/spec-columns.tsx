@@ -10,6 +10,7 @@ import type { Column } from "@/components/organisms/ResourceTable";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
+import { ResourceLink } from "@/components/molecules/ResourceLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@/lib/resource-registry";
 import { formatDateTime } from "@/lib/datetime";
 import { referrerHref, referrerMeta } from "@/lib/referrer";
@@ -35,6 +36,16 @@ const REFERRER_SPEC: Record<string, string> = {
 // "references" (used_by → /projects/<projectId>/compute/instances/<id> и т.п.).
 export interface FormatCellOpts {
   projectId?: string | null;
+  /** База пути карточки для колонки имени (вложенные таблицы адресуют ресурс
+   *  через родителя). */
+  nameBasePath?: string | null;
+  /** Полный адрес карточки для строки — когда путь не «база + идентификатор».
+   *  Задаётся ТЕМ ЖЕ выражением, каким прежде считался переход по клику на
+   *  строку: иначе ссылка повела бы не туда, куда вёл клик. */
+  nameHref?: (row: Record<string, unknown>) => string | null;
+  /** Иконка типа рядом с именем — только во ВЛОЖЕННЫХ таблицах, где соседствуют
+   *  разные типы. В списке самого ресурса тип назван заголовком страницы. */
+  nameIcon?: boolean;
 }
 
 // ReferrerLink — общий рендер одного referrer'а как «{label} {id}» (plain text,
@@ -103,11 +114,53 @@ export function reorderNameIdFirst(columns: ResourceColumn[]): ResourceColumn[] 
   return [...lead, ...rest];
 }
 
+
+// ResourceNameCell — имя ресурса в таблице как ССЫЛКА на его карточку.
+// Собственная отрисовка колонки сохраняется ВНУТРИ ссылки (копирование имени
+// гасит событие само). Ресурс без карточки ссылкой не притворяется.
+function ResourceNameCell({
+  spec,
+  row,
+  opts,
+  identityPath,
+}: {
+  spec: ResourceSpec;
+  row: Record<string, unknown>;
+  opts: FormatCellOpts;
+  /** Поле, по которому ресурс узнают: обычно `name`, у пользователя — почта. */
+  identityPath: string;
+}): ReactNode {
+  const idRaw = getByPath(row, "id");
+  const nameRaw = getByPath(row, identityPath);
+  return (
+    <ResourceLink
+      specId={spec.id}
+      id={typeof idRaw === "string" ? idRaw : ""}
+      name={typeof nameRaw === "string" ? nameRaw : ""}
+      href={opts.nameHref ? opts.nameHref(row) : opts.nameBasePath && idRaw ? `${opts.nameBasePath}/${typeof idRaw === "string" ? idRaw : ""}` : undefined}
+      projectId={opts.projectId}
+      icon={opts.nameIcon}
+      copy
+    />
+  );
+}
+
 export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}): Column<Record<string, unknown>>[] {
-  return reorderNameIdFirst(spec.columns).map((c) => ({
+  const ordered = reorderNameIdFirst(spec.columns);
+  // Колонка ИДЕНТИЧНОСТИ — та, по которой пользователь узнаёт ресурс и через
+  // которую в него заходит. Обычно это `name`, но не у всех: у пользователя имени
+  // нет вовсе, его узнают по почте. Правило «поле называется name» оставляло
+  // такие ресурсы без перехода — поэтому при отсутствии `name` идентичностью
+  // считается ПЕРВАЯ колонка, а её порядок уже нормализован выше.
+  const identityPath = ordered.find((c) => c.path === "name")?.path ?? ordered[0]?.path;
+  return ordered.map((c) => ({
     header: c.header,
     className: c.className,
-    cell: (row) => (c.render ? c.render(row) : formatCellByFormat(c, row, opts)),
+    cell: (row) => {
+      const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
+      // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
+      return c.path === identityPath ? ResourceNameCell({ spec, row, opts, identityPath: identityPath ?? "name" }) : inner;
+    },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
 }

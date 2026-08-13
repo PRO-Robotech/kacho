@@ -20,14 +20,87 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
-// seededDiskType — id из seed-миграции 0004 (block-balanced существует; volumes.
-// disk_type_id RESTRICT требует существующий тип).
-const seededDiskType = "block-balanced"
+// seededDiskType — класс, который фикстуры заводят САМИ.
+//
+// Прежде он приходил из посева миграции. Посев снят: класс — регистрация того, что
+// реально даёт провайдер, и выдуманного каталога заранее быть не должно. Фикстуры
+// теперь сеют свой класс, свой бэкенд и действующую ревизию привязки — ровно то, что
+// требуется от арендатора на живом стенде, поэтому проба заодно проверяет достижимость
+// этого пути.
+const seededDiskType = "block-fixture"
+
+// seedFixtureCatalog заводит класс, бэкенд и ДЕЙСТВУЮЩУЮ ревизию привязки на каждую
+// зону, которой пользуются фикстуры пакета.
+//
+// Без действующей ревизии том не создаётся вовсе: вставка требует её, потому что
+// исполнять создание иначе некому. Это не ужесточение ради проб — это тот же
+// инвариант, которым закрыт «создаваемый навсегда».
+func seedFixtureCatalog(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	// Перечень выведен из ЗОН, которыми пользуются фикстуры пакета, а не выписан
+	// на глаз: класс без действующей ревизии в зоне не обслуживает её вовсе, и
+	// недостающая зона читается как дефект продукта («нет действующей привязки»),
+	// хотя это пробел подготовки.
+	zones := []string{
+		"region-1-a", "region-1-b",
+		"region-2-a", "region-2-b",
+		"ru-central1-a", "ru-central1-b",
+	}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO disk_types (id, name, lifecycle) VALUES ($1, $1, 'ACTIVE')
+		ON CONFLICT (id) DO NOTHING`, seededDiskType)
+	require.NoError(t, err)
+
+	backendID := ids.NewHyphenID("sb")
+	_, err = pool.Exec(ctx, `
+		INSERT INTO storage_backends (id, name, kind, zone_ids, endpoint, credentials_ref)
+		VALUES ($1, $1, 'CEPH_RBD', '[]'::jsonb, 'cfg://fixture', 'vault://fixture')`, backendID)
+	require.NoError(t, err)
+
+	for _, zone := range zones {
+		_, err = pool.Exec(ctx, `
+			INSERT INTO disk_type_bindings
+				(id, disk_type_id, zone_id, backend_id, revision, pool, namespace_template,
+				 cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image, cap_online_grow, status)
+			VALUES ($1, $2, $3, $4, 1, 'kacho-fixture', '{projectId}', true, true, true, true, 'ACTIVE')`,
+			ids.NewHyphenID("dtb"), seededDiskType, zone, backendID)
+		require.NoError(t, err)
+	}
+}
+
+// offerDiskTypeInZone заводит ДЕЙСТВУЮЩУЮ ревизию привязки для класса в зоне.
+//
+// В продукте класс не предлагается, пока не объявлено, ЧЕМ он обслуживается:
+// без действующей ревизии вставка тома отвергается. Проба, заводящая свой класс,
+// обязана пройти тот же путь — иначе она падает отказом «нет действующей
+// привязки» и читается как дефект продукта, хотя это пробел подготовки.
+func offerDiskTypeInZone(t *testing.T, pool *pgxpool.Pool, diskTypeID string, zones ...string) {
+	t.Helper()
+	ctx := context.Background()
+	backendID := ids.NewHyphenID("sb")
+	_, err := pool.Exec(ctx, `
+		INSERT INTO storage_backends (id, name, kind, zone_ids, endpoint, credentials_ref)
+		VALUES ($1, $1, 'CEPH_RBD', '[]'::jsonb, 'cfg://fixture', 'vault://fixture')`, backendID)
+	require.NoError(t, err)
+	for _, zone := range zones {
+		_, err = pool.Exec(ctx, `
+			INSERT INTO disk_type_bindings
+				(id, disk_type_id, zone_id, backend_id, revision, pool, namespace_template,
+				 cap_snapshots, cap_clone_from_snapshot, cap_clone_from_image, cap_online_grow, status)
+			VALUES ($1, $2, $3, $4, 1, 'kacho-fixture', '{projectId}', true, true, true, true, 'ACTIVE')`,
+			ids.NewHyphenID("dtb"), diskTypeID, zone, backendID)
+		require.NoError(t, err)
+	}
+}
 
 // imageRegionFixture — регион, который фикстуры образов объявляют явно
 // (mkImageFromSnapshot(..., "ru-central1", ...)). Он же передаётся в
@@ -36,12 +109,35 @@ const seededDiskType = "block-balanced"
 // Geography, а не выводится из строки зоны.
 const imageRegionFixture = "ru-central1"
 
+// fixtureZone — зона, в которой живут фикстуры пакета. Названа один раз: та же
+// строка, выписанная в каждой пробе, разъезжается с перечнем зон посева молча.
+const fixtureZone = "region-1-a"
+
+// newBareTestPool — база БЕЗ посева фикстурного каталога.
+//
+// Пробе, чей предмет и есть каталог (ревизии привязки, кластеры данных, политика
+// класса), посев мешает по существу: она считает строки и обязана считать СВОИ.
+// Общий посев делал её утверждение о содержимом таблицы утверждением о чужой
+// подготовке — «должно быть 1, а есть 5» ровно на число посеянных зон.
+//
+// Правильный разрез не «сузить счёт», а «владеть своим предметом»: тест каталога
+// заводит каталог сам, тест тома получает готовый.
+func newBareTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	return newPoolWithCatalog(t, false)
+}
+
 // newTestPool выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
 // шаблона, в который миграции kacho-storage (включая seed disk_types) накатаны
 // один раз (см. TestMain и internal/pgtest). Возвращает pgxpool с
 // search_path=kacho_storage. Пропускается под -short. Каждый тест заводит данные
 // сам.
 func newTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	return newPoolWithCatalog(t, true)
+}
+
+func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration test (testcontainers Postgres) — skipped with -short")
@@ -57,11 +153,31 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
+	if seed {
+		seedFixtureCatalog(t, pool)
+	}
 	return pool
 }
 
-// mkVolume вставляет том через репо (state=READY) и возвращает его.
-func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
+// mkVolume заводит том и доводит его до готовности ТЕМ ЖЕ путём, что и бой.
+//
+// Вставка фиксирует НАМЕРЕНИЕ (state=CREATING) — готовность производит сверщик,
+// увидевший объект у бэкенда. Поэтому фикстура не пишет 'READY' руками: она
+// зовёт то же подтверждение, которое зовёт сверщик. Рукописное состояние сделало
+// бы фикстуру снисходительнее продукта — том оказывался бы готов там, где
+// продукт этого не умеет, и проба привязки зеленела бы на состоянии, которого в
+// бою не бывает.
+func mkVolume(t *testing.T, pool *pgxpool.Pool, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
+	t.Helper()
+	v := mkVolumeCreating(t, r, project, name, size)
+	confirmReady(t, pool, reconciler.KindVolume, v.ID, size)
+	v.Status = domain.VolumeStatusAvailable
+	return v
+}
+
+// mkVolumeCreating заводит том и ОСТАВЛЯЕТ его в намерении — для проб, чей
+// предмет и есть неподтверждённое состояние.
+func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) *domain.Volume {
 	t.Helper()
 	v, _, err := r.Insert(context.Background(), &domain.Volume{
 		ID:         ids.NewID(domain.PrefixVolume),
@@ -75,6 +191,15 @@ func mkVolume(t *testing.T, r *pg.VolumeRepo, project, name string, size int64) 
 	return v
 }
 
+// confirmReady — подтверждение ресурса тем же вызовом, которым его подтверждает
+// сверщик, увидев объект у бэкенда.
+func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id string, size int64) {
+	t.Helper()
+	require.NoError(t, reconciler.NewStore(pool).Confirm(
+		context.Background(), kind, id,
+		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size}))
+}
+
 // attach вставляет строку volume_attachments напрямую (attach-CAS — S2; здесь тест
 // FK-инвариантов delete/derived-status независим от attach-пути).
 func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
@@ -85,16 +210,19 @@ func attach(t *testing.T, pool *pgxpool.Pool, volumeID, instanceID string) {
 	require.NoError(t, err)
 }
 
-// TestVolumeCreateGetDerivedStatus — Insert (state READY, block_size default) → Get
-// (AVAILABLE, поля); привязка → derived IN_USE + attachments/usedBy (S1-01, §1.3/1.5).
+// TestVolumeCreateGetDerivedStatus — Insert (state READY) → Get (AVAILABLE, поля);
+// привязка → derived IN_USE + attachments/usedBy (S1-01, §1.3/1.5).
+//
+// Утверждение про block_size снято вместе с полем: у него не было читателя,
+// меняющего поведение, поэтому проба закрепляла умолчание схемы, а не свойство
+// продукта. Колонка живёт в схеме со своим умолчанием и контрактом не адресуется.
 func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, r, "prj-1", "vol-data-1", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-data-1", 10<<30)
 	require.Equal(t, domain.PrefixVolume, v.ID[:3])
-	require.EqualValues(t, 4096, v.BlockSize, "block_size default")
 	require.Equal(t, domain.VolumeStatusAvailable, v.Status)
 
 	got, err := r.Get(ctx, v.ID)
@@ -163,7 +291,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	v := mkVolume(t, r, "prj-1", "vol-resize", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-resize", 10<<30)
 
 	big := int64(20 << 30)
 	up, _, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &big})
@@ -178,7 +306,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	}
 
 	// size-CAS race: N goroutines одинаково 20→40; ровно одна выигрывает.
-	v2 := mkVolume(t, r, "prj-1", "vol-race", 20<<30)
+	v2 := mkVolume(t, pool, r, "prj-1", "vol-race", 20<<30)
 	const n = 6
 	var ok, rej atomic.Int32
 	var wg sync.WaitGroup
@@ -212,7 +340,7 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	v := mkVolume(t, r, "prj-1", "vol-attached", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-attached", 10<<30)
 	attach(t, pool, v.ID, "epd00000000000000009")
 
 	err := r.Delete(ctx, v.ID)
@@ -253,7 +381,8 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 
 	snapID := ids.NewID(domain.PrefixSnapshot)
 	_, err = pool.Exec(ctx,
-		`INSERT INTO snapshots (id, project_id, name, size_bytes, state) VALUES ($1,'prj-1','snap-a',0,'READY')`, snapID)
+		`INSERT INTO snapshots (id, project_id, name, size_bytes, state, zone_id)
+		 VALUES ($1,'prj-1','snap-a',0,'READY','region-1-a')`, snapID)
 	require.NoError(t, err)
 	fromSnap, _, err := r.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-fromsnap",
@@ -270,9 +399,9 @@ func TestVolumeListCursorFilter(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 	for _, n := range []string{"vol-a", "vol-b", "vol-c"} {
-		mkVolume(t, r, "prj-1", n, 1<<30)
+		mkVolume(t, pool, r, "prj-1", n, 1<<30)
 	}
-	mkVolume(t, r, "prj-2", "vol-other", 1<<30)
+	mkVolume(t, pool, r, "prj-2", "vol-other", 1<<30)
 
 	page1, next, err := r.List(ctx, volume.Pagination{PageSize: 2, ProjectID: "prj-1"})
 	require.NoError(t, err)
@@ -303,8 +432,8 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
-	_ = mkVolume(t, r, "prj-1", "alpha", 1<<30)
-	vb := mkVolume(t, r, "prj-1", "beta", 1<<30)
+	_ = mkVolume(t, pool, r, "prj-1", "alpha", 1<<30)
+	vb := mkVolume(t, pool, r, "prj-1", "beta", 1<<30)
 
 	name := "alpha"
 	_, _, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
