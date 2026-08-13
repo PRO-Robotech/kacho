@@ -39,8 +39,10 @@ func TestCreateUseCase_OwnerTupleRegisterDenied_OperationSucceedsAndGatewayExist
 	op, err := uc.Execute(ctx, domain.Gateway{
 		ProjectID:   "f1",
 		Name:        domain.RcNameVPC("gw-reg-denied"),
-		GatewayType: domain.GatewayTypeNat,
-		SubnetID:    seedSubnetID,
+		GatewayType: domain.GatewayTypeEgressOnly,
+		// Ветвь «только исход» — она не требует пула и аренды; предмет пробы
+		// здесь отказ узла прав, а не выделение адреса.
+		SubnetID: seedSubnetID,
 	})
 	require.NoError(t, err)
 

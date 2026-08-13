@@ -348,6 +348,13 @@ func (x *ListGatewayOperationsResponse) GetNextPageToken() string {
 
 // Specification of a public IPv4 egress-translation gateway. Carries no
 // parameter: choosing the arm IS the specification. See [NatGateway].
+//
+// In particular it carries no address: the external address is allocated by the
+// service from the pool of the anchor subnet's zone, and its ID comes back in
+// [NatGateway.address_id]. Naming an address of one's own is not accepted here —
+// an input the service does not read would be worse than its absence — and the
+// zone is not accepted either, since it is inherited from the anchor subnet and
+// a second way to state it could only disagree with the first.
 type NatGatewaySpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

@@ -253,9 +253,15 @@ func TestIntegration_Gateway_GetForUpdate_TakesRowLock(t *testing.T) {
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
-	// Якорь размещения: шлюз без подсети не создаётся (FK, миграция 0030), а
-	// NAT-шлюз обязан стоять в подсети с блоком IPv4 — вид сверяется с якорем
-	// внутри самой вставки.
+	// Якорь размещения: шлюз без подсети не создаётся (FK, миграция 0030), а вид
+	// сверяется с якорем внутри самой вставки — подсеть обязана нести блок того
+	// семейства, которое обслуживает выбранный вид.
+	//
+	// Вид здесь «только исход» намеренно: предмет пробы — РОВНО row-lock на
+	// строке шлюза, и он от вида не зависит. Вид трансляции потребовал бы вдобавок
+	// пул, аренду и привязку адреса (биусловие `gateways_nat_has_address_chk`,
+	// миграция 0038), то есть притащил бы в пробу про блокировку весь учёт
+	// адресов — и её падение перестало бы указывать на свой предмет.
 	netID := ids.NewID(ids.PrefixNetwork)
 	subID := ids.NewID(ids.PrefixSubnet)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
@@ -268,6 +274,7 @@ func TestIntegration_Gateway_GetForUpdate_TakesRowLock(t *testing.T) {
 			ID: subID, ProjectID: "f-gw", Name: domain.RcNameVPC("sub-gw0"),
 			NetworkID: netID, PlacementType: domain.PlacementZonal, ZoneID: "zone-gw",
 			V4CidrBlocks: []string{"10.78.0.0/24"},
+			V6CidrBlocks: []string{"2001:db8:78::/64"},
 		})
 		return e
 	}))
@@ -276,7 +283,7 @@ func TestIntegration_Gateway_GetForUpdate_TakesRowLock(t *testing.T) {
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Gateways().Insert(ctx, &domain.Gateway{
 			ID: gwID, ProjectID: "f-gw", Name: domain.RcNameVPC("gw0"),
-			GatewayType: domain.GatewayTypeNat, SubnetID: subID,
+			GatewayType: domain.GatewayTypeEgressOnly, SubnetID: subID,
 		})
 		return e
 	}))

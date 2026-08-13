@@ -29,6 +29,14 @@ import (
 // local map, Commit флашит в parent state) — это позволяет проверять
 // корректность outbox-emit в той же TX без реального Postgres.
 
+// Пробы этого файла заякорены на ветвь «только исход» НАМЕРЕННО, и это не
+// безразличный выбор фикстуры. Их предмет — маска обновления, форма ответа и
+// поток CRUD, то есть свойства, от вида шлюза не зависящие. Ветвь трансляции
+// потребовала бы пул, аренду и привязку адреса; научить этому in-memory дублёра
+// значило бы написать поддельный учёт пула, а поддельный учёт оказался бы
+// СНИСХОДИТЕЛЬНЕЕ настоящего ровно там, где проверка и нужна. Ветвь трансляции
+// проверяется против настоящего Postgres — services/vpc/internal/repo/
+// gateway_external_address_integration_test.go.
 func makeHandler(t *testing.T,
 	kr *kachomock.Repository,
 	or *repomock.OpsRepo,
@@ -106,7 +114,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	uc := NewCreateGatewayUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	// project_id required.
-	_, err := uc.Execute(context.Background(), domain.Gateway{Name: "gw1", GatewayType: domain.GatewayTypeNat})
+	_, err := uc.Execute(context.Background(), domain.Gateway{Name: "gw1", GatewayType: domain.GatewayTypeEgressOnly})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -115,7 +123,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	_, err = uc.Execute(context.Background(), domain.Gateway{
 		ProjectID:   "f1",
 		Name:        domain.RcNameVPC("BadCaps"),
-		GatewayType: domain.GatewayTypeNat,
+		GatewayType: domain.GatewayTypeEgressOnly,
 		SubnetID:    seedSubnetID,
 	})
 	require.Error(t, err)
@@ -144,7 +152,7 @@ func TestCreateUseCase_ProjectNotFound(t *testing.T) {
 	op, err := uc.Execute(context.Background(), domain.Gateway{
 		ProjectID:   "f1",
 		Name:        domain.RcNameVPC("gw1"),
-		GatewayType: domain.GatewayTypeNat,
+		GatewayType: domain.GatewayTypeEgressOnly,
 		SubnetID:    seedSubnetID,
 	})
 	require.NoError(t, err)
@@ -167,7 +175,7 @@ func TestCreateUseCase_OK(t *testing.T) {
 		ProjectID:   "f1",
 		Name:        domain.RcNameVPC("gw1"),
 		Description: domain.RcDescription("desc"),
-		GatewayType: domain.GatewayTypeNat,
+		GatewayType: domain.GatewayTypeEgressOnly,
 		SubnetID:    seedSubnetID,
 	})
 	require.NoError(t, err)
@@ -216,7 +224,7 @@ func TestHandler_Create_OK(t *testing.T) {
 	op, err := h.Create(context.Background(), &vpcv1.CreateGatewayRequest{
 		ProjectId: "f1",
 		Name:      "gw1",
-		Gateway:   &vpcv1.CreateGatewayRequest_NatGatewaySpec{NatGatewaySpec: &vpcv1.NatGatewaySpec{}},
+		Gateway:   &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{}},
 		SubnetId:  seedSubnetID,
 	})
 	require.NoError(t, err)
@@ -232,7 +240,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateGatewayRequest{
 		ProjectId: "f1", Name: "del-resp-test",
-		Gateway:  &vpcv1.CreateGatewayRequest_NatGatewaySpec{NatGatewaySpec: &vpcv1.NatGatewaySpec{}},
+		Gateway:  &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{}},
 		SubnetId: seedSubnetID,
 	})
 	require.NoError(t, err)
@@ -257,7 +265,7 @@ func TestHandler_FullFlow(t *testing.T) {
 
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateGatewayRequest{
 		ProjectId: "f1", Name: "gw1",
-		Gateway:  &vpcv1.CreateGatewayRequest_NatGatewaySpec{NatGatewaySpec: &vpcv1.NatGatewaySpec{}},
+		Gateway:  &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{}},
 		SubnetId: seedSubnetID,
 	})
 	require.NoError(t, err)
@@ -313,17 +321,21 @@ func TestUpdateUseCase_UnknownMask(t *testing.T) {
 func TestGatewayToPb_Nat(t *testing.T) {
 	rec := &kacho.GatewayRecord{
 		Gateway: domain.Gateway{
-			ID:          "gw-1",
-			ProjectID:   "f1",
-			Name:        domain.RcNameVPC("gw1"),
-			Description: domain.RcDescription("desc"),
-			Labels:      domain.LabelsFromMap(map[string]string{"env": "prod"}),
-			GatewayType: domain.GatewayTypeNat,
-			SubnetID:    seedSubnetID,
+			ID:                "gw-1",
+			ProjectID:         "f1",
+			Name:              domain.RcNameVPC("gw1"),
+			Description:       domain.RcDescription("desc"),
+			Labels:            domain.LabelsFromMap(map[string]string{"env": "prod"}),
+			GatewayType:       domain.GatewayTypeNat,
+			SubnetID:          seedSubnetID,
+			ExternalAddressID: "adrgwtoprojection01",
 		},
 	}
 	p, err := gatewayToPb(rec)
 	require.NoError(t, err)
 	assert.Equal(t, "gw-1", p.Id)
-	assert.NotNil(t, p.GetNatGateway())
+	require.NotNil(t, p.GetNatGateway())
+	// Адрес обязан доехать до контракта: без этого поле существовало бы в proto
+	// и всегда приезжало бы пустым — ровно тот дефект, который закрывается.
+	assert.Equal(t, "adrgwtoprojection01", p.GetNatGateway().AddressId)
 }

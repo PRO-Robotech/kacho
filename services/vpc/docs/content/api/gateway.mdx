@@ -1,6 +1,6 @@
 ---
 id: gateway
-sidebar_position: 7
+sidebar_position: 8
 title: Gateway
 ---
 
@@ -33,8 +33,26 @@ import dedent from 'ts-dedent'
 маршрута (см. ниже): та же сеть, совпадающая зона, совпадающее семейство.
 
 Подсеть привязки обязана нести CIDR-блок того семейства, которое обслуживает выбранный
-вид: у `natGateway` — IPv4, у `egressOnlyGateway` — IPv6. Иначе `Create` отвечает
-`FailedPrecondition` («Subnet … has no IPv4 CIDR block»).
+вид: у `natGateway` — IPv4, у `egressOnlyGateway` — IPv6.
+
+<table>
+  <thead><tr><th>Что не так с якорем</th><th>Ответ на <code>Create</code></th></tr></thead>
+  <tbody>
+    <tr><td><code>subnetId</code> не прислан</td><td><code>InvalidArgument "subnet_id: required"</code> — синхронно</td></tr>
+    <tr><td>Ветвь <code>oneof gateway</code> не выбрана</td><td><code>InvalidArgument "gateway: required"</code> — синхронно. Вид за вас не подставляется: шлюз, делающий не то, о чём просили, хуже отказа</td></tr>
+    <tr><td>Подсети нет <strong>либо</strong> она чужого проекта</td><td><code>NotFound "Subnet &lt;id&gt; not found"</code> — один и тот же ответ на оба случая: по тексту нельзя установить, существует ли чужая подсеть</td></tr>
+    <tr><td>У подсети нет блока нужного семейства</td><td><code>FailedPrecondition "Subnet &lt;id&gt; has no IPv4 CIDR block"</code> (или <code>IPv6</code> — по выбранному виду)</td></tr>
+  </tbody>
+</table>
+
+Существование подсети проверяется **в момент записи**, а не отдельным вопросом заранее:
+иначе между вопросом и записью подсеть могла бы исчезнуть, и шлюз всё равно создался бы.
+Поэтому два последних отказа приходят ошибкой операции, а первые два — сразу ответом.
+
+:::note Подсеть с привязанным шлюзом не удаляется
+Обратная сторона якоря: пока шлюз привязан к подсети, `Subnet.Delete` отвечает
+`FailedPrecondition "subnet has dependent resources"`. Сначала удалите шлюз.
+:::
 
 :::note Строгое имя (отличие от прочих VPC-ресурсов)
 Имя Gateway валидируется **строгим** контрактом: только lowercase, **без uppercase и
@@ -221,8 +239,12 @@ use». Сначала снимите маршрут.
 <ApiOperation method="POST" endpoint="/vpc/v1/gateways" async>
 
 Создает шлюз в указанном проекте. Возвращает `Operation` (async). В обработчике
-операции: проверка существования проекта → вставка `Gateway` → запись события в outbox.
-Имя должно быть уникальным в пределах проекта (дубликат → `ALREADY_EXISTS`).
+операции: проверка существования проекта → вставка `Gateway` (вместе с проверкой якоря
+размещения) → запись события в outbox.
+
+Непустое имя должно быть уникальным в пределах проекта. Синхронной проверки имени здесь
+нет — уникальность держит сама база, поэтому дубликат приходит **ошибкой операции**
+(`ALREADY_EXISTS`), а не ответом на запрос. Пустое имя допустимо и дублей не образует.
 
 #### Тело запроса
 
@@ -234,8 +256,8 @@ use». Сначала снимите маршрут.
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>subnetId</code></td><td><b>да</b></td><td><code>{TYPES.string}</code></td><td>Подсеть привязки и якорь размещения. Неизменяема</td></tr>
-    <tr><td><code>natGatewaySpec</code></td><td><b>да</b>*</td><td><code>NatGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: трансляция исходящего IPv4. Пустой объект</td></tr>
-    <tr><td><code>egressOnlyGatewaySpec</code></td><td><b>да</b>*</td><td><code>EgressOnlyGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: «только исход» для IPv6. Пустой объект</td></tr>
+    <tr><td><code>natGatewaySpec</code></td><td><b>да</b>, ровно одна из двух</td><td><code>NatGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: трансляция исходящего IPv4. Пустой объект</td></tr>
+    <tr><td><code>egressOnlyGatewaySpec</code></td><td><b>да</b>, ровно одна из двух</td><td><code>EgressOnlyGatewaySpec</code></td><td>Вариант <code>oneof gateway</code>: «только исход» для IPv6. Пустой объект</td></tr>
   </tbody>
 </table>
 
@@ -479,8 +501,12 @@ Gateway.Create». Возвращает `Operation` (async). Соблюдаетс
 ## Подводные камни и рекомендации
 
 :::caution Что важно знать
-- **Project-level, не network-level.** Шлюз не «лежит» в сети — он общий для проекта.
-  Не заводите по шлюзу на каждую сеть «по привычке»: одного достаточно для многих сетей.
+- **Шлюз стоит в подсети, и это ограничивает, кто может на него сослаться.** Ресурс
+  заводится в проекте, но его якорь — подсеть, поэтому маршрут может назвать шлюз только
+  из таблицы **той же сети** и (для зональной подсети) **той же зоны**. Один шлюз на много
+  сетей не работает: сети нужен свой. Здесь раньше стояло обратное — «одного достаточно
+  для многих сетей»; это было верно, пока у шлюза не было якоря, и перестало быть верным
+  вместе с его появлением.
 - **Строгое имя.** Имя шлюза строже, чем у остальных VPC-ресурсов (только lowercase, без
   underscore). Шаблон имени, валидный для `Network`/`Subnet`, может не подойти шлюзу.
 - **Уникальность имени — в пределах проекта.** Повторное `name` → `ALREADY_EXISTS`.

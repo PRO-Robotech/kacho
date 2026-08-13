@@ -30,6 +30,20 @@ export const RESTRICTIONS = {
   ],
   pagination: ['page_size: 0 → 50, max 1000', 'page_token: opaque base64; невалидный → InvalidArgument'],
   resourceId: ["нераспознанный 3-char префикс → InvalidArgument «invalid <res> id '<X>'»"],
+  // CidrGroup адресуется hyphen-формой (`cdg-` + 17 символов), а не слитным
+  // 3-символьным префиксом — отдельный ключ заведён потому, что общий текст
+  // выше называл бы форму, которой у этого ресурса нет.
+  resourceIdHyphen: [
+    'форма id: cdg- + 17 символов crockford-base32',
+    "нераспознанный префикс → InvalidArgument «invalid <res> id '<X>'»",
+    'корректный по форме, но отсутствующий id → NotFound',
+  ],
+  cidrGroupBlocks: [
+    'валидный CIDR-префикс, host-биты = 0',
+    'семейство блока обязано совпадать с полем (v4CidrBlocks / v6CidrBlocks)',
+    '≤ 64 префиксов НА СЕМЕЙСТВО (и в одном запросе, и накопленно)',
+    'пересечения между членами набора допустимы',
+  ],
   nicCardinality: ['≤ 1 IPv4 и ≤ 1 IPv6 на NIC (DB-level CHECK + sync-валидация)'],
 } as const
 

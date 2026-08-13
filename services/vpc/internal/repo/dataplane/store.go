@@ -39,9 +39,13 @@ type Store struct {
 // New собирает адаптер.
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
+// Порты, которые этот адаптер обязан выполнять, — ОДНИМ перечнем: порт,
+// потерявший реализацию, обязан ронять сборку здесь, а не там, где его первый
+// раз позовут.
 var (
-	_ uc.IntentReader  = (*Store)(nil)
-	_ uc.ApplyRecorder = (*Store)(nil)
+	_ uc.IntentReader      = (*Store)(nil)
+	_ uc.ApplyRecorder     = (*Store)(nil)
+	_ uc.PublicStateReader = (*Store)(nil)
 )
 
 // boundsSQL — горизонт уплотнения и голова журнала ОДНИМ обращением.

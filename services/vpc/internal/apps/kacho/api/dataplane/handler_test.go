@@ -135,7 +135,7 @@ func TestContractVocabulariesTranslateWithoutABucket(t *testing.T) {
 			continue
 		}
 		assert.NotEmpty(t, got, "класс отказа %s не переводится", name)
-		_, known := knownReasons[got]
+		_, known := knownReasonSet[got]
 		assert.True(t, known, "класс отказа %s переведён в значение вне словаря домена", name)
 	}
 	assert.Equal(t, ReasonNone, reasonFromProto(vpcv1.ApplyFailureReason(9999)),

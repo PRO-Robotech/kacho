@@ -34,6 +34,7 @@ const sidebars: SidebarsConfig = {
         'api/address',
         'api/route-table',
         'api/security-group',
+        'api/cidr-group',
         'api/gateway',
         'api/network-interface',
         'api/address-pool',

@@ -161,9 +161,16 @@ func (w *gatewayWriter) Insert(ctx context.Context, g *domain.Gateway) (*kacho.G
 	// Чужой проект отсекается предикатом (а не FK) намеренно: ответ обязан быть
 	// БАЙТ-ИДЕНТИЧЕН настоящему промаху — «Subnet <id> not found». Различимый
 	// ответ был бы оракулом существования чужой подсети.
+	// `external_address_id` кладётся ВНУТРИ этой же вставки, а не отдельным
+	// UPDATE следом: биусловие `gateways_nat_has_address_chk` (0038) связывает
+	// каждую записываемую строку, поэтому «сначала вставим шлюз, потом припишем
+	// адрес» не прошло бы вовсе — промежуточного состояния «NAT без адреса» не
+	// существует. Пустая строка означает «адреса нет» и обязана лечь NULL'ом:
+	// частичный UNIQUE считал бы пустые строки равными и допустил бы ровно один
+	// безадресный шлюз на всю таблицу.
 	q := fmt.Sprintf(`
-		INSERT INTO gateways (id, project_id, created_at, name, description, labels, gateway_type, subnet_id)
-		SELECT $1, $2, $3, $4, $5, $6, $7, $8
+		INSERT INTO gateways (id, project_id, created_at, name, description, labels, gateway_type, subnet_id, external_address_id)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, '')
 		 WHERE NOT EXISTS (
 		   SELECT 1 FROM subnets s
 		    WHERE s.id = $8
@@ -175,7 +182,7 @@ func (w *gatewayWriter) Insert(ctx context.Context, g *domain.Gateway) (*kacho.G
 
 	row := w.tx.QueryRow(ctx, q,
 		g.ID, g.ProjectID, now, string(g.Name), string(g.Description), labelsJSON,
-		string(g.GatewayType), g.SubnetID,
+		string(g.GatewayType), g.SubnetID, g.ExternalAddressID,
 	)
 	result, err := helpers.ScanGateway(row)
 	if err != nil {

@@ -444,3 +444,101 @@ CASES.append(Case(
         poll_operation_until_done(must_fail=True),
     ],
 ))
+
+# ---------------------------------------------------------------------------
+# Внешний адрес шлюза трансляции
+# ---------------------------------------------------------------------------
+# Предусловие этих кейсов — пул по умолчанию для зоны якоря; его заводит посев
+# коллекции (`_SETUP-POOL`, `scripts/gen.py`), а не кейс. Без пула отказ был бы
+# «нет доступного внешнего адреса IPv4», и кейс винил бы невиновного.
+
+CASES.append(Case(
+    id="GW-CR-NAT-EXTERNAL-ADDRESS-OK",
+    title="Шлюз трансляции несёт внешний адрес, и адрес называет шлюз в ответ",
+    classes=["CRUD", "CONF"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-extaddr-{{runId}}",
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.gatewayId", "gwXaId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="get-gateway", method="GET", path="/vpc/v1/gateways/{{gwXaId}}",
+            test_script=[
+                *assert_status(200),
+                "const j = pm.response.json();",
+                "pm.test('ветвь трансляции присутствует', () => "
+                "pm.expect(j.natGateway, pm.response.text()).to.be.an('object'));",
+                "pm.test('шлюз трансляции несёт внешний адрес', () => "
+                "pm.expect(String((j.natGateway || {}).addressId || ''), pm.response.text())"
+                ".to.match(/^adr/));",
+                *save_from_response("(j.natGateway || {}).addressId", "gwXaAddrId"),
+            ])),
+        # Адрес — самостоятельный ресурс, и владельцу шлюза он ЧИТАЕМ: без права
+        # на него идентификатор в контракте был бы координатой в никуда.
+        retry_until_authorized(Step(
+            name="get-address", method="GET", path="/vpc/v1/addresses/{{gwXaAddrId}}",
+            test_script=[
+                *assert_status(200),
+                "const a = pm.response.json();",
+                "pm.test('внешний IPv4', () => {",
+                "  pm.expect(a.type, pm.response.text()).to.eql('EXTERNAL');",
+                "  pm.expect(a.ipVersion, pm.response.text()).to.eql('IPV4');",
+                "});",
+                "pm.test('адресу выдан IP', () => pm.expect("
+                "String(((a.externalIpv4Address || {}).address) || ''), pm.response.text())"
+                ".to.not.be.empty);",
+                "pm.test('адрес помечен занятым', () => "
+                "pm.expect(a.used, pm.response.text()).to.eql(true));",
+                # Обратная сторона привязки: владелец адреса называет ИМЕННО этот шлюз.
+                "pm.test('адрес называет свой шлюз', () => {",
+                "  const refs = (a.usedBy || []).map(u => (u.referrer || {}));",
+                "  pm.expect(refs.map(r => r.id), pm.response.text())"
+                ".to.include(pm.environment.get('gwXaId'));",
+                "  pm.expect(refs.map(r => r.type), pm.response.text())"
+                ".to.include('vpc_gateway');",
+                "});",
+            ])),
+        Step(name="cleanup", method="DELETE", path="/vpc/v1/gateways/{{gwXaId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        # Аренда возвращена: адрес, заказанный шлюзом, уходит вместе с ним.
+        Step(name="address-gone", method="GET", path="/vpc/v1/addresses/{{gwXaAddrId}}",
+             test_script=[*assert_absent_id_rejected()]),
+    ],
+))
+
+CASES.append(Case(
+    id="GW-NEG-EXTERNAL-ADDRESS-NOT-DELETABLE-WHILE-BOUND",
+    title="Адрес, занятый шлюзом, не удаляется — сначала снимите шлюз",
+    classes=["NEG", "CONF"], priority="P1",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-bound-{{runId}}",
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.gatewayId", "gwBdId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="get-gateway", method="GET", path="/vpc/v1/gateways/{{gwBdId}}",
+            test_script=[*assert_status(200),
+                         *save_from_response("(pm.response.json().natGateway || {}).addressId",
+                                             "gwBdAddrId")])),
+        # ОТРИЦАНИЕ: пока шлюз жив, его адрес не отдать.
+        Step(name="delete-address-refused", method="DELETE",
+             path="/vpc/v1/addresses/{{gwBdAddrId}}",
+             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                          "pm.test('отказ называет занятость', () => "
+                          "pm.expect(String(pm.response.json().message || ''))"
+                          ".to.match(/in use/));"]),
+        # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к нему: сняв шлюз, тот же путь проходит —
+        # значит отказ выше был про привязку, а не про то, что удаление адреса
+        # не работает вовсе.
+        Step(name="delete-gateway", method="DELETE", path="/vpc/v1/gateways/{{gwBdId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="address-released", method="GET", path="/vpc/v1/addresses/{{gwBdAddrId}}",
+             test_script=[*assert_absent_id_rejected()]),
+    ],
+))

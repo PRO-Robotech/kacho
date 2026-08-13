@@ -45,21 +45,6 @@ func NewReportAppliedUseCase(recorder ApplyRecorder, obs *Observer) *ReportAppli
 	return &ReportAppliedUseCase{recorder: recorder, obs: obs}
 }
 
-// knownReasons — закрытый словарь классов отказа.
-//
-// Проверка словаря стоит ЗДЕСЬ, а не только в CHECK-ограничении базы: значение
-// вне словаря обязано получить `INVALID_ARGUMENT` с именем поля, а не отказ
-// целостности, преобразованный в непрозрачный INTERNAL. База при этом остаётся
-// вторым рубежом — она отвечает КАЖДОМУ писателю, а не только этому пути.
-var knownReasons = map[FailureReason]struct{}{
-	ReasonCapacity:           {},
-	ReasonConflict:           {},
-	ReasonUnsupported:        {},
-	ReasonDependencyNotReady: {},
-	ReasonTransient:          {},
-	ReasonExecutorInternal:   {},
-}
-
 // Record записывает подтверждение.
 func (u *ReportAppliedUseCase) Record(ctx context.Context, rep ApplyReport) (ApplyRecord, error) {
 	if err := validateReport(rep); err != nil {
@@ -92,6 +77,18 @@ func (u *ReportAppliedUseCase) Record(ctx context.Context, rep ApplyReport) (App
 // полях говорит контракт: сначала идентичность, потом ревизия, потом исход и
 // его причина. Каждая называет ПОЛЕ — отказ без имени поля заставляет
 // вызывающего гадать, какое из четырёх он прислал не так.
+//
+// Словарь классов отказа проверяется ЗДЕСЬ, а не только CHECK-ограничением
+// базы: значение вне словаря обязано получить `INVALID_ARGUMENT` с именем поля,
+// а не отказ целостности, преобразованный в непрозрачный INTERNAL. База
+// остаётся вторым рубежом — она отвечает КАЖДОМУ писателю, а не только этому
+// пути.
+//
+// Сам словарь живёт в ОДНОМ месте ([KnownFailureReasons]) и здесь не
+// переписывается: приём подтверждения и публичная проекция обязаны говорить об
+// одном и том же наборе классов. Две копии разошлись бы молча — и разошлись бы
+// именно там, где расхождение не видно: класс, принятый у исполнителя и
+// неизвестный проекции, не доехал бы до арендатора.
 func validateReport(rep ApplyReport) error {
 	// Формат идентификатора — первым стейтментом, до всего остального.
 	// `corevalidate.ResourceID` пустую строку ПРОПУСКАЕТ (это записано в её
@@ -114,7 +111,7 @@ func validateReport(rep ApplyReport) error {
 			return status.Error(codes.InvalidArgument, "Illegal argument reason")
 		}
 	case OutcomeFailed:
-		if _, ok := knownReasons[rep.Reason]; !ok {
+		if _, ok := knownReasonSet[rep.Reason]; !ok {
 			return status.Error(codes.InvalidArgument, "Illegal argument reason")
 		}
 	default:

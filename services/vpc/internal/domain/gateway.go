@@ -24,7 +24,29 @@ type Gateway struct {
 	Labels      RcLabels
 	GatewayType GatewayType
 	SubnetID    string
+
+	// ExternalAddressID — внешний адрес, через который шлюз транслирует.
+	//
+	// Непуст РОВНО у вида `NAT` и пуст у `EGRESS_ONLY`; оба направления держит
+	// база (`gateways_nat_has_address_chk` / `gateways_external_address_kind_chk`,
+	// миграция 0038), поэтому «шлюз трансляции без адреса» — состояние
+	// незаписываемое, а не то, которого код старается не создавать. У вида
+	// «только исход» публичного адреса нет by design: отсутствие входящей
+	// достижимости и есть смысл этого вида.
+	//
+	// Адрес выделяется на Create из пула зоны ЯКОРЯ (подсети) и возвращается в
+	// пул на Delete. Обратную сторону привязки — ту, которую видит владелец
+	// адреса, — несёт строка `address_references` с `referrer_type` =
+	// `GatewayReferrerType`, поэтому `Address.used_by` называет шлюз.
+	ExternalAddressID string
 }
+
+// GatewayReferrerType — `ReferrerType` в `address_references` для адреса,
+// привязанного к шлюзу. Тот же словарь, что у интерфейса
+// (`network_interface`) и у балансировщика; имя ресурса — то же, каким шлюз
+// зовётся в модели прав (`vpc_gateway`), чтобы у одного предмета не завелось
+// двух написаний.
+const GatewayReferrerType = "vpc_gateway"
 
 // Validate проверяет name/description/labels по domain-контракту. Вызывается
 // use-case-слоем ПЕРЕД repo.Insert / repo.Update.
@@ -50,5 +72,6 @@ func (g Gateway) Equal(other Gateway) bool {
 		g.Description == other.Description &&
 		LabelsEqual(g.Labels, other.Labels) &&
 		g.GatewayType == other.GatewayType &&
-		g.SubnetID == other.SubnetID
+		g.SubnetID == other.SubnetID &&
+		g.ExternalAddressID == other.ExternalAddressID
 }

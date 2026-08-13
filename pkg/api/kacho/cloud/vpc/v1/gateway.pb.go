@@ -196,12 +196,34 @@ func (*Gateway_EgressOnlyGateway) isGateway_Gateway() {}
 // through this gateway reach outside, translated to a public address; inbound
 // connections are not established by the translation itself.
 //
-// The arm carries no parameter of its own — the intent is the whole of it. What
-// the arm decides is checked, not merely recorded: the anchor subnet must carry
-// an IPv4 CIDR block (there is nothing to translate otherwise), and a static
-// route naming this gateway must have an IPv4 destination.
+// What the arm decides is checked, not merely recorded: the anchor subnet must
+// carry an IPv4 CIDR block (there is nothing to translate otherwise), and a
+// static route naming this gateway must have an IPv4 destination.
 type NatGateway struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the external Address this gateway translates through.
+	//
+	// Output-only. The address is allocated when the gateway is created and is
+	// held for as long as the gateway exists; there is no input counterpart on
+	// `NatGatewaySpec`, because a translating gateway without a public address
+	// does not do the one thing it exists for, and so there is nothing for the
+	// caller to choose. Read the address value itself with
+	// [AddressService.Get] — it is not mirrored here, so it cannot go stale.
+	//
+	// The binding is a reference the address itself carries: the allocated
+	// address reports this gateway back in [Address.used_by] with
+	// `referrer.type = "vpc_gateway"`. One address serves at most one gateway.
+	//
+	// Placement is not a choice either — it is inherited. The address is taken
+	// from the pool of the anchor subnet's zone, so a zonal gateway translates
+	// through an address of its own zone; a REGIONAL (anycast) anchor subnet
+	// carries no zone, so its gateway takes a zone-independent address and is out
+	// of the zonal comparison by construction.
+	//
+	// The lease returns to the pool when the gateway is deleted. There is no
+	// second release path: the kind of a gateway is immutable, so an address
+	// cannot be stranded by turning translation off.
+	AddressId     string `protobuf:"bytes,1,opt,name=address_id,json=addressId,proto3" json:"address_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -234,6 +256,13 @@ func (x *NatGateway) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NatGateway.ProtoReflect.Descriptor instead.
 func (*NatGateway) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_gateway_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *NatGateway) GetAddressId() string {
+	if x != nil {
+		return x.AddressId
+	}
+	return ""
 }
 
 // Egress-only reachability for IPv6: traffic leaves outward, inbound connections
@@ -301,9 +330,11 @@ const file_kacho_cloud_vpc_v1_gateway_proto_rawDesc = "" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
-	"\agatewayJ\x04\b\a\x10\bR\x15shared_egress_gateway\"\f\n" +
+	"\agatewayJ\x04\b\a\x10\bR\x15shared_egress_gateway\"+\n" +
 	"\n" +
-	"NatGateway\"\x13\n" +
+	"NatGateway\x12\x1d\n" +
+	"\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"\x13\n" +
 	"\x11EgressOnlyGatewayB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (

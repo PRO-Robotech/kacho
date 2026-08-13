@@ -70,11 +70,33 @@ message Gateway {
 // through this gateway reach outside, translated to a public address; inbound
 // connections are not established by the translation itself.
 //
-// The arm carries no parameter of its own — the intent is the whole of it. What
-// the arm decides is checked, not merely recorded: the anchor subnet must carry
-// an IPv4 CIDR block (there is nothing to translate otherwise), and a static
-// route naming this gateway must have an IPv4 destination.
+// What the arm decides is checked, not merely recorded: the anchor subnet must
+// carry an IPv4 CIDR block (there is nothing to translate otherwise), and a
+// static route naming this gateway must have an IPv4 destination.
 message NatGateway {
+  // ID of the external Address this gateway translates through.
+  //
+  // Output-only. The address is allocated when the gateway is created and is
+  // held for as long as the gateway exists; there is no input counterpart on
+  // `NatGatewaySpec`, because a translating gateway without a public address
+  // does not do the one thing it exists for, and so there is nothing for the
+  // caller to choose. Read the address value itself with
+  // [AddressService.Get] — it is not mirrored here, so it cannot go stale.
+  //
+  // The binding is a reference the address itself carries: the allocated
+  // address reports this gateway back in [Address.used_by] with
+  // `referrer.type = "vpc_gateway"`. One address serves at most one gateway.
+  //
+  // Placement is not a choice either — it is inherited. The address is taken
+  // from the pool of the anchor subnet's zone, so a zonal gateway translates
+  // through an address of its own zone; a REGIONAL (anycast) anchor subnet
+  // carries no zone, so its gateway takes a zone-independent address and is out
+  // of the zonal comparison by construction.
+  //
+  // The lease returns to the pool when the gateway is deleted. There is no
+  // second release path: the kind of a gateway is immutable, so an address
+  // cannot be stranded by turning translation off.
+  string address_id = 1;
 }
 
 // Egress-only reachability for IPv6: traffic leaves outward, inbound connections

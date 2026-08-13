@@ -51,7 +51,10 @@ const SGCols = `id, project_id, network_id, created_at, name, description, label
 // GatewayCols — список колонок таблицы gateways в порядке, ожидаемом ScanGateway.
 // `subnet_id` — привязка шлюза и его якорь размещения (миграция 0030): NOT NULL,
 // поэтому сканируется в обычную строку, без Nullable-обёртки.
-const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type, subnet_id`
+// `external_address_id` — внешний адрес шлюза трансляции (миграция 0038):
+// nullable, поэтому сканируется через Nullable-обёртку, а пустая строка в
+// domain означает «адреса нет» (вид `EGRESS_ONLY`).
+const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type, subnet_id, external_address_id`
 
 // NICCols — список колонок таблицы network_interfaces в порядке, ожидаемом ScanNI.
 const NICCols = `id, project_id, created_at, name, description, labels, subnet_id,
@@ -320,13 +323,21 @@ func ScanGateway(row Scannable) (*kachorepo.GatewayRecord, error) {
 	var g kachorepo.GatewayRecord
 	var labelsJSON []byte
 	var name, description, gatewayType string
+	// Отсутствие адреса представлено в базе как NULL, а не как пустая строка:
+	// частичный UNIQUE по `external_address_id` считал бы пустые строки
+	// РАВНЫМИ и допустил бы ровно один безадресный шлюз на всю таблицу.
+	// Наружу это едет пустой строкой — у domain нет второго состояния.
+	var externalAddressID *string
 
 	err := row.Scan(
 		&g.ID, &g.ProjectID, &g.CreatedAt, &name, &description, &labelsJSON,
-		&gatewayType, &g.SubnetID,
+		&gatewayType, &g.SubnetID, &externalAddressID,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if externalAddressID != nil {
+		g.ExternalAddressID = *externalAddressID
 	}
 	g.Name = domain.RcNameVPC(name)
 	g.Description = domain.RcDescription(description)

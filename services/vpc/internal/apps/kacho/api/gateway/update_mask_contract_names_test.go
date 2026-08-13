@@ -44,13 +44,21 @@ func maskViolations(t *testing.T, err error) []string {
 // seedGateway создаёт шлюз через use-case create и возвращает его id — Update'у
 // нужен существующий предмет, иначе положительный контроль не отличит «маска
 // принята» от «предмета нет».
+// Пробы этого файла заякорены на ветвь «только исход» НАМЕРЕННО, и это не
+// безразличный выбор фикстуры. Их предмет — маска обновления, форма ответа и
+// поток CRUD, то есть свойства, от вида шлюза не зависящие. Ветвь трансляции
+// потребовала бы пул, аренду и привязку адреса; научить этому in-memory дублёра
+// значило бы написать поддельный учёт пула, а поддельный учёт оказался бы
+// СНИСХОДИТЕЛЬНЕЕ настоящего ровно там, где проверка и нужна. Ветвь трансляции
+// проверяется против настоящего Postgres — services/vpc/internal/repo/
+// gateway_external_address_integration_test.go.
 func seedGateway(t *testing.T) (*Handler, *repomock.OpsRepo, string) {
 	t.Helper()
 	h, or, _ := minimalHandler(t, true)
 	createOp, err := h.Create(narrowtest.Caller(), &vpcv1.CreateGatewayRequest{
 		ProjectId: "f1", Name: "mask-probe",
-		Gateway: &vpcv1.CreateGatewayRequest_NatGatewaySpec{
-			NatGatewaySpec: &vpcv1.NatGatewaySpec{},
+		Gateway: &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{
+			EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{},
 		},
 		SubnetId: seedSubnetID,
 	})
@@ -159,7 +167,7 @@ func TestGatewayCreateRequiresKindAndAnchor(t *testing.T) {
 		h, _, _ := minimalHandler(t, true)
 		_, err := h.Create(narrowtest.Caller(), &vpcv1.CreateGatewayRequest{
 			ProjectId: "f1", Name: "gw-no-anchor",
-			Gateway: &vpcv1.CreateGatewayRequest_NatGatewaySpec{NatGatewaySpec: &vpcv1.NatGatewaySpec{}},
+			Gateway: &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{}},
 		})
 		require.Error(t, err)
 		assert.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -170,7 +178,7 @@ func TestGatewayCreateRequiresKindAndAnchor(t *testing.T) {
 		h, _, _ := minimalHandler(t, true)
 		_, err := h.Create(narrowtest.Caller(), &vpcv1.CreateGatewayRequest{
 			ProjectId: "f1", Name: "gw-bad-anchor",
-			Gateway:  &vpcv1.CreateGatewayRequest_NatGatewaySpec{NatGatewaySpec: &vpcv1.NatGatewaySpec{}},
+			Gateway:  &vpcv1.CreateGatewayRequest_EgressOnlyGatewaySpec{EgressOnlyGatewaySpec: &vpcv1.EgressOnlyGatewaySpec{}},
 			SubnetId: "not-an-id",
 		})
 		require.Error(t, err)

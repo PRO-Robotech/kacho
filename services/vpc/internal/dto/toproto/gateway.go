@@ -43,7 +43,13 @@ func (gateway) toPb(rec kacho.GatewayRecord) (*vpcv1.Gateway, error) {
 	}
 	switch rec.GatewayType {
 	case domain.GatewayTypeNat:
-		out.Gateway = &vpcv1.Gateway_NatGateway{NatGateway: &vpcv1.NatGateway{}}
+		// Адрес едет ИДЕНТИФИКАТОРОМ, а не значением: сам IP живёт у ресурса
+		// адреса, и зеркало здесь было бы вторым местом об одном предмете,
+		// которое расходится молча. Пустым он у этой ветви не бывает — биусловие
+		// базы (0038) не даёт записать шлюз трансляции без адреса.
+		out.Gateway = &vpcv1.Gateway_NatGateway{
+			NatGateway: &vpcv1.NatGateway{AddressId: rec.ExternalAddressID},
+		}
 	case domain.GatewayTypeEgressOnly:
 		out.Gateway = &vpcv1.Gateway_EgressOnlyGateway{EgressOnlyGateway: &vpcv1.EgressOnlyGateway{}}
 	}

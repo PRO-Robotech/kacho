@@ -3068,7 +3068,11 @@ _POOL_SEED_BODY = {
 # address-zone-coherence allocates an external v4 in existingZoneId (=zoneA) in its
 # ZONE-03 happy path; without the zoneA default pool the Create Operation errors
 # (no pool resolved) → the address never persists → get-known-zone 404s. Seed it.
-_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence"}
+# `gateway` — с тех пор как шлюз трансляции получает внешний адрес: его якорь
+# стоит в existingZoneId (=zoneA), и без пула по умолчанию для этой зоны КАЖДЫЙ
+# NAT-кейс суиты отказывал бы «нет доступного внешнего адреса IPv4». Это
+# предусловие суиты, а не предмет кейса, поэтому оно живёт в посеве.
+_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence", "gateway"}
 
 
 # ── ZONE-INDEPENDENT (anycast) default pool ────────────────────────────────────
