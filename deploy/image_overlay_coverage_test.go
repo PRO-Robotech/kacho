@@ -73,7 +73,7 @@ func componentImageRef(tree map[string]any, name string) string {
 // подтягиваемым из реестра.
 //
 // Признак — ОТСУТСТВИЕ сегмента пространства имён: `kacho-vpc:dev` против
-// `bitnamilegacy/postgresql` и `quay.io/minio/minio`. В этом дереве предикат
+// `bitnamilegacy/postgresql` и опубликованный образ сервиса. В этом дереве предикат
 // точен, и это свойство дерева, а не догадка: КАЖДЫЙ сторонний образ здесь
 // несёт пространство имён, а голым именем объявлены только собственные сборки
 // продукта. Проверяется положительным контролем ниже — если сторонний образ
@@ -305,7 +305,7 @@ func TestImageOverlayPredicates_RecogniseTheRealTree(t *testing.T) {
 	// Отрицание — только в паре с положительным: предикат, признающий локальным
 	// что угодно, зеленит проверку выше.
 	for _, published := range []string{
-		"docker.io/prorobotech/kacho-vpc:main-1", "bitnamilegacy/postgresql", "quay.io/minio/minio",
+		"docker.io/prorobotech/kacho-vpc:main-1", "bitnamilegacy/postgresql", "docker.io/prorobotech/kacho-iam:main-1",
 	} {
 		if imageIsLocalToTheStand(published) {
 			t.Errorf("%q опознан локальным для стенда — предикат стал слишком широким", published)

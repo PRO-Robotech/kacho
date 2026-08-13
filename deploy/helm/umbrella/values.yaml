@@ -485,11 +485,6 @@ kratos-selfservice-ui:
   kratosSelfServiceUI:
     enabled: false
 
-# ─── Dev in-cluster S3 (MinIO) ─────────────────────────────────────────────
-# Shared dev fixture (kacho-iam compliance-report S3 sink). Off in base; dev enables.
-minioDev:
-  enabled: false
-
 # ─── kacho-nlb — disabled in base values ───────────────────────────────────
 # Both the kacho-nlb sub-chart and its backing Postgres are condition-gated.
 # Base keeps them OFF so existing clusters don't implicitly start a new
