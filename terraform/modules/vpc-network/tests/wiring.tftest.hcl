@@ -92,29 +92,18 @@ run "empty_supernet_is_rejected" {
 
 # ---- группа безопасности по умолчанию ----------------------------------------------------
 
-# Умолчание задано МОДУЛЕМ, а не краем. Незаданное поле край разрешает настройкой своего
-# развёртывания, и тогда посадка сети зависела бы от стенда, а не от конфигурации. Проба
-# различающая: снимите строку в main.tf — значение станет null, и она покраснеет.
-run "default_security_group_is_refused_unless_asked" {
-  command = plan
-
-  assert {
-    error_message = "решение о группе «любой протокол отовсюду» отдано настройке развёртывания края"
-  }
-}
-
-# Парный положительный контроль: без него проба выше зеленела бы и на модуле, который
-# зашил отказ намертво и переменную не читает.
-run "default_security_group_is_created_when_asked" {
-  command = plan
-
-  variables {
-  }
-
-  assert {
-    error_message = "просьба завести группу по умолчанию до края не доехала"
-  }
-}
+# Здесь стояли две пробы условного создания группы по умолчанию — снято вместе с предметом.
+#
+# Они проверяли, что решение о группе принимает конфигурация, а не настройка развёртывания
+# края, и были верны для того контракта. Поле, которым группу можно было отменить, снято с
+# резервированием номера и имени: группа создаётся БЕЗУСЛОВНО, потому что интерфейс её
+# наследует, а сеть без группы означала бы интерфейс без единого правила — по закрытой
+# модели «не разрешено ничего».
+#
+# Безусловность закреплена на уровне сервиса (проба конструктора, который признак условности
+# БОЛЬШЕ НЕ ПРИНИМАЕТ: появись он снова, вызов перестанет компилироваться) — это строже
+# утверждения, «не собралось» нельзя обойти толерантностью. Здесь проверять нечего: у
+# модуля больше нет ручки, о которой шла речь.
 
 # ---- шлюз общего исхода -----------------------------------------------------------------
 
@@ -616,22 +605,10 @@ run "security_group_rule_with_empty_target_id_is_rejected" {
   expect_failures = [var.security_groups]
 }
 
-# Вторая половина той же проверки — предопределённое имя. Условие проверки конъюнктивно
-# оставляет вторую без производителя отказа. Проверено инъекцией: со снятым конъюнктом про
+# Здесь стоял остаток пробы предопределённой цели — снято вместе с предметом.
 #
-# Проба различает ИМЕННО эту проверку, а не соседнюю «ровно одна цель»: пустая строка от
-# null отличается, поэтому цель засчитывается заданной и счёт целей равен единице.
-  command = plan
-
-  variables {
-    security_groups = {
-      "probe-web" = {
-      }
-    }
-  }
-
-  expect_failures = [var.security_groups]
-}
+# Ветвь снята с контракта: свободная строка без словаря, которую край принимал и не читал.
+# «Ровно одна цель» проверяется соседними пробами и энфорсером на стороне сервиса.
 
 # ---- таблицы маршрутизации ----------------------------------------------------------------
 
@@ -966,4 +943,156 @@ run "internal_ipv6_address_pointing_at_unknown_subnet_key_is_rejected" {
   }
 
   expect_failures = [var.addresses]
+}
+
+# ---- именованные наборы префиксов ---------------------------------------------------------
+
+# Правило ссылается на набор ПО ИДЕНТИФИКАТОРУ, взятому по ключу карты: ссылка строит граф,
+# и снос идёт в обратном порядке — правило раньше набора. Порядок несущий: край не удаляет
+# набор, на который ссылается живое правило.
+run "rule_references_the_cidr_group_by_id_from_map_key" {
+  command = plan
+
+  variables {
+    cidr_groups = {
+      "probe-office" = { v4_cidr_blocks = ["203.0.113.0/24"] }
+    }
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction  = "INGRESS"
+          cidr_group = "probe-office"
+        }]
+      }
+    }
+  }
+
+  assert {
+    condition = one([
+      for r in kacho_vpc_security_group.this["probe-sg"].rules : r.cidr_group_id
+    ]) == kacho_vpc_cidr_group.this["probe-office"].id
+    error_message = "правило не связано с набором модуля — снос пошёл бы в произвольном порядке"
+  }
+  assert {
+    condition     = kacho_vpc_cidr_group.this["probe-office"].name == "probe-office"
+    error_message = "имя набора берётся не из ключа карты"
+  }
+  assert {
+    condition     = kacho_vpc_cidr_group.this["probe-office"].project_id == var.project_id
+    error_message = "набор заведён не в проекте модуля"
+  }
+}
+
+# Готовый идентификатор набора, заведённого ВНЕ модуля, доезжает как есть. Парный
+# положительный контроль к пробе выше: без него «ключ разрешается» зеленело бы и на модуле,
+# который второе написание молча выбрасывает.
+run "rule_accepts_an_external_cidr_group_id" {
+  command = plan
+
+  variables {
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction     = "INGRESS"
+          cidr_group_id = "cdg-0123456789abcdefg"
+        }]
+      }
+    }
+  }
+
+  assert {
+    condition = one([
+      for r in kacho_vpc_security_group.this["probe-sg"].rules : r.cidr_group_id
+    ]) == "cdg-0123456789abcdefg"
+    error_message = "готовый идентификатор набора до края не доехал"
+  }
+}
+
+# ОТРИЦАНИЯ. Без них положительные пробы выше зеленели бы и на модуле, принимающем что
+# угодно: проверки входа существуют ровно затем, чтобы отвергать.
+
+# Два написания одной цели сразу — выбрать за вызывающего модуль не вправе.
+run "rule_with_both_cidr_group_spellings_is_rejected" {
+  command = plan
+
+  variables {
+    cidr_groups = {
+      "probe-office" = { v4_cidr_blocks = ["203.0.113.0/24"] }
+    }
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction     = "INGRESS"
+          cidr_group    = "probe-office"
+          cidr_group_id = "cdg-0123456789abcdefg"
+        }]
+      }
+    }
+  }
+
+  expect_failures = [var.security_groups]
+}
+
+# Ключ, которого нет среди наборов, обязан отвергаться проверкой входа с внятным текстом, а
+# не падать индексацией карты ресурсов: «Invalid index» не называет ни карты, ни ключей.
+run "rule_pointing_at_unknown_cidr_group_key_is_rejected" {
+  command = plan
+
+  variables {
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction  = "INGRESS"
+          cidr_group = "probe-missing"
+        }]
+      }
+    }
+  }
+
+  expect_failures = [var.security_groups]
+}
+
+# Пустой набор целью быть не может: край отвергает такое правило, и проверка ловит это
+# раньше обращения к нему.
+run "rule_pointing_at_an_empty_cidr_group_is_rejected" {
+  command = plan
+
+  variables {
+    cidr_groups = {
+      "probe-empty" = { description = "набор без единого члена" }
+    }
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction  = "INGRESS"
+          cidr_group = "probe-empty"
+        }]
+      }
+    }
+  }
+
+  expect_failures = [var.security_groups]
+}
+
+# Две цели сразу (набор и другая группа) — по-прежнему отказ: «ровно одна» теперь считает
+# три ветви, и без этой пробы третья могла бы не попасть в счёт молча.
+run "rule_with_cidr_group_and_security_group_is_rejected" {
+  command = plan
+
+  variables {
+    cidr_groups = {
+      "probe-office" = { v4_cidr_blocks = ["203.0.113.0/24"] }
+    }
+    security_groups = {
+      "probe-sg" = {
+        rules = [{
+          direction         = "INGRESS"
+          cidr_group        = "probe-office"
+          security_group_id = "sgr01234567890abcde"
+        }]
+      }
+    }
+  }
+
+  expect_failures = [var.security_groups]
 }
