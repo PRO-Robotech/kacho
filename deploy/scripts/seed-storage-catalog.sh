@@ -36,11 +36,31 @@ fi
 
 # StatefulSet резолвится ПОИСКОМ, а не выписанным именем: сабчарт префиксует
 # ресурс именем релиза, и выписанная копия расходится с чартом молча.
-find_sts() {
-  kubectl -n "$NS" get statefulset -o name 2>/dev/null \
-    | grep -E "/([a-z0-9-]+-)?pg-$1\$" | head -1 || true
+#
+# ОТКАЗ ПЕРЕЧИСЛЕНИЯ ОТЛИЧАЕТСЯ ОТ ПУСТОГО ОТВЕТА, и это не формальность.
+# `kubectl … 2>/dev/null || true` превращает «не достучались до кластера» в «в
+# кластере ничего нет»: скрипт пошёл бы дальше и объявил стенд неразвёрнутым,
+# тогда как на деле неизвестно НИЧЕГО. Здесь код возврата перечисления
+# сохраняется отдельно, и его отказ говорит своим текстом.
+STS_LIST=""
+list_statefulsets() {
+  local out rc
+  out="$(kubectl -n "$NS" get statefulset -o name 2>&1)"; rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "FATAL: перечисление StatefulSet в ns/$NS ОТКАЗАЛО (код $rc)." >&2
+    echo "       Это не «в кластере пусто», а «мы не знаем, что там»: контекст не тот," >&2
+    echo "       прав нет либо кластер недоступен. Сеять вслепую нельзя." >&2
+    echo "       Ответ инструмента: $(printf '%s' "$out" | head -2)" >&2
+    exit 1
+  fi
+  STS_LIST="$out"
 }
 
+find_sts() {
+  printf '%s\n' "$STS_LIST" | grep -E "/([a-z0-9-]+-)?pg-$1\$" | head -1 || true
+}
+
+list_statefulsets
 ST_STS="$(find_sts storage)"
 GEO_STS="$(find_sts geo)"
 
@@ -48,7 +68,7 @@ if [ -z "$ST_STS" ]; then
   echo "FATAL: в ns/$NS не найден StatefulSet pg-storage." >&2
   echo "       Стенд не поднят либо kacho-storage не развёрнут: каталог хранения" >&2
   echo "       посеять некуда, а без него КАЖДОЕ создание тома отвечает «класс не найден»." >&2
-  echo "       Осмотрено StatefulSet'ов: $(kubectl -n "$NS" get statefulset -o name 2>/dev/null | wc -l)" >&2
+  echo "       Осмотрено StatefulSet'ов: $(printf '%s\n' "$STS_LIST" | grep -c . || true)" >&2
   exit 1
 fi
 if [ -z "$GEO_STS" ]; then

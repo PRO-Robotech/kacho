@@ -53,6 +53,8 @@ func (d *DirCredentials) Resolve(_ context.Context, ref string) ([]byte, error) 
 	}
 	// Путь сведён к файлу ВНУТРИ смонтированного каталога выше: имя очищено и
 	// склеено с корнем, выход за него отвергается там же.
+	// #nosec G304 -- путь сведён к файлу ВНУТРИ смонтированного каталога выше:
+	// имя очищено и склеено с корнем, выход за него отвергается там же.
 	material, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("credentials reference %q is not resolvable: %w", ref, err)
