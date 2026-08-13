@@ -336,14 +336,32 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="INST-RD-CR-VAL-BOOTSOURCE-BARE-UNTAGGED",
-    title="COMP-1-10: Create с bootSource storage.image id БЕЗ tag/digest → sync 400 "
-          "'bootSource.id needs a tag or digest ...' (grammar в тексте). [verifies COMP-1-10 · error-guessing grammar]",
+    id="INST-RD-CR-VAL-BOOTSOURCE-STORAGE-ID-FORM",
+    title="Форму идентификатора источника решает ЕГО ВЛАДЕЛЕЦ: образ хранилища адресуется своим "
+          "неизменяемым идентификатором, и голый идентификатор БЕЗ тега — законный вход (положительный "
+          "контроль), а явно-не-идентификатор отвергается синхронно по имени поля. Здесь стоял кейс, "
+          "требовавший «tag or digest» от образа хранилища: требование было неисполнимо by construction — "
+          "у его контракта нет ни поля тега, ни поля дайджеста, — и кейс закреплял дефект. "
+          "[verifies COMP-1-10 · ECP формы идентификатора]",
     classes=["VAL", "NEG"], priority="P1",
-    steps=[Step(name="cr-boot-untagged", method="POST", path=INSTANCES,
-                body=_vm_body("bare", mt=_PLACEHOLDER_MT, boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p"}),
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: needs a tag or digest', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('needs a tag or digest'));"])],
+    steps=[
+        Step(name="cr-boot-malformed", method="POST", path=INSTANCES,
+             body=_vm_body("mal", mt=_PLACEHOLDER_MT, boot={"type": "storage.image", "id": "не идентификатор"}),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m.toLowerCase()).to.include('invalid image id'); });"]),
+        # Положительный контроль в паре: без него отрицание выше зеленело бы на
+        # проверке, отвергающей ЛЮБОЙ идентификатор образа.
+        #
+        # Тип машины СЕЯТЬСЯ обязан: без него `{{mtId}}` берётся от соседнего
+        # кейса либо не задан вовсе, и «прошло» означало бы «прошло на чужой
+        # фикстуре». Созданная машина снимается — утёкший ресурс сдвигает
+        # списочные контракты соседних кейсов.
+        *_seed_mt("bareid"),
+        *_create_inst_steps("cr-boot-bare-id-ok",
+                            _vm_body("bare", boot={"type": "storage.image", "id": "img-9k2m4x7q1n8p"})),
+        *_delete_inst(),
+        *_cleanup_mt(),
+    ],
 ))
 
 CASES.append(Case(
