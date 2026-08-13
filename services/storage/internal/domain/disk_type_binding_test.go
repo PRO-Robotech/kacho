@@ -73,7 +73,19 @@ func TestDiskTypeBindingStatus_ClosedDictionary(t *testing.T) {
 		b.Status = st
 		require.NoErrorf(t, b.Validate(), "состояние %q обязано приниматься", st)
 	}
-	for _, bad := range []domain.BindingStatus{"", "active", "RETIRED", "ACTIVE "} {
+	// Пустое состояние — «ещё не назначено», а не «названо неверно»: назначает его
+	// регистрация (вставляет действующее и вытесняет прежнюю ревизию). Держать его
+	// в отвергаемых значило закреплять противоречие, из-за которого регистрация не
+	// работала ни разу: вызывающий обязан был назвать величину, которую хранилище
+	// всё равно назначает само и отвергает всякую другую.
+	unassigned := newValidBinding()
+	unassigned.Status = ""
+	require.NoError(t, unassigned.Validate(),
+		"пустое состояние — законный вход регистрации, она назначит действующее")
+
+	// Зеркало: непустое по-прежнему обязано принадлежать словарю, иначе
+	// послабление читалось бы как «состояние не проверяется вовсе».
+	for _, bad := range []domain.BindingStatus{"active", "RETIRED", "ACTIVE "} {
 		b := newValidBinding()
 		b.Status = bad
 		require.Errorf(t, b.Validate(), "состояние вне словаря обязано отвергаться: %q", bad)
