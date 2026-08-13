@@ -87,11 +87,6 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	// regionId. placementType в теле → explicit reject; оба/ни одного → reject;
 	// иначе выводим дискриминатор и записываем его в domain (Insert → placement_type-
 	// колонка). Существование zone/region валидируется у owner-домена geo (fail-closed).
-	placement, err := resolvePlacement(ctx, u.zoneReg, u.regionReg, s)
-	if err != nil {
-		return nil, err
-	}
-	s.PlacementType = placement
 	// Потолок числа диапазонов — до поэлементной и до квадратичной проверок.
 	if err := validateSubnetCidrCardinality("v4_cidr_blocks", s.V4CidrBlocks); err != nil {
 		return nil, err
@@ -99,9 +94,10 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if err := validateSubnetCidrCardinality("v6_cidr_blocks", s.V6CidrBlocks); err != nil {
 		return nil, err
 	}
-	// Proto contract: v4_cidr_blocks НЕ required — подсеть может быть создана без
-	// IPv4-диапазона. Пустой список легален; переданные CIDR'ы все равно
-	// валидируются (host-bits=0, /16../28).
+	// `ipv4_cidr_primary` сам по себе НЕ обязателен — подсеть может быть v6-only,
+	// и тогда этот набор пуст. Обязательна ПАРА: пустыми оба якоря быть не могут
+	// (проверено выше). Переданное значение валидируется целиком: host-bits=0 и
+	// размер внутри контрактного диапазона /16../28 (`cidr_bounds.go`).
 	for i, c := range s.V4CidrBlocks {
 		if err := validateSubnetV4CIDR(fmt.Sprintf("v4_cidr_blocks[%d]", i), c); err != nil {
 			return nil, err
@@ -119,6 +115,42 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 	if err := serviceerr.FromValidation(s.Validate()); err != nil {
 		return nil, err
 	}
+	// Хотя бы ОДИН адресный якорь обязателен. Реестр намеренных решений сервиса
+	// называет границу прямо: подсеть может быть одной семьи, но не «без CIDR
+	// вообще как норма» — пустым может быть ОДИН из двух
+	// (`docs/engineering/architecture/07-known-divergences.md` §2).
+	//
+	// Свойство «хотя бы одно из двух» названо своим предикатом, а не выведено из
+	// соседних: потолок числа диапазонов и формат каждого значения на пустом
+	// наборе молчат by construction, и по каждому в отдельности это верно —
+	// поэтому подсеть без ни одного якоря проходила обе проверки. Выделить из неё
+	// нельзя ничего, а `UNIQUE(project,name)` она занимает.
+	//
+	// # ПОЧЕМУ ИМЕННО ЗДЕСЬ, А НЕ ВЫШЕ
+	//
+	// Порядок здесь — не вкусовщина, он измерен. Перекрёстное требование («хотя бы
+	// одно из двух») стоит ПОСЛЕ всех локальных проверок отдельных полей и ПЕРЕД
+	// вызовом к владельцу Geography:
+	//
+	//   - раньше локальных оно ПЕРЕКРЫВАЕТ их собственные отказы. Замер по набору
+	//     e2e (129 кейсов, 97 шагов создания подсети): из 47 шагов без якоря
+	//     ДВЕНАДЦАТЬ ждут отказа по своему предмету — имя, описание, метки, зона —
+	//     и получили бы 400 по ЧУЖОЙ причине. Кейс отчитался бы зелёным, перестав
+	//     проверять то, ради чего написан; это хуже красного, потому что незаметно;
+	//   - позже вызова к соседу оно оплачивало бы сетевым вызовом ввод, который не
+	//     станет законным ни при каком ответе.
+	//
+	// Локальные проверки бесплатны, поэтому «не платить за безнадёжный ввод»
+	// относится к ВЫЗОВУ, а не к ним.
+	if len(s.V4CidrBlocks) == 0 && len(s.V6CidrBlocks) == 0 {
+		return nil, serviceerr.InvalidArg("ipv4_cidr_primary",
+			"ipv4_cidr_primary or ipv6_cidr_primary is required")
+	}
+	placement, err := resolvePlacement(ctx, u.zoneReg, u.regionReg, s)
+	if err != nil {
+		return nil, err
+	}
+	s.PlacementType = placement
 	// VPC-1-43: dhcp_options снят by design — на Create не принимается/не валидируется.
 
 	// Sync project.Exists precheck убран — он race-prone: между sync-проверкой и

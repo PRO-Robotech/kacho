@@ -187,7 +187,7 @@
           ]
         },
         {
-          "name": "poll-op-1280",
+          "name": "poll-op-1283",
           "request": {
             "method": "GET",
             "header": [
@@ -255,7 +255,7 @@
           ]
         },
         {
-          "name": "get-confirms-rya1092",
+          "name": "get-confirms-rya1094",
           "request": {
             "method": "GET",
             "header": [
@@ -309,7 +309,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1142",
+          "name": "cleanup-delete-rya1144",
           "request": {
             "method": "DELETE",
             "header": [
@@ -419,7 +419,7 @@
           ]
         },
         {
-          "name": "poll-op-1281",
+          "name": "poll-op-1284",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "get-no-vpnid-rya1093",
+          "name": "get-no-vpnid-rya1095",
           "request": {
             "method": "GET",
             "header": [
@@ -539,7 +539,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1094",
+          "name": "cleanup-delete-rya1096",
           "request": {
             "method": "DELETE",
             "header": [
@@ -762,7 +762,7 @@
           ]
         },
         {
-          "name": "poll-op-1282",
+          "name": "poll-op-1285",
           "request": {
             "method": "GET",
             "header": [
@@ -878,7 +878,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya1143",
+          "name": "cleanup-first-rya1145",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1299,7 +1299,7 @@
           ]
         },
         {
-          "name": "poll-op-1283",
+          "name": "poll-op-1286",
           "request": {
             "method": "GET",
             "header": [
@@ -1367,7 +1367,7 @@
           ]
         },
         {
-          "name": "update-desc-rya1095",
+          "name": "update-desc-rya1097",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1432,7 +1432,7 @@
           ]
         },
         {
-          "name": "poll-op-1284",
+          "name": "poll-op-1287",
           "request": {
             "method": "GET",
             "header": [
@@ -1487,7 +1487,7 @@
           ]
         },
         {
-          "name": "verify-rya1096",
+          "name": "verify-rya1098",
           "request": {
             "method": "GET",
             "header": [
@@ -1538,7 +1538,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1097",
+          "name": "cleanup-rya1099",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1852,7 +1852,7 @@
           ]
         },
         {
-          "name": "poll-op-1285",
+          "name": "poll-op-1288",
           "request": {
             "method": "GET",
             "header": [
@@ -1920,7 +1920,7 @@
           ]
         },
         {
-          "name": "list-subnets-rya1144",
+          "name": "list-subnets-rya1146",
           "request": {
             "method": "GET",
             "header": [
@@ -1972,7 +1972,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1145",
+          "name": "cleanup-rya1147",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2082,7 +2082,7 @@
           ]
         },
         {
-          "name": "poll-op-1286",
+          "name": "poll-op-1289",
           "request": {
             "method": "GET",
             "header": [
@@ -2150,7 +2150,7 @@
           ]
         },
         {
-          "name": "list-sgs-rya1146",
+          "name": "list-sgs-rya1148",
           "request": {
             "method": "GET",
             "header": [
@@ -2205,7 +2205,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1147",
+          "name": "cleanup-rya1149",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2315,7 +2315,7 @@
           ]
         },
         {
-          "name": "poll-op-1287",
+          "name": "poll-op-1290",
           "request": {
             "method": "GET",
             "header": [
@@ -2383,7 +2383,7 @@
           ]
         },
         {
-          "name": "list-rt-rya1148",
+          "name": "list-rt-rya1150",
           "request": {
             "method": "GET",
             "header": [
@@ -2435,7 +2435,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1149",
+          "name": "cleanup-rya1151",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2551,7 +2551,7 @@
           ]
         },
         {
-          "name": "poll-op-1288",
+          "name": "poll-op-1291",
           "request": {
             "method": "GET",
             "header": [
@@ -2619,7 +2619,7 @@
           ]
         },
         {
-          "name": "list-ops-rya1150",
+          "name": "list-ops-rya1152",
           "request": {
             "method": "GET",
             "header": [
@@ -2674,7 +2674,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1151",
+          "name": "cleanup-rya1153",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3223,7 +3223,7 @@
           ]
         },
         {
-          "name": "poll-op-1289",
+          "name": "poll-op-1292",
           "request": {
             "method": "GET",
             "header": [
@@ -3291,7 +3291,7 @@
           ]
         },
         {
-          "name": "delete-happy-rya1098",
+          "name": "delete-happy-rya1100",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3347,7 +3347,7 @@
           ]
         },
         {
-          "name": "poll-op-1290",
+          "name": "poll-op-1293",
           "request": {
             "method": "GET",
             "header": [
@@ -3411,7 +3411,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya1152",
+          "name": "get-after-delete-rya1154",
           "request": {
             "method": "GET",
             "header": [
@@ -3623,7 +3623,7 @@
           ]
         },
         {
-          "name": "poll-op-1291",
+          "name": "poll-op-1294",
           "request": {
             "method": "GET",
             "header": [
@@ -3686,7 +3686,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1099",
+          "name": "ecp-cleanup-rya1101",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3742,7 +3742,7 @@
           ]
         },
         {
-          "name": "poll-op-1292",
+          "name": "poll-op-1295",
           "request": {
             "method": "GET",
             "header": [
@@ -3861,7 +3861,7 @@
           ]
         },
         {
-          "name": "poll-op-1293",
+          "name": "poll-op-1296",
           "request": {
             "method": "GET",
             "header": [
@@ -3924,7 +3924,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1100",
+          "name": "ecp-cleanup-rya1102",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3980,7 +3980,7 @@
           ]
         },
         {
-          "name": "poll-op-1294",
+          "name": "poll-op-1297",
           "request": {
             "method": "GET",
             "header": [
@@ -4152,7 +4152,7 @@
           ]
         },
         {
-          "name": "poll-op-1295",
+          "name": "poll-op-1298",
           "request": {
             "method": "GET",
             "header": [
@@ -4215,7 +4215,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1101",
+          "name": "ecp-cleanup-rya1103",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4271,7 +4271,7 @@
           ]
         },
         {
-          "name": "poll-op-1296",
+          "name": "poll-op-1299",
           "request": {
             "method": "GET",
             "header": [
@@ -4549,7 +4549,7 @@
           ]
         },
         {
-          "name": "poll-op-1297",
+          "name": "poll-op-1300",
           "request": {
             "method": "GET",
             "header": [
@@ -4612,7 +4612,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1102",
+          "name": "ecp-cleanup-rya1104",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4668,7 +4668,7 @@
           ]
         },
         {
-          "name": "poll-op-1298",
+          "name": "poll-op-1301",
           "request": {
             "method": "GET",
             "header": [
@@ -4946,7 +4946,7 @@
           ]
         },
         {
-          "name": "poll-op-1299",
+          "name": "poll-op-1302",
           "request": {
             "method": "GET",
             "header": [
@@ -5009,7 +5009,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1103",
+          "name": "ecp-cleanup-rya1105",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5065,7 +5065,7 @@
           ]
         },
         {
-          "name": "poll-op-1300",
+          "name": "poll-op-1303",
           "request": {
             "method": "GET",
             "header": [
@@ -5468,7 +5468,7 @@
           ]
         },
         {
-          "name": "list-p2-rya1153",
+          "name": "list-p2-rya1155",
           "request": {
             "method": "GET",
             "header": [
@@ -5576,7 +5576,7 @@
           ]
         },
         {
-          "name": "poll-1-rya1154",
+          "name": "poll-1-rya1156",
           "request": {
             "method": "GET",
             "header": [
@@ -5685,7 +5685,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1104",
+          "name": "cleanup-rya1106",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5790,417 +5790,6 @@
           ]
         },
         {
-          "name": "poll-op-1301",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
-                  "if (j.error) {",
-                  "  pm.environment.unset('createdId');",
-                  "} else {",
-                  "  const _cid = ((j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || '');",
-                  "  if (_cid) pm.environment.set('createdId', String(_cid));",
-                  "  else pm.environment.unset('createdId');",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "patch-rya1105",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{createdId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"updateMask\": \"name\", \"name\": \"net-renamed-x\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-1302",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "verify-rya1106",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{createdId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('net-renamed-x'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-rya1107",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{createdId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-1303",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
-                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
-                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
-                  "(function () {",
-                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
-                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
-                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-UPD-CRUD-DESC — Update happy description",
-      "description": "class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "create",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-upd-desc-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "poll-op-1304",
           "request": {
             "method": "GET",
@@ -6264,7 +5853,7 @@
           ]
         },
         {
-          "name": "patch-rya1108",
+          "name": "patch-rya1107",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6287,7 +5876,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"description\", \"description\": \"updated-desc-newman\"}",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"net-renamed-x\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6384,7 +5973,7 @@
           ]
         },
         {
-          "name": "verify-rya1109",
+          "name": "verify-rya1108",
           "request": {
             "method": "GET",
             "header": [
@@ -6428,14 +6017,14 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('updated-desc-newman'));"
+                  "pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('net-renamed-x'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rya1110",
+          "name": "cleanup-rya1109",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6559,7 +6148,7 @@
       ]
     },
     {
-      "name": "NET-UPD-CRUD-LABELS — Update happy labels",
+      "name": "NET-UPD-CRUD-DESC — Update happy description",
       "description": "class:CRUD | priority:P2",
       "item": [
         {
@@ -6585,7 +6174,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-upd-labels-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-upd-desc-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6675,7 +6264,7 @@
           ]
         },
         {
-          "name": "patch-rya1111",
+          "name": "patch-rya1110",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6698,7 +6287,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"labels\", \"labels\": {\"env\": \"prod\", \"team\": \"net\"}}",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"updated-desc-newman\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6795,7 +6384,7 @@
           ]
         },
         {
-          "name": "verify-rya1112",
+          "name": "verify-rya1111",
           "request": {
             "method": "GET",
             "header": [
@@ -6839,15 +6428,14 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('label env', () => pm.expect((pm.response.json().labels || {}).env).to.eql('prod'));",
-                  "pm.test('label team', () => pm.expect((pm.response.json().labels || {}).team).to.eql('net'));"
+                  "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('updated-desc-newman'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rya1113",
+          "name": "cleanup-rya1112",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6906,6 +6494,418 @@
         },
         {
           "name": "poll-op-1309",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-UPD-CRUD-LABELS — Update happy labels",
+      "description": "class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-upd-labels-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1310",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('createdId');",
+                  "} else {",
+                  "  const _cid = ((j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || '');",
+                  "  if (_cid) pm.environment.set('createdId', String(_cid));",
+                  "  else pm.environment.unset('createdId');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "patch-rya1113",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{createdId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"labels\", \"labels\": {\"env\": \"prod\", \"team\": \"net\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1311",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verify-rya1114",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{createdId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('label env', () => pm.expect((pm.response.json().labels || {}).env).to.eql('prod'));",
+                  "pm.test('label team', () => pm.expect((pm.response.json().labels || {}).team).to.eql('net'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-rya1115",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{createdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{createdId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1312",
           "request": {
             "method": "GET",
             "header": [
@@ -7264,7 +7264,7 @@
           ]
         },
         {
-          "name": "poll-op-1310",
+          "name": "poll-op-1313",
           "request": {
             "method": "GET",
             "header": [
@@ -7327,7 +7327,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya1114",
+          "name": "patch-multi-rya1116",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7392,7 +7392,7 @@
           ]
         },
         {
-          "name": "poll-op-1311",
+          "name": "poll-op-1314",
           "request": {
             "method": "GET",
             "header": [
@@ -7447,7 +7447,7 @@
           ]
         },
         {
-          "name": "verify-all-rya1115",
+          "name": "verify-all-rya1117",
           "request": {
             "method": "GET",
             "header": [
@@ -7502,7 +7502,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1116",
+          "name": "cleanup-rya1118",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7560,7 +7560,7 @@
           ]
         },
         {
-          "name": "poll-op-1312",
+          "name": "poll-op-1315",
           "request": {
             "method": "GET",
             "header": [
@@ -7679,7 +7679,7 @@
           ]
         },
         {
-          "name": "poll-op-1313",
+          "name": "poll-op-1316",
           "request": {
             "method": "GET",
             "header": [
@@ -7778,7 +7778,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1155",
+          "name": "cleanup-rya1157",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7836,7 +7836,7 @@
           ]
         },
         {
-          "name": "poll-op-1314",
+          "name": "poll-op-1317",
           "request": {
             "method": "GET",
             "header": [
@@ -7955,7 +7955,7 @@
           ]
         },
         {
-          "name": "poll-op-1315",
+          "name": "poll-op-1318",
           "request": {
             "method": "GET",
             "header": [
@@ -8018,7 +8018,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst1117",
+          "name": "list-filtered-lst1119",
           "request": {
             "method": "GET",
             "header": [
@@ -8071,7 +8071,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1118",
+          "name": "cleanup-rya1120",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8129,7 +8129,7 @@
           ]
         },
         {
-          "name": "poll-op-1316",
+          "name": "poll-op-1319",
           "request": {
             "method": "GET",
             "header": [
@@ -8248,7 +8248,7 @@
           ]
         },
         {
-          "name": "poll-op-1317",
+          "name": "poll-op-1320",
           "request": {
             "method": "GET",
             "header": [
@@ -8311,7 +8311,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1119",
+          "name": "ecp-cleanup-rya1121",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8367,7 +8367,7 @@
           ]
         },
         {
-          "name": "poll-op-1318",
+          "name": "poll-op-1321",
           "request": {
             "method": "GET",
             "header": [
@@ -8790,7 +8790,7 @@
           ]
         },
         {
-          "name": "poll-op-1319",
+          "name": "poll-op-1322",
           "request": {
             "method": "GET",
             "header": [
@@ -8901,7 +8901,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya1156",
+          "name": "cleanup-first-rya1158",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8959,7 +8959,7 @@
           ]
         },
         {
-          "name": "poll-op-1320",
+          "name": "poll-op-1323",
           "request": {
             "method": "GET",
             "header": [
@@ -9078,7 +9078,7 @@
           ]
         },
         {
-          "name": "poll-op-1321",
+          "name": "poll-op-1324",
           "request": {
             "method": "GET",
             "header": [
@@ -9141,7 +9141,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya1120",
+          "name": "patch-name-only-rya1122",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9206,7 +9206,7 @@
           ]
         },
         {
-          "name": "poll-op-1322",
+          "name": "poll-op-1325",
           "request": {
             "method": "GET",
             "header": [
@@ -9261,7 +9261,7 @@
           ]
         },
         {
-          "name": "verify-rya1121",
+          "name": "verify-rya1123",
           "request": {
             "method": "GET",
             "header": [
@@ -9315,7 +9315,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1122",
+          "name": "cleanup-rya1124",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9373,7 +9373,7 @@
           ]
         },
         {
-          "name": "poll-op-1323",
+          "name": "poll-op-1326",
           "request": {
             "method": "GET",
             "header": [
@@ -9492,7 +9492,7 @@
           ]
         },
         {
-          "name": "poll-op-1324",
+          "name": "poll-op-1327",
           "request": {
             "method": "GET",
             "header": [
@@ -9555,7 +9555,7 @@
           ]
         },
         {
-          "name": "get-timed-rya1123",
+          "name": "get-timed-rya1125",
           "request": {
             "method": "GET",
             "header": [
@@ -9606,7 +9606,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1157",
+          "name": "cleanup-rya1159",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9664,7 +9664,7 @@
           ]
         },
         {
-          "name": "poll-op-1325",
+          "name": "poll-op-1328",
           "request": {
             "method": "GET",
             "header": [
@@ -9833,7 +9833,7 @@
           ]
         },
         {
-          "name": "poll-op-1326",
+          "name": "poll-op-1329",
           "request": {
             "method": "GET",
             "header": [
@@ -9896,7 +9896,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1124",
+          "name": "ecp-cleanup-rya1126",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9952,7 +9952,7 @@
           ]
         },
         {
-          "name": "poll-op-1327",
+          "name": "poll-op-1330",
           "request": {
             "method": "GET",
             "header": [
@@ -10366,7 +10366,7 @@
           ]
         },
         {
-          "name": "poll-op-1328",
+          "name": "poll-op-1331",
           "request": {
             "method": "GET",
             "header": [
@@ -10488,7 +10488,7 @@
           ]
         },
         {
-          "name": "poll-op-1329",
+          "name": "poll-op-1332",
           "request": {
             "method": "GET",
             "header": [
@@ -10556,7 +10556,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1125",
+          "name": "del-net-blocked-rya1127",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10611,7 +10611,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1126",
+          "name": "cleanup-sub-rya1128",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10669,7 +10669,7 @@
           ]
         },
         {
-          "name": "poll-op-1330",
+          "name": "poll-op-1333",
           "request": {
             "method": "GET",
             "header": [
@@ -10733,7 +10733,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1127",
+          "name": "cleanup-net-rya1129",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10791,7 +10791,7 @@
           ]
         },
         {
-          "name": "poll-op-1331",
+          "name": "poll-op-1334",
           "request": {
             "method": "GET",
             "header": [
@@ -10915,7 +10915,7 @@
           ]
         },
         {
-          "name": "poll-op-1332",
+          "name": "poll-op-1335",
           "request": {
             "method": "GET",
             "header": [
@@ -11037,7 +11037,7 @@
           ]
         },
         {
-          "name": "poll-op-1333",
+          "name": "poll-op-1336",
           "request": {
             "method": "GET",
             "header": [
@@ -11105,7 +11105,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1128",
+          "name": "del-net-blocked-rya1130",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11160,7 +11160,7 @@
           ]
         },
         {
-          "name": "cleanup-rt-rya1158",
+          "name": "cleanup-rt-rya1160",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11218,7 +11218,7 @@
           ]
         },
         {
-          "name": "poll-op-1334",
+          "name": "poll-op-1337",
           "request": {
             "method": "GET",
             "header": [
@@ -11282,7 +11282,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1129",
+          "name": "cleanup-net-rya1131",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11340,7 +11340,7 @@
           ]
         },
         {
-          "name": "poll-op-1335",
+          "name": "poll-op-1338",
           "request": {
             "method": "GET",
             "header": [
@@ -11464,7 +11464,7 @@
           ]
         },
         {
-          "name": "poll-op-1336",
+          "name": "poll-op-1339",
           "request": {
             "method": "GET",
             "header": [
@@ -11586,7 +11586,7 @@
           ]
         },
         {
-          "name": "poll-op-1337",
+          "name": "poll-op-1340",
           "request": {
             "method": "GET",
             "header": [
@@ -11654,7 +11654,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1130",
+          "name": "del-net-blocked-rya1132",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11709,7 +11709,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1159",
+          "name": "cleanup-sg-rya1161",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11767,7 +11767,7 @@
           ]
         },
         {
-          "name": "poll-op-1338",
+          "name": "poll-op-1341",
           "request": {
             "method": "GET",
             "header": [
@@ -11831,7 +11831,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1131",
+          "name": "cleanup-net-rya1133",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11889,7 +11889,7 @@
           ]
         },
         {
-          "name": "poll-op-1339",
+          "name": "poll-op-1342",
           "request": {
             "method": "GET",
             "header": [
@@ -12013,7 +12013,7 @@
           ]
         },
         {
-          "name": "poll-op-1340",
+          "name": "poll-op-1343",
           "request": {
             "method": "GET",
             "header": [
@@ -12081,7 +12081,7 @@
           ]
         },
         {
-          "name": "check-default-sg-rya1160",
+          "name": "check-default-sg-rya1162",
           "request": {
             "method": "GET",
             "header": [
@@ -12134,7 +12134,7 @@
           ]
         },
         {
-          "name": "del-net-rya1132",
+          "name": "del-net-rya1134",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12190,7 +12190,7 @@
           ]
         },
         {
-          "name": "poll-op-1341",
+          "name": "poll-op-1344",
           "request": {
             "method": "GET",
             "header": [
@@ -12245,7 +12245,7 @@
           ]
         },
         {
-          "name": "assert-success-rya1161",
+          "name": "assert-success-rya1163",
           "request": {
             "method": "GET",
             "header": [
@@ -12295,7 +12295,7 @@
           ]
         },
         {
-          "name": "get-after-del-rya1162",
+          "name": "get-after-del-rya1164",
           "request": {
             "method": "GET",
             "header": [
@@ -12409,7 +12409,7 @@
           ]
         },
         {
-          "name": "poll-op-1342",
+          "name": "poll-op-1345",
           "request": {
             "method": "GET",
             "header": [
@@ -12477,7 +12477,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya1133",
+          "name": "get-default-sg-id-rya1135",
           "request": {
             "method": "GET",
             "header": [
@@ -12534,7 +12534,7 @@
           ]
         },
         {
-          "name": "get-default-sg-alive-rya1134",
+          "name": "get-default-sg-alive-rya1136",
           "request": {
             "method": "GET",
             "header": [
@@ -12585,7 +12585,7 @@
           ]
         },
         {
-          "name": "del-net-rya1135",
+          "name": "del-net-rya1137",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12641,7 +12641,7 @@
           ]
         },
         {
-          "name": "poll-op-1343",
+          "name": "poll-op-1346",
           "request": {
             "method": "GET",
             "header": [
@@ -12696,7 +12696,7 @@
           ]
         },
         {
-          "name": "assert-net-deleted-rya1163",
+          "name": "assert-net-deleted-rya1165",
           "request": {
             "method": "GET",
             "header": [
@@ -12745,7 +12745,7 @@
           ]
         },
         {
-          "name": "get-default-sg-gone-rya1164",
+          "name": "get-default-sg-gone-rya1166",
           "request": {
             "method": "GET",
             "header": [
@@ -12860,7 +12860,7 @@
           ]
         },
         {
-          "name": "poll-op-1344",
+          "name": "poll-op-1347",
           "request": {
             "method": "GET",
             "header": [
@@ -12982,7 +12982,7 @@
           ]
         },
         {
-          "name": "poll-op-1345",
+          "name": "poll-op-1348",
           "request": {
             "method": "GET",
             "header": [
@@ -13104,7 +13104,7 @@
           ]
         },
         {
-          "name": "poll-op-1346",
+          "name": "poll-op-1349",
           "request": {
             "method": "GET",
             "header": [
@@ -13172,7 +13172,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1136",
+          "name": "del-net-blocked-rya1138",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13227,7 +13227,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya1165",
+          "name": "cleanup-nic-rya1167",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13283,7 +13283,7 @@
           ]
         },
         {
-          "name": "poll-op-1347",
+          "name": "poll-op-1350",
           "request": {
             "method": "GET",
             "header": [
@@ -13347,7 +13347,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1137",
+          "name": "cleanup-sub-rya1139",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13403,7 +13403,7 @@
           ]
         },
         {
-          "name": "poll-op-1348",
+          "name": "poll-op-1351",
           "request": {
             "method": "GET",
             "header": [
@@ -13467,7 +13467,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1138",
+          "name": "cleanup-net-rya1140",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13523,7 +13523,7 @@
           ]
         },
         {
-          "name": "poll-op-1349",
+          "name": "poll-op-1352",
           "request": {
             "method": "GET",
             "header": [
@@ -13647,7 +13647,7 @@
           ]
         },
         {
-          "name": "poll-op-1350",
+          "name": "poll-op-1353",
           "request": {
             "method": "GET",
             "header": [
@@ -13715,7 +13715,7 @@
           ]
         },
         {
-          "name": "listops-before-rya1166",
+          "name": "listops-before-rya1168",
           "request": {
             "method": "GET",
             "header": [
@@ -13768,7 +13768,7 @@
           ]
         },
         {
-          "name": "del-net-rya1139",
+          "name": "del-net-rya1141",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13824,7 +13824,7 @@
           ]
         },
         {
-          "name": "poll-op-1351",
+          "name": "poll-op-1354",
           "request": {
             "method": "GET",
             "header": [
@@ -13888,7 +13888,7 @@
           ]
         },
         {
-          "name": "listops-after-delete-rya1167",
+          "name": "listops-after-delete-rya1169",
           "request": {
             "method": "GET",
             "header": [
@@ -14542,7 +14542,7 @@
           ]
         },
         {
-          "name": "poll-op-1352",
+          "name": "poll-op-1355",
           "request": {
             "method": "GET",
             "header": [
@@ -14605,7 +14605,7 @@
           ]
         },
         {
-          "name": "get-1-rya1140",
+          "name": "get-1-rya1142",
           "request": {
             "method": "GET",
             "header": [
@@ -14656,7 +14656,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst1141",
+          "name": "lst-includes-lst1143",
           "request": {
             "method": "GET",
             "header": [
@@ -14709,7 +14709,7 @@
           ]
         },
         {
-          "name": "upd-rya1168",
+          "name": "upd-rya1170",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14774,7 +14774,7 @@
           ]
         },
         {
-          "name": "poll-op-1353",
+          "name": "poll-op-1356",
           "request": {
             "method": "GET",
             "header": [
@@ -14829,7 +14829,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya1169",
+          "name": "get-after-upd-rya1171",
           "request": {
             "method": "GET",
             "header": [
@@ -14880,7 +14880,7 @@
           ]
         },
         {
-          "name": "del-rya1170",
+          "name": "del-rya1172",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14936,7 +14936,7 @@
           ]
         },
         {
-          "name": "poll-op-1354",
+          "name": "poll-op-1357",
           "request": {
             "method": "GET",
             "header": [
@@ -15036,7 +15036,7 @@
           ]
         },
         {
-          "name": "get-404-rya1171",
+          "name": "get-404-rya1173",
           "request": {
             "method": "GET",
             "header": [

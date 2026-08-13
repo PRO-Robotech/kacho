@@ -198,19 +198,57 @@ CIDR не из списка → `InvalidArgument`/`FailedPrecondition` (доку
 **Снято вместе с RPC `Subnet.Relocate`** (см. contract-removal в шапке). Требование
 описывало отказ метода, которого в контракте больше нет, — отказывать нечему.
 
-### REQ-CIDR-07 — Subnet IPv4-префикс ≤ /28 [P2]
-Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`, `/32`) → sync
-`InvalidArgument "Illegal argument Invalid network prefix /N"` (контракт Kachō
-). Касается Create.v4_cidr_blocks и AddCidrBlocks. `/28` — допустимо.
-- Validated-by: `SUB-CR-BVA-CIDR-28`, `SUB-CR-BVA-CIDR-29`, `SUB-CR-BVA-CIDR-30`, `SUB-CR-BVA-CIDR-31`
-- Проверка: `validateSubnetV4CIDR` в `internal/apps/kacho/api/subnet/helpers.go` (`prefix.Addr.Is4 && prefix.Bits > 28`).
+### REQ-CIDR-07 — размер IPv4-подсети внутри диапазона /16../28 [P2]
+Диапазон **двусторонний и включительный с обеих сторон**: `/16` и `/28` законны, `/15` и
+`/29` — нет. Префикс вне диапазона → sync `InvalidArgument "Illegal argument Invalid network
+prefix /N"`. Касается `Create.ipv4_cidr_primary`/`v4_cidr_blocks` и `AddCidrBlocks`.
 
-### REQ-CIDR-08 — Subnet: IPv4 CIDR опционален (CIDR-less subnet) [P1]
-`Subnet.Create` БЕЗ `v4_cidr_blocks` → 200, создается CIDR-less (или v6-only) подсеть.
-`Address.Create` с internal-spec в подсеть без IPv4 CIDR → `FailedPrecondition`/`InvalidArgument`
-(`"subnet <id> has no IPv4 CIDR"` — некуда аллоцировать v4-IP).
-- Validated-by: `SUB-CR-NO-CIDR-OK`, `SUB-CR-NEG-ADDR-INTO-CIDRLESS`
-- Проверка: `internal/apps/kacho/api/subnet/` Create (`v4_cidr_blocks` не required); `internal/apps/kacho/api/address/` doCreate (guard «no IPv4 CIDR» перед allocate).
+Прежняя редакция называла только одну сторону («≤ /28») и предикат `prefix.Bits > 28` — тогда
+как контракт обещал диапазон с ДВУХ сторон, а код исполнял одну: `/8` проходил. Обещание
+осталось, код приведён к нему.
+- Validated-by: `SUB-CR-BVA-CIDR-28`, `SUB-CR-BVA-CIDR-29`, `SUB-CR-BVA-CIDR-30`, `SUB-CR-BVA-CIDR-31`
+- Проверка: `validateSubnetV4CIDR` в `internal/apps/kacho/api/subnet/helpers.go`; **границы
+  названы один раз** в `internal/apps/kacho/api/subnet/cidr_bounds.go`, и их совпадение с
+  текстом контракта держит проба паритета `TestSubnetCidrBoundsMatchTheContract` — иначе
+  обещание и предикат разъедутся молча, причём разъедутся именно там, где расхождение не
+  видно: оба «работают».
+- IPv6 своего диапазона **не имеет**: контракт его не обещает, а граница, которую никто не
+  обещал, не выдумывается. Появление обещания ловит та же проба паритета.
+
+### REQ-CIDR-08 — Subnet: пустым может быть ОДИН якорь из двух, но не оба [P1]
+`Subnet.Create` с **одним** адресным якорем → 200: v4-only и v6-only подсети законны.
+`Subnet.Create` **без обоих** якорей → sync `InvalidArgument`, и отказ **называет поле**
+(`ipv4_cidr_primary`): из такой подсети нельзя выделить ни один адрес и ни один интерфейс, а
+`UNIQUE(project,name)` она занимает.
+
+`Address.Create` с internal-spec в подсеть, где нет плана нужного семейства (например v4-адрес
+в v6-only подсеть) → `FailedPrecondition`/`InvalidArgument` (`"subnet <id> has no IPv4 CIDR"`).
+Эта половина требования не менялась.
+
+> [!warning] Прежняя редакция требовала ОБРАТНОГО и устарела дважды
+> Она заявляла «без `v4_cidr_blocks` → 200, создаётся CIDR-less подсеть». Реестр намеренных
+> решений сервиса (`docs/engineering/architecture/07-known-divergences.md` §2) называет границу
+> прямо: «подсеть может быть одной семьи — но не „без CIDR вообще как норма“». Реестр
+> существует затем, чтобы решения не фиксили по второму разу, — значит верен он.
+> Вдобавок требование называло поле `v4_cidr_blocks`, которого на пути `Create` **больше нет**:
+> его номер зарезервирован, место занял неизменяемый якорь. То есть требование расходилось и с
+> решением, и с контрактом.
+
+**Порядок проверок — часть требования, а не деталь реализации.** Перекрёстное требование
+(«хотя бы одно из двух») выносится **после** локальных проверок отдельных полей — имени,
+описания, метки — и **перед** обращением к владельцу Geography. Раньше локальных оно
+перекрывало их собственные отказы: перепись набора (130 кейсов, 97 шагов создания подсети)
+показала **двенадцать** шагов, которые ждут отказа по своему предмету и получили бы 400 по
+чужой причине, оставшись при этом ЗЕЛЁНЫМИ. Свойство закреплено пробой
+`TestSubnetPerFieldRefusalsPrecedeTheAnchorRequirement` (вход выбран так, что при неверном
+порядке текст отказа ДРУГОЙ) и доказано инъекцией в обе стороны.
+- Validated-by: `SUB-CR-NEG-NO-ANCHOR` (отказ на обоих пустых, с именем поля),
+  `SUB-CR-V6ONLY-NO-V4-OK` (положительный контроль: только v6),
+  `SUB-CR-CRUD-OK` (положительный контроль: только v4),
+  `SUB-CR-NEG-ADDR-INTO-V6ONLY` (адрес отсутствующего семейства)
+- Проверка: `internal/apps/kacho/api/subnet/create.go` (перекрёстное требование после
+  `s.Validate()`, до `resolvePlacement`); `internal/apps/kacho/api/address/` doCreate (guard
+  «no IPv4 CIDR» перед allocate).
 
 ### REQ-CIDR-09 — Subnet: IPv6 CIDR (dual-stack / v6-only) [P1]
 `Subnet.Create` с `v6_cidr_blocks` → 200, `v6_cidr_blocks` виден в GET; допустимы dual-stack

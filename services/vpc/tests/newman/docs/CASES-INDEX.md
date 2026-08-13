@@ -137,8 +137,9 @@
 | `ADR-CR-EXT-FALLTHROUGH-V6` | CONF,NEG | P0 | 1 (add) | Split-shape: Address.Create v6 в zone с v4-only default pool → cascade family-skip → `FailedPrecondition` (код 9). После cascade использует `len(V4CIDRBlocks)>0`/`len(V6CIDRBlocks)>0` вместо runtime-парсинга CIDR. Verifies REQ-RESOLVE-01. |
 | `*-CR-CRUD-INT` | CRUD | P1 | 1 (add) | Create internal Address → IP в subnet |
 | `*-CR-CRUD-OK` | CRUD | P1 | 5 (gat,net,rou,sec,sub) | Create subnet → Operation → Subnet visible in GET |
-| `SUB-CR-NO-CIDR-OK` | CRUD | P1 | 1 (sub) | Create Subnet без `ipv4_cidr_primary` (только v6 или вообще без IPv4) → 200, CIDR-less Subnet. Verifies REQ-CIDR-08. |
-| `SUB-CR-NEG-ADDR-INTO-CIDRLESS` | NEG,CONF | P1 | 1 (sub) | Create internal Address в Subnet без IPv4-CIDR → `FailedPrecondition`/`InvalidArgument` (некуда аллоцировать v4-IP). Verifies REQ-CIDR-08. |
+| `SUB-CR-NEG-NO-ANCHOR` | NEG,VAL | P1 | 1 (sub) | Create Subnet без ОБОИХ адресных якорей → 400, отказ называет `ipv4_cidr_primary`; то же имя с законным якорем проходит. Verifies REQ-CIDR-08. |
+| `SUB-CR-V6ONLY-NO-V4-OK` | CRUD | P1 | 1 (sub) | Create v6-only Subnet → 200; набор IPv4-диапазонов пуст; `addCidrBlocks` добавляет первый. Положительный контроль к REQ-CIDR-08. |
+| `SUB-CR-NEG-ADDR-INTO-V6ONLY` | NEG,CONF | P1 | 1 (sub) | Create internal v4-Address в v6-only Subnet → `FailedPrecondition`/`InvalidArgument` (нет плана этого семейства). Verifies REQ-CIDR-08. |
 | `SUB-CR-V6-OK` | CRUD | P1 | 1 (sub) | Create Subnet с `ipv6_cidr_primary` (IPv6-only или dual-stack) → 200, якорь виден в GET. Verifies REQ-CIDR-09. |
 | `SG-CR-WITH-NETWORK-OK` | CRUD | P1 | 1 (sec) | Create SecurityGroup с валидным `network_id` → 200, network_id виден; SG привязан к сети. Verifies REQ-RES-07. |
 | `SG-NET-01-NEG-CREATE-NO-NETWORK` | VAL,NEG | P0 | 1 (sec) | Create SecurityGroup без `network_id` → sync 400 INVALID_ARGUMENT `network_id required` (Operation НЕ создается; network_id mandatory). Verifies REQ-RES-07. |

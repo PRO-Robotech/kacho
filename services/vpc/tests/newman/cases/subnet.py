@@ -154,7 +154,7 @@ CASES.append(Case(
             # ни regionId не заданы → нет placement-anchor → server-derive отвергает
             # sync 400 «exactly one of zone_id, region_id must be set». Тестируем
             # anchor-required (без zoneId subnet не размещается).
-            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+            body={"ipv4CidrPrimary": "10.100.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-noz-{{runId}}"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")],
         ),
@@ -173,7 +173,7 @@ CASES.append(Case(
             name="create-unknown-zone",
             method="POST",
             path="/vpc/v1/subnets",
-            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+            body={"ipv4CidrPrimary": "10.101.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-zu-{{runId}}", "zoneId": "zone-z-fake"},
             # Отказ — flat {code,message} body, не Operation.
             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
@@ -184,20 +184,80 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    # v4_cidr_blocks не required — CIDR-less subnet легален; реальный диапазон
-    # добавляется позже через :addCidrBlocks.
-    id="SUB-CR-NO-CIDR-OK",
-    title="Create subnet без ipv4CidrPrimary → success; get показывает пустой набор IPv4-диапазонов; addCidrBlocks добавляет один",
+    id="SUB-CR-NEG-NO-ANCHOR",
+    title="Create subnet без ОБОИХ адресных якорей → 400 InvalidArgument, отказ называет поле",
+    classes=["NEG", "VAL"],
+    priority="P1",
+    steps=[
+        *_make_net("noanchor"),
+        Step(
+            name="create-no-anchor",
+            method="POST",
+            path="/vpc/v1/subnets",
+            # Предмет: подсеть, у которой пусты ОБА якоря, отвергается синхронно.
+            # Реестр решений §2: подсеть может быть одной семьи, но не «без CIDR
+            # вообще как норма». Из такой подсети нельзя выделить ни один адрес и
+            # ни один интерфейс, а имя в проекте она занимает.
+            #
+            # Два положительных контроля к этому отрицанию стоят отдельными
+            # кейсами: SUB-CR-V6ONLY-NO-V4-OK (только v6) и SUB-CR-CRUD-OK
+            # (только v4). Без них отказ зеленел бы и на реализации, отвергающей
+            # ЛЮБУЮ подсеть, и — увереннее — на реализации, ТРЕБУЮЩЕЙ оба семейства.
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sub-noanchor-{{runId}}", "zoneId": "{{existingZoneId}}"},
+            test_script=[
+                *assert_status(400),
+                # Отказ обязан НАЗЫВАТЬ ПОЛЕ: «пришло 400» истинно и при отказе по
+                # зоне, по имени и по метке, поэтому само по себе оно предмета не
+                # утверждает.
+                *assert_field_violation("ipv4_cidr_primary"),
+            ],
+        ),
+        # Отвергнутый запрос не оставляет следа: то же имя с законным якорем
+        # проходит. То есть отказ синхронный, ДО записи, а не откат после неё.
+        Step(
+            name="same-name-with-anchor-succeeds",
+            method="POST",
+            path="/vpc/v1/subnets",
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                  "name": "sub-noanchor-{{runId}}", "zoneId": "{{existingZoneId}}",
+                  "ipv4CidrPrimary": "10.210.0.0/24"},
+            test_script=[*assert_status(200), *assert_operation_envelope(),
+                         *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
+        ),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(name="cleanup-sub", method="DELETE",
+             path="/vpc/v1/subnets/{{subId}}",
+             test_script=[*save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        _cleanup_net(),
+    ],
+))
+
+
+CASES.append(Case(
+    id="SUB-CR-V6ONLY-NO-V4-OK",
+    # Прежний идентификатор — SUB-CR-NO-CIDR-OK, и его предмет («подсеть без ни
+    # одного адресного якоря законна») СНЯТ: реестр решений §2 называет границу
+    # прямо — пустым может быть ОДИН якорь из двух, но не оба. Кейс не удалён, а
+    # переработан, потому что его вторая половина остаётся ценной и ничем больше
+    # не покрыта: у односемейной подсети набор ЧУЖОГО семейства пуст, и первый
+    # блок этого семейства добавляется отдельным глаголом.
+    title="Create v6-only subnet → success; набор IPv4-диапазонов пуст; addCidrBlocks добавляет первый",
     classes=["CRUD"],
     priority="P1",
     steps=[
         *_make_net("nocidr"),
         Step(
-            name="create-no-cidr",
+            name="create-v6-only",
             method="POST",
             path="/vpc/v1/subnets",
+            # Якорь ТОЛЬКО v6: тогда «набор IPv4 пуст» — проверенное утверждение о
+            # законной подсети, а не следствие снятого поведения.
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-nocidr-{{runId}}", "zoneId": "{{existingZoneId}}"},
+                  "name": "sub-v6only-{{runId}}", "zoneId": "{{existingZoneId}}",
+                  "ipv6CidrPrimary": "fd00::/64"},
             test_script=[*assert_status(200), *assert_operation_envelope(),
                          *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
@@ -310,15 +370,20 @@ CASES.append(Case(
 CASES.append(Case(
     # Address с explicit internal_ipv4 в CIDR-less подсеть → FailedPrecondition
     # "subnet <id> has no IPv4 CIDR" (guard в address.go).
-    id="SUB-CR-NEG-ADDR-INTO-CIDRLESS",
-    title="Address.Create internal_ipv4 в CIDR-less subnet → 400 FailedPrecondition",
+    id="SUB-CR-NEG-ADDR-INTO-V6ONLY",
+    # Прежний идентификатор назывался CIDRLESS: фикстура строилась подсетью без
+    # обоих якорей, а такая подсеть больше не создаётся. Предмет кейса — «в
+    # подсети нет IPv4-плана, значит v4-адрес выделить некуда» — сохранён ПОЛНОСТЬЮ
+    # и выражен законной v6-only подсетью.
+    title="Address.Create internal_ipv4 в v6-only subnet → 400 FailedPrecondition",
     classes=["NEG", "CONF"],
     priority="P1",
     steps=[
         *_make_net("addrcl"),
-        Step(name="create-cidrless-sub", method="POST", path="/vpc/v1/subnets",
+        Step(name="create-v6only-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-addrcl-{{runId}}", "zoneId": "{{existingZoneId}}"},
+                   "name": "sub-addrcl-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv6CidrPrimary": "fd00::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -364,8 +429,8 @@ CASES.append(Case(
             name="create",
             method="POST",
             path="/vpc/v1/subnets",
-            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                  "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}"},
+            body={"ipv4CidrPrimary": "10.102.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
+                  "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.204.0.0/24"},
             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                          "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"],
         ),
@@ -559,8 +624,8 @@ CASES.append(Case(
     steps=[
         *_make_net("lua"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.103.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.205.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -582,8 +647,8 @@ CASES.append(Case(
     steps=[
         *_make_net("lop"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.104.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.206.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.id", "createOpId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -610,8 +675,8 @@ CASES.append(Case(
     steps=[
         *_make_net("upd"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.105.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.207.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -700,8 +765,8 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="create-bad-net", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                   "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.106.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
+                   "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.208.0.0/24"},
              test_script=[
                  *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                  "pm.test('verbatim Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));",
@@ -743,8 +808,8 @@ CASES.append(Case(
     steps=[
         *_make_net("delok"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.107.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.209.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -911,8 +976,16 @@ CASES.append(Case(
 # Делаем подмножество кейсов с общим preflight сетью.
 
 def _sub_body_extra():
+    # `ipv4CidrPrimary` обязателен для ВСЕХ генерируемых кейсов: подсеть без ни
+    # одного адресного якоря отвергается синхронно (реестр решений §2). Без якоря
+    # здесь два исхода, и оба плохие: кейс, ждущий успеха, краснеет, а кейс,
+    # ждущий отказа по СВОЕМУ предмету (имя, описание, метки), позеленел бы
+    # ВАКУУМНО — получил бы 400 по чужой причине и перестал проверять то, ради
+    # чего написан. Каждый такой кейс обёрнут в свою сеть, поэтому одно значение
+    # на всех коллизии не даёт: непересечение диапазонов — свойство сети.
     return {
         "networkId": "{{netId}}", "zoneId": "{{existingZoneId}}",
+        "ipv4CidrPrimary": "10.200.0.0/24",
     }
 
 
@@ -948,7 +1021,7 @@ CASES.append(pagination_roundtrip("SUB", "/vpc/v1/subnets"))
 # v7: update-per-field wrap'ed в network
 for c in update_happy_per_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}"}):
+     "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.210.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "v7", c))
 
 CASES.extend(perf_baseline_block("SUB", "/vpc/v1/subnets"))
@@ -960,14 +1033,14 @@ CASES.extend(authz_caller_headers_block("SUB", "/vpc/v1/subnets"))
 CASES.append(_wrap_with_net("SUB", "v8m",
     update_happy_multi_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}"})))
+         "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.211.0.0/24"})))
 CASES.append(_wrap_with_net("SUB", "v8f",
     list_filter_match_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}"})))
+         "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.212.0.0/24"})))
 for c in neg_invalid_types_block("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}"}):
+     "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.213.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "v8nt", c))
 CASES.extend(http_method_not_allowed_block("SUB", "/vpc/v1/subnets"))
 CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
@@ -979,12 +1052,12 @@ CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
 # а не ALREADY_EXISTS.
 for c in update_mask_partial_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}"}):
+     "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.214.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "v9p", c))
 CASES.append(_wrap_with_net("SUB", "v9pf",
     perf_baseline_get_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}"})))
+         "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.215.0.0/24"})))
 CASES.extend(list_total_size_check_block("SUB", "/vpc/v1/subnets"))
 
 # SUB-CR-DHCP-IGNORED-VPC143 — retired 2026-07-28.
@@ -1226,8 +1299,8 @@ CASES.append(Case(
     steps=[
         *_make_net("delempty"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}"},
+             body={"ipv4CidrPrimary": "10.108.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+                   "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.216.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1247,7 +1320,7 @@ CASES.append(Case(
 # Subnet нужен parent network — wrap в _wrap_with_net
 for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "name": "sub-req-{{runId}}", "zoneId": "{{existingZoneId}}"},
+     "name": "sub-req-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.217.0.0/24"},
     # `v4CidrBlocks` used to sit in this list, which produced SUB-CR-VAL-REQ-V4CIDRBLOCKS —
     # "omit the required field and expect a rejection" for a field CreateSubnetRequest does
     # not have (retired VPC-1 F7) and never required. Omitting a key the edge already drops
@@ -1307,7 +1380,7 @@ for c in pairwise_subnet_pack():
     CASES.append(_wrap_with_net("SUB", "pw", c))
 for c in security_injection_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}"}):
+     "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.218.0.0/24"}):
     CASES.append(_wrap_with_net("SUB", "sec", c))
 
 # ---------------------------------------------------------------------------
@@ -1518,7 +1591,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         # ListUsedAddresses is `GET /vpc/v1/subnets/{subnet_id}/addresses`
         # (subnet_service.proto google.api.http; gateway route table + permission
-        # catalog agree — `vpc.used_addresseses.listUsedAddresses`, v_list on
+        # catalog agree — `vpc.used_addresses.listUsedAddresses`, v_list on
         # vpc_subnet). The suffix-verb form `:listUsedAddresses` this case used to
         # call is NOT a route: an unresolvable path yields no FQN, the catalog
         # lookup misses and the gateway fail-closes 403 AUTHZ_DENIED. The old
@@ -1631,9 +1704,9 @@ CASES.append(Case(
         # no Operation to poll and nothing to roll back — the resource never comes into
         # being. (`net00000000000000000` is a well-formed, never-allocated network id.)
         Step(name="create-fail", method="POST", path="/vpc/v1/subnets",
-             body={"projectId": "{{_suiteProjectId}}",
+             body={"ipv4CidrPrimary": "10.109.0.0/24", "projectId": "{{_suiteProjectId}}",
                    "networkId": "net00000000000000000",
-                   "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}"},
+                   "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.219.0.0/24"},
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
         # List by project must not contain a subnet with the (unique) attempted name —
         # confirms no partial/leaked resource from the failed create.
