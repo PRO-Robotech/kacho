@@ -6,10 +6,11 @@
 // ref-цель (owner geo) для поля zone_id.
 
 import type { ReactNode } from "react";
-import { Typography } from "antd";
+import { Tooltip, Typography } from "antd";
 import type { FormField } from "@shared/lib/form-schema";
 import { setByPath } from "./path";
 import { formatBytes } from "./bytes";
+import { acceptsNewVolumes, lifecycleLabel, tierLabel, LIFECYCLE_HINT, TIER_HINT } from "./storage-enums";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
@@ -65,11 +66,40 @@ function SizeCell({ value }: { value: unknown }): ReactNode {
   return s === "—" ? <Typography.Text type="secondary">—</Typography.Text> : <>{s}</>;
 }
 
+// TierCell / LifecycleCell — закрытые словари класса диска словами, а не
+// токенами перечисления. Подписи и пояснения — в `lib/storage-enums`, чтобы у
+// текста было ОДНО место: тот же словарь читают карточка класса и подпись опции
+// в подборщике.
+function TierCell({ value }: { value: unknown }): ReactNode {
+  const label = tierLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? TIER_HINT[value] : undefined;
+  return hint ? <Tooltip title={hint}>{label}</Tooltip> : <>{label}</>;
+}
+
+function LifecycleCell({ value }: { value: unknown }): ReactNode {
+  const label = lifecycleLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? LIFECYCLE_HINT[value] : undefined;
+  // Цветом выделяется только то, о чём стоит знать: класс, который НЕ принимает
+  // новые тома. Красить и «принимает» значило бы не выделять ничего.
+  const body = acceptsNewVolumes(value) ? <>{label}</> : <Typography.Text type="warning">{label}</Typography.Text>;
+  return hint ? <Tooltip title={hint}>{body}</Tooltip> : body;
+}
+
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== storage: Volume ======
   // proto: kacho.cloud.storage.v1.VolumeService (/storage/v1/volumes). Мутации
   // async → Operation. Mutable: name/description/labels/size_bytes(increase-only).
-  // Immutable: zone_id/disk_type_id/block_size/source_snapshot_id.
+  // Immutable: zone_id/source_snapshot_id/source_image_id.
+  //
+  // disk_type_id в update_mask НЕ входит вовсе: класс меняется отдельным глаголом
+  // `:changeDiskType` — смена класса это перемещение данных, а не правка поля.
+  // Здесь он объявлен `immutable`, чтобы форма правки его не отправляла.
+  //
+  // `block_size` снят с контракта (`reserved 11`) и отсюда тоже: он принимался,
+  // хранился и возвращался, но ни один путь не читал его значение — арендатор
+  // читал назад собственный ввод и принимал зеркало за подтверждение.
   volumes: {
     id: "volumes",
     route: "volumes",
@@ -92,8 +122,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
       },
       { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
-      { header: "Зона", path: "zone_id", format: "text" },
-      { header: "Тип диска", path: "disk_type_id", format: "text" },
+      // Зона и класс диска — ссылки на ЧУЖИЕ ресурсы, значит ссылки (правило 2):
+      // идентификатор вида `zone-…` пользователю не адресован, он работает с
+      // именем. Зона — глобальный каталог geo, и `RefNameLink` спрашивает её без
+      // `project_id`: измерения «проект» у каталога нет.
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
+      {
+        header: "Тип диска",
+        path: "disk_type_id",
+        render: (row) => (
+          <RefNameLink specId="disk-types" refId={row.disk_type_id as string | undefined} maxChars={28} />
+        ),
+      },
       { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
       // used_by° — output-only зеркало attachments (кто использует том). Generic
@@ -125,7 +169,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "disk-types",
         required: true,
         immutable: true,
-        description: "Класс хранилища тома (immutable после Create). Каталог DiskType.",
+        description:
+          "Класс хранилища тома. Правкой не меняется — для переезда на другой класс есть отдельное действие «Сменить класс диска» на карточке тома. Класс, выведенный из обращения, помечен в списке: новые тома он не принимает.",
       },
       {
         // Размер тома. Wire-поле — size_bytes (int64). UI вводит в ГиБ, sanitize
@@ -191,6 +236,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== storage: Snapshot ======
   // proto: kacho.cloud.storage.v1.SnapshotService (/storage/v1/snapshots).
   // Создаётся ИЗ тома (source_volume_id). Мутации async → Operation.
+  //
+  // `zone_id` — СОБСТВЕННЫЙ якорь размещения снимка: output-only (снимается с
+  // зоны исходного тома на Create) и неизменяемый, поэтому полем формы он не
+  // является. Показывается — потому что копия (`:copy`) переносит снимок в
+  // другую зону, и без якоря непонятно, откуда и куда.
   snapshots: {
     id: "snapshots",
     route: "snapshots",
@@ -215,6 +265,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => (
           <RefNameLink specId="volumes" refId={row.source_volume_id as string | undefined} maxChars={32} />
         ),
+      },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
       },
       { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
@@ -282,7 +337,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
       },
       { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
-      { header: "Регион", path: "region_id", format: "text" },
+      // Регион — глобальный каталог geo: ссылка (правило 2), запрос без
+      // `project_id`.
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       {
         header: "Источник",
         path: "source_snapshot_id",
@@ -398,6 +459,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // proto: kacho.cloud.storage.v1.DiskTypeService (/storage/v1/diskTypes). Public
   // read-only; admin-CRUD — Internal* API (:9091). Cluster-scoped (без project).
   // Также ref-цель для Volume.disk_type_id.
+  //
+  // Класс несёт ПОЛИТИКУ: ярус (закрытый словарь), состояние обращения, границы
+  // размера, способности. Чисел производительности, координаты бэкенда, имени
+  // пула и шаблона пространства имён на этой поверхности нет и не будет — они
+  // живут на ревизии привязки (:9091) и меняются вместе с бэкендом.
+  //
+  // Прежняя колонка «Тариф» читала `performance_tier` — СВОБОДНУЮ строку, снятую
+  // с контракта вместе с номером и именем. Она бы показывала пустую ячейку
+  // вечно.
   "disk-types": {
     id: "disk-types",
     route: "disk-types",
@@ -406,20 +476,34 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Тип диска",
     plural: "Типы дисков",
     genitive: "Типа диска",
+    description:
+      "Класс хранилища, на котором создаётся том: ярус, состояние обращения, границы размера и способности. Каталог заводит администратор кластера; пустой каталог — законное состояние, пока класс не зарегистрирован, том не создаётся.",
     serviceTitle: "Storage",
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
+      { header: "Имя", path: "name", format: "text", className: "font-medium" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-      { header: "Имя", path: "name", format: "text" },
-      { header: "Описание", path: "description", format: "text" },
-      { header: "Тариф", path: "performance_tier", format: "code" },
+      {
+        header: "Ярус",
+        path: "tier",
+        render: (row) => <TierCell value={row.tier} />,
+      },
+      // Состояние обращения названо СЛЕДСТВИЕМ (правило 6): «Принимает новые
+      // тома» / «Новые тома не создаются». Токен `DEPRECATED` не говорит
+      // читателю ни того, что класс ещё работает, ни того, что на нём нельзя
+      // создать новый том, — а вопрос у этого поля ровно один.
+      {
+        header: "Обращение",
+        path: "lifecycle",
+        render: (row) => <LifecycleCell value={row.lifecycle} />,
+      },
       { header: "Зоны", path: "zone_ids", format: "list" },
     ],
     template: () => ({}),
     emptyState: {
       title: "Каталог типов дисков пуст",
-      body: "Типы дисков задаёт администратор кластера. Тип диска описывает класс хранилища, на котором создаётся том.",
+      body: "Класс диска описывает хранилище, на котором создаётся том: ярус, границы размера, способности. Каталог заводит администратор кластера — пока класс не зарегистрирован, том создать нельзя.",
     },
   },
 
@@ -468,11 +552,22 @@ export function resourceServicePrefix(_specId: string): "storage" {
   return "storage";
 }
 
+/** Cluster-scoped каталог размещения: смонтирован под `/system/*`, а не внутри
+ *  проекта. Тот же перечень, что в реестре shared, — и по той же причине: прогон
+ *  этих ресурсов через project-scoped ветку даёт путь, которого нет, и ссылка
+ *  ведёт в никуда. Storage ссылается на них с карточек тома, снимка и образа
+ *  (зона, регион), поэтому ветка нужна и здесь. */
+const SYSTEM_SCOPED = new Set(["regions", "zones"]);
+
 // resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
+  // Проверка ДО требования projectId: у глобального каталога измерения «проект»
+  // нет вовсе, и требовать его значило бы не строить ссылку там, где проекта в
+  // контексте нет.
+  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
+  if (!projectId) return null;
   const prefix = resourceServicePrefix(specId);
   return `/projects/${projectId}/${prefix}/${spec.route}`;
 }

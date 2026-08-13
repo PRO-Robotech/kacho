@@ -23,6 +23,9 @@ export const CloudServerOutlined = Icon;
 export const DeploymentUnitOutlined = Icon;
 export const CodeOutlined = Icon;
 export const ContainerOutlined = Icon;
+// Копия снимка / образа в другое размещение и смена типа диска у тома.
+export const CopyOutlined = Icon;
+export const SwapOutlined = Icon;
 export const DatabaseOutlined = Icon;
 export const DeleteOutlined = Icon;
 export const DesktopOutlined = Icon;
