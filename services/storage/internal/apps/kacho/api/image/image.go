@@ -9,9 +9,12 @@
 // operation.Operation (async LRO): sync-фаза валидирует и пишет LRO-строку
 // (done=false), фоновый corelib-worker выполняет доменную запись и финализирует
 // (done=true, response=Image/Empty либо error). Клиент поллит OperationService.Get(id)
-// до done. Create → state=READY сразу (control-plane; durable Operation.done, ban #9 —
-// не гейтит downstream owner-tuple видимость). InternalImageService.GetInternal
-// (infra-проекция) — анкер data-plane.
+// до done. Create → state=CREATING: предмет операции — НАМЕРЕНИЕ (строка закоммичена,
+// durable Operation.done, ban #9 — не гейтит downstream), а объект у бэкенда создаёт
+// сверщик, он же объявляет образ READY. Исключение одно —
+// InternalImageService.Register: объект внесён в хранилище вне облака и уже
+// существует, поэтому зарегистрированный образ рождается готовым.
+// InternalImageService.GetInternal (infra-проекция) — анкер data-plane.
 package image
 
 import (
@@ -19,6 +22,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -30,6 +35,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
@@ -56,6 +62,33 @@ type ImageUpdate struct {
 	LabelsSet   bool
 }
 
+// RegisterInput — то, что называет регистрирующий образ, УЖЕ внесённый в хранилище
+// командой провайдера (InternalImageService.Register, system_admin @ cluster).
+//
+// Отдельный тип, а не domain.Image, — и это несущее решение: у зарегистрированного
+// образа источника ВНУТРИ облака нет by construction. Приняв domain.Image, порт
+// принимал бы поля источника, которые запись всё равно выбрасывает, то есть
+// принято-и-проигнорировано на внутренней границе. Здесь их просто негде назвать.
+//
+// Размеры называет регистрирующий по той же причине: выводить их не из чего —
+// источника, с которого их снимают на публичном Create, не существует.
+type RegisterInput struct {
+	ProjectID   string
+	RegionID    string
+	Name        string
+	Description string
+	Labels      map[string]string
+	// BackendObject — имя объекта у бэкенда, ЕДИНСТВЕННОЕ место контракта, где оно
+	// приходит извне. На всех прочих путях имя выводится (префикс установки +
+	// неизменяемый идентификатор) и из запроса не принимается — принимая, сервис
+	// позволил бы вызывающему адресовать чужой объект. Здесь выводить не из чего:
+	// объект внесён ДО того, как у облака появилась строка, и его имя — факт
+	// провайдера, а не наше решение.
+	BackendObject string
+	SizeBytes     int64
+	MinDiskBytes  int64
+}
+
 // Reader — read-порт образов (Get/List + internal-проекция). CQRS-разделён с Writer.
 type Reader interface {
 	Get(ctx context.Context, id string) (*domain.Image, error)
@@ -73,6 +106,15 @@ type Writer interface {
 	Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, []ownerregister.Registration, error)
 	Update(ctx context.Context, id string, u ImageUpdate) (*domain.Image, []ownerregister.Registration, error)
 	Delete(ctx context.Context, id string) error
+	// Copy заводит КОПИЮ образа в другом регионе. targetZones — зоны целевого
+	// региона по данным владельца географии: образ региональный, привязка
+	// зональная, и адресатом годится любая действующая ревизия нужного класса
+	// внутри региона.
+	Copy(ctx context.Context, i *domain.Image, sourceID string, targetZones []string) (*domain.Image, error)
+	// Register вносит строку об образе, объект которого у бэкенда УЖЕ существует:
+	// состояние READY и наблюдение READY выставляет сама запись (см. её godoc),
+	// потому что «создавать существующее» сверщику поручить нельзя.
+	Register(ctx context.Context, i *domain.Image) (*domain.Image, []ownerregister.Registration, error)
 }
 
 // GeoClient — порт peer-валидации размещения через kacho-geo (fail-closed). Ребро
@@ -120,6 +162,14 @@ type UseCase struct {
 	ops       operations.Repo
 	errStatus ErrToStatus
 	registrar fgaregister.Registrar
+	// installPrefix — префикс имени объектов этого развёртывания у бэкенда.
+	// Инжектится WithInstallPrefix; без него имя не выводится, и создание образа
+	// отвергается синхронно — молча создать объект без префикса нельзя, иначе
+	// соседнее облако на том же кластере усыновило бы его.
+	installPrefix string
+	// dataPlane — объявлена ли плоскость данных. Тот же признак, что читает
+	// проводка сверщика: два решения об одном предмете не должны разъезжаться.
+	dataPlane bool
 	// listFilter — per-object фильтр видимости страницы List (kacho-iam
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
@@ -143,6 +193,21 @@ func New(reader Reader, writer Writer, geo GeoClient, iam IAMClient, ops operati
 // Create. nil registrar → sync-путь пропускается (dev/no-iam).
 func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 	u.registrar = r
+	return u
+}
+
+// WithInstallPrefix задаёт префикс установки, из которого выводится имя объекта у
+// бэкенда.
+//
+// Он приходит из конфигурации процесса, а не из ресурса: это свойство РАЗВЁРТЫВАНИЯ,
+// отличающее наши объекты от объектов соседнего облака в общем кластере хранилища.
+// Пустой префикс боевой страж старта не пропускает — см. config.Validate.
+// WithDataPlane объявляет наличие плоскости данных. Тот же признак, из которого
+// композиционный корень поднимает сверщик, — чтобы решения не разъезжались.
+func (u *UseCase) WithDataPlane(v bool) *UseCase { u.dataPlane = v; return u }
+
+func (u *UseCase) WithInstallPrefix(p string) *UseCase {
+	u.installPrefix = p
 	return u
 }
 
@@ -233,18 +298,37 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 }
 
 // Create создаёт Image (async Operation). Малформ/невалидный вход отвергается
-// СИНХРОННО (InvalidArgument: name / source exactly-one), cross-domain ссылки
+// СИНХРОННО (InvalidArgument: name / source exactly-one), посадка без префикса
+// установки — UNAVAILABLE ДО обращений к соседям, cross-domain ссылки
 // (region→geo, project→iam) валидируются на request-path fail-closed (peer
 // Unavailable → UNAVAILABLE). Валидный вход → LRO-строка + worker (writer.Insert;
-// state→READY сразу; source / partial UNIQUE(name) → Operation error). Источник
-// (source_snapshot_id / source_volume_id) резолвится repo СТРОГО в проекте образа
-// (project-coherent CAS): чужой приватный снапшот/том неотличим от несуществующего —
-// Operation error FAILED_PRECONDITION "<Resource> <id> not found" (анти-BOLA
-// hide-existence; иначе содержимое чужого тома утекало бы в образ caller'а).
+// state→CREATING, готовность объявит сверщик; source / partial UNIQUE(name) →
+// Operation error). Источник (source_snapshot_id / source_volume_id) резолвится repo
+// СТРОГО в проекте образа, в его размещении и ГОТОВЫМ (CAS): чужой приватный
+// снапшот/том неотличим от несуществующего — Operation error FAILED_PRECONDITION
+// "<Resource> <id> not found" (анти-BOLA hide-existence; иначе содержимое чужого тома
+// утекало бы в образ caller'а), свой неготовый называется вслух ("… is not ready").
 func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Operation, error) {
 	i.Placement = domain.ImagePlacementRegional
 	if err := i.Validate(); err != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
+	}
+	// Способность СЕРВИСА исполнить запрос проверяется ДО обращений к соседям:
+	// посадка без префикса установки не создаст образ ни при каком вводе, и тратить
+	// на это вызовы владельцам региона и проекта незачем.
+	//
+	// Код именно UNAVAILABLE: арендатор не сделал ничего неверного — сервис в этой
+	// посадке неспособен. FAILED_PRECONDITION или INVALID_ARGUMENT отправили бы его
+	// чинить собственный ввод, которого чинить нечего. Боевой страж старта такую
+	// посадку не пропускает, поэтому ветка достижима лишь в неполной локальной
+	// сборке — и молчать о ней нельзя.
+	// Префикс требуется ТОЛЬКО когда объявлена плоскость данных: из него
+	// выводится имя объекта у бэкенда. Её нет — выводить не для чего, объекта не
+	// будет, и готовность наступает на фиксации записи. Требование префикса в
+	// такой посадке беспредметно, а отказ Unavailable означал бы «сервис
+	// недоступен» там, где он исправен и делает ровно то, что должен.
+	if u.dataPlane && u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
 	}
 	// Sync BVA at the request edge (parity with Volume, #61): reject over-limit
 	// description (>256) / labels (>64) BEFORE any peer/DB call, so an over-limit
@@ -287,6 +371,11 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 		regionZones = zones
 	}
 	i.ID = ids.NewID(domain.PrefixImage)
+	// Имя объекта у бэкенда ВЫВОДИТСЯ здесь и нигде больше не принимается: оно
+	// вычислимо арендатором (идентификатор он видит), поэтому авторизация на его
+	// неугадываемость нигде не опирается, а идемпотентность повтора держится тем,
+	// что повтор попадает в тот же объект.
+	i.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, i.ID)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create image %s", i.ID),
 		&storagev1.CreateImageMetadata{ImageId: i.ID})
@@ -310,6 +399,86 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 		return marshalImage(res)
 	})
 	return &op, nil
+}
+
+// Register регистрирует образ, ВНЕСЁННЫЙ в хранилище командой провайдера вне облака
+// (internal :9091, system_admin @ cluster).
+//
+// Метод обязан существовать, и причина не в удобстве: единственный источник ОС для
+// машины — storage-образ, а публичный Create делает образ ТОЛЬКО из тома или снимка.
+// На чистой установке нет ни того, ни другого, поэтому без регистрации первая машина
+// не запускается by construction.
+//
+// Синхронный и отдаёт ресурс, а не Operation: за регистрацией нет длящейся работы —
+// это запись строки о том, что у бэкенда уже есть. Обернуть её в операцию значило бы
+// заставить администратора поллить готовое.
+//
+// Префикс установки здесь НЕ требуется — в отличие от Create. Имя объекта выбрал
+// провайдер, и выводить нам нечего; требовать префикс значило бы гейтить регистрацию
+// настройкой, которая на этом пути не участвует.
+//
+// Cross-domain ссылки (region→geo, project→iam) валидируются на request-path
+// fail-closed: непроверенное предусловие не считается выполненным, поэтому строка о
+// чужом объекте не заводится, пока владелец региона или проекта не ответил.
+func (u *UseCase) Register(ctx context.Context, in RegisterInput) (*domain.Image, error) {
+	if in.ProjectID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: image project_id is required", storageerr.ErrInvalidArg))
+	}
+	if in.RegionID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: image region_id is required", storageerr.ErrInvalidArg))
+	}
+	// Имя проверяется тем же валидатором, что и на публичном Create: у
+	// зарегистрированного и у созданного образа ОДИН контракт имени, иначе арендатор
+	// увидел бы два разных правила на одном поле.
+	if err := domain.ImageName(in.Name).Validate(); err != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
+	}
+	// Ошибка pkg/validate уходит наверх КАК ЕСТЬ: имя отвергнутого поля она кладёт в
+	// google.rpc.BadRequest-детали, а пересборка через err.Error() их теряет.
+	if err := validate.Description("description", in.Description); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := validate.Labels("labels", in.Labels); err != nil {
+		return nil, u.errStatus(err)
+	}
+	// Обязательная по форме запроса ссылка несёт СВОЙ required-check: пустое имя
+	// объекта уехало бы в запись и легло строкой, которая ни на что не указывает.
+	if in.BackendObject == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: backend_object: required", storageerr.ErrInvalidArg))
+	}
+	if in.SizeBytes <= 0 {
+		return nil, u.errStatus(fmt.Errorf("%w: Illegal argument size_bytes", storageerr.ErrInvalidArg))
+	}
+	if in.MinDiskBytes <= 0 {
+		return nil, u.errStatus(fmt.Errorf("%w: Illegal argument min_disk_bytes", storageerr.ErrInvalidArg))
+	}
+	if err := u.geo.EnsureRegionExists(ctx, in.RegionID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := u.iam.EnsureProjectExists(ctx, in.ProjectID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	i := &domain.Image{
+		ID:           ids.NewID(domain.PrefixImage),
+		ProjectID:    in.ProjectID,
+		Name:         in.Name,
+		Description:  in.Description,
+		Labels:       in.Labels,
+		RegionID:     in.RegionID,
+		Placement:    domain.ImagePlacementRegional,
+		SizeBytes:    in.SizeBytes,
+		MinDiskBytes: in.MinDiskBytes,
+		Backend:      domain.Placement{BackendObject: in.BackendObject},
+	}
+	res, regs, err := u.writer.Register(ctx, i)
+	if err != nil {
+		return nil, u.errStatus(err)
+	}
+	// owner-tuple: durable register-intent уже в writer-TX (repo); синхронно
+	// регистрируем для immediate анти-BOLA-резолва (best-effort, post-commit;
+	// backstop — async register-drainer at-least-once).
+	u.registerOwnerTuple(ctx, regs)
+	return res, nil
 }
 
 // Update меняет mutable-поля Image (async Operation). Sync-фаза: malformed-id первым
@@ -465,4 +634,108 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 // protoconv.Image (та же проекция, что handler и LRO-recovery — без дрейфа полей).
 func marshalImage(i *domain.Image) (*anypb.Any, error) {
 	return anypb.New(protoconv.Image(i))
+}
+
+// CopyInput — вход копирования образа в другой регион.
+type CopyInput struct {
+	// ProjectID — проект, в котором создаётся копия, и объект вопроса о правах.
+	// Обязан совпадать с проектом источника (разбор — у snapshot.Copy).
+	ProjectID      string
+	ImageID        string
+	TargetRegionID string
+	Name           string
+	Description    string
+	Labels         map[string]string
+}
+
+// Copy копирует образ в другой регион.
+//
+// Регион образа неизменяем — как и зона тома, — поэтому распространение образа по
+// регионам выражается копией, а не правкой. Создаётся НОВЫЙ образ; исходный не
+// меняется ни одним полем.
+//
+// Зоны целевого региона резолвятся у ВЛАДЕЛЬЦА географии и никогда не выводятся
+// разбором имени: имена региона и зоны — произвольные строки, а деривация разбором
+// молча даёт пустой набор и превращает поиск адресата в отказ без причины.
+func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation, error) {
+	if err := idInvalid(in.ImageID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if in.ProjectID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: project_id: required", storageerr.ErrInvalidArg))
+	}
+	// Формат чужого id здесь НЕ проверяется (B4: формат — только у своих), и
+	// существование проекта не спрашивается у iam: проект источника авторитетен,
+	// а расхождение всё равно отвечает промахом ниже. Лишний вызов к соседу дал
+	// бы ещё одну причину отказать на пути, где ответ уже известен.
+	if in.TargetRegionID == "" {
+		return nil, u.errStatus(fmt.Errorf("%w: target_region_id: required", storageerr.ErrInvalidArg))
+	}
+	// Префикс требуется ТОЛЬКО когда объявлена плоскость данных: из него
+	// выводится имя объекта у бэкенда. Её нет — выводить не для чего, объекта не
+	// будет, и готовность наступает на фиксации записи. Требование префикса в
+	// такой посадке беспредметно, а отказ Unavailable означал бы «сервис
+	// недоступен» там, где он исправен и делает ровно то, что должен.
+	if u.dataPlane && u.installPrefix == "" {
+		return nil, status.Error(codes.Unavailable, "storage backend is not configured")
+	}
+	if err := validate.Description("description", in.Description); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := validate.Labels("labels", in.Labels); err != nil {
+		return nil, u.errStatus(err)
+	}
+	if err := u.geo.EnsureRegionExists(ctx, in.TargetRegionID); err != nil {
+		return nil, u.errStatus(err)
+	}
+	zones, zerr := u.geo.ZonesOfRegion(ctx, in.TargetRegionID)
+	if zerr != nil {
+		return nil, u.errStatus(zerr)
+	}
+
+	src, gerr := u.reader.Get(ctx, in.ImageID)
+	if gerr != nil {
+		return nil, u.errStatus(gerr)
+	}
+	if src.ProjectID != in.ProjectID {
+		// Байт-в-байт тон промаха: чужая строка неотличима от отсутствующей.
+		return nil, u.errStatus(fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, in.ImageID))
+	}
+
+	copyItem := &domain.Image{
+		ID:          ids.NewID(domain.PrefixImage),
+		ProjectID:   src.ProjectID,
+		RegionID:    in.TargetRegionID,
+		Placement:   domain.ImagePlacementRegional,
+		Name:        in.Name,
+		Description: in.Description,
+		Labels:      in.Labels,
+		Format:      src.Format,
+		// Происхождение копии — НЕПОСРЕДСТВЕННЫЙ РОДИТЕЛЬ (см. тот же разбор в
+		// копии снимка): вставка копии с самого начала писала `source_image_id`,
+		// а наследование источника источника расходилось с этой строкой и
+		// утверждало о копии неправду.
+		SourceImageID: src.ID,
+	}
+	copyItem.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, copyItem.ID)
+
+	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
+		fmt.Sprintf("Copy image %s to region %s", in.ImageID, in.TargetRegionID),
+		&storagev1.CopyImageMetadata{ImageId: copyItem.ID})
+	if err != nil {
+		return nil, err
+	}
+	op.ResourceID = copyItem.ID
+	if err := u.ops.Create(ctx, op); err != nil {
+		return nil, err
+	}
+	source := in.ImageID
+	operations.Run(ctx, u.ops, op.ID, func(ctx context.Context) (*anypb.Any, error) {
+		res, derr := u.writer.Copy(ctx, copyItem, source, zones)
+		if derr != nil {
+			return nil, u.errStatus(derr)
+		}
+		return marshalImage(res)
+	})
+	return &op, nil
 }

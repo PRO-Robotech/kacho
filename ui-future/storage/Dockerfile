@@ -13,6 +13,11 @@ ENV KACHO_PUBLIC_BASE=$KACHO_PUBLIC_BASE
 COPY storage/package.json storage/package-lock.json ./
 RUN npm ci
 
+# Скрипт сборки: кладёт редактор JSON в public модуля. Без него `prebuild`
+# останавливает сборку — вкладка JSON иначе собралась бы «успешно» и не
+# работала бы в рантайме (CSP запрещает загрузку редактора со стороннего CDN).
+COPY scripts/ scripts/
+
 COPY shared/ shared/
 COPY storage/ storage/
 WORKDIR /app/storage

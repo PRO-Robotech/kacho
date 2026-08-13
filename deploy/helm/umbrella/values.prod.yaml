@@ -528,9 +528,9 @@ kacho-iam:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
     extapi:
       openfga:
-        # ReBAC Check ON — store id injected by the openfga-bootstrap-job Secret.
-        enabled: true
-        endpoint: openfga:8081
+        # Только то, что читает шаблон: адрес и включённость клиента OpenFGA
+        # приходят из окружения (KACHO_IAM_OPENFGA_ENDPOINT + наличие store-id),
+        # а не из этой секции — стоявшие здесь `enabled`/`endpoint` не читал никто.
         storeIdSecretName: kacho-iam-openfga-store
         storeIdSecretKey: store_id
 
@@ -654,6 +654,31 @@ storage:
     # {storage_volume,volume_id} / {storage_snapshot,snapshot_id} cannot resolve
     # target→project and own-resource access breaks (anti-BOLA).
     fgaRegisterDrainerEnabled: true
+    # Плоскость данных: ЧЕМ обслуживается блочное хранение.
+    #
+    # В боевом режиме объявление обязательно, и сервис ОТКАЗЫВАЕТСЯ стартовать
+    # без него. Что означала бы пустая ручка: сверщик не запускается, ничто не
+    # переводит ресурс из намерения в пригодность, КАЖДЫЙ том остаётся
+    # создаваемым навсегда — при здоровом рапорте сервиса и пройденной проверке
+    # готовности. Ровно тот класс, ради которого боевой страж существует.
+    #
+    # installPrefix отличает объекты ЭТОГО развёртывания от объектов соседнего
+    # облака в общем кластере хранения. Имена объектов выводятся из неизменяемых
+    # идентификаторов ресурсов, поэтому два облака с одним префиксом вывели бы
+    # ОДНИ И ТЕ ЖЕ имена и усыновили объекты друг друга: удаление в одном
+    # уничтожило бы данные в другом. Значение подставляется под конкретную
+    # установку — здесь стоит место для него, а не готовый ответ.
+    #
+    # credentialsDir — каталог, в котором разрешаются ССЫЛКИ на учётный материал.
+    # Сам материал монтируется секретом и не проходит ни через API, ни через БД:
+    # строка ресурса переживает ротацию и уезжает в резервные копии.
+    blockBackend:
+      kind: CEPH_RBD
+      installPrefix: kachoprod
+      credentialsDir: /etc/kacho/storage/credentials
+      callTimeout: 30s
+      reconcileInterval: 15s
+      reconcileBatch: 100
   db:
     # bitnami pg-storage below. The chart default host (kacho-storage-postgres)
     # does not exist in the umbrella — the migrator init-container would fail DNS.

@@ -33,6 +33,7 @@ export const OPERATIONS_LIST_PATHS = [
   "/nlb/v1/targetGroups/{id}/operations",
   "/registry/v1/registries/{id}/operations",
   "/storage/v1/images/{id}/operations",
+  "/storage/v1/snapshots/{id}/operations",
   "/storage/v1/volumes/{id}/operations",
   "/vpc/v1/addresses/{id}/operations",
   "/vpc/v1/gateways/{id}/operations",

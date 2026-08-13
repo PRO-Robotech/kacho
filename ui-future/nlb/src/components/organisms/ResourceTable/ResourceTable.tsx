@@ -6,7 +6,8 @@
 import { type ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import { Table } from "antd";
 import type { ColumnType, TableProps } from "antd/es/table";
-import { getByPath } from "@/lib/path";
+import { getByPath } from "@shared/lib/path";
+import { displayText } from "@shared/lib/display-text";
 
 export interface Column<T> {
   header: string;
@@ -54,7 +55,7 @@ export function ResourceTable<T extends object>({
             if (av == null) return 1;
             if (bv == null) return -1;
             if (typeof av === "number" && typeof bv === "number") return av - bv;
-            return String(av).localeCompare(String(bv));
+            return displayText(av).localeCompare(displayText(bv));
           };
           if (defaultSort && defaultSort.col === idx) {
             col.defaultSortOrder = defaultSort.dir === "asc" ? "ascend" : "descend";
@@ -64,6 +65,36 @@ export function ResourceTable<T extends object>({
       }),
     [columns, defaultSort],
   );
+
+  // Края таблицы закрепляются, потому что широкая таблица прокручивается вбок:
+  // уехав вправо, читатель иначе видит значения, не понимая, к какому ресурсу
+  // они относятся, и не достаёт до меню действий, не вернувшись обратно.
+  // Закрепляются РОВНО два края — колонка идентичности и столбец действий
+  // (последний, узнаваемый по пустому заголовку). Закреплять больше нельзя:
+  // на узком экране закреплённые края съедают всю видимую ширину.
+  const stickyColumns: ColumnType<T>[] = useMemo(() => {
+    if (antColumns.length === 0) return antColumns;
+    const last = antColumns.length - 1;
+    const actionsLast = columns[last]?.header === "" && last > 0;
+
+    // Слева закрепляется НАЧАЛЬНЫЙ ОТРЕЗОК до колонки идентичности включительно,
+    // а не «первая колонка»: перед именем часто стоят служебные колонки (выбор
+    // строки), и antd закрепляет только сплошной префикс — закрепив одну лишь
+    // колонку имени, получаем разъезжающуюся таблицу. Служебной колонке ширину
+    // назначаем узкую: широкая превращается в пустую полосу через пол-экрана
+    // (что и случилось на правилах группы безопасности).
+    const identity = columns.findIndex((c) => c.header !== "");
+    const stickyThrough = identity < 0 || identity > 2 ? 0 : identity;
+
+    return antColumns.map((c, i) => {
+      if (i <= stickyThrough) {
+        const own = columns[i]?.header === "" ? 48 : 260;
+        return { ...c, fixed: "left" as const, width: c.width ?? own };
+      }
+      if (i === last && actionsLast) return { ...c, fixed: "right" as const, width: c.width ?? 64 };
+      return c;
+    });
+  }, [antColumns, columns]);
 
   // Тело таблицы скроллится внутри белой поверхности (h+v), а шапка колонок
   // (thead) фиксирована сверху. scroll.y = высота доступной области минус thead;
@@ -75,6 +106,7 @@ export function ResourceTable<T extends object>({
     const el = wrapRef.current;
     if (!el) return;
     const recompute = () => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- ложное срабатывание: querySelector<E extends Element = Element>, и E выводится из самого утверждения типа. Без него E = Element, у которого нет offsetHeight (проверено tsc: удаление даёт TS2339).
       const thead = el.querySelector(".ant-table-thead") as HTMLElement | null;
       const theadH = thead?.offsetHeight ?? 40;
       const avail = el.clientHeight - theadH;
@@ -87,7 +119,7 @@ export function ResourceTable<T extends object>({
   }, []);
 
   const tableProps: TableProps<T> = {
-    columns: antColumns,
+    columns: stickyColumns,
     dataSource: rows,
     rowKey: (row) => rowKey(row),
     pagination: false,

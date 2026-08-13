@@ -10,6 +10,7 @@
 package storagev1
 
 import (
+	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -93,19 +94,54 @@ type Snapshot struct {
 	ProjectId string `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Creation timestamp. Truncated to seconds on the wire.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Отметка последнего изменения. Усечена до секунд на проводе.
+	//
+	// Колонка в БД была с самого начала, а в контракте поля не было — при живом
+	// Update. Арендатор видел ресурс, у которого правка не оставляет следа: отличить
+	// «снимок не менялся» от «менялся, но мы не показываем» по ответу невозможно.
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// Name of the snapshot. 1-63 characters long.
 	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the snapshot. 0-256 characters long.
 	Description string `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs. Maximum of 64 per resource.
 	Labels map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Зона размещения снимка. TEXT-ссылка на kacho-geo (peer-валидация, без FK).
+	// Output-only (снимается с зоны исходного тома на Create) и НЕИЗМЕНЯЕМАЯ.
+	//
+	// # Почему у снимка собственный якорь, а не «зона исходного тома»
+	//
+	// Ссылка на источник обнуляется при удалении тома (ON DELETE SET NULL —
+	// снимок обязан пережить свой том). Значит зона, добираемая через источник,
+	// однажды становится пустой строкой, и проверка когерентности «зона тома ==
+	// зона снимка» вырождается в тождественно-истинную: сравнивать не с чем,
+	// предикат проходит всегда. Восстановление в чужую зону отвергается ровно до
+	// того дня, когда исходный том удалили, — то есть защита отказывает именно в
+	// том случае, ради которого писалась, и отказывает молча.
+	ZoneId string `protobuf:"bytes,10,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
 	// ID of the source volume used to create this snapshot. Same-DB reference to
 	// Volume. Immutable.
 	SourceVolumeId string `protobuf:"bytes,7,opt,name=source_volume_id,json=sourceVolumeId,proto3" json:"source_volume_id,omitempty"`
+	// ID of the snapshot this one was COPIED from, set by Copy. A copy's origin is
+	// the snapshot it was made from, mutually exclusive with source_volume_id: a
+	// snapshot is taken from a volume, or copied from another snapshot. Output-only
+	// (Create never accepts it), immutable, same-DB reference to Snapshot.
+	SourceSnapshotId string `protobuf:"bytes,14,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
 	// Size of the snapshot, specified in bytes.
 	SizeBytes int64 `protobuf:"varint,8,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	// Current status of the snapshot.
-	Status        Snapshot_Status `protobuf:"varint,9,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Snapshot_Status" json:"status,omitempty"`
+	Status Snapshot_Status `protobuf:"varint,9,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Snapshot_Status" json:"status,omitempty"`
+	// Почему снимок оказался в своём состоянии. Закрытый словарь наших полос —
+	// текст бэкенда наружу не выходит ни при каком отказе (см. status_reason.proto).
+	StatusReason StatusReason `protobuf:"varint,12,opt,name=status_reason,json=statusReason,proto3,enum=kacho.cloud.storage.v1.StatusReason" json:"status_reason,omitempty"`
+	// Кто засеян этим снимком: тома, созданные из него. Output-only, не принимается
+	// на Create/Update; источник истины — сами тома (`volumes.source_snapshot_id`).
+	//
+	// Перечень нужен арендатору ДО удаления, а не после отказа: удаление снимка
+	// обнуляет происхождение засеянных томов, а при бэкенде, у которого клон
+	// удерживает родителя, снимок с потомками не удаляется вовсе. Без этого поля
+	// единственный способ узнать состав зависимостей — попробовать удалить.
+	UsedBy        []*reference.Reference `protobuf:"bytes,13,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -161,6 +197,13 @@ func (x *Snapshot) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Snapshot) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
 func (x *Snapshot) GetName() string {
 	if x != nil {
 		return x.Name
@@ -182,9 +225,23 @@ func (x *Snapshot) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *Snapshot) GetZoneId() string {
+	if x != nil {
+		return x.ZoneId
+	}
+	return ""
+}
+
 func (x *Snapshot) GetSourceVolumeId() string {
 	if x != nil {
 		return x.SourceVolumeId
+	}
+	return ""
+}
+
+func (x *Snapshot) GetSourceSnapshotId() string {
+	if x != nil {
+		return x.SourceSnapshotId
 	}
 	return ""
 }
@@ -203,24 +260,45 @@ func (x *Snapshot) GetStatus() Snapshot_Status {
 	return Snapshot_STATUS_UNSPECIFIED
 }
 
+func (x *Snapshot) GetStatusReason() StatusReason {
+	if x != nil {
+		return x.StatusReason
+	}
+	return StatusReason_STATUS_REASON_UNSPECIFIED
+}
+
+func (x *Snapshot) GetUsedBy() []*reference.Reference {
+	if x != nil {
+		return x.UsedBy
+	}
+	return nil
+}
+
 var File_kacho_cloud_storage_v1_snapshot_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_snapshot_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/storage/v1/snapshot.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x89\x04\n" +
+	"%kacho/cloud/storage/v1/snapshot.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\x91\x06\n" +
 	"\bSnapshot\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x05 \x01(\tR\vdescription\x12D\n" +
-	"\x06labels\x18\x06 \x03(\v2,.kacho.cloud.storage.v1.Snapshot.LabelsEntryR\x06labels\x12(\n" +
-	"\x10source_volume_id\x18\a \x01(\tR\x0esourceVolumeId\x12\x1d\n" +
+	"\x06labels\x18\x06 \x03(\v2,.kacho.cloud.storage.v1.Snapshot.LabelsEntryR\x06labels\x12\x17\n" +
+	"\azone_id\x18\n" +
+	" \x01(\tR\x06zoneId\x12(\n" +
+	"\x10source_volume_id\x18\a \x01(\tR\x0esourceVolumeId\x12,\n" +
+	"\x12source_snapshot_id\x18\x0e \x01(\tR\x10sourceSnapshotId\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\b \x01(\x03R\tsizeBytes\x12?\n" +
-	"\x06status\x18\t \x01(\x0e2'.kacho.cloud.storage.v1.Snapshot.StatusR\x06status\x1a9\n" +
+	"\x06status\x18\t \x01(\x0e2'.kacho.cloud.storage.v1.Snapshot.StatusR\x06status\x12I\n" +
+	"\rstatus_reason\x18\f \x01(\x0e2$.kacho.cloud.storage.v1.StatusReasonR\fstatusReason\x129\n" +
+	"\aused_by\x18\r \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"R\n" +
@@ -250,16 +328,21 @@ var file_kacho_cloud_storage_v1_snapshot_proto_goTypes = []any{
 	(*Snapshot)(nil),              // 1: kacho.cloud.storage.v1.Snapshot
 	nil,                           // 2: kacho.cloud.storage.v1.Snapshot.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(StatusReason)(0),             // 4: kacho.cloud.storage.v1.StatusReason
+	(*reference.Reference)(nil),   // 5: kacho.cloud.reference.Reference
 }
 var file_kacho_cloud_storage_v1_snapshot_proto_depIdxs = []int32{
 	3, // 0: kacho.cloud.storage.v1.Snapshot.created_at:type_name -> google.protobuf.Timestamp
-	2, // 1: kacho.cloud.storage.v1.Snapshot.labels:type_name -> kacho.cloud.storage.v1.Snapshot.LabelsEntry
-	0, // 2: kacho.cloud.storage.v1.Snapshot.status:type_name -> kacho.cloud.storage.v1.Snapshot.Status
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	3, // 1: kacho.cloud.storage.v1.Snapshot.updated_at:type_name -> google.protobuf.Timestamp
+	2, // 2: kacho.cloud.storage.v1.Snapshot.labels:type_name -> kacho.cloud.storage.v1.Snapshot.LabelsEntry
+	0, // 3: kacho.cloud.storage.v1.Snapshot.status:type_name -> kacho.cloud.storage.v1.Snapshot.Status
+	4, // 4: kacho.cloud.storage.v1.Snapshot.status_reason:type_name -> kacho.cloud.storage.v1.StatusReason
+	5, // 5: kacho.cloud.storage.v1.Snapshot.used_by:type_name -> kacho.cloud.reference.Reference
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_snapshot_proto_init() }
@@ -267,6 +350,7 @@ func file_kacho_cloud_storage_v1_snapshot_proto_init() {
 	if File_kacho_cloud_storage_v1_snapshot_proto != nil {
 		return
 	}
+	file_kacho_cloud_storage_v1_status_reason_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

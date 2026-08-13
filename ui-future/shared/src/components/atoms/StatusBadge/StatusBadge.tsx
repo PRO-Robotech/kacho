@@ -10,7 +10,11 @@ import type { CSSProperties } from "react";
 type Tone = "ok" | "info" | "warn" | "muted" | "error" | "violet";
 
 const TONE_STYLE: Record<Tone, CSSProperties> = {
-  ok: { background: "var(--status-ok-bg)", color: "var(--status-ok-fg)", borderColor: "var(--status-ok-border)" },
+  ok: {
+    background: "var(--status-ok-bg)",
+    color: "var(--status-ok-fg)",
+    borderColor: "var(--status-ok-border)",
+  },
   info: {
     background: "var(--status-info-bg)",
     color: "var(--status-info-fg)",
@@ -48,6 +52,12 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   // то есть доступный том выглядел неактивным, как STOPPED/RELEASED.
   AVAILABLE: "ok",
   CREATING: "info",
+  // MIGRATING — том переезжает на другой тип диска. Тон «в процессе», как у
+  // CREATING/UPDATING: перенос длится и наблюдаем, а данные при его отказе
+  // остаются на исходном типе, поэтому предупреждением он не является.
+  // Незнакомое значение падает в "muted" — тем же тоном, что «остановлен» и
+  // «освобождён», — и переезжающий том выглядел бы неактивным.
+  MIGRATING: "info",
   PROVISIONING: "info",
   STARTING: "info",
   ATTACHING: "info",

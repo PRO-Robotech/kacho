@@ -18,7 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	computev1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/compute/v1"
+	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -215,7 +215,7 @@ func (r *instanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 	// «Не найдено» само по себе не означает «удалена»: тот же ответ приходит при
 	// утрате доступа, потому что край скрывает существование. Убрать ресурс из
 	// состояния по неразличённому ответу значит потерять живую машину.
-	verdict, verr := r.c.ConfirmAbsence(ctx, instancesPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, instancesPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -328,7 +328,7 @@ func (r *instanceResource) Delete(ctx context.Context, req resource.DeleteReques
 			}
 		}
 	case client.OutcomeNotFound:
-		verdict, _ := r.c.ConfirmAbsence(ctx, instancesPath,
+		verdict, _ := r.c.ConfirmAbsence(ctx, instancesPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
 			resp.Diagnostics.AddError("Удаление машины не подтверждено",

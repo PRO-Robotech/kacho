@@ -11,17 +11,35 @@
 // не превращаем в отказ.
 
 import { openForPlacementLabel } from "@shared/api/geo";
+import {
+  acceptsNewVolumes,
+  lifecycleLabel,
+  tierLabel,
+} from "@shared/lib/storage-disk-type";
 
 /** Основная подпись option. У большинства ресурсов — `name`, у User его нет. */
-export function refOptionHead(refResource: string, row: Record<string, unknown>): string {
+export function refOptionHead(
+  refResource: string,
+  row: Record<string, unknown>,
+): string {
   if (refResource === "users") {
-    return (row.display_name as string) || (row.email as string) || (row.id as string) || "";
+    return (
+      (row.display_name as string) ||
+      (row.email as string) ||
+      (row.id as string) ||
+      ""
+    );
   }
   return (row.name as string) ?? "";
 }
 
-function placementSuffix(row: Record<string, unknown>, closedText: string): string {
-  const label = openForPlacementLabel(row.open_for_placement as boolean | undefined);
+function placementSuffix(
+  row: Record<string, unknown>,
+  closedText: string,
+): string {
+  const label = openForPlacementLabel(
+    row.open_for_placement as boolean | undefined,
+  );
   return label.tone === "closed" ? closedText : "";
 }
 
@@ -33,7 +51,10 @@ function join(parts: (string | undefined)[]): string {
  * Короткая «адресная» приписка к option — чтобы различать безымянные ресурсы:
  * CIDR / IP / пул / регион / доступность для размещения.
  */
-export function refOptionExtra(refResource: string, row: Record<string, unknown>): string {
+export function refOptionExtra(
+  refResource: string,
+  row: Record<string, unknown>,
+): string {
   switch (refResource) {
     case "subnets": {
       // VPC-1: prefer the immutable primary anchor; fall back to additional
@@ -46,16 +67,25 @@ export function refOptionExtra(refResource: string, row: Record<string, unknown>
       return cidrs.length > 0 ? cidrs.join(", ") : "";
     }
     case "addresses": {
-      const ext4 = (row.external_ipv4_address as { address?: string } | undefined)?.address;
-      const int4 = (row.internal_ipv4_address as { address?: string } | undefined)?.address;
-      const ext6 = (row.external_ipv6_address as { address?: string } | undefined)?.address;
-      const int6 = (row.internal_ipv6_address as { address?: string } | undefined)?.address;
+      const ext4 = (
+        row.external_ipv4_address as { address?: string } | undefined
+      )?.address;
+      const int4 = (
+        row.internal_ipv4_address as { address?: string } | undefined
+      )?.address;
+      const ext6 = (
+        row.external_ipv6_address as { address?: string } | undefined
+      )?.address;
+      const int6 = (
+        row.internal_ipv6_address as { address?: string } | undefined
+      )?.address;
       return ext4 || int4 || ext6 || int6 || "";
     }
     case "gateways": {
       // Gateway proto: shared_egress_gateway oneof + ip / used_by; показываем
       // тип шлюза если name пустое.
-      const sg = row.shared_egress_gateway as Record<string, unknown> | undefined;
+      const sg = row.shared_egress_gateway as
+        Record<string, unknown> | undefined;
       if (sg) return "shared-egress";
       return "";
     }
@@ -98,6 +128,27 @@ export function refOptionExtra(refResource: string, row: Record<string, unknown>
     }
     case "target-groups": {
       return (row.region_id as string | undefined) ?? "";
+    }
+    // Тип диска: ярус + пометка, если класс НЕ принимает новые тома.
+    //
+    // Ровно тот же случай, что у зоны, закрытой для размещения (см. шапку
+    // файла): выведенный из обращения класс выглядит в точности как рабочий,
+    // если подпись об этом не говорит, — и запрос падает позже, на Create
+    // (FAILED_PRECONDITION «не принимает новые тома»), без намёка, что дело в
+    // выборе. Опция остаётся ВЫБИРАЕМОЙ по той же причине: что разрешено,
+    // решает сервер, а гасить её здесь значило бы сузить права, которыми
+    // интерфейс не распоряжается. Она помечена, а не убрана.
+    //
+    // Отсутствие поля — не «выведен»: молчание сервера не превращаем в отказ,
+    // поэтому пометка ставится только по НАЗВАННОМУ состоянию.
+    case "disk-types": {
+      const lifecycle = row.lifecycle as string | undefined;
+      const tier = tierLabel(row.tier);
+      const retired =
+        lifecycle && !acceptsNewVolumes(lifecycle)
+          ? (lifecycleLabel(lifecycle) ?? "")
+          : "";
+      return join([tier ?? "", retired]);
     }
     // Geo Region: name — head-label, id (ru-central1) — полезный extra.
     case "regions":

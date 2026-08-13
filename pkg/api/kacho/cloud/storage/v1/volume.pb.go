@@ -40,6 +40,14 @@ const (
 	Volume_DELETING Volume_Status = 4
 	// Volume encountered a problem and cannot operate.
 	Volume_ERROR Volume_Status = 5
+	// Том переезжает на другой класс диска: принят ChangeDiskType, объект у
+	// бэкенда переносится. Отдельное состояние заведено потому, что перенос
+	// ДЛИТСЯ и наблюдаем: без него том всё это время выглядел бы готовым, а
+	// арендатор не отличал бы «класс уже сменился» от «смена идёт». Из
+	// MIGRATING том возвращается в AVAILABLE/IN_USE (перенос завершён) либо
+	// уходит в ERROR с причиной (перенос отказал) — данные при отказе остаются
+	// на исходном классе.
+	Volume_MIGRATING Volume_Status = 6
 )
 
 // Enum value maps for Volume_Status.
@@ -51,6 +59,7 @@ var (
 		3: "IN_USE",
 		4: "DELETING",
 		5: "ERROR",
+		6: "MIGRATING",
 	}
 	Volume_Status_value = map[string]int32{
 		"STATUS_UNSPECIFIED": 0,
@@ -59,6 +68,7 @@ var (
 		"IN_USE":             3,
 		"DELETING":           4,
 		"ERROR":              5,
+		"MIGRATING":          6,
 	}
 )
 
@@ -165,19 +175,49 @@ type Volume struct {
 	// ID of the availability zone where the volume resides. TEXT reference to
 	// kacho-geo (peer-validated, no FK). Immutable.
 	ZoneId string `protobuf:"bytes,8,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
-	// ID of the disk type. Same-DB FK to DiskType (ON DELETE RESTRICT). Immutable.
+	// ID класса диска. FK на DiskType в своей БД (ON DELETE RESTRICT).
+	//
+	// Меняется ТОЛЬКО глаголом [VolumeService.ChangeDiskType] и никогда не входит
+	// в update_mask: смена класса — перемещение данных, а не правка поля. Через
+	// Update поле отвергается как неизменяемое — см. комментарий к этому RPC.
 	DiskTypeId string `protobuf:"bytes,9,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
 	// Size of the volume, specified in bytes. Must be > 0. Update — increase only.
 	SizeBytes int64 `protobuf:"varint,10,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	// Block size of the volume, specified in bytes. Default 4096. Immutable.
-	BlockSize int64 `protobuf:"varint,11,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
+	// Фактически занятые байты, наблюдённые у бэкенда (output-only, вход не
+	// принимается).
+	//
+	// Поле НЕ заполняется, когда бэкенд потребление не сообщил, — и тогда оно
+	// ОТСУТСТВУЕТ, а не равно нулю. Отсюда `optional`: ноль — это утверждение
+	// «том пуст», и на неотвеченном бэкенде такое утверждение было бы ложью,
+	// причём ложью правдоподобной — по ней строят биллинг и решают о ресайзе.
+	// Отсутствие значения обязано быть представимо отдельно от значения.
+	UsedBytes *int64 `protobuf:"varint,18,opt,name=used_bytes,json=usedBytes,proto3,oneof" json:"used_bytes,omitempty"`
 	// ID of the source snapshot the volume was restored from. Optional (empty = a
 	// fresh volume). Same-DB FK to Snapshot (ON DELETE SET NULL). Immutable.
 	// Mutually exclusive with source_image_id (a volume is seeded from one source).
 	SourceSnapshotId string `protobuf:"bytes,12,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
-	// Current status of the volume. AVAILABLE / IN_USE are DERIVED from the presence
-	// of an attachment (they cannot drift from the attachment state).
+	// Текущее состояние тома. Отдельной колонкой не хранится — выводится, и у
+	// двух групп значений источники РАЗНЫЕ:
+	//
+	//	AVAILABLE / IN_USE          — из наличия привязки (attachments), поэтому
+	//	                              разойтись с состоянием привязки не могут;
+	//	CREATING / MIGRATING /      — из расхождения желаемого и наблюдённого:
+	//	DELETING / ERROR              наша строка объявила одно, у бэкенда пока
+	//	                              (или уже) другое.
+	//
+	// Разделение названо здесь потому, что оно объясняет, почему статус нельзя
+	// выставить запросом: у каждой группы есть свой производитель, и запись
+	// «поверх» сделала бы дрейф ненаходимым — ровно то, ради чего желаемое и
+	// наблюдённое разведены.
 	Status Volume_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.storage.v1.Volume_Status" json:"status,omitempty"`
+	// Почему том оказался в своём состоянии (output-only). Заполняется у ERROR;
+	// в штатных состояниях STATUS_REASON_UNSPECIFIED.
+	//
+	// Закрытый словарь НАШИХ полос, а не текст бэкенда: свободная строка причины
+	// — прямой канал утечки физики (имя пула, координата узла), который гейт
+	// двухпроекционности не увидит, потому что перечисляет ИМЕНА полей. См.
+	// [StatusReason].
+	StatusReason StatusReason `protobuf:"varint,17,opt,name=status_reason,json=statusReason,proto3,enum=kacho.cloud.storage.v1.StatusReason" json:"status_reason,omitempty"`
 	// ID of the source image the boot volume was materialised from. Optional (empty =
 	// a non-boot / snapshot-seeded / fresh volume). Same-DB FK to Image (ON DELETE SET
 	// NULL — provenance, NOT a live dependency: deleting the Image clears this lineage
@@ -293,9 +333,9 @@ func (x *Volume) GetSizeBytes() int64 {
 	return 0
 }
 
-func (x *Volume) GetBlockSize() int64 {
-	if x != nil {
-		return x.BlockSize
+func (x *Volume) GetUsedBytes() int64 {
+	if x != nil && x.UsedBytes != nil {
+		return *x.UsedBytes
 	}
 	return 0
 }
@@ -312,6 +352,13 @@ func (x *Volume) GetStatus() Volume_Status {
 		return x.Status
 	}
 	return Volume_STATUS_UNSPECIFIED
+}
+
+func (x *Volume) GetStatusReason() StatusReason {
+	if x != nil {
+		return x.StatusReason
+	}
+	return StatusReason_STATUS_REASON_UNSPECIFIED
 }
 
 func (x *Volume) GetSourceImageId() string {
@@ -443,7 +490,7 @@ var File_kacho_cloud_storage_v1_volume_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_volume_proto_rawDesc = "" +
 	"\n" +
-	"#kacho/cloud/storage/v1/volume.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xdb\x06\n" +
+	"#kacho/cloud/storage/v1/volume.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\"\xdb\a\n" +
 	"\x06Volume\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -460,17 +507,18 @@ const file_kacho_cloud_storage_v1_volume_proto_rawDesc = "" +
 	"diskTypeId\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\n" +
-	" \x01(\x03R\tsizeBytes\x12\x1d\n" +
+	" \x01(\x03R\tsizeBytes\x12\"\n" +
 	"\n" +
-	"block_size\x18\v \x01(\x03R\tblockSize\x12,\n" +
+	"used_bytes\x18\x12 \x01(\x03H\x00R\tusedBytes\x88\x01\x01\x12,\n" +
 	"\x12source_snapshot_id\x18\f \x01(\tR\x10sourceSnapshotId\x12=\n" +
-	"\x06status\x18\r \x01(\x0e2%.kacho.cloud.storage.v1.Volume.StatusR\x06status\x12&\n" +
+	"\x06status\x18\r \x01(\x0e2%.kacho.cloud.storage.v1.Volume.StatusR\x06status\x12I\n" +
+	"\rstatus_reason\x18\x11 \x01(\x0e2$.kacho.cloud.storage.v1.StatusReasonR\fstatusReason\x12&\n" +
 	"\x0fsource_image_id\x18\x10 \x01(\tR\rsourceImageId\x12J\n" +
 	"\vattachments\x18\x0e \x03(\v2(.kacho.cloud.storage.v1.VolumeAttachmentR\vattachments\x129\n" +
 	"\aused_by\x18\x0f \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"b\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"q\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\f\n" +
 	"\bCREATING\x10\x01\x12\r\n" +
@@ -478,7 +526,10 @@ const file_kacho_cloud_storage_v1_volume_proto_rawDesc = "" +
 	"\n" +
 	"\x06IN_USE\x10\x03\x12\f\n" +
 	"\bDELETING\x10\x04\x12\t\n" +
-	"\x05ERROR\x10\x05\"\xf0\x02\n" +
+	"\x05ERROR\x10\x05\x12\r\n" +
+	"\tMIGRATING\x10\x06B\r\n" +
+	"\v_used_bytesJ\x04\b\v\x10\fR\n" +
+	"block_size\"\xf0\x02\n" +
 	"\x10VolumeAttachment\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12#\n" +
@@ -518,22 +569,24 @@ var file_kacho_cloud_storage_v1_volume_proto_goTypes = []any{
 	(*VolumeAttachment)(nil),      // 3: kacho.cloud.storage.v1.VolumeAttachment
 	nil,                           // 4: kacho.cloud.storage.v1.Volume.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
-	(*reference.Reference)(nil),   // 6: kacho.cloud.reference.Reference
+	(StatusReason)(0),             // 6: kacho.cloud.storage.v1.StatusReason
+	(*reference.Reference)(nil),   // 7: kacho.cloud.reference.Reference
 }
 var file_kacho_cloud_storage_v1_volume_proto_depIdxs = []int32{
 	5, // 0: kacho.cloud.storage.v1.Volume.created_at:type_name -> google.protobuf.Timestamp
 	5, // 1: kacho.cloud.storage.v1.Volume.updated_at:type_name -> google.protobuf.Timestamp
 	4, // 2: kacho.cloud.storage.v1.Volume.labels:type_name -> kacho.cloud.storage.v1.Volume.LabelsEntry
 	0, // 3: kacho.cloud.storage.v1.Volume.status:type_name -> kacho.cloud.storage.v1.Volume.Status
-	3, // 4: kacho.cloud.storage.v1.Volume.attachments:type_name -> kacho.cloud.storage.v1.VolumeAttachment
-	6, // 5: kacho.cloud.storage.v1.Volume.used_by:type_name -> kacho.cloud.reference.Reference
-	1, // 6: kacho.cloud.storage.v1.VolumeAttachment.mode:type_name -> kacho.cloud.storage.v1.VolumeAttachment.Mode
-	5, // 7: kacho.cloud.storage.v1.VolumeAttachment.attached_at:type_name -> google.protobuf.Timestamp
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	6, // 4: kacho.cloud.storage.v1.Volume.status_reason:type_name -> kacho.cloud.storage.v1.StatusReason
+	3, // 5: kacho.cloud.storage.v1.Volume.attachments:type_name -> kacho.cloud.storage.v1.VolumeAttachment
+	7, // 6: kacho.cloud.storage.v1.Volume.used_by:type_name -> kacho.cloud.reference.Reference
+	1, // 7: kacho.cloud.storage.v1.VolumeAttachment.mode:type_name -> kacho.cloud.storage.v1.VolumeAttachment.Mode
+	5, // 8: kacho.cloud.storage.v1.VolumeAttachment.attached_at:type_name -> google.protobuf.Timestamp
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_volume_proto_init() }
@@ -541,6 +594,8 @@ func file_kacho_cloud_storage_v1_volume_proto_init() {
 	if File_kacho_cloud_storage_v1_volume_proto != nil {
 		return
 	}
+	file_kacho_cloud_storage_v1_status_reason_proto_init()
+	file_kacho_cloud_storage_v1_volume_proto_msgTypes[0].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

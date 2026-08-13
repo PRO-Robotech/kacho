@@ -27,14 +27,28 @@ import { fileURLToPath } from "node:url";
  */
 
 // ui-future/ — корень консоли (файл лежит в shared/src/test/).
-const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const consoleRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 // proto/ — дом ВСЕХ .proto (polyrepo.md); контракт края лежит только там.
 const protoRoot = path.resolve(consoleRoot, "..", "proto");
 
 // Приложения консоли. Перечислены поимённо, а не обходом корня: новое
 // приложение обязано быть внесено сюда осознанно, иначе оно молча выпадет
 // из-под сверки — тот же класс, ради которого гейт и написан.
-const CONSOLE_APPS = ["host", "dashboard", "shared", "vpc", "compute", "storage", "nlb", "registry", "iam", "system"];
+const CONSOLE_APPS = [
+  "host",
+  "dashboard",
+  "shared",
+  "vpc",
+  "compute",
+  "storage",
+  "nlb",
+  "registry",
+  "iam",
+  "system",
+];
 
 // ───────────────────────────── контракт ─────────────────────────────
 
@@ -49,7 +63,8 @@ function walk(dir: string, out: string[], exts: string[]): string[] {
     return out;
   }
   for (const entry of entries) {
-    if (entry === "node_modules" || entry === "dist" || entry === ".git") continue;
+    if (entry === "node_modules" || entry === "dist" || entry === ".git")
+      continue;
     const abs = path.join(dir, entry);
     if (statSync(abs).isDirectory()) {
       walk(abs, out, exts);
@@ -66,7 +81,8 @@ function contractRoutes(): string[] {
   for (const file of walk(protoRoot, [], [".proto"])) {
     // google/api/http.proto — сама аннотация; её примеры в комментариях путями
     // Kachō не являются.
-    if (path.relative(protoRoot, file).startsWith("google" + path.sep)) continue;
+    if (path.relative(protoRoot, file).startsWith("google" + path.sep))
+      continue;
     const src = readFileSync(file, "utf8");
     for (const m of src.matchAll(httpBinding)) routes.add(m[1]);
   }
@@ -84,7 +100,8 @@ function routeMatcher(route: string): RegExp {
   const body = route
     .split(/(\{[^}]*\})/)
     .map((part) => {
-      if (!part.startsWith("{")) return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!part.startsWith("{"))
+        return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return part.includes("=**") ? "[^:]+" : "[^/:]+";
     })
     .join("");
@@ -101,12 +118,15 @@ const verbTail = /[^/:]:[a-zA-Z][A-Za-z0-9-]*$/;
 // stringLiteral — строковые и шаблонные литералы (без вложенных backtick'ов).
 const stringLiteral = /`([^`\\]*)`|"([^"\\]*)"/g;
 // stringConst — `const NAME = "…";` / `export const NAME = "…";`
-const stringConst = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)"\s*;/g;
+const stringConst =
+  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)"\s*;/g;
 // objectStringEntry — `key: "…"` внутри объектной константы путей.
-const objectConst = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\{([^}]*)\}\s*as const;/g;
+const objectConst =
+  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\{([^}]*)\}\s*as const;/g;
 const objectEntry = /([A-Za-z_$][\w$]*)\s*:\s*"([^"]*)"/g;
 // registryAlias — `const SPEC = REGISTRY["compute-instances"];`
-const registryAlias = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*REGISTRY\[\s*"([^"]+)"\s*\]/g;
+const registryAlias =
+  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*REGISTRY\[\s*"([^"]+)"\s*\]/g;
 // registrySpec — `id: "x"` … `apiPath: "/y"` в файле реестра ресурсов.
 const registrySpecId = /\n\s*id:\s*"([^"]+)",\n\s*route:/g;
 const registryApiPath = /\n\s*apiPath:\s*"([^"]+)"/;
@@ -235,7 +255,9 @@ function unmatched(uses: VerbRouteUse[], matchers: RegExp[]): VerbRouteUse[] {
 
 // ───────────────────────────── проверки ─────────────────────────────
 
-const consoleFiles = CONSOLE_APPS.flatMap((app) => walk(path.join(consoleRoot, app, "src"), [], [".ts", ".tsx"]));
+const consoleFiles = CONSOLE_APPS.flatMap((app) =>
+  walk(path.join(consoleRoot, app, "src"), [], [".ts", ".tsx"]),
+);
 const routes = contractRoutes();
 const matchers = routes.map(routeMatcher);
 const objects = objectPathConsts(consoleFiles);
@@ -263,20 +285,38 @@ describe("console addresses only verb-routes the contract serves", () => {
     // у сетевого интерфейса поле снято целиком (у
     // `InternalNetworkInterfaceService` нет ни одной http-аннотации), а
     // слэшевая форма этим разбором и не считалась.
-    expect(uses.length).toBe(45);
+    //
+    // Было 45. Прибавка законна и ровно три — производственный контракт storage
+    // завёл три действия-глагола, и консоль их адресует из `api/resources.ts`
+    // этого приложения (владелец ресурса строит путь сам, чтобы голова литерала
+    // резолвилась в константу файла и место оставалось под этим надзором):
+    //   · `/storage/v1/volumes/{id}:changeDiskType` — перевод тома на другой тип
+    //     диска; отдельный глагол, потому что это перемещение данных, а не
+    //     правка поля;
+    //   · `/storage/v1/snapshots/{id}:copy` — копия снимка в другую зону;
+    //   · `/storage/v1/images/{id}:copy`   — копия образа в другой регион.
+    // Совпадение каждого со связыванием контракта подтверждает утверждение ниже.
+    expect(uses.length).toBe(48);
   });
 
   it("every verb-route the console addresses exists in the contract", () => {
     const bad = unmatched(uses, matchers);
-    const report = bad.map((u) => `  ${u.file}\n      ${u.literal}\n      → ${u.resolved.split(UNRESOLVED).join("…")}`);
-    expect(`${bad.length} console call(s) address a route the contract does not serve:\n${report.join("\n")}`).toBe(
-      "0 console call(s) address a route the contract does not serve:\n",
+    const report = bad.map(
+      (u) =>
+        `  ${u.file}\n      ${u.literal}\n      → ${u.resolved.split(UNRESOLVED).join("…")}`,
     );
+    expect(
+      `${bad.length} console call(s) address a route the contract does not serve:\n${report.join("\n")}`,
+    ).toBe("0 console call(s) address a route the contract does not serve:\n");
   });
 
   it("the matcher itself reddens on a route the contract does not serve", () => {
     const invented: VerbRouteUse[] = [
-      { file: "probe.ts", literal: "/vpc/v1/subnets/${id}:teleport", resolved: `/vpc/v1/subnets/${UNRESOLVED}:teleport` },
+      {
+        file: "probe.ts",
+        literal: "/vpc/v1/subnets/${id}:teleport",
+        resolved: `/vpc/v1/subnets/${UNRESOLVED}:teleport`,
+      },
     ];
     expect(unmatched(invented, matchers)).toHaveLength(1);
   });

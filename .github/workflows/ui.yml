@@ -37,14 +37,12 @@ on:
   # что и отсутствующий триггер.
   push:
     branches: [main]
+  # Вход `console_url` снят вместе с работой, которая его читала (см. ниже, где
+  # она стояла). Вход, который принимают и не читают, — обещание возможности,
+  # которой нет: вызывающий задаёт адрес и уверен, что пробы пошли по нему.
+  # Адрес поднятого стенда принимает конвейер, который умеет с ним работать, —
+  # `console-e2e.yml`.
   workflow_dispatch:
-    inputs:
-      console_url:
-        description: >-
-          Адрес поднятой консоли для сквозных проб через браузер
-          (например http://46.173.29.131). Пусто — пробы не гоняются.
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -86,7 +84,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -124,7 +122,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -143,6 +141,12 @@ jobs:
         run: node scripts/check-shared-lint-debt.mjs
       - name: форма ресурса объявлена в одном месте
         run: node scripts/check-resource-spec-single-source.mjs
+      # Принятое отступление от политики контента обязано иметь предмет и предикат
+      # снятия, который РОНЯЕТ прогон, когда наступает. Без вызова гейт исчезает из
+      # конвейера незаметно — а он и написан против записей, переживающих своё
+      # основание, так что молчащий гейт был бы экземпляром своего же класса.
+      - name: отступления от политики контента держатся предметом
+        run: node scripts/check-csp-divergence-records.mjs
       - name: линт оснастки scripts/
         working-directory: ui-future/scripts
         run: ../node_modules/.bin/eslint .
@@ -162,7 +166,7 @@ jobs:
         pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -320,44 +324,25 @@ jobs:
           fi
           echo "✓ матрица и дерево совпадают ($(wc -l < /tmp/on-disk.txt) remotes)"
 
-  # ─── СКВОЗНЫЕ ПРОБЫ КОНСОЛИ ЧЕРЕЗ БРАУЗЕР ──────────────────────────────────
+  # ─── СКВОЗНЫЕ ПРОБЫ КОНСОЛИ ПЕРЕЕХАЛИ В СВОЙ КОНВЕЙЕР ──────────────────────
   #
-  # Гоняются ТОЛЬКО против поднятого стенда: они проверяют поток входа, загрузку
-  # модулей и создание ресурса, а это свойства РАЗВЁРНУТОГО продукта, не сборки.
-  # Адрес стенда приходит входом; без него работа не «пропускается тихо», а
-  # ОТКАЗЫВАЕТСЯ с названной причиной — иначе «зелёная консоль» означала бы
-  # «пробы не выполнялись».
+  # Здесь стояла работа `console-e2e` под условием
+  # `github.event_name == 'workflow_dispatch' && inputs.console_url != ''`.
+  # Условие честно называло, чего пробам не хватает — поднятого стенда, — но
+  # следствие было то, которое правила запрещают: работу не запускал НИ ОДИН
+  # автоматический триггер, а её соседи по этому файлу запускались. Молчание
+  # такой одиночки неотличимо от зелёного, и семь проб были слотом в отчёте.
   #
-  # Почему не на каждый push: стенда в этом конвейере нет. Заводить его здесь
-  # значило бы дублировать развёртывание; пробы вызываются по требованию против
-  # уже поднятого стенда и в конвейере развёртывания.
-  console-e2e:
-    name: сквозные пробы консоли (браузер)
-    if: github.event_name == 'workflow_dispatch' && inputs.console_url != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '26'
-      - name: установка
-        working-directory: ui-future/e2e
-        run: npm ci || npm install --no-audit --no-fund
-      - name: браузер
-        working-directory: ui-future/e2e
-        run: npx playwright install --with-deps chromium
-      - name: прогон
-        working-directory: ui-future/e2e
-        env:
-          KACHO_CONSOLE_URL: ${{ inputs.console_url }}
-        run: npx playwright test
-      - name: отчёт (в том числе на красном)
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: console-e2e-results
-          path: |
-            ui-future/e2e/results.json
-            ui-future/e2e/test-results/
-          retention-days: 7
+  # Теперь у них СВОЯ ВОЛНА, СОЗДАЮЩАЯ УСЛОВИЕ: `console-e2e.yml` поднимает
+  # собственный полный стенд и гоняет пробы против него на PR и на push в main.
+  # Разведены по файлам потому, что триггеры принадлежат волне: этому конвейеру
+  # (типы, линт, юниты, образы) незачем расписание стенда, а стенду незачем идти
+  # на каждый прогон типов. Условие по работе — как раз та форма, из-за которой
+  # пробы и молчали.
+  #
+  # Класс держит гейт, а не эта запись:
+  # internal/repohygiene TestManualOnlyJobNeverHidesInsideAutomaticWorkflow —
+  # он краснеет на любой работе, замкнутой на ручной запуск внутри
+  # автоматически запускаемого конвейера, и молчит на конвейере, объявленном
+  # ручным целиком.
+

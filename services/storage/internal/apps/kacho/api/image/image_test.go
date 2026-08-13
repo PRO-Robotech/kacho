@@ -115,7 +115,8 @@ func TestCreatePeerValidatesRegion(t *testing.T) {
 		},
 	}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, nil)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, nil).
+		WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", RegionID: "ru-central1", Name: "img-a", SourceSnapshot: "snp00000000000000000",
 	})
@@ -133,7 +134,8 @@ func TestCreatePeerValidatesProjectUnavailable(t *testing.T) {
 			return status.Error(codes.Unavailable, "iam project validation unavailable")
 		},
 	}
-	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus).
+		WithInstallPrefix(testInstallPrefix)
 	_, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-ghost", RegionID: "ru-central1", Name: "img-a", SourceSnapshot: "snp00000000000000000",
 	})
@@ -171,7 +173,8 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	geo := &repomock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus).
+		WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", Name: "img-a", RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
@@ -219,7 +222,8 @@ func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	geo := &repomock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
 	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	ops := repomock.NewOpsRepo()
-	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus).
+		WithInstallPrefix(testInstallPrefix)
 
 	op, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",

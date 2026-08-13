@@ -10,9 +10,11 @@
 package storagev1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -24,6 +26,65 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// Наблюдаемое состояние объекта у бэкенда — то, что сверщик УВИДЕЛ, а не то, что мы
+// заказывали.
+//
+// Отдельно от Image.Status намеренно: пока желаемое и наблюдаемое — две величины,
+// дрейф между нашей строкой и хранилищем находим. Свести их в одну колонку значит
+// сделать расхождение невидимым by construction.
+type ImageInternal_ObservedState int32
+
+const (
+	// Сверки ещё не было: observed_at пуст. Отличимо от ABSENT — «не смотрели» и
+	// «смотрели и не нашли» требуют разных действий оператора.
+	ImageInternal_OBSERVED_STATE_UNSPECIFIED ImageInternal_ObservedState = 0
+	// Объекта у бэкенда нет.
+	ImageInternal_ABSENT ImageInternal_ObservedState = 1
+	// Объект есть и пригоден к засеву тома.
+	ImageInternal_READY ImageInternal_ObservedState = 2
+)
+
+// Enum value maps for ImageInternal_ObservedState.
+var (
+	ImageInternal_ObservedState_name = map[int32]string{
+		0: "OBSERVED_STATE_UNSPECIFIED",
+		1: "ABSENT",
+		2: "READY",
+	}
+	ImageInternal_ObservedState_value = map[string]int32{
+		"OBSERVED_STATE_UNSPECIFIED": 0,
+		"ABSENT":                     1,
+		"READY":                      2,
+	}
+)
+
+func (x ImageInternal_ObservedState) Enum() *ImageInternal_ObservedState {
+	p := new(ImageInternal_ObservedState)
+	*p = x
+	return p
+}
+
+func (x ImageInternal_ObservedState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ImageInternal_ObservedState) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_storage_v1_internal_image_service_proto_enumTypes[0].Descriptor()
+}
+
+func (ImageInternal_ObservedState) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_storage_v1_internal_image_service_proto_enumTypes[0]
+}
+
+func (x ImageInternal_ObservedState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ImageInternal_ObservedState.Descriptor instead.
+func (ImageInternal_ObservedState) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescGZIP(), []int{2, 0}
+}
 
 type GetInternalImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -70,21 +131,163 @@ func (x *GetInternalImageRequest) GetImageId() string {
 	return ""
 }
 
-// ImageInternal — internal (infra) projection of an Image. Skeleton for this
-// increment: it embeds the public Image; infra fields (blob-layout / bucket /
-// engine-namespace / storage-node) are a future data-plane increment and are
-// reserved here — never populated on the public Image (ban #6 + infra-sensitive).
+// RegisterImageRequest — handle уже внесённого объекта плюс то, что облако о нём
+// обязано знать. Байты через этот запрос не проходят.
+type RegisterImageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID проекта, которому принадлежит образ. Peer-валидируется у kacho-iam.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// ID региона, в котором образ доступен (REGIONAL/anycast). Peer-валидируется у
+	// kacho-geo.
+	RegionId string `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	// Имя образа. Границы те же, что у публичного Create: у зарегистрированного и у
+	// созданного образа один контракт имени, иначе арендатор увидел бы два разных
+	// правила на одном поле.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Описание образа.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as `key:value` pairs.
+	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Имя объекта у бэкенда — тот самый handle, ради которого метод существует.
+	//
+	// ЕДИНСТВЕННОЕ место контракта, где имя объекта приходит извне. На всех прочих путях
+	// адаптер выводит его сам (префикс установки + наш id) и из запроса не принимает —
+	// принимая, он позволил бы вызывающему адресовать чужой объект. Здесь выводить не из
+	// чего: объект внесён ДО того, как у облака появилась строка, и его имя — факт, а не
+	// наше решение.
+	BackendObject string `protobuf:"bytes,6,opt,name=backend_object,json=backendObject,proto3" json:"backend_object,omitempty"`
+	// Виртуальный размер образа в байтах.
+	SizeBytes int64 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	// Минимальный размер принимающего загрузочного тома в байтах. Том меньше этого числа
+	// образом не засевается.
+	//
+	// Оба числа называет регистрирующий: у зарегистрированного образа источника внутри
+	// облака нет, выводить их не из чего.
+	MinDiskBytes  int64 `protobuf:"varint,8,opt,name=min_disk_bytes,json=minDiskBytes,proto3" json:"min_disk_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterImageRequest) Reset() {
+	*x = RegisterImageRequest{}
+	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterImageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterImageRequest) ProtoMessage() {}
+
+func (x *RegisterImageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterImageRequest.ProtoReflect.Descriptor instead.
+func (*RegisterImageRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RegisterImageRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *RegisterImageRequest) GetRegionId() string {
+	if x != nil {
+		return x.RegionId
+	}
+	return ""
+}
+
+func (x *RegisterImageRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RegisterImageRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *RegisterImageRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+func (x *RegisterImageRequest) GetBackendObject() string {
+	if x != nil {
+		return x.BackendObject
+	}
+	return ""
+}
+
+func (x *RegisterImageRequest) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *RegisterImageRequest) GetMinDiskBytes() int64 {
+	if x != nil {
+		return x.MinDiskBytes
+	}
+	return 0
+}
+
+// ImageInternal — инфра-проекция образа: то, чего на публичном Image нет и не будет
+// (ban #6 + инфра-чувствительные данные). Живёт ТОЛЬКО на внутреннем листенере.
+//
+// Разделение не косметическое: по имени объекта у бэкенда и по ревизии привязки
+// картируется раскладка хранилища. Арендатору адресовано «намерение и исход», оператору
+// — где это лежит и что об этом видно.
 type ImageInternal struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Public projection of the image.
-	Image         *Image `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// Публичная проекция образа.
+	Image *Image `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	// ID неизменяемой ревизии привязки, под которой лежит объект образа: локатор
+	// (бэкенд, пул, namespace) читается из неё, а не из справочника классов. Поэтому
+	// правка справочника не может задним числом переселить уже внесённый объект.
+	BindingId string `protobuf:"bytes,2,opt,name=binding_id,json=bindingId,proto3" json:"binding_id,omitempty"`
+	// Имя объекта у бэкенда — координата, по которой образ находится в хранилище.
+	BackendObject string `protobuf:"bytes,3,opt,name=backend_object,json=backendObject,proto3" json:"backend_object,omitempty"`
+	// Что сверщик увидел у бэкенда в последний раз.
+	ObservedState ImageInternal_ObservedState `protobuf:"varint,4,opt,name=observed_state,json=observedState,proto3,enum=kacho.cloud.storage.v1.ImageInternal_ObservedState" json:"observed_state,omitempty"`
+	// Когда сверщик смотрел на объект в последний раз. Пусто — не смотрел ни разу.
+	// Усечено до секунд, как и прочие метки времени на wire.
+	ObservedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	// Причина НАБЛЮДЁННОГО состояния: чем закончилась последняя сверка.
+	//
+	// Это не дубль причины у вложенного Image: та объясняет арендатору состояние
+	// РЕСУРСА, эта — оператору исход последней сверки. Расходятся они ровно в момент
+	// дрейфа, ради обнаружения которого проекция и заведена.
+	StatusReason  StatusReason `protobuf:"varint,6,opt,name=status_reason,json=statusReason,proto3,enum=kacho.cloud.storage.v1.StatusReason" json:"status_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ImageInternal) Reset() {
 	*x = ImageInternal{}
-	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -96,7 +299,7 @@ func (x *ImageInternal) String() string {
 func (*ImageInternal) ProtoMessage() {}
 
 func (x *ImageInternal) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[1]
+	mi := &file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -109,7 +312,7 @@ func (x *ImageInternal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageInternal.ProtoReflect.Descriptor instead.
 func (*ImageInternal) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescGZIP(), []int{1}
+	return file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ImageInternal) GetImage() *Image {
@@ -119,18 +322,81 @@ func (x *ImageInternal) GetImage() *Image {
 	return nil
 }
 
+func (x *ImageInternal) GetBindingId() string {
+	if x != nil {
+		return x.BindingId
+	}
+	return ""
+}
+
+func (x *ImageInternal) GetBackendObject() string {
+	if x != nil {
+		return x.BackendObject
+	}
+	return ""
+}
+
+func (x *ImageInternal) GetObservedState() ImageInternal_ObservedState {
+	if x != nil {
+		return x.ObservedState
+	}
+	return ImageInternal_OBSERVED_STATE_UNSPECIFIED
+}
+
+func (x *ImageInternal) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *ImageInternal) GetStatusReason() StatusReason {
+	if x != nil {
+		return x.StatusReason
+	}
+	return StatusReason_STATUS_REASON_UNSPECIFIED
+}
+
 var File_kacho_cloud_storage_v1_internal_image_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\"kacho/cloud/storage/v1/image.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"4\n" +
+	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"4\n" +
 	"\x17GetInternalImageRequest\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"J\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xb4\x04\n" +
+	"\x14RegisterImageRequest\x12+\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12)\n" +
+	"\tregion_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\x129\n" +
+	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
+	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x95\x01\n" +
+	"\x06labels\x18\x05 \x03(\v28.kacho.cloud.storage.v1.RegisterImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x124\n" +
+	"\x0ebackend_object\x18\x06 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=255R\rbackendObject\x12%\n" +
+	"\n" +
+	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x12,\n" +
+	"\x0emin_disk_bytes\x18\b \x01(\x03B\x06\xfa\xc71\x02>0R\fminDiskBytes\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbc\x03\n" +
 	"\rImageInternal\x123\n" +
-	"\x05image\x18\x01 \x01(\v2\x1d.kacho.cloud.storage.v1.ImageR\x05imageJ\x04\b\x02\x10\x102\xca\x01\n" +
+	"\x05image\x18\x01 \x01(\v2\x1d.kacho.cloud.storage.v1.ImageR\x05image\x12\x1d\n" +
+	"\n" +
+	"binding_id\x18\x02 \x01(\tR\tbindingId\x12%\n" +
+	"\x0ebackend_object\x18\x03 \x01(\tR\rbackendObject\x12Z\n" +
+	"\x0eobserved_state\x18\x04 \x01(\x0e23.kacho.cloud.storage.v1.ImageInternal.ObservedStateR\robservedState\x12;\n" +
+	"\vobserved_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x12I\n" +
+	"\rstatus_reason\x18\x06 \x01(\x0e2$.kacho.cloud.storage.v1.StatusReasonR\fstatusReason\"F\n" +
+	"\rObservedState\x12\x1e\n" +
+	"\x1aOBSERVED_STATE_UNSPECIFIED\x10\x00\x12\n" +
+	"\n" +
+	"\x06ABSENT\x10\x01\x12\t\n" +
+	"\x05READY\x10\x02J\x04\b\a\x10\x102\xe6\x02\n" +
 	"\x14InternalImageService\x12\xb1\x01\n" +
 	"\vGetInternal\x12/.kacho.cloud.storage.v1.GetInternalImageRequest\x1a%.kacho.cloud.storage.v1.ImageInternal\"J\x8a\xb5\x18\x1astorage.images.getInternal\x92\xb5\x18\x06viewer\x9a\xb5\x18\x19\n" +
-	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x12\x99\x01\n" +
+	"\bRegister\x12,.kacho.cloud.storage.v1.RegisterImageRequest\x1a\x1d.kacho.cloud.storage.v1.Image\"@\x8a\xb5\x18\x17storage.images.register\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescOnce sync.Once
@@ -144,21 +410,33 @@ func file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescGZIP() []by
 	return file_kacho_cloud_storage_v1_internal_image_service_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_kacho_cloud_storage_v1_internal_image_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_kacho_cloud_storage_v1_internal_image_service_proto_goTypes = []any{
-	(*GetInternalImageRequest)(nil), // 0: kacho.cloud.storage.v1.GetInternalImageRequest
-	(*ImageInternal)(nil),           // 1: kacho.cloud.storage.v1.ImageInternal
-	(*Image)(nil),                   // 2: kacho.cloud.storage.v1.Image
+	(ImageInternal_ObservedState)(0), // 0: kacho.cloud.storage.v1.ImageInternal.ObservedState
+	(*GetInternalImageRequest)(nil),  // 1: kacho.cloud.storage.v1.GetInternalImageRequest
+	(*RegisterImageRequest)(nil),     // 2: kacho.cloud.storage.v1.RegisterImageRequest
+	(*ImageInternal)(nil),            // 3: kacho.cloud.storage.v1.ImageInternal
+	nil,                              // 4: kacho.cloud.storage.v1.RegisterImageRequest.LabelsEntry
+	(*Image)(nil),                    // 5: kacho.cloud.storage.v1.Image
+	(*timestamppb.Timestamp)(nil),    // 6: google.protobuf.Timestamp
+	(StatusReason)(0),                // 7: kacho.cloud.storage.v1.StatusReason
 }
 var file_kacho_cloud_storage_v1_internal_image_service_proto_depIdxs = []int32{
-	2, // 0: kacho.cloud.storage.v1.ImageInternal.image:type_name -> kacho.cloud.storage.v1.Image
-	0, // 1: kacho.cloud.storage.v1.InternalImageService.GetInternal:input_type -> kacho.cloud.storage.v1.GetInternalImageRequest
-	1, // 2: kacho.cloud.storage.v1.InternalImageService.GetInternal:output_type -> kacho.cloud.storage.v1.ImageInternal
-	2, // [2:3] is the sub-list for method output_type
-	1, // [1:2] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	4, // 0: kacho.cloud.storage.v1.RegisterImageRequest.labels:type_name -> kacho.cloud.storage.v1.RegisterImageRequest.LabelsEntry
+	5, // 1: kacho.cloud.storage.v1.ImageInternal.image:type_name -> kacho.cloud.storage.v1.Image
+	0, // 2: kacho.cloud.storage.v1.ImageInternal.observed_state:type_name -> kacho.cloud.storage.v1.ImageInternal.ObservedState
+	6, // 3: kacho.cloud.storage.v1.ImageInternal.observed_at:type_name -> google.protobuf.Timestamp
+	7, // 4: kacho.cloud.storage.v1.ImageInternal.status_reason:type_name -> kacho.cloud.storage.v1.StatusReason
+	1, // 5: kacho.cloud.storage.v1.InternalImageService.GetInternal:input_type -> kacho.cloud.storage.v1.GetInternalImageRequest
+	2, // 6: kacho.cloud.storage.v1.InternalImageService.Register:input_type -> kacho.cloud.storage.v1.RegisterImageRequest
+	3, // 7: kacho.cloud.storage.v1.InternalImageService.GetInternal:output_type -> kacho.cloud.storage.v1.ImageInternal
+	5, // 8: kacho.cloud.storage.v1.InternalImageService.Register:output_type -> kacho.cloud.storage.v1.Image
+	7, // [7:9] is the sub-list for method output_type
+	5, // [5:7] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_storage_v1_internal_image_service_proto_init() }
@@ -167,18 +445,20 @@ func file_kacho_cloud_storage_v1_internal_image_service_proto_init() {
 		return
 	}
 	file_kacho_cloud_storage_v1_image_proto_init()
+	file_kacho_cloud_storage_v1_status_reason_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   2,
+			NumEnums:      1,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_kacho_cloud_storage_v1_internal_image_service_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_storage_v1_internal_image_service_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_storage_v1_internal_image_service_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_storage_v1_internal_image_service_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_storage_v1_internal_image_service_proto = out.File

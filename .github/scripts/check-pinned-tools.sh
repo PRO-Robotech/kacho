@@ -85,6 +85,7 @@ PROBES=(
   "grpcurl${S}gh:fullstorydev/grpcurl${S}${S}grpcurl/releases/download/v?[0-9]+\.[0-9]+\.[0-9]+/${S}${D_WF}"
   "grpcurl${S}gh:fullstorydev/grpcurl${S}${S}grpcurl_[0-9]+\.[0-9]+\.[0-9]+_linux${S}${D_WF}"
   "gosec${S}gh:securego/gosec${S}${S}gosec@v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
+  "opentofu${S}gh:opentofu/opentofu${S}uses:[[:space:]]*opentofu/setup-opentofu@${S}tofu_version:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
 
   # БАЗОВЫЕ ОБРАЗЫ. Пин образа держит то же свойство, что пин тулчейна: он решает,
   # каким компилятором и рантаймом собран и исполняется артефакт. Разница только в

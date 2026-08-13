@@ -226,8 +226,6 @@ type CreateVolumeRequest struct {
 	DiskTypeId string `protobuf:"bytes,6,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
 	// Size of the volume, specified in bytes. Must be > 0.
 	SizeBytes int64 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	// Block size of the volume, specified in bytes. Default 4096 when omitted.
-	BlockSize int64 `protobuf:"varint,8,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
 	// ID of the source snapshot to restore the volume from. Optional; empty = a fresh
 	// volume. Mutually exclusive with source_image_id.
 	SourceSnapshotId string `protobuf:"bytes,9,opt,name=source_snapshot_id,json=sourceSnapshotId,proto3" json:"source_snapshot_id,omitempty"`
@@ -313,13 +311,6 @@ func (x *CreateVolumeRequest) GetDiskTypeId() string {
 func (x *CreateVolumeRequest) GetSizeBytes() int64 {
 	if x != nil {
 		return x.SizeBytes
-	}
-	return 0
-}
-
-func (x *CreateVolumeRequest) GetBlockSize() int64 {
-	if x != nil {
-		return x.BlockSize
 	}
 	return 0
 }
@@ -732,6 +723,110 @@ func (x *ListVolumeOperationsResponse) GetNextPageToken() string {
 	return ""
 }
 
+type ChangeDiskTypeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID тома, класс диска которого меняется.
+	VolumeId string `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
+	// ID целевого класса диска. Обязателен: пустое значение — это не «оставить
+	// как есть», а запрос без предмета, и трактовать его умолчанием значило бы
+	// отвечать успехом на несформулированное намерение.
+	//
+	// Класс обязан быть ACTIVE и предлагаться в зоне тома. Зона глаголом не
+	// меняется — целевой класс ищется в той же зоне, где том уже стоит.
+	DiskTypeId    string `protobuf:"bytes,2,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeDiskTypeRequest) Reset() {
+	*x = ChangeDiskTypeRequest{}
+	mi := &file_kacho_cloud_storage_v1_volume_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeDiskTypeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeDiskTypeRequest) ProtoMessage() {}
+
+func (x *ChangeDiskTypeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_volume_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeDiskTypeRequest.ProtoReflect.Descriptor instead.
+func (*ChangeDiskTypeRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_volume_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ChangeDiskTypeRequest) GetVolumeId() string {
+	if x != nil {
+		return x.VolumeId
+	}
+	return ""
+}
+
+func (x *ChangeDiskTypeRequest) GetDiskTypeId() string {
+	if x != nil {
+		return x.DiskTypeId
+	}
+	return ""
+}
+
+type ChangeDiskTypeMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID тома, класс диска которого меняется.
+	VolumeId      string `protobuf:"bytes,1,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeDiskTypeMetadata) Reset() {
+	*x = ChangeDiskTypeMetadata{}
+	mi := &file_kacho_cloud_storage_v1_volume_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeDiskTypeMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeDiskTypeMetadata) ProtoMessage() {}
+
+func (x *ChangeDiskTypeMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_storage_v1_volume_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeDiskTypeMetadata.ProtoReflect.Descriptor instead.
+func (*ChangeDiskTypeMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_storage_v1_volume_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ChangeDiskTypeMetadata) GetVolumeId() string {
+	if x != nil {
+		return x.VolumeId
+	}
+	return ""
+}
+
 var File_kacho_cloud_storage_v1_volume_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
@@ -750,7 +845,7 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"w\n" +
 	"\x13ListVolumesResponse\x128\n" +
 	"\avolumes\x18\x01 \x03(\v2\x1e.kacho.cloud.storage.v1.VolumeR\avolumes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x83\x05\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf6\x04\n" +
 	"\x13CreateVolumeRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x129\n" +
@@ -761,15 +856,14 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\fdisk_type_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"diskTypeId\x12%\n" +
 	"\n" +
-	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x12\x1d\n" +
-	"\n" +
-	"block_size\x18\b \x01(\x03R\tblockSize\x126\n" +
+	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x126\n" +
 	"\x12source_snapshot_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\x10sourceSnapshotId\x120\n" +
 	"\x0fsource_image_id\x18\n" +
 	" \x01(\tB\b\x8a\xc81\x04<=50R\rsourceImageId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"3\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\n" +
+	"block_size\"3\n" +
 	"\x14CreateVolumeMetadata\x12\x1b\n" +
 	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"\xde\x03\n" +
 	"\x13UpdateVolumeRequest\x12)\n" +
@@ -800,8 +894,13 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xe1\n" +
-	"\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"r\n" +
+	"\x15ChangeDiskTypeRequest\x12)\n" +
+	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\x12.\n" +
+	"\fdisk_type_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"diskTypeId\"5\n" +
+	"\x16ChangeDiskTypeMetadata\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId2\xf7\f\n" +
 	"\rVolumeService\x12\xbc\x01\n" +
 	"\x03Get\x12(.kacho.cloud.storage.v1.GetVolumeRequest\x1a\x1e.kacho.cloud.storage.v1.Volume\"k\x8a\xb5\x18\x13storage.volumes.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1b\n" +
 	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!\x12\x1f/storage/v1/volumes/{volume_id}\x12\xbc\x01\n" +
@@ -819,7 +918,10 @@ const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\xb2\xd2*-\n" +
 	"\x14DeleteVolumeMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02!*\x1f/storage/v1/volumes/{volume_id}\x12\x80\x02\n" +
 	"\x0eListOperations\x123.kacho.cloud.storage.v1.ListVolumeOperationsRequest\x1a4.kacho.cloud.storage.v1.ListVolumeOperationsResponse\"\x82\x01\x8a\xb5\x18\x1estorage.volumes.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x1b\n" +
-	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/storage/v1/volumes/{volume_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/storage/v1/volumes/{volume_id}/operations\x12\x93\x02\n" +
+	"\x0eChangeDiskType\x12-.kacho.cloud.storage.v1.ChangeDiskTypeRequest\x1a .kacho.cloud.operation.Operation\"\xaf\x01\x8a\xb5\x18\x1estorage.volumes.changeDiskType\x92\xb5\x18\bv_update\x9a\xb5\x18\x1b\n" +
+	"\x0estorage_volume\x12\tvolume_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
+	"\x16ChangeDiskTypeMetadata\x12\x06Volume\x82\xd3\xe4\x93\x023:\x01*\"./storage/v1/volumes/{volume_id}:changeDiskTypeBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (
 	file_kacho_cloud_storage_v1_volume_service_proto_rawDescOnce sync.Once
@@ -833,7 +935,7 @@ func file_kacho_cloud_storage_v1_volume_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_storage_v1_volume_service_proto_rawDescData
 }
 
-var file_kacho_cloud_storage_v1_volume_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_kacho_cloud_storage_v1_volume_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kacho_cloud_storage_v1_volume_service_proto_goTypes = []any{
 	(*GetVolumeRequest)(nil),             // 0: kacho.cloud.storage.v1.GetVolumeRequest
 	(*ListVolumesRequest)(nil),           // 1: kacho.cloud.storage.v1.ListVolumesRequest
@@ -846,32 +948,36 @@ var file_kacho_cloud_storage_v1_volume_service_proto_goTypes = []any{
 	(*DeleteVolumeMetadata)(nil),         // 8: kacho.cloud.storage.v1.DeleteVolumeMetadata
 	(*ListVolumeOperationsRequest)(nil),  // 9: kacho.cloud.storage.v1.ListVolumeOperationsRequest
 	(*ListVolumeOperationsResponse)(nil), // 10: kacho.cloud.storage.v1.ListVolumeOperationsResponse
-	nil,                                  // 11: kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntry
-	nil,                                  // 12: kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntry
-	(*Volume)(nil),                       // 13: kacho.cloud.storage.v1.Volume
-	(*fieldmaskpb.FieldMask)(nil),        // 14: google.protobuf.FieldMask
-	(*operation.Operation)(nil),          // 15: kacho.cloud.operation.Operation
+	(*ChangeDiskTypeRequest)(nil),        // 11: kacho.cloud.storage.v1.ChangeDiskTypeRequest
+	(*ChangeDiskTypeMetadata)(nil),       // 12: kacho.cloud.storage.v1.ChangeDiskTypeMetadata
+	nil,                                  // 13: kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntry
+	nil,                                  // 14: kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntry
+	(*Volume)(nil),                       // 15: kacho.cloud.storage.v1.Volume
+	(*fieldmaskpb.FieldMask)(nil),        // 16: google.protobuf.FieldMask
+	(*operation.Operation)(nil),          // 17: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_storage_v1_volume_service_proto_depIdxs = []int32{
-	13, // 0: kacho.cloud.storage.v1.ListVolumesResponse.volumes:type_name -> kacho.cloud.storage.v1.Volume
-	11, // 1: kacho.cloud.storage.v1.CreateVolumeRequest.labels:type_name -> kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntry
-	14, // 2: kacho.cloud.storage.v1.UpdateVolumeRequest.update_mask:type_name -> google.protobuf.FieldMask
-	12, // 3: kacho.cloud.storage.v1.UpdateVolumeRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntry
-	15, // 4: kacho.cloud.storage.v1.ListVolumeOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	15, // 0: kacho.cloud.storage.v1.ListVolumesResponse.volumes:type_name -> kacho.cloud.storage.v1.Volume
+	13, // 1: kacho.cloud.storage.v1.CreateVolumeRequest.labels:type_name -> kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntry
+	16, // 2: kacho.cloud.storage.v1.UpdateVolumeRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 3: kacho.cloud.storage.v1.UpdateVolumeRequest.labels:type_name -> kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntry
+	17, // 4: kacho.cloud.storage.v1.ListVolumeOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 5: kacho.cloud.storage.v1.VolumeService.Get:input_type -> kacho.cloud.storage.v1.GetVolumeRequest
 	1,  // 6: kacho.cloud.storage.v1.VolumeService.List:input_type -> kacho.cloud.storage.v1.ListVolumesRequest
 	3,  // 7: kacho.cloud.storage.v1.VolumeService.Create:input_type -> kacho.cloud.storage.v1.CreateVolumeRequest
 	5,  // 8: kacho.cloud.storage.v1.VolumeService.Update:input_type -> kacho.cloud.storage.v1.UpdateVolumeRequest
 	7,  // 9: kacho.cloud.storage.v1.VolumeService.Delete:input_type -> kacho.cloud.storage.v1.DeleteVolumeRequest
 	9,  // 10: kacho.cloud.storage.v1.VolumeService.ListOperations:input_type -> kacho.cloud.storage.v1.ListVolumeOperationsRequest
-	13, // 11: kacho.cloud.storage.v1.VolumeService.Get:output_type -> kacho.cloud.storage.v1.Volume
-	2,  // 12: kacho.cloud.storage.v1.VolumeService.List:output_type -> kacho.cloud.storage.v1.ListVolumesResponse
-	15, // 13: kacho.cloud.storage.v1.VolumeService.Create:output_type -> kacho.cloud.operation.Operation
-	15, // 14: kacho.cloud.storage.v1.VolumeService.Update:output_type -> kacho.cloud.operation.Operation
-	15, // 15: kacho.cloud.storage.v1.VolumeService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 16: kacho.cloud.storage.v1.VolumeService.ListOperations:output_type -> kacho.cloud.storage.v1.ListVolumeOperationsResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
+	11, // 11: kacho.cloud.storage.v1.VolumeService.ChangeDiskType:input_type -> kacho.cloud.storage.v1.ChangeDiskTypeRequest
+	15, // 12: kacho.cloud.storage.v1.VolumeService.Get:output_type -> kacho.cloud.storage.v1.Volume
+	2,  // 13: kacho.cloud.storage.v1.VolumeService.List:output_type -> kacho.cloud.storage.v1.ListVolumesResponse
+	17, // 14: kacho.cloud.storage.v1.VolumeService.Create:output_type -> kacho.cloud.operation.Operation
+	17, // 15: kacho.cloud.storage.v1.VolumeService.Update:output_type -> kacho.cloud.operation.Operation
+	17, // 16: kacho.cloud.storage.v1.VolumeService.Delete:output_type -> kacho.cloud.operation.Operation
+	10, // 17: kacho.cloud.storage.v1.VolumeService.ListOperations:output_type -> kacho.cloud.storage.v1.ListVolumeOperationsResponse
+	17, // 18: kacho.cloud.storage.v1.VolumeService.ChangeDiskType:output_type -> kacho.cloud.operation.Operation
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -889,7 +995,7 @@ func file_kacho_cloud_storage_v1_volume_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_storage_v1_volume_service_proto_rawDesc), len(file_kacho_cloud_storage_v1_volume_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

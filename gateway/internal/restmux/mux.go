@@ -594,6 +594,24 @@ func NewMux(
 			if err := storagepb.RegisterInternalImageServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
 				return nil, fmt.Errorf("register storage InternalImageService: %w", err)
 			}
+			// InternalStorageBackendService + InternalDiskTypeBindingService —
+			// административная плоскость каталога хранения: где стоит кластер
+			// данных и какой класс к нему привязан в какой зоне.
+			//
+			// Обе несут координату инфраструктуры (адрес кластера, имя пула,
+			// пространство имён) и потому живут ТОЛЬКО здесь: на внешнем
+			// слушателе их пути не обслуживаются вовсе — диспетчер
+			// классифицирует по принадлежности RPC Internal*-сервису, а не по
+			// форме пути.
+			//
+			// Ссылка на учётный материал (`credentials_ref`) — именно ссылка:
+			// сам материал не проходит ни через этот край, ни через БД.
+			if err := storagepb.RegisterInternalStorageBackendServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+				return nil, fmt.Errorf("register storage InternalStorageBackendService: %w", err)
+			}
+			if err := storagepb.RegisterInternalDiskTypeBindingServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+				return nil, fmt.Errorf("register storage InternalDiskTypeBindingService: %w", err)
+			}
 		}
 
 		// --- geo.v1: Region + Zone (public read-only) ---

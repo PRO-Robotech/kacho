@@ -22,6 +22,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | `assert_operation_envelope()` | Operation.id matches `^sop[a-z0-9]+$`, metadata is object | каждый Create CRUD-OK |
 | `assert_created_at_seconds()` | CONF: created_at без дробной секунды (truncate до секунд) [INV-9] | VOL/SNP CRUD-OK |
 | per-step `auth` (bearer override) | Authorization: Bearer {{envVar}} для authz-кейсов | cases/authz.py |
+| `wait_until_ready(step, ready, subject)` / `wait_until_ready_step(...)` | ограниченное ожидание ПРИГОДНОСТИ ресурса — её объявляет сверщик, а не `Operation.done`; при исчерпании бюджета падает, назвав `status` и `statusReason` | каждая фикстура-источник и каждый happy, утверждающий готовность |
 
 ## Volume (`cases/volume.py`) — stage S1
 
@@ -60,7 +61,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-CR-BVA-NAME-OVER-64 | CS1-S1-12 | negative (BVA) |
 | VOL-CR-VAL-NAME-DIGIT-START | CS1-S1-12 | negative (sync) |
 | VOL-CR-VAL-NAME-HYPHEN-START | CS1-S1-12 | negative (sync) |
-| VOL-UPD-MASK-IMMUTABLE-BLOCKSIZE | CS1-S1-05 | negative (sync) |
+| VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED | CS1-S1-05 | negative (sync; слот снят с контракта — маска, называющая его, отвергается) |
 | VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT | CS1-S1-05 | negative (sync) |
 | VOL-UPD-MASK-EMPTY-FULL-PATCH-OK | CS1-S1-05 | happy (full-PATCH) |
 | VOL-CR-SEC-NAME-INJECTION | CS1-S1-11 | negative (SEC no-leak) |
@@ -68,6 +69,11 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-UPD-BVA-DESC-256-257 | CS1-S1-04 | BVA обе стороны границы (update-path, sync + details) |
 | VOL-UPD-BVA-LABELS-64-65 | CS1-S1-04 | BVA обе стороны границы (update-path, sync + details) |
 | VOL-OBJSELF-PROJECT-SCOPED-CRUD | #71 | happy (object-self anti-BOLA, project-scoped actor — not cluster-admin-masked) |
+| VOL-CDT-CRUD-OK | CS1-S1-04 | happy (ChangeDiskType: перемещение данных выделенным глаголом; целевой класс берётся ИЗ СПИСКА, не из литерала посева) |
+| VOL-CDT-NEG-MALFORMED-ID | CS1-S1-02 | negative (sync) |
+| VOL-CDT-VAL-DISKTYPE-REQUIRED | CS1-S1-12 | negative (sync; пустой класс — запрос без предмета) |
+| VOL-CDT-NEG-VOLUME-NOTFOUND | CS1-S1-07 | negative (op-error) |
+| VOL-CDT-NEG-DISKTYPE-UNKNOWN | CS1-S1-10 | negative (op-error; класс тома не изменился отвергнутым глаголом) |
 
 ## Snapshot (`cases/snapshot.py`) — stage S3
 
@@ -97,6 +103,16 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | SNP-UPD-BVA-DESC-256-257 | CS1-S3-05 | BVA обе стороны границы (update-path, sync + details) |
 | SNP-UPD-BVA-LABELS-64-65 | CS1-S3-05 | BVA обе стороны границы (update-path, sync + details) |
 | SNP-UPD-VAL-NAME-UPPERCASE | CS1-S3-05 | negative (sync; формат имени на update-path) |
+| SNP-UPD-MASK-ZONE-REJECTED | CS1-S3-05 | negative (sync; якорь размещения снимка правкой не меняется) |
+| SNP-COPY-CRUD-OK | CS1-S3-01 | happy (Copy в другую зону: НОВАЯ строка, источник цел) |
+| SNP-COPY-VAL-PROJECT-REQUIRED | CS1-S3-03 | negative (unscoped; право «создать» — у родителя) |
+| SNP-COPY-VAL-TARGET-ZONE-REQUIRED | CS1-S3-03 | negative (sync) |
+| SNP-COPY-NEG-TARGET-ZONE-UNKNOWN | CS1-S3-03 | negative (peer geo sync) |
+| SNP-COPY-NEG-MALFORMED-ID | CS1-S3-04 | negative (sync) |
+| SNP-COPY-NEG-SOURCE-NOTFOUND | CS1-S3-04 | negative (sync 404) |
+| SNP-LOP-CRUD-OK | CS1-S3-01 | happy (журнал операций снимка — паритет с томом и образом) |
+| SNP-LOP-NEG-MALFORMED-ID | CS1-S3-04 | negative (sync) |
+| SNP-LOP-BVA-PAGESIZE-OVER-MAX | CS1-S3-04 | negative (BVA) |
 
 ## Image (`cases/image.py`) — redesign STOR-1 (NET-NEW ресурс `img-`)
 
@@ -145,12 +161,24 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | IMG-DEL-SETNULL-VOLUME-INTACT | STOR-1-28 | edge (FK SET NULL, том цел) |
 | IMG-LOP-CRUD-OK | STOR-1-20 | happy |
 | IMG-LOP-NEG-MALFORMED-ID | STOR-1-21 | negative (sync) |
+| IMG-COPY-CRUD-OK | STOR-1-20 | happy (Copy в ДРУГОЙ регион: сеет второй регион, зону и действующую ревизию привязки) |
+| IMG-COPY-VAL-PROJECT-REQUIRED | STOR-1-20 | negative (unscoped; право «создать» — у родителя) |
+| IMG-COPY-VAL-TARGET-REGION-REQUIRED | STOR-1-20 | negative (sync) |
+| IMG-COPY-NEG-TARGET-REGION-UNKNOWN | STOR-1-20 | negative (peer geo sync) |
+| IMG-COPY-NEG-MALFORMED-ID | STOR-1-21 | negative (sync) |
+| IMG-COPY-NEG-SOURCE-NOTFOUND | STOR-1-21 | negative (sync 404) |
 
 ## DiskType (`cases/disk-type.py`) — stage S2
 
+**Каталог классов НЕ посеян** (`0016_disk_type_policy.sql` снял посев `0004`), поэтому ни
+один кейс не вправе утверждать длину выдачи: пустой каталог — законный ответ. Утверждается
+СВОЙСТВО каждой записи (ярус и состояние обращения — из закрытых словарей, ни одного
+инфра-поля), и оно различающее: ярус свободной строкой роняет кейс. Классы и действующие
+ревизии привязки заводит шаг подъёма стенда `make -C deploy seed-storage`.
+
 | case-id | CS1 | класс |
 |---|---|---|
-| DT-LST-CRUD-OK | CS1-S2-01 | happy (≥5 seeded) |
+| DT-LST-CRUD-OK | CS1-S2-01 | happy (посева нет — длина НЕ утверждается; утверждается свойство КАЖДОЙ записи) |
 | DT-GET-CRUD-OK | CS1-S2-01 | happy |
 | DT-GET-NEG-NOTFOUND | CS1-S2-01 | negative |
 | DT-LST-BVA-PAGESIZE-OVER-MAX | CS1-S2-01 | negative (BVA) |

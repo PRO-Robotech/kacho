@@ -69,34 +69,37 @@ func TestCreateAdminDelegates(t *testing.T) {
 // repo.Update не вызывается (домен ловит, не только DB-CHECK).
 func TestUpdateAdminValidatesDomain(t *testing.T) {
 	repo := &repomock.DiskTypeRepo{
-		UpdateFunc: func(context.Context, string, string, string, []string, string) (*domain.DiskType, error) {
+		UpdateFunc: func(context.Context, string, disktype.DiskTypeUpdate) (*domain.DiskType, error) {
 			t.Fatal("repo.Update must not be called on invalid domain")
 			return nil, nil
 		},
 	}
 	overLong := strings.Repeat("a", 254) // > maxNameLen (253)
-	_, err := disktype.New(repo).UpdateAdmin(context.Background(), "block-x", overLong, "", nil, "")
+	_, err := disktype.New(repo).UpdateAdmin(context.Background(), "block-x", nil, overLong, "", nil, "", domain.SizeLimits{})
 	if !errors.Is(err, storageerr.ErrInvalidArg) {
 		t.Fatalf("UpdateAdmin over-long name err = %v, want ErrInvalidArg", err)
 	}
 }
 
-// TestUpdateAdminDelegates — валидный вход проходит в repo.Update (full-replace).
+// TestUpdateAdminDelegates — валидный вход проходит в repo.Update.
 func TestUpdateAdminDelegates(t *testing.T) {
 	want := &domain.DiskType{ID: "block-x", Name: "renamed"}
-	var gotID, gotName string
+	var (
+		gotID   string
+		gotName *string
+	)
 	repo := &repomock.DiskTypeRepo{
-		UpdateFunc: func(_ context.Context, id, name, _ string, _ []string, _ string) (*domain.DiskType, error) {
-			gotID, gotName = id, name
+		UpdateFunc: func(_ context.Context, id string, u disktype.DiskTypeUpdate) (*domain.DiskType, error) {
+			gotID, gotName = id, u.Name
 			return want, nil
 		},
 	}
-	res, err := disktype.New(repo).UpdateAdmin(context.Background(), "block-x", "renamed", "", nil, "")
+	res, err := disktype.New(repo).UpdateAdmin(context.Background(), "block-x", nil, "renamed", "", nil, "", domain.SizeLimits{})
 	if err != nil || res != want {
 		t.Fatalf("UpdateAdmin = (%+v, %v)", res, err)
 	}
-	if gotID != "block-x" || gotName != "renamed" {
-		t.Fatalf("repo.Update got (%q, %q)", gotID, gotName)
+	if gotID != "block-x" || gotName == nil || *gotName != "renamed" {
+		t.Fatalf("repo.Update got (%q, %v)", gotID, gotName)
 	}
 }
 

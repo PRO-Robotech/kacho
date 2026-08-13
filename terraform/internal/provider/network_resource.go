@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -19,7 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
-	vpcv1 "github.com/PRO-Robotech/kacho/terraform/internal/api/kacho/cloud/vpc/v1"
+	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/terraform/internal/client"
 )
 
@@ -27,9 +26,13 @@ const networksPath = "/vpc/v1/networks"
 
 // networkModel — состояние ресурса.
 //
-// Блоки адресов ЗДЕСЬ не объявлены аргументом: сеть их не принимает в Update, а приводятся
-// они отдельными действиями края. В TF-1 они только читаются (Computed) — их приведение
-// живёт в следующей задаче плана и получит свои сценарии.
+// Блоки адресов — полноценный аргумент (Optional + Computed): задаются при создании и
+// приводятся при изменении. Приведение идёт НЕ маской обновления (поле в ней неизменяемо),
+// а парой действий края, и ОДИНАКОВО для обеих семей — см. reconcileCidrBlocks.
+//
+// Здесь стояло «блоки не объявлены аргументом, их приведение живёт в следующей задаче».
+// Это пережило свой предмет: аргумент объявлен, приведение написано — и утверждение
+// объясняло бы следующему читателю отсутствие того, что у него перед глазами.
 type networkModel struct {
 	ID                         types.String `tfsdk:"id"`
 	ProjectID                  types.String `tfsdk:"project_id"`
@@ -109,9 +112,13 @@ func (r *networkResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					"внутри одного из них, поэтому сеть без блоков подсеть не примет. " +
 					"Изменяется НЕ обычной правкой, а отдельными действиями края " +
 					"(`:add-cidr-blocks` / `:remove-cidr-blocks`) — провайдер вычисляет разницу " +
-					"набора и вызывает их сам."},
+					"набора и вызывает их сам. Блок, внутри которого ещё живёт подсеть, край " +
+					"снять не даст, и apply остановится на его отказе."},
 			"ipv6_cidr_blocks": schema.ListAttribute{Optional: true, Computed: true, ElementType: types.StringType,
-				MarkdownDescription: "Объявленные блоки IPv6. Приводятся теми же действиями, что IPv4."},
+				MarkdownDescription: "Объявленные блоки IPv6. Приводятся ТЕМИ ЖЕ действиями края, " +
+					"тем же вычислением разницы и в тех же вызовах, что IPv4: обе семьи уходят " +
+					"одним запросом на действие, поэтому правка IPv4 и IPv6 в одном плане " +
+					"применяется краем одной транзакцией."},
 		},
 	}
 }
@@ -140,9 +147,24 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		body.CreateDefaultSecurityGroup = &v
 	}
 
-	raw, _ := json.Marshal(map[string]any{
-		"projectId": body.ProjectId, "name": body.Name, "description": body.Description,
-	})
+	// Ключ повторной подачи считается по ВСЕМУ телу запроса, а не по трём его полям.
+	//
+	// Прежняя редакция собирала для ключа отдельную карту из проекта, имени и описания —
+	// то есть блоки супернета, метки и решение о группе безопасности по умолчанию в ключ
+	// не входили. Край ключ соблюдает, поэтому следствие ровно одно и оно неприятное:
+	// создание, отвергнутое ПО СОСТАВУ запроса (негодный блок, негодная метка), после
+	// правки настройки воспроизводилось бы ТОЙ ЖЕ операцией — пользователь исправляет
+	// конфигурацию, получает прежний отказ и заключает, что правка не применилась.
+	//
+	// С полным телом держатся оба свойства сразу: повтор ТОГО ЖЕ запроса (потерян ответ,
+	// оборвалась сеть) не создаёт дубль, а изменённый запрос — это другой запрос, и он
+	// уходит на край заново. Ошибка сборки тела здесь не проглатывается: пустой ключ
+	// молча снял бы защиту от дубля.
+	raw, err := client.MarshalBody(body)
+	if err != nil {
+		resp.Diagnostics.AddError("Тело запроса не собрано", err.Error())
+		return
+	}
 	hdr := &client.Headers{IdempotencyKey: client.IdempotencyKey(
 		"kacho_vpc_network", plan.ProjectID.ValueString()+"/"+plan.Name.ValueString(), raw)}
 
@@ -180,6 +202,10 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 	// состояние пусто — следующий apply создаст дубль. Поэтому сначала записываем то, что
 	// уже знаем, и лишь затем идём читать.
 	plan.ID = types.StringValue(id)
+	// Неизвестные вычисляемые значения гасятся до записи: Terraform не принимает НИ ОДНОГО
+	// неизвестного после apply, и без этого сорвавшееся чтение даёт по сообщению на каждое
+	// поле вместо одного — про само чтение.
+	sealUnknowns(&plan)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -216,7 +242,7 @@ func (r *networkResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Одиночное «не найдено» ничего не устанавливает: тот же ответ приходит при отказе в
 	// доступе, и он побайтово равен настоящему отсутствию.
-	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath,
+	verdict, verr := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 		state.ProjectID.ValueString(), state.Name.ValueString())
 	switch verdict {
 	case client.VerdictGone:
@@ -269,23 +295,44 @@ func (r *networkResource) Update(ctx context.Context, req resource.UpdateRequest
 	// удаление: обратный проводит сеть через состояние без нужного супернета, а удаление
 	// блока с подсетями детерминированно отказывает, то есть падает первым и оставляет
 	// план невыполненным целиком.
-	if !plan.IPv4CidrBlocks.Equal(state.IPv4CidrBlocks) && !plan.IPv4CidrBlocks.IsUnknown() {
-		if err := r.reconcileCidrBlocks(ctx, state.ID.ValueString(),
-			stringsFromTF(ctx, state.IPv4CidrBlocks), stringsFromTF(ctx, plan.IPv4CidrBlocks)); err != nil {
-			resp.Diagnostics.AddError("Приведение блоков адресов сети не удалось", err.Error())
-			return
+	//
+	// Разница считается по КАЖДОЙ семье отдельно, а применяется ОБЕИМИ сразу: семьи
+	// независимы (неизвестный план одной не мешает привести другую), но края обеих
+	// касается один и тот же вызов — см. reconcileCidrBlocks.
+	var delta cidrDelta
+	delta.addV4, delta.removeV4 = cidrFamilyDiff(ctx, plan.IPv4CidrBlocks, state.IPv4CidrBlocks)
+	delta.addV6, delta.removeV6 = cidrFamilyDiff(ctx, plan.IPv6CidrBlocks, state.IPv6CidrBlocks)
+	if err := r.reconcileCidrBlocks(ctx, state.ID.ValueString(), delta); err != nil {
+		resp.Diagnostics.AddError("Приведение блоков адресов сети не удалось", err.Error())
+		// Обещание, записанное у reconcileCidrBlocks («в состоянии окажется ФАКТИЧЕСКИ
+		// применённое»), держится ЗДЕСЬ — иначе оно было бы обещанием без исполнителя:
+		// пара действий общей транзакции не имеет, поэтому добавление могло примениться,
+		// а снятие отказать. Ранний возврат без чтения оставлял в состоянии ПРЕЖНИЙ набор
+		// блоков, то есть провайдер отчитывался о супернете, которого на краю уже нет.
+		//
+		// Читаем обратно и пишем факт; отказ при этом остаётся, apply падает. Пишется
+		// СОСТОЯНИЕ, а не план: в плане вычисляемые атрибуты неизвестны, а неизвестное
+		// после apply Terraform не принимает даже вместе с ошибкой. Провал самого чтения
+		// молчалив намеренно: первичный отказ уже назван, и второе сообщение про чтение
+		// увело бы от причины.
+		if net, rerr := r.readNetwork(ctx, state.ID.ValueString(), false); rerr == nil {
+			applyNetwork(ctx, &state, net)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 		}
+		return
 	}
 
-	// Пустая маска НИКОГДА не отправляется: у части ресурсов домена она означает
-	// полнообъектную запись, при которой поля берутся как нули из запроса, — самый дешёвый
-	// способ молча стереть чужую настройку. Нечего менять — не идём на край вовсе.
-	// Пустая маска означает «менять этим запросом нечего» — например, правились ТОЛЬКО
-	// блоки адресов, у которых свой путь. Запрос не отправляется, но выйти здесь нельзя:
-	// в плане вычисляемые атрибуты ещё НЕИЗВЕСТНЫ, а состояние неизвестного не хранит.
-	// Ранний возврат стоил ошибки «invalid result object after apply» на живом стенде,
-	// причём изменение к тому моменту уже применилось — то есть дефект был только в том,
-	// что провайдер рассказал о результате.
+	// Пустая маска НИКОГДА не отправляется: у ресурсов домена она означает полнообъектную
+	// запись, при которой поля берутся как нули из запроса, — самый дешёвый способ молча
+	// стереть чужую настройку. Пустая маска здесь означает «менять ЭТИМ запросом нечего»:
+	// например, правились ТОЛЬКО блоки адресов, у которых свой путь.
+	//
+	// «Нечего менять» НЕ означает «не идём на край»: блоки выше уже приведены, а обратное
+	// чтение ниже выполняется всегда — и выйти отсюда рано нельзя именно поэтому. В плане
+	// вычисляемые атрибуты ещё НЕИЗВЕСТНЫ, а состояние неизвестного не хранит: ранний
+	// возврат стоил ошибки «invalid result object after apply» на живом стенде, причём
+	// изменение к тому моменту уже применилось — дефект был только в том, что провайдер
+	// рассказал о результате.
 	if len(paths) > 0 {
 		body.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
 
@@ -341,56 +388,62 @@ func (r *networkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		// Цель достигнута — но только если отсутствие подтверждено. Тот же ответ приходит
 		// при отказе в доступе, и безусловное «404 значит удалено» оставило бы живой
 		// ресурс вне состояния.
-		verdict, _ := r.c.ConfirmAbsence(ctx, networksPath,
+		verdict, cerr := r.c.ConfirmAbsence(ctx, networksPath, client.ScopeProject,
 			state.ProjectID.ValueString(), state.Name.ValueString())
 		if verdict != client.VerdictGone {
-			resp.Diagnostics.AddError("Удаление сети не подтверждено",
-				"Край ответил «не найдено», но подтвердить отсутствие сети "+
-					state.ID.ValueString()+" не удалось (исход: "+verdict.String()+"). "+
-					"Возможно, доступ отозван, а сеть цела.")
+			detail := "Край ответил «не найдено», но подтвердить отсутствие сети " +
+				state.ID.ValueString() + " не удалось (исход: " + verdict.String() + "). " +
+				"Возможно, доступ отозван, а сеть цела."
+			// Причина неудавшегося подтверждения называется так же, как на пути чтения:
+			// без неё «исход: Ambiguous» не отличает «в проекте пусто» от «список не
+			// прочитан вовсе», и оператор ищет разницу перебором.
+			if cerr != nil {
+				detail += "\n\nПодробности: " + cerr.Error()
+			}
+			resp.Diagnostics.AddError("Удаление сети не подтверждено", detail)
 		}
 	default:
 		resp.Diagnostics.AddError("Край отверг удаление сети", out.Message)
 	}
 }
 
+// ImportState принимает идентификатор ресурса.
+//
+// Проверка формата — ОБЩАЯ (importByID), и это не косметика. Здесь стояла своя копия,
+// сверявшая строку только с префиксом сети; её комментарий при этом заявлял проверку по
+// «общему каталогу префиксов платформы», которой в теле не было. Общая проверка спрашивает
+// каталог по-настоящему (ids.HasKnownPrefix), поэтому ловит и опечатку в самой таблице
+// видов провайдера, а не только чужой ввод.
+//
+// Дисциплина та же, что у сервисов: заведомо негодный идентификатор получает терминальный
+// отказ с внятным текстом, а не уезжает в сеть, чтобы вернуться оттуда «ресурс не найден» —
+// ответом, который для строки, не являющейся идентификатором, не значит ничего.
 func (r *networkResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	importByID(ctx, "Сеть", ids.PrefixNetwork, req, resp)
 }
 
 // readNetwork читает сеть по идентификатору.
 //
-// retryAuthz включается ТОЛЬКО на первом обратном чтении после создания: право на
-// собственный свежий ресурс материализуется не мгновенно. В обычном чтении такого ретрая
-// нет — там он замаскировал бы настоящий отзыв доступа.
+// Ожидание и различение исходов — ОБЩИЕ (readByID); здесь остаётся только разбор тела в
+// форму сети. Здесь стояла своя копия цикла со сроком ожидания 20 с — тем самым, который
+// на общем пути уже был поднят до 60 с по наблюдению: при одиночном создании право на свой
+// свежий ресурс видно почти сразу, но в одном apply с несколькими ресурсами материализация
+// идёт под конкуренцией, и на 20 с обратное чтение отдавало «не найдено» на ТОЛЬКО ЧТО
+// созданном ресурсе. Две копии одного механизма разошлись ровно тем, что одну из них
+// починили.
+//
+// retryAuthz включается ТОЛЬКО на первом обратном чтении после создания. В обычном чтении
+// такого ретрая нет — там он замаскировал бы настоящий отзыв доступа.
 func (r *networkResource) readNetwork(ctx context.Context, id string, retryAuthz bool) (*networkJSON, error) {
-	deadline := time.Now().Add(20 * time.Second)
-	for {
-		httpResp, err := r.c.Do(ctx, http.MethodGet, networksPath+"/"+id, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		out := client.Classify(httpResp)
-		switch out.Kind {
-		case client.OutcomeOK:
-			var n networkJSON
-			if err := json.Unmarshal(httpResp.Body, &n); err != nil {
-				return nil, fmt.Errorf("разбор сети: %w", err)
-			}
-			return &n, nil
-		case client.OutcomeNotFound, client.OutcomeDenied:
-			if retryAuthz && time.Now().Before(deadline) {
-				time.Sleep(time.Second)
-				continue
-			}
-			if out.Kind == client.OutcomeNotFound {
-				return nil, &notFoundError{msg: out.Message}
-			}
-			return nil, fmt.Errorf("доступ к сети %s: %s", id, out.Message)
-		default:
-			return nil, fmt.Errorf("чтение сети %s: %s", id, out.Message)
-		}
+	raw, err := readByID(ctx, r.c, networksPath, id, retryAuthz)
+	if err != nil {
+		return nil, err
 	}
+	var n networkJSON
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return nil, fmt.Errorf("разбор сети: %w", err)
+	}
+	return &n, nil
 }
 
 // networkJSON — ответ края. Разбор терпим к неизвестным полям: край добавляет их вперёд
@@ -420,55 +473,105 @@ func asNotFound(err error, target **notFoundError) bool {
 	return ok
 }
 
-// reconcileCidrBlocks приводит набор блоков адресов сети к желаемому.
-//
-// Это ПАРА независимых действий края, каждое со своей операцией: общей транзакции у них
-// нет by construction. Отсюда два правила, оба видны в коде:
-//
-//   - порядок фиксирован — сначала добавление, потом удаление;
-//   - каждое действие доводится до конца прежде следующего.
-//
-// Компенсации нет намеренно: откат добавленных блоков был бы второй мутацией ради успеха
-// собственного плана. При отказе второго действия apply падает, называя обе половины, а в
-// состоянии окажется ФАКТИЧЕСКИ применённое — его принесёт обратное чтение.
-func (r *networkResource) reconcileCidrBlocks(ctx context.Context, id string, have, want []string) error {
-	add, remove := diffSets(have, want)
+// Суффикс-действия края над супернетом. Пути берутся ДОСЛОВНО: у vpc они пишутся через
+// дефис, у nlb — слитно, и никакое правило вывода пути из имени метода здесь не работает.
+const (
+	verbAddCidrBlocks    = "add-cidr-blocks"
+	verbRemoveCidrBlocks = "remove-cidr-blocks"
+)
 
-	if len(add) > 0 {
-		if err := r.cidrVerb(ctx, id, "add-cidr-blocks", add); err != nil {
-			return fmt.Errorf("добавление блоков %v: %w", add, err)
-		}
-	}
-	if len(remove) > 0 {
-		if err := r.cidrVerb(ctx, id, "remove-cidr-blocks", remove); err != nil {
-			return fmt.Errorf("блоки %v добавлены, но удаление блоков %v не удалось: %w",
-				add, remove, err)
-		}
-	}
-	return nil
+// cidrDelta — приведение супернета сети: что добавить и что снять, по семьям.
+type cidrDelta struct {
+	addV4, addV6       []string
+	removeV4, removeV6 []string
 }
 
-// cidrVerb вызывает одно действие края над блоками и дожидается его операции.
+func (d cidrDelta) hasAdd() bool    { return len(d.addV4) > 0 || len(d.addV6) > 0 }
+func (d cidrDelta) hasRemove() bool { return len(d.removeV4) > 0 || len(d.removeV6) > 0 }
+
+// cidrFamilyDiff — что добавить и что снять у ОДНОЙ семьи блоков.
 //
-// Путь берётся ДОСЛОВНО: у vpc суффикс-действия пишутся через дефис, у nlb — иначе, и
-// никакое правило вывода пути из имени метода здесь не работает.
-func (r *networkResource) cidrVerb(ctx context.Context, id, verb string, blocks []string) error {
-	body := map[string]any{"networkId": id, "ipv4CidrBlocks": blocks}
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return err
+// Неизвестный план исключает семью из приведения целиком, и это не перестраховка: на
+// неизвестном значении stringsFromTF отдаёт nil, поэтому «пока не знаю» стало бы
+// неотличимо от «пусто», а разница с текущим набором вышла бы «снять всё». Семья, чей
+// план неизвестен (значение ссылается на ещё не созданный ресурс), приводится следующим
+// применением — когда значение станет известным. Вторая семья от этого не страдает:
+// считаются они порознь.
+func cidrFamilyDiff(ctx context.Context, planned, current types.List) (add, remove []string) {
+	if planned.IsUnknown() || planned.Equal(current) {
+		return nil, nil
 	}
-	httpResp, err := r.c.DoRaw(ctx, http.MethodPost, networksPath+"/"+id+":"+verb, raw, nil)
-	if err != nil {
-		return err
+	return diffSets(stringsFromTF(ctx, current), stringsFromTF(ctx, planned))
+}
+
+// reconcileCidrBlocks приводит набор блоков адресов сети к желаемому — ОБЕ семьи наравне.
+//
+// Почему паритет здесь обязателен. До этой правки IPv6 уходил на край только при создании:
+// при изменении сверялся и приводился один IPv4, а `ipv6_cidr_blocks` при этом оставался
+// объявленным изменяемым аргументом. Пользователь правил супернет IPv6, видел его в плане,
+// получал «apply завершён» — и не получал ничего: сеть жила без блоков, которые считала
+// объявленными и он, и состояние Terraform. Это ровно запрещённый класс «принято и
+// проигнорировано»: поле, которое принято и не применяется, хуже отвергнутого — отказ
+// виден сразу, а несделанное только по последствиям и в чужой отладке. Исходов у такого
+// поля три, и «молча выбросить» среди них нет: применять, отвергать явно, или объявить
+// пересоздающим. Здесь край применять УМЕЕТ — значит применяем.
+//
+// Почему обе семьи ОДНИМ вызовом на действие, а не двумя вызовами подряд. Это не экономия
+// запроса: край принимает обе семьи одним сообщением контракта и обрабатывает их в одной
+// writer-транзакции под замком строки сети — обе колонки супернета пишутся одним UPDATE,
+// событие изменения тоже одно. Два вызова дали бы две операции и два коммита, между
+// которыми apply может оборваться, и сеть осталась бы с приведённым IPv4 и неприведённым
+// IPv6 — в состоянии, которого нет ни в настройке, ни в прежнем состоянии.
+//
+// Пара действий (добавить / снять) общей транзакции не имеет by construction. Отсюда два
+// правила, оба видны в коде:
+//
+//   - порядок фиксирован — сначала добавление, потом снятие;
+//   - каждое действие доводится до конца прежде следующего.
+//
+// Пустое действие не отправляется: край отвергает вызов, в котором обе семьи пусты
+// (`ipv4_cidr_blocks or ipv6_cidr_blocks is required`), и такой запрос завалил бы apply,
+// которому нечего было делать.
+//
+// Компенсации нет намеренно: откат добавленных блоков был бы второй мутацией ради успеха
+// собственного плана. При отказе снятия apply падает, называя обе половины, а в состоянии
+// окажется ФАКТИЧЕСКИ применённое — его принесёт обратное чтение.
+func (r *networkResource) reconcileCidrBlocks(ctx context.Context, id string, d cidrDelta) error {
+	if d.hasAdd() {
+		// Тело — ТИП КОНТРАКТА, а не собранная руками карта. Прежняя редакция строила
+		// map[string]any с единственным ключом «ipv4CidrBlocks» — в него уезжали и блоки
+		// IPv6. Край молча отбрасывает ключи, которых не ждёт, и не присланных не
+		// требует, поэтому промах не давал ни отказа, ни предупреждения: запрос уходил
+		// успешным и не делал того, ради чего послан. С типом контракта такой промах
+		// невозможен by construction — имя поля проверяет компилятор.
+		body := &vpcv1.AddNetworkCidrBlocksRequest{
+			NetworkId:      id,
+			Ipv4CidrBlocks: d.addV4,
+			Ipv6CidrBlocks: d.addV6,
+		}
+		if err := awaitMutation(ctx, r.c, http.MethodPost,
+			networksPath+"/"+id+":"+verbAddCidrBlocks, body); err != nil {
+			return fmt.Errorf("добавление блоков (IPv4 %v, IPv6 %v): %w", d.addV4, d.addV6, err)
+		}
 	}
-	if out := client.Classify(httpResp); out.Kind != client.OutcomeOK {
-		return fmt.Errorf("%s", out.Message)
-	}
-	var op client.Operation
-	if err := json.Unmarshal(httpResp.Body, &op); err == nil && op.ID != "" {
-		if _, err := r.c.AwaitOperation(ctx, op.ID, client.AwaitOptions{}); err != nil {
-			return err
+
+	if d.hasRemove() {
+		body := &vpcv1.RemoveNetworkCidrBlocksRequest{
+			NetworkId:      id,
+			Ipv4CidrBlocks: d.removeV4,
+			Ipv6CidrBlocks: d.removeV6,
+		}
+		if err := awaitMutation(ctx, r.c, http.MethodPost,
+			networksPath+"/"+id+":"+verbRemoveCidrBlocks, body); err != nil {
+			// Про уже применённое добавление говорится, только если оно было: иначе
+			// сообщение приписывало бы краю мутацию, которой не происходило, и читатель
+			// искал бы её след.
+			if d.hasAdd() {
+				return fmt.Errorf("блоки (IPv4 %v, IPv6 %v) добавлены, но снятие блоков "+
+					"(IPv4 %v, IPv6 %v) не удалось: %w",
+					d.addV4, d.addV6, d.removeV4, d.removeV6, err)
+			}
+			return fmt.Errorf("снятие блоков (IPv4 %v, IPv6 %v): %w", d.removeV4, d.removeV6, err)
 		}
 	}
 	return nil

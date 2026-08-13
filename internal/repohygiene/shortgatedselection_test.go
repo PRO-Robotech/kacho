@@ -9,7 +9,7 @@
 //
 // Быстрая джоба гоняет `go test ./... -race -short`. Всё, что под `-short`
 // пропускается, обязана подобрать интеграционная джоба — а она отбирает пакеты
-// ПО ПУТИ: `./services/<svc>/...`, сузив до `/internal/(repo|clients)`. Отбор
+// ПО ПУТИ: `./services/<svc>/...`, сузив до `/internal/(repo|clients|reconciler)`. Отбор
 // по пути и свойство «тест пропускается под кратким» — разные вещи, и там, где
 // они расходятся, тест не исполняется НИГДЕ. Ни одна джоба при этом не краснеет:
 // пропуск — не провал, а пакет, отдавший ноль исполненных тестов, печатает `ok`.
@@ -119,7 +119,7 @@ import (
 // корневого Makefile (цель test-integration). Тест ниже сверяет, что копия не
 // разошлась с оригиналом: гейт, судящий по устаревшему представлению об отборе,
 // врёт тем увереннее, чем дольше живёт.
-var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients)(/|$)`)
+var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients|reconciler)(/|$)`)
 
 // shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
 // режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
@@ -134,7 +134,7 @@ var shortGatedOutsideSelection = []string{
 	// контейнера именно потому, что здесь доказано «сервер один, области разные,
 	// данные не ходят». Это доказательство не исполняется НИГДЕ: под кратким оно
 	// пропускается (нужен Docker), а отбор интеграционной джобы смотрит только
-	// внутрь services/<svc>/internal/(repo|clients) — internal/pgtest лежит в корне
+	// внутрь services/<svc>/internal/(repo|clients|reconciler) — internal/pgtest лежит в корне
 	// и в тот обход не входит вовсе.
 	//
 	// То есть санкция стоит на утверждении, которое конвейер не проверяет. Это долг,
@@ -195,7 +195,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 
 	// Инструмент сравнительного замера форм модели прав. Под кратким пропускает
 	// себя (поднимает контейнеры), в отбор интеграционной джобы не входит — `tools/`
-	// вне `services/<svc>/internal/(repo|clients)`. Свой шаг гонит ДОКАЗАТЕЛЬСТВА
+	// вне `services/<svc>/internal/(repo|clients|reconciler)`. Свой шаг гонит ДОКАЗАТЕЛЬСТВА
 	// харнесса, а не матрицу: способность показать разницу, одинаковость вердиктов
 	// всех форм, действенность преобразования и «стек один, области разные» —
 	// последнее держит санкцию гейта containerperpackage, и без исполнения та
@@ -387,7 +387,7 @@ func judgeShortGateSelection(gated, declared []string, ownStep map[string]string
 		}
 		if !left[pkg] {
 			findings = append(findings, "пакет "+pkg+" пропускает тесты под кратким режимом и "+
-				"НЕ входит в отбор интеграционной джобы (`/internal/(repo|clients)` внутри "+
+				"НЕ входит в отбор интеграционной джобы (`/internal/(repo|clients|reconciler)` внутри "+
 				"services/), то есть без краткого не исполняется нигде. Три исхода: внеси его "+
 				"в отбор; дай ему СВОЙ шаг конвейера и назови в shortGatedRunByOwnCIStep; либо "+
 				"назови в shortGatedOutsideSelection — долг с именем, а не умолчание")
@@ -437,7 +437,7 @@ func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `/internal/(repo|clients)(/|$$)`
+	const want = `/internal/(repo|clients|reconciler)(/|$$)`
 	if !strings.Contains(string(raw), want) {
 		t.Fatalf("в корневом Makefile больше нет отбора %q — копия в этом файле "+
 			"(integrationSelectionRe) описывает отбор, которого не существует", want)

@@ -93,8 +93,62 @@ type Outcome struct {
 // статус — минимальная форма конверта. Разбор ТЕРПИМ к неизвестным полям: край добавляет
 // их вперёд провайдера, и строгий разбор ломал бы каждое чтение на первом же новом поле.
 type statusEnvelope struct {
-	Code    *int   `json:"code"`
-	Message string `json:"message"`
+	Code    *int           `json:"code"`
+	Message string         `json:"message"`
+	Details []statusDetail `json:"details"`
+}
+
+// statusDetail — известные провайдеру формы google.rpc.*Detail. Неизвестная форма
+// разбирается в нули и молча пропускается: детали дополняют сообщение, а не заменяют его.
+type statusDetail struct {
+	Type            string `json:"@type"`
+	FieldViolations []struct {
+		Field       string `json:"field"`
+		Description string `json:"description"`
+	} `json:"fieldViolations"`
+	Violations []struct {
+		Type        string `json:"type"`
+		Subject     string `json:"subject"`
+		Description string `json:"description"`
+	} `json:"violations"`
+}
+
+// explain — сообщение края, дополненное тем, ЧТО именно он отверг.
+//
+// Без этого оператор видит «invalid argument» и не имеет ни одного основания для правки:
+// край называет негодное поле и границы отдельным блоком, а не в тексте. Пустой блок
+// сообщение не трогает — скобки, в которых нечего сказать, только зашумляют вывод.
+func explain(env statusEnvelope) string {
+	var parts []string
+	for _, d := range env.Details {
+		for _, fv := range d.FieldViolations {
+			switch {
+			case fv.Field != "" && fv.Description != "":
+				parts = append(parts, fv.Field+": "+fv.Description)
+			case fv.Field != "":
+				parts = append(parts, fv.Field)
+			case fv.Description != "":
+				parts = append(parts, fv.Description)
+			}
+		}
+		for _, v := range d.Violations {
+			if v.Description == "" {
+				continue
+			}
+			if v.Subject != "" {
+				parts = append(parts, v.Subject+": "+v.Description)
+				continue
+			}
+			parts = append(parts, v.Description)
+		}
+	}
+	if len(parts) == 0 {
+		return env.Message
+	}
+	if env.Message == "" {
+		return strings.Join(parts, "; ")
+	}
+	return env.Message + " (" + strings.Join(parts, "; ") + ")"
 }
 
 // Classify устанавливает СНАЧАЛА форму ответа и лишь затем его смысл.
@@ -133,7 +187,7 @@ func Classify(resp *Response) Outcome {
 	if env.Code != nil {
 		code = *env.Code
 	}
-	msg := env.Message
+	msg := explain(env)
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent:

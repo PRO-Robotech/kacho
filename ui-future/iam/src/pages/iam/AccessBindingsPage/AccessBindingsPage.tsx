@@ -20,6 +20,7 @@ import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { useContext } from "@shared/lib/context-store";
 import { IamListShell } from "@/components/organisms/iam/IamListShell";
+import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import {
   AccessBindingCreateForm,
   type SubjectType,
@@ -101,6 +102,14 @@ export function AccessBindingsPage() {
     return cols;
   }, [abSpec]);
 
+  // Где есть фильтр — есть и выбор столбцов (требование владельца 2026-08-12).
+  const [hidden, toggleHidden] = useHiddenColumns("cols:access-bindings");
+  const shownColumns = useMemo(() => columns.filter((c) => !hidden.has(c.header)), [columns, hidden]);
+  const toggleCols = useMemo(
+    () => columns.filter((c) => c.header).map((c) => ({ key: c.header, label: c.header })),
+    [columns],
+  );
+
   // breadcrumb / CTA через header-слоты. Мемоизируем node'ы (useEffect на [node]).
   const breadcrumbNode = useMemo(
     () => (
@@ -173,19 +182,17 @@ export function AccessBindingsPage() {
             style={{ width: 190 }}
             data-testid="access-bindings-subject-filter"
           />
+          {/* Где есть фильтр — есть и выбор столбцов (требование владельца). */}
+          <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
         </Space>
       }
     >
       <div style={{ flex: 1, minHeight: 0, minWidth: 0 }} data-testid="access-bindings-table">
         <ResourceTable
           rows={bindings as unknown as Record<string, unknown>[]}
-          columns={columns}
+          columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
           loading={bindingsQ.isLoading}
-          onRowClick={(row) => {
-            const id = getByPath<string>(row, "id");
-            if (id) navigate(`/iam/access-bindings/${id}`);
-          }}
         />
       </div>
     </IamListShell>

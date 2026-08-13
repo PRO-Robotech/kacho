@@ -10,7 +10,7 @@ import { Button, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
 import { ResourceTable, type Column } from "@/components/organisms/ResourceTable";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { CopyableId } from "@/components/atoms/CopyableId";
+import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ApiError } from "@/api/client";
@@ -84,7 +84,14 @@ export function InstanceNicsTab({
     { header: "Слот", cell: (r) => (r.index != null && r.index !== "" ? String(r.index) : "—") },
     {
       header: "NIC",
-      cell: (r) => (r.nic_id ? <CopyableId id={r.nic_id} /> : <Typography.Text type="secondary">—</Typography.Text>),
+      // Интерфейс — ресурс со своей карточкой: ссылка «иконка + имя», а не
+      // копируемый идентификатор (канон ссылок на чужой ресурс).
+      cell: (r) =>
+        r.nic_id ? (
+          <RefNameLink specId="network-interfaces" refId={r.nic_id} maxChars={28} />
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
     },
     { header: "Подсеть", cell: (r) => r.subnet_id || "—" },
     { header: "IPv4", cell: (r) => r.primary_v4_address?.address || "—" },

@@ -129,8 +129,14 @@ func main() {
 	// authenticates on the principal path.
 	// The DPoP middleware (below) reuses the SAME instance when enabled.
 	//
-	// Construction failure (e.g. empty resolved JWKS URL) is non-fatal — the
-	// gateway keeps the HMAC-dev path; only the RS256/JWKS strategy is absent.
+	// Construction failure (e.g. empty resolved JWKS URL) is a MISCONFIGURATION,
+	// not an outage: the constructor reads configuration and makes no network
+	// call, so the same start can never succeed until the address and issuer are
+	// set. It is therefore judged by a guard — fatal in a production-class env,
+	// the previous warn-and-continue only under an explicit dev-class label.
+	// Absorbed unconditionally, as it was, it made a permanent misconfiguration
+	// the normal running mode: the edge reported itself as configured and
+	// refused nothing for as long as it lived (security.md §8).
 	// Хоп за ключами получает СВОЙ якорь доверия, ровно как административный. Пусто ⇒
 	// транспорт по умолчанию (прежнее поведение); нечитаемая связка ⇒ ОТКАЗ В СТАРТЕ,
 	// а не тихий откат к системным корням: край, который «настроен проверять» и не
@@ -150,6 +156,9 @@ func main() {
 		ExpectedAudience: cfg.ExpectedAudience(),
 		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
 	})
+	if tvErr := validateProductionTokenVerifierConfig(cfg.AppEnv, jverr); tvErr != nil {
+		log.Fatalf("token verifier startup-validation: %v", tvErr)
+	}
 	if jverr != nil {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
 			"err", jverr, "jwks_url", cfg.ResolvedHydraJWKSURL())

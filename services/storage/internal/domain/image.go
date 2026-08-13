@@ -116,6 +116,22 @@ type Image struct {
 	Status         ImageStatus
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+
+	StatusReason StatusReason
+
+	// SourceImageID — образ, с которого этот СКОПИРОВАН. Отличается от источников
+	// снятия (том либо снимок): копия переносит образ между регионами, и по этой
+	// координате сверщик выбирает глагол материализации.
+	SourceImageID string
+
+	// SeededVolumeIDs — тома, засеянные из этого источника. Output-only,
+	// выводится на чтении, на вход не принимается.
+	SeededVolumeIDs []string
+	// Backend — где образ материализован. Имя отличается от Placement выше:
+	// то — ПУБЛИЧНАЯ ось размещения (региональный/зональный), это — инфра-адрес
+	// у бэкенда. Две разные величины, и совпадение слов их бы склеило.
+	Backend     Placement
+	Observation Observation
 }
 
 // Validate проверяет domain-инварианты Image перед созданием. Порядок выдаёт
@@ -133,13 +149,32 @@ func (i Image) Validate() error {
 		return err
 	}
 	// source oneof exactly-one (F12): ни одного (blank DEFER) → required; оба → conflict.
+	// Происхождение — РОВНО ОДНО ИЗ ТРЁХ. Снимок и том — источники снятия (F12,
+	// STOR-1-24, вход Create); образ — источник КОПИРОВАНИЯ, его ставит Copy и
+	// никогда вызывающий.
+	//
+	// Третий вид сюда добавлен потому, что без него Copy не работала НИ РАЗУ:
+	// строка копии несёт родителем образ, снимка и тома у неё нет, и проверка
+	// отвергала её как «источник обязателен» — при том что столбец родителя
+	// регистрировался вставкой копии с самого начала и просто не признавался
+	// происхождением.
 	hasSnap := i.SourceSnapshot != ""
 	hasVol := i.SourceVolume != ""
-	switch {
-	case hasSnap && hasVol:
+	hasImg := i.SourceImageID != ""
+	switch n := btoi(hasSnap) + btoi(hasVol) + btoi(hasImg); {
+	case n > 1:
 		return errImageSourceConflict
-	case !hasSnap && !hasVol:
+	case n == 0:
 		return errImageSourceRequired
 	}
 	return i.Status.Validate()
+}
+
+// btoi — счётчик заполненных источников: происхождение обязано быть ровно одно,
+// и считать это по одному предикату надёжнее, чем перечислять пары.
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

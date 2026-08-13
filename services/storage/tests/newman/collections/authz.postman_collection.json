@@ -1113,6 +1113,66 @@
           ]
         },
         {
+          "name": "seed-vol-snpsrc-ready-rdy1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{leakSnapSrcVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{leakSnapSrcVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРИГОДНОСТЬ ПРОИЗВОДИТ СВЕРЩИК, А НЕ ОПЕРАЦИЯ: Operation.done = «намерение",
+                  "// закоммичено», объекта у плоскости данных может ещё не быть. Ожидание",
+                  "// ограничено: бюджет израсходован — шаг падает, назвав состояние и причину.",
+                  "if (pm.environment.get('_readyWaitFor') !== pm.info.requestName) {",
+                  "  pm.environment.set('_readyWaitCount', '0');",
+                  "  pm.environment.set('_readyWaitFor', pm.info.requestName);",
+                  "}",
+                  "const _rwc = parseInt(pm.environment.get('_readyWaitCount') || '0', 10);",
+                  "let _rwj; try { _rwj = pm.response.json(); } catch (e) { _rwj = {}; }",
+                  "const _rwOk = pm.response.code === 200;",
+                  "const _rwStatus = _rwOk ? String(_rwj.status === undefined ? '' : _rwj.status) : '';",
+                  "const _rwReason = _rwOk ? String(_rwj.statusReason === undefined ? '' : _rwj.statusReason) : '';",
+                  "const _rwPending = (pm.response.code === 403 || pm.response.code === 404) || (_rwOk && ['CREATING','MIGRATING','STATUS_UNSPECIFIED',''].includes(_rwStatus));",
+                  "if (_rwPending && _rwc < 60) {",
+                  "  pm.environment.set('_readyWaitCount', String(_rwc + 1));",
+                  "  const _rwd = Date.now(); while (Date.now() - _rwd < 500) { /* обход сверщика */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_readyWaitCount');",
+                  "pm.environment.unset('_readyWaitFor');",
+                  "pm.test('Том-источник стал пригоден: status AVAILABLE (объявляет сверщик, не Operation.done)', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "  pm.expect(_rwStatus, 'наблюдено status=' + _rwStatus + ', statusReason=' + _rwReason +",
+                  "    '; за 30000ms ресурс так и не стал пригоден — либо сверщик не довёл объект, либо плоскости данных на этом стенде нет').to.eql('AVAILABLE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "seed-snapshot",
           "request": {
             "method": "POST",
@@ -1702,6 +1762,66 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-vol-imgsrc-ready-rdy2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{leakImgSrcVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{leakImgSrcVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРИГОДНОСТЬ ПРОИЗВОДИТ СВЕРЩИК, А НЕ ОПЕРАЦИЯ: Operation.done = «намерение",
+                  "// закоммичено», объекта у плоскости данных может ещё не быть. Ожидание",
+                  "// ограничено: бюджет израсходован — шаг падает, назвав состояние и причину.",
+                  "if (pm.environment.get('_readyWaitFor') !== pm.info.requestName) {",
+                  "  pm.environment.set('_readyWaitCount', '0');",
+                  "  pm.environment.set('_readyWaitFor', pm.info.requestName);",
+                  "}",
+                  "const _rwc = parseInt(pm.environment.get('_readyWaitCount') || '0', 10);",
+                  "let _rwj; try { _rwj = pm.response.json(); } catch (e) { _rwj = {}; }",
+                  "const _rwOk = pm.response.code === 200;",
+                  "const _rwStatus = _rwOk ? String(_rwj.status === undefined ? '' : _rwj.status) : '';",
+                  "const _rwReason = _rwOk ? String(_rwj.statusReason === undefined ? '' : _rwj.statusReason) : '';",
+                  "const _rwPending = (pm.response.code === 403 || pm.response.code === 404) || (_rwOk && ['CREATING','MIGRATING','STATUS_UNSPECIFIED',''].includes(_rwStatus));",
+                  "if (_rwPending && _rwc < 60) {",
+                  "  pm.environment.set('_readyWaitCount', String(_rwc + 1));",
+                  "  const _rwd = Date.now(); while (Date.now() - _rwd < 500) { /* обход сверщика */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_readyWaitCount');",
+                  "pm.environment.unset('_readyWaitFor');",
+                  "pm.test('Том-источник стал пригоден: status AVAILABLE (объявляет сверщик, не Operation.done)', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "  pm.expect(_rwStatus, 'наблюдено status=' + _rwStatus + ', statusReason=' + _rwReason +",
+                  "    '; за 30000ms ресурс так и не стал пригоден — либо сверщик не довёл объект, либо плоскости данных на этом стенде нет').to.eql('AVAILABLE');",
+                  "});"
                 ]
               }
             }

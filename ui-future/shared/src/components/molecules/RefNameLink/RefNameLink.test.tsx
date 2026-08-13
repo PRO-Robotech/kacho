@@ -1,26 +1,30 @@
 // Ссылка на чужой ресурс по идентификатору. Kachō адресует ресурсы по
 // неизменяемому `id` (core #15), а показывать пользователю надо имя — его и
 // резолвит эта ссылка. Существенны: адрес перехода включает сегмент сервиса
-// (без него маршрут не совпадает и клик уводит в пустоту), клик не всплывает до
-// строки таблицы, а нерезолвленный ресурс показывается идентификатором, а не
-// исчезает.
+// (без него маршрут не совпадает и клик уводит в пустоту), а нерезолвленный
+// ресурс показывается идентификатором, а не исчезает.
 
-import { jest } from "@jest/globals";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { RefNameLink } from "./RefNameLink";
 
 const realFetch = globalThis.fetch;
 
+/** URL'ы, ушедшие со стенда за пробу — по ним видно, ЧТО именно спросили. */
+let asked: string[] = [];
+
 function stubList(payload: unknown) {
-  globalThis.fetch = () =>
-    Promise.resolve({
+  asked = [];
+  globalThis.fetch = (input: RequestInfo | URL) => {
+    asked.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
       text: () => Promise.resolve(JSON.stringify(payload)),
     } as Response);
+  };
 }
 
 afterEach(() => {
@@ -55,25 +59,10 @@ describe("RefNameLink", () => {
     expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/networks/net-1");
   });
 
-  it("клик по ссылке не всплывает до строки таблицы", async () => {
-    stubList({ networks: [{ id: "net-1", name: "core" }] });
-    const onRowClick = jest.fn();
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={["/projects/prj-1/vpc/subnets"]}>
-          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
-          <div onClick={onRowClick}>
-            <RefNameLink specId="networks" refId="net-1" projectId="prj-1" />
-          </div>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole("link", { name: "core" }));
-
-    expect(onRowClick).not.toHaveBeenCalled();
-  });
+  // Пробы «клик не всплывает до строки» здесь НЕТ намеренно: строки таблиц были
+  // кликабельны целиком, и ссылка гасила событие, чтобы клик по ней не уводил на
+  // родителя. Строки перестали быть ссылками (решение владельца 2026-08-12) —
+  // гасить нечего, и проба утверждала бы о механизме, которого в дереве нет.
 
   it("нерезолвленный идентификатор показывает усечённым, а не теряет", async () => {
     // Ресурс мог быть удалён или недоступен вызывающему; пустое место означало
@@ -89,6 +78,37 @@ describe("RefNameLink", () => {
     renderLink({ specId: "нет-такого-ресурса" });
     expect(screen.getByText("net-1")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  // Регион и зона — ГЛОБАЛЬНЫЙ каталог размещения (`scope: "global"`), а не
+  // ресурс проекта. Ссылка на них живёт на страницах ВНУТРИ проекта (подсеть
+  // называет свой регион), поэтому проект в контексте есть — и запрос всё равно
+  // не вправе его нести: у geo такого измерения нет.
+  it("глобальный справочник спрашивается без project_id, хотя проект в контексте есть", async () => {
+    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "reg-1" });
+
+    await screen.findByRole("link", { name: "ru-central1" });
+    expect(asked).not.toHaveLength(0);
+    expect(asked.some((u) => u.includes("project_id"))).toBe(false);
+  });
+
+  it("глобальный справочник резолвится и ведёт на карточку каталога", async () => {
+    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "reg-1" });
+
+    const link = await screen.findByRole("link", { name: "ru-central1" });
+    expect(link).toHaveAttribute("href", "/system/regions/reg-1");
+  });
+
+  it("ресурс проекта по-прежнему спрашивается С project_id", async () => {
+    // Положительный контроль: без него первая проба зеленела бы и на запросе,
+    // потерявшем project_id для ВСЕХ ресурсов, — то есть на сломанном списке.
+    stubList({ networks: [{ id: "net-1", name: "core" }] });
+    renderLink();
+
+    await screen.findByRole("link", { name: "core" });
+    expect(asked.some((u) => u.includes("project_id=prj-1"))).toBe(true);
   });
 
   it("длинное имя обрезает, а полное оставляет в подсказке", async () => {

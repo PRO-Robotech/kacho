@@ -195,7 +195,6 @@ var exemptFiles = map[string]string{
 	// структурная: снять её можно только сняв резервирование имён в самом proto,
 	// а это открыло бы повторное использование имён, которые повторно
 	// использовать нельзя никогда.
-	"terraform/internal/api/kacho/cloud/compute/v1/instance.pb.go":    "the same generation, second output (IaC provider module); echoes the same retirement note",
 	"services/compute/internal/migrations/0016_instance_redesign.sql": "an applied migration whose comment records that retirement; applied migrations are never edited",
 
 	"services/compute/tests/newman/cases/instance-redesign.py":                            "conformance case asserting those tokens are ABSENT from responses",

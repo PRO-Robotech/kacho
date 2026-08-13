@@ -19,12 +19,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { formatDateTime } from "@shared/lib/datetime";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
-import { statusOf, statusLabel, matchesOutcome, type OperationStatus, type OutcomeFilter } from "./opFilter";
+import { statusOf, statusLabel, type OperationStatus } from "./opFilter";
 
 // Пере-экспорт чистой фильтр-логики (opFilter) — потребители импортируют её из
 // OperationsTable как единой точки. Юнит-тесты тянут opFilter напрямую (без antd).
-export { statusOf, statusLabel, matchesOutcome };
-export type { OperationStatus, OutcomeFilter };
+export { statusOf, statusLabel };
+export type { OperationStatus };
 
 export interface Op {
   id: string;
@@ -84,13 +84,31 @@ function fmtTs(ts?: string): string {
 interface Props {
   rows: Op[];
   loading?: boolean;
+  /** Заголовки колонок, снятых пользователем. */
+  hiddenColumns?: Set<string>;
   /** Когда true — показывать колонку "Тип ресурса" (для global-страницы). */
   showResourceKind?: boolean;
   /** Когда true — показывать пустое состояние при rows.length===0 и !loading. */
   empty?: boolean;
 }
 
-export function OperationsTable({ rows, loading, showResourceKind, empty }: Props) {
+/** Заголовки колонок таблицы операций — для конфигуратора столбцов. Перечень
+ *  выводится из самой таблицы, а не выписывается вторым списком: два места об
+ *  одном предмете разошлись бы на первой же новой колонке. */
+export function operationColumnTitles(showResourceKind?: boolean): string[] {
+  const base = [
+    "Идентификатор",
+    "Статус",
+    "Пользователь",
+    "Операция",
+    "Дата начала",
+    "Дата изменения",
+    "Сообщение об ошибке",
+  ];
+  return showResourceKind ? [...base, "Тип ресурса", "Идентификатор ресурса"] : [...base, "Идентификатор ресурса"];
+}
+
+export function OperationsTable({ rows, loading, showResourceKind, empty, hiddenColumns }: Props) {
   // KAC-239 (#4): справочник пользователей для резолва created_by(id) → email.
   // /iam/v1/users — scope:global, грузится один раз и дедуплицируется TanStack.
   const { data: usersData } = useQuery({
@@ -103,7 +121,7 @@ export function OperationsTable({ rows, loading, showResourceKind, empty }: Prop
     return u?.email || u?.display_name || userFallback(op);
   };
 
-  const columns: ColumnsType<Op> = [
+  const allColumns: ColumnsType<Op> = [
     {
       title: "Идентификатор",
       dataIndex: "id",
@@ -181,6 +199,14 @@ export function OperationsTable({ rows, loading, showResourceKind, empty }: Prop
   // Тело таблицы скроллится внутри области (h при широких колонках, v при длинном
   // списке), шапка колонок фиксирована — как generic ResourceTable.
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Колонки, снятые пользователем, не рендерятся. Первая — закреплена: при
+  // горизонтальной прокрутке широкой таблицы без неё не видно, к какой строке
+  // относятся уехавшие вправо значения.
+  const columns: ColumnsType<Op> = allColumns
+    .filter((c) => !hiddenColumns?.has(typeof c.title === "string" ? c.title : ""))
+    // Ширина обязательна: без неё antd закрепление молча игнорирует.
+    .map((c, i) => (i === 0 ? { ...c, fixed: "left" as const, width: 220 } : c));
+
   const [scrollY, setScrollY] = useState<number | undefined>(undefined);
   useEffect(() => {
     const el = wrapRef.current;

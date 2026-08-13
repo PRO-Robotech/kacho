@@ -79,7 +79,7 @@ func TestUpdateArmsLabelReEmitOnEveryRemovalPath(t *testing.T) {
 			}
 			ops := repomock.NewOpsRepo()
 			uc := volume.New(&repomock.VolumeReader{}, writer,
-				&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
+				&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix)
 
 			op, err := uc.Update(context.Background(), volUpdID, tc.mask, "", "", tc.labels, 0)
 			if err != nil {

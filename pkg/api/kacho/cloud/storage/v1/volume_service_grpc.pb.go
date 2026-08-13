@@ -29,6 +29,7 @@ const (
 	VolumeService_Update_FullMethodName         = "/kacho.cloud.storage.v1.VolumeService/Update"
 	VolumeService_Delete_FullMethodName         = "/kacho.cloud.storage.v1.VolumeService/Delete"
 	VolumeService_ListOperations_FullMethodName = "/kacho.cloud.storage.v1.VolumeService/ListOperations"
+	VolumeService_ChangeDiskType_FullMethodName = "/kacho.cloud.storage.v1.VolumeService/ChangeDiskType"
 )
 
 // VolumeServiceClient is the client API for VolumeService service.
@@ -48,7 +49,11 @@ type VolumeServiceClient interface {
 	// Updates the specified volume.
 	//
 	// Mutable: name / description / labels / size_bytes (increase only).
-	// Immutable: zone_id / disk_type_id / block_size / source_snapshot_id.
+	// Immutable: zone_id / disk_type_id / source_snapshot_id / source_image_id.
+	//
+	// disk_type_id стоит среди неизменяемых НЕ потому, что класс диска пожизненный,
+	// а потому, что он меняется выделенным глаголом [ChangeDiskType]: здесь поле
+	// отвергается как неизменяемое, и отказ называет глагол, которым это делается.
 	Update(ctx context.Context, in *UpdateVolumeRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified volume.
 	//
@@ -57,6 +62,26 @@ type VolumeServiceClient interface {
 	Delete(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified volume.
 	ListOperations(ctx context.Context, in *ListVolumeOperationsRequest, opts ...grpc.CallOption) (*ListVolumeOperationsResponse, error)
+	// Переводит том на другой класс диска.
+	//
+	// # Почему отдельный глагол, а не поле в Update
+	//
+	// Это ПЕРЕМЕЩЕНИЕ ДАННЫХ, а не правка поля. Оно длится (том всё это время в
+	// [Volume.Status.MIGRATING]), может отказать на половине — и тогда данные
+	// остаются на исходном классе, — и меняет физическое расположение объекта у
+	// бэкенда. Полем в Update такое выразить нечем: маска описывает набор правок,
+	// применяемых вместе, и «полуприменённой» правки в её семантике не бывает.
+	// Отдельный глагол называет предмет вслух, несёт собственные предусловия и
+	// даёт клиенту операцию, за которой он следит именно как за переносом.
+	//
+	// # Предусловия
+	//
+	// Целевой класс обязан быть ACTIVE и предлагаться В ТОЙ ЖЕ зоне: смена зоны
+	// этим глаголом не делается (zone_id неизменяем, перенос между зонами идёт
+	// копией снимка). Том обязан быть в AVAILABLE либо IN_USE — иначе
+	// FAILED_PRECONDITION "Volume <id> is not in a state that allows changing disk
+	// type". Размер тома обязан укладываться в границы целевого класса.
+	ChangeDiskType(ctx context.Context, in *ChangeDiskTypeRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type volumeServiceClient struct {
@@ -127,6 +152,16 @@ func (c *volumeServiceClient) ListOperations(ctx context.Context, in *ListVolume
 	return out, nil
 }
 
+func (c *volumeServiceClient) ChangeDiskType(ctx context.Context, in *ChangeDiskTypeRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, VolumeService_ChangeDiskType_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VolumeServiceServer is the server API for VolumeService service.
 // All implementations must embed UnimplementedVolumeServiceServer
 // for forward compatibility.
@@ -144,7 +179,11 @@ type VolumeServiceServer interface {
 	// Updates the specified volume.
 	//
 	// Mutable: name / description / labels / size_bytes (increase only).
-	// Immutable: zone_id / disk_type_id / block_size / source_snapshot_id.
+	// Immutable: zone_id / disk_type_id / source_snapshot_id / source_image_id.
+	//
+	// disk_type_id стоит среди неизменяемых НЕ потому, что класс диска пожизненный,
+	// а потому, что он меняется выделенным глаголом [ChangeDiskType]: здесь поле
+	// отвергается как неизменяемое, и отказ называет глагол, которым это делается.
 	Update(context.Context, *UpdateVolumeRequest) (*operation.Operation, error)
 	// Deletes the specified volume.
 	//
@@ -153,6 +192,26 @@ type VolumeServiceServer interface {
 	Delete(context.Context, *DeleteVolumeRequest) (*operation.Operation, error)
 	// Lists operations for the specified volume.
 	ListOperations(context.Context, *ListVolumeOperationsRequest) (*ListVolumeOperationsResponse, error)
+	// Переводит том на другой класс диска.
+	//
+	// # Почему отдельный глагол, а не поле в Update
+	//
+	// Это ПЕРЕМЕЩЕНИЕ ДАННЫХ, а не правка поля. Оно длится (том всё это время в
+	// [Volume.Status.MIGRATING]), может отказать на половине — и тогда данные
+	// остаются на исходном классе, — и меняет физическое расположение объекта у
+	// бэкенда. Полем в Update такое выразить нечем: маска описывает набор правок,
+	// применяемых вместе, и «полуприменённой» правки в её семантике не бывает.
+	// Отдельный глагол называет предмет вслух, несёт собственные предусловия и
+	// даёт клиенту операцию, за которой он следит именно как за переносом.
+	//
+	// # Предусловия
+	//
+	// Целевой класс обязан быть ACTIVE и предлагаться В ТОЙ ЖЕ зоне: смена зоны
+	// этим глаголом не делается (zone_id неизменяем, перенос между зонами идёт
+	// копией снимка). Том обязан быть в AVAILABLE либо IN_USE — иначе
+	// FAILED_PRECONDITION "Volume <id> is not in a state that allows changing disk
+	// type". Размер тома обязан укладываться в границы целевого класса.
+	ChangeDiskType(context.Context, *ChangeDiskTypeRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedVolumeServiceServer()
 }
 
@@ -180,6 +239,9 @@ func (UnimplementedVolumeServiceServer) Delete(context.Context, *DeleteVolumeReq
 }
 func (UnimplementedVolumeServiceServer) ListOperations(context.Context, *ListVolumeOperationsRequest) (*ListVolumeOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
+}
+func (UnimplementedVolumeServiceServer) ChangeDiskType(context.Context, *ChangeDiskTypeRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method ChangeDiskType not implemented")
 }
 func (UnimplementedVolumeServiceServer) mustEmbedUnimplementedVolumeServiceServer() {}
 func (UnimplementedVolumeServiceServer) testEmbeddedByValue()                       {}
@@ -310,6 +372,24 @@ func _VolumeService_ListOperations_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VolumeService_ChangeDiskType_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChangeDiskTypeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VolumeServiceServer).ChangeDiskType(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VolumeService_ChangeDiskType_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VolumeServiceServer).ChangeDiskType(ctx, req.(*ChangeDiskTypeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // VolumeService_ServiceDesc is the grpc.ServiceDesc for VolumeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -340,6 +420,10 @@ var VolumeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOperations",
 			Handler:    _VolumeService_ListOperations_Handler,
+		},
+		{
+			MethodName: "ChangeDiskType",
+			Handler:    _VolumeService_ChangeDiskType_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1,8 +1,8 @@
 # tests/newman — публичный API kacho-storage, regression suite (CS-1)
 
 **Black-box regression-инфраструктура** kacho-storage — покрытие публичных RPC
-storage-домена через HTTP api-gateway (external endpoint). Структура — копия
-`../kacho-compute/tests/newman/` (kacho-storage выделен из compute-Disk). Источник
+storage-домена через HTTP api-gateway (external endpoint). Структура повторяет
+`services/compute/tests/newman/` (storage выделен из compute-Disk). Источник
 истины — декларативные case-файлы `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`.
 
@@ -17,16 +17,20 @@ storage-домена через HTTP api-gateway (external endpoint). Струк
 ```
 tests/newman/
 ├── README.md                — этот файл
-├── cases/                   — ИСТОЧНИК ИСТИНЫ: декларативные case-наборы (Python)
+├── cases/                   — ИСТОЧНИК ИСТИНЫ: декларативные case-наборы (Python), 9 файлов
 │   ├── volume.py            — VolumeService CRUD + FK/peer/size-CAS negatives (S1)
 │   ├── snapshot.py          — SnapshotService from-READY + CRUD (S3)
+│   ├── image.py             — ImageService CRUD + Volume↔Image boot-materialize (STOR-1)
 │   ├── disk-type.py         — DiskTypeService public read + admin-Internal-only (S2)
-│   ├── operation.py         — OperationService.Get (OpsProxy sop-prefix)
+│   ├── operation.py         — OperationService Get/Cancel (OpsProxy sop-prefix)
 │   ├── authz.py             — INV-10 public listauthz + object-scoped анти-BOLA (fixture-gated)
+│   ├── authz-catalog.py     — матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции)
+│   ├── sec-d.py             — SEC-D owner-tuple через iam (register + unregister)
 │   └── internal-volume.py   — InternalVolumeService Internal-only external-absence (S4)
 ├── collections/             — СГЕНЕРИРОВАННЫЕ Postman-коллекции — НЕ править руками
 ├── environments/
-│   └── local.postman_environment.json   — local stand (port-forward api-gateway → 18080)
+│   └── local.postman_environment.template.json — отслеживаемый шаблон; прогонщик делает
+│                              с него рабочую копию (сама копия под .gitignore)
 ├── scripts/
 │   ├── gen.py               — генератор коллекций из cases/* (Postman v2.1 JSON)
 │   ├── validate-cases.py    — MANDATORY: уникальность case-id + CASES-INDEX coverage
@@ -56,7 +60,7 @@ python3 services/storage/tests/newman/scripts/gen.py              # все ре�
 ## Принципы (из testing-product-coach)
 
 - **Black-box**: тестируем продукт через публичный REST api-gateway (external), не код.
-- **Источник истины**: acceptance-spec CS-1 + proto (`kacho-proto/.../storage/v1/`).
+- **Источник истины**: acceptance-spec CS-1 + proto (`proto/kacho/cloud/storage/v1/`).
 - **Изоляция**: каждый case в своём `runId`; suite внутри pre-allocated
   `existingProjectId` (`_suiteProjectId` из env), Org/Cloud/Project **не создаёт**;
   имена суффиксуются `{{runId}}`.
@@ -71,7 +75,11 @@ python3 services/storage/tests/newman/scripts/gen.py              # все ре�
 - **Integration-only (НЕ black-box):** attach-CAS happy/race (CS1-S4-01..12), admin
   DiskType Create/Update/Delete happy + FK-delete-in-use (CS1-S2-02/03/05), не-READY
   Given-состояния (CS1-S4-04 attach-not-ready, CS1-S3-02 from-non-READY). Причина:
-  control-plane финализирует READY мгновенно (§0.1), не-READY достижимо только DB-seed;
+  состояние ресурса ЧЁРНЫМ ЯЩИКОМ не задаётся — пригодность объявляет сверщик, увидев
+  объект у плоскости данных, и остановить его на полпути отсюда нечем (прежняя редакция
+  писала «control-plane финализирует READY мгновенно», и это перестало быть правдой
+  вместе со сменой контракта: ресурс рождается в намерении, а happy-кейсы ЖДУТ
+  пригодности `wait_until_ready`);
   attach/admin-CRUD доступны только на :9091 mTLS internal-mux + per-RPC Check. Покрыты
   integration-тестами (testcontainers, concurrent `-race`), не external newman. Здесь
   провокабельная часть — Internal-only **external-absence** (INV-7a, CS1-S2-04/S4-11).

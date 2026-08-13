@@ -21,6 +21,12 @@ export const volumesApi = {
   create: (body: unknown): Promise<{ operation: Operation }> => api.create(VOLUMES, body),
   update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${VOLUMES}/${id}`, body),
   delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${VOLUMES}/${id}`),
+  // Перевод тома на другой тип диска — ОТДЕЛЬНЫЙ глагол, а не поле правки: это
+  // перемещение данных, оно длится (том всё это время MIGRATING) и может отказать
+  // на половине, оставив данные на исходном типе. `disk_type_id` в update_mask
+  // не входит вовсе.
+  changeDiskType: (id: string, diskTypeId: string): Promise<{ operation: Operation }> =>
+    api.action(`${VOLUMES}/${id}:changeDiskType`, { disk_type_id: diskTypeId }),
 };
 
 export const snapshotsApi = {
@@ -30,6 +36,11 @@ export const snapshotsApi = {
   create: (body: unknown): Promise<{ operation: Operation }> => api.create(SNAPSHOTS, body),
   update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${SNAPSHOTS}/${id}`, body),
   delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${SNAPSHOTS}/${id}`),
+  // Копия снимка в ДРУГУЮ зону. `project_id` обязателен, хотя выглядит выводимым
+  // из источника: именно он — объект вопроса о правах («создать» спрашивают у
+  // проекта). Метки и имя источника НЕ наследуются — имя уникально в проекте, а
+  // метки несут смысл, вложенный в исходный снимок.
+  copy: (id: string, body: unknown): Promise<{ operation: Operation }> => api.action(`${SNAPSHOTS}/${id}:copy`, body),
 };
 
 export const diskTypesApi = {
@@ -45,4 +56,8 @@ export const imagesApi = {
   create: (body: unknown): Promise<{ operation: Operation }> => api.create(IMAGES, body),
   update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${IMAGES}/${id}`, body),
   delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${IMAGES}/${id}`),
+  // Копия образа в ДРУГОЙ регион (образ REGIONAL/anycast). Копия остаётся в
+  // проекте источника, поэтому имя источника не наследуется: оно уникально в паре
+  // с проектом и столкнулось бы с самим собой.
+  copy: (id: string, body: unknown): Promise<{ operation: Operation }> => api.action(`${IMAGES}/${id}:copy`, body),
 };

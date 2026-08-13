@@ -33,7 +33,22 @@ export interface ResourceFormBodyProps {
   stickyFooter?: boolean;
 }
 
-const FULL_WIDTH = new Set(["sg-rules", "array", "custom"]);
+// Канон формы — имя поля в левой колонке, ввод в правой. Во всю ширину выходит
+// только то, что в правую колонку не помещается: редактор правил SG и custom-
+// виджеты (их размер знает автор поля — он и ставит `fullWidth` явно).
+//
+// Список сам по себе поводом не является: список из ОДНОГО подполя (CIDR
+// супернета, ссылка на адрес, ссылка на группу) — обычное поле с несколькими
+// значениями, и его вывод из канона делал форму разноголосой. Полная ширина
+// нужна списку СОСТАВНОМУ, чьи подполя стоят колонками (спецификации
+// интерфейсов: custom-секция NIC плюс вложенный список групп).
+const ALWAYS_FULL_WIDTH = new Set(["sg-rules", "custom"]);
+
+export function isFullWidthField(f: FormField): boolean {
+  if (f.fullWidth !== undefined) return f.fullWidth;
+  if (f.type === "array") return f.itemFields.length > 1;
+  return ALWAYS_FULL_WIDTH.has(f.type);
+}
 
 // Экспортирована для тестов.
 // Сравнение — по СТРОКОВОМУ виду текущего значения: `equals` объявлен строкой, а
@@ -99,7 +114,7 @@ export function ResourceFormBody({
       >
         {visible.map((f) => {
           const isLocked = locked.has(f.name) || (editMode && !!f.immutable);
-          const fullWidth = f.fullWidth ?? FULL_WIDTH.has(f.type);
+          const fullWidth = isFullWidthField(f);
 
           // Locked scalar/ref → read-only affordance (not hidden, not silent-disabled).
           if (isLocked && !fullWidth && f.type !== "labels") {

@@ -15,6 +15,10 @@ import { InlineResourceCreateForm } from "@shared/components/organisms/InlineRes
 
 interface Props {
   title: string;
+  /** Не рисовать собственный заголовок: компонент стоит ВНУТРИ поля формы, где
+   *  имя уже названо меткой слева, и заголовок повторял бы его вторым словом
+   *  («IPv4 адрес» слева и «IPv4 Address» в карточке — находка владельца). */
+  titleHidden?: boolean;
   /** ID ресурса в REGISTRY (например, "addresses", "security-groups"). */
   refResource: string;
   /** project_id для ListXxxRequest. */
@@ -48,6 +52,7 @@ interface Props {
 
 export function ResourceRefChips({
   title,
+  titleHidden,
   refResource,
   projectId,
   refFilter,
@@ -154,25 +159,19 @@ export function ResourceRefChips({
     onChange(value.filter((v) => v !== id));
   };
 
-  return (
-    <Card
-      size="small"
-      title={
-        <Space size={8}>
-          <Typography.Text strong>{title}</Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            {value.length}
-            {maxItems !== undefined ? ` / ${maxItems}` : ""}
-          </Typography.Text>
-        </Space>
-      }
-    >
-      <Space direction="vertical" size={8} style={{ width: "100%" }}>
-        <div style={{ minHeight: 24 }}>
+  // Внутри поля формы виджет рисуется БЕЗ карточки: имя названо меткой слева,
+  // а рамка вокруг поля в форме, где рамку уже несёт само поле, даёт «коробку в
+  // коробке». Пустой набор при этом не занимает строку словом «— пусто —»:
+  // выбирать пока нечего, и об этом говорит плейсхолдер списка.
+  const body = (
+    <Space direction="vertical" size={8} style={{ width: "100%" }}>
+        <div style={titleHidden && value.length === 0 ? undefined : { minHeight: 24 }}>
           {value.length === 0 ? (
+            titleHidden ? null : (
             <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
               — пусто —
             </Typography.Text>
+            )
           ) : (
             <Space size={[6, 6]} wrap>
               {value.map((id) => {
@@ -212,7 +211,29 @@ export function ResourceRefChips({
             style={{ flex: 1 }}
           />
         </Space.Compact>
-      </Space>
+    </Space>
+  );
+
+  return (
+    <>
+      {titleHidden ? (
+        body
+      ) : (
+        <Card
+          size="small"
+          title={
+            <Space size={8}>
+              <Typography.Text strong>{title}</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                {value.length}
+                {maxItems !== undefined ? ` / ${maxItems}` : ""}
+              </Typography.Text>
+            </Space>
+          }
+        >
+          {body}
+        </Card>
+      )}
       {creating && createSpec && (
         <Modal
           open
@@ -253,6 +274,6 @@ export function ResourceRefChips({
           />
         </Modal>
       )}
-    </Card>
+    </>
   );
 }

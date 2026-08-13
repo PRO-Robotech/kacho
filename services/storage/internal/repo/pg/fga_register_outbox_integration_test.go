@@ -58,7 +58,7 @@ func TestVolumeInsert_EmitsFGARegisterIntent(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	v := mkVolume(t, r, "prj-1", "vol-fga", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-fga", 10<<30)
 
 	rows := selectFGARows(t, pool)
 	require.Len(t, rows, 1, "ровно одна register-строка на Create")
@@ -82,7 +82,7 @@ func TestVolumeDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	r := pg.NewVolumeRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, r, "prj-1", "vol-del", 10<<30)
+	v := mkVolume(t, pool, r, "prj-1", "vol-del", 10<<30)
 	require.NoError(t, r.Delete(ctx, v.ID))
 
 	rows := selectFGARows(t, pool)
@@ -106,7 +106,7 @@ func TestSnapshotInsert_EmitsFGARegisterIntent(t *testing.T) {
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, vr, "prj-1", "vol-src", 10<<30)
+	v := mkVolume(t, pool, vr, "prj-1", "vol-src", 10<<30)
 	s, _, err := sr.Insert(ctx, &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      "prj-1",
@@ -136,7 +136,7 @@ func TestSnapshotDelete_EmitsFGAUnregisterIntent(t *testing.T) {
 	sr := pg.NewSnapshotRepo(pool)
 	ctx := context.Background()
 
-	v := mkVolume(t, vr, "prj-1", "vol-src2", 10<<30)
+	v := mkVolume(t, pool, vr, "prj-1", "vol-src2", 10<<30)
 	s, _, err := sr.Insert(ctx, &domain.Snapshot{
 		ID:             ids.NewID(domain.PrefixSnapshot),
 		ProjectID:      "prj-1",
@@ -207,7 +207,7 @@ func TestFGARegisterDrainer_AppliesIntentToIAM(t *testing.T) {
 	pool := newTestPool(t)
 	r := pg.NewVolumeRepo(pool)
 
-	v := mkVolume(t, r, "prj-1", "vol-drain", 10<<30) // эмитит register-intent
+	v := mkVolume(t, pool, r, "prj-1", "vol-drain", 10<<30) // эмитит register-intent
 
 	fake := &fakeIAMRegisterClient{}
 	d, err := drainer.New[clients.FGARegisterPayload](
