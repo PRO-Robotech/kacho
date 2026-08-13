@@ -148,9 +148,15 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 
 ## DiskType (`cases/disk-type.py`) — stage S2
 
+**Каталог классов НЕ посеян** (`0016_disk_type_policy.sql` снял посев `0004`), поэтому ни
+один кейс не вправе утверждать длину выдачи: пустой каталог — законный ответ. Утверждается
+СВОЙСТВО каждой записи (ярус и состояние обращения — из закрытых словарей, ни одного
+инфра-поля), и оно различающее: ярус свободной строкой роняет кейс. Классы и действующие
+ревизии привязки заводит шаг подъёма стенда `make -C deploy seed-storage`.
+
 | case-id | CS1 | класс |
 |---|---|---|
-| DT-LST-CRUD-OK | CS1-S2-01 | happy (≥5 seeded) |
+| DT-LST-CRUD-OK | CS1-S2-01 | happy (посева нет — длина НЕ утверждается; утверждается свойство КАЖДОЙ записи) |
 | DT-GET-CRUD-OK | CS1-S2-01 | happy |
 | DT-GET-NEG-NOTFOUND | CS1-S2-01 | negative |
 | DT-LST-BVA-PAGESIZE-OVER-MAX | CS1-S2-01 | negative (BVA) |

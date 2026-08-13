@@ -173,8 +173,10 @@ RED→GREEN исполняет CI-раннер, локальный newman env-bl
 
 - **Volume (+8):** `VOL-CR-BVA-NAME-OVER-64` (BVA len 63+1 → `Illegal argument name`,
   domain `RuneCount>63`), `VOL-CR-VAL-NAME-{DIGIT,HYPHEN}-START` (ECP первого символа,
-  displayNameRe), `VOL-UPD-MASK-IMMUTABLE-{BLOCKSIZE,SOURCESNAPSHOT}` (immutable-switch,
-  полный набор `{zone_id,disk_type_id,block_size,source_snapshot_id,used_by}`),
+  displayNameRe), `VOL-UPD-MASK-IMMUTABLE-{BLOCKSIZE,SOURCESNAPSHOT}` (immutable-switch;
+  выписанный здесь «полный набор» не был удержан ничем и разошёлся с деревом — сверять
+  предикатом `grep -n 'case "zone_id"' services/storage/internal/apps/kacho/api/volume/volume.go`,
+  а не этой строкой),
   `VOL-UPD-MASK-EMPTY-FULL-PATCH-OK` (пустой mask = full-PATCH, mutable применён, immutable
   zone цел — CS1-S1-05 gap), `VOL-CR-SEC-NAME-INJECTION` + `VOL-LST-SEC-FILTER-SQLI`
   (INV-8 no-leak black-box: не 500, нет pgx/SQLSTATE/panic/goroutine).

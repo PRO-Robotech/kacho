@@ -1,8 +1,8 @@
 # tests/newman — публичный API kacho-storage, regression suite (CS-1)
 
 **Black-box regression-инфраструктура** kacho-storage — покрытие публичных RPC
-storage-домена через HTTP api-gateway (external endpoint). Структура — копия
-`../kacho-compute/tests/newman/` (kacho-storage выделен из compute-Disk). Источник
+storage-домена через HTTP api-gateway (external endpoint). Структура повторяет
+`services/compute/tests/newman/` (storage выделен из compute-Disk). Источник
 истины — декларативные case-файлы `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`.
 
@@ -17,16 +17,20 @@ storage-домена через HTTP api-gateway (external endpoint). Струк
 ```
 tests/newman/
 ├── README.md                — этот файл
-├── cases/                   — ИСТОЧНИК ИСТИНЫ: декларативные case-наборы (Python)
+├── cases/                   — ИСТОЧНИК ИСТИНЫ: декларативные case-наборы (Python), 9 файлов
 │   ├── volume.py            — VolumeService CRUD + FK/peer/size-CAS negatives (S1)
 │   ├── snapshot.py          — SnapshotService from-READY + CRUD (S3)
+│   ├── image.py             — ImageService CRUD + Volume↔Image boot-materialize (STOR-1)
 │   ├── disk-type.py         — DiskTypeService public read + admin-Internal-only (S2)
-│   ├── operation.py         — OperationService.Get (OpsProxy sop-prefix)
+│   ├── operation.py         — OperationService Get/Cancel (OpsProxy sop-prefix)
 │   ├── authz.py             — INV-10 public listauthz + object-scoped анти-BOLA (fixture-gated)
+│   ├── authz-catalog.py     — матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции)
+│   ├── sec-d.py             — SEC-D owner-tuple через iam (register + unregister)
 │   └── internal-volume.py   — InternalVolumeService Internal-only external-absence (S4)
 ├── collections/             — СГЕНЕРИРОВАННЫЕ Postman-коллекции — НЕ править руками
 ├── environments/
-│   └── local.postman_environment.json   — local stand (port-forward api-gateway → 18080)
+│   └── local.postman_environment.template.json — отслеживаемый шаблон; прогонщик делает
+│                              с него рабочую копию (сама копия под .gitignore)
 ├── scripts/
 │   ├── gen.py               — генератор коллекций из cases/* (Postman v2.1 JSON)
 │   ├── validate-cases.py    — MANDATORY: уникальность case-id + CASES-INDEX coverage
@@ -56,7 +60,7 @@ python3 services/storage/tests/newman/scripts/gen.py              # все ре�
 ## Принципы (из testing-product-coach)
 
 - **Black-box**: тестируем продукт через публичный REST api-gateway (external), не код.
-- **Источник истины**: acceptance-spec CS-1 + proto (`kacho-proto/.../storage/v1/`).
+- **Источник истины**: acceptance-spec CS-1 + proto (`proto/kacho/cloud/storage/v1/`).
 - **Изоляция**: каждый case в своём `runId`; suite внутри pre-allocated
   `existingProjectId` (`_suiteProjectId` из env), Org/Cloud/Project **не создаёт**;
   имена суффиксуются `{{runId}}`.
