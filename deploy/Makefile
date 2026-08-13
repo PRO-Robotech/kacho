@@ -394,7 +394,7 @@ dev-up: preflight
 	$(MAKE) build-services; \
 	$(MAKE) build-ui; \
 	./scripts/gen-tls-cert.sh; \
-	( cd helm/umbrella && helm dep update >/dev/null ); \
+	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null; \
 	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \
 	helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n kacho --create-namespace \
 	  --set crds.enabled=true \
@@ -676,7 +676,7 @@ admin-hop-injection: guard-kind-context
 	@bash scripts/inject-admin-hop-defects.sh
 
 helm-lint:
-	( cd helm/umbrella && helm dep update >/dev/null )
+	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null
 	cd helm/umbrella && helm lint -f values.dev.yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -917,7 +917,7 @@ helm-manifest-test: gate-self-test
 	  exit 1; \
 	fi; \
 	echo "=== helm dependency build (проверки рендерят умбреллу; charts/*.tgz не в git) ==="; \
-	( cd helm/umbrella && helm dep update >/dev/null ); \
+	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null; \
 	rm -rf helm/umbrella/tmpcharts-*; \
 	failed=""; total=0; \
 	for t in tests/helm/*-test.sh; do \
