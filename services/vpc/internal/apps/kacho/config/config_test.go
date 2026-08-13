@@ -48,7 +48,6 @@ func TestLoad_Defaults(t *testing.T) {
 	require.Equal(t, ModeProduction, cfg.AuthN.Mode)
 	require.True(t, cfg.AuthN.Mode.IsProduction())
 
-	require.True(t, cfg.Network.DefaultSGInline)
 	require.Equal(t, 30*time.Second, cfg.Network.ProjectCache.PositiveTTL)
 	require.Equal(t, 5*time.Second, cfg.Network.ProjectCache.NegativeTTL)
 	require.Equal(t, 10000, cfg.Network.ProjectCache.MaxSize)
@@ -139,7 +138,6 @@ extapi:
 	require.Equal(t, ModeProduction, cfg.AuthN.Mode)
 	require.True(t, cfg.AuthN.Mode.IsProduction())
 
-	require.False(t, cfg.Network.DefaultSGInline)
 	require.Equal(t, time.Minute, cfg.Network.ProjectCache.PositiveTTL)
 	require.Equal(t, 2*time.Second, cfg.Network.ProjectCache.NegativeTTL)
 	require.Equal(t, 555, cfg.Network.ProjectCache.MaxSize)
@@ -250,7 +248,6 @@ func TestLoad_LegacyENV(t *testing.T) {
 	require.Equal(t, "0.0.0.0:19091", cfg.APIServer.InternalListenAddress())
 
 	require.Equal(t, ModeProduction, cfg.AuthN.Mode)
-	require.False(t, cfg.Network.DefaultSGInline)
 	require.Equal(t, 45*time.Second, cfg.Network.ProjectCache.PositiveTTL)
 	require.Equal(t, 3*time.Second, cfg.Network.ProjectCache.NegativeTTL)
 	require.Equal(t, 9999, cfg.Network.ProjectCache.MaxSize)

@@ -44,14 +44,14 @@ erDiagram
 | `name` | text | NameVPC permissive |
 | `description` | text | ≤256 |
 | `labels` | jsonb | ≤64 пар |
-| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается inline в worker'е Create при `KACHO_VPC_DEFAULT_SG_INLINE=true` (умолчание). ON DELETE SET NULL |
+| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается в воркере Create БЕЗУСЛОВНО. ON DELETE SET NULL |
 | `ipv4_cidr_blocks` / `ipv6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | **объявленный супернет сети** (миграция 0015, VPC-1 F2): CIDR каждой подсети обязан лежать внутри одного из этих блоков. Тенант-управляемые аддитивные наборы, меняются через `:add-cidr-blocks`/`:remove-cidr-blocks`; кардинальность ограничена CHECK (0016) |
 | `default_route_table_id` | text NULL FK→`route_tables` | системная RT сети, создаётся на `Network.Create` и является **источником истины** о том, какую RT наследует подсеть без явного `route_table_id` (0015 объявила колонку, 0017 сделала её действующей) |
 | `vrf_id` | bigint, internal-only | VRF tenancy-id, аллоцируется control-plane'ом (sequence); инфра-чувствительное поле, отдается **только** через `InternalNetworkService` — на публичной поверхности нет |
 | `created_at` | tstz | в proto-ответе truncate до секунд |
 
 **Инварианты**:
-- При Create (`KACHO_VPC_DEFAULT_SG_INLINE=true`, умолчание) — атомарно создается
+- При Create БЕЗУСЛОВНО — атомарно создается
   Network + Default SG + биндинг `default_security_group_id` в одной TX worker'а.
   При `=false` Network создается без SG (для load-тестов / внешнего reconciler'а).
 - Супернет объявляется на Create и **ограничивает** подсети: CIDR подсети обязан быть
@@ -238,7 +238,7 @@ Firewall rules. **`network_id` обязателен на Create и immutable п�
 |---|---|
 | `id` (prefix `sgr`), `project_id` | UNIQUE(project_id, name) WHERE name<>'' |
 | `network_id` | text; **обязателен** на Create, immutable после. Колонка объявлена NULLABLE ради FK (пустая строка сломала бы ссылку), но use-case пустую не пропускает. `List?filter=network_id="<id>"` работает (whitelist фильтра включает `network_id`) |
-| `default_for_network` | bool — `true` у inline-создаваемой default SG (если `KACHO_VPC_DEFAULT_SG_INLINE=true`) |
+| `default_for_network` | bool — `true` у системной группы, которую создаёт сама сеть (безусловно) |
 | `rules` | jsonb array; область значений правила (протокол, диапазон портов) держится CHECK'ами на DB-уровне — миграция `0027_security_group_rules_domain.sql` |
 
 **RPC специфика**:

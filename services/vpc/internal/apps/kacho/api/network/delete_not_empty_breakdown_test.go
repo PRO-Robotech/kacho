@@ -135,7 +135,7 @@ func seedNetworkWithSystemChildren(t *testing.T) (*kachomock.Repository, *repomo
 	t.Helper()
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, true)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	op, err := create.Execute(context.Background(), domain.Network{
 		ProjectID:      "prj-b3n7k1x9q2m5t8",
 		Name:           domain.RcNameVPC("delete-radius"),

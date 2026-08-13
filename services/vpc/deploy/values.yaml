@@ -135,10 +135,6 @@ extapi:
     tls:
       enable: false
 network:
-  # ⚠️ default-sg-inline=true (product default): Network.Create синхронно
-  # создает default SG. Отключение дает прирост throughput, но ломает default
-  # SG в UI-flow. Если нужен load-test override — `--set network.defaultSgInline=false`.
-  defaultSgInline: true
   projectCache:
     positiveTtl: 30s
     negativeTtl: 5s

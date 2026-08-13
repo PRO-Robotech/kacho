@@ -142,7 +142,7 @@ func (r *securityGroupResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "Метки группы вида ключ-значение."},
 			"default_for_network": schema.BoolAttribute{Computed: true,
 				MarkdownDescription: "Является ли группа группой по умолчанию своей сети. " +
-					"Такую группу создаёт сама сеть (`create_default_security_group`), и край " +
+					"Такую группу сеть создаёт САМА и безусловно, и край " +
 					"ОТКАЗЫВАЕТСЯ её удалять. Значение только читается: сделать группу " +
 					"умолчанием или перестать ею быть край не позволяет."},
 			"created_at": schema.StringAttribute{Computed: true,

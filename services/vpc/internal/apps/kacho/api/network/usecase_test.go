@@ -39,7 +39,6 @@ func makeHandler(t *testing.T,
 	sgr *repomock.SecurityGroupRepo,
 	or *repomock.OpsRepo,
 	fc *repomock.ProjectClient,
-	defaultSGInline bool,
 ) *Handler {
 	t.Helper()
 	// Маппим typed-nil-указатель → nil-интерфейс (иначе Go бы создал не-nil
@@ -56,7 +55,7 @@ func makeHandler(t *testing.T,
 	if sgr != nil {
 		sgRepoIface = sgr
 	}
-	create := NewCreateNetworkUseCase(kr, fc, or, defaultSGInline)
+	create := NewCreateNetworkUseCase(kr, fc, or)
 	update := NewUpdateNetworkUseCase(kr, or)
 	deleteUC := NewDeleteNetworkUseCase(kr, sReader, rtReader, sgRepoIface, or)
 	get := NewGetNetworkUseCase(kr)
@@ -71,13 +70,13 @@ func makeHandler(t *testing.T,
 }
 
 // project ok / ops repo / network repo с минимальной wiring — для тестов где
-// child-reader'ы не требуются. defaultSGInline=false — без default-SG creation.
+// child-reader'ы не требуются.
 func minimalHandler(t *testing.T, projectOK bool) (*Handler, *repomock.OpsRepo, *kachomock.Repository) {
 	t.Helper()
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
 	fc := &repomock.ProjectClient{OK: projectOK}
-	return makeHandler(t, kr, nil, nil, nil, or, fc, false), or, kr
+	return makeHandler(t, kr, nil, nil, nil, or, fc), or, kr
 }
 
 // ---- Handler — sync paths ----
@@ -118,7 +117,7 @@ func TestHandler_Delete_InvalidArg(t *testing.T) {
 func TestCreateUseCase_ValidationError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	// project_id required.
 	_, err := uc.Execute(context.Background(), domain.Network{Name: "test"})
@@ -143,7 +142,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 func TestCreateUseCase_ProjectNotFound(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: false}, or, false)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: false}, or)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
@@ -163,7 +162,7 @@ func TestCreateUseCase_ProjectNotFound(t *testing.T) {
 func TestCreateUseCase_OK(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID:   "f1",
@@ -178,13 +177,13 @@ func TestCreateUseCase_OK(t *testing.T) {
 	assert.Nil(t, saved.Error)
 }
 
-// TestCreateUseCase_DefaultSGInline_Atomic — при defaultSGInline=true
+// TestCreateUseCase_DefaultSGAtomic — группа правил по умолчанию создаётся
 // Network.Create в одной writer-TX создает Network + default-SG + проставляет
 // default_security_group_id. Все три DML и три outbox-event'а commit'ятся атомарно.
-func TestCreateUseCase_DefaultSGInline_Atomic(t *testing.T) {
+func TestCreateUseCase_DefaultSGAtomic(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, true)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
@@ -290,35 +289,16 @@ func TestCreateDefaultSGUseCase_Execute_Composes(t *testing.T) {
 	assert.Equal(t, "UPDATED", events[2].Action)
 }
 
-// TestCreateUseCase_DefaultSGInline_OFF — defaultSGInline=false: Network есть,
-// SG нет, outbox содержит ровно 1 событие Network.CREATED.
-func TestCreateUseCase_DefaultSGInline_OFF(t *testing.T) {
-	kr := kachomock.NewRepository()
-	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
-
-	op, err := uc.Execute(context.Background(), domain.Network{
-		ProjectID: "f1",
-		Name:      domain.RcNameVPC("net-no-sg"),
-	})
-	require.NoError(t, err)
-	saved := repomock.AwaitOpDone(t, or, op.ID)
-	require.True(t, saved.Done)
-	require.Nil(t, saved.Error)
-
-	assert.Len(t, kr.Networks(), 1)
-	assert.Empty(t, kr.SecurityGroups(), "defaultSGInline=false → default-SG не создаётся")
-	// Default RT флагом НЕ гейтится (F3) — она провижнится всегда.
-	require.Len(t, kr.RouteTables(), 1, "default RT не зависит от defaultSGInline")
-	events := kr.Outbox()
-	require.Len(t, events, 3)
-	assert.Equal(t, "Network", events[0].Resource)
-	assert.Equal(t, "CREATED", events[0].Action)
-	assert.Equal(t, "RouteTable", events[1].Resource)
-	assert.Equal(t, "CREATED", events[1].Action)
-	assert.Equal(t, "Network", events[2].Resource)
-	assert.Equal(t, "UPDATED", events[2].Action)
-}
+// Прежде здесь стояла проба TestCreateUseCase_DefaultSGInline_OFF: «настройка
+// выключена → сеть есть, группы правил нет, событий в очереди ровно одно». Её
+// предмет СНЯТ: сеть без группы правил по умолчанию больше не создаётся ни при
+// каком входе и ни при какой настройке — по решению владельца модель закрыта в обе
+// стороны и интерфейс наследует группу своей сети, поэтому такое состояние означало
+// бы интерфейс без единого правила.
+//
+// Проба не переписана, а удалена: переписывать в ней нечего — она утверждала
+// ОТСУТСТВИЕ того, что теперь есть всегда. Утверждение «группа создаётся безусловно»
+// живёт в default_sg_request_test.go вместе с решением, которое его объясняет.
 
 func TestDeleteUseCase_InvalidArg(t *testing.T) {
 	uc := NewDeleteNetworkUseCase(kachomock.NewRepository(), nil, nil, nil, repomock.NewOpsRepo())
@@ -450,7 +430,7 @@ func TestHandler_Update_Happy(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	sr := repomock.NewSubnetRepo()
 	rtr := repomock.NewRouteTableRepo()
-	h := makeHandler(t, kr, sr, rtr, nil, or, &repomock.ProjectClient{OK: true}, false)
+	h := makeHandler(t, kr, sr, rtr, nil, or, &repomock.ProjectClient{OK: true})
 
 	createOp, err := h.Create(context.Background(), &vpcv1.CreateNetworkRequest{ProjectId: "f1", Name: "n"})
 	require.NoError(t, err)

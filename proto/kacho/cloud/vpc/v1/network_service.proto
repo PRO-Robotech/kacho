@@ -269,11 +269,22 @@ message CreateNetworkRequest {
 
   // Resource labels as `` key:value `` pairs.
   map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
-
-  // Управление авто-созданием default security group.
-  // Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
-  // true → создать default-SG для сети; false → сеть без default-SG.
-  optional bool create_default_security_group = 5;
+  // 5 — create_default_security_group, СНЯТО с контракта.
+  //
+  // Поле позволяло сети остаться БЕЗ группы правил по умолчанию, а по решению
+  // владельца модель закрыта в обе стороны и интерфейс НАСЛЕДУЕТ группу своей
+  // сети: сеть без группы означала бы интерфейс без единого правила, то есть «не
+  // разрешено ничего». Посадка безопасности не может зависеть от того, что
+  // прислали в теле.
+  //
+  // Настройка оператора, дублировавшая это решение, снята тем же изменением:
+  // оставить её значило бы держать второй способ получить то же запрещённое
+  // состояние.
+  //
+  // Номер И имя зарезервированы: переиспользование дало бы старому клиенту поле с
+  // другим смыслом. Разрыв объявлен в proto/declared-breaks.yaml.
+  reserved 5;
+  reserved "create_default_security_group";
 
   // Declared IPv4 supernet block(s). Optional here, but a network without them
   // refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the

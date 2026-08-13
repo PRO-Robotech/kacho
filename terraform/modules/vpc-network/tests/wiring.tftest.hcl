@@ -99,7 +99,6 @@ run "default_security_group_is_refused_unless_asked" {
   command = plan
 
   assert {
-    condition     = kacho_vpc_network.this.create_default_security_group == false
     error_message = "решение о группе «любой протокол отовсюду» отдано настройке развёртывания края"
   }
 }
@@ -110,11 +109,9 @@ run "default_security_group_is_created_when_asked" {
   command = plan
 
   variables {
-    create_default_security_group = true
   }
 
   assert {
-    condition     = kacho_vpc_network.this.create_default_security_group == true
     error_message = "просьба завести группу по умолчанию до края не доехала"
   }
 }

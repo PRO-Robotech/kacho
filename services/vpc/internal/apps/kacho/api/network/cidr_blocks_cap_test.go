@@ -39,7 +39,7 @@ func v4Blocks(off, n int) []string {
 func TestNetwork_SupernetCap_Create_TooManyBlocks(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	_, err := create.Execute(context.Background(), domain.Network{
 		ProjectID:      "prj-b3n7k1x9q2m5t8",
@@ -56,7 +56,7 @@ func TestNetwork_SupernetCap_Create_TooManyBlocks(t *testing.T) {
 func TestNetwork_SupernetCap_Create_AtCapAccepted(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := create.Execute(context.Background(), domain.Network{
 		ProjectID:      "prj-b3n7k1x9q2m5t8",

@@ -50,7 +50,7 @@ func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *
 	or := repomock.NewOpsRepo()
 	pc := &repomock.ProjectClient{OK: true}
 
-	create := networkapp.NewCreateNetworkUseCase(r, pc, or, false)
+	create := networkapp.NewCreateNetworkUseCase(r, pc, or)
 	update := networkapp.NewUpdateNetworkUseCase(r, or)
 	// Read/list/delete use-cases здесь не задействованы, но нужны NewHandler.
 	get := networkapp.NewGetNetworkUseCase(r)

@@ -26,4 +26,12 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-declared: []
+declared:
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: create_default_security_group
+    reason: >-
+      поле позволяло сети остаться без группы правил по умолчанию, тогда как модель
+      закрыта в обе стороны и интерфейс наследует группу своей сети — сеть без группы
+      означала бы интерфейс без единого правила
+    issue: kacho#246

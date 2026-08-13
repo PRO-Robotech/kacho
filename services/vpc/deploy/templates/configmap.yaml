@@ -133,7 +133,6 @@ data:
           enable: {{ default false .Values.extapi.geo.tls.enable }}
 
     network:
-      default-sg-inline: {{ default true .Values.network.defaultSgInline }}
       project-cache:
         positive-ttl: {{ default "30s" .Values.network.projectCache.positiveTtl | quote }}
         negative-ttl: {{ default "5s" .Values.network.projectCache.negativeTtl | quote }}

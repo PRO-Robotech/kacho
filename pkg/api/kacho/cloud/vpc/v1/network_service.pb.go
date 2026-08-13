@@ -228,10 +228,6 @@ type CreateNetworkRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as “ key:value “ pairs.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Управление авто-созданием default security group.
-	// Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
-	// true → создать default-SG для сети; false → сеть без default-SG.
-	CreateDefaultSecurityGroup *bool `protobuf:"varint,5,opt,name=create_default_security_group,json=createDefaultSecurityGroup,proto3,oneof" json:"create_default_security_group,omitempty"`
 	// Declared IPv4 supernet block(s). Optional here, but a network without them
 	// refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the
 	// constraint is never skipped for an empty list.
@@ -301,13 +297,6 @@ func (x *CreateNetworkRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
-}
-
-func (x *CreateNetworkRequest) GetCreateDefaultSecurityGroup() bool {
-	if x != nil && x.CreateDefaultSecurityGroup != nil {
-		return *x.CreateDefaultSecurityGroup
-	}
-	return false
 }
 
 func (x *CreateNetworkRequest) GetIpv4CidrBlocks() []string {
@@ -1239,20 +1228,18 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"w\n" +
 	"\x14ListNetworksResponse\x127\n" +
 	"\bnetworks\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.NetworkR\bnetworks\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb9\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf4\x03\n" +
 	"\x14CreateNetworkRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12F\n" +
-	"\x1dcreate_default_security_group\x18\x05 \x01(\bH\x00R\x1acreateDefaultSecurityGroup\x88\x01\x01\x12(\n" +
+	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x06 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
 	"\x10ipv6_cidr_blocks\x18\a \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B \n" +
-	"\x1e_create_default_security_group\"6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x1dcreate_default_security_group\"6\n" +
 	"\x15CreateNetworkMetadata\x12\x1d\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tR\tnetworkId\"\xb8\x03\n" +
@@ -1457,7 +1444,6 @@ func file_kacho_cloud_vpc_v1_network_service_proto_init() {
 	file_kacho_cloud_vpc_v1_subnet_proto_init()
 	file_kacho_cloud_vpc_v1_security_group_proto_init()
 	file_kacho_cloud_vpc_v1_route_table_proto_init()
-	file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

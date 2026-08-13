@@ -26,7 +26,7 @@ import (
 func TestNetwork_VPC_1_11_CreateProvisionsDefaultRouteTable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, true)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := create.Execute(context.Background(), domain.Network{
 		ProjectID:      "prj-b3n7k1x9q2m5t8",
@@ -66,7 +66,7 @@ func TestNetwork_VPC_1_11_CreateProvisionsDefaultRouteTable(t *testing.T) {
 func TestNetwork_VPC_1_11_DefaultRouteTableRegisteredInFGA(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, true)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := create.Execute(context.Background(), domain.Network{
 		ProjectID: "prj-b3n7k1x9q2m5t8",

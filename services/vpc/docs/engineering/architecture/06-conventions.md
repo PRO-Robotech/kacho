@@ -142,7 +142,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 
 ## Default Security Group (inline, опционально)
 
-Управляется флагом `KACHO_VPC_DEFAULT_SG_INLINE` (default `true`).
+Создаётся БЕЗУСЛОВНО: флага, которым это отменялось, больше нет — интерфейс наследует группу своей сети, поэтому сеть без неё означала бы интерфейс без единого правила.
 
 При `true` — Network.Create:
 1. SYNC создается Operation, возвращается клиенту.
@@ -183,7 +183,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 4. **CIDR host-bits=0** обязательно, sync через `netip.Prefix.Masked`.
 5. **Subnet immutable**: `network_id`, `placement_type`, `zone_id`/`region_id` — reject в mask, silent ignore в full-PATCH. CIDR-полей в `Update` нет вовсе.
 6. **Hard-delete, не soft**.
-7. **Default SG создается inline в NetworkService.doCreate** при `KACHO_VPC_DEFAULT_SG_INLINE=true` (default). Флаг `=false` отключает inline-SG (для load-тестов / внешнего reconciler'а).
+7. **Группа правил по умолчанию создаётся в `NetworkService.doCreate` БЕЗУСЛОВНО.** Флага, отключавшего её, больше нет: интерфейс наследует группу своей сети, поэтому сеть без неё означала бы интерфейс без единого правила, а по закрытой модели — «не разрешено ничего».
 8. **Timestamp truncate to seconds** в proto-ответе (БД хранит микросекунды).
 9. **DeletionProtection sync-check** перед Delete — `FailedPrecondition` `"... deletion_protection enabled"`.
 10. **page_size валидируется**, garbage page_token → `InvalidArgument`.

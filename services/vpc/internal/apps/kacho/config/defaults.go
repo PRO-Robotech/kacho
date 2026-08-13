@@ -29,7 +29,6 @@ import (
 //	KACHO_VPC_IAM_DNS_LB=false                        → extapi.iam.dns-lb
 //	KACHO_VPC_GEO_GRPC_ADDR=...                       → extapi.geo.endpoint
 //	KACHO_VPC_GEO_TLS=false                           → extapi.geo.tls.enable
-//	KACHO_VPC_DEFAULT_SG_INLINE=true                  → network.default-sg-inline
 //	KACHO_VPC_PROJECT_CACHE_TTL=30s                    → network.project-cache.positive-ttl
 //	KACHO_VPC_PROJECT_CACHE_NEGATIVE_TTL=5s            → network.project-cache.negative-ttl
 //	KACHO_VPC_PROJECT_CACHE_SIZE=10000                 → network.project-cache.max-size
@@ -144,7 +143,6 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("iam.register-drainer-enabled", true)
 
 	// network (VPC-domain)
-	v.SetDefault("network.default-sg-inline", true)
 	v.SetDefault("network.project-cache.positive-ttl", 30*time.Second)
 	v.SetDefault("network.project-cache.negative-ttl", 5*time.Second)
 	v.SetDefault("network.project-cache.max-size", 10000)

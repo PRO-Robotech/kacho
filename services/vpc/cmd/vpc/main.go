@@ -818,16 +818,14 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 }
 
 // buildServices создает все repo'ы поверх pool и собирает из них бизнес-сервисы.
-// При network.default-sg-inline=false sgRepo не передается в Network.Create —
-// default SG не создается inline.
+//
+// Группа правил по умолчанию создаётся БЕЗУСЛОВНО: настройки, которая бы это
+// отменяла, больше нет, и предупреждения о ней тоже — оно объявляло состояние,
+// которое сегодня недостижимо.
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
 func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger) *services {
-	if !cfg.Network.DefaultSGInline {
-		logger.Warn("network.default-sg-inline=false — Network.Create НЕ создает default SG")
-	}
-
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kacho-iam
@@ -881,7 +879,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// adapter'ы, отделенные от writer-TX (каждый открывает свою TX).
 	// defaultSGInline=true (default) — при Network.Create в одной writer-TX создается
 	// inline default SG и Network.default_security_group_id заполняется атомарно.
-	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo, cfg.Network.DefaultSGInline).
+	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo).
 		WithLogger(logger).WithRegistrar(registrar)
 	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)

@@ -55,7 +55,7 @@ func mapToTF(ctx context.Context, in map[string]string) types.Map {
 
 // applyNetwork переносит ответ края в состояние.
 //
-// Значения, которых край не эхает (create_default_security_group), НЕ трогаются: их
+// Значения, которых край не эхает, НЕ трогаются: их
 // подстановка нулём означала бы «пользователь задал false» и приводила к пересозданию
 // ресурса на следующем же плане.
 func applyNetwork(ctx context.Context, m *networkModel, n *networkJSON) {

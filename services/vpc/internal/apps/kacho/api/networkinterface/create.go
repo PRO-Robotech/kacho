@@ -191,6 +191,24 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		return nil, serviceerr.MapRepoErr(rerr)
 	}
 	parentSub, serr := rd.Subnets().Get(ctx, n.SubnetID)
+	var parentNetDefaultSG string
+	if serr == nil {
+		// НАСЛЕДОВАНИЕ ГРУППЫ ПО УМОЛЧАНИЮ (обещание контракта, у которого не было
+		// исполнителя).
+		//
+		// Комментарий поля `security_group_ids` обещает: «Дефолт при создании —
+		// default_security_group_id сети (наследуется); можно переопределить». Кода,
+		// который бы это делал, не существовало: интерфейс с пустым набором получал
+		// пустой набор, а по закрытой в обе стороны модели это означает «не
+		// разрешено ничего». То есть обещанное умолчание работало ПРОТИВОПОЛОЖНО
+		// обещанию — и обнаруживалось это не отказом, а тишиной на трафике.
+		//
+		// Сеть читается в ТОЙ ЖЕ Reader-TX, что и подсеть: отдельная транзакция
+		// давала бы второй снимок, и между ними сеть могла бы сменить группу.
+		if net, nerr := rd.Networks().Get(ctx, parentSub.NetworkID); nerr == nil {
+			parentNetDefaultSG = net.DefaultSecurityGroupID
+		}
+	}
 	_ = rd.Close()
 	if serr != nil {
 		return nil, serviceerr.MapRepoErr(serr)
@@ -219,7 +237,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		SubnetID:         n.SubnetID,
 		V4AddressIDs:     n.V4AddressIDs,
 		V6AddressIDs:     n.V6AddressIDs,
-		SecurityGroupIDs: n.SecurityGroupIDs,
+		SecurityGroupIDs: inheritedSecurityGroups(n.SecurityGroupIDs, parentNetDefaultSG),
 		UsedByType:       usedByType,
 		UsedByID:         usedByID,
 		Status:           st,
@@ -425,4 +443,25 @@ func detachNICAddresses(ctx context.Context, ar AddressRepo, ids []string) error
 		}
 	}
 	return nil
+}
+
+// inheritedSecurityGroups — набор групп интерфейса: явный выбор вызывающего сильнее,
+// пустой набор наследует группу по умолчанию своей сети.
+//
+// Почему помощник, а не выражение на месте: свойство «пустое означает наследование, а
+// не пустоту» — часть контракта, и оно обязано быть названо один раз. Выражение на
+// месте пришлось бы повторить в `Update`, где действует то же правило, и две копии
+// разошлись бы на первой же правке.
+//
+// Пустая группа по умолчанию (сеть заведена до того, как её создание стало
+// безусловным) наследования не даёт: подставлять пустую строку в набор ссылок значило
+// бы завести висячую ссылку вместо отсутствия.
+func inheritedSecurityGroups(explicit []string, networkDefault string) []string {
+	if len(explicit) > 0 {
+		return explicit
+	}
+	if networkDefault == "" {
+		return explicit
+	}
+	return []string{networkDefault}
 }

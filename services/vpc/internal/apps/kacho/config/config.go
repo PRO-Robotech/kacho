@@ -23,7 +23,6 @@ import (
 //	authn:         { mode, tls }
 //	authz:         { iam-endpoint, check-timeout, ... }
 //	extapi:        { def-dial-duration, iam, geo }
-//	network:       { default-sg-inline, project-cache }
 //	dataplane:     { executor }
 //
 // Все секции — `mapstructure`-теги (viper по умолчанию использует mapstructure
@@ -408,9 +407,7 @@ type TLSClient struct {
 
 // NetworkConfig — секция network (VPC-domain бизнес-настройки).
 type NetworkConfig struct {
-	// DefaultSGInline — создавать ли default SecurityGroup inline при Network.Create.
-	DefaultSGInline bool                     `mapstructure:"default-sg-inline"`
-	ProjectCache    ProjectCacheConfigStruct `mapstructure:"project-cache"`
+	ProjectCache ProjectCacheConfigStruct `mapstructure:"project-cache"`
 }
 
 // ProjectCacheConfigStruct — TTL+LRU кеш ProjectClient.Exists.

@@ -46,7 +46,7 @@ sequenceDiagram
     S->>DB: INSERT vpc_outbox (Network, CREATED) → pg_notify
     S->>DB: COMMIT
 
-    Note over S: inline default-SG — только при KACHO_VPC_DEFAULT_SG_INLINE=true (default)
+    Note over S: группа правил по умолчанию создаётся безусловно, в той же транзакции
     S->>S: short = first-8-chars(net_id)
     S->>DB: BEGIN
     S->>DB: INSERT security_groups (default-sg-{short}, network_id, default_for_network=true)
@@ -60,7 +60,7 @@ sequenceDiagram
 ```
 
 Особенности:
-- Default-SG создается inline в worker'е, если `KACHO_VPC_DEFAULT_SG_INLINE=true` (default). При `=false` шаги default-SG TX на диаграмме пропускаются.
+- Группа правил по умолчанию создаётся в воркере БЕЗУСЛОВНО, в той же транзакции: настройки и поля запроса, которые бы это отменяли, снята вместе с самой возможностью получить сеть без неё (интерфейс её наследует, поэтому сеть без группы означала бы интерфейс без единого правила).
 - `Network` несет internal-only инфра-идентификатор `vrf_id` (отдается только через `InternalNetworkService`, на публичной поверхности его нет).
 - Mapping: `ALREADY_EXISTS` на `networks_project_id_name_key` UNIQUE(project_id, name). Для остальных 6 ресурсов аналогичный partial UNIQUE `(project_id, name) WHERE name <> ''`.
 

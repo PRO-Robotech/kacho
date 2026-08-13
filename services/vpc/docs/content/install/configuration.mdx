@@ -66,7 +66,6 @@ import dedent from 'ts-dedent'
         endpoint: kacho-geo.kacho.svc:9090   # ZoneService.Get (валидация zone_id)
 
     network:
-      default-sg-inline: true                # создавать default-SG при Network.Create
       project-cache:
         positive-ttl: 30s
         negative-ttl: 5s
@@ -86,7 +85,6 @@ viper биндит ENV с префиксом **`KACHO_VPC_`** и раздели�
     <tr><td><code>KACHO\_VPC\_REPOSITORY\_\_POSTGRES\_\_URL</code></td><td><code>repository.postgres.url</code></td></tr>
     <tr><td><code>KACHO\_VPC\_REPOSITORY\_\_POSTGRES\_\_MAX\_CONNS</code></td><td><code>repository.postgres.max-conns</code></td></tr>
     <tr><td><code>KACHO\_VPC\_AUTH\_MODE</code></td><td><code>authn.mode</code> (<code>production|production-strict|dev</code>)</td></tr>
-    <tr><td><code>KACHO\_VPC\_DEFAULT\_SG\_INLINE</code></td><td><code>network.default-sg-inline</code></td></tr>
     <tr><td><code>KACHO\_VPC\_DB\_PASSWORD</code></td><td>пароль БД — подставляется в DSN (см. ниже)</td></tr>
   </tbody>
 </table>
@@ -122,7 +120,6 @@ ENV-переменные подключения к БД: `KACHO_VPC_DB_HOST` / `
     <tr><td><code>authz.list-filter.\*</code></td><td>FGA-фильтрация результатов <code>List&lt;Resource&gt;</code>: каждый список возвращает только доступные вызывающему объекты (read==enforce, no-leak)</td></tr>
     <tr><td><code>extapi.iam.endpoint</code></td><td>kacho-iam (<code>ProjectService.Get</code>) — existence-проверка <code>project\_id</code> на request-path</td></tr>
     <tr><td><code>extapi.geo.endpoint</code></td><td>kacho-geo (<code>ZoneService.Get</code>) — валидация <code>zone\_id</code> Subnet/AddressPool. Geography — отдельный leaf-домен <strong>kacho-geo</strong></td></tr>
-    <tr><td><code>network.default-sg-inline</code></td><td><code>true</code> (default): при <code>Network.Create</code> inline создается default-SG. <code>false</code>: сеть без default-SG (используется в load-тестах)</td></tr>
   </tbody>
 </table>
 
