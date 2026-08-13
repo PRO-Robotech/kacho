@@ -26,6 +26,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -156,6 +157,21 @@ func snapMarkSnapshotReady(t *testing.T, pool *pgxpool.Pool, snapshotID string) 
 
 // snapInsert снимает снимок с тома через репозиторий, выводя имя объекта так же,
 // как это делает use-case: из НЕИЗМЕНЯЕМОГО идентификатора снимка.
+// snapInsertReady заводит снимок и доводит его до пригодности ТЕМ ЖЕ
+// подтверждением, которое зовёт сверщик, увидев объект.
+//
+// Снимок РОЖДАЕТСЯ в намерении (объекта ещё нет), и это проверяется отдельной
+// пробой. Но потребителю снимка — засеву тома, образу — нужен ПРИГОДНЫЙ снимок:
+// неготовый не засевает ничего, и проба падала бы на подготовке, называя
+// виновником продукт.
+func snapInsertReady(t *testing.T, pool *pgxpool.Pool, sr *pg.SnapshotRepo, project, name, srcVolume string) *domain.Snapshot {
+	t.Helper()
+	s := snapInsert(t, sr, project, name, srcVolume)
+	confirmReady(t, pool, reconciler.KindSnapshot, s.ID, s.SizeBytes)
+	s.Status = domain.SnapshotStatusReady
+	return s
+}
+
 func snapInsert(t *testing.T, sr *pg.SnapshotRepo, project, name, srcVolume string) *domain.Snapshot {
 	t.Helper()
 	id := ids.NewID(domain.PrefixSnapshot)

@@ -44,6 +44,11 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 		PerformanceTier: "balanced",
 	})
 	require.NoError(t, err)
+	// Класс объявляет свою зону списком И обязан быть в ней ПРИВЯЗАН: список зон
+	// говорит «где класс себя предлагает», привязка — «чем он там обслуживается».
+	// Предмет пробы — первое, поэтому второе обязано быть выполнено, иначе отказ
+	// придёт не по той причине, которую проба закрепляет.
+	offerDiskTypeInZone(t, pool, "block-zoned-a", "region-1-a")
 
 	_, _, err = vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-wrong-zone",
@@ -68,6 +73,7 @@ func TestVolumeAcceptedOnDiskTypeOfferedInZone(t *testing.T) {
 		PerformanceTier: "balanced",
 	})
 	require.NoError(t, err)
+	offerDiskTypeInZone(t, pool, "block-zoned-b", "region-1-a", "region-1-b")
 
 	v, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-right-zone",

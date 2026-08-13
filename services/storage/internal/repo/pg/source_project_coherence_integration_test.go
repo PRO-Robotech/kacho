@@ -154,7 +154,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 	// Happy-path не задет: свой источник в СВОЁМ проекте по-прежнему сеет ресурс.
 	t.Run("same-project sources still seed", func(t *testing.T) {
 		ownVol := mkVolume(t, pool, vr, projAttacker, "own-vol", 4<<30)
-		ownSnap := mkSnapshot(t, sr, projAttacker, "own-snap", ownVol.ID)
+		ownSnap := snapInsertReady(t, pool, sr, projAttacker, "own-snap", ownVol.ID)
 		require.EqualValues(t, 4<<30, ownSnap.SizeBytes, "size snapshotted from own volume")
 
 		ownImgFromSnap, _, err := ir.Insert(ctx, &domain.Image{

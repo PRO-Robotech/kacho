@@ -508,6 +508,7 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	ctx := context.Background()
 
 	dtInsert(t, dr, &domain.DiskType{ID: "block-temp", Name: "temp"})
+	offerDiskTypeInZone(t, pool, "block-temp", "region-1-a")
 	vol, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "vol-ondtp",
 		ZoneID: "region-1-a", DiskTypeID: "block-temp", SizeBytes: 1 << 30,
