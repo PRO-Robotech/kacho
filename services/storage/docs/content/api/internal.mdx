@@ -102,8 +102,8 @@ graph LR
   {dedent`
     {
       "name": "block-central-1",
-      "kind": "CEPH_RBD",
-      "zoneIds": ["ru-central1-a", "ru-central1-b"],
+      "kind": "<род из закрытого перечня>",
+      "zoneIds": ["zone-1-a", "zone-1-b"],
       "endpoint": "cfg://block/central-1",
       "credentialsRef": "vault://kacho/storage/block-central-1",
       "status": "ACTIVE"
@@ -185,7 +185,7 @@ graph LR
   {dedent`
     {
       "diskTypeId": "nvme-general",
-      "zoneId": "ru-central1-a",
+      "zoneId": "zone-1-a",
       "backendId": "sb-7k2m9p4r1t8w3y6zb",
       "locator": { "pool": "kacho-block-general", "namespaceTemplate": "prj-{projectId}" },
       "capabilities": {
@@ -223,7 +223,11 @@ graph LR
 класс на 10 ГиБ и на 10 ТиБ не даёт одинаковых чисел, и опубликованная константа стала бы
 либо недостижимым обещанием на малом томе, либо занижением на большом.
 
-### Create · Get · List · Supersede
+### Create · Get · List
+
+У ревизии **три метода, и других нет**. Ни правки, ни удаления, ни отдельного глагола
+снятия с действия у неё не существует — вытеснение прежней ревизии есть **следствие**
+заведения новой, а не самостоятельная операция.
 
 <ApiOperation method="gRPC" endpoint="InternalDiskTypeBindingService/Create">
 
@@ -257,22 +261,17 @@ graph LR
 
 </ApiOperation>
 
-<ApiOperation method="gRPC" endpoint="InternalDiskTypeBindingService/Supersede">
+:::info Вытеснение — следствие, а не глагол
+`SUPERSEDED` не возвращается в `ACTIVE`, и отдельного метода, снимающего ревизию с
+действия, нет. Единственный способ сменить политику пары «класс, зона» — завести
+**новую** ревизию: тогда у ресурсов, созданных под прежней, остаётся своя политика, а не
+подменённая задним числом.
 
-Снимает действующую ревизию с действия **без замены**: класс перестаёт предлагаться в этой
-зоне, новые ресурсы на нём не создаются, существующие продолжают жить под своей ревизией.
-
-Это единственный глагол ревизии, и он меняет ровно одно — полосу действия. Содержание
-строки остаётся прежним, поэтому ссылка ресурса на неё продолжает значить то же, что
-значила в момент создания.
-
-Движение одностороннее: `SUPERSEDED` не возвращается в `ACTIVE`. Вернуть класс в зону —
-значит завести **новую** ревизию: тогда у ресурсов, созданных под прежней, остаётся своя
-политика, а не воскресшая чужая. Повтор на уже вытесненной ревизии идемпотентен.
-
-<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
-
-</ApiOperation>
+Из этого следует граница, которую стоит знать заранее: **перестать предлагать класс в
+отдельно взятой зоне через ревизию нельзя** — снять с действия можно только заменой.
+Вывод класса из обращения целиком делается на самом классе (`SetLifecycle` →
+`DEPRECATED`/`RETIRED`), а вывод бэкенда — его полосой `DRAINING`.
+:::
 
 ## InternalVolumeService
 
@@ -456,9 +455,20 @@ graph LR
 администратора поллить то, что уже готово.
 :::
 
+:::caution Путь делится с публичным чтением — различает **пара** «метод, путь»
+В отличие от реестра бэкендов и ревизий привязки, у этого сервиса REST-привязки **есть** —
+и мутации каталога стоят на **том же** пути, что публичное чтение
+(`GET /storage/v1/diskTypes[/{id}]`), отличаясь от него только HTTP-методом.
+
+Поэтому изоляция на крае ключуется на **паре** «метод, путь», а не на пути: классификатор,
+смотрящий на один путь, эти привязки не различает и увёл бы административные мутации на
+публичный мультиплексор. Источник классификации — принадлежность метода
+`Internal*`-сервису, поэтому новый метод изолируется автоматически, а не по форме пути.
+:::
+
 ### Create
 
-<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Create">
+<ApiOperation method="POST" endpoint="/storage/v1/diskTypes (только внутренний мукс)">
 
 Регистрирует класс. Возвращает `DiskType`.
 
@@ -478,7 +488,7 @@ graph LR
 
 ### Update
 
-<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Update">
+<ApiOperation method="PATCH" endpoint="/storage/v1/diskTypes/{diskTypeId} (только внутренний мукс)">
 
 Изменяет класс **по маске**. Возвращает `DiskType`.
 
@@ -496,7 +506,7 @@ graph LR
 
 ### SetLifecycle
 
-<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/SetLifecycle">
+<ApiOperation method="PATCH" endpoint="/storage/v1/diskTypes/{diskTypeId}:setLifecycle (только внутренний мукс)">
 
 Переводит класс между `ACTIVE`, `DEPRECATED` и `RETIRED`. Возвращает `DiskType`.
 
@@ -510,7 +520,7 @@ graph LR
 
 ### Delete
 
-<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Delete">
+<ApiOperation method="DELETE" endpoint="/storage/v1/diskTypes/{diskTypeId} (только внутренний мукс)">
 
 Снимает класс с регистрации.
 

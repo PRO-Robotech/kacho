@@ -28,6 +28,25 @@ export interface OperationList {
   next_page_token?: string;
 }
 
+// ====== storage: StatusReason (kacho.cloud.storage.v1.StatusReason) ======
+//
+// Закрытый словарь НАШИХ полос, общий для тома / снимка / образа. Свободной
+// строки причины на контракте нет и не будет: в неё попадал бы текст бэкенда
+// целиком (имя пула, координата узла), а гейт двухпроекционности перечисляет
+// ИМЕНА полей и такого значения не увидел бы.
+//
+// Отсюда следствие для консоли: текст причины берётся из ФИКСИРОВАННОЙ таблицы
+// по значению перечисления (`lib/status-reason.ts`), а не печатается как есть.
+export type StatusReason =
+  | "STATUS_REASON_UNSPECIFIED"
+  | "BACKEND_UNAVAILABLE"
+  | "BACKEND_REJECTED"
+  | "BACKEND_CAPACITY_EXHAUSTED"
+  | "SOURCE_NOT_READY"
+  | "PRECONDITION_FAILED"
+  | "INTERNAL_ERROR"
+  | string;
+
 // ====== reference (output-only used_by / kacho.cloud.reference.Reference) ======
 // referrer — {type,id,name°} dependency-handle; type — MANAGED_BY|USED_BY; owned —
 // живёт ли референт-биндинг под этим ресурсом (напр. auto_delete-вложение).
@@ -62,12 +81,27 @@ export interface Volume {
   disk_type_id?: string;
   // proto3 int64 сериализуется в JSON как СТРОКА.
   size_bytes?: string | number;
-  block_size?: string | number;
+  // Номер 11 занимало `block_size`. Оно принималось на Create, хранилось и
+  // возвращалось в ответе — и ни один путь не читал его значение. Снято с
+  // контракта (`reserved 11; reserved "block_size"`), поэтому и здесь его нет:
+  // объявленное поле, которого край не отдаёт, консоль читала бы вечно пустым.
+  //
+  // Фактически занятые байты. ОТСУТСТВУЮТ, когда бэкенд потребление не сообщил,
+  // — и это не ноль: ноль означал бы «том пуст», а такое утверждение на
+  // неотвеченном бэкенде было бы правдоподобной ложью. Отсюда `optional` в
+  // контракте и необязательность здесь — различие несёт само значение.
+  used_bytes?: string | number;
   source_snapshot_id?: string;
   // ID образа, из которого материализован boot-том. Provenance (ON DELETE SET NULL),
   // immutable, взаимоисключающий с source_snapshot_id. Output/провенанс.
   source_image_id?: string;
-  status?: "STATUS_UNSPECIFIED" | "CREATING" | "AVAILABLE" | "IN_USE" | "DELETING" | "ERROR" | string;
+  // MIGRATING — том переезжает на другой класс диска (принят ChangeDiskType).
+  // Состояние отдельное потому, что перенос ДЛИТСЯ и наблюдаем: без него том всё
+  // это время выглядел бы готовым.
+  status?: "STATUS_UNSPECIFIED" | "CREATING" | "AVAILABLE" | "IN_USE" | "DELETING" | "ERROR" | "MIGRATING" | string;
+  // Почему том оказался в своём состоянии. Заполняется у ERROR; в штатных
+  // состояниях STATUS_REASON_UNSPECIFIED.
+  status_reason?: StatusReason;
   attachments?: VolumeAttachment[];
   used_by?: ResourceReference[];
 }
@@ -98,6 +132,10 @@ export interface Image {
   min_disk_bytes?: string | number;
   format?: "FORMAT_UNSPECIFIED" | "STANDARD" | string;
   status?: "STATUS_UNSPECIFIED" | "CREATING" | "READY" | "DELETING" | "ERROR" | string;
+  status_reason?: StatusReason;
+  // Тома, засеянные этим образом. Output-only. Нужны ДО удаления, а не после:
+  // удаление образа проходит и очищает происхождение засеянных томов.
+  used_by?: ResourceReference[];
 }
 
 export interface ImageList {

@@ -6,6 +6,8 @@ package cephrbd_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -269,8 +271,16 @@ func TestValidateRef_NoMoreLenientThanTheDouble(t *testing.T) {
 
 func TestExecRunner_ValidateNamesEveryMissingPiece(t *testing.T) {
 	t.Parallel()
+	// Путь к инструменту обязан СУЩЕСТВОВАТЬ: страж проверяет наличие файла, а не
+	// непустоту строки. Поэтому положительный контроль указывает на настоящий
+	// файл этой машины, а не на путь боевого образа — иначе он падал бы всюду,
+	// где инструмент не установлен, и его пришлось бы ослабить.
+	toolPath := filepath.Join(t.TempDir(), "rbd")
+	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	full := cephrbd.ExecRunner{
-		Binary: "/usr/bin/rbd", ConfPath: "/etc/ceph/ceph.conf",
+		Binary: toolPath, ConfPath: "/etc/ceph/ceph.conf",
 		KeyringPath: "/etc/ceph/keyring", ClientName: "client.kacho", Timeout: 1,
 	}
 	if err := full.Validate(); err != nil {
@@ -283,6 +293,12 @@ func TestExecRunner_ValidateNamesEveryMissingPiece(t *testing.T) {
 		"нет имени":    func(r *cephrbd.ExecRunner) { r.ClientName = "" },
 		"нулевой срок": func(r *cephrbd.ExecRunner) { r.Timeout = 0 },
 		"срок < 0":     func(r *cephrbd.ExecRunner) { r.Timeout = -1 },
+		// Названный, но ОТСУТСТВУЮЩИЙ инструмент — настройка, а не сбой: без этой
+		// ветки каждое обращение выглядело бы недоступностью кластера, сверщик
+		// повторял бы вечно, а тома стояли бы создаваемыми при здоровом рапорте.
+		"инструмент назван, но его нет": func(r *cephrbd.ExecRunner) {
+			r.Binary = filepath.Join(t.TempDir(), "rbd-которого-нет")
+		},
 	} {
 		r := full
 		mut(&r)

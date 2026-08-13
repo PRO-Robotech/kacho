@@ -32,6 +32,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -65,6 +66,14 @@ type ExecRunner struct {
 
 // Validate проверяет полноту исполнителя. Вызывается при сборке адаптера, а не при
 // первом обращении: неполная посадка обязана быть видна на старте.
+//
+// # Почему проверяется СУЩЕСТВОВАНИЕ файла, а не непустота строки
+//
+// Непустая строка означает «путь назван», а не «инструмент есть». Отсутствующий
+// инструмент даёт отказ на КАЖДОМ обращении, и отказ этот неотличим от
+// недоступности кластера: сверщик считает его временным и повторяет вечно, тома
+// стоят создаваемыми, а сервис рапортует о здоровье. Это НАСТРОЙКА, а не сбой, и
+// её место — отказ в старте с именем ручки, а не поток одинаковых предупреждений.
 func (r ExecRunner) Validate() error {
 	switch {
 	case r.Binary == "":
@@ -77,6 +86,12 @@ func (r ExecRunner) Validate() error {
 		return errors.New("cephrbd: client name is required")
 	case r.Timeout <= 0:
 		return errors.New("cephrbd: per-command timeout must be positive")
+	}
+	if _, err := os.Stat(r.Binary); err != nil {
+		return fmt.Errorf("cephrbd: block backend tool %q is not present in this image: %w "+
+			"— a named-but-absent tool turns every provisioning call into what looks like cluster "+
+			"unavailability, so the reconciler retries forever, volumes stay pending and the service "+
+			"still reports itself healthy", r.Binary, err)
 	}
 	return nil
 }

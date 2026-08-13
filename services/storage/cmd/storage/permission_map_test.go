@@ -563,6 +563,16 @@ func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
 		"KACHO_STORAGE_DB_SSLMODE":             "require",
 		"KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE": "true",
 		"KACHO_STORAGE_LIST_FILTER_ENABLED":    "false", // ослаблено ровно одно измерение
+		// Плоскость данных — часть боевой посадки, и без неё старт отказывает по
+		// СВОЕЙ причине. Здесь она объявлена, чтобы отказ ниже относился ровно к
+		// сужателю: проба, где отвергается сразу два измерения, не отличает одно
+		// от другого и зеленела бы при снятии любого из них.
+		"KACHO_STORAGE_BLOCK_BACKEND_KIND":               "CEPH_RBD",
+		"KACHO_STORAGE_BLOCK_BACKEND_INSTALL_PREFIX":     "kc7f",
+		"KACHO_STORAGE_BLOCK_BACKEND_CREDENTIALS_DIR":    "/etc/kacho/storage/credentials",
+		"KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT":       "30s",
+		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL": "15s",
+		"KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH":    "100",
 	})
 	err := cfg.Validate()
 	if err == nil {

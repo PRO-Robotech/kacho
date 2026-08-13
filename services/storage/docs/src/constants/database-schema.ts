@@ -27,7 +27,7 @@ Table "kacho_storage"."disk_types" {
 Table "kacho_storage"."storage_backends" {
   "id" text [pk, not null, note: "'sb-' + crockford-base32"]
   "name" text [not null, note: 'UNIQUE в реестре; адресация идёт по id, имя косметическое']
-  "kind" text [not null, note: "CHECK IN ('CEPH_RBD') — за каждым значением стоит адаптер в нашем коде"]
+  "kind" text [not null, note: 'CHECK по закрытому перечню родов — за каждым значением стоит адаптер в нашем коде']
   "description" text [not null]
   "zone_ids" jsonb [not null, note: 'зоны, которые бэкенд обслуживает']
   "endpoint" text [not null, note: 'непрозрачная координата <схема>://<путь>; CHECK: непусто']
