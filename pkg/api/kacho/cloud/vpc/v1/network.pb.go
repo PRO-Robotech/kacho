@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A Network resource. For more information, see [Networks](/docs/vpc/concepts/network).
+// A Network resource. For more information, see [Network](https://vpc.kacho.cloud/api/network).
 type Network struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the network.

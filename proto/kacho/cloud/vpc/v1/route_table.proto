@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
-// A RouteTable resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A RouteTable resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 message RouteTable {
   // ID of the route table.
   string id = 1;
@@ -42,7 +42,7 @@ message RouteTable {
   repeated StaticRoute static_routes = 8;
 }
 
-// A StaticRoute resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A StaticRoute resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 message StaticRoute {
 
   oneof destination {

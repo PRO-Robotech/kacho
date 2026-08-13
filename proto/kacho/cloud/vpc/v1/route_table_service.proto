@@ -34,7 +34,7 @@ service RouteTableService {
   // Retrieves the list of RouteTable resources in the specified folder.
   rpc List (ListRouteTablesRequest) returns (ListRouteTablesResponse) {
     option (google.api.http) = { get: "/vpc/v1/routeTables" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_tableses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.route_tables.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -104,7 +104,7 @@ service RouteTableService {
   // List operations for the specified route table.
   rpc ListOperations (ListRouteTableOperationsRequest) returns (ListRouteTableOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/routeTables/{route_table_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.route_table_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.route_table_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_route_table"

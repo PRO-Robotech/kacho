@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
-// A Network resource. For more information, see [Networks](/docs/vpc/concepts/network).
+// A Network resource. For more information, see [Network](https://vpc.kacho.cloud/api/network).
 message Network {
   // ID of the network.
   string id = 1;

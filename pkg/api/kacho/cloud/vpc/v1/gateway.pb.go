@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A Gateway resource. For more information, see [Gateway](/docs/vpc/concepts/gateways).
+// A Gateway resource. For more information, see [Gateway](https://vpc.kacho.cloud/api/gateway).
 type Gateway struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the gateway. Generated at creation time.

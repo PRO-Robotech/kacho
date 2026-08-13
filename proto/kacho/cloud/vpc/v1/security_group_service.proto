@@ -34,7 +34,7 @@ service SecurityGroupService {
     // Retrieves the list of SecurityGroup resources in the specified folder.
     rpc List (ListSecurityGroupsRequest) returns (ListSecurityGroupsResponse) {
       option (google.api.http) = { get: "/vpc/v1/securityGroups" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_groupses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_groups.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -91,7 +91,7 @@ service SecurityGroupService {
             metadata: "UpdateSecurityGroupMetadata"
             response: "SecurityGroup"
         };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_ruleses.updateRules";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_rules.updateRules";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_security_group"
@@ -135,7 +135,7 @@ service SecurityGroupService {
     // Lists operations for the specified security groups.
     rpc ListOperations (ListSecurityGroupOperationsRequest) returns (ListSecurityGroupOperationsResponse) {
       option (google.api.http) = { get: "/vpc/v1/securityGroups/{security_group_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_security_group"
@@ -247,7 +247,11 @@ message SecurityGroupRuleSpec {
         // ID of the security group to add rule to.
         string security_group_id = 8;
         
-        // Predefined target. See [security groups rules](/docs/vpc/concepts/security-groups#security-groups-rules) for more information.
+        // Predefined target: a destination named by the platform, rather than given
+        // as a CIDR block or as a peer security group. Exactly one target is set per
+        // rule (`exactly_one` on the oneof above). Rule fields and the three target
+        // kinds are described on the
+        // [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
         string predefined_target = 9;
         // string subnet_id = .. ;
     }

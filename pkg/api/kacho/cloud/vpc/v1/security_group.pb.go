@@ -369,7 +369,11 @@ type SecurityGroupRule_SecurityGroupId struct {
 }
 
 type SecurityGroupRule_PredefinedTarget struct {
-	// Predefined target. See [security groups rules](/docs/vpc/concepts/security-groups#security-groups-rules) for more information.
+	// Predefined target: a destination named by the platform, rather than given
+	// as a CIDR block or as a peer security group. Exactly one target is set per
+	// rule (`exactly_one` on the oneof above). Rule fields and the three target
+	// kinds are described on the
+	// [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
 	PredefinedTarget string `protobuf:"bytes,10,opt,name=predefined_target,json=predefinedTarget,proto3,oneof"`
 }
 

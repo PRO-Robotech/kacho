@@ -38,7 +38,7 @@ service NetworkInterfaceService {
   // optionally filtered by instance / subnet / network.
   rpc List(ListNetworkInterfacesRequest) returns (ListNetworkInterfacesResponse) {
     option (google.api.http) = { get: "/vpc/v1/networkInterfaces" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_interfaceses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_interfaces.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -108,7 +108,7 @@ service NetworkInterfaceService {
   // Lists operations for the specified network interface.
   rpc ListOperations(ListNetworkInterfaceOperationsRequest) returns (ListNetworkInterfaceOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networkInterfaces/{network_interface_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_interface_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_interface_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network_interface"

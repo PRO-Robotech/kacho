@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A RouteTable resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A RouteTable resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 type RouteTable struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the route table.
@@ -140,7 +140,7 @@ func (x *RouteTable) GetStaticRoutes() []*StaticRoute {
 	return nil
 }
 
-// A StaticRoute resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A StaticRoute resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 type StaticRoute struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Destination:

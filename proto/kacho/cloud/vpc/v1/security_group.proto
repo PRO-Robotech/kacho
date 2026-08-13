@@ -93,7 +93,11 @@ message SecurityGroupRule {
         // ID of the security group to add rule to.
         string security_group_id = 9;
 
-        // Predefined target. See [security groups rules](/docs/vpc/concepts/security-groups#security-groups-rules) for more information.
+        // Predefined target: a destination named by the platform, rather than given
+        // as a CIDR block or as a peer security group. Exactly one target is set per
+        // rule (`exactly_one` on the oneof above). Rule fields and the three target
+        // kinds are described on the
+        // [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
         string predefined_target = 10;
     }
 

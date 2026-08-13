@@ -35,7 +35,7 @@ service SubnetService {
   // Retrieves the list of Subnet resources in the specified folder.
   rpc List(ListSubnetsRequest) returns (ListSubnetsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnetses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.subnets.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -103,7 +103,7 @@ service SubnetService {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blockses.addCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blocks.addCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
@@ -123,7 +123,7 @@ service SubnetService {
       metadata: "UpdateSubnetMetadata"
       response: "Subnet"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blockses.removeCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_cidr_blocks.removeCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
@@ -151,7 +151,7 @@ service SubnetService {
   // List operations for the specified subnet.
   rpc ListOperations(ListSubnetOperationsRequest) returns (ListSubnetOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets/{subnet_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.subnet_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"
@@ -163,7 +163,7 @@ service SubnetService {
   // List used addresses in specified subnet.
   rpc ListUsedAddresses(ListUsedAddressesRequest) returns (ListUsedAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/subnets/{subnet_id}/addresses"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.used_addresseses.listUsedAddresses";
+    option (kacho.iam.authz.v1.permission)        = "vpc.used_addresses.listUsedAddresses";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_subnet"

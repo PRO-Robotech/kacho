@@ -11,7 +11,7 @@ import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
-// An Address resource. For more information, see [Address](/docs/vpc/concepts/address).
+// An Address resource. For more information, see [Address](https://vpc.kacho.cloud/api/address).
 message Address {
   reserved 9 to 14;
 

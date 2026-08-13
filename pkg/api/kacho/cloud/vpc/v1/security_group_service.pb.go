@@ -490,7 +490,11 @@ type SecurityGroupRuleSpec_SecurityGroupId struct {
 }
 
 type SecurityGroupRuleSpec_PredefinedTarget struct {
-	// Predefined target. See [security groups rules](/docs/vpc/concepts/security-groups#security-groups-rules) for more information.
+	// Predefined target: a destination named by the platform, rather than given
+	// as a CIDR block or as a peer security group. Exactly one target is set per
+	// rule (`exactly_one` on the oneof above). Rule fields and the three target
+	// kinds are described on the
+	// [SecurityGroup](https://vpc.kacho.cloud/api/security-group) page.
 	PredefinedTarget string `protobuf:"bytes,9,opt,name=predefined_target,json=predefinedTarget,proto3,oneof"` // string subnet_id = .. ;
 }
 
@@ -1217,11 +1221,11 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xae\x11\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa8\x11\n" +
 	"\x14SecurityGroupService\x12\xde\x01\n" +
 	"\x03Get\x12+.kacho.cloud.vpc.v1.GetSecurityGroupRequest\x1a!.kacho.cloud.vpc.v1.SecurityGroup\"\x86\x01\x8a\xb5\x18\x17vpc.security_groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18'\n" +
-	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/securityGroups/{security_group_id}\x12\xcb\x01\n" +
-	"\x04List\x12-.kacho.cloud.vpc.v1.ListSecurityGroupsRequest\x1a..kacho.cloud.vpc.v1.ListSecurityGroupsResponse\"d\x8a\xb5\x18\x1avpc.security_groupses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/securityGroups/{security_group_id}\x12\xc9\x01\n" +
+	"\x04List\x12-.kacho.cloud.vpc.v1.ListSecurityGroupsRequest\x1a..kacho.cloud.vpc.v1.ListSecurityGroupsResponse\"b\x8a\xb5\x18\x18vpc.security_groups.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x18\x12\x16/vpc/v1/securityGroups\x12\xf4\x01\n" +
 	"\x06Create\x12..kacho.cloud.vpc.v1.CreateSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\x97\x01\x8a\xb5\x18\x1avpc.security_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
@@ -1230,8 +1234,8 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\x1bCreateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/vpc/v1/securityGroups\x12\x9c\x02\n" +
 	"\x06Update\x12..kacho.cloud.vpc.v1.UpdateSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\xbf\x01\x8a\xb5\x18\x1avpc.security_groups.update\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
-	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02/:\x01*2*/vpc/v1/securityGroups/{security_group_id}\x12\xb8\x02\n" +
-	"\vUpdateRules\x123.kacho.cloud.vpc.v1.UpdateSecurityGroupRulesRequest\x1a .kacho.cloud.operation.Operation\"\xd1\x01\x8a\xb5\x18&vpc.security_group_ruleses.updateRules\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
+	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02/:\x01*2*/vpc/v1/securityGroups/{security_group_id}\x12\xb6\x02\n" +
+	"\vUpdateRules\x123.kacho.cloud.vpc.v1.UpdateSecurityGroupRulesRequest\x1a .kacho.cloud.operation.Operation\"\xcf\x01\x8a\xb5\x18$vpc.security_group_rules.updateRules\x92\xb5\x18\bv_update\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
 	"\x1bUpdateSecurityGroupMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/securityGroups/{security_group_id}/rules\x12\xc1\x02\n" +
 	"\n" +
@@ -1240,8 +1244,8 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\x1fUpdateSecurityGroupRuleMetadata\x12\rSecurityGroup\x82\xd3\xe4\x93\x02?:\x01*2:/vpc/v1/securityGroups/{security_group_id}/rules/{rule_id}\x12\xa1\x02\n" +
 	"\x06Delete\x12..kacho.cloud.vpc.v1.DeleteSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\xc4\x01\x8a\xb5\x18\x1avpc.security_groups.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\xb2\xd2*4\n" +
-	"\x1bDeleteSecurityGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02,**/vpc/v1/securityGroups/{security_group_id}\x12\xad\x02\n" +
-	"\x0eListOperations\x126.kacho.cloud.vpc.v1.ListSecurityGroupOperationsRequest\x1a7.kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse\"\xa9\x01\x8a\xb5\x18.vpc.security_group_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18'\n" +
+	"\x1bDeleteSecurityGroupMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02,**/vpc/v1/securityGroups/{security_group_id}\x12\xab\x02\n" +
+	"\x0eListOperations\x126.kacho.cloud.vpc.v1.ListSecurityGroupOperationsRequest\x1a7.kacho.cloud.vpc.v1.ListSecurityGroupOperationsResponse\"\xa7\x01\x8a\xb5\x18,vpc.security_group_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x027\x125/vpc/v1/securityGroups/{security_group_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (

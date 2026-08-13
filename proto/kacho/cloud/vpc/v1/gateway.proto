@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
-// A Gateway resource. For more information, see [Gateway](/docs/vpc/concepts/gateways).
+// A Gateway resource. For more information, see [Gateway](https://vpc.kacho.cloud/api/gateway).
 message Gateway {
   // ID of the gateway. Generated at creation time.
   string id = 1;

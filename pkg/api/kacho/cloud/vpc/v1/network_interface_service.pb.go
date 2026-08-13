@@ -814,11 +814,11 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa4\r\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xa0\r\n" +
 	"\x17NetworkInterfaceService\x12\xf3\x01\n" +
 	"\x03Get\x12..kacho.cloud.vpc.v1.GetNetworkInterfaceRequest\x1a$.kacho.cloud.vpc.v1.NetworkInterface\"\x95\x01\x8a\xb5\x18\x1avpc.network_interfaces.get\x92\xb5\x18\x05v_get\x9a\xb5\x18-\n" +
-	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/vpc/v1/networkInterfaces/{network_interface_id}\x12\xd7\x01\n" +
-	"\x04List\x120.kacho.cloud.vpc.v1.ListNetworkInterfacesRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkInterfacesResponse\"j\x8a\xb5\x18\x1dvpc.network_interfaceses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/vpc/v1/networkInterfaces/{network_interface_id}\x12\xd5\x01\n" +
+	"\x04List\x120.kacho.cloud.vpc.v1.ListNetworkInterfacesRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkInterfacesResponse\"h\x8a\xb5\x18\x1bvpc.network_interfaces.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/vpc/v1/networkInterfaces\x12\x83\x02\n" +
 	"\x06Create\x121.kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xa3\x01\x8a\xb5\x18\x1dvpc.network_interfaces.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
@@ -830,8 +830,8 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\x1eUpdateNetworkInterfaceMetadata\x12\x10NetworkInterface\x82\xd3\xe4\x93\x025:\x01*20/vpc/v1/networkInterfaces/{network_interface_id}\x12\xb6\x02\n" +
 	"\x06Delete\x121.kacho.cloud.vpc.v1.DeleteNetworkInterfaceRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18\x1dvpc.network_interfaces.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18-\n" +
 	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\xb2\xd2*7\n" +
-	"\x1eDeleteNetworkInterfaceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x022*0/vpc/v1/networkInterfaces/{network_interface_id}\x12\xc2\x02\n" +
-	"\x0eListOperations\x129.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsRequest\x1a:.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse\"\xb8\x01\x8a\xb5\x181vpc.network_interface_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18-\n" +
+	"\x1eDeleteNetworkInterfaceMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x022*0/vpc/v1/networkInterfaces/{network_interface_id}\x12\xc0\x02\n" +
+	"\x0eListOperations\x129.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsRequest\x1a:.kacho.cloud.vpc.v1.ListNetworkInterfaceOperationsResponse\"\xb6\x01\x8a\xb5\x18/vpc.network_interface_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18-\n" +
 	"\x15vpc_network_interface\x12\x14network_interface_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02=\x12;/vpc/v1/networkInterfaces/{network_interface_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (

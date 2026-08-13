@@ -48,7 +48,7 @@ service AddressService {
   // Retrieves the list of Address resources in the specified folder.
   rpc List(ListAddressesRequest) returns (ListAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/addresses"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.addresseses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.addresses.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -134,7 +134,7 @@ service AddressService {
   // List operations for the specified address.
   rpc ListOperations(ListAddressOperationsRequest) returns (ListAddressOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/addresses/{address_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.address_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.address_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_address"

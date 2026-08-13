@@ -64,7 +64,7 @@ service NetworkService {
     // their grants were live. There is likewise no pre-resolved allow-set to
     // short-circuit on before touching the database — the page is read first
     // and the question is asked about it.
-    option (kacho.iam.authz.v1.permission)        = "vpc.networkses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.networks.list";
     option (kacho.iam.authz.v1.required_relation) = "viewer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
@@ -135,7 +135,7 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.addCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.addCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -155,7 +155,7 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.removeCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.removeCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -167,7 +167,7 @@ service NetworkService {
   // Lists subnets from the specified network.
   rpc ListSubnets (ListNetworkSubnetsRequest) returns (ListNetworkSubnetsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/subnets" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_subnetses.listSubnets";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_subnets.listSubnets";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -179,7 +179,7 @@ service NetworkService {
   // Lists security groups from the specified network.
   rpc ListSecurityGroups (ListNetworkSecurityGroupsRequest) returns (ListNetworkSecurityGroupsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/security_groups" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_security_groupses.listSecurityGroups";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_security_groups.listSecurityGroups";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -191,7 +191,7 @@ service NetworkService {
   // Lists route tables from the specified network.
   rpc ListRouteTables (ListNetworkRouteTablesRequest) returns (ListNetworkRouteTablesResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/route_tables" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_route_tableses.listRouteTables";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_route_tables.listRouteTables";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -203,7 +203,7 @@ service NetworkService {
   // Lists operations for the specified network.
   rpc ListOperations (ListNetworkOperationsRequest) returns (ListNetworkOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"

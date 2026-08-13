@@ -129,7 +129,7 @@ func (Address_IpVersion) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_address_proto_rawDescGZIP(), []int{0, 1}
 }
 
-// An Address resource. For more information, see [Address](/docs/vpc/concepts/address).
+// An Address resource. For more information, see [Address](https://vpc.kacho.cloud/api/address).
 type Address struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the address. Generated at creation time.

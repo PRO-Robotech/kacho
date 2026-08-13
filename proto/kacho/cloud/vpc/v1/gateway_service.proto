@@ -21,7 +21,7 @@ service GatewayService {
   // To get the list of all available Gateway resources, make a [List] request.
   rpc Get (GetGatewayRequest) returns (Gateway) {
     option (google.api.http) = {get: "/vpc/v1/gateways/{gateway_id}"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.get";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.get";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -33,7 +33,7 @@ service GatewayService {
   // Retrieves the list of Gateway resources in the specified folder.
   rpc List (ListGatewaysRequest) returns (ListGatewaysResponse) {
     option (google.api.http) = {get: "/vpc/v1/gateways"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewayses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -57,7 +57,7 @@ service GatewayService {
       metadata: "CreateGatewayMetadata"
       response: "Gateway"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.create";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
@@ -73,7 +73,7 @@ service GatewayService {
       metadata: "UpdateGatewayMetadata"
       response: "Gateway"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.update";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -89,7 +89,7 @@ service GatewayService {
       metadata: "DeleteGatewayMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.delete";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -101,7 +101,7 @@ service GatewayService {
   // List operations for the specified gateway.
   rpc ListOperations (ListGatewayOperationsRequest) returns (ListGatewayOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/gateways/{gateway_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gateway_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateway_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
