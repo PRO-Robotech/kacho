@@ -1,3 +1,6 @@
+-- Copyright (c) PRO-Robotech
+-- SPDX-License-Identifier: BUSL-1.1
+
 -- +goose Up
 -- Предикат уникальности имени объекта у бэкенда исключает НЕПРИСВОЕННОЕ имя.
 --
