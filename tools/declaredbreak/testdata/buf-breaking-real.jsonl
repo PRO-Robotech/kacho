@@ -1,0 +1,2 @@
+{"path":"kacho/cloud/vpc/v1/security_group.proto","start_line":63,"start_column":1,"end_line":108,"end_column":2,"type":"FIELD_NO_DELETE","message":"Previously present field \"10\" with name \"predefined_target\" on message \"SecurityGroupRule\" was deleted."}
+{"path":"kacho/cloud/vpc/v1/route_table_service.proto","start_line":19,"start_column":1,"end_line":148,"end_column":2,"type":"RPC_NO_DELETE","message":"Previously present RPC \"AddRoutes\" on service \"RouteTableService\" was deleted."}

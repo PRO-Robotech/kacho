@@ -345,10 +345,46 @@ jobs:
         working-directory: proto
         run: buf lint
 
-      - name: buf breaking (vs main)
+      # АДЪЮДИКАЦИЯ, А НЕ ПРОСТО `buf breaking`.
+      #
+      # Прежде здесь стоял голый `buf breaking`, и он верен ровно до того дня, когда
+      # ломающее изменение становится ОСОЗНАННЫМ (снятие метода, отвечающего отказом при
+      # любом входе; снятие поля, которое сервис принимает и не читает). Тогда шаг красен
+      # по построению, и у читателя остаётся два плохих хода: снять шаг — потерять защиту
+      # от СЛУЧАЙНЫХ разрывов на всём дереве ради одного объявленного; либо внести файл в
+      # `breaking.ignore` — послабление без предмета и без срока, ослепляющее проверку на
+      # целом файле НАВСЕГДА.
+      #
+      # Теперь разрыв проходит только через `proto/declared-breaks.yaml`, и запись живёт
+      # ровно пока у неё есть предмет: находка вне перечня — красное, запись без находки —
+      # ТОЖЕ красное. Гейт доказан трёхсторонней инъекцией на реальном выводе buf
+      # (tools/declaredbreak), печатает перепись и различает три исхода, а не два.
+      #
+      # Код возврата buf разбирается, а не проглатывается: 100 — «есть находки» (штатный
+      # вход адъюдикатора), 0 — «разрывов нет», ЛЮБОЙ ДРУГОЙ — гейт не сделал своей
+      # работы, и это отдельный исход. Иначе сетевой отказ читался бы как «разрывов нет».
+      - name: adjudicate breaking (vs main)
         if: github.event_name == 'pull_request'
-        working-directory: proto
-        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=proto"
+        run: |
+          set -uo pipefail
+          go build -o /tmp/adjudicate-declared-breaks ./tools/declaredbreak/cmd/adjudicate-declared-breaks
+          cd proto
+          set +e
+          buf breaking \
+            --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=proto" \
+            --error-format=json > /tmp/buf-breaking.jsonl 2>/tmp/buf-breaking.err
+          rc=$?
+          set -e
+          case "$rc" in
+            0|100) ;;
+            *)
+              echo "::error::buf breaking не сделал своей работы (код $rc) — это НЕ «разрывов нет»"
+              cat /tmp/buf-breaking.err >&2 || true
+              exit 2
+              ;;
+          esac
+          cd ..
+          /tmp/adjudicate-declared-breaks proto/declared-breaks.yaml < /tmp/buf-breaking.jsonl
 
       # Стабы закоммичены → они ОБЯЗАНЫ совпадать с .proto. Иначе кто-то правил
       # сгенерённое руками (что вдобавок бьёт rawDesc — см. README) либо забыл
