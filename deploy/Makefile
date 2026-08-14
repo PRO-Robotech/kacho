@@ -394,7 +394,7 @@ dev-up: preflight
 	$(MAKE) build-services; \
 	$(MAKE) build-ui; \
 	./scripts/gen-tls-cert.sh; \
-	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null; \
+	bash scripts/helm-umbrella-deps.sh; \
 	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \
 	helm upgrade --install $(CERT_MANAGER_RELEASE) $(CERT_MANAGER_CHART) -n kacho --create-namespace \
 	  --set crds.enabled=true \
@@ -682,7 +682,7 @@ admin-hop-injection: guard-kind-context
 	@bash scripts/inject-admin-hop-defects.sh
 
 helm-lint:
-	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null
+	bash scripts/helm-umbrella-deps.sh
 	cd helm/umbrella && helm lint -f values.dev.yaml
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -727,9 +727,12 @@ managed-image-pins-check:
 #
 # 1. Собирает зависимости чарта. Проверки рендерят умбреллу, а её `charts/*.tgz`
 #    в git не лежат (deploy/.gitignore). На свежем checkout'е рендер падал у
-#    всех, кроме одной проверки, которая сама зовёт `helm dep update` — то есть
+#    всех, кроме одной проверки, которая материализовала их сама — то есть
 #    результат зависел от АЛФАВИТНОГО ПОРЯДКА имён файлов. Собираем один раз,
-#    заранее, для всех.
+#    заранее, для всех — через ЕДИНСТВЕННОГО владельца
+#    (scripts/helm-umbrella-deps.sh). «Один раз» стало правдой только с ним:
+#    прежде подкачку звали шесть мест в дереве, за прогон job'а она уходила в
+#    сеть до десяти раз, и отказ ЛЮБОГО из походов красил весь прогон.
 #
 # 2. Проверяет, что `yq` — тот самый. В PATH бывают две разные программы с этим
 #    именем: mikefarah yq (v4, YAML) и python-yq (обёртка над jq). Фильтры
@@ -927,8 +930,8 @@ helm-manifest-test: gate-self-test
 	  echo "       фильтрах молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."; \
 	  exit 1; \
 	fi; \
-	echo "=== helm dependency build (проверки рендерят умбреллу; charts/*.tgz не в git) ==="; \
-	./scripts/helm-dep-update-retry.sh helm/umbrella >/dev/null; \
+	echo "=== зависимости умбреллы (проверки рендерят её; charts/*.tgz не в git) ==="; \
+	bash scripts/helm-umbrella-deps.sh; \
 	rm -rf helm/umbrella/tmpcharts-*; \
 	failed=""; total=0; \
 	for t in tests/helm/*-test.sh; do \

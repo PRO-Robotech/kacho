@@ -89,10 +89,18 @@ python3 -c 'import yaml' 2>/dev/null || { echo "FAIL: нужен python3 с PyYA
 command -v helm >/dev/null || { echo "FAIL: нужен helm"; exit 1; }
 
 # ОБЯЗАТЕЛЬНО перед рендером: сервисные сабчарты вендорятся в charts/*.tgz, и
-# `helm template` берёт ИМЕННО их. Сбой обновления — КРАСНОЕ: непроверенный
+# `helm template` берёт ИМЕННО их. Сбой материализации — КРАСНОЕ: непроверенный
 # рендер это не «всё хорошо».
-echo "=== $SCRIPT: helm dep update ==="
-( cd "$UMBRELLA" && helm dep update >/dev/null 2>&1 ) || { echo "FAIL: helm dep update"; exit 1; }
+#
+# Зовётся ЕДИНСТВЕННЫЙ владелец (scripts/helm-umbrella-deps.sh), а не helm
+# напрямую, и это не оформление. Прежняя строка глотала вывод (`>/dev/null 2>&1`)
+# и печатала «FAIL: helm dep update» — вердикт без причины: имя недоступного
+# адреса приходилось искать в ЧУЖОМ прогоне конвейера. Владелец печатает вывод
+# helm целиком, повторяет попытку ограниченное число раз и не ходит в сеть
+# повторно, если зависимости уже на месте.
+echo "=== $SCRIPT: зависимости умбреллы ==="
+bash "$REPO_ROOT/scripts/helm-umbrella-deps.sh" "$UMBRELLA" \
+  || { echo "FAIL: зависимости умбреллы не материализованы (причина — выводом выше)"; exit 1; }
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 
@@ -194,6 +202,7 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 printf '%s\n' "$PROFILES" | grep -v '^[[:space:]]*$' >"$TMPD/profiles"
+JUDGED=0
 while IFS= read -r row; do
   name="${row%%|*}"; files="${row#*|}"
   args=""; missing=""
@@ -210,9 +219,23 @@ while IFS= read -r row; do
   fi
   python3 "$TMPD/check.py" "$TMPD/$name.yaml" "$name" "$MAX_NAPTIME_S" \
     "$QUEUE_INSTANCES" "$NON_QUEUE_INSTANCES" || FAILED=1
+  JUDGED=$((JUDGED + 1))
 done <"$TMPD/profiles"
 
-# FAILED выставляется в теле while, который здесь исполняется в ТЕКУЩЕЙ оболочке
-# (перенаправление из файла, не пайп) — значение переживает цикл.
+# FAILED и JUDGED выставляются в теле while, который здесь исполняется в ТЕКУЩЕЙ
+# оболочке (перенаправление из файла, не пайп) — значения переживают цикл.
+#
+# ОБЪЁМ ОСМОТРЕННОГО называется числом, а не подразумевается: профили берутся из
+# таблицы стендов, и её опустевшая или переименованная колонка сделала бы эту
+# проверку немой — «all green» читалось бы одинаково и при шести отсуженных
+# профилях, и при нуле.
+QUEUES_DECLARED="$(printf '%s\n' "$QUEUE_INSTANCES" | grep -c .)"
+echo "$SCRIPT: осмотрено профилей $JUDGED из $(grep -c . "$TMPD/profiles"), " \
+     "баз с клеймимой очередью объявлено $QUEUES_DECLARED, без очереди $(printf '%s\n' $NON_QUEUE_INSTANCES | grep -c .)"
+if [ "$JUDGED" -eq 0 ]; then
+  echo "$SCRIPT: RED — не отсужено НИ ОДНОГО профиля; таблица стендов пуста или её"
+  echo "         колонка переименована. Ноль находок на нуле прочитанного — это провал."
+  exit 1
+fi
 [ "$FAILED" -eq 0 ] || { echo "$SCRIPT: RED"; exit 1; }
 echo "$SCRIPT: all green"
