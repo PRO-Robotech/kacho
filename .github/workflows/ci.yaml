@@ -1461,10 +1461,36 @@ jobs:
             fi
           fi
 
+          # Сторона ствола определяется ВХОЖДЕНИЕМ В `main`, а не порядком
+          # родителей.
+          #
+          # Гейт писался под посадку ветки В ствол, где первый родитель — ствол.
+          # Но процесс требует и обратного направления: ветка обязана регулярно
+          # ДОГОНЯТЬ ствол (`git-issues.md`), и тогда первый родитель — ветка, а
+          # второй — ствол. По порядку родителей стороны меняются местами, и
+          # каждая осознанная правка разрешения конфликта читается откатом. Ровно
+          # это и наблюдалось: пять находок, все — намеренные правки слияния.
+          #
+          # Различитель фактический: родитель, СОДЕРЖАЩИЙСЯ в `main`, и есть
+          # ствол. Он не зависит ни от направления, ни от того, кто как назвал
+          # ветку. Если в `main` содержатся оба родителя либо ни один — порядок
+          # остаётся прежним: гейт не угадывает, а работает как раньше.
+          git fetch --quiet origin main || true
+          trunk_ref=$(git rev-parse --verify --quiet FETCH_HEAD || git rev-parse --verify --quiet origin/main || echo "")
+
           total=0; clean=0; findings=0; blind=0; nosurface=0
           for m in $candidates; do
             total=$((total + 1))
             read -r _self first rest <<<"$(git rev-list --parents -n1 "$m")"
+            if [ -n "$trunk_ref" ] && [ "$(echo "$rest" | wc -w)" -eq 1 ]; then
+              in_first=0; in_rest=0
+              git merge-base --is-ancestor "$first" "$trunk_ref" 2>/dev/null && in_first=1
+              git merge-base --is-ancestor "$rest"  "$trunk_ref" 2>/dev/null && in_rest=1
+              if [ "$in_rest" = 1 ] && [ "$in_first" = 0 ]; then
+                echo "   направление: ствол влит В ветку — стороны переставлены по вхождению в main"
+                tmp=$first; first=$rest; rest=$tmp
+              fi
+            fi
             srcs=$(echo "$rest" | tr ' ' ',')
             base=$(git merge-base "$first" $rest)
             echo "── посадка $(git log -1 --format='%h %s' "$m")"

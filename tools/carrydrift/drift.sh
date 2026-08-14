@@ -31,6 +31,13 @@
 # исключаемое множество — ОБЪЕДИНЕНИЕ правок всех перенесённых веток, каждая со
 # своей базой: у веток базы разные, и вычитать их по одной нельзя.
 #
+# Осознанное СНЯТИЕ отличается от отката только объявлением. Ствол и ветка могут
+# независимо завести один предмет разными файлами; тогда в результате остаётся один,
+# и файл ствола снимается решением, а не переносом. По графу обе картины одинаковы,
+# поэтому решение называется явно — `tools/carrydrift/declared-removals.txt`, по
+# записи на файл, с причиной. Запись живёт ровно пока у неё есть предмет: снятие вне
+# перечня — красное, запись без снятия — ТОЖЕ красное.
+#
 # Использование:
 #   drift.sh <база> <ветка[,ветка...]> <ревизия-ствола> <ревизия-результата>
 
@@ -74,9 +81,30 @@ fi
 declare -A BRANCH_SET=()
 for f in "${BRANCH_TOUCHED[@]}"; do BRANCH_SET["$f"]=1; done
 
+# Объявленные снятия. Перечень читается с ВЕРШИНЫ отправки (`HEAD` по умолчанию),
+# а не из каждой судимой посадки, и это не мелочь: посадка уже совершена, и
+# требовать объявления внутри неё значило бы требовать переписать историю ради
+# того, чтобы её объяснить. Объявление описывает ОТПРАВКУ целиком, и каждая
+# посадка в ней судится под ним.
+#
+# Читается из дерева объектов, а не из рабочей копии: рабочая копия несёт
+# незакоммиченное, и гейт, читающий её, разрешал бы себе черновиком.
+declare -A DECLARED=()
+declare -A DECLARED_USED=()
+DECLARED_FILE=tools/carrydrift/declared-removals.txt
+DECLARED_REV=${DRIFT_DECLARED_REV:-HEAD}
+if git rev-parse --quiet --verify "$DECLARED_REV:$DECLARED_FILE" >/dev/null 2>&1; then
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue ;; esac
+    path=${line%%[[:space:]]*}
+    [ -n "$path" ] && DECLARED["$path"]=1
+  done < <(git show "$DECLARED_REV:$DECLARED_FILE")
+fi
+
 findings=0
 examined=0
 skipped=0
+declared_hits=0
 
 for f in "${TRUNK_TOUCHED[@]}"; do
   if [ -n "${BRANCH_SET[$f]+x}" ]; then
@@ -87,15 +115,36 @@ for f in "${TRUNK_TOUCHED[@]}"; do
   a=$(git rev-parse --quiet --verify "$TRUNK:$f" 2>/dev/null || echo MISSING)
   b=$(git rev-parse --quiet --verify "$LANDED:$f" 2>/dev/null || echo MISSING)
   if [ "$a" != "$b" ]; then
+    # Пропуском засчитывается ТОЛЬКО снятие. Файл на месте с другим содержимым —
+    # не снятие, и запись его не прикрывает: иначе объявление о снятии стало бы
+    # разрешением тихо править чужое.
+    if [ -n "${DECLARED[$f]+x}" ] && [ "$b" = MISSING ]; then
+      DECLARED_USED["$f"]=1
+      declared_hits=$((declared_hits + 1))
+      echo "снято решением: $f — объявлено в $DECLARED_FILE"
+      continue
+    fi
     findings=$((findings + 1))
     echo "ОТКАТ: $f — ствол несёт $a, результат несёт $b;"
     echo "       ветка этого файла не касалась, значит расхождение внесено переносом"
   fi
 done
 
+# Самоистечение перечня: запись, которой нечего исключать, — находка.
+stale=0
+for f in "${!DECLARED[@]}"; do
+  if [ -z "${DECLARED_USED[$f]+x}" ]; then
+    stale=$((stale + 1))
+    echo "ПЕРЕЖИЛА ПРЕДМЕТ: $DECLARED_FILE называет снятие $f, а снятия НЕТ;"
+    echo "       основание сравнения поднялось — удалите запись тем же изменением,"
+    echo "       иначе она молча прикроет следующее снятие"
+  fi
+done
+
 echo "drift: перепись — ствол изменил ${#TRUNK_TOUCHED[@]} файл(ов) с базы $BASE;"
 echo "       ветки отличаются на $skipped из них (их судит не этот гейт);"
-echo "       сверено побайтово $examined; находок $findings"
+echo "       сверено побайтово $examined; находок $findings;"
+echo "       снятий по объявлению $declared_hits; записей перечня ${#DECLARED[@]}"
 
 if [ "$examined" -eq 0 ]; then
   echo "drift: ни один файл не сверён — ветка касается всего, что менял ствол;" >&2
@@ -103,4 +152,4 @@ if [ "$examined" -eq 0 ]; then
   exit 2
 fi
 
-[ "$findings" -eq 0 ] || exit 1
+[ "$findings" -eq 0 ] && [ "$stale" -eq 0 ] || exit 1
