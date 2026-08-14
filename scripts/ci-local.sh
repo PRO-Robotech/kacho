@@ -171,16 +171,73 @@ go_group() {
         echo -e "\n== golangci-lint\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
     fi
 
-    # gosec запускается В ТОЙ ЖЕ ФОРМЕ, что в конвейере: без -exclude-dir=pkg/api
-    # он даёт ложные срабатывания на сгенерённых константах, и локальный прогон
-    # разошёлся бы с конвейером — то есть перестал бы о нём что-либо говорить.
+    # gosec запускается В ТОЙ ЖЕ ФОРМЕ, что в конвейере, и «та же форма» — это ТРИ
+    # вещи разом, а не одна. Прежняя редакция совпадала с конвейером по флагу
+    # исключения и расходилась по двум другим, утверждая при этом тождество.
+    #
+    # 1. ВЕРСИЯ. Конвейер ставит пин (`security-scan.yml`, шаг «install gosec»);
+    #    прежняя редакция брала то, что лежит в PATH. Замер 2026-08-14: в PATH был
+    #    2.22.10 против пина v2.28.0, и правило G115 у них срабатывает по-разному.
+    # 2. ПРЕДИКАТ. Конвейер гейтит по SARIF `level == "error"`; код возврата gosec
+    #    ненулевой при находке ЛЮБОГО уровня. Что эти предикаты расходятся, записано
+    #    в самом `security-scan.yml`: «локальная проверка „severity HIGH“ показывала
+    #    0, пока CI честно краснел». Здесь тот же класс в обратную сторону.
+    # 3. ИСКЛЮЧЕНИЕ КАТАЛОГА — единственное, что совпадало и раньше.
+    #
+    # Цена расхождения измерена на объединённой волне: по коду возврата — шесть
+    # находок и красное, по предикату конвейера — ноль ошибок при семи результатах
+    # ниже порога. Ложное красное учит игнорировать локальный прогон, а он —
+    # единственное, что стоит между правкой и стволом: PR внутрь релизной ветки
+    # конвейером не проверяется.
     #
     # Отдельно: gosec читает `#nosec`, а НЕ `//nolint:gosec`. Второе здесь не
     # подавляет ничего, и снятие такого комментария открывает настоящую находку.
-    if command -v gosec > /dev/null; then
-        run "gosec (форма конвейера)" gosec -exclude-dir=pkg/api -quiet ./...
+    local gosec_pin gosec_bin
+    gosec_pin=$(grep -oE 'gosec/v2/cmd/gosec@v[0-9.]+' "$ROOT/.github/workflows/security-scan.yml" 2>/dev/null | head -1)
+    if ! command -v jq > /dev/null; then
+        # Без jq предикат конвейера не вычислить, а откатываться на код возврата
+        # нельзя: он отвечает на другой вопрос и даёт ложное красное. Пропуск
+        # называется пропуском — «не выполнено» не есть «находок нет».
+        echo -e "\n== gosec\n   ПРОПУСК: нет jq, предикат конвейера (SARIF level=error) не вычислить."
+        echo "   Проверка НЕ выполнена. Поставьте jq — откат на код возврата дал бы"
+        echo "   красное на находках ниже порога, то есть вердикт о другом вопросе."
+    elif [ -z "$gosec_pin" ]; then
+        echo -e "\n== gosec\n   ОТКАЗ: пин версии не найден в security-scan.yml —"
+        echo "   без него локальный прогон судил бы другой версией, чем конвейер"
+        fails+=("gosec: пин не найден")
     else
-        echo -e "\n== gosec\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
+        gosec_bin="$WORK/gosec-bin"
+        printf '\n== gosec (%s, как в конвейере)\n' "${gosec_pin##*@}"
+        if GOBIN="$gosec_bin" go install "github.com/securego/${gosec_pin}" > "$WORK/gosec-install.txt" 2>&1; then
+            ran=$((ran + 1))
+            # Гейт — по SARIF level=error, тем же jq-предикатом, что в конвейере.
+            # Код возврата gosec здесь НЕ вердикт: он ненулевой и при находках
+            # ниже порога, то есть отвечает на другой вопрос.
+            "$gosec_bin/gosec" -exclude-dir=pkg/api -fmt sarif -out "$WORK/gosec.sarif" ./... \
+                > "$WORK/gosec-run.txt" 2>&1 || true
+            if [ ! -s "$WORK/gosec.sarif" ]; then
+                echo "   ОТКАЗ: отчёта нет — сканер не дошёл до вердикта, и это НЕ «находок нет»"
+                tail -5 "$WORK/gosec-run.txt" | sed 's/^/   | /'
+                fails+=("gosec: отчёт не создан")
+            else
+                local errs total
+                errs=$(jq '[.runs[].results[]|select(.level=="error")]|length' "$WORK/gosec.sarif")
+                total=$(jq '[.runs[].results[]]|length' "$WORK/gosec.sarif")
+                # Перепись — отдельное утверждение: «ноль ошибок» обязано быть
+                # отличимо от «ноль прочитанного».
+                echo "   осмотрено результатов ${total}; из них level=error: ${errs}"
+                if [ "$errs" -eq 0 ]; then
+                    echo "   ok"
+                else
+                    jq -r '.runs[].results[]|select(.level=="error")|"   | \(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' "$WORK/gosec.sarif"
+                    fails+=("gosec (level=error)")
+                fi
+            fi
+        else
+            echo "   ОТКАЗ: пиннутый gosec не поставился — проверка НЕ выполнена"
+            tail -5 "$WORK/gosec-install.txt" | sed 's/^/   | /'
+            fails+=("gosec: установка")
+        fi
     fi
 }
 
