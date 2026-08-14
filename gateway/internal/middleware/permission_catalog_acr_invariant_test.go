@@ -55,10 +55,10 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 25 FQNs that MUST carry required_acr_min="2" after the
-// refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
-// drift (an RPC added or dropped) fails this test. Categories A–H per the
-// APPROVED acceptance doc.
+// sensitiveACR2Set — the 28 FQNs that MUST carry required_acr_min="2" after the
+// refinement (grant-surface + credential + tenancy-root + shared-resource
+// ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
+// test. Categories A–J per the APPROVED acceptance docs.
 func sensitiveACR2Set() map[string]struct{} {
 	fqns := []string{
 		// A — credential mint/destroy (6). ServiceAccount Disable/Enable belong
@@ -143,6 +143,23 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.InternalInteractiveClientService/Create",
 		"kacho.cloud.iam.v1.InternalInteractiveClientService/Update",
 		"kacho.cloud.iam.v1.InternalInteractiveClientService/Delete",
+		// J — resource-count ceilings (3). Issue #291, S1.
+		//
+		// Sensitive because a ceiling decides how much of a SHARED resource one
+		// tenant may take. Raising one hands out headroom that is not created by
+		// the act; lowering one freezes a tenant's creation path; withdrawing one
+		// silently moves the decision to another scope. All three are grants in
+		// the same sense category B is: they change what a principal may do, and
+		// nothing about them is undone by the next read.
+		//
+		// Get / List / Resolve / ListChangedSince are deliberately NOT here —
+		// reading a ceiling grants nothing — and their exclusion is asserted by
+		// the complement test below, because the generator's default floor is "2"
+		// and an unstated floor would have put them here by accident rather than
+		// by decision.
+		"kacho.cloud.iam.v1.InternalLimitService/Create",
+		"kacho.cloud.iam.v1.InternalLimitService/Update",
+		"kacho.cloud.iam.v1.InternalLimitService/Delete",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -166,7 +183,11 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// then joined with IAM-INT-1 (24→27). The number is asserted rather than
 	// derived from the list on purpose — a silent shrink is exactly what would
 	// happen if an entry were dropped by accident.
-	require.Len(t, sensitive, 25, "the acceptance-doc sensitive set must contain exactly 25 FQNs")
+	// 25 → 28: потолки на число ресурсов (issue #291) добавили три мутации полосы
+	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
+	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
+	// при случайно выпавшей записи.
+	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -187,7 +208,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 25, "exactly 25 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -447,10 +468,22 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// заведённых этой веткой − 8 снятых ею с поверхности сети = 319. Разойдись
 	// оно с замером — верным был бы замер, а расхождение означало бы, что одна из
 	// сторон слияния потеряла записи молча.
-	assert.Equal(t, 25, n2, "sensitive count")
-	assert.Equal(t, 260, n1, "routine count")
+	// #291 S1 — потолки на число ресурсов: семь записей одного внутреннего
+	// сервиса. Три мутации (назначить · изменить · отозвать) уходят в полосу
+	// «чувствительное»: предел решает, сколько ОБЩЕГО ресурса берёт один
+	// арендатор, и ни одна из трёх не отменяется следующим чтением. Четыре
+	// чтения — рутинные: два административных (Get/List) и два служебных
+	// (Resolve/ListChangedSince), которыми владелец считаемого типа узнаёт
+	// действующий потолок и его дельту.
+	//
+	// 25→28 sensitive, 260→264 routine, exempt не тронут (34): ни одна из семи не
+	// освобождена от проверки — у двух служебных чтений отношение УЖЕ своё
+	// (`quota_reader`), потому что кластерный ярус чтения был бы для них выдачей
+	// много шире самой способности. Итог 319→326, замер по дереву.
+	assert.Equal(t, 28, n2, "sensitive count")
+	assert.Equal(t, 264, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 319, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 326, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
