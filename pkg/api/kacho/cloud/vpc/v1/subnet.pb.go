@@ -174,8 +174,19 @@ type Subnet struct {
 	Ipv6CidrPrimary string `protobuf:"bytes,18,opt,name=ipv6_cidr_primary,json=ipv6CidrPrimary,proto3" json:"ipv6_cidr_primary,omitempty"`
 	// Additional IPv6 CIDR ranges beyond the primary anchor (verb-pair mutation).
 	Ipv6CidrBlocks []string `protobuf:"bytes,19,rep,name=ipv6_cidr_blocks,json=ipv6CidrBlocks,proto3" json:"ipv6_cidr_blocks,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+	//
+	// Незаполненное поле означает «платформа не делает утверждения об этом
+	// объекте» (намерение снимается) и НЕ означает «не применено».
+	//
+	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
+	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+	ApplyState    *ApplyState `protobuf:"bytes,20,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Subnet) Reset() {
@@ -313,11 +324,18 @@ func (x *Subnet) GetIpv6CidrBlocks() []string {
 	return nil
 }
 
+func (x *Subnet) GetApplyState() *ApplyState {
+	if x != nil {
+		return x.ApplyState
+	}
+	return nil
+}
+
 var File_kacho_cloud_vpc_v1_subnet_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_subnet_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkacho/cloud/vpc/v1/subnet.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc0\x05\n" +
+	"\x1fkacho/cloud/vpc/v1/subnet.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\x81\x06\n" +
 	"\x06Subnet\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -336,7 +354,9 @@ const file_kacho_cloud_vpc_v1_subnet_proto_rawDesc = "" +
 	"\x11ipv4_cidr_primary\x18\x10 \x01(\tR\x0fipv4CidrPrimary\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x11 \x03(\tR\x0eipv4CidrBlocks\x12*\n" +
 	"\x11ipv6_cidr_primary\x18\x12 \x01(\tR\x0fipv6CidrPrimary\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x13 \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
+	"\x10ipv6_cidr_blocks\x18\x13 \x03(\tR\x0eipv6CidrBlocks\x12?\n" +
+	"\vapply_state\x18\x14 \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
+	"applyState\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
@@ -371,16 +391,18 @@ var file_kacho_cloud_vpc_v1_subnet_proto_goTypes = []any{
 	(*Subnet)(nil),                // 2: kacho.cloud.vpc.v1.Subnet
 	nil,                           // 3: kacho.cloud.vpc.v1.Subnet.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*ApplyState)(nil),            // 5: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_subnet_proto_depIdxs = []int32{
 	4, // 0: kacho.cloud.vpc.v1.Subnet.created_at:type_name -> google.protobuf.Timestamp
 	3, // 1: kacho.cloud.vpc.v1.Subnet.labels:type_name -> kacho.cloud.vpc.v1.Subnet.LabelsEntry
 	0, // 2: kacho.cloud.vpc.v1.Subnet.placement_type:type_name -> kacho.cloud.vpc.v1.SubnetPlacementType
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	5, // 3: kacho.cloud.vpc.v1.Subnet.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_subnet_proto_init() }
@@ -388,6 +410,7 @@ func file_kacho_cloud_vpc_v1_subnet_proto_init() {
 	if File_kacho_cloud_vpc_v1_subnet_proto != nil {
 		return
 	}
+	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

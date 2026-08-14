@@ -55,7 +55,7 @@ func TestNetworkInterfaceClient_Get_HappyPath(t *testing.T) {
 }
 
 func TestNetworkInterfaceClient_Get_NoV4Addresses(t *testing.T) {
-	nic := &vpcpb.NetworkInterface{Id: "e9b-nic-2", Status: vpcpb.NetworkInterface_PROVISIONING}
+	nic := &vpcpb.NetworkInterface{Id: "e9b-nic-2", Status: vpcpb.NetworkInterface_AVAILABLE}
 	conn := startFakeVPC(t, nil, &fakeNICService{resp: nic}, nil, nil, nil)
 	c := NewNetworkInterfaceClient(conn)
 	got, err := c.Get(ctxBackground(), "e9b-nic-2")

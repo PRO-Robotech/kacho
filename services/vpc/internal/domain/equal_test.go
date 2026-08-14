@@ -333,7 +333,7 @@ func TestNetworkInterface_Equal(t *testing.T) {
 		{"diff used_by_type", func(n *domain.NetworkInterface) { n.UsedByType = "other" }},
 		{"diff used_by_id", func(n *domain.NetworkInterface) { n.UsedByID = "ciX" }},
 		{"diff mac", func(n *domain.NetworkInterface) { n.MAC = "0e:aa:bb:cc:dd:ee" }},
-		{"diff status", func(n *domain.NetworkInterface) { n.Status = domain.NIStatusProvisioning }},
+		{"diff status", func(n *domain.NetworkInterface) { n.Status = domain.NIStatusAvailable }},
 		{"empty v6", func(n *domain.NetworkInterface) { n.V6AddressIDs = nil }},
 	}
 	for _, tc := range cases {
