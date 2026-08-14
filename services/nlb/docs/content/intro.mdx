@@ -93,7 +93,7 @@ Kachō NLB управляет **тремя типами ресурсов**. Вс
 ```mermaid
 flowchart TD
   lb["NetworkLoadBalancer<br/>(nlb) — 1 VIP на семейство"]
-  lst["Listener (lst)<br/>protocol · port · target_port"]
+  lst["Listener (lst)<br/>protocol · port"]
   tg["TargetGroup (tgr)<br/>+ HealthCheck"]
   tgt["Target[]<br/>instance / nic / in-cloud IP / external IP"]
 

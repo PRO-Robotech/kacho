@@ -51,7 +51,6 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 				Labels:         domain.LbLabels{},
 				Protocol:       domain.ProtoTCP,
 				Port:           port,
-				TargetPort:     80,
 				Status:         domain.ListenerStatusActive,
 			},
 			CreatedAt: time.Now().UTC(),
@@ -97,7 +96,6 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 			Name:           "h-created",
 			Protocol:       lbv1.Listener_TCP,
 			Port:           81,
-			TargetPort:     8081,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, op.Id)

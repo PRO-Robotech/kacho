@@ -173,3 +173,20 @@ declared:
       неизменяем, поэтому читателя у неё быть не могло, а принято-и-проигнорировано —
       не исход; номер и имя зарезервированы
     issue: kacho#246
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/loadbalancer/v1/listener.proto
+    symbol: target_port
+    reason: >-
+      backend-порт — одна величина с одним хозяином, и хозяин это TargetGroup.port:
+      поле слушателя записывалось, отдавалось обратно и не решало ничего, а
+      наблюдаемость обеспечивало эхо resolved_backend_port
+    issue: kacho#231
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/loadbalancer/v1/listener_service.proto
+    symbol: target_port
+    reason: >-
+      тот же признак на входе создания, вдобавок неисполнимый: поле объявлено
+      необязательным, а ноль — единственную форму «не задавал» — отвергали и проверка
+      диапазона, и ограничение базы, поэтому обещанное наследование порта группы не
+      срабатывало ни при каком входе
+    issue: kacho#231

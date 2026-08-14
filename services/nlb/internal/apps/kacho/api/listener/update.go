@@ -32,8 +32,8 @@ import (
 //     - empty mask → full-object PATCH: применяются все mutable-поля из тела;
 //     immutable из тела silently игнорируются (parity с loadbalancer/targetgroup).
 //     - unknown field → InvalidArgument "field '<X>' is not recognised in update_mask".
-//     - immutable field (load_balancer_id / protocol / port / target_port /
-//     project_id) → InvalidArgument
+//     - immutable field (load_balancer_id / protocol / port / project_id)
+//     → InvalidArgument
 //     по конвенции Kachō `"<field> is immutable after Listener.Create"`.
 //  4. Validate per-mask field (name regex, labels schema, etc).
 //  5. default_target_group_id same-region precheck  — async-soft
@@ -120,7 +120,6 @@ var listenerImmutableMaskPaths = map[string]struct{}{
 	"load_balancer_id": {},
 	"protocol":         {},
 	"port":             {},
-	"target_port":      {},
 	"project_id":       {},
 }
 

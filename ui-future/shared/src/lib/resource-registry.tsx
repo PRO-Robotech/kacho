@@ -3392,15 +3392,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         description: "Внешний порт 1..65535 (immutable после Create).",
       },
-      {
-        name: "target_port",
-        // Create-only: UpdateListenerRequest его не несёт.
-        immutable: true,
-        label: "Порт на target",
-        type: "int",
-        required: false,
-        description: "Порт на target-е (1..65535). Если не задан — равен `port`.",
-      },
       FIELD_LABELS,
     ],
     template: () => ({

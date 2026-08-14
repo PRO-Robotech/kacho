@@ -31,7 +31,6 @@ type Listener struct {
 	Labels               LbLabels
 	Protocol             LbProto
 	Port                 LbPort
-	TargetPort           LbPort
 	DefaultTargetGroupID option.ValueOf[ResourceID]
 	Status               ListenerStatus
 }
@@ -45,7 +44,6 @@ func (l Listener) Validate() error {
 		ValidateLabels(l.Labels),
 		l.Protocol.Validate(),
 		l.Port.Validate(),
-		l.TargetPort.Validate(),
 		l.Status.Validate(),
 	)
 }
@@ -61,7 +59,6 @@ func (l Listener) Equal(other Listener) bool {
 		LabelsEqual(l.Labels, other.Labels) &&
 		l.Protocol == other.Protocol &&
 		l.Port == other.Port &&
-		l.TargetPort == other.TargetPort &&
 		optEqual(l.DefaultTargetGroupID, other.DefaultTargetGroupID) &&
 		l.Status == other.Status
 }

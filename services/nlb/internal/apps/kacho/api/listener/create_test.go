@@ -97,7 +97,6 @@ func TestCreateListener_HappyPath_NoVIP(t *testing.T) {
 		Name:           "https",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 	})
 	require.NoError(t, err)
 	final := awaitOpDone(t, ops, op.ID, testTimeout)
@@ -107,7 +106,6 @@ func TestCreateListener_HappyPath_NoVIP(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, domain.ListenerStatusActive, got[0].Status)
 	require.Equal(t, domain.LbPort(443), got[0].Port)
-	require.Equal(t, domain.LbPort(8080), got[0].TargetPort)
 	// Outbox: listener CREATED + lb UPDATED(listener_created).
 	evts := repo.pendingOutbox()
 	var sawListenerCreated, sawLBUpdated bool
@@ -133,7 +131,7 @@ func TestCreateListener_LoadBalancerIDRequired(t *testing.T) {
 	t.Parallel()
 	uc := newCreateUC(newFakeRepo(), newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
-		Name: "x", Protocol: lbv1.Listener_TCP, Port: 80, TargetPort: 80,
+		Name: "x", Protocol: lbv1.Listener_TCP, Port: 80,
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -145,7 +143,7 @@ func TestCreateListener_NameRegexInvalid(t *testing.T) {
 	uc := newCreateUC(repo, newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "Bad Name!",
-		Protocol: lbv1.Listener_TCP, Port: 443, TargetPort: 8080,
+		Protocol: lbv1.Listener_TCP, Port: 443,
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -157,7 +155,7 @@ func TestCreateListener_PortOutOfRange(t *testing.T) {
 	uc := newCreateUC(repo, newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "p",
-		Protocol: lbv1.Listener_TCP, Port: 70000, TargetPort: 8080,
+		Protocol: lbv1.Listener_TCP, Port: 70000,
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -169,7 +167,7 @@ func TestCreateListener_UnsupportedProtocol(t *testing.T) {
 	uc := newCreateUC(repo, newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "p",
-		Protocol: lbv1.Listener_PROTOCOL_UNSPECIFIED, Port: 443, TargetPort: 8080,
+		Protocol: lbv1.Listener_PROTOCOL_UNSPECIFIED, Port: 443,
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
@@ -185,13 +183,13 @@ func TestCreateListener_DuplicatePortProto(t *testing.T) {
 		Listener: domain.Listener{
 			ID: "lst01EXISTING0000001", LoadBalancerID: lb.ID, ProjectID: lb.ProjectID,
 			RegionID: lb.RegionID, Name: "existing", Protocol: domain.ProtoTCP,
-			Port: 443, TargetPort: 8080, Status: domain.ListenerStatusActive,
+			Port: 443, Status: domain.ListenerStatusActive,
 		},
 	})
 	uc := newCreateUC(repo, ops)
 	op, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "dup",
-		Protocol: lbv1.Listener_TCP, Port: 443, TargetPort: 9090,
+		Protocol: lbv1.Listener_TCP, Port: 443,
 	})
 	require.NoError(t, err)
 	final := awaitOpDone(t, ops, op.ID, testTimeout)
@@ -204,7 +202,7 @@ func TestCreateListener_LBNotFound(t *testing.T) {
 	uc := newCreateUC(newFakeRepo(), newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: "nlb00000000000000miss", Name: "x",
-		Protocol: lbv1.Listener_TCP, Port: 80, TargetPort: 80,
+		Protocol: lbv1.Listener_TCP, Port: 80,
 	})
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
@@ -217,7 +215,7 @@ func TestCreateListener_LBDeleting(t *testing.T) {
 	uc := newCreateUC(repo, newFakeOpsRepo())
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "x",
-		Protocol: lbv1.Listener_TCP, Port: 80, TargetPort: 80,
+		Protocol: lbv1.Listener_TCP, Port: 80,
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	require.Contains(t, err.Error(), "being deleted")

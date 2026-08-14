@@ -627,7 +627,7 @@ CASES.append(Case(
         # соседний кейс (`tgr-mv-lb`) на том же шаге получил 200.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
+                   "protocol": "TCP", "port": 80,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
@@ -767,7 +767,7 @@ CASES.append(Case(
         # случайное, и чинить надо оба.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
+                   "protocol": "TCP", "port": 80,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),

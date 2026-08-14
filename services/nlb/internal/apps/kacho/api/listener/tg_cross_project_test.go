@@ -81,7 +81,6 @@ func TestCreateListener_CrossProjectTG_HiddenAsMissing(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  string(crossProjectVictimTGID),
 	})
 	require.Error(t, foreignErr, "cross-project TargetGroup must not be wireable")
@@ -91,7 +90,6 @@ func TestCreateListener_CrossProjectTG_HiddenAsMissing(t *testing.T) {
 		Name:           "tcp-444",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           444,
-		TargetPort:     8080,
 		TargetGroupId:  crossProjectAbsentTGID,
 	})
 	require.Error(t, absentErr)
@@ -122,7 +120,6 @@ func TestCreateListener_CrossProjectTG_LegacyField_Rejected(t *testing.T) {
 		Name:                 "tcp-443",
 		Protocol:             lbv1.Listener_TCP,
 		Port:                 443,
-		TargetPort:           8080,
 		DefaultTargetGroupId: string(crossProjectVictimTGID),
 	})
 	require.Error(t, err)
@@ -200,7 +197,6 @@ func TestCreateListener_TGViewerCheck_Denied(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  "tgr-samproject000001",
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
@@ -228,7 +224,6 @@ func TestCreateListener_TGViewerCheck_FailClosed(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  "tgr-samproject000001",
 	})
 	require.Equal(t, codes.Unavailable, status.Code(err))
@@ -250,7 +245,6 @@ func TestCreateListener_TGViewerCheck_NoPathDenied(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  "tgr-samproject000001",
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
@@ -273,7 +267,6 @@ func TestCreateListener_TGViewerCheck_AllowedHappyPath(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  "tgr-samproject000001",
 	})
 	require.NoError(t, err)

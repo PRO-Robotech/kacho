@@ -435,7 +435,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Протокол", path: "protocol", format: "code" },
       { header: "Порт", path: "port", format: "text" },
-      { header: "Порт на target", path: "target_port", format: "text" },
+      { header: "Порт на цели", path: "resolved_backend_port", format: "text" },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
@@ -475,17 +475,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Порт, на котором listener принимает входящий трафик (1..65535, immutable после Create).",
       },
       {
-        name: "target_port",
-        // Create-only: UpdateListenerRequest его не несёт.
-        immutable: true,
-        label: "Порт на target",
-        type: "int",
-        required: false,
-        min: 1,
-        max: 65535,
-        description: "Порт на target-е (1..65535). Если не задан — равен «Порт».",
-      },
-      {
         name: "default_target_group_id",
         label: "Target group по умолчанию",
         type: "ref",
@@ -502,25 +491,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       load_balancer_id: "",
       protocol: "TCP",
-      // port / target_port НЕ дефолтим в 0 — API отвергает порт 0 (диапазон
-      // [1,65535]). Пусто → пользователь обязан ввести (port), либо опущено
-      // (target_port → равен port через sanitize). Диапазон валидируется InputNumber.
+      // port НЕ дефолтим в 0 — край отвергает порт 0 (диапазон [1,65535]).
+      // Пусто → пользователь обязан ввести. Диапазон валидируется InputNumber.
+      //
+      // Порта на цели здесь нет: он живёт на группе целей и приходит обратно
+      // вычисляемым resolved_backend_port.
       default_target_group_id: "",
       labels: {},
     }),
-    // target_port по умолчанию равен port (конвенция LB). Backend требует
-    // target_port в [1,65535]: пустой/0 → 400 "port must be in range". Без этого
-    // sanitize пользователь, оставив «Порт на target» пустым, получал скрытую
-    // ошибку create (listener не создавался).
-    sanitize: (obj) => {
-      const o = { ...obj } as Record<string, unknown>;
-      const tp = o.target_port;
-      const port = o.port;
-      const portSet = typeof port === "number" ? port > 0 : typeof port === "string" && port !== "";
-      const tpUnset = tp === undefined || tp === null || tp === "" || tp === 0;
-      if (tpUnset && portSet) o.target_port = port;
-      return o;
-    },
   },
 
   "target-groups": {
