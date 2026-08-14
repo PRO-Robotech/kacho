@@ -219,6 +219,14 @@ networkPolicy:
     enabled: false           # pg-<svc>-ingress-allowlist (all 6)
 
 # ── current-main hardened images (supersede rev-56 pins) + production peer edges ──
+#
+# ОТКУДА ВЫВЕДЕНЫ ТЕГИ. Этот файл — авторитетный для рендера четырёх служб
+# (см. заметку о порядке слоёв в values.fe3455.yaml), поэтому его пины и есть
+# то, что развернётся. Они ВЫВОДЯТСЯ из записи ниже; расхождение записи и пина
+# роняет прогон (deploy/managed_cluster_profile_test.go). Переписывать —
+# порождающим deploy/scripts/gen-managed-image-pins.sh, а не рукой:
+#   make -C deploy managed-image-pins PROFILE=helm/umbrella/values.fe3455-prod.yaml REF=<коммит>
+# порождено-от: main b622b388db3ed304b9077df54526155ab98e559a
 # vpc/compute/nlb → geo (geo.v1.{Zone,Region}Service) is a real runtime edge
 # (zone_id/region_id validation); values.prod's mtls.edges predates the geo
 # cutover (kacho-workspace#82) and omits it, so the hardened services fail-closed

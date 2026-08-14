@@ -699,13 +699,18 @@ helm-lint:
 # чьё имя несёт тег: образ с таким тегом публикует сборка этой ветки, и для
 # стороннего коммита его нет — отказ здесь дешевле, чем ImagePullBackOff через
 # минуты после успешного «helm upgrade».
+#
+# PROFILE — какой профиль порождать/сверять. Умолчание — профиль посадки на
+# управляемый кластер; остальные профили с пинами называются явно, потому что
+# переписать чужой стенд по невнимательности дороже, чем набрать путь.
 REF ?= HEAD
+PROFILE ?= helm/umbrella/values.a8f60d.yaml
 
 managed-image-pins:
-	@bash scripts/gen-managed-image-pins.sh --ref $(REF)
+	@bash scripts/gen-managed-image-pins.sh --profile $(PROFILE) --ref $(REF)
 
 managed-image-pins-check:
-	@bash scripts/gen-managed-image-pins.sh --check
+	@bash scripts/gen-managed-image-pins.sh --profile $(PROFILE) --check
 
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
 # against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
