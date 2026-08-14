@@ -37,6 +37,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // quotaUsageTables — таблицы учёта потребления. Перечень ВЫПИСАН, а не выведен:
@@ -60,7 +62,15 @@ var quotaUsageTables = []string{
 // пор его писатель обязан быть назван здесь, а не молча пропущен.
 var quotaTriggerDefiningFiles = map[string][]string{
 	"project_resource_quotas": {
+		// Механизм списания живёт в ДВУХ файлах, и это не дубль: 0040 завела
+		// триггерную функцию, 0041 заменила её тело через `CREATE OR REPLACE`,
+		// переведя классификацию отказа на единственного производителя, общего с
+		// совещательной полосой. Применённую миграцию править нельзя (ban #5),
+		// поэтому у одной функции два места определения во времени — и оба обязаны
+		// быть названы здесь: пропусти 0041, и гейт объявит находкой сам механизм;
+		// сними 0040, и его откат (восстанавливающий прежнее тело) станет обходом.
 		"services/vpc/internal/migrations/0040_project_resource_quotas.sql",
+		"services/vpc/internal/migrations/0041_quota_refusal_single_producer.sql",
 	},
 	"project_instance_quotas": {
 		"services/compute/internal/migrations/0031_project_instance_limit.sql",
@@ -78,6 +88,15 @@ var (
 // scanRootsForQuotaWriters — где искать. Пустой обход — провал, а не «чисто».
 var scanRootsForQuotaWriters = []string{"services", "pkg", "gateway"}
 
+// forEachQuotaScannedFile отдаёт содержимое каждого ОТСЛЕЖИВАЕМОГО файла под
+// корнями обхода.
+//
+// Состав берётся у индекса дерева (`internal/treecorpus`), а не обходом диска.
+// Разница не косметическая: под `services/` на всякой машине, где поднимали
+// стенд, лежат распаковки чартов, отчёты прогонов и рабочие копии агентов —
+// обход диска прочитал бы их и объявил находкой чужой файл (или, что тише,
+// раздул бы перепись, сделав «осмотрено» неправдой). Гейт дерева
+// `TestTreeWalkersAskTheIndex` это требование и держит.
 func forEachQuotaScannedFile(t *testing.T, root string, fn func(rel string, body []byte)) {
 	t.Helper()
 	for _, sub := range scanRootsForQuotaWriters {
@@ -85,29 +104,23 @@ func forEachQuotaScannedFile(t *testing.T, root string, fn func(rel string, body
 		if _, err := os.Stat(base); err != nil {
 			continue
 		}
-		err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return err
-			}
-			name := info.Name()
-			isGo := strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
-			isSQL := strings.HasSuffix(name, ".sql")
-			if !isGo && !isSQL {
-				return nil
+		files, err := treecorpus.UnderWithSuffix(base, ".go", ".sql")
+		if err != nil {
+			t.Fatalf("состав дерева под %s: %v", sub, err)
+		}
+		for _, path := range files {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
 			}
 			body, readErr := os.ReadFile(path)
 			if readErr != nil {
-				return readErr
+				t.Fatalf("чтение %s: %v", path, readErr)
 			}
 			rel, relErr := filepath.Rel(root, path)
 			if relErr != nil {
-				return relErr
+				t.Fatalf("относительный путь %s: %v", path, relErr)
 			}
 			fn(filepath.ToSlash(rel), body)
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("обход %s: %v", base, err)
 		}
 	}
 }

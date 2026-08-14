@@ -39,7 +39,7 @@ import (
 // Concurrency: один Mutex защищает map + LRU-list, все операции O(1)
 // среднеамортизированно. Goroutine-safe (проверено unit-тестом с -race).
 type CachedProjectClient struct {
-	upstream repo.ProjectClient
+	upstream projectDescriber
 	posTTL   time.Duration
 	negTTL   time.Duration
 	maxSize  int
@@ -50,10 +50,33 @@ type CachedProjectClient struct {
 	lruLst *list.List
 }
 
+// projectDescriber — то, что декоратор ожидает от upstream: существование
+// проекта И его аккаунт, оба из ОДНОГО вызова `ProjectService.Get`.
+//
+// Порт шире `repo.ProjectClient` намеренно. Аккаунт нужен материализации учёта
+// (приёмка квот, V2-4), и он обязан приезжать тем же обращением: заведи ему
+// отдельный вызов — «нового ребра работа не заводит» осталось бы верным на
+// бумаге и ложным в нагрузке, а кэш хранил бы два ответа об одном проекте.
+type projectDescriber interface {
+	repo.ProjectClient
+	// Describe отдаёт ОБА факта разом. Именно оба, а не аккаунт: выводить
+	// существование из непустоты аккаунта значило бы утверждать, что у
+	// существующего проекта аккаунт непуст ВСЕГДА, — обещания такого владелец
+	// проектов не давал, а цена ошибки в том, что существующий проект стал бы
+	// «несуществующим».
+	Describe(ctx context.Context, projectID string) (bool, string, error)
+}
+
 // projectCacheEntry — одна запись кеша.
+//
+// Запись ОДНА на проект и несёт оба факта: они получены одним ответом соседа и
+// устаревают вместе. Две записи разошлись бы по времени жизни, и «проект есть»
+// могло бы жить дольше, чем «его аккаунт такой-то», — состояние, в котором
+// материализация заводит строку с чужим зеркалом.
 type projectCacheEntry struct {
 	projectID string
 	exists    bool
+	accountID string
 	exp       time.Time
 }
 
@@ -84,7 +107,7 @@ type ProjectCacheConfig struct {
 //	    NegativeTTL: cfg.ProjectCacheNegativeTTL,
 //	    MaxSize:     cfg.ProjectCacheSize,
 //	})
-func NewCachedProjectClient(upstream repo.ProjectClient, cfg ProjectCacheConfig) *CachedProjectClient {
+func NewCachedProjectClient(upstream projectDescriber, cfg ProjectCacheConfig) *CachedProjectClient {
 	if cfg.PositiveTTL <= 0 {
 		cfg.PositiveTTL = 30 * time.Second
 	}
@@ -110,13 +133,28 @@ func NewCachedProjectClient(upstream repo.ProjectClient, cfg ProjectCacheConfig)
 
 // Exists проверяет существование project через кеш + upstream.
 func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (bool, error) {
+	exists, _, err := c.describe(ctx, projectID)
+	return exists, err
+}
+
+// AccountOf возвращает аккаунт проекта из ТОЙ ЖЕ записи кеша, что и Exists.
+//
+// Промах здесь стоит ровно одного вызова к соседу — того самого, который путь
+// создания сделал бы и без учёта.
+func (c *CachedProjectClient) AccountOf(ctx context.Context, projectID string) (string, error) {
+	_, accountID, err := c.describe(ctx, projectID)
+	return accountID, err
+}
+
+// describe — единственная точка обращения к upstream и к кешу.
+func (c *CachedProjectClient) describe(ctx context.Context, projectID string) (bool, string, error) {
 	// Cache hit?
-	if exists, ok := c.lookup(projectID); ok {
-		return exists, nil
+	if exists, accountID, ok := c.lookup(projectID); ok {
+		return exists, accountID, nil
 	}
 
-	// Miss → upstream call.
-	exists, err := c.upstream.Exists(ctx, projectID)
+	// Miss → upstream call. Оба факта приходят одним обращением.
+	exists, accountID, err := c.upstream.Describe(ctx, projectID)
 	if err != nil {
 		// Различаем семантически:
 		//   - codes.NotFound внутри err: наш ProjectClient уже маппит
@@ -130,7 +168,7 @@ func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (boo
 		// перебой у соседа как «проекта нет» на всё окно TTL.
 		lane := peer.Classify(err)
 		if !lane.RefusedReference() {
-			return false, err
+			return false, "", err
 		}
 		// Наружу — отказ ссылки (анти-оракул: промах, отказ в правах и негодный
 		// идентификатор для арендатора неразличимы).
@@ -142,44 +180,44 @@ func (c *CachedProjectClient) Exists(ctx context.Context, projectID string) (boo
 		// eventually-consistent), и фиксировать его как «проекта нет» на всё окно
 		// TTL для всех — значит превратить транзиент в общий отказ.
 		if lane.CallerIndependent() {
-			c.store(projectID, false, c.negTTL)
+			c.store(projectID, false, "", c.negTTL)
 		}
-		return false, nil
+		return false, "", nil
 	}
 
 	ttl := c.posTTL
 	if !exists {
 		ttl = c.negTTL
 	}
-	c.store(projectID, exists, ttl)
-	return exists, nil
+	c.store(projectID, exists, accountID, ttl)
+	return exists, accountID, nil
 }
 
 // lookup возвращает (exists, true) если кеш hit и не expired, иначе
 // (_, false). Также промотирует entry в head LRU.
-func (c *CachedProjectClient) lookup(projectID string) (bool, bool) {
+func (c *CachedProjectClient) lookup(projectID string) (bool, string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	el, ok := c.cache[projectID]
 	if !ok {
-		return false, false
+		return false, "", false
 	}
 	e := el.Value.(*projectCacheEntry)
 	if c.clock().After(e.exp) {
 		// Expired → evict.
 		c.lruLst.Remove(el)
 		delete(c.cache, projectID)
-		return false, false
+		return false, "", false
 	}
 	// LRU touch.
 	c.lruLst.MoveToFront(el)
-	return e.exists, true
+	return e.exists, e.accountID, true
 }
 
 // store записывает entry в кеш с указанным TTL; вытесняет LRU-tail
 // если перешагнули maxSize.
-func (c *CachedProjectClient) store(projectID string, exists bool, ttl time.Duration) {
+func (c *CachedProjectClient) store(projectID string, exists bool, accountID string, ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -188,13 +226,14 @@ func (c *CachedProjectClient) store(projectID string, exists bool, ttl time.Dura
 		// Обновляем существующую запись.
 		e := el.Value.(*projectCacheEntry)
 		e.exists = exists
+		e.accountID = accountID
 		e.exp = exp
 		c.lruLst.MoveToFront(el)
 		return
 	}
 
 	// Insert new.
-	e := &projectCacheEntry{projectID: projectID, exists: exists, exp: exp}
+	e := &projectCacheEntry{projectID: projectID, exists: exists, accountID: accountID, exp: exp}
 	el := c.lruLst.PushFront(e)
 	c.cache[projectID] = el
 

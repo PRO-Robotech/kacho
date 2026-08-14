@@ -29,6 +29,14 @@ import (
 // (`doCreate`) остаётся атомарным backstop'ом: существование проекта у владельца,
 // UNIQUE имени и потолок состава отвечают в ней конструкцией базы.
 type CreateCidrGroupUseCase struct {
+	// quota — совещательная полоса учёта (порт QuotaGuard).
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции), и
+	// потому провязка обязательна на любом поднятом стенде; отсутствие допустимо
+	// только там, где нет и соседа, у которого спрашивать величины.
+	quota         QuotaGuard
 	repo          Repo
 	projectClient ProjectClient
 	opsRepo       operations.Repo
@@ -102,6 +110,18 @@ func (u *CreateCidrGroupUseCase) Execute(ctx context.Context, g domain.CidrGroup
 	}
 
 	groupID := ids.NewHyphenID(ids.PrefixCidrGroupHyphen)
+	// Учёт числа ресурсов: ранний отказ ДО создания операции.
+	//
+	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —
+	// момент, когда владелец типа впервые узнаёт о проекте, и есть обращение к
+	// нему. Отказ уходит арендатору синхронно тем же текстом и признаком, каким
+	// его произвёл бы триггер: у обеих полос один производитель.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, string(g.ProjectID), "vpc.cidrGroup"); err != nil {
+			return nil, serviceerr.MapRepoErr(err)
+		}
+	}
+
 	op, err := operations.NewFromContext(
 		ctx,
 		ids.PrefixOperationVPC,
@@ -183,4 +203,14 @@ func (u *CreateCidrGroupUseCase) doCreate(ctx context.Context, groupID string, g
 	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "CidrGroup", created.ID)
 
 	return marshalCidrGroupRecord(created)
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateCidrGroupUseCase) WithQuotaGuard(g QuotaGuard) *CreateCidrGroupUseCase {
+	u.quota = g
+	return u
 }

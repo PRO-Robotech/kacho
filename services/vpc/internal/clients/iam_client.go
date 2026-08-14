@@ -44,11 +44,58 @@ func NewProjectClient(conn grpc.ClientConnInterface) *ProjectClient {
 // Exists проверяет существование Project через kacho-iam.ProjectService.Get.
 // Кеш — в CachedProjectClient (bounded LRU); тут только gRPC + retry.
 func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, error) {
-	var exists bool
+	exists, _, err := c.describe(ctx, projectID)
+	return exists, err
+}
+
+// AccountOf возвращает аккаунт проекта — зеркало, без которого строка учёта
+// невидима аккаунтной дельте (приёмка квот, V2-4).
+//
+// ТОТ ЖЕ вызов, что и Exists, а не второй: `ProjectService.Get` возвращает
+// проект целиком, и прежде ответ выбрасывался. «Нового ребра работа не заводит»
+// держится ЗДЕСЬ — тем, что оба глагола идут одним `describe`, а кэш поверх них
+// (`CachedProjectClient`) хранит одну запись на проект. Заведи AccountOf
+// собственный вызов — утверждение осталось бы верным на бумаге и ложным в
+// нагрузке: путь создания платил бы двумя обращениями вместо одного.
+func (c *ProjectClient) AccountOf(ctx context.Context, projectID string) (string, error) {
+	exists, accountID, err := c.describe(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		// Отсутствие проекта — не «пустой аккаунт»: пустая строка уехала бы в
+		// материализацию и была бы отвергнута ограничением схемы, назвав
+		// предметом зеркало вместо проекта. Наружу идёт то же, что и у Exists:
+		// отказ ссылки, неразличимый для арендатора между промахом и отказом в
+		// правах (анти-оракул).
+		return "", nil
+	}
+	return accountID, nil
+}
+
+// Describe возвращает ОБА факта о проекте одним обращением: существует ли он и
+// какому аккаунту принадлежит.
+//
+// Экспортирован ради кэша-декоратора: тот обязан класть в одну запись оба факта,
+// а не выводить один из другого. Вывод «аккаунт непуст ⇒ проект есть» выглядит
+// безобидно и неверен по построению: пустой аккаунт у существующего проекта —
+// состояние, которого владелец проектов нам не обещал, и в тот день, когда оно
+// случится, существующий проект стал бы «несуществующим» — то есть отказ пришёл
+// бы не оттуда и не про то.
+func (c *ProjectClient) Describe(ctx context.Context, projectID string) (bool, string, error) {
+	return c.describe(ctx, projectID)
+}
+
+// describe — единственное место, где vpc зовёт ProjectService.Get.
+func (c *ProjectClient) describe(ctx context.Context, projectID string) (bool, string, error) {
+	var (
+		exists    bool
+		accountID string
+	)
 	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
 		cctx, cancel := peerCallCtx(ctx, c.timeout)
 		defer cancel()
-		_, rerr := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
+		resp, rerr := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
 		if rerr != nil {
 			// Полосу выбирает носитель (pkg/peer). «Владелец установил, что ссылка
 			// не годится» — это промах, негодный по его мнению id И ОТКАЗ В ПРАВАХ:
@@ -66,10 +113,11 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 			return rerr
 		}
 		exists = true
+		accountID = resp.GetAccountId()
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
-	return exists, nil
+	return exists, accountID, nil
 }
