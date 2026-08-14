@@ -152,3 +152,12 @@ func (h *Handler) Move(ctx context.Context, req *lbv1.MoveNetworkLoadBalancerReq
 	}
 	return operationToProto(op), nil
 }
+
+// WithQuotaGuard подключает совещательную полосу учёта числа ресурсов.
+//
+// Composition root провязывает её один раз; nil означает «раннего отказа нет»,
+// а не «предела нет» — место по-прежнему занимает триггер в writer-транзакции.
+func (h *Handler) WithQuotaGuard(g QuotaGuard) *Handler {
+	h.create.WithQuotaGuard(g)
+	return h
+}

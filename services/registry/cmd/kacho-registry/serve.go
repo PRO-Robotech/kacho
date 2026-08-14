@@ -34,6 +34,7 @@ import (
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	geoclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
@@ -249,6 +250,25 @@ func runServe(cfg config.Config) error {
 		}
 		registryUC.WithSyncRegistrar(syncReg)
 	}
+
+	// ── совещательная полоса учёта числа ресурсов ────────────────────────────
+	// Величины живут у kacho-iam на ВНУТРЕННЕМ слушателе (:9091) — админская
+	// поверхность, которой на публичном нет и быть не должно. Зеркало аккаунта
+	// берётся из УЖЕ существующего вызова к соседу за проектом (:9090), новым
+	// ребром работа не обзаводится.
+	//
+	// Полоса собирается ТОЛЬКО когда есть оба соседа и база: typed-nil в
+	// интерфейсном поле означал бы non-nil интерфейс с nil внутри, и проверка
+	// `!= nil` у вызывающего пропустила бы вызов. Её отсутствие НЕ означает «нет
+	// предела»: списание остаётся за триггером, теряется ровно ранний
+	// синхронный отказ — и это состояние объявлено в журнале, чтобы «полосы нет»
+	// было отличимо от «полоса есть и молчит».
+	if limitClient := iamclient.NewLimitClient(iamConn); limitClient != nil {
+		if store := pg.NewQuotaStore(pool); store != nil {
+			registryUC.WithQuotaGuard(quota.NewGuard(store, limitClient, iamAdapter, "registry"))
+		}
+	}
+	logger.Info("quota_guard", "wired", iamConn != nil)
 
 	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
 	// Дренаж на SIGTERM ниже закрывает только штатное завершение. Всё остальное —

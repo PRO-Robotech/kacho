@@ -865,3 +865,21 @@ var (
 	_ AddressClient         = (*fakeAddressReader)(nil)
 	_ InternalAddressClient = (*fakeAddressClient)(nil)
 )
+
+// Quotas — совещательная полоса учёта. В пробах этого пакета полоса НЕ
+// провязана (`u.quota == nil`), поэтому дублёр обязан не «разрешать», а
+// доказывать, что до него не доходят: разрешающий дублёр скрыл бы ровно тот
+// вызов, ради которого его подставляют (`testing.md` §«дублёр, принимающий
+// больше настоящего»).
+func (f *fakeReader) Quotas() kachorepo.QuotaReaderIface {
+	panic("quota band must not be reached: this package's probes do not wire it")
+}
+
+// Quotas — совещательная полоса учёта. В пробах этого пакета полоса НЕ
+// провязана (`u.quota == nil`), поэтому дублёр обязан не «разрешать», а
+// доказывать, что до него не доходят: разрешающий дублёр скрыл бы ровно тот
+// вызов, ради которого его подставляют (`testing.md` §«дублёр, принимающий
+// больше настоящего»).
+func (f *fakeWriter) Quotas() kachorepo.QuotaWriterIface {
+	panic("quota band must not be reached: this package's probes do not wire it")
+}

@@ -71,6 +71,18 @@ var quotaTriggerDefiningFiles = map[string][]string{
 		// сними 0040, и его откат (восстанавливающий прежнее тело) станет обходом.
 		"services/vpc/internal/migrations/0040_project_resource_quotas.sql",
 		"services/vpc/internal/migrations/0041_quota_refusal_single_producer.sql",
+
+		// Учёт того же имени и той же формы у двух других владельцев. Таблицы
+		// РАЗНЫЕ — каждая в своей схеме (`kacho_nlb`, `kacho_registry`), и это
+		// не дубль, а database-per-service (ban #8): у гейта ключ — имя таблицы,
+		// поэтому одна запись перечня покрывает все три схемы, а перечислять
+		// приходится каждый определяющий файл.
+		//
+		// У этих двух механизм с самого начала сложился в ОДНУ миграцию (у vpc их
+		// две только потому, что 0041 доопределяла уже применённую 0040), и обе
+		// несут ось вложенности, которой у образца ещё нет.
+		"services/nlb/internal/migrations/0032_project_resource_quotas.sql",
+		"services/registry/internal/migrations/0015_project_resource_quotas.sql",
 	},
 	"project_instance_quotas": {
 		"services/compute/internal/migrations/0031_project_instance_limit.sql",

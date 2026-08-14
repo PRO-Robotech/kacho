@@ -32,6 +32,14 @@ const DefaultProjectGetTimeout = 5 * time.Second
 type Project struct {
 	ID   string
 	Name string
+	// AccountID — аккаунт, которому принадлежит проект.
+	//
+	// Заведён ради ЗЕРКАЛА в строке учёта числа ресурсов (приёмка квот, V2-4):
+	// без него изменение аккаунтной области адресовалось бы пересчётом всех
+	// строк вида — всплеском вызовов к соседу на каждое административное
+	// действие. Нового ребра работа не заводит: значение приезжает тем же
+	// ответом того же вызова, который уже стоит на пути создания.
+	AccountID string
 }
 
 // ProjectClient — port-интерфейс для service-слоя; реализуется adapter'ом
@@ -47,6 +55,20 @@ type ProjectClient interface {
 	//   - Любая другая ошибка         → wrapped error без sentinel-обёртки
 	//     (service-слой пометит operation INTERNAL).
 	Get(ctx context.Context, projectID string) (*Project, error)
+}
+
+// AccountOf возвращает аккаунт проекта — зеркало, без которого строка учёта
+// невидима аккаунтной дельте (приёмка квот, V2-4).
+//
+// Отдельного вызова к соседу НЕ делает: идёт тем же `Get`, который уже стоит на
+// пути создания. Заведи он свой вызов — утверждение «нового ребра работа не
+// заводит» перестало бы быть правдой, оставшись правдой на бумаге.
+func (c *projectClient) AccountOf(ctx context.Context, projectID string) (string, error) {
+	p, err := c.Get(ctx, projectID)
+	if err != nil {
+		return "", err
+	}
+	return p.AccountID, nil
 }
 
 // projectClient — реализация ProjectClient через gRPC.
@@ -122,8 +144,9 @@ func (c *projectClient) Get(ctx context.Context, projectID string) (*Project, er
 		return nil, mapProjectErr(projectID, err)
 	}
 	return &Project{
-		ID:   resp.GetId(),
-		Name: resp.GetName(),
+		ID:        resp.GetId(),
+		Name:      resp.GetName(),
+		AccountID: resp.GetAccountId(),
 	}, nil
 }
 

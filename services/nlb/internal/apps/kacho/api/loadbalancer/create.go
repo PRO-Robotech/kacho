@@ -34,6 +34,15 @@ import (
 //   - peer_errors.go  — анти-oracle маппинг peer-ошибок в gRPC-status.
 //   - zones.go        — валидация disabled_announce_zones + normalize.
 type CreateLoadBalancerUseCase struct {
+	// quota — совещательная полоса учёта числа ресурсов.
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции),
+	// поэтому провязка обязательна на любом поднятом стенде; отсутствие
+	// допустимо только там, где нет и соседа, у которого спрашивать величины.
+	quota QuotaGuard
+
 	repo          Repo
 	opsRepo       operations.Repo
 	projectClient ProjectClient
@@ -202,6 +211,18 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	if string(lb.Name) != "" {
 		if err := u.assertNameUnique(ctx, string(lb.ProjectID), string(lb.Name)); err != nil {
 			return nil, err
+		}
+	}
+
+	// Учёт числа ресурсов: ранний отказ ДО создания операции.
+	//
+	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —
+	// момент, когда владелец типа впервые узнаёт о проекте, и есть обращение к
+	// нему. Отказ уходит арендатору синхронно тем же текстом и признаком, каким
+	// его произвёл бы триггер: у обеих полос один производитель.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, string(lb.ProjectID), "loadbalancer.networkLoadBalancers"); err != nil {
+			return nil, mapDomainErr(err)
 		}
 	}
 
@@ -769,4 +790,14 @@ func (u *CreateLoadBalancerUseCase) assertNameUnique(ctx context.Context, projec
 			"NetworkLoadBalancer with name %s already exists in project", name)
 	}
 	return nil
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateLoadBalancerUseCase) WithQuotaGuard(g QuotaGuard) *CreateLoadBalancerUseCase {
+	u.quota = g
+	return u
 }

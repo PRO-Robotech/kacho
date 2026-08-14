@@ -116,3 +116,12 @@ func (h *Handler) Delete(ctx context.Context, req *lbv1.DeleteListenerRequest) (
 func (h *Handler) ListOperations(ctx context.Context, req *lbv1.ListListenerOperationsRequest) (*lbv1.ListListenerOperationsResponse, error) {
 	return h.listOperations.Run(ctx, req)
 }
+
+// WithQuotaGuard подключает совещательную полосу учёта числа ресурсов.
+//
+// Composition root провязывает её один раз; nil означает «раннего отказа нет»,
+// а не «предела нет» — место по-прежнему занимает триггер в writer-транзакции.
+func (h *Handler) WithQuotaGuard(g QuotaGuard) *Handler {
+	h.create.WithQuotaGuard(g)
+	return h
+}

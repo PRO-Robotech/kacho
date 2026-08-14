@@ -4,6 +4,8 @@
 package listener
 
 import (
+	"context"
+
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
@@ -73,3 +75,20 @@ const (
 // (loadbalancer/targetgroup): `domain.FGASubjectFromPrincipal(p.Type, p.ID)` над
 // `operations.PrincipalFromContext(ctx)` — без отдельного single-impl порта
 // (subject-format живёт единожды в domain.FGASubjectFromPrincipal).
+
+// QuotaGuard — совещательная полоса учёта числа ресурсов.
+//
+// Порт объявлен здесь, у вызывающего, а реализация живёт в
+// `apps/kacho/quota`: use-case не импортирует адаптер, и подставить полосу в
+// пробе можно, не поднимая ни базы, ни соседа.
+//
+// Полоса НЕ является решением: между её ответом и вставкой помещается чужая
+// запись, и решает атомарное списание триггера (ban #10, §7.4 приёмки). Она
+// существует ради РАННЕГО отказа тем же текстом и признаком, каким его
+// произвёл бы триггер, — у обеих полос один производитель в базе.
+type QuotaGuard interface {
+	// Admit — есть ли место у ПРОЕКТА под ещё одну строку этого вида.
+	Admit(ctx context.Context, projectID, kind string) error
+	// AdmitCarrier — тот же вопрос про носителя-РОДИТЕЛЯ.
+	AdmitCarrier(ctx context.Context, carrierType, carrierID, kind string) error
+}

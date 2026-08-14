@@ -93,3 +93,52 @@ func (c *Client) ProjectExists(ctx context.Context, projectID string) error {
 		"grpc_code", peer.PeerCode(err).String(), "grpc_msg", err.Error())
 	return regerrors.ErrInternal
 }
+
+// AccountOf возвращает аккаунт проекта — зеркало, без которого строка учёта
+// числа ресурсов невидима аккаунтной дельте (приёмка квот, V2-4).
+//
+// Идёт тем же `ProjectService.Get`, что и `ProjectExists`, — нового ребра работа
+// не заводит. Полосы отказа те же: «владелец установил, что ссылка не годится»
+// против «сосед не отвечает», и мутация на второй fail-closed.
+//
+// Пустой аккаунт при успешном ответе — НЕ «нет аккаунта», а нарушение контракта
+// соседа: проект без аккаунта невыразим (`account_id` immutable и обязателен).
+// Поэтому он отвергается здесь, а не уезжает в строку учёта, где ограничение
+// схемы отвергло бы его позже и без имени предмета.
+func (c *Client) AccountOf(ctx context.Context, projectID string) (string, error) {
+	if err := c.ready(); err != nil {
+		return "", err
+	}
+	if projectID == "" {
+		return "", regerrors.ErrInvalidArg
+	}
+	ctx, cancel := context.WithTimeout(ctx, iamCallTimeout)
+	defer cancel()
+	cli := iamv1.NewProjectServiceClient(c.conn)
+
+	var accountID string
+	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
+		p, gerr := cli.Get(auth.PropagateOutgoing(ctx), &iamv1.GetProjectRequest{ProjectId: projectID})
+		if gerr != nil {
+			return gerr
+		}
+		accountID = p.GetAccountId()
+		return nil
+	})
+	if err != nil {
+		switch o := peer.Classify(err); {
+		case o.RefusedReference():
+			return "", regerrors.ErrInvalidArg
+		case o.Transient():
+			return "", regerrors.ErrUnavailable
+		}
+		slog.Default().Error("registry: iam ProjectService.Get unexpected (account lookup)",
+			"project_id", projectID, "outcome", peer.Classify(err).String(),
+			"grpc_code", peer.PeerCode(err).String())
+		return "", regerrors.ErrInternal
+	}
+	if accountID == "" {
+		return "", regerrors.ErrFailedPrecondition
+	}
+	return accountID, nil
+}
