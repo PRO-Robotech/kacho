@@ -124,6 +124,11 @@ run "gateway_is_created_when_asked" {
 
   variables {
     create_gateway = true
+    gateway_kind   = "nat"
+    gateway_subnet = "probe-a"
+    subnets = {
+      "probe-a" = { zone_id = "ru-central1-a", ipv4_cidr_primary = "10.90.1.0/24" }
+    }
   }
 
   assert {
@@ -148,6 +153,11 @@ run "explicit_gateway_name_wins_over_derived" {
   variables {
     create_gateway = true
     gateway_name   = "probe-egress"
+    gateway_kind   = "nat"
+    gateway_subnet = "probe-a"
+    subnets = {
+      "probe-a" = { zone_id = "ru-central1-a", ipv4_cidr_primary = "10.90.1.0/24" }
+    }
   }
 
   assert {
@@ -165,6 +175,11 @@ run "gateway_labels_are_separate_from_network_labels" {
     create_gateway = true
     labels         = { owner = "net" }
     gateway_labels = { owner = "gw" }
+    gateway_kind   = "nat"
+    gateway_subnet = "probe-a"
+    subnets = {
+      "probe-a" = { zone_id = "ru-central1-a", ipv4_cidr_primary = "10.90.1.0/24" }
+    }
   }
 
   assert {
@@ -456,6 +471,11 @@ run "security_group_rule_fields_survive_assembly" {
         rules = [{
           direction       = "EGRESS"
           protocol_number = 47
+          # Цель — ДРУГОГО рода, и это несущий выбор пробы, а не заполнение обязательного
+          # поля. Утверждение ниже проверяет, что модуль НЕ подставляет блоки адресов,
+          # о которых не просили; на цели-блоках его нечем было бы проверить. Прежде здесь
+          # цели не было вовсе — до того, как правило обязали называть ровно одну.
+          security_group_id = "sgpprobe0000000000000"
         }]
       }
     }

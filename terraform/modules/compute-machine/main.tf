@@ -33,12 +33,36 @@ resource "kacho_compute_instance" "this" {
   zone_id         = var.zone_id
   machine_type_id = each.value.machine_type_id
 
-  boot_source_type = each.value.boot_source_type
-  boot_source_id   = each.value.boot_source_id
+  # Род машины — ПЕРВЫЙ различитель контракта, и он задаётся отдельно от спецификации.
+  # Модуль заводит обычные машины, поэтому род здесь постоянный: набор его переменной не
+  # несёт вовсе, и заводить её ради одного значения значило бы предложить выбор, которого
+  # у модуля нет — контейнерная машина требует своей спецификации, а её здесь не собирают.
+  instance_kind = "VM"
 
-  subnet_id          = each.value.subnet_id
-  security_group_ids = each.value.security_group_ids
+  # Источник загрузки — ОДИН вложенный блок, а не пара плоских полей. Прежде здесь стояли
+  # `boot_source_type`/`boot_source_id`: так их называла версия ресурса, снятая при
+  # сведении со стволом как дубль. Форма переменной модуля осталась плоской осознанно —
+  # это его собственный вход, и менять его вызывающим ради формы ресурса не за что.
+  boot_source = {
+    type = each.value.boot_source_type
+    id   = each.value.boot_source_id
+  }
+
+  # Интерфейс — элемент СПИСКА спецификаций, а не пара полей машины. Список из одного
+  # элемента: набор объявляет ровно один интерфейс на машину, и это то же, что было
+  # выражено плоскими полями раньше.
+  network_interface_specs = [{
+    subnet_id          = each.value.subnet_id
+    security_group_ids = each.value.security_group_ids
+  }]
 
   placement_group_id = each.value.placement_group_id
   service_account_id = each.value.service_account_id
+
+  # Оба поля проводятся КАК ЕСТЬ, включая «не названо». Ни одно не подставляется: страж
+  # края существует ровно затем, чтобы недостижимая машина была решением, а не следствием
+  # умолчания, — и модуль, подставивший здесь значение, снял бы этот страж со всех, кто им
+  # пользуется, не сказав им об этом.
+  assign_external_address = each.value.assign_external_address
+  acknowledge_unreachable = each.value.acknowledge_unreachable
 }
