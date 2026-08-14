@@ -749,6 +749,19 @@ func NewMux(
 			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
 			}
+			// InternalLimitService — resource-count ceilings (issue #291):
+			// Get / List / Create / Update / Delete plus the two owner-facing
+			// reads Resolve / ListChangedSince, under /iam/v1/internal/limits.
+			// Internal-only; isInternalRoute sends these paths to the internal
+			// sub-mux and the dispatcher 404s them on the external TLS listener,
+			// hiding existence. The five CRUD verbs are catalog-gated on
+			// `system_admin` @ cluster:cluster_kacho_root (mutations additionally
+			// at acr=2); the two reads carry the NARROW `quota_reader` relation,
+			// because an owner service must not need the whole cluster read tier
+			// to learn its tenant's ceiling.
+			if err := iampb.RegisterInternalLimitServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+				return nil, fmt.Errorf("register iam InternalLimitService: %w", err)
+			}
 			// InternalOperationsService.ListIamOperations — cluster-wide IAM
 			// operations dump for admin-UI under GET /iam/v1/internal/operations.
 			// Internal-only; isInternalRoute routes /iam/v1/internal/* to
