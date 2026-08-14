@@ -92,7 +92,14 @@ type suiteVerdict struct {
 // python — путь интерпретатора. Пустая строка означает «не найден», и это
 // ОТКАЗ, а не пропуск: набор, который не смогли исполнить, нельзя ни засчитать
 // в перепись, ни молча пропустить.
-func compareGenerationModes(suiteDir, tmpDir, python string) (suiteVerdict, error) {
+//
+// listFiles — источник СОСТАВА копируемого дерева, и он передаётся явно, а не
+// выбирается внутри. У настоящего набора авторитет — индекс git; у
+// синтетического, который проба инъекции собирает во временном каталоге,
+// репозитория нет вовсе, и авторитет — обход диска. Молчаливый откат «нет
+// индекса → иду по диску» вернул бы ровно тот дефект, ради которого состав
+// берётся у индекса, и сделал бы это невидимо: см. godoc treecorpus.SyntheticTree.
+func compareGenerationModes(suiteDir, tmpDir, python string, listFiles fileLister) (suiteVerdict, error) {
 	v := suiteVerdict{Suite: suiteDir}
 	if python == "" {
 		return v, errors.New("интерпретатор python3 не найден: набор не исполнен, " +
@@ -100,7 +107,7 @@ func compareGenerationModes(suiteDir, tmpDir, python string) (suiteVerdict, erro
 	}
 
 	work := filepath.Join(tmpDir, "suite")
-	if err := copyTreeExcept(suiteDir, work, collectionsSubdir); err != nil {
+	if err := copyTreeExcept(suiteDir, work, listFiles, collectionsSubdir); err != nil {
 		return v, fmt.Errorf("копия набора %s: %w", suiteDir, err)
 	}
 	outDir := filepath.Join(work, collectionsSubdir)
@@ -225,12 +232,36 @@ func firstDifference(want, got []byte) string {
 // каталог не отслеживается, но интерпретатор создаёт его ВНУТРИ копии во время
 // самого прогона, а сверяется он с исходником по времени правки и размеру —
 // копия времени не сохраняет.
-func copyTreeExcept(src, dst string, skip ...string) error {
+// fileLister — источник состава дерева: возвращает пути файлов под указанным
+// каталогом. Реализации: trackedFiles (индекс git) и syntheticFiles (обход
+// диска для дерева, собранного самой пробой).
+type fileLister func(dir string) ([]string, error)
+
+// trackedFiles — состав по индексу git. Авторитет для настоящего дерева.
+func trackedFiles(dir string) ([]string, error) { return treecorpus.Under(dir) }
+
+// syntheticFiles — состав по диску. Законен ТОЛЬКО для дерева, собранного самой
+// проверкой во временном каталоге: репозиторием оно не является, спрашивать у
+// него индекс нечего.
+func syntheticFiles(dir string) ([]string, error) {
+	t, err := treecorpus.SyntheticTree(dir)
+	if err != nil {
+		return nil, err
+	}
+	rels := t.SortedFiles()
+	out := make([]string, 0, len(rels))
+	for _, rel := range rels {
+		out = append(out, filepath.Join(dir, rel))
+	}
+	return out, nil
+}
+
+func copyTreeExcept(src, dst string, listFiles fileLister, skip ...string) error {
 	skipped := make(map[string]bool, len(skip))
 	for _, s := range skip {
 		skipped[s] = true
 	}
-	tracked, err := treecorpus.Under(src)
+	tracked, err := listFiles(src)
 	if err != nil {
 		return err
 	}
@@ -309,7 +340,7 @@ func TestGeneratedStepNamesDoNotDependOnHowManyModulesRan(t *testing.T) {
 	results := make(chan result, len(suites))
 	for i, s := range suites {
 		go func(suite, dir string) {
-			v, err := compareGenerationModes(filepath.Join(root, suite), dir, python)
+			v, err := compareGenerationModes(filepath.Join(root, suite), dir, python, trackedFiles)
 			v.Suite = suite
 			results <- result{v, err}
 		}(s, tmp[i])

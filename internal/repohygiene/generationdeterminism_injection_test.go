@@ -90,7 +90,7 @@ func TestGenerationDeterminismGateRedsOnTheInjectedDefect(t *testing.T) {
 	python := pythonInterpreter(t)
 
 	suite := writeSyntheticSuite(t, false)
-	v, err := compareGenerationModes(suite, t.TempDir(), python)
+	v, err := compareGenerationModes(suite, t.TempDir(), python, syntheticFiles)
 	if err != nil {
 		t.Fatalf("осмотр синтетического набора: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestGenerationDeterminismGateStaysSilentOnTheLawfulTwin(t *testing.T) {
 	python := pythonInterpreter(t)
 
 	suite := writeSyntheticSuite(t, true)
-	v, err := compareGenerationModes(suite, t.TempDir(), python)
+	v, err := compareGenerationModes(suite, t.TempDir(), python, syntheticFiles)
 	if err != nil {
 		t.Fatalf("осмотр синтетического набора: %v", err)
 	}
