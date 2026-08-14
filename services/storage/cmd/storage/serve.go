@@ -37,6 +37,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
@@ -253,6 +254,30 @@ func runServe(cfg config.Config) error {
 	volumeUC.WithListFilter(narrower).WithInstanceGate(narrower)
 	snapshotUC.WithListFilter(narrower)
 	imageUC.WithListFilter(narrower)
+
+	// ── совещательная полоса учёта числа ресурсов (приёмка квот, DoD S4 п.1) ──
+	// Величину назначает kacho-iam и разрешает старшинство областей У СЕБЯ
+	// (`InternalLimitService.Resolve` на том же внутреннем соединении, которым мы
+	// уже спрашиваем права, — нового ребра работа не заводит). Строку учёта
+	// заводит владелец типа: ребро «владелец величин → владелец типа» замкнуло бы
+	// цикл, запрещённый polyrepo.md.
+	//
+	// Без соединения с соседом полоса НЕ собирается, и это осознанно: спрашивать
+	// величины не у кого. «Полоса не собрана» означает «нет РАННЕГО отказа», а не
+	// «нет предела» — место по-прежнему занимает триггер в той же транзакции, что
+	// вставка, поэтому исчерпание приезжает отказом операции, а «потолок не
+	// назван» остаётся отказом. Молча снять учёт отсутствием соседа нельзя: ровно
+	// так контроль и становится мёртвым, оставаясь на вид работающим.
+	if authzConn != nil {
+		quotaGuard := quota.NewGuard(pg.NewQuotaRepo(pool), clients.NewLimitClient(authzConn), iamClient)
+		volumeUC.WithQuota(quotaGuard)
+		snapshotUC.WithQuota(quotaGuard)
+		imageUC.WithQuota(quotaGuard)
+	} else {
+		logger.Warn("resource-count quota advisory band NOT wired (authz.iam-addr empty) — " +
+			"the charging trigger still holds the ceiling, but the tenant learns of exhaustion " +
+			"from the operation instead of a synchronous refusal")
+	}
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
 	// Volume/Snapshot/Image Create/Delete эмитят register/unregister-intent в

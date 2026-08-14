@@ -61,6 +61,12 @@ var quotaUsageTables = []string{
 var quotaTriggerDefiningFiles = map[string][]string{
 	"project_resource_quotas": {
 		"services/vpc/internal/migrations/0040_project_resource_quotas.sql",
+		// Имя таблицы у storage то же, а схема другая (`kacho_storage`), поэтому
+		// гейт видит оба домена одним перечнем и ни один из них не выпадает
+		// из-под наблюдения. Разойдись имена — расхождение было бы молчаливым:
+		// гейт искал бы писателей по имени, которого во втором домене нет, и
+		// отчитался бы «ноль находок».
+		"services/storage/internal/migrations/0023_project_resource_quotas.sql",
 	},
 	"project_instance_quotas": {
 		"services/compute/internal/migrations/0031_project_instance_limit.sql",
