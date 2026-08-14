@@ -79,9 +79,58 @@ for (const dir of pkgDirs) {
     if (!deps[plugin]) continue;
     examinedPairs += 1;
 
-    // Плагин подключён, а шима нет — под eslint 10 линт этого пакета упадёт на снятом API.
+    // ПЕРВЫМ делом — есть ли у послабления предмет ВООБЩЕ.
+    //
+    // Шим нужен ровно тогда, когда плагин установленный eslint НЕ принимает. Прежняя
+    // редакция спрашивала «есть ли шим» раньше, чем «нужен ли он», и на возврате к
+    // девятому мажору требовала переходник от каждого пакета — двадцать находок на
+    // исправном дереве. Гейт, краснеющий на законном, снимут первым же срабатыванием,
+    // поэтому порядок здесь несущий, а не косметический.
+    // ВАЖНО, каким eslint судить: тем, которым ЛИНТУЮТ, а не первым найденным.
+    //
+    // У члена workspace линт запускается корневым двоичным файлом
+    // (`../node_modules/.bin/eslint .` — так делает и конвейер), а рядом с самим
+    // пакетом npm может держать вложенную копию другого мажора. Гейт, читавший
+    // ближайшую, судил версию, которая в линте не участвует: двадцать находок на
+    // дереве, где линт исправен. Порядок поиска теперь повторяет запуск —
+    // автономный пакет смотрит свой каталог, член workspace корневой.
+    const isMember = !fs.existsSync(path.join(dir, "package-lock.json"));
+    const lookup = isMember
+      ? [path.join("..", "node_modules"), "node_modules"]
+      : ["node_modules", path.join("..", "node_modules")];
+    const pluginPkgPath0 = lookup
+      .map((p) => path.join(dir, p, plugin, "package.json"))
+      .find((p) => fs.existsSync(p));
+    const eslintPkgPath0 = lookup
+      .map((p) => path.join(dir, p, "eslint", "package.json"))
+      .find((p) => fs.existsSync(p));
+    if (!pluginPkgPath0 || !eslintPkgPath0) {
+      findings.push(`${name}: ${plugin} или eslint не установлены — гейт не может судить (нужен npm ci)`);
+      continue;
+    }
+    const declared0 = JSON.parse(fs.readFileSync(pluginPkgPath0, "utf8")).peerDependencies?.eslint;
+    const installed0 = JSON.parse(fs.readFileSync(eslintPkgPath0, "utf8")).version;
+    const pluginAcceptsInstalled =
+      declared0 && semver.satisfies(installed0, declared0, { includePrerelease: false });
+
+    if (pluginAcceptsInstalled) {
+      // Предмета нет: плагин принимает то, что стоит. Тогда находкой является уже
+      // ОБРАТНОЕ — оставшийся шим, потому что он переживёт своё основание.
+      if (hasShim) {
+        findings.push(
+          `${name}: ${plugin} УЖЕ принимает eslint ${installed0} (peer «${declared0}») — ` +
+            `послаблению нечего исключать: снять fixupPluginRules из ${path.basename(cfg)}`,
+        );
+      }
+      continue;
+    }
+
+    // Плагин установленный eslint НЕ принимает — вот тогда шим обязателен.
     if (!hasShim) {
-      findings.push(`${name}: подключает ${plugin}, но не оборачивает его fixupPluginRules`);
+      findings.push(
+        `${name}: подключает ${plugin}, который НЕ принимает установленный eslint ${installed0} ` +
+          `(peer «${declared0}»), и не оборачивает его fixupPluginRules`,
+      );
       continue;
     }
 
@@ -97,27 +146,6 @@ for (const dir of pkgDirs) {
       );
     }
 
-    // ГЛАВНОЕ: не исчез ли предмет послабления.
-    const pluginPkgPath = ["node_modules", path.join("..", "node_modules")]
-      .map((p) => path.join(dir, p, plugin, "package.json"))
-      .find((p) => fs.existsSync(p));
-    const eslintPkgPath = ["node_modules", path.join("..", "node_modules")]
-      .map((p) => path.join(dir, p, "eslint", "package.json"))
-      .find((p) => fs.existsSync(p));
-    if (!pluginPkgPath || !eslintPkgPath) {
-      findings.push(`${name}: ${plugin} или eslint не установлены — гейт не может судить (нужен npm ci)`);
-      continue;
-    }
-
-    const declared = JSON.parse(fs.readFileSync(pluginPkgPath, "utf8")).peerDependencies?.eslint;
-    const installed = JSON.parse(fs.readFileSync(eslintPkgPath, "utf8")).version;
-    if (declared && semver.satisfies(installed, declared, { includePrerelease: false })) {
-      findings.push(
-        `${name}: ${plugin} УЖЕ принимает eslint ${installed} (peer «${declared}») — ` +
-          `послаблению нечего исключать: снять fixupPluginRules из ${path.basename(cfg)} ` +
-          `и overrides.${plugin} из ${path.relative(root, ovHost) || "."}/package.json`,
-      );
-    }
   }
 }
 
@@ -137,4 +165,7 @@ if (findings.length) {
   process.exit(1);
 }
 
-console.log("✓ послабление под eslint 10 всё ещё имеет предмет: оба плагина по-прежнему не принимают установленный eslint");
+console.log(
+  "✓ послабление и его предмет сходятся: где плагин установленный eslint не принимает — " +
+    "шим на месте; где принимает — шима нет",
+);
