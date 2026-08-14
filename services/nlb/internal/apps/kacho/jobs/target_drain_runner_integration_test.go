@@ -76,6 +76,10 @@ func insertTargetGroup(t testing.TB, ctx context.Context, pool *pgxpool.Pool, de
 	t.Helper()
 	id = ids.NewID(ids.PrefixTargetGroup)
 	projectID = "proj-" + ids.NewUID()[:8]
+	// Учёт числа ресурсов: строка учёта заводится ЗДЕСЬ, потому что здесь
+	// придумана идентичность проекта — перечень, снятый с дерева, её не видит
+	// (см. `quota_fixture_test.go`).
+	seedQuotaForProject(t, ctx, pool, projectID)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.target_groups
 			(id, project_id, region_id, deregistration_delay_seconds, status, port)
