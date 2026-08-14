@@ -17,7 +17,13 @@
 # `KACHO_SKIP_PREPUSH=1`. Обход нужен: отправка ветки-черновика ради обсуждения —
 # законное действие. Но он ЯВНЫЙ: обойти можно, не заметив — нельзя.
 #
-# Установка: `make install-hooks` (или `git config core.hooksPath scripts/hooks`).
+# Установка: `make install-hooks` — цель кладёт в `.git/hooks` переходник,
+# исполняющий ЭТОТ файл из той рабочей копии, из которой идёт отправка.
+# Проверить провязку в любой момент: `make check-hooks`.
+#
+# `git config core.hooksPath scripts/hooks` здесь НЕ советуется, хотя и работает:
+# он перебивает `.git/hooks` целиком, и всё, что там уже лежало, перестаёт
+# исполняться молча. Разбор — в шапке scripts/hooks/install.sh.
 set -uo pipefail
 
 if [ "${KACHO_SKIP_PREPUSH:-0}" = "1" ]; then
