@@ -83,12 +83,17 @@ func TestNodeBinding_TwoNodesOneWins(t *testing.T) {
 
 	// Победитель в базе — тот же, что вернул успех: иначе успех означал бы не то,
 	// что записано.
-	bound, err := r.BindingOf(ctx, instanceID)
-	require.NoError(t, err)
-	require.NotNil(t, bound)
+	//
+	// Читаем строку напрямую, а не через метод репозитория: чтения привязки в
+	// прод-коде нет, и заводить его РАДИ ПРОБЫ значило бы расширить поверхность
+	// пакета под нужды теста. Проба внутренняя — база ей доступна.
+	var boundNode string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT node_id FROM instance_node_bindings WHERE instance_id = $1`,
+		instanceID).Scan(&boundNode))
 	for i := range winners {
 		if winners[i] != "" {
-			require.Equal(t, winners[i], bound.NodeID)
+			require.Equal(t, winners[i], boundNode)
 		}
 	}
 }
