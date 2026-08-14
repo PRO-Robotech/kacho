@@ -102,7 +102,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf21",
+          "name": "confirm-region-rgf1",
           "request": {
             "method": "GET",
             "header": [
@@ -209,7 +209,7 @@
           ]
         },
         {
-          "name": "get-zone-rgf22",
+          "name": "get-zone-rgf2",
           "request": {
             "method": "GET",
             "header": [
@@ -642,7 +642,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf23",
+          "name": "confirm-region-rgf3",
           "request": {
             "method": "GET",
             "header": [
@@ -749,7 +749,7 @@
           ]
         },
         {
-          "name": "get-zone-down-rgf24",
+          "name": "get-zone-down-rgf4",
           "request": {
             "method": "GET",
             "header": [
@@ -963,7 +963,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf25",
+          "name": "confirm-region-rgf5",
           "request": {
             "method": "GET",
             "header": [
@@ -1070,7 +1070,7 @@
           ]
         },
         {
-          "name": "get-zone-dflt-rgf26",
+          "name": "get-zone-dflt-rgf6",
           "request": {
             "method": "GET",
             "header": [
@@ -1282,7 +1282,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf27",
+          "name": "confirm-region-rgf7",
           "request": {
             "method": "GET",
             "header": [
@@ -1389,7 +1389,7 @@
           ]
         },
         {
-          "name": "confirm-zone-up-rgf28",
+          "name": "confirm-zone-up-rgf8",
           "request": {
             "method": "GET",
             "header": [

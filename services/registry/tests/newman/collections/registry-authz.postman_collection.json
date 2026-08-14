@@ -166,7 +166,7 @@
           ]
         },
         {
-          "name": "capture-fixture-id-rya57",
+          "name": "capture-fixture-id-rya4",
           "request": {
             "method": "GET",
             "header": [
@@ -221,7 +221,7 @@
           ]
         },
         {
-          "name": "reg-warm-rya54",
+          "name": "reg-warm-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -958,7 +958,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "repo-az-create-rya55",
+          "name": "repo-az-create-rya2",
           "request": {
             "method": "POST",
             "header": [
@@ -1084,7 +1084,7 @@
           ]
         },
         {
-          "name": "repo-az-confirm-rya58",
+          "name": "repo-az-confirm-rya5",
           "request": {
             "method": "GET",
             "header": [
@@ -1133,7 +1133,7 @@
           ]
         },
         {
-          "name": "repo-az-warm-rya56",
+          "name": "repo-az-warm-rya3",
           "request": {
             "method": "GET",
             "header": [
