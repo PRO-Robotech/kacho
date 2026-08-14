@@ -1977,7 +1977,7 @@ _POLL_SEQ = [0]
 _RYA_SEQ = [0]
 
 
-def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
+def retry_until_present(step: Step, id_env_var, budget: int = 25,
                         interval_ms: int = 500) -> Step:
     """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
     the returned array (read-your-writes over the list-authz visibility window; opgate
@@ -1995,8 +1995,20 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
         "}",
         "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
         "let _present = false;",
+        # УСЛОВИЕ ПОВТОРА ОБЯЗАНО СОВПАДАТЬ С УТВЕРЖДЕНИЕМ, а не быть у́же его.
+        #
+        # Обёртка принимает СПИСОК переменных и ждёт, пока в ответе появятся ВСЕ.
+        # Прежняя форма принимала одну: кейс, утверждающий «все три на странице»,
+        # ждал появления ПЕРВОЙ и падал на второй — она ещё материализовалась.
+        # Дефект наблюдался на NET-APPLY-STATE-LIST-PARITY-OK и виден только на
+        # стенде: локально список отдаёт всё сразу.
+        "const _want = [" + ", ".join(
+            "pm.environment.get('%s')" % v
+            for v in ([id_env_var] if isinstance(id_env_var, str) else list(id_env_var))
+        ) + "];",
         "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
-        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
+        " const _have = _arr.map(x => x.id);"
+        " _present = _want.every(w => _have.includes(w)); } catch (e) {}",
         f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
         "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
         f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",

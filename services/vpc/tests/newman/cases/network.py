@@ -1335,7 +1335,7 @@ CASES.append(Case(
                 "  pm.expect(JSON.stringify(one.applyState))"
                 ".to.eql(pm.environment.get('netApstAState'));",
                 "});",
-            ]), "netApstA"),
+            ]), ["netApstA", "netApstB", "netApstC"]),
         Step(name="cleanup-a", method="DELETE", path="/vpc/v1/networks/{{netApstA}}",
              test_script=[*assert_status(200)]),
         Step(name="cleanup-b", method="DELETE", path="/vpc/v1/networks/{{netApstB}}",
