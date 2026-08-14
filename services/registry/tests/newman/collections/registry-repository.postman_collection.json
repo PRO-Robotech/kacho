@@ -166,7 +166,7 @@
           ]
         },
         {
-          "name": "reg-capture-rya119",
+          "name": "reg-capture-rya34",
           "request": {
             "method": "GET",
             "header": [
@@ -223,7 +223,7 @@
           ]
         },
         {
-          "name": "reg-warm-rya86",
+          "name": "reg-warm-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -279,7 +279,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya87",
+          "name": "repo-create-rya2",
           "request": {
             "method": "POST",
             "header": [
@@ -405,7 +405,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya120",
+          "name": "repo-capture-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -458,7 +458,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya88",
+          "name": "repo-warm-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -573,7 +573,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya89",
+          "name": "repo-create-rya4",
           "request": {
             "method": "POST",
             "header": [
@@ -699,7 +699,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya121",
+          "name": "repo-capture-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -749,7 +749,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya90",
+          "name": "repo-warm-rya5",
           "request": {
             "method": "GET",
             "header": [
@@ -898,7 +898,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya91",
+          "name": "repo-create-rya6",
           "request": {
             "method": "POST",
             "header": [
@@ -1024,7 +1024,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya122",
+          "name": "repo-capture-rya37",
           "request": {
             "method": "GET",
             "header": [
@@ -1074,7 +1074,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya92",
+          "name": "repo-warm-rya7",
           "request": {
             "method": "GET",
             "header": [
@@ -1285,7 +1285,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya93",
+          "name": "repo-create-rya8",
           "request": {
             "method": "POST",
             "header": [
@@ -1411,7 +1411,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya123",
+          "name": "repo-capture-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -1461,7 +1461,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya94",
+          "name": "repo-warm-rya9",
           "request": {
             "method": "GET",
             "header": [
@@ -1572,7 +1572,7 @@
       "description": "class:CRUD | class:IDEM | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya95",
+          "name": "repo-create-rya10",
           "request": {
             "method": "POST",
             "header": [
@@ -1698,7 +1698,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya124",
+          "name": "repo-capture-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -1748,7 +1748,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya96",
+          "name": "repo-warm-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -2011,7 +2011,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya97",
+          "name": "repo-create-rya12",
           "request": {
             "method": "POST",
             "header": [
@@ -2137,7 +2137,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya125",
+          "name": "repo-capture-rya40",
           "request": {
             "method": "GET",
             "header": [
@@ -2187,7 +2187,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya98",
+          "name": "repo-warm-rya13",
           "request": {
             "method": "GET",
             "header": [
@@ -2440,7 +2440,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya99",
+          "name": "repo-create-rya14",
           "request": {
             "method": "POST",
             "header": [
@@ -2566,7 +2566,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya126",
+          "name": "repo-capture-rya41",
           "request": {
             "method": "GET",
             "header": [
@@ -2616,7 +2616,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya100",
+          "name": "repo-warm-rya15",
           "request": {
             "method": "GET",
             "header": [
@@ -2727,7 +2727,7 @@
       "description": "class:CRUD | priority:P2",
       "item": [
         {
-          "name": "repo-create-rya101",
+          "name": "repo-create-rya16",
           "request": {
             "method": "POST",
             "header": [
@@ -2853,7 +2853,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya127",
+          "name": "repo-capture-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -2903,7 +2903,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya102",
+          "name": "repo-warm-rya17",
           "request": {
             "method": "GET",
             "header": [
@@ -3002,7 +3002,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya103",
+          "name": "repo-create-rya18",
           "request": {
             "method": "POST",
             "header": [
@@ -3128,7 +3128,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya128",
+          "name": "repo-capture-rya43",
           "request": {
             "method": "GET",
             "header": [
@@ -3178,7 +3178,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya104",
+          "name": "repo-warm-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -3281,7 +3281,7 @@
       "description": "class:NEG | class:CONF | class:IDEM | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya105",
+          "name": "repo-create-rya20",
           "request": {
             "method": "POST",
             "header": [
@@ -3407,7 +3407,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya129",
+          "name": "repo-capture-rya44",
           "request": {
             "method": "GET",
             "header": [
@@ -3457,7 +3457,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya106",
+          "name": "repo-warm-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -3912,7 +3912,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya107",
+          "name": "repo-create-rya22",
           "request": {
             "method": "POST",
             "header": [
@@ -4038,7 +4038,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya130",
+          "name": "repo-capture-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -4088,7 +4088,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya108",
+          "name": "repo-warm-rya23",
           "request": {
             "method": "GET",
             "header": [
@@ -4198,7 +4198,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya109",
+          "name": "repo-create-rya24",
           "request": {
             "method": "POST",
             "header": [
@@ -4324,7 +4324,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya131",
+          "name": "repo-capture-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -4374,7 +4374,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya110",
+          "name": "repo-warm-rya25",
           "request": {
             "method": "GET",
             "header": [
@@ -4427,7 +4427,7 @@
           ]
         },
         {
-          "name": "repo-create-rya111",
+          "name": "repo-create-rya26",
           "request": {
             "method": "POST",
             "header": [
@@ -4553,7 +4553,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya132",
+          "name": "repo-capture-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -4603,7 +4603,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya112",
+          "name": "repo-warm-rya27",
           "request": {
             "method": "GET",
             "header": [
@@ -4764,7 +4764,7 @@
           ]
         },
         {
-          "name": "assert-collision-async-rya133",
+          "name": "assert-collision-async-rya48",
           "request": {
             "method": "GET",
             "header": [
@@ -4822,7 +4822,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya113",
+          "name": "repo-create-rya28",
           "request": {
             "method": "POST",
             "header": [
@@ -4948,7 +4948,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya134",
+          "name": "repo-capture-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -4998,7 +4998,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya114",
+          "name": "repo-warm-rya29",
           "request": {
             "method": "GET",
             "header": [
@@ -5109,7 +5109,7 @@
       "description": "class:CONF | priority:P2",
       "item": [
         {
-          "name": "repo-create-rya115",
+          "name": "repo-create-rya30",
           "request": {
             "method": "POST",
             "header": [
@@ -5235,7 +5235,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya135",
+          "name": "repo-capture-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -5285,7 +5285,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya116",
+          "name": "repo-warm-rya31",
           "request": {
             "method": "GET",
             "header": [
@@ -5686,7 +5686,7 @@
       "description": "class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya117",
+          "name": "repo-create-rya32",
           "request": {
             "method": "POST",
             "header": [
@@ -5812,7 +5812,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya136",
+          "name": "repo-capture-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -5862,7 +5862,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya118",
+          "name": "repo-warm-rya33",
           "request": {
             "method": "GET",
             "header": [

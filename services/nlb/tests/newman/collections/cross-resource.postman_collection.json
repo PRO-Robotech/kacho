@@ -57,7 +57,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr350",
+          "name": "create-lb-cr1",
           "request": {
             "method": "POST",
             "header": [
@@ -211,7 +211,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr350');",
+                  "  pm.execution.setNextRequest('create-lb-cr1');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -223,7 +223,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya351",
+          "name": "materialize-lb-rya2",
           "request": {
             "method": "GET",
             "header": [
@@ -272,7 +272,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya352",
+          "name": "get-lb-inactive-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -326,7 +326,7 @@
           ]
         },
         {
-          "name": "create-listener-rya353",
+          "name": "create-listener-rya4",
           "request": {
             "method": "POST",
             "header": [
@@ -458,7 +458,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya354",
+          "name": "get-listener-vip-rya5",
           "request": {
             "method": "GET",
             "header": [
@@ -636,7 +636,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya355",
+          "name": "materialize-tg-rya6",
           "request": {
             "method": "GET",
             "header": [
@@ -685,7 +685,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya356",
+          "name": "add-instance-target-rya7",
           "request": {
             "method": "POST",
             "header": [
@@ -809,7 +809,7 @@
           ]
         },
         {
-          "name": "set-default-tg-rya386",
+          "name": "set-default-tg-rya37",
           "request": {
             "method": "PATCH",
             "header": [
@@ -929,7 +929,7 @@
           ]
         },
         {
-          "name": "verify-default-tg-set-st357",
+          "name": "verify-default-tg-set-st8",
           "request": {
             "method": "GET",
             "header": [
@@ -986,7 +986,7 @@
           ]
         },
         {
-          "name": "get-lb-after-attach-rya358",
+          "name": "get-lb-after-attach-rya9",
           "request": {
             "method": "GET",
             "header": [
@@ -1038,7 +1038,7 @@
           ]
         },
         {
-          "name": "get-target-states-rya359",
+          "name": "get-target-states-rya10",
           "request": {
             "method": "GET",
             "header": [
@@ -1093,7 +1093,7 @@
           ]
         },
         {
-          "name": "clear-default-tg-rya387",
+          "name": "clear-default-tg-rya38",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1212,7 +1212,7 @@
           ]
         },
         {
-          "name": "remove-instance-target-rya388",
+          "name": "remove-instance-target-rya39",
           "request": {
             "method": "POST",
             "header": [
@@ -1331,7 +1331,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya389",
+          "name": "cleanup-lst-rya40",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1452,7 +1452,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya390",
+          "name": "cleanup-lb-rya41",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1573,7 +1573,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya391",
+          "name": "cleanup-tg-rya42",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1700,7 +1700,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "create-lb-v6-cr360",
+          "name": "create-lb-v6-cr11",
           "request": {
             "method": "POST",
             "header": [
@@ -1854,7 +1854,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-v6-cr360');",
+                  "  pm.execution.setNextRequest('create-lb-v6-cr11');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1866,7 +1866,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya361",
+          "name": "get-lb-v6-vip-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -1919,7 +1919,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya392",
+          "name": "cleanup-lb-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2046,7 +2046,7 @@
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr362",
+          "name": "create-lb-cr13",
           "request": {
             "method": "POST",
             "header": [
@@ -2200,7 +2200,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr362');",
+                  "  pm.execution.setNextRequest('create-lb-cr13');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2212,7 +2212,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya363",
+          "name": "materialize-lb-rya14",
           "request": {
             "method": "GET",
             "header": [
@@ -2261,7 +2261,7 @@
           ]
         },
         {
-          "name": "create-listener-rya364",
+          "name": "create-listener-rya15",
           "request": {
             "method": "POST",
             "header": [
@@ -2441,7 +2441,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya365",
+          "name": "verify-listener-unchanged-rya16",
           "request": {
             "method": "GET",
             "header": [
@@ -2493,7 +2493,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya393",
+          "name": "cleanup-lst-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2614,7 +2614,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya394",
+          "name": "cleanup-lb-rya45",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2833,14 +2833,79 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-                  "pm.environment.set('_cidrSeq', String(__seq));",
-                  "var __run = (pm.environment.get('runId') || 'x0') + '/cross-resource';",
-                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-                  "__h = __h & 0x7fffffff;",
-                  "var __oct2 = 16 + (__h % 220);",
-                  "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');"
+                  "(function () {",
+                  "  var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+                  "  pm.environment.set('_cidrSeq', String(__seq));",
+                  "  var __run = (pm.environment.get('runId') || 'x0') + '/cross-resource';",
+                  "  var __h = 0;",
+                  "  for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+                  "  __h = __h & 0x7fffffff;",
+                  "  function __mix(v) {",
+                  "    v = (v ^ (v >>> 13)) & 0x7fffffff;",
+                  "    v = (v * 65599) % 2147483647;",
+                  "    return (v ^ (v >>> 11)) & 0x7fffffff;",
+                  "  }",
+                  "  function __ent(k) {",
+                  "    return __mix(__h + (__seq + 1) * 7919 + k * 104729) & 0xffff;",
+                  "  }",
+                  "  function __carve4(plan) {",
+                  "    var m = /^\\s*(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)\\/(\\d+)\\s*$/.exec(plan || '');",
+                  "    if (!m) { return ''; }",
+                  "    var o = [+m[1], +m[2], +m[3], +m[4]], L = +m[5];",
+                  "    if (L > 24) { return ''; }",
+                  "    for (var k = 0; k < 3; k++) {",
+                  "      var before = k * 8;",
+                  "      if (L >= before + 8) { continue; }",
+                  "      var keep = Math.max(0, L - before);",
+                  "      var mask = keep === 0 ? 0 : ((0xff << (8 - keep)) & 0xff);",
+                  "      o[k] = (o[k] & mask) | (__ent(k) & (~mask & 0xff));",
+                  "    }",
+                  "    return o[0] + '.' + o[1] + '.' + o[2] + '.0/24';",
+                  "  }",
+                  "  function __hextets(addr) {",
+                  "    var parts = String(addr).split('::');",
+                  "    var head = parts[0] ? parts[0].split(':') : [];",
+                  "    var tail = (parts.length > 1 && parts[1]) ? parts[1].split(':') : [];",
+                  "    var all;",
+                  "    if (parts.length > 1) {",
+                  "      var fill = 8 - head.length - tail.length;",
+                  "      if (fill < 0) { return null; }",
+                  "      var mid = [];",
+                  "      for (var f = 0; f < fill; f++) { mid.push('0'); }",
+                  "      all = head.concat(mid).concat(tail);",
+                  "    } else { all = head; }",
+                  "    if (all.length !== 8) { return null; }",
+                  "    var v = [];",
+                  "    for (var i = 0; i < 8; i++) {",
+                  "      var n = parseInt(all[i] || '0', 16);",
+                  "      if (isNaN(n)) { return null; }",
+                  "      v.push(n & 0xffff);",
+                  "    }",
+                  "    return v;",
+                  "  }",
+                  "  function __carve6(plan) {",
+                  "    var s = String(plan || '').split('/');",
+                  "    if (s.length !== 2) { return ''; }",
+                  "    var h = __hextets(s[0]), L = parseInt(s[1], 10);",
+                  "    if (!h || isNaN(L) || L > 64) { return ''; }",
+                  "    for (var k = 0; k < 4; k++) {",
+                  "      var before = k * 16;",
+                  "      if (L >= before + 16) { continue; }",
+                  "      var keep = Math.max(0, L - before);",
+                  "      var mask = keep === 0 ? 0 : ((0xffff << (16 - keep)) & 0xffff);",
+                  "      h[k] = (h[k] & mask) | (__ent(k + 8) & (~mask & 0xffff));",
+                  "    }",
+                  "    return h[0].toString(16) + ':' + h[1].toString(16) + ':' + h[2].toString(16) +",
+                  "      ':' + h[3].toString(16) + '::/64';",
+                  "  }",
+                  "  var __v4 = __carve4(pm.environment.get('existingNetworkV4Plan'));",
+                  "  if (!__v4) {",
+                  "    pm.test('FIXTURE REQUIRED: existingNetworkV4Plan', () => pm.expect.fail('existingNetworkV4Plan is empty or not a CIDR the suite can carve a subnet from. The seeder that creates existingNetworkId publishes the address plan it declared (deploy/scripts/seed-nlb-fixtures.sh, tests/authz-fixtures/prodseed_nlb_ext.py). Hardcoding an address instead would restore the very defect this helper exists to kill: a CIDR unrelated to the plan, which lands inside it only by coincidence.'));",
+                  "    pm.execution.skipRequest();",
+                  "    return;",
+                  "  }",
+                  "  pm.environment.set('_subnetCidr', __v4);",
+                  "})();"
                 ]
               }
             },
@@ -2920,7 +2985,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr366",
+          "name": "create-internal-lb-cr17",
           "request": {
             "method": "POST",
             "header": [
@@ -3051,7 +3116,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya367",
+          "name": "get-internal-lb-rya18",
           "request": {
             "method": "GET",
             "header": [
@@ -3106,7 +3171,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya368",
+          "name": "create-internal-listener-rya19",
           "request": {
             "method": "POST",
             "header": [
@@ -3234,7 +3299,7 @@
           ]
         },
         {
-          "name": "get-internal-listener-status-rya369",
+          "name": "get-internal-listener-status-rya20",
           "request": {
             "method": "GET",
             "header": [
@@ -3412,7 +3477,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya370",
+          "name": "materialize-tg-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -3461,7 +3526,7 @@
           ]
         },
         {
-          "name": "get-internal-target-states-rya395",
+          "name": "get-internal-target-states-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -3514,7 +3579,7 @@
           ]
         },
         {
-          "name": "cleanup-int-listener-rya396",
+          "name": "cleanup-int-listener-rya47",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3635,7 +3700,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya397",
+          "name": "cleanup-lb-rya48",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3756,7 +3821,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya398",
+          "name": "cleanup-tg-rya49",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3877,7 +3942,7 @@
           ]
         },
         {
-          "name": "cleanup-int-subnet-rya399",
+          "name": "cleanup-int-subnet-rya50",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4173,7 +4238,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya371",
+          "name": "get-no-network-rya22",
           "request": {
             "method": "GET",
             "header": [
@@ -4224,7 +4289,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya400",
+          "name": "cleanup-lb-rya51",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4405,7 +4470,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr372",
+          "name": "create-lb-cr23",
           "request": {
             "method": "POST",
             "header": [
@@ -4559,7 +4624,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr372');",
+                  "  pm.execution.setNextRequest('create-lb-cr23');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -4571,7 +4636,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya373",
+          "name": "materialize-lb-rya24",
           "request": {
             "method": "GET",
             "header": [
@@ -4620,7 +4685,7 @@
           ]
         },
         {
-          "name": "create-listener-rya374",
+          "name": "create-listener-rya25",
           "request": {
             "method": "POST",
             "header": [
@@ -4882,7 +4947,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya375",
+          "name": "materialize-tg-rya26",
           "request": {
             "method": "GET",
             "header": [
@@ -4931,7 +4996,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya376",
+          "name": "add-external-target-rya27",
           "request": {
             "method": "POST",
             "header": [
@@ -5050,7 +5115,7 @@
           ]
         },
         {
-          "name": "set-default-tg-rya401",
+          "name": "set-default-tg-rya52",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5169,7 +5234,7 @@
           ]
         },
         {
-          "name": "delete-lb-not-empty-rya402",
+          "name": "delete-lb-not-empty-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5225,7 +5290,7 @@
           ]
         },
         {
-          "name": "lb-still-exists-rya403",
+          "name": "lb-still-exists-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -5276,7 +5341,7 @@
           ]
         },
         {
-          "name": "clear-default-rya404",
+          "name": "clear-default-rya55",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5395,7 +5460,7 @@
           ]
         },
         {
-          "name": "remove-target-rya405",
+          "name": "remove-target-rya56",
           "request": {
             "method": "POST",
             "header": [
@@ -5514,7 +5579,7 @@
           ]
         },
         {
-          "name": "delete-listener-rya406",
+          "name": "delete-listener-rya57",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5633,7 +5698,7 @@
           ]
         },
         {
-          "name": "listener-gone-rya407",
+          "name": "listener-gone-rya58",
           "request": {
             "method": "GET",
             "header": [
@@ -5687,7 +5752,7 @@
           ]
         },
         {
-          "name": "delete-lb-empty-rya408",
+          "name": "delete-lb-empty-rya59",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5806,7 +5871,7 @@
           ]
         },
         {
-          "name": "lb-gone-rya409",
+          "name": "lb-gone-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -5860,7 +5925,7 @@
           ]
         },
         {
-          "name": "delete-tg-rya410",
+          "name": "delete-tg-rya61",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5971,7 +6036,7 @@
           ]
         },
         {
-          "name": "tg-gone-rya411",
+          "name": "tg-gone-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -6031,7 +6096,7 @@
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr377",
+          "name": "create-lb-cr28",
           "request": {
             "method": "POST",
             "header": [
@@ -6185,7 +6250,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr377');",
+                  "  pm.execution.setNextRequest('create-lb-cr28');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6197,7 +6262,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya378",
+          "name": "materialize-lb-rya29",
           "request": {
             "method": "GET",
             "header": [
@@ -6246,7 +6311,7 @@
           ]
         },
         {
-          "name": "create-listener-rya379",
+          "name": "create-listener-rya30",
           "request": {
             "method": "POST",
             "header": [
@@ -6382,7 +6447,7 @@
           ]
         },
         {
-          "name": "delete-blocked-rya412",
+          "name": "delete-blocked-rya63",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6438,7 +6503,7 @@
           ]
         },
         {
-          "name": "lb-survived-the-refusal-rya413",
+          "name": "lb-survived-the-refusal-rya64",
           "request": {
             "method": "GET",
             "header": [
@@ -6489,7 +6554,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya414",
+          "name": "cleanup-lst-rya65",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6610,7 +6675,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya415",
+          "name": "cleanup-lb-rya66",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6737,7 +6802,7 @@
       "description": "class:STATE | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr380",
+          "name": "create-lb-cr31",
           "request": {
             "method": "POST",
             "header": [
@@ -6891,7 +6956,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr380');",
+                  "  pm.execution.setNextRequest('create-lb-cr31');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6903,7 +6968,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya381",
+          "name": "materialize-lb-rya32",
           "request": {
             "method": "GET",
             "header": [
@@ -7078,7 +7143,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya382",
+          "name": "materialize-tg-rya33",
           "request": {
             "method": "GET",
             "header": [
@@ -7127,7 +7192,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya383",
+          "name": "add-instance-target-rya34",
           "request": {
             "method": "POST",
             "header": [
@@ -7251,7 +7316,7 @@
           ]
         },
         {
-          "name": "get-tg-survives-rya416",
+          "name": "get-tg-survives-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -7304,7 +7369,7 @@
           ]
         },
         {
-          "name": "get-states-survives-rya417",
+          "name": "get-states-survives-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -7358,7 +7423,7 @@
           ]
         },
         {
-          "name": "remove-instance-target-rya418",
+          "name": "remove-instance-target-rya69",
           "request": {
             "method": "POST",
             "header": [
@@ -7482,7 +7547,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya419",
+          "name": "cleanup-tg-rya70",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7603,7 +7668,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya420",
+          "name": "cleanup-lb-rya71",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7730,7 +7795,7 @@
       "description": "class:NEG | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr384",
+          "name": "create-lb-cr35",
           "request": {
             "method": "POST",
             "header": [
@@ -7884,7 +7949,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr384');",
+                  "  pm.execution.setNextRequest('create-lb-cr35');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7896,7 +7961,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya385",
+          "name": "materialize-lb-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -7987,7 +8052,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya421",
+          "name": "cleanup-lb-rya72",
           "request": {
             "method": "DELETE",
             "header": [

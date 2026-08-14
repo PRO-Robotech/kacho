@@ -166,7 +166,7 @@
           ]
         },
         {
-          "name": "capture-rdRegId-rya72",
+          "name": "capture-rdRegId-rya14",
           "request": {
             "method": "GET",
             "header": [
@@ -222,7 +222,7 @@
           ]
         },
         {
-          "name": "warm-rdRegId-rya59",
+          "name": "warm-rdRegId-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -802,7 +802,7 @@
           ]
         },
         {
-          "name": "capture-rnRegId-rya73",
+          "name": "capture-rnRegId-rya15",
           "request": {
             "method": "GET",
             "header": [
@@ -858,7 +858,7 @@
           ]
         },
         {
-          "name": "warm-rnRegId-rya60",
+          "name": "warm-rnRegId-rya2",
           "request": {
             "method": "GET",
             "header": [
@@ -954,7 +954,7 @@
           ]
         },
         {
-          "name": "rename-rya74",
+          "name": "rename-rya16",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1079,7 +1079,7 @@
           ]
         },
         {
-          "name": "get-after-rename-rya75",
+          "name": "get-after-rename-rya17",
           "request": {
             "method": "GET",
             "header": [
@@ -1134,7 +1134,7 @@
           ]
         },
         {
-          "name": "delete-rnRegId-rya76",
+          "name": "delete-rnRegId-rya18",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1299,7 +1299,7 @@
           ]
         },
         {
-          "name": "repo-create-rya61",
+          "name": "repo-create-rya3",
           "request": {
             "method": "POST",
             "header": [
@@ -1425,7 +1425,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya77",
+          "name": "repo-capture-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -1476,7 +1476,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya62",
+          "name": "repo-warm-rya4",
           "request": {
             "method": "GET",
             "header": [
@@ -1733,7 +1733,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya63",
+          "name": "repo-create-rya5",
           "request": {
             "method": "POST",
             "header": [
@@ -1859,7 +1859,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya78",
+          "name": "repo-capture-rya20",
           "request": {
             "method": "GET",
             "header": [
@@ -1911,7 +1911,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya64",
+          "name": "repo-warm-rya6",
           "request": {
             "method": "GET",
             "header": [
@@ -2070,7 +2070,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya65",
+          "name": "repo-create-rya7",
           "request": {
             "method": "POST",
             "header": [
@@ -2196,7 +2196,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya79",
+          "name": "repo-capture-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -2247,7 +2247,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya66",
+          "name": "repo-warm-rya8",
           "request": {
             "method": "GET",
             "header": [
@@ -2306,7 +2306,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya67",
+          "name": "repo-create-rya9",
           "request": {
             "method": "POST",
             "header": [
@@ -2432,7 +2432,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya80",
+          "name": "repo-capture-rya22",
           "request": {
             "method": "GET",
             "header": [
@@ -2483,7 +2483,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya68",
+          "name": "repo-warm-rya10",
           "request": {
             "method": "GET",
             "header": [
@@ -2594,7 +2594,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya69",
+          "name": "repo-create-rya11",
           "request": {
             "method": "POST",
             "header": [
@@ -2720,7 +2720,7 @@
           ]
         },
         {
-          "name": "repo-capture-rya81",
+          "name": "repo-capture-rya23",
           "request": {
             "method": "GET",
             "header": [
@@ -2771,7 +2771,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya70",
+          "name": "repo-warm-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -2991,7 +2991,7 @@
           ]
         },
         {
-          "name": "capture-emRegId-rya82",
+          "name": "capture-emRegId-rya24",
           "request": {
             "method": "GET",
             "header": [
@@ -3047,7 +3047,7 @@
           ]
         },
         {
-          "name": "warm-emRegId-rya71",
+          "name": "warm-emRegId-rya13",
           "request": {
             "method": "GET",
             "header": [
@@ -3097,7 +3097,7 @@
           ]
         },
         {
-          "name": "update-emptymask-rya83",
+          "name": "update-emptymask-rya25",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3222,7 +3222,7 @@
           ]
         },
         {
-          "name": "get-emptymask-rya84",
+          "name": "get-emptymask-rya26",
           "request": {
             "method": "GET",
             "header": [
@@ -3278,7 +3278,7 @@
           ]
         },
         {
-          "name": "delete-emRegId-rya85",
+          "name": "delete-emRegId-rya27",
           "request": {
             "method": "DELETE",
             "header": [

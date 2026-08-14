@@ -140,7 +140,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-1",
           "request": {
             "method": "GET",
             "header": [
@@ -204,7 +204,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya231",
+          "name": "assert-op-success-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -272,7 +272,7 @@
           ]
         },
         {
-          "name": "create-trigger-rya232",
+          "name": "create-trigger-rya2",
           "request": {
             "method": "POST",
             "header": [
@@ -341,7 +341,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-2",
           "request": {
             "method": "GET",
             "header": [
@@ -387,7 +387,7 @@
           ]
         },
         {
-          "name": "get-op-rya233",
+          "name": "get-op-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -441,7 +441,7 @@
           ]
         },
         {
-          "name": "cleanup-rya234",
+          "name": "cleanup-rya4",
           "request": {
             "method": "DELETE",
             "header": [
@@ -497,7 +497,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
@@ -552,7 +552,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya235",
+          "name": "cleanup-mt-rya5",
           "request": {
             "method": "DELETE",
             "header": [
@@ -629,7 +629,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-4",
           "request": {
             "method": "GET",
             "header": [
@@ -781,7 +781,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-5",
           "request": {
             "method": "GET",
             "header": [
@@ -845,7 +845,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya236",
+          "name": "assert-op-success-rya6",
           "request": {
             "method": "GET",
             "header": [
@@ -913,7 +913,7 @@
           ]
         },
         {
-          "name": "create-bad-rya237",
+          "name": "create-bad-rya7",
           "request": {
             "method": "POST",
             "header": [
@@ -995,7 +995,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-6",
           "request": {
             "method": "GET",
             "header": [
@@ -1059,7 +1059,7 @@
           ]
         },
         {
-          "name": "get-op-rya238",
+          "name": "get-op-rya8",
           "request": {
             "method": "GET",
             "header": [
@@ -1340,7 +1340,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-7",
           "request": {
             "method": "GET",
             "header": [
@@ -1404,7 +1404,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya239",
+          "name": "assert-op-success-rya9",
           "request": {
             "method": "GET",
             "header": [
@@ -1472,7 +1472,7 @@
           ]
         },
         {
-          "name": "create-trigger-rya240",
+          "name": "create-trigger-rya10",
           "request": {
             "method": "POST",
             "header": [
@@ -1541,7 +1541,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-8",
           "request": {
             "method": "GET",
             "header": [
@@ -1587,7 +1587,7 @@
           ]
         },
         {
-          "name": "pin-done-op-rya241",
+          "name": "pin-done-op-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -1643,7 +1643,7 @@
           ]
         },
         {
-          "name": "cancel-done-rya242",
+          "name": "cancel-done-rya12",
           "request": {
             "method": "POST",
             "header": [
@@ -1705,7 +1705,7 @@
           ]
         },
         {
-          "name": "cleanup-rya243",
+          "name": "cleanup-rya13",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1763,7 +1763,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-9",
           "request": {
             "method": "GET",
             "header": [
@@ -1818,7 +1818,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya244",
+          "name": "cleanup-mt-rya14",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1895,7 +1895,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-10",
           "request": {
             "method": "GET",
             "header": [

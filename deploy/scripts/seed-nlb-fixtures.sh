@@ -1043,6 +1043,14 @@ existingProjectId=$PROJECT_ID
 existingRegionId=$REGION_ID
 existingZoneId=$ZONE_ID
 existingNetworkId=$NET_ID
+# Объявленный ПЛАН публикуется рядом с сетью, потому что резать подсеть можно только
+# внутри него. Кейс, выводящий адрес сам, попадает в план или мимо в зависимости от
+# того, чей посев создал сеть, — а посевов у этого набора два, и планы у них разные.
+# Помощник `carve_cidr_pre` (services/nlb/tests/newman/scripts/gen.py) режет ВНУТРИ
+# опубликованного; гейт `TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan` не даёт
+# завести нарезку мимо него.
+existingNetworkV4Plan=$NET_SUPERNET_V4
+existingNetworkV6Plan=$NET_SUPERNET_V6
 existingSubnetId=$SUBNET_ID
 existingExternalPoolId=$POOL_ID
 existingAnycastPoolId=$ANY_POOL_ID
