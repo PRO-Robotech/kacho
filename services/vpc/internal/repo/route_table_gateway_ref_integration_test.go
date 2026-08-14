@@ -21,6 +21,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,6 +43,7 @@ type gwRefFixture struct {
 	networkID string
 	subnetID  string
 	rtID      string
+	addrSeq   int
 }
 
 func newGwRefFixture(ctx context.Context, t *testing.T) *gwRefFixture {
@@ -96,13 +98,49 @@ func (f *gwRefFixture) anchorSubnet(ctx context.Context, t *testing.T, networkID
 	return id
 }
 
+// gateway заводит шлюз названного вида на названном якоре.
+//
+// Шлюзу ТРАНСЛЯЦИИ здесь же выделяется внешний адрес: без него строка не
+// записывается вовсе (`gateways_nat_has_address_chk`, миграция 0038), и это
+// не формальность фикстуры, а тот же инвариант, что держит продукт — вид и
+// адрес связаны биусловием в обе стороны. Фикстура, обходящая его вставкой
+// «попроще», была бы снисходительнее продукта и прятала бы ровно тот дефект,
+// ради которого её подставляют. Адрес заводится напрямую, а не выделением из
+// пула: предмет этих проб — резолв ссылки маршрута на шлюз, и заводить ради
+// него пул зоны значило бы тянуть в пробу чужой механизм.
 func (f *gwRefFixture) gateway(ctx context.Context, t *testing.T, name, subnetID string, kind domain.GatewayType) string {
 	t.Helper()
 	id := ids.NewID(ids.PrefixGateway)
+	addrID := ""
+	if kind == domain.GatewayTypeNat {
+		addrID = f.externalAddress(ctx, t, name)
+	}
 	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
 		_, e := w.Gateways().Insert(ctx, &domain.Gateway{
 			ID: id, ProjectID: f.projectID, Name: domain.RcNameVPC(name),
-			GatewayType: kind, SubnetID: subnetID,
+			GatewayType: kind, SubnetID: subnetID, ExternalAddressID: addrID,
+		})
+		return e
+	}))
+	return id
+}
+
+// externalAddress — внешний адрес под шлюз трансляции. Каждый свой: один адрес
+// два шлюза не обслуживает, и проба на это опирается.
+func (f *gwRefFixture) externalAddress(ctx context.Context, t *testing.T, forGateway string) string {
+	t.Helper()
+	id := ids.NewID(ids.PrefixAddress)
+	f.addrSeq++
+	require.NoError(t, legacyWithTx(t, ctx, f.repo, func(w kacho.RepositoryWriter) error {
+		_, e := w.Addresses().Insert(ctx, &domain.Address{
+			ID: id, ProjectID: f.projectID,
+			Name:      domain.RcNameVPC("addr-" + forGateway),
+			Type:      domain.AddressTypeExternal,
+			IpVersion: domain.IpVersionIPv4,
+			ExternalIpv4: &domain.ExternalIpv4Spec{
+				Address: fmt.Sprintf("203.0.113.%d", f.addrSeq),
+				ZoneID:  "zone-a",
+			},
 		})
 		return e
 	}))
@@ -344,6 +382,10 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 		_, e := w.Gateways().Insert(ctx, &domain.Gateway{
 			ID: ids.NewID(ids.PrefixGateway), ProjectID: f.projectID,
 			Name: domain.RcNameVPC("gw-absent-anchor"), GatewayType: domain.GatewayTypeNat,
+			// Адрес выдан НАМЕРЕННО: без него первым отвечает биусловие «вид ↔
+			// адрес», и проба зеленела бы на чужой полосе, ничего не сказав о той,
+			// которую называет её имя.
+			ExternalAddressID: f.externalAddress(ctx, t, "gw-absent-anchor"),
 			SubnetID: absent,
 		})
 		return e
@@ -373,6 +415,10 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 		_, e := w.Gateways().Insert(ctx, &domain.Gateway{
 			ID: ids.NewID(ids.PrefixGateway), ProjectID: f.projectID,
 			Name: domain.RcNameVPC("gw-foreign-anchor"), GatewayType: domain.GatewayTypeNat,
+			// Адрес выдан НАМЕРЕННО: без него первым отвечает биусловие «вид ↔
+			// адрес», и проба зеленела бы на чужой полосе, ничего не сказав о той,
+			// которую называет её имя.
+			ExternalAddressID: f.externalAddress(ctx, t, "gw-foreign-anchor"),
 			SubnetID: foreignSub,
 		})
 		return e

@@ -82,6 +82,7 @@ export const SafetyOutlined = Icon;
 export const SearchOutlined = Icon;
 export const SettingOutlined = Icon;
 export const StopOutlined = Icon;
+export const SwapOutlined = Icon;
 export const TagsOutlined = Icon;
 export const TeamOutlined = Icon;
 export const UnlockOutlined = Icon;

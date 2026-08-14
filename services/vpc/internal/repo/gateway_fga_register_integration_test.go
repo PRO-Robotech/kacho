@@ -43,7 +43,32 @@ func seedGatewayAnchorSQL(ctx context.Context, t *testing.T, pool *pgxpool.Pool,
 		 VALUES ($1, $2, $3, $4, 'ZONAL', $5, $6)`,
 		subID, projectID, "sub-anchor", netID, "zone-a", []string{"10.79.0.0/24"})
 	require.NoError(t, err)
+	seedDefaultExternalPool(ctx, t, pool, "zone-a", "198.51.100.0/28")
 	return subID
+}
+
+// seedDefaultExternalPool — пул внешних адресов по умолчанию для зоны якоря.
+//
+// Нужен потому, что эти пробы идут ПРОДУКТОВЫМ путём создания, а он выделяет
+// шлюзу трансляции внешний адрес: вид и адрес связаны биусловием на уровне базы
+// (миграция 0038). Без пула создание отвечает «нет свободного внешнего адреса»,
+// и проба падает на нехватке фикстуры, ничего не сказав о том, что называет её
+// имя, — эмиссии намерения регистрации.
+func seedDefaultExternalPool(ctx context.Context, t *testing.T, pool *pgxpool.Pool, zoneID, cidr string) {
+	t.Helper()
+	poolID := ids.NewID("apl")
+	_, err := pool.Exec(ctx, `
+		INSERT INTO kacho_vpc.address_pools (id, name, v4_cidr_blocks, kind, zone_id, is_default)
+		VALUES ($1, $2, ARRAY[$3]::text[], 1, $4, true)`,
+		poolID, "pool-"+poolID, cidr, zoneID)
+	require.NoError(t, err)
+
+	r := kachopg.New(pool, nil)
+	t.Cleanup(r.Close)
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	require.NoError(t, w.AddressPools().PopulateFreelistForPool(ctx, poolID))
+	require.NoError(t, w.Commit())
 }
 
 // singleGatewayID возвращает единственный id gateway в проекте.
