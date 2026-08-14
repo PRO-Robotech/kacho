@@ -27,6 +27,8 @@ import (
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // runConcurrentAllocate — N goroutine, стартующих одновременно (barrier), вызывают
@@ -71,7 +73,7 @@ func TestAllocateInternalIP_ConcurrentIdempotent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.90.0.0/24"}, nil)
@@ -80,6 +82,7 @@ func TestAllocateInternalIP_ConcurrentIdempotent(t *testing.T) {
 	a.InternalIpv4.SubnetID = subnetID
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	_, err = w.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
@@ -117,7 +120,7 @@ func TestAllocateInternalIPv6_ConcurrentIdempotent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.91.0.0/24"}, []string{"fd00:91::/64"})
@@ -128,6 +131,7 @@ func TestAllocateInternalIPv6_ConcurrentIdempotent(t *testing.T) {
 	a.InternalIpv6 = &domain.InternalIpv6Spec{SubnetID: subnetID}
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	_, err = w.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())

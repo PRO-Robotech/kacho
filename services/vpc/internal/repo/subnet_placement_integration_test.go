@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_Subnet_Placement_Regional_OK — REGIONAL-подсеть из «серого»
@@ -30,7 +32,7 @@ func TestIntegration_Subnet_Placement_Regional_OK(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -69,7 +71,7 @@ func TestIntegration_Subnet_Placement_CheckRejectsInconsistent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -103,7 +105,7 @@ func TestIntegration_Subnet_Placement_ListFilterByPlacement(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -159,7 +161,7 @@ func TestIntegration_Subnet_Placement_RegionalOverlapsZonal_PerNetworkExclude(t 
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 

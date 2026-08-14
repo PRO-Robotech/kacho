@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne — уникальность
@@ -37,7 +39,7 @@ func TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne(t *testing.T)
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := repo.NewGuestAccessKeyRepo(pool)
 
 	t.Run("одно имя — ровно один ключ", func(t *testing.T) {
@@ -136,7 +138,7 @@ func TestPlacementGroup_ConcurrentSameNameLeavesExactlyOne(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := repo.NewPlacementGroupRepo(pool)
 
 	const project, name = "proj-plg-race", "одна-группа"

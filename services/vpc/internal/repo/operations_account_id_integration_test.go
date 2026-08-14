@@ -14,6 +14,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Additive nullable-колонка account_id на kacho_vpc.operations нужна, чтобы INSERT
@@ -35,7 +37,7 @@ func TestIntegration_Operations_AccountIDColumn_NullForVPC(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	opsRepo := operations.NewRepo(pool, "kacho_vpc")
 

@@ -48,7 +48,7 @@ func newNICAttachEnv(t *testing.T) *nicAttachEnv {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return &nicAttachEnv{ctx: ctx, dsn: dsn, pool: pool, repo: kachopg.New(pool, nil)}
 }
 
@@ -110,6 +110,7 @@ func (e *nicAttachEnv) writer(t *testing.T) kacho.RepositoryWriter {
 // attach — открывает Writer, делает AttachToInstance, commit при успехе.
 func (e *nicAttachEnv) attach(p kacho.AttachNICParams) (*kacho.NetworkInterfaceRecord, error) {
 	w, err := e.repo.Writer(e.ctx)
+	defer w.Abort()
 	if err != nil {
 		return nil, err
 	}

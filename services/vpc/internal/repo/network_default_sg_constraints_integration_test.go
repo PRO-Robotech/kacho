@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Миграция 0005: FK networks.default_security_group_id → security_groups(id)
@@ -28,7 +30,7 @@ func TestIntegration_DefaultSG_FKSetsNullOnDelete(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -63,7 +65,7 @@ func TestIntegration_DefaultSG_FKRejectsMissingSG(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -85,7 +87,7 @@ func TestIntegration_OneDefaultSGPerNetwork(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

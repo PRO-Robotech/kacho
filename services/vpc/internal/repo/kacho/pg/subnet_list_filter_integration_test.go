@@ -16,6 +16,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // VPC-1-45: Subnet List free-form filter whitelist принимает zone_id / network_id
@@ -31,11 +33,12 @@ func TestSubnetList_FilterByZoneAndNetwork_VPC_1_45(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	mkNet := func(id string) {
 		_, e := w.Networks().Insert(ctx, &domain.Network{
 			ID: id, ProjectID: "prj_zf", Name: domain.RcNameVPC(id), Labels: domain.LabelsFromMap(nil),

@@ -12,6 +12,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // IPAM-аллокатор (allocateInternalIPv4 / allocateInternalIPv6 в
@@ -31,6 +33,7 @@ func allocTestFixture(t *testing.T, ctx context.Context, r *kachopg.Repository, 
 	t.Helper()
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	net := newNetwork("project-alloc", "net-alloc-"+t.Name())
 	_, err = w.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -53,7 +56,7 @@ func TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.77.0.0/24"}, nil)
@@ -61,6 +64,7 @@ func TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive(t *testing.T) {
 	// Address A занимает 10.77.0.5 (committed).
 	wA, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wA.Abort()
 	a := newAddress("project-alloc", "addr-a", false)
 	a.InternalIpv4.SubnetID = subnetID
 	_, err = wA.Addresses().Insert(ctx, a)
@@ -111,13 +115,14 @@ func TestCQRS_Address_SetInternalIPv6_ConflictKeepsTXAlive(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	subnetID := allocTestFixture(t, ctx, r, []string{"10.78.0.0/24"}, []string{"fd00:78::/64"})
 
 	wA, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wA.Abort()
 	a := newAddress("project-alloc", "addr-a6", false)
 	a.IpVersion = domain.IpVersionIPv6
 	a.InternalIpv4 = nil

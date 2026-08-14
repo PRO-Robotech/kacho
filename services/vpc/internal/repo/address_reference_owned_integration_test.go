@@ -27,6 +27,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // newExtVIPAddr — external IPv4 Address с explicit-адресом (IPAM-пул не
@@ -55,7 +57,7 @@ func TestIntegration_AddressReference_OwnedRoundTrip(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -119,7 +121,7 @@ func TestIntegration_AddressReference_OwnedUpdatedByReattach(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -174,7 +176,7 @@ func TestIntegration_Address_Delete_InUseByLoadBalancer_GeneralizedMessage(t *te
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 	or := repomock.NewOpsRepo()
@@ -214,7 +216,7 @@ func TestIntegration_Address_Get_UsedByReferrerNameAndOwned(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 

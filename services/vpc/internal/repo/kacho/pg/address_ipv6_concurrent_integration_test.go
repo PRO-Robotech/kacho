@@ -28,6 +28,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // insertV6Pool — прямой INSERT external-public AddressPool (kind=1) с одним
@@ -81,7 +83,7 @@ func TestExternalIPv6_ConcurrentAllocateUnique(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 
@@ -169,7 +171,7 @@ func TestExternalIPv6_ConcurrentAllocateSameAddress(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 
@@ -240,7 +242,7 @@ func TestExternalIPv6_ConcurrentReleasedOffsetReuse(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 

@@ -12,6 +12,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // `addresses.used` — system-managed флаг, выставляется ТОЛЬКО referrer-методами
@@ -32,13 +34,14 @@ func TestCQRS_Address_Update_DoesNotClobberUsed(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// 1. Insert external address (used=false).
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	a := newAddress("project-used", "addr-used", true)
 	created, err := w1.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
@@ -48,6 +51,7 @@ func TestCQRS_Address_Update_DoesNotClobberUsed(t *testing.T) {
 	// 2. NIC attach: SetReference выставляет used=true (committed).
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, err = w2.Addresses().SetReference(ctx, &domain.AddressReference{
 		AddressID:    created.ID,
 		ReferrerType: "compute_instance",
@@ -62,6 +66,7 @@ func TestCQRS_Address_Update_DoesNotClobberUsed(t *testing.T) {
 	//    Used=false, меняем description.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	stale := created // снимок «до attach» — used=false
 	stale.Description = "edited"
 	stale.Used = false // явно: use-case никогда не кладет used в mask

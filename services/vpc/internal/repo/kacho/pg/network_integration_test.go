@@ -76,12 +76,13 @@ func TestCQRS_Network_WriterCommit_ReaderSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	n := newNetwork("project-1", "net-1")
 	created, err := w.Networks().Insert(ctx, n)
@@ -111,7 +112,7 @@ func TestCQRS_Network_WriterUncommitted_ReaderNotSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
@@ -150,12 +151,13 @@ func TestCQRS_Network_WriterAbort_RollbacksInsert(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	n := newNetwork("project-1", "net-abort")
 	_, err = w.Networks().Insert(ctx, n)
@@ -180,13 +182,14 @@ func TestCQRS_Network_OutboxAtomicityWithDML(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// 1) Insert + Emit + Commit → outbox-row есть.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	n := newNetwork("project-1", "net-outbox-commit")
 	_, err = w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
@@ -203,6 +206,7 @@ func TestCQRS_Network_OutboxAtomicityWithDML(t *testing.T) {
 	// 2) Insert + Emit + Abort → НИ DML, НИ outbox-row не должны остаться.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	n2 := newNetwork("project-1", "net-outbox-abort")
 	_, err = w2.Networks().Insert(ctx, n2)
 	require.NoError(t, err)
@@ -231,13 +235,14 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Insert.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	n := newNetwork("project-1", "net-cycle")
 	created, err := w1.Networks().Insert(ctx, n)
 	require.NoError(t, err)
@@ -247,6 +252,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	// Update.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	created.Name = domain.RcNameVPC("net-cycle-updated")
 	updated, err := w2.Networks().Update(ctx, &created.Network)
 	require.NoError(t, err)
@@ -257,6 +263,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	// Delete.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	require.NoError(t, w3.Networks().Delete(ctx, n.ID))
 	require.NoError(t, w3.Outbox().Emit(ctx, "Network", n.ID, "DELETED", map[string]any{"id": n.ID}))
 	require.NoError(t, w3.Commit())
@@ -282,12 +289,13 @@ func TestCQRS_Network_SetDefaultSGID_AtomicWithSG(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	n := newNetwork("project-setdefault", "net-setdefault")
 	created, err := w.Networks().Insert(ctx, n)

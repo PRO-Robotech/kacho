@@ -19,6 +19,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Две колонки под DNS-записи NIC уходят из схемы (0023).
@@ -98,7 +100,7 @@ func TestIntegration_DropNICDNSColumns_GoneAtHeadAndRepoStillWorks(t *testing.T)
 	// 3. Существующий репозиторий работает поверх изменённой схемы.
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	instRepo := repo.NewInstanceRepo(pool)
 
 	inID := ids.NewID(ids.PrefixInstance)

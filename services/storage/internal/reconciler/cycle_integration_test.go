@@ -50,7 +50,7 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	dsn := pgtest.NewDB(t) + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=8"
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

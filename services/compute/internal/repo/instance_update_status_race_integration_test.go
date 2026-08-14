@@ -18,6 +18,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // newRunningInstance is a small helper for the Update-vs-lifecycle tests.
@@ -54,7 +56,7 @@ func TestIntegration_InstanceUpdate_DoesNotClobberLifecycleStatus(t *testing.T) 
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -101,7 +103,7 @@ func TestIntegration_InstanceUpdate_ConcurrentWithStop_ExactlyOneStatusOutcome(t
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
