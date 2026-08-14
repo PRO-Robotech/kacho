@@ -1667,12 +1667,32 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
 # Module discovery & main
 # ---------------------------------------------------------------------------
 
-def load_cases_module(path: Path):
-    # Reset the poll-step counter so each collection's poll-op-<n> names are
-    # deterministic (stable across regenerations) rather than depending on how
-    # many modules were loaded before this one.
+def _reset_step_name_counters() -> None:
+    """Reset every counter that feeds a STEP NAME, before loading a case module.
+
+    A step name must be a function of the CASE, never of the environment. These
+    counters live at module scope and only ever grow, so without this reset a
+    name would depend on how many case modules were loaded before this one:
+    `gen.py <module>` and a full `gen.py` would then emit DIFFERENT names for
+    the same case. Two consequences, both observed: regenerating one module
+    leaves a tree the full run does not produce (a one-module commit for #307
+    needed a 670-line follow-up), and the step names used to diagnose a red run
+    do not match between runs.
+
+    Resetting is safe by construction: newman resolves setNextRequest by request
+    name WITHIN the collection being run, and one case module produces exactly
+    one collection — so uniqueness is only ever required within that scope.
+
+    Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan,
+    which executes this generator in both modes and compares the bytes.
+    """
     global _poll_seq
     _poll_seq = 0
+    _RYA_SEQ[0] = 0
+
+
+def load_cases_module(path: Path):
+    _reset_step_name_counters()
     spec = importlib.util.spec_from_file_location(path.stem, path)
     mod = importlib.util.module_from_spec(spec)
     # Inject helpers into the module's namespace so case files don't import gen.

@@ -354,7 +354,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya326",
+          "name": "get-viewer-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -423,7 +423,7 @@
           ]
         },
         {
-          "name": "cleanup-rya333",
+          "name": "cleanup-rya8",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1193,7 +1193,7 @@
           ]
         },
         {
-          "name": "cleanup-rya334",
+          "name": "cleanup-rya9",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2232,7 +2232,7 @@
           ]
         },
         {
-          "name": "cleanup-rya335",
+          "name": "cleanup-rya10",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2605,7 +2605,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya336",
+          "name": "get-viewer-ok-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -2673,7 +2673,7 @@
           ]
         },
         {
-          "name": "cleanup-rya337",
+          "name": "cleanup-rya12",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3046,7 +3046,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya338",
+          "name": "get-viewer-ok-rya13",
           "request": {
             "method": "GET",
             "header": [
@@ -3114,7 +3114,7 @@
           ]
         },
         {
-          "name": "cleanup-rya339",
+          "name": "cleanup-rya14",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3738,7 +3738,7 @@
           ]
         },
         {
-          "name": "cleanup-rya340",
+          "name": "cleanup-rya15",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4188,7 +4188,7 @@
           ]
         },
         {
-          "name": "add-as-tm-rya327",
+          "name": "add-as-tm-rya2",
           "request": {
             "method": "POST",
             "header": [
@@ -4345,7 +4345,7 @@
           ]
         },
         {
-          "name": "tm-verify-target-present-rya341",
+          "name": "tm-verify-target-present-rya16",
           "request": {
             "method": "GET",
             "header": [
@@ -4478,7 +4478,7 @@
           ]
         },
         {
-          "name": "tm-rm-target-rya342",
+          "name": "tm-rm-target-rya17",
           "request": {
             "method": "POST",
             "header": [
@@ -4687,7 +4687,7 @@
           ]
         },
         {
-          "name": "add-as-tgupdater-rya328",
+          "name": "add-as-tgupdater-rya3",
           "request": {
             "method": "POST",
             "header": [
@@ -4844,7 +4844,7 @@
           ]
         },
         {
-          "name": "upd-as-tgupdater-rya343",
+          "name": "upd-as-tgupdater-rya18",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5062,7 +5062,7 @@
           ]
         },
         {
-          "name": "get-as-viewer-ok-rya344",
+          "name": "get-as-viewer-ok-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -5130,7 +5130,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-rm-target-rya345",
+          "name": "tm-cleanup-rm-target-rya20",
           "request": {
             "method": "POST",
             "header": [
@@ -5285,7 +5285,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-tg-rya346",
+          "name": "tm-cleanup-tg-rya21",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5741,7 +5741,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr329",
+          "name": "setup-cr-cr4",
           "request": {
             "method": "POST",
             "header": [
@@ -5924,7 +5924,7 @@
           ]
         },
         {
-          "name": "del-rya330",
+          "name": "del-rya5",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6079,7 +6079,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya347",
+          "name": "get-after-delete-rya22",
           "request": {
             "method": "GET",
             "header": [
@@ -6438,7 +6438,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya331",
+          "name": "del-by-creator-rya6",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6747,7 +6747,7 @@
           ]
         },
         {
-          "name": "cleanup-rya348",
+          "name": "cleanup-rya23",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6910,7 +6910,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "cr-as-group-member-rya332",
+          "name": "cr-as-group-member-rya7",
           "request": {
             "method": "POST",
             "header": [
@@ -7073,7 +7073,7 @@
           ]
         },
         {
-          "name": "cleanup-rya349",
+          "name": "cleanup-rya24",
           "request": {
             "method": "DELETE",
             "header": [

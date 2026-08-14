@@ -107,7 +107,7 @@
           ]
         },
         {
-          "name": "get-region-rgf16",
+          "name": "get-region-rgf1",
           "request": {
             "method": "GET",
             "header": [
@@ -384,7 +384,7 @@
           ]
         },
         {
-          "name": "get-after-first-rgf17",
+          "name": "get-after-first-rgf2",
           "request": {
             "method": "GET",
             "header": [
@@ -642,7 +642,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf18",
+          "name": "confirm-region-rgf3",
           "request": {
             "method": "GET",
             "header": [
@@ -749,7 +749,7 @@
           ]
         },
         {
-          "name": "confirm-zone-rgf19",
+          "name": "confirm-zone-rgf4",
           "request": {
             "method": "GET",
             "header": [
@@ -1048,7 +1048,7 @@
           ]
         },
         {
-          "name": "confirm-created-rgf20",
+          "name": "confirm-created-rgf5",
           "request": {
             "method": "GET",
             "header": [
