@@ -82,6 +82,7 @@ SG-target правило может ссылаться лишь на SG **той
     <tr><td><code>defaultForNetwork</code></td><td><code>{TYPES.bool}</code></td><td>Признак default-SG сети (output-only; <code>true</code> у SG, авто-созданной при <code>Network.Create</code>)</td></tr>
     <tr><td><code>usedBy</code></td><td><code>&#123;TYPES.reference&#125;[]</code></td><td>Потребители SG (output-only, выводится на чтении — <code>Get</code>/<code>List</code>; в ответах мутаций не заполняется): <code>NetworkInterface</code> (его <code>securityGroupIds</code> содержит эту SG) + <code>Network</code> (его <code>defaultSecurityGroupId</code> == эта SG). <strong>Ответ ограничен 33 записями</strong> — см. «Сколько потребителей отдаётся» ниже. Потребители чужих проектов не показываются</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+    <tr><td><code>applyState</code></td><td><code>{TYPES.applyState}</code></td><td>{DICTIONARY.applyState.short} — см. [Обзор API](/api/overview#состояние-применения-намерения-applystate)</td></tr>
   </tbody>
 </table>
 

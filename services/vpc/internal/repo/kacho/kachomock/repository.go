@@ -94,6 +94,12 @@ type Repository struct {
 	// retry-петлю doCreate (retry-to-success и exhaustion), которую не
 	// воспроизводит рандомный macutil.GenerateMAC. nil → обычная вставка.
 	niInsertHook func(mac string) error
+	// quotas — строки учёта числа ресурсов. Общие на репозиторий, а не на
+	// транзакцию: материализация на живом пути идёт СВОЕЙ writer-TX до мутации,
+	// поэтому TX-локальность здесь моделировала бы не тот путь.
+	quotas *quotaStore
+	// quotaInit — замок ленивой сборки `quotas`, ОТДЕЛЬНЫЙ от `mu`.
+	quotaInit sync.Mutex
 }
 
 // FGARegisterEvent — снимок одной fga_register_outbox-строки (для проверок в
@@ -399,6 +405,7 @@ func (r *Repository) Reader(_ context.Context) (kacho.RepositoryReader, error) {
 		apSnap:      apSnap,
 		ndSnap:      ndSnap,
 		cgSnap:      cgSnap,
+		quotaSnap:   r.quotaStore(),
 	}, nil
 }
 
@@ -480,6 +487,29 @@ func (r *Repository) Writer(_ context.Context) (kacho.RepositoryWriter, error) {
 	}, nil
 }
 
+// quotaStore лениво заводит хранилище строк учёта. Лениво — потому что
+// Repository собирается и нулевым значением, и конструктором, а строка учёта
+// обязана существовать в обоих случаях: дублёр, у которого её нет, отвечал бы
+// «нет строки» падением, а не отказом контракта.
+// СВОЙ замок, а не общий `r.mu`. Это не вкусовщина: `Reader`/`Writer` берут
+// `r.mu` и внутри него спрашивают хранилище — на общем замке первая же проба
+// вставала бы навсегда (sync.Mutex не рекурсивен). Ровно это и случилось при
+// заведении: прогон не падал, а ВИС, то есть вердикта не давала ни одна проба —
+// исход «не выполнилось», который нельзя зачесть ни в зелёное, ни в красное.
+func (r *Repository) quotaStore() *quotaStore {
+	r.quotaInit.Lock()
+	defer r.quotaInit.Unlock()
+	if r.quotas == nil {
+		r.quotas = newQuotaStore()
+	}
+	return r.quotas
+}
+
+// Quotas — материализация учёта у writer'а.
+func (w *writerImpl) Quotas() kacho.QuotaWriterIface {
+	return &quotaMock{store: w.parent.quotaStore()}
+}
+
 // Close — no-op.
 func (r *Repository) Close() {}
 
@@ -498,6 +528,12 @@ type readerImpl struct {
 	apSnap      map[string]*kacho.AddressPoolRecord
 	ndSnap      map[string]string
 	cgSnap      map[string]*kacho.CidrGroupRecord
+	quotaSnap   *quotaStore
+}
+
+// Quotas — совещательная полоса учёта.
+func (rd *readerImpl) Quotas() kacho.QuotaReaderIface {
+	return &quotaMock{store: rd.quotaSnap}
 }
 
 func (rd *readerImpl) Networks() kacho.NetworkReaderIface {

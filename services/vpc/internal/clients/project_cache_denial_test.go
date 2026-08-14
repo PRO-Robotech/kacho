@@ -43,6 +43,16 @@ func (c *countingProjects) Exists(context.Context, string) (bool, error) {
 	return false, c.err
 }
 
+// AccountOf — тот же вызов, что и Exists: счётчик обращений обязан считать
+// ОДНО обращение, иначе проба про нагрузку на соседа мерила бы не то.
+func (c *countingProjects) Describe(ctx context.Context, projectID string) (bool, string, error) {
+	exists, err := c.Exists(ctx, projectID)
+	if err != nil || !exists {
+		return exists, "", err
+	}
+	return true, "acc-" + projectID, nil
+}
+
 func denialCache(up *countingProjects) *CachedProjectClient {
 	return NewCachedProjectClient(up, ProjectCacheConfig{
 		PositiveTTL: time.Minute,

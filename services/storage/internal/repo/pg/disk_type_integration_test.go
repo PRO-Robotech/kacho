@@ -111,6 +111,11 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
+	// Третий конструктор пула в пакете — и он тоже обязан завести строки учёта:
+	// вставка строки ресурса списывает место независимо от того, считает ли
+	// проба запросы. Счётчику это не мешает — он читается разностью вокруг
+	// измеряемого вызова, а посев идёт до неё.
+	seedFixtureQuotas(t, pool)
 	return pool, counter
 }
 

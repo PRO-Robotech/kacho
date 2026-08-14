@@ -40,6 +40,15 @@ func ToStatus(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
 	}
+	// Отказ учёта числа ресурсов разбирается ДО общего switch'а: он выносит
+	// наружу не только код, но и машинный признак полосы (`ErrorInfo.reason`),
+	// а общий switch собирает голый статус и признак потерял бы. Без этой ветки
+	// клиенту пришлось бы различать «место кончилось» и «потолок не назван»
+	// разбором прозы — того, что `api-conventions.md` §By-lane code-split прямо
+	// запрещает.
+	if st, ok := quotaRefusal(err); ok {
+		return st
+	}
 	switch {
 	case errors.Is(err, storageerr.ErrNotFound):
 		return status.Error(codes.NotFound, strip(err, storageerr.ErrNotFound))

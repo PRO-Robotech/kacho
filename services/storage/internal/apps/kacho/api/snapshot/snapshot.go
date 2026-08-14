@@ -27,6 +27,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -96,7 +97,25 @@ var knownUpdateFields = map[string]struct{}{
 
 // UseCase — бизнес-логика Snapshot поверх Repo, peer IAMClient, LRO-стека operations
 // и инжектированного transport-mapper'а errStatus.
+// QuotaGuard — совещательная полоса учёта числа ресурсов арендатора.
+//
+// Порт объявлен здесь, у того, кто им пользуется: реализация живёт в
+// `apps/kacho/shared/quota` и заводит строки учёта на промахе. Полоса ничего НЕ
+// решает — решение принимает атомарное списание триггера в той же транзакции,
+// что вставка строки ресурса (ban #10). Она существует ради РАННЕГО отказа:
+// без неё исчерпание предела наблюдается арендатором как «200 и операция,
+// упавшая через секунду».
+//
+// nil-реализация означает «раннего отказа нет», а НЕ «предела нет»: место
+// по-прежнему занимает триггер, и исчерпание приезжает отказом операции.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
+}
+
 type UseCase struct {
+	// quota — совещательная полоса учёта числа ресурсов; nil → раннего отказа
+	// нет, место по-прежнему занимает триггер. Инжектится WithQuota.
+	quota     QuotaGuard
 	repo      Repo
 	iam       IAMClient
 	ops       operations.Repo
@@ -139,6 +158,9 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 }
 
 // WithListFilter подключает per-object фильтр видимости публичного List.
+// WithQuota провязывает совещательную полосу учёта числа ресурсов.
+func (u *UseCase) WithQuota(q QuotaGuard) *UseCase { u.quota = q; return u }
+
 func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 	u.listFilter = f
 	return u
@@ -289,6 +311,22 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 	}
 	if err := u.iam.EnsureProjectExists(ctx, s.ProjectID); err != nil {
 		return nil, u.errStatus(err)
+	}
+	// Совещательная полоса учёта: ранний отказ по числу ресурсов вида ДО
+	// создания операции. Стоит ПОСЛЕ проверки существования проекта — заводить
+	// строки учёта проекту, которого нет, значило бы материализовать предел на
+	// имя, а не на арендатора; и ПЕРЕД операцией — иначе исчерпание предела
+	// наблюдалось бы как успешный вызов с упавшей операцией.
+	//
+	// Проверка на nil стоит ЗДЕСЬ, хотя реализация переживает nil-приёмник
+	// сама. Это разные пустоты: не провязанный порт — nil-ИНТЕРФЕЙС, и вызов
+	// метода на нём паникует, тогда как `*Guard`, положенный в интерфейс,
+	// интерфейсу не равен nil и до тела доходит. Закрыты обе, потому что
+	// первая означала бы «сервис не работает», а не «нет раннего отказа».
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, s.ProjectID, quota.KindSnapshots); err != nil {
+			return nil, u.errStatus(err)
+		}
 	}
 	s.ID = ids.NewID(domain.PrefixSnapshot)
 	// Имя объекта у бэкенда выводится из СОБСТВЕННОГО идентификатора снимка, а не из
