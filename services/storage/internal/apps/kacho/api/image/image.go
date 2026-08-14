@@ -34,6 +34,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -154,7 +155,25 @@ var knownUpdateFields = map[string]struct{}{
 
 // UseCase — бизнес-логика Image поверх CQRS-портов Reader/Writer, peer-клиентов,
 // LRO-стека operations и инжектированного transport-mapper'а errStatus.
+// QuotaGuard — совещательная полоса учёта числа ресурсов арендатора.
+//
+// Порт объявлен здесь, у того, кто им пользуется: реализация живёт в
+// `apps/kacho/shared/quota` и заводит строки учёта на промахе. Полоса ничего НЕ
+// решает — решение принимает атомарное списание триггера в той же транзакции,
+// что вставка строки ресурса (ban #10). Она существует ради РАННЕГО отказа:
+// без неё исчерпание предела наблюдается арендатором как «200 и операция,
+// упавшая через секунду».
+//
+// nil-реализация означает «раннего отказа нет», а НЕ «предела нет»: место
+// по-прежнему занимает триггер, и исчерпание приезжает отказом операции.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
+}
+
 type UseCase struct {
+	// quota — совещательная полоса учёта числа ресурсов; nil → раннего отказа
+	// нет, место по-прежнему занимает триггер. Инжектится WithQuota.
+	quota     QuotaGuard
 	reader    Reader
 	writer    Writer
 	geo       GeoClient
@@ -212,6 +231,9 @@ func (u *UseCase) WithInstallPrefix(p string) *UseCase {
 }
 
 // WithListFilter подключает per-object фильтр видимости публичного List.
+// WithQuota провязывает совещательную полосу учёта числа ресурсов.
+func (u *UseCase) WithQuota(q QuotaGuard) *UseCase { u.quota = q; return u }
+
 func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 	u.listFilter = f
 	return u
@@ -351,6 +373,21 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 	if err := u.iam.EnsureProjectExists(ctx, i.ProjectID); err != nil {
 		return nil, u.errStatus(err)
 	}
+	// Совещательная полоса учёта: ранний отказ по числу образов проекта.
+	//
+	// Провязана на ВСЕ ТРИ пути появления образа — заведение, регистрацию уже
+	// лежащего у бэкенда объекта и копию в другой регион, — потому что все три
+	// вставляют строку и все три списывают место триггером. Полоса на одном из
+	// них давала бы ранний отказ выборочно: арендатор получал бы 429 при
+	// заведении и «операция упала» при копии — на один и тот же предел.
+	//
+	// Проверка на nil стоит здесь, хотя реализация переживает nil-приёмник сама:
+	// не провязанный порт — nil-ИНТЕРФЕЙС, и вызов метода на нём паникует.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, i.ProjectID, quota.KindImages); err != nil {
+			return nil, u.errStatus(err)
+		}
+	}
 	// Зоны региона образа — у владельца Geography. Их сверяет с живой строкой
 	// источника САМ insert-CAS (placement-coherence, ban #10): образ REGIONAL,
 	// его источник ZONAL, и они когерентны только если зона источника лежит в
@@ -457,6 +494,21 @@ func (u *UseCase) Register(ctx context.Context, in RegisterInput) (*domain.Image
 	}
 	if err := u.iam.EnsureProjectExists(ctx, in.ProjectID); err != nil {
 		return nil, u.errStatus(err)
+	}
+	// Совещательная полоса учёта: ранний отказ по числу образов проекта.
+	//
+	// Провязана на ВСЕ ТРИ пути появления образа — заведение, регистрацию уже
+	// лежащего у бэкенда объекта и копию в другой регион, — потому что все три
+	// вставляют строку и все три списывают место триггером. Полоса на одном из
+	// них давала бы ранний отказ выборочно: арендатор получал бы 429 при
+	// заведении и «операция упала» при копии — на один и тот же предел.
+	//
+	// Проверка на nil стоит здесь, хотя реализация переживает nil-приёмник сама:
+	// не провязанный порт — nil-ИНТЕРФЕЙС, и вызов метода на нём паникует.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, in.ProjectID, quota.KindImages); err != nil {
+			return nil, u.errStatus(err)
+		}
 	}
 	i := &domain.Image{
 		ID:           ids.NewID(domain.PrefixImage),
@@ -691,6 +743,21 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	zones, zerr := u.geo.ZonesOfRegion(ctx, in.TargetRegionID)
 	if zerr != nil {
 		return nil, u.errStatus(zerr)
+	}
+	// Совещательная полоса учёта: ранний отказ по числу образов проекта.
+	//
+	// Провязана на ВСЕ ТРИ пути появления образа — заведение, регистрацию уже
+	// лежащего у бэкенда объекта и копию в другой регион, — потому что все три
+	// вставляют строку и все три списывают место триггером. Полоса на одном из
+	// них давала бы ранний отказ выборочно: арендатор получал бы 429 при
+	// заведении и «операция упала» при копии — на один и тот же предел.
+	//
+	// Проверка на nil стоит здесь, хотя реализация переживает nil-приёмник сама:
+	// не провязанный порт — nil-ИНТЕРФЕЙС, и вызов метода на нём паникует.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, in.ProjectID, quota.KindImages); err != nil {
+			return nil, u.errStatus(err)
+		}
 	}
 
 	src, gerr := u.reader.Get(ctx, in.ImageID)

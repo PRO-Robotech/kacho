@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -69,8 +70,42 @@ func (c *IAMClient) EnsureProjectExists(ctx context.Context, projectID string) e
 	return status.Error(codes.Unavailable, "iam project validation unavailable")
 }
 
+// AccountOf возвращает аккаунт проекта — зеркало, без которого строка учёта
+// невидима аккаунтной дельте (приёмка квот, V2-4).
+//
+// ЧЕГО ЭТОТ ВЫЗОВ СТОИТ, СКАЗАНО ЧЕСТНО. У клиента storage→iam кэша нет, поэтому
+// это ВТОРОЕ обращение к тому же соседу за тем же проектом. Оно случается ровно
+// на пути МАТЕРИАЛИЗАЦИИ — то есть при первой мутации в незнакомом проекте, — и
+// не случается ни разу, пока строки учёта у проекта есть: совещательная полоса
+// зовёт материализацию только на промахе. Это ровно та цена, которую приёмка
+// называет своей («самое первое создание в новом проекте делает один
+// дополнительный внутренний запрос; дальше всё локально»), а не скрытая надбавка
+// к каждому Create. Заведётся кэш проектов — вызов схлопнется с проверкой
+// существования сам, без правки этого места.
+//
+// Пустой аккаунт НЕ возвращается как «нет аккаунта»: у проекта он есть всегда, и
+// пустая строка означала бы, что сосед ответил не тем. Вызывающий отвергает такой
+// ответ, а не записывает пустое зеркало (схема его тоже отвергнет).
+func (c *IAMClient) AccountOf(ctx context.Context, projectID string) (string, error) {
+	if c.cli == nil {
+		return "", status.Error(codes.Unavailable, "storage→iam ProjectService not configured")
+	}
+	cctx, cancel := context.WithTimeout(ctx, peerCallTimeout)
+	defer cancel()
+	p, err := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID})
+	if err != nil {
+		// Отказ соседа отдаётся вызывающему КАК ЕСТЬ: полосу (не найдено /
+		// состояние / недоступность) выбирает носитель `pkg/peer` у вызывающего,
+		// и второй рукописный разбор кодов здесь дал бы два места об одном
+		// предмете — ровно тот класс, который уже чинили в EnsureProjectExists.
+		return "", err
+	}
+	return p.GetAccountId(), nil
+}
+
 var (
-	_ volume.IAMClient   = (*IAMClient)(nil)
-	_ snapshot.IAMClient = (*IAMClient)(nil)
-	_ image.IAMClient    = (*IAMClient)(nil)
+	_ volume.IAMClient     = (*IAMClient)(nil)
+	_ snapshot.IAMClient   = (*IAMClient)(nil)
+	_ image.IAMClient      = (*IAMClient)(nil)
+	_ quota.AccountLocator = (*IAMClient)(nil)
 )

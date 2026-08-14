@@ -153,6 +153,12 @@ func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
+	// Строки учёта заводятся ОБОИМ видам пула, а не только «с каталогом»:
+	// каталог классов и учёт числа ресурсов — разные условия. Вставка строки
+	// ресурса списывает место у ЛЮБОГО пула, поэтому пул без учёта отвергал бы
+	// каждую вставку «потолок не назван» независимо от того, нужен ли пробе
+	// каталог классов.
+	seedFixtureQuotas(t, pool)
 	if seed {
 		seedFixtureCatalog(t, pool)
 	}
