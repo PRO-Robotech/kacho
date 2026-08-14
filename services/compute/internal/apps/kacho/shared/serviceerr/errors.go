@@ -22,4 +22,8 @@ var (
 	ErrFailedPrecondition = ports.ErrFailedPrecondition
 	// ErrInternal — generic-ошибка для неклассифицированных DB-проблем.
 	ErrInternal = ports.ErrInternal
+	// ErrQuotaExceeded — место кончилось: потолок назван и выбран.
+	ErrQuotaExceeded = ports.ErrQuotaExceeded
+	// ErrQuotaNotProvisioned — потолок не назван ни на одной области.
+	ErrQuotaNotProvisioned = ports.ErrQuotaNotProvisioned
 )

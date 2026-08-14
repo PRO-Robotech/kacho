@@ -55,6 +55,20 @@ type Service struct {
 	zones     ZoneRegistry
 	regions   RegionRegistry
 	registrar ports.OwnerRegistrar
+	// quota — совещательная полоса учёта (порт QuotaGuard).
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции. Но материализация строк учёта висит
+	// здесь же, поэтому на поднятом стенде провязка ОБЯЗАТЕЛЬНА: без неё
+	// триггеру нечего списывать и первая же вставка отвергается «потолок не
+	// назван».
+	quota QuotaGuard
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+func (s *Service) WithQuotaGuard(g QuotaGuard) *Service {
+	s.quota = g
+	return s
 }
 
 // NewService собирает use-case.
@@ -179,6 +193,19 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operat
 		return nil, err
 	}
 
+	// Учёт числа ресурсов: ранний отказ ДО создания операции. Здесь же
+	// материализуются строки учёта, если проект их ещё не имеет, — момент, когда
+	// владелец типа впервые узнаёт о проекте, и есть обращение к нему.
+	//
+	// После проверки проекта, а не до неё: резолв величин спрашивает у соседа
+	// аккаунт проекта, и на несуществующем проекте отказ обязан называть проект,
+	// а не пределы.
+	if s.quota != nil {
+		if err := s.quota.Admit(ctx, req.ProjectID, "compute.placementGroup"); err != nil {
+			return nil, err
+		}
+	}
+
 	g := &domain.PlacementGroup{
 		ID:            ids.NewHyphenID(groupPrefix),
 		ProjectID:     req.ProjectID,
@@ -300,4 +327,18 @@ func (s *Service) ListOperations(ctx context.Context, id string, p ports.Paginat
 	}
 	return operations.ListForCaller(ctx, s.opsRepo,
 		operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
+}
+
+// QuotaGuard — совещательная полоса учёта числа ресурсов.
+//
+// Порт объявлен здесь, у вызывающего; реализация — `apps/kacho/shared/quota`.
+//
+// Полоса НЕ ПРИНИМАЕТ решения: между её ответом и вставкой помещается чужая
+// запись, и место занимает атомарное списание триггера в writer-транзакции
+// — чтение с последующим сравнением не даёт
+// блокировки строки. Она существует ради РАННЕГО отказа — иначе исчерпание предела
+// наблюдается как «операция принята и упала через секунду», — и ради
+// материализации строк учёта на промахе: без неё триггеру нечего списывать.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
 }

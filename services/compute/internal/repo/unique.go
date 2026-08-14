@@ -83,6 +83,14 @@ func wrapPgErr(err error, kind, id string) error {
 		}
 		return ports.ErrNotFound
 	}
+	// Отказ учёта квоты — ПЕРЕД общими классами. Его SQLSTATE'ы (KQ001/KQ002)
+	// ни одному из них не принадлежат, поэтому без этой ветки они дошли бы до
+	// `ErrInternal` — то есть арендатор, упёршийся в потолок, увидел бы
+	// «что-то сломалось» вместо «место кончилось», а администратор не отличил бы
+	// исчерпание от неназначенного предела.
+	if qerr := classifyQuotaErr(err); qerr != err {
+		return qerr
+	}
 	if isUniqueViolation(err) {
 		return ports.ErrAlreadyExists
 	}

@@ -37,6 +37,10 @@ func setupTestDB(t *testing.T) string {
 	t.Cleanup(func() { _ = db.Close() })
 
 	seedFixtureMachineTypes(t, db)
+	// Строки учёта квоты — по той же причине, что и каталог машинных типов выше:
+	// без них КАЖДАЯ вставка ресурса отвергалась бы «потолок не назван» и
+	// маскировала предмет своей пробы.
+	repo.SeedFixtureQuotas(t, dsn)
 	return dsn
 }
 

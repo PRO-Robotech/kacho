@@ -56,6 +56,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/nodeownership"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/placementgroup"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/realization"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
@@ -64,6 +65,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/observability/health"
 	computemetrics "github.com/PRO-Robotech/kacho/services/compute/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/operationresolver"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 )
 
@@ -149,7 +151,6 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("носитель Geography не отвечает на вопрос о регионе: " +
 			"группа размещения с региональным якорем не может быть проверена")
 	}
-	svcs := buildServices(pool, projectClient, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Fail-closed boot-gate: when KACHO_COMPUTE_REQUIRE_IAM=true, mutating Create is
 	// refused and readiness is NotReady until the register-drainer is IAM-connected.
@@ -191,6 +192,34 @@ func runServe(cfg config.Config) error {
 			"authz_check_listfilter_mtls", cfg.IAMAuthzMTLS.Enable,
 		)
 	}
+
+	// Резолв величин квоты идёт на ВНУТРЕННИЙ слушатель kacho-iam — по тому же
+	// адресу, что уже объявлен оператором для проверки прав.
+	//
+	// Это НЕ вывод адреса из чужого: адрес внутреннего контура объявлен
+	// оператором явно, и здесь он переиспользуется. Своей ручки у резолва нет
+	// именно потому, что второй адрес того же слушателя разошёлся бы с первым
+	// молча — и контроль ушёл бы в никуда, выглядя включённым.
+	//
+	// Пустой адрес (dev без соседа) → полоса не собирается. Это означает
+	// «раннего отказа и материализации нет», а НЕ «предела нет»: место занимает
+	// триггер, и при отсутствии строк учёта он отвергает вставку «потолок не
+	// назван». На любом поднятом стенде адрес обязан быть задан — иначе домен
+	// перестаёт принимать создание, и это видно с первой же мутации, а не тихо.
+	var quotaLimits quota.LimitResolver
+	if authzConn != nil {
+		quotaLimits = clients.NewLimitClient(authzConn)
+		logger.Info("resource-count quota: limits resolver wired",
+			"endpoint", cfg.AuthZIAMGRPCAddr, "service", "compute")
+	} else {
+		logger.Warn("resource-count quota: no internal kacho-iam endpoint, limits resolver is OFF. " +
+			"The charging trigger still enforces, so creates are refused with " +
+			"\"no ceiling stated\" until the endpoint is configured")
+	}
+
+	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
+	// их зависимость, а её источник — соединение внутреннего контура выше.
+	svcs := buildServices(pool, projectClient, quotaLimits, geoZones, geoRegions, subnetPlacement, nicClient, storageClient, opsRepo)
 
 	// Пообъектный сужатель: он же уезжает ПРОВОДКОЙ в дескриптор, поэтому строится
 	// ДО него и ТЕМ ЖЕ объектом, что сужает строки в обработчиках. Собери его
@@ -728,7 +757,7 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 // zone_id-валидация Instance идёт через geo.v1.ZoneService.Get (clients.GeoClient);
 // Geography (Region/Zone) принадлежит kacho-geo — compute их больше не обслуживает,
 // а лишь валидирует свой zone_id как consumer.
-func dialPeers(cfg config.Config, logger *slog.Logger) (instance.ProjectClient, instance.ZoneRegistry, instance.SubnetRegistry, instance.NicClient, instance.StorageClient, []*grpc.ClientConn, error) {
+func dialPeers(cfg config.Config, logger *slog.Logger) (ports.ProjectAccountClient, instance.ZoneRegistry, instance.SubnetRegistry, instance.NicClient, instance.StorageClient, []*grpc.ClientConn, error) {
 	if cfg.SkipPeerValidation {
 		logger.Warn("KACHO_COMPUTE_SKIP_PEER_VALIDATION=true — cross-service existence-check disabled (dev/test only)")
 		return clients.NoopProjectClient{}, clients.NoopGeoClient{}, clients.NoopSubnetClient{}, clients.NoopNicClient{}, clients.NoopStorageClient{}, nil, nil
@@ -898,19 +927,34 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
+func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient, quotaLimits quota.LimitResolver, geoZones instance.ZoneRegistry, geoRegions placementgroup.RegionRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
 	instanceRepo := repo.NewInstanceRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
+	// Полоса учёта собирается ЗДЕСЬ, потому что здесь живёт пул: материализация
+	// пишет строки учёта, а решение принимает триггер в той же транзакции, что
+	// вставка. Зависимости, требующие соединений (резолв величин и аккаунт
+	// проекта), приходят параметрами — их владелец composition root.
+	//
+	// nil-резолв означает «раннего отказа нет», а НЕ «предела нет»: разбор — у
+	// объявления quotaLimits в runServe.
+	var quotaGuard *quota.Guard
+	if quotaLimits != nil {
+		quotaGuard = quota.NewGuard(repo.NewQuotaRepo(pool), quotaLimits, projectClient, "compute")
+	}
+
 	return &services{
 		machineType: machinetype.NewMachineTypeService(machineTypeRepo, opsRepo),
-		instance:    instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
+		instance: instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo).
+			WithQuotaGuard(quotaGuard),
 		guestAccessKey: guestaccesskey.NewService(
-			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil),
+			repo.NewGuestAccessKeyRepo(pool), opsRepo, projectClient, nil).
+			WithQuotaGuard(quotaGuard),
 		realization:   realization.NewService(instanceRepo),
 		nodeOwnership: nodeownership.NewService(instanceRepo),
 		placementGroup: placementgroup.NewService(
-			repo.NewPlacementGroupRepo(pool), opsRepo, projectClient, geoZones, geoRegions),
+			repo.NewPlacementGroupRepo(pool), opsRepo, projectClient, geoZones, geoRegions).
+			WithQuotaGuard(quotaGuard),
 	}
 }
 

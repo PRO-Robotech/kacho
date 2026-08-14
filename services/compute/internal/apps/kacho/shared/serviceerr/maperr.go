@@ -38,6 +38,13 @@ func MapRepoErr(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
 	}
+	// Отказ учёта квоты — ПЕРЕД общим switch'ом: ему мало кода, он несёт ещё и
+	// машинный признак полосы. Без этой ветки исчерпание доехало бы до
+	// фиксированного INTERNAL, и арендатор увидел бы «что-то сломалось» вместо
+	// «место кончилось».
+	if st, ok := quotaRefusal(err); ok {
+		return st
+	}
 	switch {
 	case errors.Is(err, ErrNotFound):
 		return status.Error(codes.NotFound, stripSentinel(err, ErrNotFound))
