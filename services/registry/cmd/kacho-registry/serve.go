@@ -23,6 +23,7 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
@@ -356,6 +357,18 @@ func runServe(cfg config.Config) error {
 	if c, ok := listAuthz.(*check.IAMCheckClient); ok {
 		pageNarrower = c.Narrower()
 	}
+	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
+	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
+	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
+	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	svcMetrics.RegisterListNarrow(func() listnarrow.Counts {
+		if c, ok := listAuthz.(*check.IAMCheckClient); ok {
+			return c.Narrower().Counts()
+		}
+		// Сужателя на этой посадке нет — полосы всё равно объявлены нулями:
+		// «сужений не было» обязано быть отличимо от «коллектора нет».
+		return listnarrow.Counts{}
+	})
 
 	// ── обработчики. Слушателей здесь больше нет: их поднимает носитель контура
 	// (`pkg/servicehost`), и регистратор получает `grpc.ServiceRegistrar` —

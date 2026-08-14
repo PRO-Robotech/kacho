@@ -37,6 +37,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
@@ -196,6 +197,11 @@ func runServe(cfg config.Config) error {
 	// второй раз — носитель сверял бы с каталогом экземпляр, которого на пути
 	// запроса нет.
 	listFilter := buildListFilter(cfg, authzConn, logger)
+	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
+	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
+	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
+	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return listFilter.Counts() })
 
 	// ── объявление о себе ─────────────────────────────────────────────────────
 	//

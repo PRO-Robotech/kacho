@@ -103,7 +103,20 @@ type Config struct {
 // Counts — прочитанные величины сужателя. Именно ПРОЧИТАННЫЕ: по отсутствию строк в
 // журнале «прохода не было» и «счётчика нет» неразличимы, а прочитанный ноль их
 // различает.
+//
+// Полос ЧЕТЫРЕ, и первая из них положительная. Трёх полос несуженного прохода
+// недостаточно: три нуля не отличают «аварийных проходов не было» от «сужателя не
+// звали ни разу», а это разные состояния — второе означает, что защита не
+// исполняется вовсе. Единица счёта у всех четырёх одна: ОДНА публичная операция
+// сужения страницы.
 type Counts struct {
+	// Narrowed — сколько раз страница сужена ШТАТНО: личность установлена,
+	// аварийного режима нет, сосед ответил, мягкий проход не понадобился.
+	//
+	// Пустая страница сюда НЕ попадает: соседа она не спрашивает и сужать в ней
+	// нечего, поэтому засчитывать её значило бы объявлять работу там, где её не
+	// делали.
+	Narrowed uint64
 	// Breakglass — сколько раз страница ушла несуженной по аварийному режиму.
 	Breakglass uint64
 	// SoftPassMisconfigured — сколько раз мягкий проход сработал на ответе,
@@ -123,6 +136,7 @@ type Narrower struct {
 	logger *slog.Logger
 	now    func() time.Time
 
+	narrowed      atomic.Uint64
 	breakglass    atomic.Uint64
 	misconfigured atomic.Uint64
 	transient     atomic.Uint64
@@ -193,6 +207,7 @@ func (n *Narrower) Counts() Counts {
 		return Counts{}
 	}
 	return Counts{
+		Narrowed:              n.narrowed.Load(),
 		Breakglass:            n.breakglass.Load(),
 		SoftPassMisconfigured: n.misconfigured.Load(),
 		SoftPassTransient:     n.transient.Load(),
@@ -301,6 +316,12 @@ func (n *Narrower) visibleIDs(ctx context.Context, subject, resourceType, action
 		}
 		pending = denied
 	}
+
+	// Штатное сужение состоялось. Считается ЗДЕСЬ, а не у вызывающего: отсюда
+	// видно, что ни один из трёх несуженных проходов не сработал (каждый из них
+	// возвращается раньше через handleErr), — а у вызывающего мягкий проход
+	// неотличим от успеха, потому что тоже приходит без ошибки.
+	n.narrowed.Add(1)
 
 	// Порядок входа сохраняется — страница уже упорядочена курсором,
 	// переупорядочивание сломало бы пагинацию.
@@ -695,6 +716,10 @@ func (n *Narrower) Visible(ctx context.Context, subject, resourceType, action, r
 			n.putCache(subject, resourceType, id)
 		}
 	}
+	// Нижняя дверь того же механизма — и та же положительная полоса: иначе
+	// вызывающий, ходящий сюда, был бы для наблюдения неотличим от вызывающего,
+	// который не ходит никуда.
+	n.narrowed.Add(1)
 	out := make([]string, 0, len(visible))
 	for _, id := range ids {
 		if _, ok := visible[id]; ok {

@@ -27,6 +27,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowmetrics"
+
 	opmetrics "github.com/PRO-Robotech/kacho/pkg/operations"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 )
@@ -255,4 +258,18 @@ func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age fl
 // SetDeliveredTotal — rows of one direction delivered so far.
 func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
 	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+}
+
+// RegisterListNarrow провязывает читателя величин СУЖАТЕЛЯ СПИСКОВ.
+//
+// Коллектор — ОДНА реализация на все сервисы (`pkg/listnarrow/narrowmetrics`),
+// потому что пять копий одинаковых на вид полос разъезжаются молча — ровно по
+// той же причине, по которой единствен и сам сужатель. Здесь только имя
+// сервиса и читатель.
+//
+// `read == nil` не отменяет серий: четыре полосы объявляются нулями и на
+// посадке без сужателя, иначе «сужений не было» стало бы неотличимо от
+// «коллектора нет».
+func (m *Metrics) RegisterListNarrow(read func() listnarrow.Counts) {
+	m.reg.MustRegister(narrowmetrics.New("nlb", read))
 }
