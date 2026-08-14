@@ -65,8 +65,19 @@ type Network struct {
 	// ° ID of the system-provisioned default route table, created at Network.Create
 	// and auto-associated to every new Subnet of this network. Output-only.
 	DefaultRouteTableId string `protobuf:"bytes,10,opt,name=default_route_table_id,json=defaultRouteTableId,proto3" json:"default_route_table_id,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+	//
+	// Незаполненное поле означает «платформа не делает утверждения об этом
+	// объекте» (намерение снимается) и НЕ означает «не применено».
+	//
+	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
+	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+	ApplyState    *ApplyState `protobuf:"bytes,11,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Network) Reset() {
@@ -169,11 +180,18 @@ func (x *Network) GetDefaultRouteTableId() string {
 	return ""
 }
 
+func (x *Network) GetApplyState() *ApplyState {
+	if x != nil {
+		return x.ApplyState
+	}
+	return nil
+}
+
 var File_kacho_cloud_vpc_v1_network_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/network.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe9\x03\n" +
+	" kacho/cloud/vpc/v1/network.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\xaa\x04\n" +
 	"\aNetwork\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -187,7 +205,9 @@ const file_kacho_cloud_vpc_v1_network_proto_rawDesc = "" +
 	"\x10ipv4_cidr_blocks\x18\b \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
 	"\x10ipv6_cidr_blocks\x18\t \x03(\tR\x0eipv6CidrBlocks\x123\n" +
 	"\x16default_route_table_id\x18\n" +
-	" \x01(\tR\x13defaultRouteTableId\x1a9\n" +
+	" \x01(\tR\x13defaultRouteTableId\x12?\n" +
+	"\vapply_state\x18\v \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
+	"applyState\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
@@ -209,15 +229,17 @@ var file_kacho_cloud_vpc_v1_network_proto_goTypes = []any{
 	(*Network)(nil),               // 0: kacho.cloud.vpc.v1.Network
 	nil,                           // 1: kacho.cloud.vpc.v1.Network.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 2: google.protobuf.Timestamp
+	(*ApplyState)(nil),            // 3: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_network_proto_depIdxs = []int32{
 	2, // 0: kacho.cloud.vpc.v1.Network.created_at:type_name -> google.protobuf.Timestamp
 	1, // 1: kacho.cloud.vpc.v1.Network.labels:type_name -> kacho.cloud.vpc.v1.Network.LabelsEntry
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 2: kacho.cloud.vpc.v1.Network.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_network_proto_init() }
@@ -225,6 +247,7 @@ func file_kacho_cloud_vpc_v1_network_proto_init() {
 	if File_kacho_cloud_vpc_v1_network_proto != nil {
 		return
 	}
+	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

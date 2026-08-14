@@ -125,7 +125,18 @@ type SecurityGroup struct {
 	// SG is attached). Output-only, derived-on-read: network_interface
 	// (NIC.security_group_ids contains this SG) + network
 	// (default_security_group_id == this SG). NOT rule-references-another-SG.
-	UsedBy        []*reference.Reference `protobuf:"bytes,11,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
+	UsedBy []*reference.Reference `protobuf:"bytes,11,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
+	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+	//
+	// Незаполненное поле означает «платформа не делает утверждения об этом
+	// объекте» (намерение снимается) и НЕ означает «не применено».
+	//
+	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
+	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+	ApplyState    *ApplyState `protobuf:"bytes,12,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -226,6 +237,13 @@ func (x *SecurityGroup) GetDefaultForNetwork() bool {
 func (x *SecurityGroup) GetUsedBy() []*reference.Reference {
 	if x != nil {
 		return x.UsedBy
+	}
+	return nil
+}
+
+func (x *SecurityGroup) GetApplyState() *ApplyState {
+	if x != nil {
+		return x.ApplyState
 	}
 	return nil
 }
@@ -514,7 +532,7 @@ var File_kacho_cloud_vpc_v1_security_group_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/vpc/v1/security_group.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a%kacho/cloud/reference/reference.proto\"\x86\x04\n" +
+	"'kacho/cloud/vpc/v1/security_group.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a%kacho/cloud/reference/reference.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\xc7\x04\n" +
 	"\rSecurityGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -529,7 +547,9 @@ const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\x05rules\x18\t \x03(\v2%.kacho.cloud.vpc.v1.SecurityGroupRuleR\x05rules\x12.\n" +
 	"\x13default_for_network\x18\n" +
 	" \x01(\bR\x11defaultForNetwork\x129\n" +
-	"\aused_by\x18\v \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
+	"\aused_by\x18\v \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x12?\n" +
+	"\vapply_state\x18\f \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
+	"applyState\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\x06status\"\xa4\x05\n" +
@@ -587,21 +607,23 @@ var file_kacho_cloud_vpc_v1_security_group_proto_goTypes = []any{
 	nil,                              // 6: kacho.cloud.vpc.v1.SecurityGroupRule.LabelsEntry
 	(*timestamppb.Timestamp)(nil),    // 7: google.protobuf.Timestamp
 	(*reference.Reference)(nil),      // 8: kacho.cloud.reference.Reference
+	(*ApplyState)(nil),               // 9: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_security_group_proto_depIdxs = []int32{
 	7, // 0: kacho.cloud.vpc.v1.SecurityGroup.created_at:type_name -> google.protobuf.Timestamp
 	5, // 1: kacho.cloud.vpc.v1.SecurityGroup.labels:type_name -> kacho.cloud.vpc.v1.SecurityGroup.LabelsEntry
 	2, // 2: kacho.cloud.vpc.v1.SecurityGroup.rules:type_name -> kacho.cloud.vpc.v1.SecurityGroupRule
 	8, // 3: kacho.cloud.vpc.v1.SecurityGroup.used_by:type_name -> kacho.cloud.reference.Reference
-	6, // 4: kacho.cloud.vpc.v1.SecurityGroupRule.labels:type_name -> kacho.cloud.vpc.v1.SecurityGroupRule.LabelsEntry
-	0, // 5: kacho.cloud.vpc.v1.SecurityGroupRule.direction:type_name -> kacho.cloud.vpc.v1.SecurityGroupRule.Direction
-	3, // 6: kacho.cloud.vpc.v1.SecurityGroupRule.ports:type_name -> kacho.cloud.vpc.v1.PortRange
-	4, // 7: kacho.cloud.vpc.v1.SecurityGroupRule.cidr_blocks:type_name -> kacho.cloud.vpc.v1.CidrBlocks
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	9, // 4: kacho.cloud.vpc.v1.SecurityGroup.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
+	6, // 5: kacho.cloud.vpc.v1.SecurityGroupRule.labels:type_name -> kacho.cloud.vpc.v1.SecurityGroupRule.LabelsEntry
+	0, // 6: kacho.cloud.vpc.v1.SecurityGroupRule.direction:type_name -> kacho.cloud.vpc.v1.SecurityGroupRule.Direction
+	3, // 7: kacho.cloud.vpc.v1.SecurityGroupRule.ports:type_name -> kacho.cloud.vpc.v1.PortRange
+	4, // 8: kacho.cloud.vpc.v1.SecurityGroupRule.cidr_blocks:type_name -> kacho.cloud.vpc.v1.CidrBlocks
+	9, // [9:9] is the sub-list for method output_type
+	9, // [9:9] is the sub-list for method input_type
+	9, // [9:9] is the sub-list for extension type_name
+	9, // [9:9] is the sub-list for extension extendee
+	0, // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_security_group_proto_init() }
@@ -609,6 +631,7 @@ func file_kacho_cloud_vpc_v1_security_group_proto_init() {
 	if File_kacho_cloud_vpc_v1_security_group_proto != nil {
 		return
 	}
+	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	file_kacho_cloud_vpc_v1_security_group_proto_msgTypes[1].OneofWrappers = []any{
 		(*SecurityGroupRule_CidrBlocks)(nil),
 		(*SecurityGroupRule_SecurityGroupId)(nil),

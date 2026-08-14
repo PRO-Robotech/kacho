@@ -478,3 +478,113 @@ func mustRel(root, path string) string {
 	}
 	return rel
 }
+
+// TestNewmanCollectionsDoNotDoublePrefixTheRoute — узкий гейт на ОДИН класс:
+// путь, который не резолвится, но резолвится после снятия первого сегмента.
+//
+// # Почему именно так, а не «любой нерезолвящийся путь»
+//
+// Широкая форма была написана первой и на дереве дала 59 находок при 6044
+// безтелесных запросах — и почти все законны: служебные маршруты (`/healthz`,
+// `/.well-known/jwks.json`, `/oauth2/token`), прямые gRPC-пути
+// (`/kacho.cloud.storage.v1.InternalVolumeService/Attach`) и намеренно мусорный
+// ввод (завершающий слеш, пустой сегмент). Отделять их пришлось бы перечнем, а
+// перечень стареет молча — ровно тот дефект, который эта волна уже чинила в
+// пробах очереди прав.
+//
+// Узкая форма ложных срабатываний не даёт by construction: если путь начинает
+// резолвиться ПОСЛЕ снятия первого сегмента, значит сегмент лишний. Служебный
+// маршрут так себя не ведёт, мусорный ввод — тоже.
+//
+// # Что это стоило
+//
+// Кейс состояния применения написал `/vpc/v1/operations/{id}`, тогда как
+// маршрут операции объявлен контрактом БЕЗ префикса сервиса. Край ответил 404,
+// и упали ВСЕ три утверждения шага — включая те, что о маршруте не говорят
+// вовсе («операция завершена без ошибки», «ресурс поля не несёт»). По их именам
+// предмет не читался, а локальный прогон таких проб не исполняет: диагноз стоил
+// полного прогона стенда.
+func TestNewmanCollectionsDoNotDoublePrefixTheRoute(t *testing.T) {
+	root := repoRoot(t)
+	files, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman", "collections", "*.json"))
+	if err != nil {
+		t.Fatalf("glob collections: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no newman collections found: gate has nothing to check, which is a failure, not a pass")
+	}
+
+	type finding struct {
+		File, Case, Method, Path, Without string
+		Line                              int
+	}
+	var found []finding
+	requests, checked := 0, 0
+
+	for _, file := range files {
+		reqs, perr := parseNewmanCollection(file)
+		if perr != nil {
+			t.Fatalf("%s: %v", file, perr)
+		}
+		rel := mustRel(root, file)
+		for _, r := range reqs {
+			requests++
+			if _, ok := resolveHTTPBinding(r.method, r.path); ok {
+				continue
+			}
+			// Снимаем один и два первых сегмента: префикс сервиса — это ДВА
+			// сегмента (`/vpc/v1`), и проверка одного оставила бы гейт зелёным
+			// на собственном предмете. Первая редакция так и делала, и это
+			// показала инъекция, а не чтение кода.
+			var shorter string
+			for _, drop := range []int{1, 2} {
+				rest := strings.TrimPrefix(r.path, "/")
+				cut := rest
+				okCut := true
+				for i := 0; i < drop; i++ {
+					j := strings.Index(cut, "/")
+					if j < 0 {
+						okCut = false
+						break
+					}
+					cut = cut[j+1:]
+				}
+				if !okCut {
+					continue
+				}
+				if _, ok := resolveHTTPBinding(r.method, "/"+cut); ok {
+					shorter = "/" + cut
+					break
+				}
+			}
+			checked++
+			if shorter == "" {
+				continue
+			}
+			found = append(found, finding{
+				File: rel, Case: r.name, Method: r.method,
+				Path: r.path, Without: shorter, Line: r.line,
+			})
+		}
+	}
+
+	// Перепись — отдельное утверждение: «ноль находок» обязано быть отличимо
+	// от «ноль прочитанного».
+	t.Logf("осмотрено коллекций %d, запросов %d; нерезолвящихся с проверенным укорочением %d; находок %d",
+		len(files), requests, checked, len(found))
+
+	if requests == 0 {
+		t.Fatal("ни одного запроса не прочитано — гейт смотрит не туда")
+	}
+	if len(found) == 0 {
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d запрос(ов) несут ЛИШНИЙ первый сегмент пути: без него маршрут резолвится, с ним край отвечает 404 "+
+		"и падают все утверждения шага, включая те, что о маршруте не говорят:\n", len(found))
+	for _, f := range found {
+		fmt.Fprintf(&b, "  %s:%d  %s\n      %s %s\n      резолвится как: %s %s\n",
+			f.File, f.Line, f.Case, f.Method, f.Path, f.Method, f.Without)
+	}
+	t.Fatal(b.String())
+}

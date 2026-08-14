@@ -70,6 +70,15 @@ def _assert_lean_projection():
         "  pm.expect(j.subnetId, 'subnetId').to.be.a('string');",
         "  pm.expect(j.status, 'status').to.be.a('string');",
         "});",
+        # APPLY-04: статус выражает ПРИВЯЗКУ, и только её. У свежесозданного
+        # интерфейса потребителя нет — значит AVAILABLE. Утверждается ЗНАЧЕНИЕ, а
+        # не «строка»: «строка» выполнялось бы и на снятых значениях, заявлявших
+        # программирование сети, — то есть ровно на том, что убрано.
+        "pm.test('статус свежего интерфейса выражает отсутствие привязки', () => "
+        "pm.expect(j.status, pm.response.text()).to.eql('AVAILABLE'));",
+        # APPLY-11: на вопрос «доехало ли изменение до сети» отвечает отдельное
+        # поле, а не статус.
+        *assert_apply_state_in_flight("NIC"),
         f"pm.test('no infra-sensitive fields on public projection', () => {{",
         f"  const forbidden = {_LEAN_FORBIDDEN!r};",
         "  forbidden.forEach(k => pm.expect(j, 'leaked ' + k).to.not.have.property(k));",

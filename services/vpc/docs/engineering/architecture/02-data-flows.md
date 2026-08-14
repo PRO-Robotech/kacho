@@ -337,7 +337,7 @@ sequenceDiagram
   S->>DB: subnetRepo.Get(subnet_id) → network_id → default_security_group_id
   S->>S: ids.NewID(PrefixNetworkInterface) → "nic..."
   S->>DB: BEGIN
-  S->>DB: INSERT network_interfaces (id, project_id, subnet_id, sg_ids, status=PROVISIONING)
+  S->>DB: INSERT network_interfaces (id, project_id, subnet_id, sg_ids, status=AVAILABLE)
   loop по v4_address_ids[] / v6_address_ids[]
     S->>DB: проверить Address.used == false (referrer-free) → INSERT address_references (referrer_type="network_interface")
     S->>DB: UPDATE addresses SET used=true

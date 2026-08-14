@@ -191,7 +191,7 @@ security_group_ids  JSONB   -- подставляемого умолчания �
 used_by_index       INT     -- 0014: слот привязки NIC↔Instance (device-index, eth0=0)
 used_by_type / used_by_id / used_by_name   TEXT   -- denormalised Reference «кто использует NIC» — устанавливается атомарным CAS на смену владельца
 mac_address         TEXT UNIQUE cloud-wide, NOT NULL    -- output-only, аллоцируется при Create
-status              TEXT  -- PROVISIONING/ACTIVE/AVAILABLE/FAILED/DELETING
+status              TEXT  -- 0039: ACTIVE/AVAILABLE/STATUS_UNSPECIFIED — состояние ПРИВЯЗКИ
 bandwidth_limit_mbps BIGINT NOT NULL DEFAULT 0  -- 0036: верхняя граница полосы, заданная арендатором.
                             -- 0 — «не задано» (единственное представление отсутствия; ограничение в
                             -- ноль мегабит не выражает ни одна законная просьба). CHECK: 0 ИЛИ строго

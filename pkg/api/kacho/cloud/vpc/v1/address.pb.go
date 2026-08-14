@@ -197,7 +197,18 @@ type Address struct {
 	// on Create/Update. For compute instance NIC/NAT addresses, contains a
 	// reference with referrer.type='compute_instance' and referrer.id=<instance_id>.
 	// Mirrors the shape of SubnetService UsedAddress.references[].
-	UsedBy        []*reference.Reference `protobuf:"bytes,21,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
+	UsedBy []*reference.Reference `protobuf:"bytes,21,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
+	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+	//
+	// Незаполненное поле означает «платформа не делает утверждения об этом
+	// объекте» (намерение снимается) и НЕ означает «не применено».
+	//
+	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
+	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+	ApplyState    *ApplyState `protobuf:"bytes,24,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -355,6 +366,13 @@ func (x *Address) GetDeletionProtection() bool {
 func (x *Address) GetUsedBy() []*reference.Reference {
 	if x != nil {
 		return x.UsedBy
+	}
+	return nil
+}
+
+func (x *Address) GetApplyState() *ApplyState {
+	if x != nil {
+		return x.ApplyState
 	}
 	return nil
 }
@@ -658,7 +676,7 @@ var File_kacho_cloud_vpc_v1_address_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\"\xda\b\n" +
+	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\x9b\t\n" +
 	"\aAddress\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -678,7 +696,9 @@ const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\n" +
 	"ip_version\x18\x12 \x01(\x0e2%.kacho.cloud.vpc.v1.Address.IpVersionR\tipVersion\x12/\n" +
 	"\x13deletion_protection\x18\x13 \x01(\bR\x12deletionProtection\x129\n" +
-	"\aused_by\x18\x15 \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
+	"\aused_by\x18\x15 \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x12?\n" +
+	"\vapply_state\x18\x18 \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
+	"applyState\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"8\n" +
@@ -731,22 +751,24 @@ var file_kacho_cloud_vpc_v1_address_proto_goTypes = []any{
 	nil,                           // 7: kacho.cloud.vpc.v1.Address.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 	(*reference.Reference)(nil),   // 9: kacho.cloud.reference.Reference
+	(*ApplyState)(nil),            // 10: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_address_proto_depIdxs = []int32{
-	8, // 0: kacho.cloud.vpc.v1.Address.created_at:type_name -> google.protobuf.Timestamp
-	7, // 1: kacho.cloud.vpc.v1.Address.labels:type_name -> kacho.cloud.vpc.v1.Address.LabelsEntry
-	3, // 2: kacho.cloud.vpc.v1.Address.external_ipv4_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv4Address
-	4, // 3: kacho.cloud.vpc.v1.Address.internal_ipv4_address:type_name -> kacho.cloud.vpc.v1.InternalIpv4Address
-	5, // 4: kacho.cloud.vpc.v1.Address.internal_ipv6_address:type_name -> kacho.cloud.vpc.v1.InternalIpv6Address
-	6, // 5: kacho.cloud.vpc.v1.Address.external_ipv6_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv6Address
-	0, // 6: kacho.cloud.vpc.v1.Address.type:type_name -> kacho.cloud.vpc.v1.Address.Type
-	1, // 7: kacho.cloud.vpc.v1.Address.ip_version:type_name -> kacho.cloud.vpc.v1.Address.IpVersion
-	9, // 8: kacho.cloud.vpc.v1.Address.used_by:type_name -> kacho.cloud.reference.Reference
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	8,  // 0: kacho.cloud.vpc.v1.Address.created_at:type_name -> google.protobuf.Timestamp
+	7,  // 1: kacho.cloud.vpc.v1.Address.labels:type_name -> kacho.cloud.vpc.v1.Address.LabelsEntry
+	3,  // 2: kacho.cloud.vpc.v1.Address.external_ipv4_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv4Address
+	4,  // 3: kacho.cloud.vpc.v1.Address.internal_ipv4_address:type_name -> kacho.cloud.vpc.v1.InternalIpv4Address
+	5,  // 4: kacho.cloud.vpc.v1.Address.internal_ipv6_address:type_name -> kacho.cloud.vpc.v1.InternalIpv6Address
+	6,  // 5: kacho.cloud.vpc.v1.Address.external_ipv6_address:type_name -> kacho.cloud.vpc.v1.ExternalIpv6Address
+	0,  // 6: kacho.cloud.vpc.v1.Address.type:type_name -> kacho.cloud.vpc.v1.Address.Type
+	1,  // 7: kacho.cloud.vpc.v1.Address.ip_version:type_name -> kacho.cloud.vpc.v1.Address.IpVersion
+	9,  // 8: kacho.cloud.vpc.v1.Address.used_by:type_name -> kacho.cloud.reference.Reference
+	10, // 9: kacho.cloud.vpc.v1.Address.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_address_proto_init() }
@@ -754,6 +776,7 @@ func file_kacho_cloud_vpc_v1_address_proto_init() {
 	if File_kacho_cloud_vpc_v1_address_proto != nil {
 		return
 	}
+	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	file_kacho_cloud_vpc_v1_address_proto_msgTypes[0].OneofWrappers = []any{
 		(*Address_ExternalIpv4Address)(nil),
 		(*Address_InternalIpv4Address)(nil),

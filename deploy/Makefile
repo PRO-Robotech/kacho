@@ -1,6 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
+	assert-metrics-surfaces-answer \
         assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
@@ -498,6 +499,7 @@ dev-prod-up: dev-up
 	$(MAKE) --no-print-directory guard-kind-context; \
 	$(MAKE) --no-print-directory assert-rollout-ready; \
 	$(MAKE) --no-print-directory assert-production-posture; \
+	$(MAKE) --no-print-directory assert-metrics-surfaces-answer; \
 	$(MAKE) --no-print-directory assert-outbox-autovacuum; \
 	echo "production-posture stand is UP and READY"
 
@@ -620,6 +622,19 @@ assert-jobs-healthy:
 # никто не проверяет. Профиль выбирает ЦЕЛЬ, а не тот, кто её зовёт.
 assert-production-posture: guard-kind-context
 	@POSTURE_PROFILE=production bash scripts/assert-production-posture.sh
+
+# assert-metrics-surfaces-answer — диагностическая поверхность КАЖДОГО процесса
+# отвечает, а не только объявлена.
+#
+# Отдельная цель, а не измерение гейта посадки: посадка отвечает на вопрос «в
+# каком режиме работает процесс», а эта — на вопрос «доходят ли его величины до
+# того, кто придёт смотреть». Второй вопрос от посадки не зависит и задаётся на
+# любом стенде.
+#
+# Перечень опрашиваемых процессов ВЫВОДИТСЯ из дерева, а не выписан в скрипте:
+# девятый сервис попадёт под опрос в момент появления обработчика экспозиции.
+assert-metrics-surfaces-answer: guard-kind-context
+	@bash scripts/assert-metrics-surfaces-answer.sh
 
 # assert-forwarder-narrowing — тот же гейт, но по ОДНОМУ измерению, и он ходит
 # на КАЖДЫЙ стенд, а не только на боевой.

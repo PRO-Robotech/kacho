@@ -39,6 +39,9 @@ import (
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
 //	KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR     — cluster-internal gRPC listener (default :9091)
+//	KACHO_API_GATEWAY_METRICS_ADDR           — cluster-internal диагностическая поверхность
+//	                                           (GET /metrics, default :9095; пустая строка —
+//	                                           объявленное выключение с причиной в журнале)
 //
 // TLS требуется для совместимости с CLI-клиентами, жестко ожидающими TLS-endpoint.
 // Когда TLS_LISTEN_ADDR пустой — TLS не запускается; plain-cmux на ListenAddr.
@@ -179,6 +182,23 @@ type Config struct {
 	// InternalGRPCAddr — dedicated cluster-internal gRPC listener for RPCs that
 	// must not be on the external TLS endpoint (InternalAuthzCacheService).
 	InternalGRPCAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR" default:":9091"`
+
+	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
+	// (`GET /metrics`).
+	//
+	// Умолчание НЕПУСТО, как у семи остальных процессов платформы, и это
+	// решение, а не копирование: пустое умолчание означало бы, что поверхность
+	// поднимается только там, где профиль развёртывания о ней вспомнил, — а
+	// забытая ручка неотличима от посадки, где сбора нет намеренно. Выключение
+	// требует ЯВНО объявленной пустоты: присвоить этой ручке пустую строку в
+	// профиле. Тогда причина едет в журнал и в самоотчёт процесса
+	// (см. `describeDiagnosticSurface`), то есть снятие названо словами, а
+	// забытое слов не имеет.
+	//
+	// Поверхность НЕ несёт `/healthz` и `/readyz`: они остаются на внешнем
+	// слушателе, где на них нацелены пробы пода. Их переезд — отдельный предмет
+	// со своим риском, а дублирование дало бы два места об одном предмете.
+	MetricsAddr string `envconfig:"KACHO_API_GATEWAY_METRICS_ADDR" default:":9095"`
 
 	// --- cluster-internal gRPC listener mTLS (InternalAuthzCacheService) ---
 	//

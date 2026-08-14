@@ -8,6 +8,7 @@ package kacho.cloud.vpc.v1;
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/reference/reference.proto";
 import "kacho/cloud/validation.proto";
+import "kacho/cloud/vpc/v1/apply_state.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -131,6 +132,18 @@ message Address {
   // reference with referrer.type='compute_instance' and referrer.id=<instance_id>.
   // Mirrors the shape of SubnetService UsedAddress.references[].
   repeated kacho.cloud.reference.Reference used_by = 21;
+
+  // Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+  //
+  // Незаполненное поле означает «платформа не делает утверждения об этом
+  // объекте» (намерение снимается) и НЕ означает «не применено».
+  //
+  // Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+  // НЕ заполняется: `Operation.response`, поток намерения исполнителя
+  // (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+  // ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+  // ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+  ApplyState apply_state = 24;
 }
 
 message ExternalIpv4Address {

@@ -12,6 +12,8 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/applystate"
+
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/pbconv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
@@ -37,6 +39,10 @@ type Handler struct {
 	get            *GetNetworkInterfaceUseCase
 	list           *ListNetworkInterfacesUseCase
 	listOperations *ListOperationsUseCase
+	// applyState — заполнитель публичного поля состояния применения.
+	// Провязывается композиционным корнем; нулевое значение означает
+	// «утверждения нет» и к базе не ходит.
+	applyState *applystate.Filler
 }
 
 // NewHandler собирает Handler из готовых use-case'ов.
@@ -58,6 +64,17 @@ func NewHandler(
 	}
 }
 
+// WithApplyState провязывает заполнитель состояния применения.
+//
+// Отдельным методом, а не аргументом конструктора: у семи ресурсов
+// конструкторы разной формы, и добавление восьмого позиционного аргумента
+// сделало бы каждую их правку правкой всех вызывающих. Провязку боевой
+// сборки держит гейт по дереву — он же ловит забытый вызов.
+func (h *Handler) WithApplyState(f *applystate.Filler) *Handler {
+	h.applyState = f
+	return h
+}
+
 // Get — sync read. Per-object AuthZ (включая existence-hiding на deny) энфорсит
 // per-RPC authz-interceptor прямым Check'ом — см. GetNetworkInterfaceUseCase.
 func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkInterfaceRequest) (*vpcv1.NetworkInterface, error) {
@@ -68,7 +85,17 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkInterfaceRequest
 	if err != nil {
 		return nil, err
 	}
-	return networkInterfaceToPb(n)
+	pb, err := networkInterfaceToPb(n)
+	if err != nil {
+		return nil, err
+	}
+	// Состояние применения — ОТДЕЛЬНЫМ вопросом к проекции подтверждений, а не
+	// полем строки ресурса: оно выводится сравнением ревизий и живёт в другой
+	// таблице. Незаполненное поле означает «утверждения нет».
+	if pb.ApplyState, err = h.applyState.One(ctx, pb.GetId()); err != nil {
+		return nil, err
+	}
+	return pb, nil
 }
 
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
@@ -93,6 +120,16 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListNetworkInterfacesRequ
 			return nil, err
 		}
 		resp.NetworkInterfaces = append(resp.NetworkInterfaces, pb)
+	}
+	// Состояние применения СТРАНИЦЫ — одним обращением к проекции: стоимость
+	// принадлежит запросу, а не популяции проекта. Спрашивается ПОСЛЕ того, как
+	// страница отобрана и сужена правами, то есть по идентификаторам, которые
+	// вызывающий и так увидит.
+	if ferr := applystate.FillPage(ctx, h.applyState, resp.NetworkInterfaces,
+		func(p *vpcv1.NetworkInterface) string { return p.GetId() },
+		func(p *vpcv1.NetworkInterface, st *vpcv1.ApplyState) { p.ApplyState = st },
+	); ferr != nil {
+		return nil, ferr
 	}
 	return resp, nil
 }

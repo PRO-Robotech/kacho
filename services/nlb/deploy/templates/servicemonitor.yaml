@@ -16,7 +16,10 @@ spec:
   selector:
     matchLabels:
       {{- include "kacho-nlb.selectorLabels" . | nindent 6 }}
-      kacho.io/listener: public
+      # Цель описателя переехала вместе с портом: диагностика выставлена на
+      # ВНУТРЕННЕМ Service, и селектор публичного нашёл бы Service без порта
+      # `metrics` — то есть описатель существовал бы и не собирал ничего.
+      kacho.io/listener: internal
   namespaceSelector:
     matchNames:
       - {{ .Values.namespace | default .Release.Namespace }}

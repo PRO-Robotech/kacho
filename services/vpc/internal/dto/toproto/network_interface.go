@@ -57,18 +57,17 @@ func (networkInterface) toPb(rec kachorepo.NetworkInterfaceRecord) (*vpcv1.Netwo
 	return p, nil
 }
 
+// niStatusToPb — состояние привязки в контрактный вид.
+//
+// Ветвей ровно столько, сколько значений у перечисления контракта: три снятых
+// значения статуса не производятся ни одним путём записи, поэтому ветви под них
+// были бы недостижимым кодом, «документирующим» контракт, которого нет.
 func niStatusToPb(s domain.NetworkInterfaceStatus) vpcv1.NetworkInterface_Status {
 	switch s {
-	case domain.NIStatusProvisioning:
-		return vpcv1.NetworkInterface_PROVISIONING
 	case domain.NIStatusActive:
 		return vpcv1.NetworkInterface_ACTIVE
 	case domain.NIStatusAvailable:
 		return vpcv1.NetworkInterface_AVAILABLE
-	case domain.NIStatusFailed:
-		return vpcv1.NetworkInterface_FAILED
-	case domain.NIStatusDeleting:
-		return vpcv1.NetworkInterface_DELETING
 	}
 	return vpcv1.NetworkInterface_STATUS_UNSPECIFIED
 }

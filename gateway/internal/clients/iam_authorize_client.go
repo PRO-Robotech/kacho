@@ -113,7 +113,7 @@ type IAMAuthorizeClient struct {
 
 	// callsTotal — diagnostic counter (separate from the per-decision
 	// metrics; this counts wire-level RPCs including retries).
-	callsTotal atomic.Int64
+	callsTotal atomic.Uint64
 }
 
 // IAMAuthorizeClientConfig — DI bag.
@@ -274,8 +274,13 @@ func (c *IAMAuthorizeClient) Close() error {
 }
 
 // CallsTotal returns the lifetime count of wire RPCs (including retries).
+//
+// Беззнаковая величина: счётчик монотонен, отрицательным быть не может, и
+// знаковый тип потребовал бы преобразования у каждого читателя — а
+// преобразование со знака на без знака есть место, где отрицательное значение
+// молча становится огромным.
 // Exposed for tests + diagnostic readouts.
-func (c *IAMAuthorizeClient) CallsTotal() int64 { return c.callsTotal.Load() }
+func (c *IAMAuthorizeClient) CallsTotal() uint64 { return c.callsTotal.Load() }
 
 // retryable returns true for transient gRPC codes that warrant a single
 // retry. We deliberately exclude `Aborted` (typically a CAS conflict —

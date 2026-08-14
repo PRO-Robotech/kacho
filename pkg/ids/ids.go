@@ -313,6 +313,16 @@ const (
 	// `CidrGroup` (§9.1.0 плана) — `Cidr` уже слово этого продукта, поэтому и
 	// префикс выведен из него, а не придуман.
 	PrefixCidrGroupHyphen = "cdg"
+	// PrefixLimitHyphen — iam Limit (`lim-…`): величина потолка на число
+	// ресурсов арендатора, назначаемая администратором на одной из трёх областей
+	// видимости (умолчание · аккаунт · проект). NewHyphenID("lim") →
+	// "lim-<17-base32>".
+	//
+	// Почему iam, а не отдельный домен: предел — свойство арендатора, он
+	// заводится вместе с проектом и умирает вместе с ним, а iam уже владеет
+	// Account/Project и уже является leaf'ом для каждого сервиса (приёмка
+	// vpc-quota, Р1).
+	PrefixLimitHyphen = "lim"
 )
 
 // hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
@@ -334,6 +344,12 @@ var hyphenFormPrefixes = []string{
 	// iam: InteractiveClient (IAM-INT-1) — именованная константа: единый источник
 	// истины с NewHyphenID-генерацией.
 	PrefixInteractiveClientHyphen,
+	// iam: Limit — потолок на число ресурсов арендатора. Именованная константа:
+	// единый источник истины с NewHyphenID-генерацией. Без записи здесь
+	// validate.ResourceID отвергал бы КОРРЕКТНЫЙ id, который сам же генератор и
+	// произвёл, — то есть Get/Update/Delete предела отвечали бы
+	// INVALID_ARGUMENT на всяком входе.
+	PrefixLimitHyphen,
 	// compute: Instance/MachineType/PlacementGroup/VolumeType (ins/mt — именованные
 	// константы: единый источник истины с NewHyphenID-генерацией).
 	PrefixInstanceHyphen, PrefixMachineTypeHyphen, "plg", "vt",
