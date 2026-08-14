@@ -184,6 +184,11 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,
 		NewNLBListenerResource,
+		// compute — ключ входа гостя и группа размещения (заведены стволом, #288).
+		// Ресурс самой машины здесь НЕ повторяется: он объявлен выше, полной
+		// реализацией; вторая, с тем же именем типа, снята как дубль.
+		NewGuestAccessKeyResource,
+		NewPlacementGroupResource,
 	}
 }
 

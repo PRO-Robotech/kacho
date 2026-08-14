@@ -163,7 +163,7 @@ masking a leak**:
 iam/vpc — `gen.py` даёт **277 core-кейсов** (disk 70, instance 77, image 60, snapshot 52, disk-type 10,
 operation 8) + authz-deny 186 + list-filter 4 + sec-d 2. Все **wired+implemented** public RPC покрыты:
 Instance verb-actions Start/Stop/Restart/AttachDisk/DetachDisk/AttachNetworkInterface/DetachNetworkInterface/
-UpdateMetadata/GetSerialPortOutput/SimulateMaintenanceEvent/ListOperations — **уже** имеют happy + state/NF
+GetSerialPortOutput/SimulateMaintenanceEvent/ListOperations — **уже** имеют happy + state/NF
 негативы (`INST-STATE-*`, `INST-AD/DD-*`, `INST-NIC-*`, `INST-SME/SPO/UMETA/LOP-*`). «144 RPC / MachineType /
 InternalMachineTypeService» относятся к **не-реализованному** редизайну **COMP-1** (`project/kacho` monorepo,
 acceptance `sub-phase-COMP-1-instance-machinetype-acceptance.md` — APPROVED, но код not-yet-landed:

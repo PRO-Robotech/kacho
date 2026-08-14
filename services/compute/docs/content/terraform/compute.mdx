@@ -1,0 +1,175 @@
+---
+id: compute
+sidebar_position: 1
+title: Compute в Terraform
+---
+
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Compute в Terraform
+
+Провайдер `kacho` описывает машины декларативно. Настройка провайдера, установка и общие
+особенности (асинхронность мутаций, обязательное имя, поведение при ответе «не найдено») —
+на странице провайдера в документации VPC; здесь только то, что специфично для compute.
+
+## Типы
+
+<table>
+  <thead><tr><th>Тип</th><th>Что это</th></tr></thead>
+  <tbody>
+    <tr><td><code>kacho_compute_instance</code></td><td>Машина — <a href="/api/instance">Instance</a></td></tr>
+    <tr><td><code>kacho_compute_guest_access_key</code></td><td>Ключ входа — <a href="/api/guest-access-key">GuestAccessKey</a></td></tr>
+    <tr><td><code>kacho_compute_placement_group</code></td><td>Правило размещения — <a href="/api/placement-group">PlacementGroup</a></td></tr>
+    <tr><td><code>data.kacho_compute_machine_type</code></td><td>Размер из каталога — <a href="/api/machine-type">MachineType</a></td></tr>
+  </tbody>
+</table>
+
+## Размер называется именем, а не идентификатором
+
+Источник данных существует не ради удобства. Без него конфигурация обязана нести
+идентификатор типа машины, а идентификаторы у разных установок **разные** — то есть
+конфигурация без него непереносима по построению.
+
+<CodeBlock language="hcl">
+  {dedent`
+    data "kacho_compute_machine_type" "small" {
+      name = "std-v3-2"
+    }
+
+    resource "kacho_compute_instance" "app" {
+      machine_type_id = data.kacho_compute_machine_type.small.id
+      # ...
+    }
+  `}
+</CodeBlock>
+
+Источник отдаёт и размер (`vcpu`, `memory_mib`, `gpus`, `gpu_type`), и перечень зон, где тип
+заказуем. Последнее годится для проверки на плане:
+
+<CodeBlock language="hcl">
+  {dedent`
+    lifecycle {
+      precondition {
+        condition     = contains(data.kacho_compute_machine_type.small.available_zones, var.zone_id)
+        error_message = "Тип машины не заказуем в этой зоне."
+      }
+    }
+  `}
+</CodeBlock>
+
+:::note Двусмысленное имя — отказ, а не выбор за вас
+Если имени отвечает больше одной записи каталога, источник данных **отказывает**. Молча
+взять первую значило бы выбрать размер машины за вас, а сходство имён — ровно тот случай,
+когда выбор не безразличен. На типе в состоянии `DEPRECATED` или `RETIRED` источник
+предупреждает **на плане** — то есть до того, как применение упрётся в отказ.
+:::
+
+## Ключ входа — отдельный ресурс, и это видно в плане
+
+<CodeBlock language="hcl">
+  {dedent`
+    resource "kacho_compute_guest_access_key" "operator" {
+      project_id = var.project_id
+      name       = "operator"
+      public_key = var.public_key   # ТОЛЬКО публичная половина
+    }
+
+    resource "kacho_compute_instance" "app" {
+      guest_access_key_ids = [kacho_compute_guest_access_key.operator.id]
+      # ...
+    }
+  `}
+</CodeBlock>
+
+:::danger Закрытая половина не попадает в состояние Terraform
+У ресурса нет и не будет атрибута с закрытым ключом. Файл состояния хранится **открытым
+текстом**: закрытый ключ в нём означал бы, что доступ к файлу состояния равен доступу в
+машину.
+:::
+
+:::warning Смена материала ключа пересоздаёт ресурс — и это существо, а не оформление
+Другой материал — другой доступ. Подменить его на месте значило бы сменить того, кто может
+войти, сохранив прежний идентификатор. Пересоздание выдаёт **новый** идентификатор, поэтому
+машины, ссылающиеся на прежний, перепривязываются тем же применением — их план это покажет.
+
+Порядок по умолчанию — «удалить, потом создать». Если разрыв доступа недопустим, заведите
+второй ключ, перепривяжите машины, и только затем удалите первый.
+:::
+
+Набор ключей у машины **заменяется целиком**. Пустой список — это «снять весь доступ»,
+и он отличается от «не задано»: провайдер эти два случая различает и не отправляет краю
+команды, которой вы не давали.
+
+## Группа размещения: координата одна
+
+Вид якоря (`ZONAL` / `REGIONAL`) **выводится** из заданной координаты и доступен только на
+чтение. Отдельное поле дало бы второй способ сказать то же самое, и первым же следствием
+стала бы пара, описывающая размещение, которого не бывает.
+
+<CodeBlock language="hcl">
+  {dedent`
+    resource "kacho_compute_placement_group" "spread" {
+      project_id = var.project_id
+      name       = "app-spread"
+      strategy   = "SPREAD"   # либо PACK
+
+      zone_id = var.zone_id   # ЛИБО region_id — ровно одна координата
+    }
+  `}
+</CodeBlock>
+
+Заданы обе координаты или ни одной — конфигурация отвергается **на плане**, а не отказом
+края на применении.
+
+## Модуль `compute-machine`
+
+Ключи входа и группы размещения заводятся **тем же** модулем, что и машины, а не
+отдельным. Причина не в удобстве: у обоих срок жизни привязан к набору машин, и разнеся
+их по модулям, вы получили бы порядок уничтожения на свою ответственность — группа,
+снятая раньше машин, оставит их без правила размещения. Внутри одного модуля порядок
+выводит сам Terraform из ссылок.
+
+<CodeBlock language="hcl">
+  {dedent`
+    module "app" {
+      source = ".../terraform/modules/compute-machine"
+
+      project_id = var.project_id
+      zone_id    = var.zone_id
+
+      guest_access_keys = {
+        operator = { name = "operator", public_key = var.public_key }
+      }
+
+      placement_groups = {
+        spread = { name = "app-spread", strategy = "SPREAD", zone_id = var.zone_id }
+      }
+
+      machines = {
+        web = {
+          name                  = "web-1"
+          machine_type_id       = data.kacho_compute_machine_type.small.id
+          boot_source_type      = "storage.image"
+          boot_source_id        = var.boot_image_id
+          subnet_id             = var.subnet_id
+          placement_group_key   = "spread"
+          guest_access_key_keys = ["operator"]
+        }
+      }
+    }
+  `}
+</CodeBlock>
+
+Группа называется **ключом карты** (`placement_group_key`), если её заводит этот же
+модуль, и **идентификатором** (`placement_group_id`), если она пришла снаружи. Это два
+разных вопроса, поэтому два поля; задать оба сразу модуль не даёт.
+
+Ключи, наоборот, **складываются**: `guest_access_key_keys` (свои) и
+`guest_access_key_ids` (чужие) объединяются, потому что набор ключей — множество, а не
+выбор.
+
+## Полный пример
+
+Рабочая конфигурация — сеть, подсеть, ключ, группа и машина — лежит в репозитории
+провайдера: `terraform/examples/compute`.

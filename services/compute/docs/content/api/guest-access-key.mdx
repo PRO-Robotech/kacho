@@ -1,0 +1,219 @@
+---
+id: guest-access-key
+sidebar_position: 4
+title: GuestAccessKey
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# GuestAccessKey
+
+**GuestAccessKey** — публичный ключ, с которым вы входите в свою машину.
+
+## Почему это ресурс, а не поле машины
+
+Ключ, переданный полем при создании, живёт ровно столько, сколько машина, и не существует
+отдельно от неё: его нельзя ни отозвать, ни заменить, ни узнать, где ещё он используется.
+Ресурс со своим сроком жизни отвечает на все три вопроса — и это не удобство, а разница
+между «ключ у нас есть» и «мы знаем, кто может войти».
+
+:::danger Закрытая половина сюда не попадает никогда
+Платформа хранит и принимает **только публичную** половину. Закрытая не покидает вашу
+машину: хранилище закрытых ключей — отдельная модель угроз, и принять её сюда значило бы
+сделать эту базу целью, которой она быть не должна.
+
+То же касается состояния Terraform: у ресурса `kacho_compute_guest_access_key` нет и не будет
+атрибута с закрытым ключом — файл состояния хранится открытым текстом.
+:::
+
+:::warning Вход ключом не отзывается снятием права
+Ключ — вход **напрямую** в машину, минуя плоскость управления. Он не виден в журнале
+действий: вошедший ключом для платформы неотличим от вошедшего законно. Поэтому путь входа
+через модель прав, когда он появится, **снимет** этот, а не станет рядом с ним: два входа с
+разной отзываемостью означают, что отозвать доступ нельзя.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short} (префикс <code>gak-</code>); им машина на ключ и ссылается</td></tr>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}; уникально в проекте</td></tr>
+    <tr><td><code>publicKey</code></td><td><code>{TYPES.string}</code></td><td>Материал публичного ключа в форме, которую понимает гостевая система</td></tr>
+    <tr><td><code>fingerprint</code></td><td><code>{TYPES.string}</code></td><td>Отпечаток, вычисленный платформой из материала (output-only)</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+  </tbody>
+</table>
+
+:::note Отпечаток считаем мы — в этом его смысл
+`fingerprint` output-only: присланный на входе он означал бы, что мы верим чужому счёту.
+Сравните его с тем, что показывает ваш собственный инструмент, — так вы узнаете, что
+доехал именно ваш ключ, а не похожий.
+:::
+
+:::info Что неизменяемо
+`publicKey` и `projectId` задаются на создании и не меняются: другой материал — другой
+доступ, и подменить его на месте значило бы сменить того, кто может войти, сохранив прежний
+идентификатор. Меняются свободно `name` и `labels`.
+
+Заменить ключ = завести новый и перепривязать машины. Идентификатор у нового будет свой —
+имя тут не помогает и помогать не должно: ссылки живут на идентификаторах именно для того,
+чтобы переименование их не ломало.
+:::
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/compute/v1/guestAccessKeys/{guestAccessKeyId}">
+
+Возвращает ключ по идентификатору.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl http://localhost:18080/compute/v1/guestAccessKeys/{guestAccessKeyId} \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+#### Пример ответа
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "gak-7t4w9e2x5h8mz0c3v",
+      "projectId": "prj-3n8k2m5q7r1t4w6y9",
+      "name": "operator",
+      "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...",
+      "fingerprint": "SHA256:kR3n...",
+      "createdAt": "2026-08-14T09:12:00Z"
+    }
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/compute/v1/guestAccessKeys">
+
+Ключи проекта с cursor-пагинацией.
+
+#### Параметры запроса
+
+<table>
+  <thead><tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>pageSize</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
+    <tr><td><code>pageToken</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
+    <tr><td><code>filter</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
+  </tbody>
+</table>
+
+<Codes codes={['invalidArgument', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Create
+
+<ApiOperation method="POST" endpoint="/compute/v1/guestAccessKeys">
+
+Заводит ключ. Мутация асинхронна — ответом приходит `Operation`, идентификатор ключа лежит
+в её `metadata.guestAccessKeyId`.
+
+#### Тело запроса
+
+<table>
+  <thead><tr><th>Поле</th><th>Обязательно</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td>да</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>name</code></td><td>да</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
+    <tr><td><code>publicKey</code></td><td>да</td><td><code>{TYPES.string}</code></td><td>Материал публичного ключа</td></tr>
+    <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+  </tbody>
+</table>
+
+:::note Материал разбирается на создании, а не в машине
+Строка, которую нельзя разобрать, доехала бы до машины и молча не сработала — а отладка
+началась бы с гостя, то есть там, где причины нет. Поэтому неразбираемый материал
+отвергается синхронно, с `INVALID_ARGUMENT`.
+:::
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST http://localhost:18080/compute/v1/guestAccessKeys \\
+      -H 'Authorization: Bearer <JWT>' \\
+      -H 'Content-Type: application/json' \\
+      -d '{
+            "projectId": "prj-3n8k2m5q7r1t4w6y9",
+            "name": "operator",
+            "publicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+          }'
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Update
+
+<ApiOperation method="PATCH" endpoint="/compute/v1/guestAccessKeys/{guestAccessKeyId}">
+
+Меняет `name` и `labels`. Материал ключа не меняется — см. врезку «Что неизменяемо» выше:
+`publicKey` в маске отвергается по имени.
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Delete
+
+<ApiOperation method="DELETE" endpoint="/compute/v1/guestAccessKeys/{guestAccessKeyId}">
+
+Удаляет ключ. Машины, ссылавшиеся на него, переживают удаление грациозно — ссылка
+становится висячей, а не роняет машину.
+
+:::warning Удаление ключа не выселяет уже вошедших
+Снятие ключа закрывает **следующий** вход. Открытые сеансы и всё, что вошедший успел
+положить внутрь гостя, оно не трогает — плоскость управления в машину не заходит.
+:::
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ListOperations
+
+<ApiOperation method="GET" endpoint="/compute/v1/guestAccessKeys/{guestAccessKeyId}/operations">
+
+История операций над ключом с cursor-пагинацией.
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>

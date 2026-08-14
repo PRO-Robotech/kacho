@@ -39,8 +39,7 @@
 - Agent-check: `internal/apps/kacho/api/instance/`, `internal/apps/kacho/api/machinetype/`, `cmd/compute/main.go`, `proto/kacho/cloud/compute/v1/*_service.proto`. Прочие ресурсы этого требования сервису не принадлежат — владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-RES-02 — все мутации возвращают Operation (async LRO)                               [P0]
-`Create`/`Update`/`Delete`/`Relocate`/`Start`/`Stop`/`Restart`/`AttachDisk`/`DetachDisk`/
-`UpdateMetadata` ДОЛЖНЫ возвращать
+`Create`/`Update`/`Delete`/`Start`/`Stop`/`Restart`/`AttachDisk`/`DetachDisk` ДОЛЖНЫ возвращать
 `operation.Operation`; реальная работа — в worker-горутине; клиент поллит `OperationService.Get(id)`
 до `done=true`. Возвращать сам ресурс синхронно из мутации — ЗАПРЕЩЕНО. `GetSerialPortOutput` —
 sync (не мутация). DiskType/Zone Create/Update/Delete не существуют (read-only).
@@ -138,8 +137,8 @@ Snapshot — `source_disk_id`, `disk_size`, `storage_size`; Instance — `zone_i
 
 ### REQ-UPD-04 — Instance.Update {resources_spec / platform_id} требует STOPPED → `FailedPrecondition`   [P0]
 Изменение cores/memory/platform на RUNNING-инстансе отвергается `FailedPrecondition`; после Stop → OK.
-`metadata` обновляется через `UpdateMetadata` RPC, не через Update.
-- Validated-by: `INST-UPD-RESOURCES-REQUIRES-STOPPED`, `INST-UMETA-CRUD-OK`
+Свободной карты `metadata` у машины больше нет: поле снято с обеих сторон контракта.
+- Validated-by: `INST-UPD-RESOURCES-REQUIRES-STOPPED`
 - Agent-check: `internal/apps/kacho/api/instance/instance.go` doUpdate — state-check перед применением resources/platform.
 - Divergence: точный текст («Instance must be stopped») — `# probe-needed`.
 
@@ -258,9 +257,11 @@ one-to-one NAT на NIC больше не покрывается. Кейсы `IN
 ### REQ-NAT-02 — ~~UpdateNetworkInterface~~ — REMOVED from active surface (KAC-266)   [obsolete]
 NIC binding убрана из lifecycle Instance. Кейсы `INST-UNI-*` удалены.
 
-### REQ-NAT-03 — UpdateMetadata: upsert/delete; FULL-view round-trip отражает изменения; total ≤512 KB   [P1]
-- Validated-by: `INST-UMETA-CRUD-OK`
-- Agent-check: `internal/apps/kacho/api/instance/instance.go` doUpdateMetadata.
+### ~~REQ-NAT-03 — UpdateMetadata~~ — ТРЕБОВАНИЕ СНЯТО ВМЕСТЕ С ПРЕДМЕТОМ
+Свободная карта `metadata` снята с обеих сторон контракта (номера и имена
+зарезервированы), её RPC правки — тоже. Требование, названные им кейс и координата
+прод-кода не имеют предмета: проверять нечего, и оставленные они читались бы как
+непокрытая возможность.
 
 ---
 

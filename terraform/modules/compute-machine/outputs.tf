@@ -29,3 +29,20 @@ output "instance_statuses" {
   EOT
   value       = { for k, m in kacho_compute_instance.this : k => m.status }
 }
+
+output "guest_access_key_ids" {
+  description = "Идентификаторы заведённых ключей входа по ключу карты."
+  value       = { for k, v in kacho_compute_guest_access_key.this : k => v.id }
+}
+
+# Отпечатки — единственное, чем арендатор сверяет, ТОТ ЛИ ключ доехал: материал
+# он и так знает, а отпечаток считает край.
+output "guest_access_key_fingerprints" {
+  description = "Отпечатки заведённых ключей входа по ключу карты."
+  value       = { for k, v in kacho_compute_guest_access_key.this : k => v.fingerprint }
+}
+
+output "placement_group_ids" {
+  description = "Идентификаторы заведённых групп размещения по ключу карты."
+  value       = { for k, v in kacho_compute_placement_group.this : k => v.id }
+}

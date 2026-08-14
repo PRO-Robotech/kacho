@@ -74,7 +74,6 @@ immutable — меняется только через Relocate).
     <tr><td><code>vmSpec</code> / <code>containerSpec</code></td><td><code>oneof</code></td><td>{DICTIONARY.vmSpec.short} · {DICTIONARY.containerSpec.short}</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.status}</code></td><td>{DICTIONARY.status.short}</td></tr>
     <tr><td><code>statusReason</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
-    <tr><td><code>metadata</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.metadata.short}</td></tr>
     <tr><td><code>bootDisk</code></td><td><code>AttachedDisk</code></td><td>{DICTIONARY.bootDisk.short}</td></tr>
     <tr><td><code>secondaryDisks</code></td><td><code>repeated AttachedDisk</code></td><td>{DICTIONARY.secondaryDisks.short}</td></tr>
     <tr><td><code>placementGroupId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.placementGroupId.short}</td></tr>
@@ -83,11 +82,6 @@ immutable — меняется только через Relocate).
     <tr><td><code>fqdn</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.fqdn.short}</td></tr>
   </tbody>
 </table>
-
-:::note metadata в List
-Поле `metadata` опускается из ответа `List` (только `Get` возвращает его полностью). Это
-снижает объём выдачи списка.
-:::
 
 ### Статусы
 
@@ -116,7 +110,7 @@ Instance](/architecture/instance-lifecycle).
 
 <ApiOperation method="GET" endpoint="/compute/v1/instances/{instanceId}">
 
-Возвращает инстанс по идентификатору (включая `metadata`, `bootDisk`, `secondaryDisks`,
+Возвращает инстанс по идентификатору (включая `bootDisk`, `secondaryDisks`,
 `networkInterfaces`).
 
 #### Пример ответа
@@ -152,7 +146,7 @@ Instance](/architecture/instance-lifecycle).
 
 <ApiOperation method="GET" endpoint="/compute/v1/instances">
 
-Список инстансов проекта с фильтром и cursor-пагинацией. Поле `metadata` в выдаче опускается.
+Список инстансов проекта с фильтром и cursor-пагинацией.
 
 #### Параметры запроса
 
@@ -203,7 +197,6 @@ Instance](/architecture/instance-lifecycle).
     <tr><td><code>vmSpec</code> / <code>containerSpec</code></td><td>по роду</td><td><code>oneof</code></td><td>Конфигурация выбранного рода инстанса</td></tr>
     <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code> / <code>labels</code></td><td>нет</td><td>—</td><td>Описание и метки</td></tr>
-    <tr><td><code>metadata</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.metadata.short}</td></tr>
     <tr><td><code>networkInterfaceSpecs</code></td><td>нет</td><td><code>repeated NetworkInterfaceSpec</code></td><td>Сетевые интерфейсы; зона подсети обязана совпадать с зоной инстанса</td></tr>
     <tr><td><code>cpuGuaranteePercent</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.cpuGuaranteePercent.short}</td></tr>
     <tr><td><code>serviceAccountId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.serviceAccountId.short}</td></tr>
@@ -258,7 +251,6 @@ Instance](/architecture/instance-lifecycle).
   { label: 'zoneId', rules: RESTRICTIONS.zoneId },
   { label: 'name', rules: RESTRICTIONS.name },
   { label: 'machineTypeId', rules: RESTRICTIONS.instanceResources },
-  { label: 'metadata', rules: RESTRICTIONS.metadata },
 ]} />
 <Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'unavailable', 'permissionDenied', 'internal']} />
 

@@ -2882,113 +2882,6 @@ func (x *OneToOneNatSpec) GetAddress() string {
 	return ""
 }
 
-// Placement policy of a volume backing an instance, in the target zone.
-//
-// These two messages moved here from the retired `disk.proto` when compute's
-// duplicate Disk resource was taken off the contract. They describe placement of an
-// instance's storage within a zone, and `RelocateInstanceRequest` is their only
-// caller, so the instance surface is where they belong. Their fully-qualified names
-// are unchanged (`kacho.cloud.compute.v1.DiskPlacementPolicy` and
-// `...DiskPlacementPolicyChange`), so nothing on the wire moves with them.
-type DiskPlacementPolicy struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Placement group ID.
-	PlacementGroupId string `protobuf:"bytes,1,opt,name=placement_group_id,json=placementGroupId,proto3" json:"placement_group_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *DiskPlacementPolicy) Reset() {
-	*x = DiskPlacementPolicy{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DiskPlacementPolicy) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DiskPlacementPolicy) ProtoMessage() {}
-
-func (x *DiskPlacementPolicy) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[41]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DiskPlacementPolicy.ProtoReflect.Descriptor instead.
-func (*DiskPlacementPolicy) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{41}
-}
-
-func (x *DiskPlacementPolicy) GetPlacementGroupId() string {
-	if x != nil {
-		return x.PlacementGroupId
-	}
-	return ""
-}
-
-type DiskPlacementPolicyChange struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the volume the placement policy applies to.
-	DiskId string `protobuf:"bytes,1,opt,name=disk_id,json=diskId,proto3" json:"disk_id,omitempty"`
-	// Placement policy configuration for the given volume.
-	DiskPlacementPolicy *DiskPlacementPolicy `protobuf:"bytes,2,opt,name=disk_placement_policy,json=diskPlacementPolicy,proto3" json:"disk_placement_policy,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
-}
-
-func (x *DiskPlacementPolicyChange) Reset() {
-	*x = DiskPlacementPolicyChange{}
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DiskPlacementPolicyChange) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DiskPlacementPolicyChange) ProtoMessage() {}
-
-func (x *DiskPlacementPolicyChange) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[42]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DiskPlacementPolicyChange.ProtoReflect.Descriptor instead.
-func (*DiskPlacementPolicyChange) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP(), []int{42}
-}
-
-func (x *DiskPlacementPolicyChange) GetDiskId() string {
-	if x != nil {
-		return x.DiskId
-	}
-	return ""
-}
-
-func (x *DiskPlacementPolicyChange) GetDiskPlacementPolicy() *DiskPlacementPolicy {
-	if x != nil {
-		return x.DiskPlacementPolicy
-	}
-	return nil
-}
-
 var File_kacho_cloud_compute_v1_instance_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
@@ -3223,12 +3116,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x0fOneToOneNatSpec\x12@\n" +
 	"\n" +
 	"ip_version\x18\x01 \x01(\x0e2!.kacho.cloud.compute.v1.IpVersionR\tipVersion\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddressJ\x04\b\x03\x10\x04R\x10dns_record_specs\"d\n" +
-	"\x13DiskPlacementPolicy\x12,\n" +
-	"\x12placement_group_id\x18\x01 \x01(\tR\x10placementGroupIdJ\x04\b\x02\x10\x03R\x19placement_group_partition\"\x95\x01\n" +
-	"\x19DiskPlacementPolicyChange\x12\x17\n" +
-	"\adisk_id\x18\x01 \x01(\tR\x06diskId\x12_\n" +
-	"\x15disk_placement_policy\x18\x02 \x01(\v2+.kacho.cloud.compute.v1.DiskPlacementPolicyR\x13diskPlacementPolicy2\xc0!\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddressJ\x04\b\x03\x10\x04R\x10dns_record_specs2\xc0!\n" +
 	"\x0fInstanceService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.compute.v1.GetInstanceRequest\x1a .kacho.cloud.compute.v1.Instance\"u\x8a\xb5\x18\x15compute.instances.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/compute/v1/instances/{instance_id}\x12\xc6\x01\n" +
@@ -3289,7 +3177,7 @@ func file_kacho_cloud_compute_v1_instance_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_compute_v1_instance_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kacho_cloud_compute_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_kacho_cloud_compute_v1_instance_service_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_kacho_cloud_compute_v1_instance_service_proto_goTypes = []any{
 	(AttachedDiskSpec_Mode)(0),                       // 0: kacho.cloud.compute.v1.AttachedDiskSpec.Mode
 	(AttachedFilesystemSpec_Mode)(0),                 // 1: kacho.cloud.compute.v1.AttachedFilesystemSpec.Mode
@@ -3334,91 +3222,88 @@ var file_kacho_cloud_compute_v1_instance_service_proto_goTypes = []any{
 	(*NetworkInterfaceSpec)(nil),                     // 40: kacho.cloud.compute.v1.NetworkInterfaceSpec
 	(*PrimaryAddressSpec)(nil),                       // 41: kacho.cloud.compute.v1.PrimaryAddressSpec
 	(*OneToOneNatSpec)(nil),                          // 42: kacho.cloud.compute.v1.OneToOneNatSpec
-	(*DiskPlacementPolicy)(nil),                      // 43: kacho.cloud.compute.v1.DiskPlacementPolicy
-	(*DiskPlacementPolicyChange)(nil),                // 44: kacho.cloud.compute.v1.DiskPlacementPolicyChange
-	nil,                                              // 45: kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
-	nil,                                              // 46: kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
-	(*Instance)(nil),                                 // 47: kacho.cloud.compute.v1.Instance
-	(*NetworkSettings)(nil),                          // 48: kacho.cloud.compute.v1.NetworkSettings
-	(MaintenancePolicy)(0),                           // 49: kacho.cloud.compute.v1.MaintenancePolicy
-	(*durationpb.Duration)(nil),                      // 50: google.protobuf.Duration
-	(*SerialPortSettings)(nil),                       // 51: kacho.cloud.compute.v1.SerialPortSettings
-	(InstanceKind)(0),                                // 52: kacho.cloud.compute.v1.InstanceKind
-	(*BootSource)(nil),                               // 53: kacho.cloud.compute.v1.BootSource
-	(*VmSpec)(nil),                                   // 54: kacho.cloud.compute.v1.VmSpec
-	(*ContainerSpec)(nil),                            // 55: kacho.cloud.compute.v1.ContainerSpec
-	(*fieldmaskpb.FieldMask)(nil),                    // 56: google.protobuf.FieldMask
-	(*operation.Operation)(nil),                      // 57: kacho.cloud.operation.Operation
-	(IpVersion)(0),                                   // 58: kacho.cloud.compute.v1.IpVersion
+	nil,                                              // 43: kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
+	nil,                                              // 44: kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
+	(*Instance)(nil),                                 // 45: kacho.cloud.compute.v1.Instance
+	(*NetworkSettings)(nil),                          // 46: kacho.cloud.compute.v1.NetworkSettings
+	(MaintenancePolicy)(0),                           // 47: kacho.cloud.compute.v1.MaintenancePolicy
+	(*durationpb.Duration)(nil),                      // 48: google.protobuf.Duration
+	(*SerialPortSettings)(nil),                       // 49: kacho.cloud.compute.v1.SerialPortSettings
+	(InstanceKind)(0),                                // 50: kacho.cloud.compute.v1.InstanceKind
+	(*BootSource)(nil),                               // 51: kacho.cloud.compute.v1.BootSource
+	(*VmSpec)(nil),                                   // 52: kacho.cloud.compute.v1.VmSpec
+	(*ContainerSpec)(nil),                            // 53: kacho.cloud.compute.v1.ContainerSpec
+	(*fieldmaskpb.FieldMask)(nil),                    // 54: google.protobuf.FieldMask
+	(*operation.Operation)(nil),                      // 55: kacho.cloud.operation.Operation
+	(IpVersion)(0),                                   // 56: kacho.cloud.compute.v1.IpVersion
 }
 var file_kacho_cloud_compute_v1_instance_service_proto_depIdxs = []int32{
-	47, // 0: kacho.cloud.compute.v1.ListInstancesResponse.instances:type_name -> kacho.cloud.compute.v1.Instance
-	45, // 1: kacho.cloud.compute.v1.CreateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
+	45, // 0: kacho.cloud.compute.v1.ListInstancesResponse.instances:type_name -> kacho.cloud.compute.v1.Instance
+	43, // 1: kacho.cloud.compute.v1.CreateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntry
 	40, // 2: kacho.cloud.compute.v1.CreateInstanceRequest.network_interface_specs:type_name -> kacho.cloud.compute.v1.NetworkInterfaceSpec
-	48, // 3: kacho.cloud.compute.v1.CreateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
+	46, // 3: kacho.cloud.compute.v1.CreateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
 	39, // 4: kacho.cloud.compute.v1.CreateInstanceRequest.filesystem_specs:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec
 	37, // 5: kacho.cloud.compute.v1.CreateInstanceRequest.local_disk_specs:type_name -> kacho.cloud.compute.v1.AttachedLocalDiskSpec
-	49, // 6: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
-	50, // 7: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
-	51, // 8: kacho.cloud.compute.v1.CreateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
-	52, // 9: kacho.cloud.compute.v1.CreateInstanceRequest.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
-	53, // 10: kacho.cloud.compute.v1.CreateInstanceRequest.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
-	54, // 11: kacho.cloud.compute.v1.CreateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
-	55, // 12: kacho.cloud.compute.v1.CreateInstanceRequest.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
+	47, // 6: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
+	48, // 7: kacho.cloud.compute.v1.CreateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
+	49, // 8: kacho.cloud.compute.v1.CreateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
+	50, // 9: kacho.cloud.compute.v1.CreateInstanceRequest.instance_kind:type_name -> kacho.cloud.compute.v1.InstanceKind
+	51, // 10: kacho.cloud.compute.v1.CreateInstanceRequest.boot_source:type_name -> kacho.cloud.compute.v1.BootSource
+	52, // 11: kacho.cloud.compute.v1.CreateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
+	53, // 12: kacho.cloud.compute.v1.CreateInstanceRequest.container_spec:type_name -> kacho.cloud.compute.v1.ContainerSpec
 	6,  // 13: kacho.cloud.compute.v1.CreateInstanceRequest.secondary_volume_specs:type_name -> kacho.cloud.compute.v1.SecondaryVolumeSpec
-	56, // 14: kacho.cloud.compute.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
-	46, // 15: kacho.cloud.compute.v1.UpdateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
-	48, // 16: kacho.cloud.compute.v1.UpdateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
-	49, // 17: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
-	50, // 18: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
-	51, // 19: kacho.cloud.compute.v1.UpdateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
-	54, // 20: kacho.cloud.compute.v1.UpdateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
+	54, // 14: kacho.cloud.compute.v1.UpdateInstanceRequest.update_mask:type_name -> google.protobuf.FieldMask
+	44, // 15: kacho.cloud.compute.v1.UpdateInstanceRequest.labels:type_name -> kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntry
+	46, // 16: kacho.cloud.compute.v1.UpdateInstanceRequest.network_settings:type_name -> kacho.cloud.compute.v1.NetworkSettings
+	47, // 17: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_policy:type_name -> kacho.cloud.compute.v1.MaintenancePolicy
+	48, // 18: kacho.cloud.compute.v1.UpdateInstanceRequest.maintenance_grace_period:type_name -> google.protobuf.Duration
+	49, // 19: kacho.cloud.compute.v1.UpdateInstanceRequest.serial_port_settings:type_name -> kacho.cloud.compute.v1.SerialPortSettings
+	52, // 20: kacho.cloud.compute.v1.UpdateInstanceRequest.vm_spec:type_name -> kacho.cloud.compute.v1.VmSpec
 	36, // 21: kacho.cloud.compute.v1.AttachInstanceDiskRequest.attached_disk_spec:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec
 	25, // 22: kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest.attached_nic_spec:type_name -> kacho.cloud.compute.v1.AttachedNicSpec
-	57, // 23: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	55, // 23: kacho.cloud.compute.v1.ListInstanceOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 24: kacho.cloud.compute.v1.AttachedDiskSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedDiskSpec.Mode
 	38, // 25: kacho.cloud.compute.v1.AttachedLocalDiskSpec.physical_local_disk:type_name -> kacho.cloud.compute.v1.PhysicalLocalDiskSpec
 	1,  // 26: kacho.cloud.compute.v1.AttachedFilesystemSpec.mode:type_name -> kacho.cloud.compute.v1.AttachedFilesystemSpec.Mode
 	41, // 27: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v4_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
 	41, // 28: kacho.cloud.compute.v1.NetworkInterfaceSpec.primary_v6_address_spec:type_name -> kacho.cloud.compute.v1.PrimaryAddressSpec
 	42, // 29: kacho.cloud.compute.v1.PrimaryAddressSpec.one_to_one_nat_spec:type_name -> kacho.cloud.compute.v1.OneToOneNatSpec
-	58, // 30: kacho.cloud.compute.v1.OneToOneNatSpec.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
-	43, // 31: kacho.cloud.compute.v1.DiskPlacementPolicyChange.disk_placement_policy:type_name -> kacho.cloud.compute.v1.DiskPlacementPolicy
-	2,  // 32: kacho.cloud.compute.v1.InstanceService.Get:input_type -> kacho.cloud.compute.v1.GetInstanceRequest
-	3,  // 33: kacho.cloud.compute.v1.InstanceService.List:input_type -> kacho.cloud.compute.v1.ListInstancesRequest
-	5,  // 34: kacho.cloud.compute.v1.InstanceService.Create:input_type -> kacho.cloud.compute.v1.CreateInstanceRequest
-	8,  // 35: kacho.cloud.compute.v1.InstanceService.Update:input_type -> kacho.cloud.compute.v1.UpdateInstanceRequest
-	10, // 36: kacho.cloud.compute.v1.InstanceService.Delete:input_type -> kacho.cloud.compute.v1.DeleteInstanceRequest
-	13, // 37: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:input_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest
-	15, // 38: kacho.cloud.compute.v1.InstanceService.Stop:input_type -> kacho.cloud.compute.v1.StopInstanceRequest
-	17, // 39: kacho.cloud.compute.v1.InstanceService.Start:input_type -> kacho.cloud.compute.v1.StartInstanceRequest
-	19, // 40: kacho.cloud.compute.v1.InstanceService.Restart:input_type -> kacho.cloud.compute.v1.RestartInstanceRequest
-	21, // 41: kacho.cloud.compute.v1.InstanceService.AttachDisk:input_type -> kacho.cloud.compute.v1.AttachInstanceDiskRequest
-	23, // 42: kacho.cloud.compute.v1.InstanceService.DetachDisk:input_type -> kacho.cloud.compute.v1.DetachInstanceDiskRequest
-	26, // 43: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:input_type -> kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
-	28, // 44: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:input_type -> kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
-	34, // 45: kacho.cloud.compute.v1.InstanceService.ListOperations:input_type -> kacho.cloud.compute.v1.ListInstanceOperationsRequest
-	32, // 46: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:input_type -> kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
-	47, // 47: kacho.cloud.compute.v1.InstanceService.Get:output_type -> kacho.cloud.compute.v1.Instance
-	4,  // 48: kacho.cloud.compute.v1.InstanceService.List:output_type -> kacho.cloud.compute.v1.ListInstancesResponse
-	57, // 49: kacho.cloud.compute.v1.InstanceService.Create:output_type -> kacho.cloud.operation.Operation
-	57, // 50: kacho.cloud.compute.v1.InstanceService.Update:output_type -> kacho.cloud.operation.Operation
-	57, // 51: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> kacho.cloud.operation.Operation
-	14, // 52: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:output_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse
-	57, // 53: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> kacho.cloud.operation.Operation
-	57, // 54: kacho.cloud.compute.v1.InstanceService.Start:output_type -> kacho.cloud.operation.Operation
-	57, // 55: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> kacho.cloud.operation.Operation
-	57, // 56: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> kacho.cloud.operation.Operation
-	57, // 57: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> kacho.cloud.operation.Operation
-	57, // 58: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	57, // 59: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> kacho.cloud.operation.Operation
-	35, // 60: kacho.cloud.compute.v1.InstanceService.ListOperations:output_type -> kacho.cloud.compute.v1.ListInstanceOperationsResponse
-	57, // 61: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> kacho.cloud.operation.Operation
-	47, // [47:62] is the sub-list for method output_type
-	32, // [32:47] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	56, // 30: kacho.cloud.compute.v1.OneToOneNatSpec.ip_version:type_name -> kacho.cloud.compute.v1.IpVersion
+	2,  // 31: kacho.cloud.compute.v1.InstanceService.Get:input_type -> kacho.cloud.compute.v1.GetInstanceRequest
+	3,  // 32: kacho.cloud.compute.v1.InstanceService.List:input_type -> kacho.cloud.compute.v1.ListInstancesRequest
+	5,  // 33: kacho.cloud.compute.v1.InstanceService.Create:input_type -> kacho.cloud.compute.v1.CreateInstanceRequest
+	8,  // 34: kacho.cloud.compute.v1.InstanceService.Update:input_type -> kacho.cloud.compute.v1.UpdateInstanceRequest
+	10, // 35: kacho.cloud.compute.v1.InstanceService.Delete:input_type -> kacho.cloud.compute.v1.DeleteInstanceRequest
+	13, // 36: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:input_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputRequest
+	15, // 37: kacho.cloud.compute.v1.InstanceService.Stop:input_type -> kacho.cloud.compute.v1.StopInstanceRequest
+	17, // 38: kacho.cloud.compute.v1.InstanceService.Start:input_type -> kacho.cloud.compute.v1.StartInstanceRequest
+	19, // 39: kacho.cloud.compute.v1.InstanceService.Restart:input_type -> kacho.cloud.compute.v1.RestartInstanceRequest
+	21, // 40: kacho.cloud.compute.v1.InstanceService.AttachDisk:input_type -> kacho.cloud.compute.v1.AttachInstanceDiskRequest
+	23, // 41: kacho.cloud.compute.v1.InstanceService.DetachDisk:input_type -> kacho.cloud.compute.v1.DetachInstanceDiskRequest
+	26, // 42: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:input_type -> kacho.cloud.compute.v1.AttachInstanceNetworkInterfaceRequest
+	28, // 43: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:input_type -> kacho.cloud.compute.v1.DetachInstanceNetworkInterfaceRequest
+	34, // 44: kacho.cloud.compute.v1.InstanceService.ListOperations:input_type -> kacho.cloud.compute.v1.ListInstanceOperationsRequest
+	32, // 45: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:input_type -> kacho.cloud.compute.v1.SimulateInstanceMaintenanceEventRequest
+	45, // 46: kacho.cloud.compute.v1.InstanceService.Get:output_type -> kacho.cloud.compute.v1.Instance
+	4,  // 47: kacho.cloud.compute.v1.InstanceService.List:output_type -> kacho.cloud.compute.v1.ListInstancesResponse
+	55, // 48: kacho.cloud.compute.v1.InstanceService.Create:output_type -> kacho.cloud.operation.Operation
+	55, // 49: kacho.cloud.compute.v1.InstanceService.Update:output_type -> kacho.cloud.operation.Operation
+	55, // 50: kacho.cloud.compute.v1.InstanceService.Delete:output_type -> kacho.cloud.operation.Operation
+	14, // 51: kacho.cloud.compute.v1.InstanceService.GetSerialPortOutput:output_type -> kacho.cloud.compute.v1.GetInstanceSerialPortOutputResponse
+	55, // 52: kacho.cloud.compute.v1.InstanceService.Stop:output_type -> kacho.cloud.operation.Operation
+	55, // 53: kacho.cloud.compute.v1.InstanceService.Start:output_type -> kacho.cloud.operation.Operation
+	55, // 54: kacho.cloud.compute.v1.InstanceService.Restart:output_type -> kacho.cloud.operation.Operation
+	55, // 55: kacho.cloud.compute.v1.InstanceService.AttachDisk:output_type -> kacho.cloud.operation.Operation
+	55, // 56: kacho.cloud.compute.v1.InstanceService.DetachDisk:output_type -> kacho.cloud.operation.Operation
+	55, // 57: kacho.cloud.compute.v1.InstanceService.AttachNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	55, // 58: kacho.cloud.compute.v1.InstanceService.DetachNetworkInterface:output_type -> kacho.cloud.operation.Operation
+	35, // 59: kacho.cloud.compute.v1.InstanceService.ListOperations:output_type -> kacho.cloud.compute.v1.ListInstanceOperationsResponse
+	55, // 60: kacho.cloud.compute.v1.InstanceService.SimulateMaintenanceEvent:output_type -> kacho.cloud.operation.Operation
+	46, // [46:61] is the sub-list for method output_type
+	31, // [31:46] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_compute_v1_instance_service_proto_init() }
@@ -3449,7 +3334,7 @@ func file_kacho_cloud_compute_v1_instance_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_compute_v1_instance_service_proto_rawDesc), len(file_kacho_cloud_compute_v1_instance_service_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   45,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
