@@ -72,6 +72,12 @@ var quotaTriggerDefiningFiles = map[string][]string{
 		"services/vpc/internal/migrations/0040_project_resource_quotas.sql",
 		"services/vpc/internal/migrations/0041_quota_refusal_single_producer.sql",
 
+		// Имя таблицы у storage то же, а схема другая (`kacho_storage`), поэтому
+		// гейт видит оба домена одним перечнем и ни один из них не выпадает
+		// из-под наблюдения. Разойдись имена — расхождение было бы молчаливым:
+		// гейт искал бы писателей по имени, которого во втором домене нет, и
+		// отчитался бы «ноль находок».
+		"services/storage/internal/migrations/0023_project_resource_quotas.sql",
 		// Учёт того же имени и той же формы у двух других владельцев. Таблицы
 		// РАЗНЫЕ — каждая в своей схеме (`kacho_nlb`, `kacho_registry`), и это
 		// не дубль, а database-per-service (ban #8): у гейта ключ — имя таблицы,

@@ -14,6 +14,97 @@ import (
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
+// SQLSTATE'ы, которыми триггер учёта числа ресурсов сообщает СВОЙ исход
+// (миграция 0023_project_resource_quotas).
+//
+// Классы, начинающиеся с буквы за пределами зарезервированных Postgres'ом,
+// свободны для приложения — поэтому эти три не могут совпасть ни с одним кодом
+// сервера и ни с одним кодом расширения. Они объявлены здесь и в самой миграции;
+// оба места называют один предмет, и второе — то, где они производятся.
+const (
+	// sqlstateQuotaExceeded — место кончилось: строка учёта есть, used >= limit.
+	sqlstateQuotaExceeded = "KQ001"
+	// sqlstateQuotaNotProvisioned — потолок не назван ни на одной области.
+	sqlstateQuotaNotProvisioned = "KQ002"
+	// sqlstateQuotaNoProjectID — строка ресурса не несёт проекта. Дефект схемы,
+	// а не арендатора: наружу уходит фиксированным внутренним отказом.
+	sqlstateQuotaNoProjectID = "KQ003"
+)
+
+// mapQuotaErr отличает исход учёта от всего остального; nil означает «это не
+// отказ учёта» и передаёт разбор той классификации, которая его позвала.
+//
+// Текст производителя сохраняется ДОСЛОВНО для двух первых исходов: он и есть
+// контракт («project <P> has reached its limit of <N> <kind>»), а не диагностика
+// хранилища, поэтому пересказывать его здесь значило бы завести второе место об
+// одном предмете — ровно то, от чего обе полосы и защищены единственным
+// производителем. Для третьего исхода текст НЕ сохраняется: он про нашу схему, и
+// арендатору о ней знать нечего.
+func mapQuotaErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	// Уже-замапленный отказ учёта пробрасывается как есть: иначе повторный
+	// проход через классификацию вызывающего схлопнул бы его в ErrInternal,
+	// потеряв и код, и контрактный текст.
+	switch {
+	case errors.Is(err, storageerr.ErrQuotaExceeded), errors.Is(err, storageerr.ErrQuotaNotProvisioned):
+		return err
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return nil
+	}
+	switch pgErr.Code {
+	case sqlstateQuotaExceeded:
+		return fmt.Errorf("%w: %s", storageerr.ErrQuotaExceeded, pgErr.Message)
+	case sqlstateQuotaNotProvisioned:
+		return fmt.Errorf("%w: %s", storageerr.ErrQuotaNotProvisioned, pgErr.Message)
+	case sqlstateQuotaNoProjectID:
+		slog.Error("quota accounting: resource row carries no project_id",
+			"sqlstate", pgErr.Code, "detail", pgErr.Message)
+		return storageerr.ErrInternal
+	}
+	return nil
+}
+
+// mapQuotaRepoErr — классификация для операций НАД САМИМИ строками учёта
+// (совещательный вопрос и материализация).
+//
+// Отличается от `mapQuotaErr` ровно тем, ради чего заведена: та отвечает «это не
+// отказ учёта» значением nil, потому что её зовут ПЕРВОЙ из чужих
+// классификаторов и разбор передают дальше. Здесь передавать некому — это
+// последний классификатор на пути, и nil здесь означал бы «ошибки не было».
+//
+// Ошибка стоила пробы, а не рассуждения: `MaterializeQuotas` возвращала
+// `mapQuotaErr(err)` напрямую, и вставка строки без зеркала аккаунта —
+// отвергнутая схемой — доезжала до вызывающего КАК УСПЕХ. То есть ограничение,
+// заведённое ровно затем, чтобы состояние «невидимая дельте строка» было
+// невыразимо, срабатывало, а его срабатывание терялось по дороге. Поймала это
+// `TestQuotaMaterialise_RejectsARowWithoutTheAccountMirror`; без неё дефект был
+// бы виден только тем, что аккаунтная дельта однажды не нашла бы строк.
+func mapQuotaRepoErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if qerr := mapQuotaErr(err); qerr != nil {
+		return qerr
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		// Нарушение ограничения строки учёта — дефект НАШЕЙ подготовки строки
+		// (пустое зеркало, неизвестная область), а не ввода арендатора: сюда
+		// приходят значения, которые собрали мы сами из ответа соседа. Арендатору
+		// о нашей схеме знать нечего, поэтому наружу — фиксированный внутренний
+		// отказ, а SQLSTATE остаётся оператору в журнале.
+		slog.Error("quota row rejected by schema",
+			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "detail", pgErr.Message)
+		return storageerr.ErrInternal
+	}
+	slog.Error("quota accounting: uncategorized db error", "err", err.Error())
+	return storageerr.ErrInternal
+}
+
 // volErrCtx — контекстные hint'ы для constraint-aware маппинга ошибок Volume-репо.
 // Точные тексты ошибок (§1.7) зависят от того, КАКОЙ constraint нарушен, поэтому
 // mapVolumeErr переключается по PgError.ConstraintName, а id/name/diskType/snapshot
@@ -47,6 +138,16 @@ const (
 func mapVolumeErr(err error, c volErrCtx) error {
 	if err == nil {
 		return nil
+	}
+	// Отказ учёта числа ресурсов классифицируется ПЕРВЫМ, до общих классов.
+	//
+	// Порядок здесь несущий, а не косметический: собственные SQLSTATE триггера
+	// учёта не входят ни в один из классов ниже, поэтому без этой ветки они
+	// доехали бы до `ErrInternal` — то есть арендатор, упёршийся в предел, видел
+	// бы «что-то сломалось» вместо «место кончилось», и ровно тот отказ, ради
+	// которого механизм существует, стал бы неотличим от сбоя хранилища.
+	if qerr := mapQuotaErr(err); qerr != nil {
+		return qerr
 	}
 	// Идемпотентность: уже-замапленный sentinel (напр. hand-crafted
 	// "Volume size can only be increased" / NotFound из disambiguation Update)
@@ -118,6 +219,16 @@ func mapSnapshotErr(err error, c snapErrCtx) error {
 	if err == nil {
 		return nil
 	}
+	// Отказ учёта числа ресурсов классифицируется ПЕРВЫМ, до общих классов.
+	//
+	// Порядок здесь несущий, а не косметический: собственные SQLSTATE триггера
+	// учёта не входят ни в один из классов ниже, поэтому без этой ветки они
+	// доехали бы до `ErrInternal` — то есть арендатор, упёршийся в предел, видел
+	// бы «что-то сломалось» вместо «место кончилось», и ровно тот отказ, ради
+	// которого механизм существует, стал бы неотличим от сбоя хранилища.
+	if qerr := mapQuotaErr(err); qerr != nil {
+		return qerr
+	}
 	switch {
 	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
 		errors.Is(err, storageerr.ErrFailedPrecondition), errors.Is(err, storageerr.ErrInvalidArg),
@@ -170,6 +281,16 @@ type imgErrCtx struct {
 func mapImageErr(err error, c imgErrCtx) error {
 	if err == nil {
 		return nil
+	}
+	// Отказ учёта числа ресурсов классифицируется ПЕРВЫМ, до общих классов.
+	//
+	// Порядок здесь несущий, а не косметический: собственные SQLSTATE триггера
+	// учёта не входят ни в один из классов ниже, поэтому без этой ветки они
+	// доехали бы до `ErrInternal` — то есть арендатор, упёршийся в предел, видел
+	// бы «что-то сломалось» вместо «место кончилось», и ровно тот отказ, ради
+	// которого механизм существует, стал бы неотличим от сбоя хранилища.
+	if qerr := mapQuotaErr(err); qerr != nil {
+		return qerr
 	}
 	switch {
 	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
