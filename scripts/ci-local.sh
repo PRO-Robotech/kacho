@@ -21,7 +21,7 @@
 # Использование:
 #   scripts/ci-local.sh            # всё
 #   scripts/ci-local.sh proto      # только генерация и совместимость
-#   scripts/ci-local.sh go|helm|ui # отдельная группа
+#   scripts/ci-local.sh go|terraform|helm|ui  # отдельная группа
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,10 +36,26 @@ run() { # run <имя> <команда...>
     local name="$1"; shift
     ran=$((ran + 1))
     printf '\n== %s\n' "$name"
-    if "$@" > "$WORK/out.txt" 2>&1; then
+
+    # Журнал у КАЖДОЙ проверки свой и остаётся после прогона. Прежде все они писали в
+    # один файл, и он доставался следующей: к моменту, когда читаешь отказ, разбирать
+    # уже нечего — журнал перезаписан соседом. Плюс на экран идёт только хвост, а
+    # инструменты, печатающие координату ПЕРВОЙ строкой и длинную сводку после (tofu
+    # test — ровно такой), теряют в этом хвосте имя падения: вердикт остаётся, разбор
+    # невозможен. Поэтому путь к целому журналу называется в самом отказе.
+    # Порядковый номер в имени — потому что имена проверок русские, а `tr` режет по
+    # БАЙТАМ: от многобайтного имени в слаге остаётся вереница дефисов, и два разных
+    # отказа получили бы один файл.
+    local log slug
+    slug="$(printf '%s' "$name" | tr -c 'A-Za-z0-9' '-' | tr -s '-' | sed 's/^-//;s/-$//' | cut -c1-30)"
+    log="$WORK/$(printf 'log-%02d-%s.txt' "$ran" "$slug")"
+
+    if "$@" > "$log" 2>&1; then
         echo "   ok"
     else
-        echo "   ОТКАЗ (код $?)"; tail -15 "$WORK/out.txt" | sed 's/^/   | /'
+        echo "   ОТКАЗ (код $?)"
+        tail -15 "$log" | sed 's/^/   | /'
+        echo "   | целиком: $log"
         fails+=("$name")
     fi
 }
@@ -107,11 +123,13 @@ go_group() {
     run "go build" go build ./...
     run "go vet" go vet ./...
     run "go test -short" go test ./... -short -count=1
-    # Провайдер — ОТДЕЛЬНЫЙ модуль: корневой ./... в него не спускается, и его
-    # отказ виден только собственной командой.
-    run "провайдер: build" bash -c "cd '$ROOT/terraform' && go build ./..."
-    run "провайдер: vet" bash -c "cd '$ROOT/terraform' && go vet ./..."
-    run "провайдер: test" bash -c "cd '$ROOT/terraform' && go test ./... -count=1"
+    # Здесь стояли ещё три «провайдер: …» — те же build/vet/test, вызванные из
+    # terraform/, — и объяснялись тем, что провайдер живёт ОТДЕЛЬНЫМ модулем, куда
+    # корневой ./... не спускается. Модуль в дереве один (предикат: `git ls-files
+    # '*go.mod'` → одна строка), поэтому команды выше провайдера уже видят, а те три
+    # были повтором, оправданным утверждением, пережившим свой предмет.
+    #
+    # Цикл terraform ими всё равно не исполнялся: он в группе terraform ниже.
 
     if command -v golangci-lint > /dev/null; then
         # Кэш линтера привязывается к КОРНЮ ЭТОЙ копии. Общий кэш между рабочими
@@ -119,7 +137,6 @@ go_group() {
         # чужому дереву, и «зелено» перестаёт что-либо значить.
         mkdir -p "$ROOT/.cache/golangci-lint"
         GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "golangci-lint" golangci-lint run
-        GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "провайдер: golangci-lint" bash -c "cd terraform && golangci-lint run"
     else
         echo -e "\n== golangci-lint\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
     fi
@@ -135,6 +152,118 @@ go_group() {
     else
         echo -e "\n== gosec\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
     fi
+}
+
+# ── terraform: конфигурации и приёмка провайдера ────────────────────────────
+#
+# ЧТО ЭТО ЗАКРЫВАЕТ. Файлы .tf не компилируются ничем: `go build` их не читает, и
+# опечатка в связывании ресурсов доезжает до первого apply у пользователя. Go-сторона
+# провайдера, наоборот, покрыта группой go выше — но она молчит о том, как ресурс ведёт
+# себя под НАСТОЯЩИМ terraform: план, повторный план, пересоздание, импорт, уборка.
+#
+# ПОЧЕМУ СВОЙ ЭКЗЕМПЛЯР tofu, А НЕ ИЗ PATH. Вердикт имеет смысл, только если инструмент
+# и версия те же, что в конвейере. Чужой tofu из PATH дал бы вердикт о другом
+# инструменте — и разошёлся бы с конвейером молча, потому что на зелёном входе оба
+# отвечают «зелено». Версия ниже — тот же пин, что у конвейера, и за их расхождением
+# следит .github/scripts/check-pinned-tools.sh.
+TOFU_VERSION=1.12.5
+
+terraform_group() {
+    local bin="$WORK/tofu-bin" tofu
+    tofu="$bin/tofu"
+
+    if [ ! -x "$tofu" ] || ! "$tofu" version 2>/dev/null | head -1 | grep -qF "v$TOFU_VERSION"; then
+        local os arch
+        case "$(uname -s)" in
+            Linux)  os=linux ;;
+            Darwin) os=darwin ;;
+            *) echo -e "\n== tofu\n   ПРОПУСК: $(uname -s) не поддержан этим прогоном — проверки НЕ выполнены"; return ;;
+        esac
+        case "$(uname -m)" in
+            x86_64|amd64)  arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo -e "\n== tofu\n   ПРОПУСК: $(uname -m) не поддержан этим прогоном — проверки НЕ выполнены"; return ;;
+        esac
+
+        printf '\n== tofu %s (%s_%s) — тот же артефакт, что ставит конвейер\n' "$TOFU_VERSION" "$os" "$arch"
+        mkdir -p "$bin"
+        if ! curl -fsSL -o "$WORK/tofu.zip" \
+            "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_${os}_${arch}.zip" > "$WORK/tofu-install.txt" 2>&1 \
+            || ! unzip -oq "$WORK/tofu.zip" -d "$bin" >> "$WORK/tofu-install.txt" 2>&1; then
+            echo "   ОТКАЗ: tofu $TOFU_VERSION не поставился — НИ ОДНА проверка конфигураций НЕ выполнена"
+            tail -8 "$WORK/tofu-install.txt" | sed 's/^/   | /'
+            fails+=("tofu не поставился"); return
+        fi
+        echo "   ok"
+    fi
+    # Свой экземпляр — ПЕРВЫМ: он же достаётся приёмочным пробам, которые ищут
+    # исполнителя в PATH.
+    export PATH="$bin:$PATH"
+
+    # Пробы гоняются против ТОГО ЖЕ провайдера, что собирается из этого дерева, а не
+    # против опубликованного: иначе они судили бы чужую версию.
+    mkdir -p "$WORK/tf-plugins"
+    if ! go build -o "$WORK/tf-plugins/terraform-provider-kacho" \
+        ./terraform/cmd/terraform-provider-kacho > "$WORK/tofu-install.txt" 2>&1; then
+        echo -e "\n== провайдер для tofu\n   ОТКАЗ: не собрался — проверки конфигураций НЕ выполнены"
+        tail -8 "$WORK/tofu-install.txt" | sed 's/^/   | /'
+        fails+=("провайдер для tofu"); return
+    fi
+    cat > "$WORK/tofu.tfrc" <<RC
+provider_installation {
+  dev_overrides { "PRO-Robotech/kacho" = "$WORK/tf-plugins" }
+  direct {}
+}
+RC
+    export TF_CLI_CONFIG_FILE="$WORK/tofu.tfrc"
+
+    run "формат .tf" tofu fmt -check -recursive terraform
+    run "модульные пробы (tofu test)" tofu_modules
+    run "примеры разбираются и сходятся по типам" tofu_examples
+}
+
+# Перечень модулей ВЫВОДИТСЯ из дерева, а не выписывается: рукописный список разошёлся
+# бы с деревом молча, и новый модуль приехал бы непроверенным. Ноль модулей — ОТКАЗ, а
+# не успех: обходчику, которому нечего обходить, положено быть отличимым от того, у кого
+# всё сошлось. Печатается объём осмотренного.
+tofu_modules() {
+    local modules m suites seen=0
+    modules=$(git ls-files 'terraform/modules/*/main.tf' | xargs -r -n1 dirname | sort -u)
+    if [ -z "$modules" ]; then
+        echo "модулей terraform не найдено — предикат поиска устарел или каталог переехал" >&2
+        return 1
+    fi
+    for m in $modules; do
+        suites=$(git ls-files "$m/tests/*.tftest.hcl" | wc -l)
+        if [ "$suites" -eq 0 ]; then
+            echo "$m/main.tf: модуль без модульных проб — заведите $m/tests/*.tftest.hcl" >&2
+            return 1
+        fi
+        echo "── $m ($suites сюит)"
+        ( cd "$m" && tofu test -no-color ) || return 1
+        seen=$((seen + 1))
+    done
+    echo "модулей осмотрено: $seen"
+}
+
+# Примеры — то, что читатель копирует первым. Непроверяемый пример устаревает тише
+# всего: он не собирается ничем и не падает нигде.
+tofu_examples() {
+    local examples e seen=0
+    examples=$(git ls-files 'terraform/examples/*/main.tf' | xargs -r -n1 dirname | sort -u)
+    if [ -z "$examples" ]; then
+        echo "примеров terraform не найдено — предикат поиска устарел" >&2
+        return 1
+    fi
+    for e in $examples; do
+        # `tofu get`, а НЕ `tofu init`: провайдер здесь приходит подменой пути
+        # (dev_overrides), и init на нём выходит с кодом 1, потому что честно не находит
+        # его в реестре. Глушить этот код было бы мягким проходом, не отличающим
+        # настройку от сбоя; `get` ставит только модули и таким вопросом не задаётся.
+        ( cd "$e" && tofu get -no-color && tofu validate -no-color ) || return 1
+        seen=$((seen + 1))
+    done
+    echo "примеров осмотрено: $seen"
 }
 
 helm_group() {
@@ -169,21 +298,23 @@ ui_group() {
 }
 
 case "$GROUP" in
-    proto) proto_group ;;
-    go)    go_group ;;
-    helm)  helm_group ;;
-    ui)    ui_group ;;
-    all)   proto_group; go_group; helm_group; ui_group ;;
+    proto)     proto_group ;;
+    go)        go_group ;;
+    terraform) terraform_group ;;
+    helm)      helm_group ;;
+    ui)        ui_group ;;
+    all)       proto_group; go_group; terraform_group; helm_group; ui_group ;;
     # Несколько групп через пробел: хук отправки гоняет быстрые, но не медленные.
     *)
         ok=1
         for g in $GROUP; do
             case "$g" in
-                proto) proto_group ;;
-                go)    go_group ;;
-                helm)  helm_group ;;
-                ui)    ui_group ;;
-                *) echo "неизвестная группа: $g (proto|go|helm|ui|all)" >&2; ok=0 ;;
+                proto)     proto_group ;;
+                go)        go_group ;;
+                terraform) terraform_group ;;
+                helm)      helm_group ;;
+                ui)        ui_group ;;
+                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|all)" >&2; ok=0 ;;
             esac
         done
         [ "$ok" = "1" ] || exit 2
