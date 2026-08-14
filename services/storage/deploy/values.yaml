@@ -246,3 +246,10 @@ containerSecurityContext:
   seccompProfile:
     type: RuntimeDefault
 
+# metricsScrape — объявление СБОРА величин диагностической поверхности.
+#
+# Выключение требует ПРИЧИНЫ: пустая строка при enabled=false — это «забыли», и
+# декларативная проверка не отличила бы её от «сбора здесь нет намеренно».
+metricsScrape:
+  enabled: true
+  disabledBecause: ""
