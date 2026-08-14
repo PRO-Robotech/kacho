@@ -517,12 +517,12 @@ variable "addresses" {
     deletion_protection = optional(bool)
 
     external_ipv4 = optional(object({
-      address      = optional(string)
-      zone_id      = optional(string)
+      address = optional(string)
+      zone_id = optional(string)
     }))
     external_ipv6 = optional(object({
-      address      = optional(string)
-      zone_id      = optional(string)
+      address = optional(string)
+      zone_id = optional(string)
     }))
     internal_ipv4 = optional(object({
       subnet  = string

@@ -454,8 +454,8 @@ run "security_group_rule_fields_survive_assembly" {
       }
       "probe-egress" = {
         rules = [{
-          direction         = "EGRESS"
-          protocol_number   = 47
+          direction       = "EGRESS"
+          protocol_number = 47
         }]
       }
     }
@@ -804,8 +804,8 @@ run "external_address_fields_survive_assembly" {
     addresses = {
       "probe-vip" = {
         external_ipv4 = {
-          address      = "203.0.113.7"
-          zone_id      = "ru-central1-a"
+          address = "203.0.113.7"
+          zone_id = "ru-central1-a"
         }
       }
       "probe-vip-global" = {
