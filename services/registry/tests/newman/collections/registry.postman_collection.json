@@ -166,7 +166,7 @@
           ]
         },
         {
-          "name": "capture-regId-rya141",
+          "name": "capture-regId-rya5",
           "request": {
             "method": "GET",
             "header": [
@@ -224,7 +224,7 @@
           ]
         },
         {
-          "name": "warm-regId-rya137",
+          "name": "warm-regId-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -274,7 +274,7 @@
           ]
         },
         {
-          "name": "get-created-rya142",
+          "name": "get-created-rya6",
           "request": {
             "method": "GET",
             "header": [
@@ -599,7 +599,7 @@
           ]
         },
         {
-          "name": "capture-dupRegId-rya143",
+          "name": "capture-dupRegId-rya7",
           "request": {
             "method": "GET",
             "header": [
@@ -657,7 +657,7 @@
           ]
         },
         {
-          "name": "warm-dupRegId-rya138",
+          "name": "warm-dupRegId-rya2",
           "request": {
             "method": "GET",
             "header": [
@@ -756,7 +756,7 @@
           ]
         },
         {
-          "name": "delete-dupRegId-rya144",
+          "name": "delete-dupRegId-rya8",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2798,7 +2798,7 @@
           ]
         },
         {
-          "name": "capture-delRegId-rya145",
+          "name": "capture-delRegId-rya9",
           "request": {
             "method": "GET",
             "header": [
@@ -2856,7 +2856,7 @@
           ]
         },
         {
-          "name": "warm-delRegId-rya139",
+          "name": "warm-delRegId-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -2906,7 +2906,7 @@
           ]
         },
         {
-          "name": "delete-del-rya146",
+          "name": "delete-del-rya10",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3031,7 +3031,7 @@
           ]
         },
         {
-          "name": "get-del-deleted-rya147",
+          "name": "get-del-deleted-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -3247,7 +3247,7 @@
           ]
         },
         {
-          "name": "capture-ddRegId-rya148",
+          "name": "capture-ddRegId-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -3305,7 +3305,7 @@
           ]
         },
         {
-          "name": "warm-ddRegId-rya140",
+          "name": "warm-ddRegId-rya4",
           "request": {
             "method": "GET",
             "header": [
@@ -3355,7 +3355,7 @@
           ]
         },
         {
-          "name": "delete-dd-1-rya149",
+          "name": "delete-dd-1-rya13",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3480,7 +3480,7 @@
           ]
         },
         {
-          "name": "delete-dd-2-rya150",
+          "name": "delete-dd-2-rya14",
           "request": {
             "method": "DELETE",
             "header": [

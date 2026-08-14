@@ -110,6 +110,23 @@ spec:
             - name: KACHO_API_GATEWAY_REGISTRY_INTERNAL_GRPC
               value: "{{ .Values.backends.registryInternal }}"
             {{- end }}
+            {{- if .Values.backends.storage }}
+            - name: KACHO_API_GATEWAY_STORAGE_GRPC
+              value: "{{ .Values.backends.storage }}"
+            {{- end }}
+            {{- if .Values.backends.storageInternal }}
+            - name: KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC
+              value: "{{ .Values.backends.storageInternal }}"
+            {{- end }}
+            # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
+            # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
+            # вписывается литералом: Service провайдера называется
+            # `<релиз>-kratos-public`, поэтому литерал держался бы совпадением
+            # имени релиза с тем, что кто-то однажды набрал, и ломался бы молча
+            # при установке под другим именем. Значение `disabled` выключает
+            # сессионную аутентификацию целиком (сигнальное значение config.go).
+            - name: KACHO_API_GATEWAY_KRATOS_PUBLIC_URL
+              value: {{ .Values.kratosPublicUrl | default (printf "http://%s-kratos-public.%s.svc:80" .Release.Name .Release.Namespace) | quote }}
             {{- if .Values.tls.enabled }}
             - name: KACHO_API_GATEWAY_TLS_LISTEN_ADDR
               value: ":{{ .Values.tlsPort }}"

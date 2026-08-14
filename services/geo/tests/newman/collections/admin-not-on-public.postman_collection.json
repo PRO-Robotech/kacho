@@ -257,7 +257,7 @@
           ]
         },
         {
-          "name": "confirm-region-rgf15",
+          "name": "confirm-region-rgf1",
           "request": {
             "method": "GET",
             "header": [

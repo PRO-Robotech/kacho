@@ -187,7 +187,7 @@
           ]
         },
         {
-          "name": "poll-op-1256",
+          "name": "poll-op-1",
           "request": {
             "method": "GET",
             "header": [
@@ -255,7 +255,7 @@
           ]
         },
         {
-          "name": "get-internal-rya1027",
+          "name": "get-internal-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -328,7 +328,7 @@
           ]
         },
         {
-          "name": "get-public-no-vrfid-rya1031",
+          "name": "get-public-no-vrfid-rya5",
           "request": {
             "method": "GET",
             "header": [
@@ -381,7 +381,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1032",
+          "name": "cleanup-delete-rya6",
           "request": {
             "method": "DELETE",
             "header": [
@@ -509,7 +509,7 @@
           ]
         },
         {
-          "name": "poll-op-1257",
+          "name": "poll-op-2",
           "request": {
             "method": "GET",
             "header": [
@@ -577,7 +577,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid-lst1028",
+          "name": "list-no-vrfid-lst2",
           "request": {
             "method": "GET",
             "header": [
@@ -631,7 +631,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1033",
+          "name": "cleanup-delete-rya7",
           "request": {
             "method": "DELETE",
             "header": [
@@ -886,7 +886,7 @@
           ]
         },
         {
-          "name": "poll-op-1258",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
@@ -954,7 +954,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya1029",
+          "name": "get-internal-before-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -1027,7 +1027,7 @@
           ]
         },
         {
-          "name": "update-name-rya1030",
+          "name": "update-name-rya4",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1092,7 +1092,7 @@
           ]
         },
         {
-          "name": "poll-op-1259",
+          "name": "poll-op-4",
           "request": {
             "method": "GET",
             "header": [
@@ -1147,7 +1147,7 @@
           ]
         },
         {
-          "name": "get-internal-after-rya1034",
+          "name": "get-internal-after-rya8",
           "request": {
             "method": "GET",
             "header": [
@@ -1216,7 +1216,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1035",
+          "name": "cleanup-delete-rya9",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1344,7 +1344,7 @@
           ]
         },
         {
-          "name": "poll-op-1260",
+          "name": "poll-op-5",
           "request": {
             "method": "GET",
             "header": [
@@ -1412,7 +1412,7 @@
           ]
         },
         {
-          "name": "update-vrfid-rejected-rya1036",
+          "name": "update-vrfid-rejected-rya10",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1475,7 +1475,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1037",
+          "name": "cleanup-delete-rya11",
           "request": {
             "method": "DELETE",
             "header": [

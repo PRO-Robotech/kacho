@@ -182,7 +182,7 @@
           ]
         },
         {
-          "name": "poll-op-1464",
+          "name": "poll-op-1",
           "request": {
             "method": "GET",
             "header": [
@@ -250,7 +250,7 @@
           ]
         },
         {
-          "name": "get-op-rya1268",
+          "name": "get-op-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -302,7 +302,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1269",
+          "name": "cleanup-rya2",
           "request": {
             "method": "DELETE",
             "header": [
@@ -505,7 +505,7 @@
           ]
         },
         {
-          "name": "poll-op-1465",
+          "name": "poll-op-2",
           "request": {
             "method": "GET",
             "header": [
@@ -573,7 +573,7 @@
           ]
         },
         {
-          "name": "cr-sub",
+          "name": "cr-sub-rya3",
           "request": {
             "method": "POST",
             "header": [
@@ -609,6 +609,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -627,7 +642,7 @@
           ]
         },
         {
-          "name": "poll-op-1466",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
@@ -695,7 +710,7 @@
           ]
         },
         {
-          "name": "listops-before-rya1270",
+          "name": "listops-before-rya4",
           "request": {
             "method": "GET",
             "header": [
@@ -748,7 +763,7 @@
           ]
         },
         {
-          "name": "del-sub-rya1271",
+          "name": "del-sub-rya5",
           "request": {
             "method": "DELETE",
             "header": [
@@ -804,7 +819,7 @@
           ]
         },
         {
-          "name": "poll-op-1467",
+          "name": "poll-op-4",
           "request": {
             "method": "GET",
             "header": [
@@ -868,7 +883,7 @@
           ]
         },
         {
-          "name": "listops-after-delete-rya1272",
+          "name": "listops-after-delete-rya6",
           "request": {
             "method": "GET",
             "header": [
@@ -921,7 +936,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1273",
+          "name": "cleanup-net-rya7",
           "request": {
             "method": "DELETE",
             "header": [
@@ -979,7 +994,7 @@
           ]
         },
         {
-          "name": "poll-op-1468",
+          "name": "poll-op-5",
           "request": {
             "method": "GET",
             "header": [
@@ -1142,7 +1157,7 @@
           ]
         },
         {
-          "name": "poll-and-verify-shape-rya1274",
+          "name": "poll-and-verify-shape-rya8",
           "request": {
             "method": "GET",
             "header": [

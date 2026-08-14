@@ -112,7 +112,7 @@
           ]
         },
         {
-          "name": "get-op-immediate-rya778",
+          "name": "get-op-immediate-rya1",
           "request": {
             "method": "GET",
             "header": [
@@ -230,7 +230,7 @@
           ]
         },
         {
-          "name": "cleanup-rya779",
+          "name": "cleanup-rya2",
           "request": {
             "method": "DELETE",
             "header": [
@@ -465,7 +465,7 @@
           ]
         },
         {
-          "name": "get-op-done-rya780",
+          "name": "get-op-done-rya3",
           "request": {
             "method": "GET",
             "header": [
@@ -517,7 +517,7 @@
           ]
         },
         {
-          "name": "cleanup-rya781",
+          "name": "cleanup-rya4",
           "request": {
             "method": "DELETE",
             "header": [
@@ -897,7 +897,7 @@
           ]
         },
         {
-          "name": "cancel-done-rya782",
+          "name": "cancel-done-rya5",
           "request": {
             "method": "POST",
             "header": [
@@ -949,7 +949,7 @@
           ]
         },
         {
-          "name": "cleanup-rya783",
+          "name": "cleanup-rya6",
           "request": {
             "method": "DELETE",
             "header": [

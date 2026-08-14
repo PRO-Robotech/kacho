@@ -1386,6 +1386,21 @@ def _accepted_http_codes(body: str) -> set:
     return {c for c in acc if 100 <= c <= 599}
 
 
+def _body_text(step: Step) -> str:
+    """Текст тела запроса для поиска ссылок на переменные.
+
+    Тело — произвольной вложенности, поэтому сериализуется целиком, а не
+    обходится по верхним ключам: ссылка на свежий ресурс встречается и внутри
+    вложенного объекта (`{"v4Source": {"subnetId": "{{subId}}"}}`).
+    """
+    if not step.body:
+        return ""
+    try:
+        return json.dumps(step.body)
+    except (TypeError, ValueError):
+        return str(step.body)
+
+
 def _wrap_own_fresh_reads(steps: List[Step], rename: bool = True) -> List[Step]:
     """Обернуть положительные первые обращения к своему свежему ресурсу.
 
@@ -1418,7 +1433,18 @@ def _wrap_own_fresh_reads(steps: List[Step], rename: bool = True) -> List[Step]:
         if not accepted:
             retry_on = (403,)
         if st.test_script and not self_looped and not already and 403 not in accepted and retry_on:
-            if _VAR_REF_RE.findall(st.path) and (set(_VAR_REF_RE.findall(st.path)) & fresh):
+            # Цель проверки прав называется адресом ЛИБО ПОЛЕМ ЗАПРОСА: край берёт
+            # объект из `scope_extractor.from_request_field` каталога прав, и у
+            # создания вложенного ресурса адрес коллекционный, а свежий родитель
+            # стоит в теле. Условие, читавшее только `st.path`, такой шаг не видело
+            # ПО ПОСТРОЕНИЮ — и это не мелочь: пропущенный шаг обычно СОЗДАЁТ
+            # фикстуру, на которой стоит предмет кейса, поэтому его отказ уезжает
+            # не в «фикстура не создалась», а в красное утверждение о предмете
+            # (наблюдалось на удалении группы целей: ссылки не возникло, продукт
+            # верно разрешил удаление, а кейс отчитался о сломанной ссылочной
+            # целостности). Ждать на СОСЕДНЕЙ полосе нельзя: чтение родителя
+            # гейтится одним отношением, создание вложенного — другим.
+            if set(_VAR_REF_RE.findall(st.path + _body_text(st))) & fresh:
                 w = retry_until_authorized(st, retry_on=retry_on)
                 st = replace(w, name=st.name) if not rename else w
                 body = "\n".join(st.test_script)
@@ -1464,7 +1490,29 @@ def build_collection(resource: str, cases: List[Case]) -> Dict:
 # Discovery + main
 # ---------------------------------------------------------------------------
 
+def _reset_step_name_counters() -> None:
+    """Reset every counter that feeds a STEP NAME, before loading a case module.
+
+    A step name must be a function of the CASE, never of the environment. These
+    counters live at module scope and only ever grow, so without this reset a
+    name would depend on how many case modules were loaded before this one, and
+    `gen.py <module>` would emit different names than a full `gen.py` for the
+    same case — leaving a tree the full run does not produce, and step names
+    that do not match between runs when a red run is being diagnosed.
+
+    Resetting is safe by construction: newman resolves setNextRequest by request
+    name WITHIN the collection being run, and one case module produces exactly
+    one collection — so uniqueness is only ever required within that scope.
+
+    Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
+    """
+    _RDY_SEQ[0] = 0
+    _RYA_SEQ[0] = 0
+    _poll_seq[0] = 0
+
+
 def load_cases_module(path: Path):
+    _reset_step_name_counters()
     spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
     mod = importlib.util.module_from_spec(spec)
     # пробрасываем helpers в namespace модуля

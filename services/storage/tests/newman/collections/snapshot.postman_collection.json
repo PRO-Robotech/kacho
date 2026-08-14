@@ -102,7 +102,7 @@
           ]
         },
         {
-          "name": "poll-op-113",
+          "name": "poll-op-1",
           "request": {
             "method": "GET",
             "header": [
@@ -148,7 +148,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya154",
+          "name": "assert-op-success-rya9",
           "request": {
             "method": "GET",
             "header": [
@@ -198,7 +198,7 @@
           ]
         },
         {
-          "name": "pre-vol-crok-ready-rdy30",
+          "name": "pre-vol-crok-ready-rdy1",
           "request": {
             "method": "GET",
             "header": [
@@ -258,7 +258,7 @@
           ]
         },
         {
-          "name": "create",
+          "name": "create-rya10",
           "request": {
             "method": "POST",
             "header": [
@@ -294,6 +294,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -319,7 +334,7 @@
           ]
         },
         {
-          "name": "poll-op-114",
+          "name": "poll-op-2",
           "request": {
             "method": "GET",
             "header": [
@@ -365,7 +380,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya155",
+          "name": "assert-op-success-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -415,7 +430,7 @@
           ]
         },
         {
-          "name": "get-rdy31",
+          "name": "get-rdy2",
           "request": {
             "method": "GET",
             "header": [
@@ -489,7 +504,7 @@
           ]
         },
         {
-          "name": "del-snap-rya156",
+          "name": "del-snap-rya12",
           "request": {
             "method": "DELETE",
             "header": [
@@ -547,7 +562,7 @@
           ]
         },
         {
-          "name": "poll-op-115",
+          "name": "poll-op-3",
           "request": {
             "method": "GET",
             "header": [
@@ -602,7 +617,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya157",
+          "name": "cleanup-source-vol-rya13",
           "request": {
             "method": "DELETE",
             "header": [
@@ -660,7 +675,7 @@
           ]
         },
         {
-          "name": "poll-op-116",
+          "name": "poll-op-4",
           "request": {
             "method": "GET",
             "header": [
@@ -770,7 +785,7 @@
           ]
         },
         {
-          "name": "poll-op-117",
+          "name": "poll-op-5",
           "request": {
             "method": "GET",
             "header": [
@@ -816,7 +831,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya158",
+          "name": "assert-op-error-rya14",
           "request": {
             "method": "GET",
             "header": [
@@ -1475,7 +1490,7 @@
           ]
         },
         {
-          "name": "poll-op-118",
+          "name": "poll-op-6",
           "request": {
             "method": "GET",
             "header": [
@@ -1521,7 +1536,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya159",
+          "name": "assert-op-success-rya15",
           "request": {
             "method": "GET",
             "header": [
@@ -1571,7 +1586,7 @@
           ]
         },
         {
-          "name": "pre-vol-upd-ready-rdy32",
+          "name": "pre-vol-upd-ready-rdy3",
           "request": {
             "method": "GET",
             "header": [
@@ -1631,7 +1646,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya16",
           "request": {
             "method": "POST",
             "header": [
@@ -1667,6 +1682,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1685,7 +1715,7 @@
           ]
         },
         {
-          "name": "poll-op-119",
+          "name": "poll-op-7",
           "request": {
             "method": "GET",
             "header": [
@@ -1744,7 +1774,7 @@
           ]
         },
         {
-          "name": "patch-rya146",
+          "name": "patch-rya1",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1809,7 +1839,7 @@
           ]
         },
         {
-          "name": "poll-op-120",
+          "name": "poll-op-8",
           "request": {
             "method": "GET",
             "header": [
@@ -1855,7 +1885,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya160",
+          "name": "assert-op-success-rya17",
           "request": {
             "method": "GET",
             "header": [
@@ -1905,7 +1935,7 @@
           ]
         },
         {
-          "name": "verify-rya161",
+          "name": "verify-rya18",
           "request": {
             "method": "GET",
             "header": [
@@ -1958,7 +1988,7 @@
           ]
         },
         {
-          "name": "del-snap-rya162",
+          "name": "del-snap-rya19",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2016,7 +2046,7 @@
           ]
         },
         {
-          "name": "poll-op-121",
+          "name": "poll-op-9",
           "request": {
             "method": "GET",
             "header": [
@@ -2071,7 +2101,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya163",
+          "name": "cleanup-source-vol-rya20",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2129,7 +2159,7 @@
           ]
         },
         {
-          "name": "poll-op-122",
+          "name": "poll-op-10",
           "request": {
             "method": "GET",
             "header": [
@@ -2244,7 +2274,7 @@
           ]
         },
         {
-          "name": "poll-op-123",
+          "name": "poll-op-11",
           "request": {
             "method": "GET",
             "header": [
@@ -2290,7 +2320,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya164",
+          "name": "assert-op-success-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -2340,7 +2370,7 @@
           ]
         },
         {
-          "name": "pre-vol-delok-ready-rdy33",
+          "name": "pre-vol-delok-ready-rdy4",
           "request": {
             "method": "GET",
             "header": [
@@ -2400,7 +2430,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya22",
           "request": {
             "method": "POST",
             "header": [
@@ -2436,6 +2466,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -2454,7 +2499,7 @@
           ]
         },
         {
-          "name": "poll-op-124",
+          "name": "poll-op-12",
           "request": {
             "method": "GET",
             "header": [
@@ -2513,7 +2558,7 @@
           ]
         },
         {
-          "name": "del-rya147",
+          "name": "del-rya2",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2569,7 +2614,7 @@
           ]
         },
         {
-          "name": "poll-op-125",
+          "name": "poll-op-13",
           "request": {
             "method": "GET",
             "header": [
@@ -2615,7 +2660,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya165",
+          "name": "assert-op-success-rya23",
           "request": {
             "method": "GET",
             "header": [
@@ -2665,7 +2710,7 @@
           ]
         },
         {
-          "name": "get-404-rya166",
+          "name": "get-404-rya24",
           "request": {
             "method": "GET",
             "header": [
@@ -2719,7 +2764,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya167",
+          "name": "cleanup-source-vol-rya25",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2777,7 +2822,7 @@
           ]
         },
         {
-          "name": "poll-op-126",
+          "name": "poll-op-14",
           "request": {
             "method": "GET",
             "header": [
@@ -2879,7 +2924,7 @@
           ]
         },
         {
-          "name": "poll-op-127",
+          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -2925,7 +2970,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya168",
+          "name": "assert-op-error-rya26",
           "request": {
             "method": "GET",
             "header": [
@@ -3298,7 +3343,7 @@
           ]
         },
         {
-          "name": "poll-op-128",
+          "name": "poll-op-16",
           "request": {
             "method": "GET",
             "header": [
@@ -3344,7 +3389,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya169",
+          "name": "assert-op-success-rya27",
           "request": {
             "method": "GET",
             "header": [
@@ -3394,7 +3439,7 @@
           ]
         },
         {
-          "name": "pre-vol-updbvad-ready-rdy34",
+          "name": "pre-vol-updbvad-ready-rdy5",
           "request": {
             "method": "GET",
             "header": [
@@ -3454,7 +3499,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya28",
           "request": {
             "method": "POST",
             "header": [
@@ -3490,6 +3535,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -3508,7 +3568,7 @@
           ]
         },
         {
-          "name": "poll-op-129",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -3567,7 +3627,7 @@
           ]
         },
         {
-          "name": "patch-desc-256-rya148",
+          "name": "patch-desc-256-rya3",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3632,7 +3692,7 @@
           ]
         },
         {
-          "name": "poll-op-130",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [
@@ -3678,7 +3738,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya170",
+          "name": "assert-op-success-rya29",
           "request": {
             "method": "GET",
             "header": [
@@ -3728,7 +3788,7 @@
           ]
         },
         {
-          "name": "verify-256-applied-rya171",
+          "name": "verify-256-applied-rya30",
           "request": {
             "method": "GET",
             "header": [
@@ -3779,7 +3839,7 @@
           ]
         },
         {
-          "name": "patch-desc-257-rya172",
+          "name": "patch-desc-257-rya31",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3849,7 +3909,7 @@
           ]
         },
         {
-          "name": "verify-257-not-applied-rya173",
+          "name": "verify-257-not-applied-rya32",
           "request": {
             "method": "GET",
             "header": [
@@ -3900,7 +3960,7 @@
           ]
         },
         {
-          "name": "del-snap-rya174",
+          "name": "del-snap-rya33",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3958,7 +4018,7 @@
           ]
         },
         {
-          "name": "poll-op-131",
+          "name": "poll-op-19",
           "request": {
             "method": "GET",
             "header": [
@@ -4013,7 +4073,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya175",
+          "name": "cleanup-source-vol-rya34",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4071,7 +4131,7 @@
           ]
         },
         {
-          "name": "poll-op-132",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -4186,7 +4246,7 @@
           ]
         },
         {
-          "name": "poll-op-133",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [
@@ -4232,7 +4292,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya176",
+          "name": "assert-op-success-rya35",
           "request": {
             "method": "GET",
             "header": [
@@ -4282,7 +4342,7 @@
           ]
         },
         {
-          "name": "pre-vol-updbval-ready-rdy35",
+          "name": "pre-vol-updbval-ready-rdy6",
           "request": {
             "method": "GET",
             "header": [
@@ -4342,7 +4402,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya36",
           "request": {
             "method": "POST",
             "header": [
@@ -4378,6 +4438,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4396,7 +4471,7 @@
           ]
         },
         {
-          "name": "poll-op-134",
+          "name": "poll-op-22",
           "request": {
             "method": "GET",
             "header": [
@@ -4455,7 +4530,7 @@
           ]
         },
         {
-          "name": "patch-labels-64-rya149",
+          "name": "patch-labels-64-rya4",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4520,7 +4595,7 @@
           ]
         },
         {
-          "name": "poll-op-135",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
@@ -4566,7 +4641,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya177",
+          "name": "assert-op-success-rya37",
           "request": {
             "method": "GET",
             "header": [
@@ -4616,7 +4691,7 @@
           ]
         },
         {
-          "name": "verify-64-applied-rya178",
+          "name": "verify-64-applied-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -4667,7 +4742,7 @@
           ]
         },
         {
-          "name": "patch-labels-65-rya179",
+          "name": "patch-labels-65-rya39",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4737,7 +4812,7 @@
           ]
         },
         {
-          "name": "del-snap-rya180",
+          "name": "del-snap-rya40",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4795,7 +4870,7 @@
           ]
         },
         {
-          "name": "poll-op-136",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -4850,7 +4925,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya181",
+          "name": "cleanup-source-vol-rya41",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4908,7 +4983,7 @@
           ]
         },
         {
-          "name": "poll-op-137",
+          "name": "poll-op-25",
           "request": {
             "method": "GET",
             "header": [
@@ -5023,7 +5098,7 @@
           ]
         },
         {
-          "name": "poll-op-138",
+          "name": "poll-op-26",
           "request": {
             "method": "GET",
             "header": [
@@ -5069,7 +5144,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya182",
+          "name": "assert-op-success-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -5119,7 +5194,7 @@
           ]
         },
         {
-          "name": "pre-vol-updname-ready-rdy36",
+          "name": "pre-vol-updname-ready-rdy7",
           "request": {
             "method": "GET",
             "header": [
@@ -5179,7 +5254,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya43",
           "request": {
             "method": "POST",
             "header": [
@@ -5215,6 +5290,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5233,7 +5323,7 @@
           ]
         },
         {
-          "name": "poll-op-139",
+          "name": "poll-op-27",
           "request": {
             "method": "GET",
             "header": [
@@ -5292,7 +5382,7 @@
           ]
         },
         {
-          "name": "patch-name-upper-rya150",
+          "name": "patch-name-upper-rya5",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5356,7 +5446,7 @@
           ]
         },
         {
-          "name": "verify-name-unchanged-rya183",
+          "name": "verify-name-unchanged-rya44",
           "request": {
             "method": "GET",
             "header": [
@@ -5407,7 +5497,7 @@
           ]
         },
         {
-          "name": "del-snap-rya184",
+          "name": "del-snap-rya45",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5465,7 +5555,7 @@
           ]
         },
         {
-          "name": "poll-op-140",
+          "name": "poll-op-28",
           "request": {
             "method": "GET",
             "header": [
@@ -5520,7 +5610,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya185",
+          "name": "cleanup-source-vol-rya46",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5578,7 +5668,7 @@
           ]
         },
         {
-          "name": "poll-op-141",
+          "name": "poll-op-29",
           "request": {
             "method": "GET",
             "header": [
@@ -5747,7 +5837,7 @@
           ]
         },
         {
-          "name": "poll-op-142",
+          "name": "poll-op-30",
           "request": {
             "method": "GET",
             "header": [
@@ -5793,7 +5883,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya186",
+          "name": "assert-op-success-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -5843,7 +5933,7 @@
           ]
         },
         {
-          "name": "pre-vol-copyok-ready-rdy37",
+          "name": "pre-vol-copyok-ready-rdy8",
           "request": {
             "method": "GET",
             "header": [
@@ -5903,7 +5993,7 @@
           ]
         },
         {
-          "name": "create-src",
+          "name": "create-src-rya48",
           "request": {
             "method": "POST",
             "header": [
@@ -5939,6 +6029,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5957,7 +6062,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-31",
           "request": {
             "method": "GET",
             "header": [
@@ -6003,7 +6108,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya187",
+          "name": "assert-op-success-rya49",
           "request": {
             "method": "GET",
             "header": [
@@ -6053,7 +6158,7 @@
           ]
         },
         {
-          "name": "src-ready-rdy38",
+          "name": "src-ready-rdy9",
           "request": {
             "method": "GET",
             "header": [
@@ -6117,7 +6222,7 @@
           ]
         },
         {
-          "name": "copy-rya151",
+          "name": "copy-rya6",
           "request": {
             "method": "POST",
             "header": [
@@ -6195,7 +6300,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-32",
           "request": {
             "method": "GET",
             "header": [
@@ -6241,7 +6346,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya188",
+          "name": "assert-op-success-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -6291,7 +6396,7 @@
           ]
         },
         {
-          "name": "get-copy-rya152",
+          "name": "get-copy-rya7",
           "request": {
             "method": "GET",
             "header": [
@@ -6348,7 +6453,7 @@
           ]
         },
         {
-          "name": "verify-source-intact-rya189",
+          "name": "verify-source-intact-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -6401,7 +6506,7 @@
           ]
         },
         {
-          "name": "del-copy-rya190",
+          "name": "del-copy-rya52",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6457,7 +6562,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-33",
           "request": {
             "method": "GET",
             "header": [
@@ -6512,7 +6617,7 @@
           ]
         },
         {
-          "name": "del-snap-rya191",
+          "name": "del-snap-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6568,7 +6673,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-34",
           "request": {
             "method": "GET",
             "header": [
@@ -6623,7 +6728,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya192",
+          "name": "cleanup-source-vol-rya54",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6681,7 +6786,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-35",
           "request": {
             "method": "GET",
             "header": [
@@ -7072,7 +7177,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-36",
           "request": {
             "method": "GET",
             "header": [
@@ -7118,7 +7223,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya193",
+          "name": "assert-op-success-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -7168,7 +7273,7 @@
           ]
         },
         {
-          "name": "pre-vol-lop-ready-rdy39",
+          "name": "pre-vol-lop-ready-rdy10",
           "request": {
             "method": "GET",
             "header": [
@@ -7228,7 +7333,7 @@
           ]
         },
         {
-          "name": "cr",
+          "name": "cr-rya56",
           "request": {
             "method": "POST",
             "header": [
@@ -7264,6 +7369,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -7282,7 +7402,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-37",
           "request": {
             "method": "GET",
             "header": [
@@ -7328,7 +7448,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya194",
+          "name": "assert-op-success-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -7378,7 +7498,7 @@
           ]
         },
         {
-          "name": "list-ops-rya153",
+          "name": "list-ops-rya8",
           "request": {
             "method": "GET",
             "header": [
@@ -7433,7 +7553,7 @@
           ]
         },
         {
-          "name": "patch-rya195",
+          "name": "patch-rya58",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7498,7 +7618,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-38",
           "request": {
             "method": "GET",
             "header": [
@@ -7544,7 +7664,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya196",
+          "name": "assert-op-success-rya59",
           "request": {
             "method": "GET",
             "header": [
@@ -7594,7 +7714,7 @@
           ]
         },
         {
-          "name": "list-ops-after-rya197",
+          "name": "list-ops-after-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -7647,7 +7767,7 @@
           ]
         },
         {
-          "name": "del-snap-rya198",
+          "name": "del-snap-rya61",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7703,7 +7823,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-39",
           "request": {
             "method": "GET",
             "header": [
@@ -7758,7 +7878,7 @@
           ]
         },
         {
-          "name": "cleanup-source-vol-rya199",
+          "name": "cleanup-source-vol-rya62",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7816,7 +7936,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-40",
           "request": {
             "method": "GET",
             "header": [
