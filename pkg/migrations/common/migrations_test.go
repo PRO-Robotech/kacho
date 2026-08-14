@@ -40,7 +40,7 @@ func setupPostgres(t *testing.T) *pgxpool.Pool {
 	// точка старта, которую раньше давал свежий контейнер.
 	pool, err := pgxpool.New(context.Background(), pgtest.NewEmptyDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	return pool
 }

@@ -221,13 +221,53 @@ AUTHZ_FGA_PKGS ?= \
 PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/bootstrap_token
 
-.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help
+# ─── Хуки git ────────────────────────────────────────────────────────────────
+#
+# ОБЯЗАТЕЛЬНЫЙ ЛОКАЛЬНЫЙ ПРОГОН ДЕРЖИТСЯ ХУКОМ, А ХУК — ЭТОЙ ЦЕЛЬЮ. Правило
+# «прогоняй локально» существовало и соблюдалось ровно до первой спешки:
+# конвейер оказывался первым читателем кода и отвечал через двадцать минут,
+# заняв ранер, которого не хватает. Отсюда `scripts/hooks/pre-push`.
+#
+# ЧЕГО НЕ БЫЛО ДО СИХ ПОР. Сам хук в дереве лежал, а команда установки, которую
+# называли и его шапка, и правило разработки, не существовала: `make
+# install-hooks` отвечал `No rule to make target`. То есть провязать хук было
+# нечем, ни один клон его не исполнял, и заметить это по исходу `git push`
+# нельзя — он проходит молча в обоих случаях. Класс «названа команда, которой
+# нет» держит гейт `internal/repohygiene` `TestNamedMakeTargetExists`.
+#
+# ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
+# (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
+# там уже лежало).
+.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice
+
+## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
+install-hooks:
+	@bash scripts/hooks/install.sh install
+
+## check-hooks — сказать, провязаны ли хуки; непровязанный клон — отказ.
+check-hooks:
+	@bash scripts/hooks/install.sh check
+
+# hooks-notice — та же проверка, но ничего не роняющая: одна строка в stderr,
+# когда провязки нет. Висит на целях, которые гоняют ПЕРЕД отправкой ветки,
+# потому что непровязанность иначе ненаблюдаема совсем.
+hooks-notice:
+	@bash scripts/hooks/install.sh notice
+
+# В конвейере хуки бессмысленны — он не отправляет веток из рабочей копии, —
+# поэтому напоминание туда не едет. Условие названо переменной, а не спрятано
+# внутри скрипта: видно, что именно его отключает.
+ifeq ($(origin CI),undefined)
+HOOKS_NOTICE := hooks-notice
+else
+HOOKS_NOTICE :=
+endif
 
 ## test — всё, что проверяет CI: юниты + интеграция по всем сервисам.
 test: test-unit test-integration
 
 ## test-unit — юниты всего дерева под -race.
-test-unit:
+test-unit: $(HOOKS_NOTICE)
 	$(GO) test ./... -race -short -count=1 -timeout $(UNIT_TIMEOUT)
 
 ## test-integration — интеграция. SVC=<сервис> для одного, иначе все по очереди.
@@ -242,7 +282,7 @@ test-unit:
 ## integration-пакетов — пропуск» и выходит НУЛЁМ. Джоба зелёная, тестов
 ## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
 ## которого «ничего не нашлось» — законный исход (код 1).
-test-integration:
+test-integration: $(HOOKS_NOTICE)
 ifdef SVC
 	@set -o pipefail; \
 	all=$$($(GO) list ./services/$(SVC)/...) || { \

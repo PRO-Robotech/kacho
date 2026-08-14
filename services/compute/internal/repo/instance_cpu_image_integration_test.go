@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_InstanceCPUGuarantee_RoundTrip — the cpu_guarantee_percent column
@@ -30,7 +32,7 @@ func TestIntegration_InstanceCPUGuarantee_RoundTrip(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	inID := ids.NewID(ids.PrefixInstance)
@@ -64,7 +66,7 @@ func TestIntegration_InstanceCPUGuarantee_CheckConstraint(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	in := newRunningInstance(ids.NewID(ids.PrefixInstance))

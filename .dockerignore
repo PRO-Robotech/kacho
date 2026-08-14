@@ -36,6 +36,10 @@ LICENSE
 deploy/helm/umbrella/charts/*.tgz
 deploy/helm/umbrella/Chart.lock
 deploy/helm/umbrella/values.image-ids.yaml
+# отпечаток последней материализации зависимостей (scripts/helm-umbrella-deps.sh):
+# по нему владелец решает, идти ли в сеть. Меняется вместе с архивами выше и
+# ни одним Dockerfile не читается.
+deploy/helm/umbrella/.kacho-deps-fingerprint
 
 # Второй экземпляр того же класса — артефакты прогонов e2e. Отчёты newman,
 # окружение, пропатченное посевом фикстур (в нём токены — они меняются на каждом

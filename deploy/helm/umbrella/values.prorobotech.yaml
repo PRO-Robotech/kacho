@@ -19,12 +19,25 @@
 # posture every stand runs; the secrets it requires are provisioned by
 # deploy/scripts/dev-prod-secrets.sh (or out-of-band on a real cluster).
 #
-# Tags pinned to the main-branch commit SHA that CI built (multi-arch manifest):
-#   kacho-vpc          main-d752de57   (PR #145 — mTLS leaf cert + cross-compile)
-#   kacho-compute      main-e2a6fded   (PR #48)
-#   kacho-api-gateway  main-1adc9d12   (PR #70)
-#   kacho-nlb          main-ab61eff3   (PR #24)
-#   kacho-iam          main-a1b28f4c   (PR #104 — cross-compile Dockerfile)
+# ОТКУДА ВЫВЕДЕНЫ ТЕГИ. Здесь стояла таблица «образ → тег → номер PR» — вторая
+# запись о том же предмете, набранная рукой рядом с самими пинами. Она уже
+# разошлась с ними: три образа, добавленные позже (storage / kacho-geo /
+# registry), в неё не попали вовсе, а номера PR указывают на прежние
+# репозитории. Пин, поставленный рукой, свежести не имеет и иметь не может.
+#
+# Три образа ниже выводятся из записи, и расхождение записи с пином роняет
+# прогон (deploy/managed_cluster_profile_test.go). Переписывать — порождающим
+# deploy/scripts/gen-managed-image-pins.sh, а не рукой:
+#   make -C deploy managed-image-pins PROFILE=helm/umbrella/values.prorobotech.yaml REF=<коммит>
+# порождено-от: main 5e8318c826754719f6e7db6312e1b2cbdde9274f
+#
+# Пять остальных выведены быть НЕ МОГУТ: их теги называют коммиты прежних
+# полирепозиториев (kacho-vpc / kacho-compute / kacho-api-gateway / kacho-iam /
+# kacho-nlb), собиравших эти образы своими конвейерами. В этом дереве таких
+# объектов нет — ни проверить, ни перевывести их здесь нечем. Исход принадлежит
+# оператору стенда: пере-пин на коммит этого дерева одним заходом, после чего
+# запись ниже станет находкой сама.
+# без-вывода: kacho-vpc kacho-compute kacho-api-gateway kacho-iam kacho-nlb — коммит прежнего полирепозитория, в этом дереве не разрешается
 #
 # Здесь стоял блок `ui:` — чарта с таким именем в дереве нет: консоль называется
 # `uif` и держит образ ПОМОДУЛЬНО (`uif.host.image`, `uif.dashboard.image`, …),

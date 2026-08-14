@@ -258,12 +258,12 @@ CASES.append(Case(
         # Teardown (bottom-up; clear the listener default before deleting the TG — FK RESTRICT).
         Step(name="clear-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="remove-instance-target", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"instanceId": "{{existingInstanceId}}"}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
@@ -627,7 +627,7 @@ CASES.append(Case(
         # the sole TG↔LB link (attach/detach RPCs removed).
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 1: delete LB while it still owns a listener → rejected ("not empty").
         # Refused SYNCHRONOUSLY (loadbalancer/delete.go precheck -> FAILED_PRECONDITION ->

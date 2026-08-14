@@ -16,6 +16,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachocore "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // DB-level non-overlap для ВСЕХ CIDR-блоков подсетей в пределах одной Network
@@ -58,6 +60,7 @@ func seedNetworkSubnet(t *testing.T, ctx context.Context, r kachocore.Repository
 	t.Helper()
 	wn, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wn.Abort()
 	net := newNetwork(project, netName)
 	_, err = wn.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -65,6 +68,7 @@ func seedNetworkSubnet(t *testing.T, ctx context.Context, r kachocore.Repository
 
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	sub := newSubnet(project, subName, net.ID, "zone-a", v4)
 	created, err := ws.Subnets().Insert(ctx, sub)
 	require.NoError(t, err)
@@ -83,7 +87,7 @@ func TestIntegration_SecondaryCidrOverlap_CrossSubnet_PrimaryHit(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -91,6 +95,7 @@ func TestIntegration_SecondaryCidrOverlap_CrossSubnet_PrimaryHit(t *testing.T) {
 	// sub-2 в той же сети с primary 10.0.9.0/24.
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	_, err = ws.Subnets().Insert(ctx, newSubnet("proj-sec-02", "sub-2", netID, "zone-a", []string{"10.0.9.0/24"}))
 	require.NoError(t, err)
 	require.NoError(t, ws.Commit())
@@ -120,13 +125,14 @@ func TestIntegration_SecondaryCidrOverlap_CrossSubnet_SecondaryHit(t *testing.T)
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-03", "net-sec-03", "sub-1", []string{"10.0.0.0/24"})
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	sub2created, err := ws.Subnets().Insert(ctx, newSubnet("proj-sec-03", "sub-2", netID, "zone-a", []string{"10.0.9.0/24"}))
 	require.NoError(t, err)
 	require.NoError(t, ws.Commit())
@@ -150,7 +156,7 @@ func TestIntegration_SecondaryCidrOverlap_Disjoint_OK(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -176,13 +182,14 @@ func TestIntegration_SecondaryCidrOverlap_V6_Rejected(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
 	// sub-6a с v6 primary 2001:db8:1::/48.
 	wn, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wn.Abort()
 	net := newNetwork("proj-sec-11", "net-sec-11")
 	_, err = wn.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -194,6 +201,7 @@ func TestIntegration_SecondaryCidrOverlap_V6_Rejected(t *testing.T) {
 	sub6b.V6CidrBlocks = []string{"2001:db8:2::/48"}
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	_, err = ws.Subnets().Insert(ctx, sub6a)
 	require.NoError(t, err)
 	created6b, err := ws.Subnets().Insert(ctx, sub6b)
@@ -216,7 +224,7 @@ func TestIntegration_SecondaryCidrOverlap_CrossNetwork_OK(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -240,13 +248,14 @@ func TestIntegration_SecondaryCidrOverlap_ConcurrentTwoSubnets_OneWins(t *testin
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
 	netID, sub1 := seedNetworkSubnet(t, ctx, r, "proj-sec-09", "net-sec-09", "sub-1", []string{"10.0.0.0/24"})
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	sub2, err := ws.Subnets().Insert(ctx, newSubnet("proj-sec-09", "sub-2", netID, "zone-a", []string{"10.1.0.0/24"}))
 	require.NoError(t, err)
 	require.NoError(t, ws.Commit())
@@ -293,7 +302,7 @@ func TestIntegration_SecondaryCidrOverlap_RemoveFreesRange(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -308,6 +317,7 @@ func TestIntegration_SecondaryCidrOverlap_RemoveFreesRange(t *testing.T) {
 	// Remove 10.0.5.0/24 с sub-1: SetCidrBlocks тем же путем (remaining-набор).
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	_, err = w.Subnets().SetCidrBlocks(ctx, sub1, []string{"10.0.0.0/24"}, nil)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
@@ -327,7 +337,7 @@ func TestIntegration_SecondaryCidrOverlap_DeleteFreesRange(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -337,6 +347,7 @@ func TestIntegration_SecondaryCidrOverlap_DeleteFreesRange(t *testing.T) {
 	// Delete sub-8 (без Address/NIC — удаляема).
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	require.NoError(t, w.Subnets().Delete(ctx, sub8))
 	require.NoError(t, w.Commit())
 
@@ -357,6 +368,7 @@ func seedNetworkSubnetInExisting(t *testing.T, ctx context.Context, r kachocore.
 	t.Helper()
 	ws, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer ws.Abort()
 	created, err := ws.Subnets().Insert(ctx, newSubnet(project, subName, netID, "zone-a", v4))
 	require.NoError(t, err)
 	require.NoError(t, ws.Commit())
@@ -380,7 +392,7 @@ func TestIntegration_SecondaryCidrOverlap_SameSubnet_Rejected(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -421,7 +433,7 @@ func TestIntegration_SecondaryCidrOverlap_SameSubnet_DisjointAccepted(t *testing
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 

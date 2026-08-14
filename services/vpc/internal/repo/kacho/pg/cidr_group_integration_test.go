@@ -23,6 +23,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Интеграционные пробы именованного набора префиксов на НАСТОЯЩЕМ Postgres.
@@ -101,7 +103,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	referenced := seedCidrGroup(ctx, t, r,
@@ -114,6 +116,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	// Отрицание: набор держит правило — удаление отвергнуто состоянием.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	err = w.CidrGroups().Delete(ctx, referenced.ID)
 	w.Abort()
 	require.Error(t, err, "набор с живой ссылкой удалён — внешний ключ не держит")
@@ -123,6 +126,7 @@ func TestCidrGroup_DeleteRefusedWhileReferenced(t *testing.T) {
 	// Положительный контроль: набор без ссылок удаляется тем же кодом.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	require.NoError(t, w2.CidrGroups().Delete(ctx, free.ID),
 		"набор без ссылок не удалился — отрицание выше ничего не доказывает")
 	require.NoError(t, w2.Commit())
@@ -150,7 +154,7 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	group := seedCidrGroup(ctx, t, r,
@@ -160,12 +164,14 @@ func TestCidrGroup_ReferenceReleasedWithTheRule(t *testing.T) {
 	// Снимаем единственное правило — набор обязан освободиться.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	_, err = w.SecurityGroups().UpdateRules(ctx, sg.ID, []string{sg.Rules[0].ID}, nil)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
 
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	require.NoError(t, w2.CidrGroups().Delete(ctx, group.ID),
 		"набор остался занят после снятия правила — проекция ссылок не убирается вместе с ним")
 	require.NoError(t, w2.Commit())
@@ -184,7 +190,7 @@ func TestCidrGroup_ConcurrentAddCannotExceedTheCap(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	// Набор заполнен до предела минус два, и оба писателя просят по два блока:
@@ -254,7 +260,7 @@ func TestCidrGroup_AddIsIdempotentAndDoesNotEatTheCap(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	group := seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "idem", []string{"203.0.113.0/24"}, nil))
@@ -276,6 +282,7 @@ func TestCidrGroup_AddIsIdempotentAndDoesNotEatTheCap(t *testing.T) {
 	}
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	rec, err := w.CidrGroups().AddBlocks(ctx, group.ID, rest, nil)
 	require.NoError(t, err, "потолок был израсходован идемпотентными повторами")
 	require.NoError(t, w.Commit())
@@ -291,7 +298,7 @@ func TestCidrGroup_CapIsPerFamilyAndRefusalNamesTheNumbers(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	full := make([]string, 0, domain.MaxCidrGroupBlocks)
@@ -303,6 +310,7 @@ func TestCidrGroup_CapIsPerFamilyAndRefusalNamesTheNumbers(t *testing.T) {
 	// Положительный контроль: второе семейство потолком первого не связано.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	rec, err := w.CidrGroups().AddBlocks(ctx, group.ID, nil, []string{"2001:db8::/32"})
 	require.NoError(t, err, "потолок посчитан по обоим семействам сразу")
 	require.NoError(t, w.Commit())
@@ -311,6 +319,7 @@ func TestCidrGroup_CapIsPerFamilyAndRefusalNamesTheNumbers(t *testing.T) {
 	// Отрицание: своё семейство переполнить нельзя, и отказ называет числа.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, err = w2.CidrGroups().AddBlocks(ctx, group.ID, []string{"192.0.2.0/24"}, nil)
 	w2.Abort()
 	require.Error(t, err)
@@ -328,13 +337,14 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	seedCidrGroup(ctx, t, r, newCidrGroup("prj-1", "office", nil, nil))
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	_, err = w.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "office", nil, nil))
 	w.Abort()
 	require.Error(t, err, "имя занято в проекте, а вставка прошла")
@@ -343,6 +353,7 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	// Положительный контроль №1: то же имя в ДРУГОМ проекте законно.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, err = w2.CidrGroups().Insert(ctx, newCidrGroup("prj-2", "office", nil, nil))
 	require.NoError(t, err, "уникальность оказалась глобальной, а не проектной")
 	require.NoError(t, w2.Commit())
@@ -350,6 +361,7 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	// Положительный контроль №2: два безымянных набора в одном проекте законны.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	_, err = w3.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "", nil, nil))
 	require.NoError(t, err)
 	_, err = w3.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "", nil, nil))
@@ -372,7 +384,7 @@ func TestCidrGroup_EmptyingAReferencedSetIsRefused(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	group := seedCidrGroup(ctx, t, r,

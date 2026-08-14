@@ -34,6 +34,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // ---- helpers ----
@@ -120,7 +122,7 @@ func TestNetworkRepo_T31Revoke01_LabelRemoveEmitsMirrorUpsert(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-treska", map[string]string{"network": "treska"})
@@ -157,7 +159,7 @@ func TestNetworkRepo_T31Add01_LabelAddMaterializesGrant(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-plain", nil)
@@ -189,7 +191,7 @@ func TestNetworkRepo_T31Change01_LabelSwapMigratesGrant(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-x", map[string]string{"network": "treska"})
@@ -220,7 +222,7 @@ func TestNetworkRepo_T31Idm01_NonLabelUpdateNoEmit(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-y", map[string]string{"network": "treska"})
@@ -249,7 +251,7 @@ func TestNetworkRepo_T31FullPatch01_EmptyMaskEmits(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	// Case A: full-PATCH обнуляет label → revoke.
@@ -297,7 +299,7 @@ func TestNetworkRepo_T31Atom01_RollbackNoIntent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-z", map[string]string{"network": "treska"})
@@ -310,6 +312,7 @@ func TestNetworkRepo_T31Atom01_RollbackNoIntent(t *testing.T) {
 	t.Cleanup(r.Close)
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	rec, err := w.Networks().GetForUpdate(ctx, netID)
 	require.NoError(t, err)
 	rec.Network.Labels = domain.LabelsFromMap(nil) // очищаем labels
@@ -360,7 +363,7 @@ func TestNetworkRepo_T31Conc01_ConcurrentLabelFlip_LastSourceWins(t *testing.T) 
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-c", map[string]string{"network": "treska"})
@@ -453,7 +456,7 @@ func TestNetworkRepo_T31Unavail01_IamDown_IntentDurable(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	h, or := newNetworkHandler(t, pool)
 
 	netID := createNetworkVia(t, h, or, "prj-A", "net-u", map[string]string{"network": "treska"})

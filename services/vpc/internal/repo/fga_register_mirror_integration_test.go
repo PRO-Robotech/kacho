@@ -22,6 +22,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // payloadFor читает единственную строку fga_register_outbox для данного
@@ -49,7 +51,7 @@ func Test_T3_01_FGARegisterEmit_PayloadCarriesLabelsParentAndSourceVersion(t *te
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	labels := map[string]string{"env": "prod", "team": "core"}
@@ -80,7 +82,7 @@ func Test_T3_01_FGARegisterEmit_SourceVersionMonotonic(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	emit := func(labels map[string]string) {

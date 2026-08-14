@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 func TestReconnectLoop_BackoffResetsAfterConnectedSession(t *testing.T) {
@@ -31,7 +33,7 @@ func TestReconnectLoop_BackoffResetsAfterConnectedSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new offline pool: %v", err)
 	}
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	d := &Drainer[struct{}]{
 		pool:   pool,

@@ -30,6 +30,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Test_1_4_04_LongTransientOutage_NoPoison — a transient outage longer than
@@ -214,7 +216,7 @@ func Test_1_4_21_CASClaimExactlyOnce_Race(t *testing.T) {
 	for i := 1; i < replicas; i++ {
 		p, err := pgxpool.New(ctx, dsn)
 		require.NoError(t, err)
-		t.Cleanup(p.Close)
+		pgtest.ClosePoolAtEnd(t, p)
 		pools = append(pools, p)
 	}
 

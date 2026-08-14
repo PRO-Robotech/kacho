@@ -111,6 +111,12 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                        "zoneId": "{{existingZoneId}}"},
                  test_script=[
                      "pm.environment.unset('lstSubnetId');",
+                     # Подсеть — предмет, на котором стоит ВСЯ цепочка кейса (родительский LB,
+                     # его слушатель, уборка). Без этого утверждения шаг зеленел при любом ответе,
+                     # `lstSubnetId` оставался снятым, и падал не он, а страж адреса тремя шагами
+                     # ниже либо уборка по несозданному ресурсу — в месте, не имеющем к причине
+                     # отношения.
+                     *assert_status(200),
                      "if (pm.response.code === 200) {",
                      "  const j = pm.response.json();",
                      "  if (j.id) pm.environment.set('opId', j.id);",
@@ -1470,6 +1476,25 @@ def _cross_project_tg_setup(suffix: str):
                  "  if (j.metadata && j.metadata.targetGroupId) "
                  "    pm.environment.set('tgCrossId', j.metadata.targetGroupId);",
                  "}",
+                 # ПОЛОС ДВЕ, И ТРЕБОВАТЬ 200 БЫЛО БЫ ЛОЖЬЮ: на стенде без засеянного
+                 # cross-проекта создание законно отвергается, и кейс намеренно уезжает на
+                 # заведомо отсутствующий идентификатор — утверждение «слушатель никогда не
+                 # привязан к чужой группе» держится в обеих полосах. Поэтому утверждается
+                 # то, что верно в обеих: имя опубликовано (пустым оно не остаётся никогда),
+                 # а на полосе успеха оно НЕ подставное. Второе и есть падающая половина:
+                 # ответ 200 без `metadata.targetGroupId` молча понизил бы кейс до слабейшего
+                 # «отвергнут отсутствующий id» — и остался бы зелёным.
+                 #
+                 # СТОИТ ПОСЛЕ ЗАХВАТА, а не перед ним: до захвата имя ещё держит подставной
+                 # идентификатор, и утверждение о полосе успеха падало бы на самой этой полосе.
+                 "pm.test('setup: cross-project TG created, or the wiring below gets an absent id', function () {",
+                 "  var id = pm.environment.get('tgCrossId') || '';",
+                 "  pm.expect(id, 'tgCrossId').to.not.eql('');",
+                 "  if (pm.response.code === 200) {",
+                 "    pm.expect(id, 'a 200 must publish metadata.targetGroupId, not the absent-id stand-in')"
+                 ".to.not.eql('tgrabsent0000000000x');",
+                 "  }",
+                 "});",
              ]),
         poll_operation_until_done(),
     ]

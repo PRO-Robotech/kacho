@@ -223,6 +223,17 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// контейнерных пакетов в ней нет.
 	"services/iam/internal/apps/kacho/api/bootstrap_token": "make test-pg-outside-selection",
 
+	// Приёмка провайдера Terraform: пробы исполняют полный цикл terraform, и им нужен
+	// ВНЕШНИЙ исполнитель (tofu). Быстрая джоба его не ставит и ставить не должна —
+	// инструмент нужен одной группе проб, а платили бы за него все, поэтому пропуск под
+	// кратким здесь той же природы, что у контейнерных соседей выше.
+	//
+	// Пробы при этом исполняются целиком: свой шаг джобы terraform, где tofu уже
+	// поставлен запинённой версией, гонит их БЕЗ `-short` — значит отсутствие
+	// исполнителя там остаётся отказом, а не пропуском. Та же команда — в группе
+	// terraform у scripts/ci-local.sh, чтобы вердикт был и до отправки ветки.
+	"terraform/internal/provider": "go test ./terraform/internal/provider -run Acceptance -count=1",
+
 	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
 	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
 	"services/iam/internal/authzcascade":                  "make test-authz-fga",

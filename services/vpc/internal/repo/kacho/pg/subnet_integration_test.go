@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты CQRS-impl Subnet в `internal/repo/kacho/pg`. Паритет с
@@ -47,13 +49,14 @@ func TestCQRS_Subnet_WriterCommit_ReaderSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Сначала создаем parent network в одной writer-TX (FK constraint).
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	net := newNetwork("project-sub", "net-for-subnet")
 	_, err = w1.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -62,6 +65,7 @@ func TestCQRS_Subnet_WriterCommit_ReaderSees(t *testing.T) {
 	// Теперь — Insert(Subnet) + outbox.Emit + Commit.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	sub := newSubnet("project-sub", "sub-1", net.ID, "zone-a", []string{"10.0.0.0/24"})
 	created, err := w2.Subnets().Insert(ctx, sub)
 	require.NoError(t, err)
@@ -90,13 +94,14 @@ func TestCQRS_Subnet_OutboxAtomicityWithDML(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Seed parent network.
 	wn, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wn.Abort()
 	net := newNetwork("project-atomic", "net-atomic")
 	_, err = wn.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -105,6 +110,7 @@ func TestCQRS_Subnet_OutboxAtomicityWithDML(t *testing.T) {
 	// Insert(Subnet) + Emit + Abort → НИ subnet-row, НИ outbox-row.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	sub := newSubnet("project-atomic", "sub-abort", net.ID, "zone-a", []string{"10.10.0.0/24"})
 	_, err = w.Subnets().Insert(ctx, sub)
 	require.NoError(t, err)
@@ -134,13 +140,14 @@ func TestCQRS_Subnet_CIDROverlap_ExclusionViolation(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Seed parent network.
 	wn, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wn.Abort()
 	net := newNetwork("project-overlap", "net-overlap")
 	_, err = wn.Networks().Insert(ctx, net)
 	require.NoError(t, err)
@@ -149,6 +156,7 @@ func TestCQRS_Subnet_CIDROverlap_ExclusionViolation(t *testing.T) {
 	// Insert первой подсети с 10.0.0.0/24.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	s1 := newSubnet("project-overlap", "sub-1", net.ID, "zone-a", []string{"10.0.0.0/24"})
 	_, err = w1.Subnets().Insert(ctx, s1)
 	require.NoError(t, err)

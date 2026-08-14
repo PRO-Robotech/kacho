@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // DB-level защита от пересечения CIDR в AddressPool (нормализованная child-таблица
@@ -39,7 +41,7 @@ func TestIntegration_AddressPoolOverlap_AcrossPools(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -79,7 +81,7 @@ func TestIntegration_AddressPoolOverlap_AddCidrOverlapExisting(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -114,7 +116,7 @@ func TestIntegration_AddressPoolOverlap_ConcurrentOverlap(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -159,7 +161,7 @@ func TestIntegration_AddressPoolOverlap_RemoveFreesBlock(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

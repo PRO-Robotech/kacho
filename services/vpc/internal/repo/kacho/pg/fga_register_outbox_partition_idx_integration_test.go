@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestFGARegisterOutbox_PartitionHeadIndexCreated — миграция 0018 применяется и
@@ -32,7 +34,7 @@ func TestFGARegisterOutbox_PartitionHeadIndexCreated(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var indexDef string
 	require.NoError(t, pool.QueryRow(ctx,
@@ -71,7 +73,7 @@ func TestFGARegisterOutbox_PendingIndexSetIsExactlyTwo(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var defs []string
 	require.NoError(t, pool.QueryRow(ctx,

@@ -15,6 +15,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Обратное заполнение правил SG, записанных ДО того, как область значений стала
@@ -60,7 +62,7 @@ func TestSGRulesBackfill_LegacyRowsNormalised(t *testing.T) {
 	dsn := setupTestDBUpTo(t, beforeRulesDomainMigration)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	netID := insertNetworkSQL(t, ctx, pool, "net-sgbf")
 

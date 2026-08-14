@@ -43,7 +43,7 @@ func setupTestDB(t testing.TB) *pgxpool.Pool {
 
 	pool, err := coredb.NewPool(context.Background(), withSearchPath(dsn))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

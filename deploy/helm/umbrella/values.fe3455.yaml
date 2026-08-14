@@ -28,6 +28,20 @@ mtls:
     caNamespace: beget-cert-manager   # cert-manager --cluster-resource-namespace
 
 # ── images: prorobotech registry ──
+#
+# ОТКУДА ВЫВЕДЕНЫ ТЕГИ. Пин, поставленный рукой, свежести не имеет и иметь не
+# может: он верен ровно в момент написания. Здесь теги шести служб продукта
+# ВЫВОДЯТСЯ из записи ниже, и расхождение между записью и пином роняет прогон
+# (deploy/managed_cluster_profile_test.go). Переписывать пины — порождающим
+# deploy/scripts/gen-managed-image-pins.sh, а не рукой:
+#   make -C deploy managed-image-pins PROFILE=helm/umbrella/values.fe3455.yaml REF=<коммит>
+# порождено-от: main b622b388db3ed304b9077df54526155ab98e559a
+#
+# Теги консоли выведены быть НЕ МОГУТ: они называют коммит ветки master прежнего
+# репозитория консоли, а в этом дереве такого объекта нет — ни проверить, ни
+# перевывести его здесь нечем. Исход принадлежит оператору: пере-пин на коммит
+# этого дерева, после чего запись ниже станет находкой сама.
+# без-вывода: kacho-ui-future-host kacho-ui-future-dashboard kacho-ui-future-vpc kacho-ui-future-iam kacho-ui-future-nlb kacho-ui-future-registry kacho-ui-future-system kacho-ui-future-compute kacho-ui-future-storage — коммит master-ветки прежнего репозитория консоли, в этом дереве не разрешается
 # Reconciled to CURRENTLY-LIVE fe3455 images 2026-07-15 (kubectl get deploy,statefulset
 # -n kacho, verified working). NOTE ON LAYER PRECEDENCE: for the 6 core control-plane
 # services (vpc/compute/kacho-geo/api-gateway/kacho-iam/kacho-nlb) the EFFECTIVE image
@@ -37,20 +51,17 @@ mtls:
 # landmine, but values.fe3455-prod.yaml is authoritative for the render. The `uif:`
 # block (below) is carried ONLY here — no later file overrides it.
 vpc:
-  # main-6fe9c386 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
-  # values.fe3455-prod.yaml (same tag).
+  # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-vpc:main-b622b388
   imagePullPolicy: IfNotPresent
 compute:
-  # main-1678f62c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
-  # values.fe3455-prod.yaml (same tag).
+  # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-compute:main-b622b388
   imagePullPolicy: IfNotPresent
 # kacho-geo image: CI-built+pushed. mTLS inherited ON from values.dev. dataMigration
 # OFF (S7): geo serves its own seed (compute no longer owns geography).
 kacho-geo:
-  # main-fc2d945c — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
-  # values.fe3455-prod.yaml (same tag).
+  # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-geo:main-b622b388
   imagePullPolicy: IfNotPresent
 api-gateway:
@@ -127,8 +138,7 @@ kacho-iam:
 kacho-nlb:
   enabled: true
   image:
-    # main-2c87cac9 — LIVE on fe3455 (kubectl-verified 2026-07-15). Effective override:
-    # values.fe3455-prod.yaml (same tag).
+    # Действующее переопределение — values.fe3455-prod.yaml (same tag).
     repository: docker.io/prorobotech/kacho-nlb
     tag: main-b622b388
     pullPolicy: IfNotPresent

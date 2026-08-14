@@ -96,6 +96,7 @@ deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/gen-managed-image-pins.sh
+deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
@@ -331,11 +332,19 @@ fi
 # проверено на себе при первом в истории прогоне этих самопроверок:
 #
 # 1. Зависимости чарта. `charts/*.tgz` в git не лежат; на свежем checkout'е
-#    рендер падает у всех, КРОМЕ тех проверок, что зовут `helm dep update` сами.
-#    Тогда исход зависит от АЛФАВИТНОГО ПОРЯДКА имён файлов: самопроверка
+#    рендер падает у всех, КРОМЕ тех проверок, что материализовали зависимости
+#    сами. Тогда исход зависит от АЛФАВИТНОГО ПОРЯДКА имён файлов: самопроверка
 #    networkpolicy-egress упала «values.prod не рендерится», а после того как
 #    шедшая ниже по алфавиту outbox-autovacuum-naptime собрала зависимости —
 #    прошла без единой правки. Собираем один раз, заранее, для всех.
+#
+#    «Один раз» стало правдой только теперь. Прежде здесь стояла своя подкачка,
+#    и ещё две проверки несли свою же: за один прогон job'а сеть опрашивалась до
+#    десяти раз, а отказ ЛЮБОГО из этих походов красил весь прогон — что и
+#    случилось дважды подряд на релизной ветке. Материализация переехала к
+#    ЕДИНСТВЕННОМУ владельцу (scripts/helm-umbrella-deps.sh): повторный вызов
+#    внутри прогона в сеть не идёт, а причина отказа больше не глотается.
+#    Свойство держит гейт deploy/helm_deps_single_owner_test.go.
 #
 # 2. Тот ли yq. В PATH бывают две разные программы с этим именем; фильтры
 #    написаны под mikefarah v4, а python-обёртка над jq молча отдаёт ПУСТО.
@@ -353,9 +362,9 @@ if ! yq --version 2>&1 | grep -qE 'mikefarah|version v?4'; then
   echo "       молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."
   exit 2
 fi
-echo "=== helm dependency build (самопроверки рендерят умбреллу; charts/*.tgz не в git) ==="
-( cd "$DEPLOY_ROOT/helm/umbrella" && helm dep update >/dev/null 2>&1 ) \
-  || { echo "FATAL: helm dep update сорвался — рендер будет неполным, проверки НЕ ВЫПОЛНЕНЫ"; exit 2; }
+echo "=== зависимости умбреллы (самопроверки рендерят её; charts/*.tgz не в git) ==="
+bash "$DEPLOY_ROOT/scripts/helm-umbrella-deps.sh" "$DEPLOY_ROOT/helm/umbrella" \
+  || { echo "FATAL: зависимости не материализованы — рендер будет неполным, проверки НЕ ВЫПОЛНЕНЫ"; exit 2; }
 rm -rf "$DEPLOY_ROOT"/helm/umbrella/tmpcharts-*
 
 FOUND="$(discover)"

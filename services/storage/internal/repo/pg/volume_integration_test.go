@@ -152,7 +152,7 @@ func newPoolWithCatalog(t *testing.T, seed bool) *pgxpool.Pool {
 	poolDSN := baseDSN + "&options=-c%20search_path%3Dkacho_storage%2Cpublic&pool_max_conns=16"
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	if seed {
 		seedFixtureCatalog(t, pool)
 	}

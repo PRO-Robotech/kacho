@@ -60,8 +60,17 @@ jobs:
 
       # Корпус переживает прогоны: фаззер накапливает интересные входы, и без
       # восстановления каждая ночь начинала бы с нуля.
+      #
+      # ФОРМА РАЗДЕЛЁННАЯ, и здесь это принципиальнее, чем где-либо. У
+      # комбинированного `actions/cache` сохранение объявлено `post-if: success()`
+      # — то есть корпус уезжал в кэш только той ночью, которая НИЧЕГО НЕ НАШЛА.
+      # Ночь, нашедшая падение, роняет шаг, и входы, ради которых фаззер и
+      # работает, из корпуса терялись: в артефакт они попадали, в корпус — нет,
+      # и следующая ночь начинала подбираться к тому же месту заново. Смысл меры
+      # был перевёрнут ровно на том исходе, ради которого она заведена.
+      # Класс держит гейт `internal/repohygiene` `TestCacheFillsOnTheRunThatPaidForIt`.
       - name: restore fuzz corpus
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -81,6 +90,18 @@ jobs:
           set -o pipefail
           go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="${FUZZTIME}" \
             ${{ matrix.pkg }} 2>&1 | tee fuzz-output.log
+
+      # Сохранение НА КРАСНОМ — не оговорка, а предмет: `always()` обязателен,
+      # потому что условие без функции состояния вычисляется с подразумеваемым
+      # `success()` и отменялось бы находкой фаззера. Ключ несёт номер прогона,
+      # поэтому каждая ночь пишет свою запись, а восстановление берёт свежайшую
+      # по префиксу.
+      - name: save fuzz corpus
+        if: ${{ always() }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ matrix.pkg }}/testdata/fuzz/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
       - name: upload failure artifacts
         if: failure()

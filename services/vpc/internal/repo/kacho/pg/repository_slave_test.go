@@ -12,6 +12,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Маршрутизация Reader/Writer по slave/master pool'ам.
@@ -36,13 +38,14 @@ func TestCQRS_SlavePool_FallbackOnNil(t *testing.T) {
 	dsn := setupTestDB(t)
 	master, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer master.Close()
+	pgtest.ClosePoolAtEnd(t, master)
 
 	// Явно nil — Repository.Reader должен fallback'нуть на master.
 	r := kachopg.New(master, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	n := newNetwork("project-slave-fallback", "net-fallback")
 	_, err = w.Networks().Insert(ctx, n)
@@ -71,11 +74,11 @@ func TestCQRS_SlavePool_RouterUsesSlavePool(t *testing.T) {
 
 	master, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer master.Close()
+	pgtest.ClosePoolAtEnd(t, master)
 
 	slave, err := coredb.NewPool(ctx, dsn) // второй pool на тот же контейнер
 	require.NoError(t, err)
-	defer slave.Close()
+	pgtest.ClosePoolAtEnd(t, slave)
 
 	r := kachopg.New(master, slave)
 
@@ -83,6 +86,7 @@ func TestCQRS_SlavePool_RouterUsesSlavePool(t *testing.T) {
 	// прочитать committed запись из slave-pool'а (через тот же физический PG).
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	n := newNetwork("project-slave-routed", "net-routed")
 	_, err = w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
@@ -127,11 +131,11 @@ func TestCQRS_SlavePool_WriterAlwaysMaster(t *testing.T) {
 
 	master, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer master.Close()
+	pgtest.ClosePoolAtEnd(t, master)
 
 	slave, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer slave.Close()
+	pgtest.ClosePoolAtEnd(t, slave)
 
 	r := kachopg.New(master, slave)
 

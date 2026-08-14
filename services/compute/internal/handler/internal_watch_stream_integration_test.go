@@ -56,7 +56,7 @@ func TestIntegration_WatchStreamSince_BatchBoundary(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const total = 250 // > 2× catchupBatchSize (100) → пересекает 2 границы батча
 	for i := 0; i < total; i++ {
@@ -113,7 +113,7 @@ func TestIntegration_WatchStreamSince_KindsFilter(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	kinds := []string{"Instance", "Disk", "Image", "Instance", "Disk"}
 	var instanceIDs []string
@@ -167,7 +167,7 @@ func TestIntegration_WatchStreamSince_ResumeFromCursor(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var seqs []int64
 	for i := 0; i < 5; i++ {
@@ -209,7 +209,7 @@ func TestIntegration_WatchStreamSince_BadPayloadFallback(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// '[]'::jsonb — валидный JSONB, но НЕ object → structpb decode fails → fallback.
 	_, err = pool.Exec(ctx,

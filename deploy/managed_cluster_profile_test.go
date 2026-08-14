@@ -241,6 +241,59 @@ const managedProfile = "values.a8f60d.yaml"
 // разошлись бы молча, поэтому запись одна, а обе формы выводятся из неё.
 var derivedFromRe = regexp.MustCompile(`(?m)^#\s*порождено-от:\s*([a-zA-Z0-9._-]+)\s+([0-9a-f]{40})\s*$`)
 
+// notDerivedRe — вторая директива того же предмета: пин, который вывести
+// НЕЛЬЗЯ, с перечнем образов и ПИСЬМЕННОЙ причиной.
+//
+//	# без-вывода: <образ> [<образ>…] — <причина>
+//
+// Зачем она есть. Часть профилей дерева запинена коммитами, которых в этом
+// репозитории НЕТ: образы собирались прежними полирепозиториями, и их коммиты
+// уехали вместе с ними. Такой пин не «ещё не выведен» — он не выводим здесь
+// вообще, и записать ему «порождено-от» значило бы объявить вывод из коммита,
+// которого не существует. Исход у него один и он принадлежит оператору:
+// пере-пин на коммит этого дерева. До тех пор пин обязан НАЗЫВАТЬ СЕБЯ
+// невыводимым — иначе он неотличим от выведенного и лжёт молча.
+//
+// Директива самоистекает по ВНЕШНЕМУ факту, а не по чьей-то памяти: как только
+// коммит из тега начинает разрешаться в этом дереве, вывод становится возможен
+// и запись роняет прогон. Образ, которого в профиле больше нет, — тоже находка.
+var notDerivedRe = regexp.MustCompile(`(?m)^#\s*без-вывода:\s*([^—\n]+?)\s*—\s*(\S[^\n]*?)\s*$`)
+
+// notDerivedExemptions — образы профиля, объявленные невыводимыми, и причина
+// по каждому. Пустая карта означает «в профиле такой директивы нет».
+func notDerivedExemptions(raw string) map[string]string {
+	out := map[string]string{}
+	for _, m := range notDerivedRe.FindAllStringSubmatch(raw, -1) {
+		for _, img := range strings.Fields(m[1]) {
+			out[img] = m[2]
+		}
+	}
+	return out
+}
+
+// shaOfTag — часть тега после первого дефиса: то, чем тег называет коммит.
+// Для `main-latest` это `latest` — не коммит, и разрешаться оно не будет
+// никогда, что и требуется: заглушка не «станет выводимой» сама.
+func shaOfTag(tag string) string {
+	if i := strings.Index(tag, "-"); i >= 0 {
+		return tag[i+1:]
+	}
+	return ""
+}
+
+// commitResolves — разрешается ли строка в коммит ЭТОГО дерева.
+func commitResolves(sha string) bool {
+	if len(sha) < 7 {
+		return false
+	}
+	for _, r := range sha {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return exec.Command("git", "cat-file", "-e", sha+"^{commit}").Run() == nil
+}
+
 // expectedTag — тег, который CI публикует для этого образа на этом коммите.
 // Сборка сервисов режет коммит до восьми знаков, сборка консоли — нет; обе
 // формы держатся в .github/workflows/{docker-build.yml,ui.yml}.
@@ -268,48 +321,95 @@ func expectedTag(image, branch, sha string) string {
 func TestProductImagePinsAreDerivedFromTheRecordedCommit(t *testing.T) {
 	profiles := trackedUmbrellaProfiles(t)
 
-	declaring, pins := 0, 0
+	// Предпосылка половины про самоистечение: история этого дерева доступна. При
+	// усечённом клоне («глубина 1») не разрешается НИ ОДИН коммит, и проверка
+	// «вывод стал возможен» молчала бы, ничего не прочитав. Молчание объявляется,
+	// а не подразумевается.
+	historyAvailable := commitResolves(headSHA(t))
+
+	profilesWithPins, declaring, pins, exempted := 0, 0, 0, 0
 	for _, name := range profiles {
 		raw, err := os.ReadFile(filepath.Join(umbrellaDir, name))
 		if err != nil {
 			t.Fatalf("профиль %s не читается (%v) — предпосылка проверки исчезла", name, err)
 		}
-		rec := derivedFromRe.FindStringSubmatch(string(raw))
-		if rec == nil {
-			if name == managedProfile {
-				t.Errorf("%s не записывает коммит, из которого выведены его пины "+
-					"(строка `# порождено-от: <ветка> <коммит>`). Без записи пин нельзя "+
-					"ни вывести, ни проверить — он остаётся числом, за свежесть которого "+
-					"никто не отвечает", name)
-			}
-			continue
+		if n := len(derivedFromRe.FindAllString(string(raw), -1)); n > 1 {
+			t.Errorf("%s несёт %d записей «порождено-от» — два места об одном предмете "+
+				"расходятся молча; запись одна на профиль", name, n)
 		}
-		declaring++
-		branch, sha := rec[1], rec[2]
+		rec := derivedFromRe.FindStringSubmatch(string(raw))
+		exempt := notDerivedExemptions(string(raw))
 
 		// Ссылки берутся из РАЗОБРАННОГО дерева, а не из текста. Первая редакция
 		// читала текст выражением и видела только плоскую форму (`image: <строка>`):
 		// четыре образа из семнадцати объявлены картой `{repository, tag}`, и правка
 		// их тега мимо записи осталась бы незамеченной — гейт, читающий одну из двух
 		// законных форм, молчит там, где выглядит работающим.
+		pinned := map[string]bool{}
+		profilePins, derivedHere := 0, 0
 		for _, ref := range productImageRefs(readYAML(t, filepath.Join(umbrellaDir, name))) {
 			m := productImageRe.FindStringSubmatch(ref)
 			if m == nil || !pulledFromARegistry(ref) {
 				continue // образ стенда либо сторонний: коммита этого дерева он не называет
 			}
 			repo, tag := m[1], m[2]
-			pins++
 			image := repo[strings.LastIndex(repo, "/")+1:]
-			if want := expectedTag(image, branch, sha); tag != want {
+			pinned[image] = true
+			profilePins++
+			pins++
+
+			if _, ok := exempt[image]; ok {
+				exempted++
+				// Самоистечение по внешнему факту: коммит из тега разрешается —
+				// значит вывод возможен, и объявление о невыводимости пережило
+				// свой предмет.
+				if historyAvailable && commitResolves(shaOfTag(tag)) {
+					t.Errorf("%s: образ %s объявлен невыводимым, но коммит из его тега %q "+
+						"разрешается в этом дереве — вывод стал возможен, и запись "+
+						"«без-вывода» больше нечего покрывать", name, image, tag)
+				}
+				continue
+			}
+			if rec == nil {
+				t.Errorf("%s: пин образа %s (%q) не покрыт ничем. Пин, поставленный рукой, "+
+					"свежести не имеет и иметь не может — он верен ровно в момент "+
+					"написания.\n    Исходов два: (а) `# порождено-от: <ветка> <коммит>` "+
+					"и тег, выведенный из неё; (б) `# без-вывода: %s — <причина>`, если "+
+					"вывести нельзя. Умолчания «просто число» среди них нет",
+					name, image, tag, image)
+				continue
+			}
+			derivedHere++
+			if want := expectedTag(image, rec[1], rec[2]); tag != want {
 				t.Errorf("%s: образ %s запинен тегом %q, а из записанного коммита выводится "+
 					"%q. Пин и запись — два места об одном предмете, и расходятся они молча",
 					name, image, tag, want)
 			}
 		}
+		if profilePins > 0 {
+			profilesWithPins++
+		}
+		if rec != nil {
+			declaring++
+			// Запись, которой больше нечего выводить, — находка: послабление и
+			// объявление, пережившие свой предмет, ведут себя одинаково.
+			if derivedHere == 0 {
+				t.Errorf("%s несёт запись «порождено-от», но ни один её пин из неё не "+
+					"выводится — запись пережила свой предмет", name)
+			}
+		}
+		for img, why := range exempt {
+			if !pinned[img] {
+				t.Errorf("%s: образ %s объявлен невыводимым (%q), а пина с таким образом в "+
+					"профиле нет — запись без предмета", name, img, why)
+			}
+		}
 	}
 
-	t.Logf("осмотрено: профилей умбреллы=%d, из них записывают коммит вывода=%d, "+
-		"выведенных пинов=%d", len(profiles), declaring, pins)
+	t.Logf("осмотрено: профилей умбреллы=%d, из них с пинами продукта=%d, записывают "+
+		"коммит вывода=%d; пинов=%d, из них объявлены невыводимыми=%d; история дерева "+
+		"доступна=%t", len(profiles), profilesWithPins, declaring, pins, exempted,
+		historyAvailable)
 
 	if len(profiles) == 0 {
 		t.Fatal("профилей умбреллы не найдено — проверять оказалось нечего, и это отказ, " +
@@ -323,6 +423,17 @@ func TestProductImagePinsAreDerivedFromTheRecordedCommit(t *testing.T) {
 		t.Fatal("в профилях с записью вывода не найдено ни одного пина — предикат разошёлся " +
 			"с формой объявления образа")
 	}
+}
+
+// headSHA — коммит рабочего дерева. Нужен как ЗАВЕДОМО присутствующий объект,
+// чтобы отличить «коммит не существует» от «истории нет вовсе».
+func headSHA(t *testing.T) string {
+	t.Helper()
+	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // trackedUmbrellaProfiles — файлы значений умбреллы, ОТСЛЕЖИВАЕМЫЕ git.
@@ -431,6 +542,19 @@ func TestProfileClaimingGenerationNamesAProducerThatExists(t *testing.T) {
 				name)
 			continue
 		}
+		// Существование требуется от КАЖДОГО названного пути: мёртвая координата
+		// в профиле — находка независимо от того, порождающий это или нет.
+		//
+		// А вот отношение «знает про этот профиль» требуется ОТ ОДНОГО, и это не
+		// послабление, а исправление предиката. Профиль вправе называть скрипты,
+		// которые его не порождают: values.prorobotech.yaml называет провизор
+		// секретов стенда, и требовать от провизора знать имя профиля значит
+		// требовать отношения, которого между ними нет. Предмет проверки —
+		// «у объявленного порождения есть порождающий», а он выполнен, как
+		// только такой скрипт нашёлся хотя бы один. Профиль, где ни один
+		// названный скрипт про него не знает, по-прежнему находка — ради этого
+		// случая проверка и написана.
+		related := 0
 		for _, p := range found {
 			rel := strings.TrimPrefix(p, "deploy/")
 			if _, err := os.Stat(rel); err != nil {
@@ -442,10 +566,13 @@ func TestProfileClaimingGenerationNamesAProducerThatExists(t *testing.T) {
 				t.Errorf("%s: порождающий %s не читается: %v", name, p, err)
 				continue
 			}
-			if !strings.Contains(string(producer), name) {
-				t.Errorf("%s называет порождающим %s, а тот про этот профиль не знает — "+
-					"ссылка есть, отношения нет", name, p)
+			if strings.Contains(string(producer), name) {
+				related++
 			}
+		}
+		if related == 0 {
+			t.Errorf("%s объявляет порождение и называет %v, но НИ ОДИН из этих скриптов "+
+				"про этот профиль не знает — ссылка есть, отношения нет", name, found)
 		}
 	}
 

@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Обновление каталога размеров — единственное место в compute и storage, где
@@ -55,7 +57,7 @@ func TestIntegration_MachineTypeUpdate_DisjointMasksDoNotClobberEachOther(t *tes
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	mt := mtUpdateFixture(t, ctx, r, "std-disjoint-1")
@@ -91,7 +93,7 @@ func TestIntegration_MachineTypeUpdate_ConcurrentDisjointMasksBothSurvive(t *tes
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	mt := mtUpdateFixture(t, ctx, r, "std-disjoint-2")
@@ -138,7 +140,7 @@ func TestIntegration_MachineTypeUpdate_UntouchedColumnsKeepTheirValues(t *testin
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	mt := mtUpdateFixture(t, ctx, r, "std-disjoint-3")
@@ -163,7 +165,7 @@ func TestIntegration_MachineTypeUpdate_MissingRowIsNotFound(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	desc := "x"

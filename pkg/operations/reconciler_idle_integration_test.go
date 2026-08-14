@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // delayResolver имитирует медленный доменный Resolver (peer-outage): каждый резолв
@@ -61,7 +63,7 @@ func TestReconciler_ClaimTx_SurvivesConsecutiveSkips(t *testing.T) {
 	cfg.ConnConfig.RuntimeParams["idle_in_transaction_session_timeout"] = "1000"
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := operations.NewRepo(pool, "public")
 

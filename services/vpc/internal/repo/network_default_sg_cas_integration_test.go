@@ -18,6 +18,8 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // InternalNetworkService.SetDefaultSecurityGroupId обязан быть атомарным CAS:
@@ -31,7 +33,7 @@ func newDefaultSGFixture(t *testing.T) (context.Context, kacho.Repository, *netw
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	t.Cleanup(func() { r.Close() })
 	svc := networkinternal.NewService(cqrsadapter.NewNetwork(r), cqrsadapter.NewSecurityGroup(r))

@@ -12,8 +12,10 @@ DB-пароль НЕ кладётся сюда (secret); подтягивает�
 в deployment.yaml.
 
 Здесь только те секции, которые сервис ДЕЙСТВИТЕЛЬНО разбирает: logger,
-api-server, repository, authn, conditions. Секция, которой нет в Config,
-молча отбрасывается випером — она выглядит настройкой и ею не является.
+api-server, repository, authn. Секция, которой нет в Config, молча
+отбрасывается випером — она выглядит настройкой и ею не является.
+Держит это deploy/service_config_sections_test.go: перечень выше он не читает,
+он сверяет сам блок config.yaml с тегами структуры Config.
 */}}
 apiVersion: v1
 kind: ConfigMap

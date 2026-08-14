@@ -140,7 +140,7 @@ func setupDrainerPG(t *testing.T) (*pgxpool.Pool, string) {
 
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Hand back a WARM pool. Applying the schema through this pool used to do this
 	// as a side effect, and the drainer's startup depends on it: its LISTEN

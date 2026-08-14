@@ -256,7 +256,7 @@ func setupClaimPlanPG(ctx context.Context, t *testing.T) *pgxpool.Pool {
 
 	pool, err := pgxpool.New(ctx, pgtest.NewEmptyDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx, claimPlanTable)
 	require.NoError(t, err, "create outbox table")

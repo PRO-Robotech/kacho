@@ -27,6 +27,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // insertSubnetRow вставляет сеть + подсеть напрямую через writer (FK-precondition
@@ -70,7 +72,7 @@ func TestNetworkInterfaceRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *tes
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -141,7 +143,7 @@ func TestNetworkInterfaceRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -186,7 +188,7 @@ func TestNetworkInterfaceRepo_T32Atom01_RollbackNoIntent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -212,6 +214,7 @@ func TestNetworkInterfaceRepo_T32Atom01_RollbackNoIntent(t *testing.T) {
 	// emit), но делаем Abort вместо Commit — оба изменения должны откатиться вместе.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	rec, err := w.NetworkInterfaces().Get(ctx, nicID)
 	require.NoError(t, err)
 	rec.NetworkInterface.Labels = domain.LabelsFromMap(nil) // очищаем labels

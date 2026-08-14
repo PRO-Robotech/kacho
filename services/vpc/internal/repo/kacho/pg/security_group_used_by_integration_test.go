@@ -25,6 +25,8 @@ import (
 
 	// blank-import регистрирует трансферы repo-запись → proto.
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Обратная ссылка группы правил — «кем используется» — читается ЗАПРОСОМ по тем
@@ -73,7 +75,7 @@ func newSGUsedByEnv(ctx context.Context, t *testing.T) *sgUsedByEnv {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	e := &sgUsedByEnv{
 		pool:      pool,

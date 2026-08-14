@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // seedInstanceForObserved вставляет машину и возвращает её id вместе с номером
@@ -62,7 +64,7 @@ func TestObservedState_ThreeOutcomesAreDistinct(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewInstanceRepo(pool)
 	inID, maxSeq := seedInstanceForObserved(t, ctx, r, pool)
@@ -120,7 +122,7 @@ func TestObservedState_ConcurrentReportsLeaveTheFreshest(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewInstanceRepo(pool)
 	inID, maxSeq := seedInstanceForObserved(t, ctx, r, pool)

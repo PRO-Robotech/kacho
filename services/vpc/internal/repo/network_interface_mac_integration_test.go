@@ -16,6 +16,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // UNIQUE-constraint на network_interfaces.mac_address. Два NIC с одинаковым MAC
@@ -31,7 +33,7 @@ func TestIntegration_NICRepo_MacAddressUniqueness(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	defer r.Close()

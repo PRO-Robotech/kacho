@@ -536,6 +536,19 @@ CASES.append(Case(
         Step(name="move-back", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
              test_script=[
+                 # ПОЛОСУ ВЫБИРАЕТ НЕ ЭТОТ ШАГ, а исход прямого перемещения выше, поэтому
+                 # утверждается КАЖДАЯ, а не общий `oneOf`: тот принял бы успех возврата на
+                 # полосе, где возвращать нечего. Перемещение состоялось ⇒ возврат обязан быть
+                 # принят. Не состоялось ⇒ балансировщик остался в исходном проекте, и
+                 # перемещение «туда, где уже стоит» край обязан отвергнуть — 200 здесь означал
+                 # бы, что он его принял.
+                 "pm.test('move-back: accepted when the forward move happened, refused otherwise', function () {",
+                 "  if (pm.environment.get('_mvMoved')) {",
+                 "    pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                 "  } else {",
+                 "    pm.expect(pm.response.code, pm.response.text()).to.not.eql(200);",
+                 "  }",
+                 "});",
                  "if (pm.environment.get('_mvMoved') && pm.response.code === 200) {",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
                  "} else { pm.environment.set('opId', ''); }",
@@ -777,7 +790,7 @@ CASES.append(Case(
         # ("TargetGroup has N target(s); remove them first"). Keeps the case self-contained.
         Step(name="gts-remove-target", method="POST", path="/nlb/v1/targetGroups/{{tgId}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.210"}}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_tg(),
         *_cleanup_lb(),
@@ -1519,7 +1532,7 @@ CASES.append(Case(
         # disable protection and clean up
         Step(name="unprotect", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "deletionProtection", "deletionProtection": False},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_lb(),
     ],
@@ -1532,11 +1545,17 @@ CASES.append(Case(
     steps=[
         *_setup_lb("del-has-lst"),
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
-        Step(name="setup-listener", method="POST", path="/nlb/v1/listeners",
+        # Утверждение о приёме — и ограниченный повтор окна видимости под ним.
+        # Слушатель авторизуется против СВЕЖЕГО родительского балансировщика, чей
+        # владельческий кортеж материализуется вне мутации: без повтора строгие 200
+        # краснели бы на законном окне, а без утверждения (как было) отказ уезжал бы
+        # молча — предпосылка кейса не создана, а падал бы `del-blocked` ниже, который
+        # честно получил бы 200 на балансировщике без слушателей.
+        retry_until_authorized(Step(name="setup-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "del-has-lst-{{runId}}",
                    "protocol": "TCP", "port": 80},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(fixture_ids=["lstId"]),
         # Same class as NLB-DEL-STATE-PROTECTION: the "has listener(s)" precondition is
         # SYNCHRONOUS, so the refusal is this response. The old assertion accepted 200
@@ -2128,7 +2147,7 @@ CASES.append(Case(
         # Disable for cleanup
         Step(name="unprotect", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "deletionProtection", "deletionProtection": False},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -2929,6 +2948,16 @@ CASES.append(Case(
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
+                 # Предмет есть только там, где внешний адрес выделен: без `vpcAddrId` тело
+                 # запроса несёт пустую ссылку и отказ законен. Поэтому утверждается полоса
+                 # с предметом — на ней приём обязателен, и её молчаливый отказ и был тем,
+                 # из-за чего весь сценарий освобождения ссылки ТИХО пропускался (все его
+                 # шаги стоят под `nlbId`).
+                 "pm.test('linked-VIP LB created when the address fixture is present', function () {",
+                 "  if (pm.environment.get('vpcAddrId')) {",
+                 "    pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                 "  }",
+                 "});",
                  "if (pm.environment.get('vpcAddrId') && pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",

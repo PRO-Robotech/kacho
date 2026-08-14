@@ -38,6 +38,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // ---- минимальные адаптеры под exported-порты dataplane ----------------------
@@ -134,7 +136,7 @@ func e2eSetupPG(t *testing.T) *pgxpool.Pool {
 	}
 	pool, err := coredb.NewPool(context.Background(), dsn+sep+searchPath)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

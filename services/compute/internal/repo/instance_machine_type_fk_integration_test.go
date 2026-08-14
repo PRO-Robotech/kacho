@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_MachineType_Delete_InUse_Restricted — within-service ссылка
@@ -41,7 +43,7 @@ func TestIntegration_MachineType_Delete_InUse_Restricted(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	mtRepo := repo.NewMachineTypeRepo(pool)
 	instRepo := repo.NewInstanceRepo(pool)
@@ -91,7 +93,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	mtRepo := repo.NewMachineTypeRepo(pool)
 	instRepo := repo.NewInstanceRepo(pool)

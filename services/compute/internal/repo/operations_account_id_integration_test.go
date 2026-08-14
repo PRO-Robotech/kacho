@@ -13,6 +13,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_OperationsAccountIDColumn verifies that the compute operations
@@ -29,7 +31,7 @@ func TestIntegration_OperationsAccountIDColumn(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Schema "public" — same qualifier as the composition root
 	// (cmd/compute/main.go: operations.NewRepo(pool, "public")). The compute

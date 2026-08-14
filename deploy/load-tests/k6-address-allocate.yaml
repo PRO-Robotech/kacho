@@ -128,7 +128,7 @@ spec:
           # ЧЕГО НА 2.1.0 НЕ МЕРИЛИ: тех самых 247 запросов к живому kacho — для
           # этого нужен поднятый стенд, которого у правки тега не было. Считать
           # прежний замер доказательством для 2.1.0 нельзя; ближайший прогон
-          # `make load-test-address-allocate` его и даст.
+          # `make loadtest-address-allocate` его и даст.
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false

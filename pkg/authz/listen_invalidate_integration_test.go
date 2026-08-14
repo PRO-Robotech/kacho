@@ -46,7 +46,7 @@ func startPG(t *testing.T) (pool *pgxpool.Pool, dsn string) {
 	var err error
 	pool, err = pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool, dsn
 }
 

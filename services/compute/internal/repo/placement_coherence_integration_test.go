@@ -16,6 +16,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 const (
@@ -71,7 +73,7 @@ func TestPlacementCoherence_ZoneMustMatchAndRegionalIsTheControl(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)
@@ -146,7 +148,7 @@ func TestPlacementGroupDelete_RefusesWhileItHoldsInstances(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)
@@ -185,7 +187,7 @@ func TestPlacementCoherence_ConcurrentClaimsAreDecidedByTheStatement(t *testing.
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)

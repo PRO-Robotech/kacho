@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_SecurityGroup_UpdateRules_ConcurrentOCC гоняет две конкурентные
@@ -38,7 +40,7 @@ func TestIntegration_SecurityGroup_UpdateRules_ConcurrentOCC(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	defer r.Close()

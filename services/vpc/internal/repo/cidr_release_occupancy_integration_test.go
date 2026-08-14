@@ -26,6 +26,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Освобождение диапазона, в котором ЖИВУТ адреса, снимает несущее ограничение
@@ -61,7 +63,7 @@ func TestIntegration_AddressPoolCIDR_RemoveV6InUse_FailedPrecondition(t *testing
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -108,7 +110,7 @@ func TestIntegration_AddressPoolCIDR_RemoveV6Clean_Succeeds(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -166,7 +168,7 @@ func TestIntegration_SubnetCIDR_RemoveInUse_FailedPrecondition(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -215,7 +217,7 @@ func TestIntegration_SubnetCIDR_RemoveClean_Succeeds(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -250,7 +252,7 @@ func TestIntegration_Subnet_ReadPathCost_Bounded(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -310,7 +312,7 @@ func TestIntegration_Subnet_DeletePrecondition_MessageBounded(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -362,7 +364,7 @@ func TestIntegration_SubnetCIDR_InternalAllocate_WaitsForRangeMutation(t *testin
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -443,7 +445,7 @@ func TestIntegration_CIDRRelease_MirrorFamilies(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
