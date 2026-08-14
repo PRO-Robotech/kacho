@@ -29,6 +29,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
@@ -38,6 +39,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/health"
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	gwmetrics "github.com/PRO-Robotech/kacho/gateway/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
@@ -437,6 +439,10 @@ func main() {
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHZ_ENABLED.
 	// When false the middleware mounts as a no-op pass-through.
 	var authzMW *middleware.AuthzMiddleware
+	// authz — накопители, которые собирает та же сборка. Читает их коллектор
+	// диагностической поверхности (ниже); объявлены здесь, потому что сборка
+	// живёт в блоке, а поверхность поднимается за его пределами.
+	var authz authzWiring
 	{
 		// Refuse to start if authz is disabled or fail-open in
 		// any production-class environment (prod / production / staging). The
@@ -485,10 +491,11 @@ func main() {
 			)
 		}
 
-		authzMW, err = buildAuthzMiddleware(cfg, logger)
+		authz, err = buildAuthzMiddleware(cfg, logger)
 		if err != nil {
 			log.Fatalf("authz middleware: %v", err)
 		}
+		authzMW = authz.mw
 		if cfg.AuthZEnabled {
 			logger.Info("authz-mw wired",
 				"iam_authorize_url", cfg.ResolvedIAMAuthorizeURL(),
@@ -504,6 +511,43 @@ func main() {
 		} else {
 			logger.Info("authz-mw disabled (set KACHO_API_GATEWAY_AUTHZ_ENABLED=true to enable)")
 		}
+	}
+
+	// --- cluster-internal диагностическая поверхность (GET /metrics) ---
+	//
+	// Она входит в контур ОТДЕЛЬНЫМ ПРОФИЛЕМ (`pkg/servicecontract.Surface` +
+	// `pkg/servicehost.ServeSurface`), как у семи остальных процессов
+	// платформы: корень приносит сюда ОБЪЯВЛЕНИЕ, а подъём, самоотчёт и
+	// гашение принадлежат профилю.
+	//
+	// Регистрация коллектора — ЕДИНСТВЕННОЕ место, где величины решения о
+	// доступе выходят из процесса. Снимите её — и четыре полосы исчезнут с
+	// поверхности, а не станут нулями; ровно это ловит проба
+	// `TestUnregisteredCollectorIsRed`, а провязку в дереве — гейт
+	// `TestDeclaredAccumulatorsHaveANonTestReader`.
+	diagMetrics := gwmetrics.New(buildVersion, buildCommit)
+	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
+		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
+		if authz.calls != nil {
+			snap.ClientCalls = authz.calls.CallsTotal()
+		}
+		return snap
+	})
+	diagDesc, diagDescErr := describeDiagnosticSurface(
+		cfg.MetricsAddr, diagMetrics, surfaceMode(cfg.AuthNMode), logger)
+	if diagDescErr != nil {
+		log.Fatalf("профиль диагностической поверхности: %v", diagDescErr)
+	}
+	// Собственный контекст: гасить поверхность надо ПОСЛЕ слушателей трафика, а
+	// не одновременно с ними — иначе последний скрейп уносится раньше, чем
+	// закончится остановка.
+	diagCtx, stopDiag := context.WithCancel(context.Background())
+	// Привязка порта СИНХРОННА: занятый адрес — ошибка посадки, и процесс не
+	// вправе объявить себя поднявшимся, оставив её на код возврата.
+	waitDiag, diagErr := servicehost.ServeSurface(diagCtx, diagDesc)
+	if diagErr != nil {
+		stopDiag()
+		log.Fatalf("диагностическая поверхность: %v", diagErr)
 	}
 
 	// --- subject-change poll-loop for cross-replica authz cache invalidation ---
@@ -903,6 +947,14 @@ func main() {
 		if internalRESTListener != nil {
 			_ = internalRESTListener.Close()
 		}
+		// Диагностика гасится ПОСЛЕДНЕЙ: пока слушатели трафика дренируются, её
+		// величины ещё нужны тому, кто смотрит на остановку. Ожидание
+		// возвращается только после освобождения порта — без него следующий
+		// старт того же процесса спотыкался бы о собственный предыдущий.
+		stopDiag()
+		if dwErr := waitDiag(); dwErr != nil {
+			logger.Error("диагностическая поверхность остановлена с ошибкой", "err", dwErr)
+		}
 	}()
 
 	// Wire SIGHUP → live reload of the authz permission catalog + overrides
@@ -972,20 +1024,42 @@ func stopGraceful(s *grpc.Server, timeout time.Duration) {
 	}
 }
 
+// authzWiring — то, что композиционный корень получает от сборки проверки прав.
+//
+// Не только звено: величины решений и обращений по проводу накапливаются ВНУТРИ
+// сборки, а читает их коллектор диагностической поверхности, который живёт
+// снаружи. Пока сборка отдавала одно звено, оба накопителя оставались
+// недосягаемы, и их ноль ничего не утверждал.
+type authzWiring struct {
+	// mw — само звено, встраиваемое в цепочки gRPC и HTTP.
+	mw *middleware.AuthzMiddleware
+	// metrics — накопитель четырёх полос решения, окна вердиктов и длительности.
+	metrics *middleware.AuthzMetrics
+	// calls — клиент владельца прав; считает обращения ПО ПРОВОДУ, включая
+	// повторы. Отдельная величина, потому что из числа решений она не выводится.
+	calls *clients.IAMAuthorizeClient
+}
+
 // buildAuthzMiddleware constructs the AuthZ middleware from
 // configuration. When AuthZEnabled=false this returns a no-op middleware
 // (the caller still wires it into the chain, but it pass-through everything).
-func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.AuthzMiddleware, error) {
+func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (authzWiring, error) {
 	if !cfg.AuthZEnabled {
-		return middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
+		// Накопитель собирается и на выключенной проверке: серии обязаны стоять
+		// нулями и здесь, иначе «проверка выключена» на поверхности выглядело бы
+		// как «коллектора нет».
+		authzMetrics := middleware.NewAuthzMetrics()
+		mw, err := middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
 			Enabled: false,
 			Logger:  logger,
+			Metrics: authzMetrics,
 		})
+		return authzWiring{mw: mw, metrics: authzMetrics}, err
 	}
 
 	catalog, err := middleware.LoadEmbeddedPermissionCatalog(cfg.AuthZPermissionCatalogFile)
 	if err != nil {
-		return nil, err
+		return authzWiring{}, err
 	}
 
 	overrides := middleware.NewAuthzOverrides()
@@ -993,7 +1067,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.A
 		if oerr := overrides.LoadFromFile(cfg.AuthZOverridesFile); oerr != nil {
 			// Reload-failures on first start are fatal — we have no prior
 			// good state to fall back to.
-			return nil, oerr
+			return authzWiring{}, oerr
 		}
 	}
 
@@ -1003,7 +1077,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.A
 	authorizeAddr := cfg.ResolvedIAMAuthorizeURL()
 	authorizeCreds, err := iamEdgeDialCreds(cfg, authorizeAddr)
 	if err != nil {
-		return nil, fmt.Errorf("iam authorize mTLS creds: %w", err)
+		return authzWiring{}, fmt.Errorf("iam authorize mTLS creds: %w", err)
 	}
 	authzClient, err := clients.NewIAMAuthorizeClient(clients.IAMAuthorizeClientConfig{
 		Addr:           authorizeAddr,
@@ -1012,7 +1086,7 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.A
 		TransportCreds: authorizeCreds,
 	})
 	if err != nil {
-		return nil, err
+		return authzWiring{}, err
 	}
 
 	// Build the REST<->gRPC route table so the authz
@@ -1021,7 +1095,12 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.A
 	// with FQN -> path-template mappings to pluck `{field}` scope ids.
 	restRouter := middleware.NewRestRouter()
 
-	return middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
+	// Накопитель решений собирается ЗДЕСЬ и отдаётся наружу полем: звено считает
+	// в него на горячем пути, а читает его коллектор диагностической
+	// поверхности. Пока накопитель заводило само звено, снаружи к нему было не
+	// подобраться — и его четыре нуля не утверждали ничего.
+	authzMetrics := middleware.NewAuthzMetrics()
+	mw, err := middleware.NewAuthzMiddleware(middleware.AuthzMiddlewareConfig{
 		Enabled:         true,
 		FailOpen:        cfg.AuthZFailOpen,
 		Catalog:         catalog,
@@ -1036,5 +1115,10 @@ func buildAuthzMiddleware(cfg config.Config, logger *slog.Logger) (*middleware.A
 		CacheMaxEntries: cfg.AuthZCacheMaxEntries,
 		PublicAllowlist: middleware.DefaultPublicAllowlist(),
 		RestRouter:      restRouter,
+		Metrics:         authzMetrics,
 	})
+	if err != nil {
+		return authzWiring{}, err
+	}
+	return authzWiring{mw: mw, metrics: authzMetrics, calls: authzClient}, nil
 }

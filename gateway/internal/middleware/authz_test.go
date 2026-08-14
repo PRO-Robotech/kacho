@@ -510,33 +510,64 @@ overrides:
 	assert.Zero(t, checker.calls.Load())
 }
 
-func TestAuthz_Metrics_RecordAllowDenyError(t *testing.T) {
+func TestAuthz_Metrics_RecordAllowDeny(t *testing.T) {
 	checkerAllow := &fakeChecker{allowed: true}
 	mwAllow := buildAuthzMiddleware(t, buildCatalog(t, getEntry), checkerAllow)
 	_, _ = mwAllow.Unary()(withTokenMD("usr_x", "user"), nil,
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Get"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
-	snap := mwAllow.Metrics().Snapshot()
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_total{result="allowed"}`])
+	assert.Equal(t, uint64(1), mwAllow.Metrics().Counts().Allowed)
 
 	checkerDeny := &fakeChecker{allowed: false, reasons: []string{"no path"}}
 	mwDeny := buildAuthzMiddleware(t, buildCatalog(t, deleteEntry), checkerDeny)
 	_, _ = mwDeny.Unary()(withTokenMD("usr_x", "user"), nil,
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Delete"},
 		func(ctx context.Context, req any) (any, error) { return "ok", nil })
-	snap = mwDeny.Metrics().Snapshot()
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_total{result="denied"}`])
-
-	checkerErr := &fakeChecker{returnErr: errors.New("boom")}
-	mwErr := buildAuthzMiddleware(t, buildCatalog(t, createEntry), checkerErr)
-	_, _ = mwErr.Unary()(withTokenMD("usr_x", "user"), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"},
-		func(ctx context.Context, req any) (any, error) { return "ok", nil })
-	snap = mwErr.Metrics().Snapshot()
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_total{result="error"}`])
+	assert.Equal(t, uint64(1), mwDeny.Metrics().Counts().Denied)
 }
 
-func TestAuthz_Metrics_CacheHitRatio(t *testing.T) {
+// TestAuthz_Metrics_FailedCheckRefusedIsNotADeny — OBS-1-06: несостоявшаяся
+// проверка с ОТКЛОНЕНИЕМ запроса растит свою полосу и не растит полосу отказа.
+func TestAuthz_Metrics_FailedCheckRefusedIsNotADeny(t *testing.T) {
+	checkerErr := &fakeChecker{returnErr: errors.New("boom")}
+	mw := buildAuthzMiddleware(t, buildCatalog(t, createEntry), checkerErr)
+	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"},
+		func(ctx context.Context, req any) (any, error) { return "ok", nil })
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+
+	c := mw.Metrics().Counts()
+	assert.Equal(t, uint64(1), c.ErrorRefused)
+	assert.Equal(t, uint64(0), c.ErrorPassed)
+	assert.Equal(t, uint64(0), c.Denied)
+}
+
+// TestAuthz_Metrics_SoftPassHasItsOwnBand — OBS-1-07: объявленный мягкий проход
+// виден ОТДЕЛЬНОЙ полосой.
+//
+// Отрицательный контроль к предыдущей пробе: без расщепления полосы (Р10) обе
+// растили бы одну величину, и по числам нельзя было бы сказать, отклонил
+// контроль запрос или пропустил.
+func TestAuthz_Metrics_SoftPassHasItsOwnBand(t *testing.T) {
+	checkerErr := &fakeChecker{returnErr: errors.New("boom")}
+	mw := buildAuthzMiddleware(t, buildCatalog(t, createEntry), checkerErr,
+		func(cfg *middleware.AuthzMiddlewareConfig) { cfg.FailOpen = true })
+	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Create"},
+		func(ctx context.Context, req any) (any, error) { return "ok", nil })
+	require.NoError(t, err, "мягкий проход пропускает запрос — иначе проба утверждала бы не тот исход")
+
+	c := mw.Metrics().Counts()
+	assert.Equal(t, uint64(1), c.ErrorPassed)
+	assert.Equal(t, uint64(0), c.ErrorRefused)
+	assert.Equal(t, uint64(0), c.Allowed)
+}
+
+// TestAuthz_Metrics_CacheHitAndMissAreSeparateBands — OBS-1-09 (часть в
+// процессе): попадание и промах окна вердиктов считаются раздельно, а
+// производной доли на поверхности нет — её считает потребитель.
+func TestAuthz_Metrics_CacheHitAndMissAreSeparateBands(t *testing.T) {
 	checker := &fakeChecker{allowed: true}
 	mw := buildAuthzMiddleware(t, buildCatalog(t, getEntry), checker)
 	ctx := withTokenMD("usr_x", "user")
@@ -545,8 +576,9 @@ func TestAuthz_Metrics_CacheHitRatio(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		_, _ = mw.Unary()(ctx, nil, info, h)
 	}
-	// First call → miss, next 4 → hit. Ratio 4/(4+1) = 0.8.
-	assert.InDelta(t, 0.8, mw.Metrics().CacheHitRatio(), 0.0001)
+	c := mw.Metrics().Counts()
+	assert.Equal(t, uint64(1), c.CacheMisses, "первое решение спрашивает владельца прав")
+	assert.Equal(t, uint64(4), c.CacheHits, "остальные четыре берутся из окна")
 }
 
 func TestAuthz_Constructor_RequiresFields(t *testing.T) {

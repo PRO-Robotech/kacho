@@ -174,7 +174,7 @@ func TestIAMAuthorizeClient_Check_RetriesOnUnavailable(t *testing.T) {
 	assert.True(t, res.Allowed)
 	assert.Equal(t, int64(2), stub.calls.Load())
 	// Internal counter — one initial + one retry.
-	assert.Equal(t, int64(2), client.CallsTotal())
+	assert.Equal(t, uint64(2), client.CallsTotal())
 }
 
 func TestIAMAuthorizeClient_Check_PermissionDeniedNotRetried(t *testing.T) {

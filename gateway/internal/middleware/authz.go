@@ -380,10 +380,12 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			return nil, decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
+				m.metrics.RecordErrorPassed()
 				m.cfg.Logger.Error("authz middleware fail-open: passing request despite error",
 					"fqn", fqn, "err", decision.checkErr)
 				return handler(ctx, req)
 			}
+			m.metrics.RecordErrorRefused()
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
@@ -427,10 +429,12 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			return decision.gRPCStatus().Err()
 		case outcomeError:
 			if m.cfg.FailOpen {
+				m.metrics.RecordErrorPassed()
 				m.cfg.Logger.Error("authz middleware fail-open: passing stream despite error",
 					"fqn", fqn, "err", decision.checkErr)
 				return handler(srv, ss)
 			}
+			m.metrics.RecordErrorRefused()
 			// Redact the raw backend/transport detail from the client message —
 			// leaking it aids fabric mapping. The code is preserved (retryable,
 			// fail-closed) and the detail is already logged in decide().
@@ -487,11 +491,13 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			writeHTTPNotFound(w, decision.descriptor)
 		case outcomeError:
 			if m.cfg.FailOpen {
+				m.metrics.RecordErrorPassed()
 				m.cfg.Logger.Error("authz middleware fail-open: passing http request despite error",
 					"path", r.URL.Path, "err", decision.checkErr)
 				next.ServeHTTP(w, r)
 				return
 			}
+			m.metrics.RecordErrorRefused()
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"code":14,"message":"authz service unavailable"}`))
@@ -610,7 +616,7 @@ func (m *AuthzMiddleware) isExternalRequest(dr decisionRequest) bool {
 func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decision {
 	start := m.now()
 	defer func() {
-		m.metrics.ObserveLatencyMs(float64(m.now().Sub(start).Microseconds()) / 1000.0)
+		m.metrics.ObserveCheckDuration(m.now().Sub(start))
 	}()
 
 	// The decision pipeline is a sequence of phases, each of which may return a
@@ -1166,7 +1172,11 @@ func (m *AuthzMiddleware) phaseCheck(
 			// окна отзыва ещё и задержку выдачи (см. decisionCacheEntry).
 			return denyDecision(dr.FQN, entry, descriptor, reasons)
 		}
-		m.metrics.RecordError()
+		// Полоса исхода здесь НЕ пишется: отсюда не видно, чем несостоявшаяся
+		// проверка кончится для запроса — отклонением или объявленным мягким
+		// проходом. Пишет её то звено, которое этот выбор делает
+		// (AuthzMetrics.RecordErrorRefused / RecordErrorPassed), иначе два
+		// противоположных исхода снова слились бы в одно число.
 		m.cfg.Logger.Error("authz check failed",
 			"fqn", dr.FQN,
 			"subject", subj.FGA,
