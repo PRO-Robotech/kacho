@@ -100,6 +100,14 @@ type CreateInput struct {
 // (Commit), либо ничего (Abort/crash) — окно orphan-address-without-allocated-IP
 // закрыто, compensating delete-after-failure не нужен (Abort сам снимает Insert).
 type CreateAddressUseCase struct {
+	// quota — совещательная полоса учёта (порт QuotaGuard).
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции), и
+	// потому провязка обязательна на любом поднятом стенде; отсутствие допустимо
+	// только там, где нет и соседа, у которого спрашивать величины.
+	quota         QuotaGuard
 	repo          Repo
 	subnetReader  SubnetReader
 	projectClient ProjectClient
@@ -252,6 +260,18 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 	}
 
 	addrID := ids.NewID(ids.PrefixAddress)
+	// Учёт числа ресурсов: ранний отказ ДО создания операции.
+	//
+	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —
+	// момент, когда владелец типа впервые узнаёт о проекте, и есть обращение к
+	// нему. Отказ уходит арендатору синхронно тем же текстом и признаком, каким
+	// его произвёл бы триггер: у обеих полос один производитель.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, string(in.ProjectID), "vpc.address"); err != nil {
+			return nil, serviceerr.MapRepoErr(err)
+		}
+	}
+
 	op, err := operations.NewFromContext(
 		ctx,
 		ids.PrefixOperationVPC,
@@ -761,4 +781,14 @@ func (u *CreateAddressUseCase) allocateExternalIPv6(ctx context.Context, w Write
 		return nil, err
 	}
 	return &allocResult{IP: ip, PoolID: pool.ID}, nil
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateAddressUseCase) WithQuotaGuard(g QuotaGuard) *CreateAddressUseCase {
+	u.quota = g
+	return u
 }

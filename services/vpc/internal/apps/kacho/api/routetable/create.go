@@ -32,6 +32,14 @@ import (
 // CREATED атомарно. Auto-association DB-trigger дополнительно эмитит
 // `Subnet.UPDATED` в той же tx-области — это часть Commit'а единой writer-TX.
 type CreateRouteTableUseCase struct {
+	// quota — совещательная полоса учёта (порт QuotaGuard).
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции), и
+	// потому провязка обязательна на любом поднятом стенде; отсутствие допустимо
+	// только там, где нет и соседа, у которого спрашивать величины.
+	quota         QuotaGuard
 	repo          Repo
 	projectClient ProjectClient
 	opsRepo       operations.Repo
@@ -120,6 +128,18 @@ func (u *CreateRouteTableUseCase) Execute(ctx context.Context, rt domain.RouteTa
 	_ = rd.Close()
 
 	rtID := ids.NewID(ids.PrefixRouteTable)
+	// Учёт числа ресурсов: ранний отказ ДО создания операции.
+	//
+	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —
+	// момент, когда владелец типа впервые узнаёт о проекте, и есть обращение к
+	// нему. Отказ уходит арендатору синхронно тем же текстом и признаком, каким
+	// его произвёл бы триггер: у обеих полос один производитель.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, string(rt.ProjectID), "vpc.routeTable"); err != nil {
+			return nil, serviceerr.MapRepoErr(err)
+		}
+	}
+
 	op, err := operations.NewFromContext(
 		ctx,
 		ids.PrefixOperationVPC,
@@ -221,4 +241,14 @@ func (u *CreateRouteTableUseCase) doCreate(ctx context.Context, rtID string, rt 
 	// Поэтому предупреждение, а не ошибка.
 	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "RouteTable", created.ID)
 	return marshalRouteTableRecord(created)
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateRouteTableUseCase) WithQuotaGuard(g QuotaGuard) *CreateRouteTableUseCase {
+	u.quota = g
+	return u
 }

@@ -55,6 +55,9 @@ type RepositoryReader interface {
 	// CidrGroups — именованные наборы префиксов, на которые ссылаются правила
 	// групп безопасности.
 	CidrGroups() CidrGroupReaderIface
+	// Quotas — совещательная полоса учёта числа ресурсов: спрашивает про место,
+	// не занимая его. Решение принимает списание триггера в writer-TX.
+	Quotas() QuotaReaderIface
 	// Close завершает read-TX (rollback). Идемпотентно.
 	Close() error
 }
@@ -83,6 +86,10 @@ type RepositoryWriter interface {
 	// CidrGroups — write-iface именованных наборов префиксов. Потолок состава и
 	// отсутствие затирания держатся конструкцией базы внутри этих методов.
 	CidrGroups() CidrGroupWriterIface
+	// Quotas — материализация строк учёта плюс та же совещательная полоса.
+	// Списания и возврата здесь НЕТ и быть не должно: их делает триггер той же
+	// транзакцией, что мутацию строки ресурса.
+	Quotas() QuotaWriterIface
 	// Outbox — emit события в vpc_outbox в той же tx-области writer'а.
 	Outbox() OutboxEmitter
 	// FGARegister — emit FGA owner-tuple register/unregister intent в

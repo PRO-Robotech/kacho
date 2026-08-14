@@ -51,6 +51,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/networkinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/applystate"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -411,7 +412,37 @@ func runServe(cfg config.Config) error {
 		syncRegistrar = reg
 	}
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, cfg, logger,
+	// Учёт числа ресурсов арендатора. Приёмка
+	// `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
+	// (APPROVED, раунд 2), DoD S2 п.3 и п.5.
+	//
+	// Величины живут у kacho-iam и разрешаются ТАМ: старшинство PROJECT >
+	// ACCOUNT > DEFAULT требует знать аккаунт проекта, а владелец типа его не
+	// знает (у него только зеркало, заводимое из того же обращения).
+	//
+	// Резолв идёт на ВНУТРЕННИЙ слушатель соседа — тот же `authzConn`, что
+	// обслуживает per-RPC Check: `InternalLimitService` выставлен ровно там. Это
+	// НЕ вывод адреса из чужого (`security.md` §Hardening п.9), а использование
+	// уже объявленного оператором адреса внутреннего контура: своей ручки у
+	// резолва нет именно потому, что второй адрес того же слушателя разошёлся бы
+	// с первым молча.
+	//
+	// Пустой endpoint (dev без соседа) → полоса не собирается. Это означает
+	// «раннего отказа нет», а НЕ «предела нет»: место по-прежнему занимает
+	// триггер в writer-транзакции, и исчерпание приезжает отказом операции.
+	// Различие наблюдаемо, и на любом поднятом стенде адрес обязан быть задан.
+	var quotaLimits quota.LimitResolver
+	if authzConn != nil {
+		quotaLimits = clients.NewLimitClient(authzConn)
+		logger.Info("resource-count quota: limits resolver wired",
+			"endpoint", cfg.AuthZ.IAMEndpoint, "service", "vpc")
+	} else {
+		logger.Warn("resource-count quota: no internal kacho-iam endpoint, advisory band is OFF. " +
+			"Limits are still enforced by the charging trigger, but the tenant learns of " +
+			"exhaustion from the operation instead of a synchronous refusal")
+	}
+
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger,
 		metricsAdapter.IncApplyStateMissingIntent)
 
 	// Fail-closed boot-gate: при KACHO_VPC_REQUIRE_IAM мутирующий Create отвергается,
@@ -921,7 +952,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 // подтверждений ничего не сказала. Функция, а не адаптер наблюдаемости целиком:
 // сборщику сервисов нужен ровно один счётчик, и приносить сюда весь реестр
 // значило бы отдать ему право трогать чужие метрики.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger, applyStateMissing func()) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, cfg config.Config, logger *slog.Logger, applyStateMissing func()) *services {
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kacho-iam
@@ -938,6 +969,18 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// Adapter'ы под узкие port-интерфейсы admin/peer-сервисов. Каждый adapter
 	// открывает свежую Reader/Writer-TX на каждый вызов (read на slave-pool, если он
 	// настроен; write — на master).
+	// Совещательная полоса учёта собирается ЗДЕСЬ, потому что здесь живёт
+	// репозиторий: материализация пишет строки учёта своей writer-транзакцией до
+	// мутации. Зависимости, требующие соединений (резолв величин и аккаунт
+	// проекта), приходят параметрами — их владелец composition root.
+	//
+	// nil-резолв означает «раннего отказа нет», а не «предела нет»: разбор — у
+	// объявления quotaLimits выше.
+	var quotaGuard *quota.Guard
+	if quotaLimits != nil && quotaAccounts != nil {
+		quotaGuard = quota.NewGuard(kachoRepo, quotaLimits, quotaAccounts, "vpc")
+	}
+
 	networkAdapter := cqrsadapter.NewNetwork(kachoRepo)
 	subnetAdapter := cqrsadapter.NewSubnet(kachoRepo)
 	addressAdapter := cqrsadapter.NewAddress(kachoRepo)
@@ -996,7 +1039,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// defaultSGInline=true (default) — при Network.Create в одной writer-TX создается
 	// inline default SG и Network.default_security_group_id заполняется атомарно.
 	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo).
-		WithLogger(logger).WithRegistrar(registrar)
+		WithLogger(logger).WithRegistrar(registrar).WithQuotaGuard(quotaGuard)
 	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)
 	// Per-page FGA-фильтр (listFilter) питает ТОЛЬКО List; Get авторизуется
@@ -1017,7 +1060,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Gateway use-case'ы работают через CQRS-Repository (kachoRepo) — конструктор
 	// принимает Repository, каждый use-case открывает Reader/Writer внутри.
-	gwCreateUC := gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	gwCreateUC := gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar).
+		WithQuotaGuard(quotaGuard)
 	gwHandler := gatewayapp.NewHandler(
 		gwCreateUC,
 		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
@@ -1029,7 +1073,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// RouteTable use-case'ы работают через CQRS-Repository. routeTableAdapter
 	// передается Network.Delete для child-check.
-	rtCreateUC := routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	rtCreateUC := routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar).
+		WithQuotaGuard(quotaGuard)
 	rtHandler := routetableapp.NewHandler(
 		rtCreateUC,
 		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
@@ -1051,7 +1096,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	reservedPrefixes := cfg.ReservedPrefixes()
 	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).
 		WithRegistrar(registrar).
-		WithReservedPrefixes(reservedPrefixes)
+		WithReservedPrefixes(reservedPrefixes).
+		WithQuotaGuard(quotaGuard)
 	subnetHandler := subnetapp.NewHandler(
 		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
@@ -1075,7 +1121,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// через cqrsadapter.
 	addressCreateUC := addressapp.NewCreateAddressUseCase(kachoRepo, subnetAdapter, projectClient, opsRepo, addressPoolResolver).
 		WithRegistrar(registrar).
-		WithZoneRegistry(geoClient)
+		WithZoneRegistry(geoClient).
+		WithQuotaGuard(quotaGuard)
 	addressUpdateUC := addressapp.NewUpdateAddressUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	addressDeleteUC := addressapp.NewDeleteAddressUseCase(kachoRepo, opsRepo)
 	addressGetUC := addressapp.NewGetAddressUseCase(kachoRepo)
@@ -1095,7 +1142,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// checkNetworkEmpty / default-SG cleanup при Network.Delete (отдельная TX от
 	// Network writer'а).
 	sgCreateUC := sgapp.NewCreateSecurityGroupUseCase(kachoRepo, networkAdapter, projectClient, opsRepo).
-		WithSGReader(sgAdapter).WithRegistrar(registrar)
+		WithSGReader(sgAdapter).WithRegistrar(registrar).WithQuotaGuard(quotaGuard)
 	sgHandler := sgapp.NewHandler(
 		sgCreateUC,
 		sgapp.NewUpdateSecurityGroupUseCase(kachoRepo, opsRepo).WithSGReader(sgAdapter).WithRegistrar(registrar),
@@ -1127,7 +1174,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	)
 	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).
 		WithRegistrar(registrar).
-		WithBandwidthLimitPolicy(bandwidthPolicy)
+		WithBandwidthLimitPolicy(bandwidthPolicy).
+		WithQuotaGuard(quotaGuard)
 	niHandler := niapp.NewHandler(
 		niCreateUC,
 		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).
@@ -1145,7 +1193,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// инкремент счётчика под блокировкой строки), а не в этих use-case'ах.
 	cgHandler := cidrgroupapp.NewHandler(
 		cidrgroupapp.NewCreateCidrGroupUseCase(kachoRepo, projectClient, opsRepo).
-			WithLogger(logger).WithRegistrar(registrar),
+			WithLogger(logger).WithRegistrar(registrar).WithQuotaGuard(quotaGuard),
 		cidrgroupapp.NewUpdateCidrGroupUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		cidrgroupapp.NewDeleteCidrGroupUseCase(kachoRepo, opsRepo),
 		cidrgroupapp.NewGetCidrGroupUseCase(kachoRepo),
