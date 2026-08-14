@@ -80,6 +80,10 @@ def _provision_zonal_subnet(zone_var, suffix, save_var, family="v4"):
                    "zoneId": f"{{{{{zone_var}}}}}", cidr_field: f"{{{{{cidr_var}}}}}"},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
+                 # ПРИЁМ ЗАПРОСА УТВЕРЖДАЕТСЯ ЗДЕСЬ, исход операции — опросом ниже.
+                 # Это разные вещи: без первого шаг зеленел при любом ответе и публиковал
+                 # снятое имя, а падал не он, а проба размещения, которой не на чем стоять.
+                 *assert_status(200),
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
@@ -105,6 +109,9 @@ def _provision_regional_subnet(region_var, suffix, save_var):
                    "regionId": f"{{{{{region_var}}}}}", "ipv4CidrPrimary": "{{_zcV4Cidr}}"},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
+                 # Тот же довод, что у зонального соседа выше: приём запроса — здесь,
+                 # исход операции — опросом ниже.
+                 *assert_status(200),
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",

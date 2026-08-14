@@ -849,7 +849,7 @@ CASES.append(Case(
         Step(name="tm-cleanup-rm-target", method="POST",
              path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets", auth="jwtProjectEditorA",
              body={"targets": [{"externalIp": {"address": "203.0.113.33"}}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(auth="jwtProjectEditorA"),
         Step(name="tm-cleanup-tg", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
              auth="jwtProjectEditorA",
@@ -930,6 +930,10 @@ CASES.append(Case(
                    "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('azdSubnetId');",
+                 # Подсеть — предмет, на котором стоит весь жизненный цикл кейса
+                 # (создание LB → удаление → уборка кортежа). Без утверждения шаг
+                 # зеленел при любом ответе, а падало создание LB следующим шагом.
+                 *assert_status(200),
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",

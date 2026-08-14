@@ -3046,10 +3046,29 @@ def _zone_setup_item() -> Dict:
 # the primary zone. The dev stand's seed-ipam is a NOOP, so seed it here, once,
 # as cluster-admin (idempotent: 200 first time, 409 thereafter). Soft (no failing
 # assertion) — if seeding cannot run, the dependent cases surface it themselves.
+# ПОСЕВ НАЗЫВАЕТ СВОЙ ИСХОД, А ИМЯ БОЛЬШЕ НЕ ПУБЛИКУЕТ.
+#
+# Здесь стоял захват `_seededDefaultPoolId`, у которого в дереве НОЛЬ читателей
+# (`git grep` по всему репозиторию находил только сами четыре коллекции и эту
+# строку). Значение, которое пишут и не читают, невидимо отовсюду; заодно оно
+# делало шаг похожим на публикующий координату, каковым он не является.
+#
+# Утверждение вместо него — и полоса у него ОДНА, а не две: посев идемпотентен,
+# `AddressPool` отвечает ресурсом НАПРЯМУЮ (не Operation), а второй умолчательный
+# пул для той же пары (зона, вид) отвергается `409 ALREADY_EXISTS` — это записано
+# отдельным кейсом суиты (`cases/internal-pool.py`, «Create второй isDefault=true …»).
+# Оба кода означают ровно одно: «пул по умолчанию в зоне A существует». Всё
+# остальное (400 — тело не то, 401/403 — не тот субъект, 404 — не тот слушатель)
+# означает, что предусловие НЕ установлено, и без этой строки такой посев
+# отчитывался зелёным, а падали кейсы, которым нечего было выделять.
+#
+# Зеркальный посев зоне-независимого пула (`_ANYCAST_POOL_SEED_TEST`) намеренно
+# остаётся мягким и ничего не публикует — там это записанное решение с доводом.
 _POOL_SEED_TEST = [
-    "if (pm.response && pm.response.code === 200) {",
-    "  try { pm.environment.set('_seededDefaultPoolId', pm.response.json().id); } catch (e) {}",
-    "}",
+    "pm.test('посев: умолчательный внешний пул в зоне A существует "
+    "(создан либо уже был)', function () {",
+    "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 409]);",
+    "});",
 ]
 
 _POOL_SEED_BODY = {
