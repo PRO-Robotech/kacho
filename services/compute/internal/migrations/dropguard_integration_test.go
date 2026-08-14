@@ -47,8 +47,8 @@ func TestIntegration_ComputeDropsAreMeasured(t *testing.T) {
 			t.Errorf("%s was never counted — the retire of compute's block-storage duplicate rests on a number this run did not produce", key)
 		}
 	}
-	if rep.DropsInChain != 9 {
-		t.Errorf("compute chain holds %d Up-section drop(s), expected 9; a drop that appeared without this number moving is a drop nobody looked at", rep.DropsInChain)
+	if rep.DropsInChain != 10 {
+		t.Errorf("compute chain holds %d Up-section drop(s), expected 10; a drop that appeared without this number moving is a drop nobody looked at", rep.DropsInChain)
 	}
 }
 

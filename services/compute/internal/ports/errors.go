@@ -33,4 +33,58 @@ var (
 	// ErrInternal — generic-ошибка для неклассифицированных DB-проблем.
 	// Маппится на gRPC Internal с фиксированным сообщением (no leak).
 	ErrInternal = errors.New("internal database error")
+
+	// ErrQuotaExceeded — место кончилось: потолок назван и выбран.
+	// Маппится в gRPC ResourceExhausted (край даёт 429), признак
+	// `QUOTA_EXCEEDED`. Администратору требуется ПОДНЯТЬ предел.
+	ErrQuotaExceeded = errors.New("quota exceeded")
+
+	// ErrQuotaNotProvisioned — потолок не назван НИ НА ОДНОЙ области.
+	// Маппится в gRPC FailedPrecondition (край даёт 400), признак
+	// `QUOTA_NOT_PROVISIONED`. Администратору требуется ЗАВЕСТИ предел.
+	//
+	// Почему не ErrInvalidArg: ввод арендатора корректен, не выполнено
+	// предусловие ПЛАТФОРМЫ. InvalidArgument обвинил бы вызывающего в том, чего
+	// он не присылал.
+	//
+	// Почему это отдельный sentinel, а не оттенок ErrQuotaExceeded: причины
+	// разные, и различать их обязан клиент — машинно, по признаку в
+	// `google.rpc.ErrorInfo`, а не разбором прозы.
+	ErrQuotaNotProvisioned = errors.New("quota not provisioned")
 )
+
+// QuotaCarrierProject — носитель учёта «проект».
+//
+// Все три вида compute считаются в проекте (каталог S1 объявляет носителя рядом
+// с видом). Носитель назван константой, а не литералом на месте: ключ учёта —
+// тройка, и вторая ось (предел на родителя) добавляет носителей, а не таблицу.
+const QuotaCarrierProject = "project"
+
+// QuotaRow — строка учёта в форме, пригодной для материализации.
+//
+// Живёт здесь, в leaf-пакете, по той же причине, что и sentinel'ы выше: её
+// называют и use-case (совещательная полоса), и adapter (запись в хранилище), и
+// клиент соседа. Положи её в любой из них — и два других станут зависеть от
+// чужого слоя ради одной структуры.
+type QuotaRow struct {
+	CarrierType   string
+	CarrierID     string
+	Kind          string
+	Limit         int64
+	SourceScope   string
+	SourceScopeID string
+	LimitRevision int64
+	AccountID     string
+}
+
+// ResolvedLimit — разрешённая величина по одному виду, как её отдаёт владелец.
+//
+// Область-победитель едет вместе со значением: без неё арендатор не отличит
+// поднятое лично ему от общего правила, а дельта не поймёт, какие строки
+// трогать при изменении широкой величины.
+type ResolvedLimit struct {
+	Kind          string
+	Value         int64
+	SourceScope   string
+	SourceScopeID string
+}

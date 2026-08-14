@@ -52,6 +52,13 @@
       "expect_rows": 0
     },
     {
+      "version": 36,
+      "table": "project_instance_quotas",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "The earlier, non-working quota mechanism. Zero rows by construction: no production path ever inserted one — the only INSERT statements against this table live in tests (measured on the branch base: 0 in non-test code, 2 in tests). Because the ceiling row was never written, the charge always read zero rows, took that for 'no limit assigned' and let the create through, so the mechanism never refused anything in its whole life. The canonical accounting that replaces it lives in the same migration and keys on (carrier, carrier id, kind); nothing a caller created is lost, because nothing a caller created was ever here."
+    },
+    {
       "version": 22,
       "table": "disk_types",
       "kind": "retire",
