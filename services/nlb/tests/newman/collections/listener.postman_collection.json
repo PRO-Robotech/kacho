@@ -1446,6 +1446,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -2258,6 +2259,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -3123,6 +3125,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -3728,6 +3731,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -5318,6 +5322,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -6183,6 +6188,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -6797,6 +6803,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -7414,6 +7421,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -8031,6 +8039,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -8648,6 +8657,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -9265,6 +9275,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -10077,6 +10088,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -10944,6 +10956,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -11875,6 +11888,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -12662,6 +12676,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -14040,6 +14055,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -14657,6 +14673,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -15274,6 +15291,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -15891,6 +15909,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -16508,6 +16527,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -17112,6 +17132,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -17912,6 +17933,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -18776,6 +18798,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -19848,6 +19871,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -20606,6 +20630,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -21861,6 +21886,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -22177,7 +22203,14 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.targetGroupId)     pm.environment.set('tgCrossId', j.metadata.targetGroupId);",
-                  "}"
+                  "}",
+                  "pm.test('setup: cross-project TG created, or the wiring below gets an absent id', function () {",
+                  "  var id = pm.environment.get('tgCrossId') || '';",
+                  "  pm.expect(id, 'tgCrossId').to.not.eql('');",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(id, 'a 200 must publish metadata.targetGroupId, not the absent-id stand-in').to.not.eql('tgrabsent0000000000x');",
+                  "  }",
+                  "});"
                 ]
               }
             }
@@ -22721,6 +22754,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('lstSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -23173,7 +23207,14 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.targetGroupId)     pm.environment.set('tgCrossId', j.metadata.targetGroupId);",
-                  "}"
+                  "}",
+                  "pm.test('setup: cross-project TG created, or the wiring below gets an absent id', function () {",
+                  "  var id = pm.environment.get('tgCrossId') || '';",
+                  "  pm.expect(id, 'tgCrossId').to.not.eql('');",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(id, 'a 200 must publish metadata.targetGroupId, not the absent-id stand-in').to.not.eql('tgrabsent0000000000x');",
+                  "  }",
+                  "});"
                 ]
               }
             }

@@ -133,9 +133,9 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "if (pm.response && pm.response.code === 200) {",
-              "  try { pm.environment.set('_seededDefaultPoolId', pm.response.json().id); } catch (e) {}",
-              "}"
+              "pm.test('посев: умолчательный внешний пул в зоне A существует (создан либо уже был)', function () {",
+              "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 409]);",
+              "});"
             ]
           }
         }
