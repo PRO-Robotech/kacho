@@ -1,6 +1,5 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fixupPluginRules } from "@eslint/compat";
 import js from "@eslint/js";
 import prettier from "eslint-config-prettier";
 import importX from "eslint-plugin-import-x";
@@ -42,8 +41,8 @@ export default tseslint.config(
     },
     plugins: {
       "import-x": importX,
-      "jsx-a11y": fixupPluginRules(jsxA11y),
-      react: fixupPluginRules(react),
+      "jsx-a11y": jsxA11y,
+      react,
       "react-hooks": reactHooks,
     },
     settings: {
