@@ -46,25 +46,31 @@ import (
 // Запись, которой больше нечего исключать, роняет гейт (см. ниже): перечень
 // самоистекающий, поэтому таблица, снятая вместе со своим механизмом, не оставит
 // здесь мёртвой строки.
+// `project_instance_quotas` (прецедент compute) отсюда СНЯТА вместе со своим
+// предметом: таблица дропнута миграцией
+// `services/compute/internal/migrations/0036_project_resource_quotas.sql`,
+// списание в Go-функции репозитория удалено, механизма под этим именем в дереве
+// нет. Имя ещё встречается — в применённой 0031, которую править нельзя (ban #5),
+// и в снимающей её 0036, — но ни та, ни другая `used` не пишут. Watch без
+// механизма был бы записью, которой нечего исключать, и его унаследовала бы
+// следующая слепая зона.
 var quotaUsageTables = []string{
 	"project_resource_quotas",
-	"project_instance_quotas",
 }
 
 // quotaTriggerDefiningFiles — файлы, которым писать `used` РАЗРЕШЕНО, потому что
 // они этот механизм и определяют. Ключ — таблица, значение — суффикс пути.
 //
-// У `project_instance_quotas` (прецедент compute) списание живёт не в триггере, а
-// в Go-функции репозитория, и это ЗАКОННОЕ на сегодня расхождение формы: приёмка
-// квот снимает прецедент вместе с заведением канонического механизма, и до тех
-// пор его писатель обязан быть назван здесь, а не молча пропущен.
+// У `project_instance_quotas` (прецедент compute) записей БОЛЬШЕ НЕТ, и это не
+// упущение: прецедент снят вместе с заведением канонического механизма
+// (`services/compute/internal/migrations/0036_project_resource_quotas.sql`), его
+// списание в Go-функции репозитория удалено, и писать `used` там стало некому.
+// Само имя таблицы остаётся в наблюдаемых ниже — оно ещё встречается в дереве
+// (применённая 0031 и снимающая её 0036), и запись сторожит его возвращение.
 var quotaTriggerDefiningFiles = map[string][]string{
 	"project_resource_quotas": {
 		"services/vpc/internal/migrations/0040_project_resource_quotas.sql",
-	},
-	"project_instance_quotas": {
-		"services/compute/internal/migrations/0031_project_instance_limit.sql",
-		"services/compute/internal/repo/quota.go",
+		"services/compute/internal/migrations/0036_project_resource_quotas.sql",
 	},
 }
 
@@ -166,9 +172,24 @@ func TestQuotaUsedIsWrittenOnlyByItsTrigger(t *testing.T) {
 	}
 	for table, files := range quotaTriggerDefiningFiles {
 		for _, f := range files {
-			if _, err := os.Stat(filepath.Join(root, f)); err != nil {
+			body, err := os.ReadFile(filepath.Join(root, f))
+			if err != nil {
 				t.Errorf("послаблению %q (таблица %s) больше нечего исключать: файла нет — "+
 					"снимите запись вместе с её предметом", f, table)
+				continue
+			}
+			// Существование файла — ещё НЕ предмет послабления. Предмет —
+			// запись `used` в нём. Файл, переставший писать, оставляет
+			// послабление, которое ничего не исключает: оно молча разрешит
+			// будущему автору этого файла обойти предикат потолка. Проверка
+			// существования такое не ловит — ровно этот случай и возник, когда
+			// списание compute переехало из Go-функции в триггер, а запись о
+			// ней осталась бы висеть.
+			updRe := regexp.MustCompile(strings.Replace(
+				quotaUpdateUsedRe.String(), "%s", regexp.QuoteMeta(table), 1))
+			if !updRe.MatchString(string(body)) {
+				t.Errorf("послабление %q (таблица %s) не имеет предмета: файл существует, "+
+					"но `used` в нём не пишется — снимите запись вместе с её предметом", f, table)
 			}
 		}
 	}

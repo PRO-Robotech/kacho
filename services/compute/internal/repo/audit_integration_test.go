@@ -26,7 +26,12 @@ import (
 // пробы значило бы расширить поверхность пакета под нужды теста.
 func auditTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	pool, err := coredb.NewPool(context.Background(), pgtest.NewDB(t))
+	dsn := pgtest.NewDB(t)
+	// Строки учёта квоты: без них вставка ресурса отвергалась бы «потолок не
+	// назван» и маскировала предмет пробы. Пробы самого учёта заводят свои
+	// строки сами и в перечень фикстуры не входят.
+	SeedFixtureQuotas(t, dsn)
+	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 	return pool

@@ -52,6 +52,17 @@ type Service struct {
 	opsRepo   operations.Repo
 	projects  ports.ProjectClient
 	registrar ports.OwnerRegistrar
+	// quota — совещательная полоса учёта (порт QuotaGuard). См. placementgroup:
+	// nil означает «раннего отказа нет», а не «предела нет»; материализация
+	// строк учёта висит здесь же, поэтому на поднятом стенде провязка
+	// обязательна.
+	quota QuotaGuard
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+func (s *Service) WithQuotaGuard(g QuotaGuard) *Service {
+	s.quota = g
+	return s
 }
 
 // NewService собирает use-case.
@@ -152,6 +163,14 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operat
 
 	if err := peercheck.Project(ctx, s.projects, req.ProjectID); err != nil {
 		return nil, err
+	}
+
+	// Учёт числа ресурсов: ранний отказ ДО создания операции; здесь же
+	// материализуются строки учёта на промахе.
+	if s.quota != nil {
+		if err := s.quota.Admit(ctx, req.ProjectID, "compute.guestAccessKey"); err != nil {
+			return nil, err
+		}
 	}
 
 	key := &domain.GuestAccessKey{
@@ -286,4 +305,18 @@ func fingerprintOf(material string) (string, error) {
 	}
 	sum := sha256.Sum256(pub.Marshal())
 	return "SHA256:" + strings.TrimRight(base64.StdEncoding.EncodeToString(sum[:]), "="), nil
+}
+
+// QuotaGuard — совещательная полоса учёта числа ресурсов.
+//
+// Порт объявлен здесь, у вызывающего; реализация — `apps/kacho/shared/quota`.
+//
+// Полоса НЕ ПРИНИМАЕТ решения: между её ответом и вставкой помещается чужая
+// запись, и место занимает атомарное списание триггера в writer-транзакции
+// — чтение с последующим сравнением не даёт
+// блокировки строки. Она существует ради РАННЕГО отказа — иначе исчерпание предела
+// наблюдается как «операция принята и упала через секунду», — и ради
+// материализации строк учёта на промахе: без неё триггеру нечего списывать.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
 }

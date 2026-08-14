@@ -136,6 +136,56 @@ func (c *ProjectClient) Exists(ctx context.Context, projectID string) (bool, err
 	return exists, nil
 }
 
+// AccountOf возвращает аккаунт проекта — зеркало, которое строка учёта квоты
+// несёт столбцом `account_id`.
+//
+// # Почему берётся отсюда, а не из резолва величин
+//
+// Старшинство `PROJECT > ACCOUNT > DEFAULT` разрешается в kacho-iam и только там:
+// владелец типа ресурса аккаунта своего проекта не знает. Но адресовать
+// АККАУНТНУЮ дельту он обязан уметь — иначе изменение аккаунтной величины
+// пришлось бы разносить пересчётом ВСЕХ строк вида, то есть всплеском вызовов к
+// соседу на каждое административное действие. Поэтому аккаунт кладётся в строку
+// учёта при её заведении.
+//
+// # Почему это не новое ребро
+//
+// `ProjectService.Get` уже зовётся с этого же пути (`Exists`), и ответ уже несёт
+// проект целиком — аккаунт в нём просто не читался. Новый вызов работа не
+// заводит; она перестаёт выбрасывать то, что уже получено.
+//
+// Пустой аккаунт наружу не отдаётся молча: строка учёта без зеркала невидима
+// аккаунтной дельте и жила бы со старой величиной, а снаружи это неотличимо от
+// исправной работы. Схема такую строку не принимает (`CHECK (account_id <> ”)`),
+// и вызывающий обязан разобрать пустое значение как отказ, а не как ноль.
+func (c *ProjectClient) AccountOf(ctx context.Context, projectID string) (string, error) {
+	var accountID string
+	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
+		callCtx, cancel := context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+		resp, rerr := c.cli.Get(auth.PropagateOutgoing(callCtx), &iamv1.GetProjectRequest{ProjectId: projectID})
+		if rerr != nil {
+			return rerr
+		}
+		accountID = resp.GetAccountId()
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return accountID, nil
+}
+
+// AccountOf у заглушки возвращает синтетический, но НЕПУСТОЙ аккаунт.
+//
+// Непустой намеренно: пустой не принимается схемой учёта, и заглушка,
+// отвечающая пустым, роняла бы материализацию там, где она обязана проходить.
+// Отличимый от настоящего — тоже намеренно: правдоподобное значение прятало бы
+// дефект, который само же и кормит.
+func (NoopProjectClient) AccountOf(_ context.Context, projectID string) (string, error) {
+	return "acc-peer-validation-skipped", nil
+}
+
 // putExists кеширует положительный результат Exists с bounded-eviction.
 // При достижении maxEntries сбрасывает одну произвольную запись (Go map iteration
 // order, не LRU — short projectExistsTTL делает выбор жертвы несущественным),
