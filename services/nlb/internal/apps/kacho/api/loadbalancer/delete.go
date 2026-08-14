@@ -91,8 +91,12 @@ func (u *DeleteLoadBalancerUseCase) Execute(
 	}
 	if hasListeners {
 		// HasListeners (EXISTS) уже подтвердил наличие детей — не тянем полный
-		// список ради счётчика (лишний fetch + silent-cap на >1000). Generic-текст
-		// совпадает с repo-level backstop (load_balancer_repo.go). Target groups
+		// список ради счётчика (лишний fetch + silent-cap на >1000). Текст
+		// ДОСЛОВНО совпадает с обоими производителями того же отказа на стороне
+		// БД: guard'ом MarkDeleting (`markDeletingBlockReason`) и отображением
+		// 23503 у `listeners_load_balancer_id_fkey` (repo/kacho/pg/restrict_fk.go).
+		// Прежняя редакция этого комментария заявляла совпадение, которого не
+		// было: путь FK отдавал безымянное «has dependent resources». Target groups
 		// wire in THROUGH listeners (NLB CONTRACT — no M:N pivot), so "no listeners"
 		// already implies "no wired target group": no separate TG precheck needed.
 		return nil, status.Errorf(codes.FailedPrecondition,

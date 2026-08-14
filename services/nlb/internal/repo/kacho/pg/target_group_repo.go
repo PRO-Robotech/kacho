@@ -520,7 +520,9 @@ func (w *targetGroupWriter) SetStatusCAS(ctx context.Context, id string, expecte
 //
 // 0 rows при существующем TG → на него сослался listener между sync-check и apply →
 // FailedPrecondition; отсутствующий TG → NotFound; проигравшая гонку TX получает
-// FailedPrecondition из 23503-маппинга (pg/errors.go, тот же контрактный тон).
+// FailedPrecondition по тому же 23503. Оба исхода отдают ОДИН контрактный текст
+// (`tgMoveBlockedByListeners`, restrict_fk.go) — тот же, что предпроверка
+// use-case'а: разные тексты об одном отказе — это два места об одном предмете.
 func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kacho.TargetGroupRecord, error) {
 	q := fmt.Sprintf(`
         UPDATE kacho_nlb.target_groups
@@ -531,9 +533,23 @@ func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID st
                 WHERE default_target_group_id = $1
            )
         RETURNING %s`, targetGroupCols)
-	row := w.tx.QueryRow(ctx, q, id, newProjectID)
-	rec, err := scanTG(row)
+	// Точка сохранения: отказ композитного FK при переписывании ключа отменяет
+	// транзакцию, а назвать блокирующих слушателей можно только живой (см.
+	// restrict_fk.go). Решение по-прежнему за БД — точка сохранения ничего не
+	// решает и ничего не повторяет.
+	sp, err := w.tx.Begin(ctx)
 	if err != nil {
+		return nil, mapPgErr(err, "TargetGroup", id)
+	}
+	rec, err := scanTG(sp.QueryRow(ctx, q, id, newProjectID))
+	if err != nil {
+		_ = sp.Rollback(ctx)
+		// Композитный FK 0023 отверг переписывание ключа: слушатель успел
+		// сослаться. Тот же факт, что и у guard'а NOT EXISTS ниже, — значит и
+		// тот же контрактный текст.
+		if isFKViolation(err, "listeners_target_group_fk") {
+			return nil, tgMoveBlockedByListeners(ctx, w.tx, id)
+		}
 		if pgxIsNoRows(err) {
 			// Различаем «TG нет» (NotFound) и «есть ссылающийся listener» (FailedPrecondition).
 			var exists bool
@@ -543,11 +559,13 @@ func (w *targetGroupWriter) MoveProject(ctx context.Context, id, newProjectID st
 				return nil, mapPgErr(e, "TargetGroup", id)
 			}
 			if exists {
-				return nil, fmt.Errorf("%w: TargetGroup %s is referenced by a listener; repoint before Move",
-					kacho.ErrFailedPrecondition, id)
+				return nil, tgMoveBlockedByListeners(ctx, w.tx, id)
 			}
 			return nil, fmt.Errorf("%w: TargetGroup %s not found", kacho.ErrNotFound, id)
 		}
+		return nil, mapPgErr(err, "TargetGroup", id)
+	}
+	if err := sp.Commit(ctx); err != nil {
 		return nil, mapPgErr(err, "TargetGroup", id)
 	}
 	return rec, nil
@@ -724,15 +742,13 @@ func (w *targetGroupWriter) DeleteTargetsDraining(ctx context.Context, tgID stri
 	return int(tag.RowsAffected()), nil
 }
 
+// Delete — снос группы целей. Отказывает не этот код, а схема: ссылки
+// слушателя (`listeners_target_group_fk`) и цели (`targets_target_group_id_fkey`)
+// держатся `ON DELETE RESTRICT`. Здесь остаётся только отображение 23503 в код
+// и КОНТРАКТНЫЙ ТЕКСТ, называющий блокирующие строки, — см. restrict_fk.go.
 func (w *targetGroupWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM kacho_nlb.target_groups WHERE id = $1`, id)
-	if err != nil {
-		return mapPgErr(err, "TargetGroup", id)
-	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: TargetGroup %s not found", kacho.ErrNotFound, id)
-	}
-	return nil
+	return deleteParentRow(ctx, w.tx, "TargetGroup", id,
+		`DELETE FROM kacho_nlb.target_groups WHERE id = $1`)
 }
 
 // splitTargetIdentity — раскладывает domain.Target в 6 nullable-полей колонок
