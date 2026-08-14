@@ -9,7 +9,7 @@ import (
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 )
 
-// Proto numeric fields (port, target_port, health-check thresholds) are int64 on
+// Proto numeric fields (port, health-check thresholds) are int64 on
 // the wire, but their domain newtypes are int32. A bare int64→int32 conversion
 // truncates the high bits (CWE-190): an out-of-range value such as 2^32+443 would
 // silently alias onto a valid remainder (443) and slip past the range Validate.

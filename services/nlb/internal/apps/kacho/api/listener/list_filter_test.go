@@ -45,7 +45,6 @@ func seedListenerLF(t *testing.T, repo *fakeRepo, projectID, lbID, name string) 
 			Labels:         domain.LbLabels{},
 			Protocol:       domain.ProtoTCP,
 			Port:           80,
-			TargetPort:     80,
 			Status:         domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Now().UTC(),

@@ -45,6 +45,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // testCfg returns drainer.Config tuned for fast test loops.
@@ -547,7 +549,7 @@ func TestW1_1_10_TwoDrainerInstances_HAExactlyOnce(t *testing.T) {
 	// Second pool on the SAME database simulates HA replica.
 	pool2, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool2.Close)
+	pgtest.ClosePoolAtEnd(t, pool2)
 
 	// Per-drainer counters wrap the same fake-applier core, so we can verify
 	// load-spread.

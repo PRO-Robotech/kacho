@@ -27,6 +27,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // singleRTID возвращает единственный id route_table в проекте.
@@ -50,7 +52,7 @@ func TestRouteTableRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *testing.T
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -119,7 +121,7 @@ func TestRouteTableRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -162,7 +164,7 @@ func TestRouteTableRepo_T32Conc01_ConcurrentLabelFlip_LastSourceWins(t *testing.
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)

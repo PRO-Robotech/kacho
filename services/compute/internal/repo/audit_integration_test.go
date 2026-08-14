@@ -28,7 +28,7 @@ func auditTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool, err := coredb.NewPool(context.Background(), pgtest.NewDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

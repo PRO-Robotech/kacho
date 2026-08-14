@@ -26,6 +26,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // singleAddressID возвращает единственный id address в проекте.
@@ -48,7 +50,7 @@ func TestAddressRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -119,7 +121,7 @@ func TestAddressRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)

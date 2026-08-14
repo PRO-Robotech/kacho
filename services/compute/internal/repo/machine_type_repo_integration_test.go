@@ -21,6 +21,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 func newMachineType(name string, family domain.MachineTypeFamily, gpus int32) *domain.MachineType {
@@ -49,7 +51,7 @@ func TestIntegration_MachineTypeRepo_CRUD(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	mt := newMachineType("std-v3-2", domain.MachineTypeFamilyStandard, 0)
@@ -96,7 +98,7 @@ func TestIntegration_MachineTypeRepo_ListFilterAndCursor(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 	// Seed deterministic created_at ordering.
@@ -153,7 +155,7 @@ func TestIntegration_MachineTypeRepo_ConcurrentNameRace(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewMachineTypeRepo(pool)
 

@@ -24,6 +24,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // seedGatewayAnchorSQL заводит сеть и ЗОНАЛЬНУЮ подсеть с блоком IPv4 прямо в БД
@@ -67,6 +69,7 @@ func seedDefaultExternalPool(ctx context.Context, t *testing.T, pool *pgxpool.Po
 	t.Cleanup(r.Close)
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	require.NoError(t, w.AddressPools().PopulateFreelistForPool(ctx, poolID))
 	require.NoError(t, w.Commit())
 }
@@ -91,7 +94,7 @@ func TestGatewayRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)
@@ -160,7 +163,7 @@ func TestGatewayRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(r.Close)

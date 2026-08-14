@@ -159,8 +159,14 @@ message CreateListenerRequest {
   // proxy_protocol_v2=10 СНЯТ вместе с полем ресурса: исполнителя обрамления не
   // существует ни в одном рассмотренном датаплейне (см. listener.proto). Вход,
   // у которого нет ни исполнителя, ни выхода, — «принято-и-проигнорировано».
-  reserved 8, 9, 10;
-  reserved "ip_version", "address_spec", "proxy_protocol_v2";
+  //
+  // target_port=7 СНЯТ вместе с полем ресурса (NLB-1-25): backend-порт живёт на
+  // группе целей и виден эхом `resolved_backend_port`. Здесь он вдобавок нёс
+  // неисполнимую возможность — объявлен необязательным, а ноль отвергался
+  // проверкой диапазона, поэтому обещанное наследование порта группы не
+  // срабатывало ни при каком входе.
+  reserved 7, 8, 9, 10;
+  reserved "target_port", "ip_version", "address_spec", "proxy_protocol_v2";
 
   string load_balancer_id = 1 [
     (required) = true,
@@ -179,7 +185,6 @@ message CreateListenerRequest {
 
   Listener.Protocol protocol = 5 [(required) = true];
   int64 port = 6 [(value) = "1-65535"];
-  int64 target_port = 7 [(value) = "1-65535"];
 
   // Default target group ID — soft reference to a TG attached to the parent
   // LB. Optional; can be set later via Update.

@@ -20,6 +20,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Явно заданный внешний адрес обязан ИЗЪЯТЬ себя из книги учёта пула так же,
@@ -66,6 +68,7 @@ func insertExplicitExternalV4Address(t testing.TB, ctx context.Context, r kacho.
 	var rec *kacho.AddressRecord
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	rec, err = w.Addresses().Insert(ctx, &domain.Address{
 		ID:           addrID,
 		ProjectID:    projectID,
@@ -104,7 +107,7 @@ func TestExplicitExternalIPv4_ClaimedFromPool_AutoAllocateSkipsIt(t *testing.T) 
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -142,7 +145,7 @@ func TestExplicitExternalIPv4_AlreadyTakenInPool_Rejected(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -182,7 +185,7 @@ func TestExplicitExternalIPv4_ConcurrentClaims_ExactlyOneWins(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -207,6 +210,7 @@ func TestExplicitExternalIPv4_ConcurrentClaims_ExactlyOneWins(t *testing.T) {
 			defer wg.Done()
 			<-start
 			w, werr := r.Writer(ctx)
+			defer w.Abort()
 			if werr != nil {
 				mu.Lock()
 				errs = append(errs, werr)
@@ -256,7 +260,7 @@ func TestExplicitExternalIPv4_PoolNotDegraded_AllocReleaseAlloc(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -318,7 +322,7 @@ func TestExplicitExternalIPv6_GloballyUnique(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -354,7 +358,7 @@ func TestExplicitExternalIPv6_ClaimedInLedger_CursorSkipsIt(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -418,7 +422,7 @@ func TestFreelistKey_HostFormOnly_NoTwinKeys(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -478,7 +482,7 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -524,6 +528,7 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	// Повторное занятие того же адреса — отказ (книга учёта работает).
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, err = w2.Addresses().Insert(ctx, &domain.Address{
 		ID:           ids.NewID(ids.PrefixAddress),
 		ProjectID:    "b1gtestproject00001",
@@ -548,7 +553,7 @@ func TestExplicitExternalIPv6_ReleaseOfSecondBlock_DoesNotWedgeAllocation(t *tes
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

@@ -94,6 +94,5 @@ resource "kacho_nlb_listener" "this" {
   labels           = var.labels
   protocol         = each.value.protocol
   port             = each.value.port
-  target_port      = each.value.target_port
   target_group_id  = kacho_nlb_target_group.this.id
 }

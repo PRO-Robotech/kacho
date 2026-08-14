@@ -45,7 +45,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	poolDSN := baseDSN + "&options=-c%20search_path%3Dkacho_geo%2Cpublic"
 	pool, err := coredb.NewPool(ctx, poolDSN)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 

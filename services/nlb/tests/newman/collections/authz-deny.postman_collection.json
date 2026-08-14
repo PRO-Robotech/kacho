@@ -354,7 +354,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya327",
+          "name": "get-viewer-rya326",
           "request": {
             "method": "GET",
             "header": [
@@ -423,7 +423,7 @@
           ]
         },
         {
-          "name": "cleanup-rya334",
+          "name": "cleanup-rya333",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1193,7 +1193,7 @@
           ]
         },
         {
-          "name": "cleanup-rya335",
+          "name": "cleanup-rya334",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1378,7 +1378,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-vd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-vd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2232,7 +2232,7 @@
           ]
         },
         {
-          "name": "cleanup-rya336",
+          "name": "cleanup-rya335",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2605,7 +2605,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya337",
+          "name": "get-viewer-ok-rya336",
           "request": {
             "method": "GET",
             "header": [
@@ -2673,7 +2673,7 @@
           ]
         },
         {
-          "name": "cleanup-rya338",
+          "name": "cleanup-rya337",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3046,7 +3046,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya339",
+          "name": "get-viewer-ok-rya338",
           "request": {
             "method": "GET",
             "header": [
@@ -3114,7 +3114,7 @@
           ]
         },
         {
-          "name": "cleanup-rya340",
+          "name": "cleanup-rya339",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3738,7 +3738,7 @@
           ]
         },
         {
-          "name": "cleanup-rya341",
+          "name": "cleanup-rya340",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4188,7 +4188,7 @@
           ]
         },
         {
-          "name": "add-as-tm-rya328",
+          "name": "add-as-tm-rya327",
           "request": {
             "method": "POST",
             "header": [
@@ -4345,7 +4345,7 @@
           ]
         },
         {
-          "name": "tm-verify-target-present-rya342",
+          "name": "tm-verify-target-present-rya341",
           "request": {
             "method": "GET",
             "header": [
@@ -4478,7 +4478,7 @@
           ]
         },
         {
-          "name": "tm-rm-target-rya343",
+          "name": "tm-rm-target-rya342",
           "request": {
             "method": "POST",
             "header": [
@@ -4687,7 +4687,7 @@
           ]
         },
         {
-          "name": "add-as-tgupdater-rya329",
+          "name": "add-as-tgupdater-rya328",
           "request": {
             "method": "POST",
             "header": [
@@ -4844,7 +4844,7 @@
           ]
         },
         {
-          "name": "upd-as-tgupdater-rya344",
+          "name": "upd-as-tgupdater-rya343",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5062,7 +5062,7 @@
           ]
         },
         {
-          "name": "get-as-viewer-ok-rya345",
+          "name": "get-as-viewer-ok-rya344",
           "request": {
             "method": "GET",
             "header": [
@@ -5130,7 +5130,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-rm-target-rya346",
+          "name": "tm-cleanup-rm-target-rya345",
           "request": {
             "method": "POST",
             "header": [
@@ -5192,7 +5192,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -5200,6 +5200,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5284,7 +5285,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-tg-rya347",
+          "name": "tm-cleanup-tg-rya346",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5643,6 +5644,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('azdSubnetId');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -5739,7 +5741,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr330",
+          "name": "setup-cr-cr329",
           "request": {
             "method": "POST",
             "header": [
@@ -5922,7 +5924,7 @@
           ]
         },
         {
-          "name": "del-rya331",
+          "name": "del-rya330",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6077,7 +6079,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya348",
+          "name": "get-after-delete-rya347",
           "request": {
             "method": "GET",
             "header": [
@@ -6436,7 +6438,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya332",
+          "name": "del-by-creator-rya331",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6745,7 +6747,7 @@
           ]
         },
         {
-          "name": "cleanup-rya349",
+          "name": "cleanup-rya348",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6908,7 +6910,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "cr-as-group-member-rya333",
+          "name": "cr-as-group-member-rya332",
           "request": {
             "method": "POST",
             "header": [
@@ -7071,7 +7073,7 @@
           ]
         },
         {
-          "name": "cleanup-rya350",
+          "name": "cleanup-rya349",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7383,7 +7385,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-strn-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"azd-strn-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7521,7 +7523,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"anon-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"anon-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"

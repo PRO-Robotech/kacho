@@ -16,6 +16,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Sparse counter-based IPv6 allocator. Проверяем 3 поведения:
@@ -32,7 +34,7 @@ func TestIntegration_AddressRepo_IPv6_AllocateAndFree(t *testing.T) {
 	dsn := setupTestDB(t)
 	p, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer p.Close()
+	pgtest.ClosePoolAtEnd(t, p)
 
 	r := kachopg.New(p, nil)
 	defer r.Close()

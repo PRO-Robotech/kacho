@@ -33,7 +33,7 @@ VIP** — собственного адреса листенер не несёт
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки</td></tr>
     <tr><td><code>protocol</code></td><td>enum</td><td>immutable</td><td><code>TCP</code> / <code>UDP</code></td></tr>
     <tr><td><code>port</code></td><td>int64</td><td>immutable</td><td>Входящий порт (1–65535)</td></tr>
-    <tr><td><code>targetPort</code></td><td>int64</td><td>immutable</td><td>Порт таргета для форвардинга (1–65535)</td></tr>
+    <tr><td><code>resolvedBackendPort</code></td><td>int64</td><td>output-only</td><td>Порт, на который трафик уходит в цели, — эхо <code>port</code> привязанной группы целей. <code>0</code>, когда группа не резолвится</td></tr>
     <tr><td><code>defaultTargetGroupId</code></td><td>string</td><td>mutable</td><td>Группа таргетов листенера. Обязана принадлежать <strong>тому же проекту</strong>, что и листенер, и быть region-когерентной с балансировщиком; ссылка держится FK <code>ON DELETE RESTRICT</code>. Нерезолвящийся id (нет такой группы <em>либо</em> она в чужом проекте — ответ одинаковый) отвергается синхронно</td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td><code>CREATING</code> / <code>ACTIVE</code> / <code>UPDATING</code> / <code>DELETING</code></td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
@@ -65,7 +65,7 @@ VIP** — собственного адреса листенер не несёт
       "name": "http",
       "protocol": "TCP",
       "port": 80,
-      "targetPort": 80,
+      "resolvedBackendPort": 8080,
       "defaultTargetGroupId": "tgr...",
       "status": "ACTIVE",
       "createdAt": "2026-06-24T10:00:00Z"
@@ -97,9 +97,12 @@ VIP** — собственного адреса листенер не несёт
 
 <ApiOperation method="POST" endpoint="/nlb/v1/listeners" async>
 
-Создаёт листенер под указанным балансировщиком. `loadBalancerId`, `protocol`, `port`,
-`targetPort` обязательны; порты — в диапазоне 1–65535 (0 недопустим). Листенер наследует VIP
-балансировщика.
+Создаёт листенер под указанным балансировщиком. `loadBalancerId`, `protocol` и `port`
+обязательны; порт — в диапазоне 1–65535 (0 недопустим). Листенер наследует VIP балансировщика.
+
+Backend-порта у листенера **нет**: он живёт на группе целей (`TargetGroup.port`) и виден
+здесь эхом — `resolvedBackendPort`. Нужен другой backend-порт — привяжите **другую** группу
+целей: она дешёвая, переиспользуемая, и порт у неё ровно один.
 
 <CodeBlock language="bash">
   {dedent`
@@ -111,7 +114,6 @@ VIP** — собственного адреса листенер не несёт
             "name": "https",
             "protocol": "TCP",
             "port": 443,
-            "targetPort": 8443,
             "defaultTargetGroupId": "tgr..."
           }'
   `}
@@ -124,8 +126,17 @@ VIP** — собственного адреса листенер не несёт
 <ApiOperation method="PATCH" endpoint="/nlb/v1/listeners/{id}" async>
 
 Меняет изменяемые поля (`name`, `description`, `labels`, `defaultTargetGroupId`,
-`targetGroupId`). Immutable-поля (`loadBalancerId`, `protocol`, `port`, `targetPort`) в
-`updateMask` отклоняются (`InvalidArgument`).
+`targetGroupId`). Immutable-поля (`loadBalancerId`, `protocol`, `port`) в `updateMask`
+отклоняются (`InvalidArgument`).
+
+:::note `targetPort` снят с контракта
+Backend-порт — одна величина, и хозяин у неё один: `TargetGroup.port`. Поле листенера
+записывалось, отдавалось обратно и не решало ничего, а наблюдаемость и так давало эхо
+`resolvedBackendPort`. Вдобавок оно было обязательным на деле и необязательным на словах:
+ноль — единственную форму «не задавал» — отвергали и проверка диапазона, и ограничение базы,
+поэтому обещанное наследование порта группы не срабатывало ни при каком входе. Номер и имя
+зарезервированы, путь `targetPort` в `updateMask` отвергается как неизвестный.
+:::
 
 :::note `proxyProtocolV2` снят с контракта
 Обрамление PROXY-протокола уходит **до любых данных** соединения, то есть его вставляет
@@ -141,7 +152,7 @@ VIP** — собственного адреса листенер не несёт
     curl -X PATCH 'http://localhost:18080/nlb/v1/listeners/lst...' \\
       -H 'Authorization: Bearer <JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "updateMask": "targetPort", "targetPort": 9000 }'
+      -d '{ "updateMask": "targetGroupId", "targetGroupId": "tgr..." }'
   `}
 </CodeBlock>
 

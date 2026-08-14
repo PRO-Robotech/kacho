@@ -62,7 +62,6 @@ func baseListenerReq(lbID string) *lbv1.CreateListenerRequest {
 		Name:           "https",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 	}
 }
 

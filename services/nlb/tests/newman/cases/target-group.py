@@ -262,7 +262,12 @@ CASES.append(Case(
         Step(name="move-back", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
              test_script=[
+                 # Возврат имеет предмет только там, где состоялось прямое перемещение;
+                 # на полосе без него шаг — намеренный ничего-не-делающий проход, и требовать
+                 # от него 200 значило бы утверждать неверное. Утверждение стоит ПОСЛЕ раннего
+                 # выхода, то есть ровно на той полосе, где предмет есть.
                  "if (!pm.environment.get('tgMoved')) { pm.environment.set('opId', ''); return; }",
+                 *assert_status(200),
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -627,7 +632,7 @@ CASES.append(Case(
         # соседний кейс (`tgr-mv-lb`) на том же шаге получил 200.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
+                   "protocol": "TCP", "port": 80,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
@@ -696,7 +701,7 @@ CASES.append(Case(
         # Cleanup: drain + drop
         Step(name="rm-targets", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.51"}}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # TG may still be blocked until Phase B; cleanup best-effort.
         Step(name="cleanup-best-effort", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
@@ -713,7 +718,7 @@ CASES.append(Case(
         *_setup_tg("fk-race"),
         Step(name="add-t", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}, "weight": 100}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # ЛАНА ОДНА, И ЭТО СЛЕДУЕТ ИЗ ШАГА ВЫШЕ.
         #
@@ -733,7 +738,7 @@ CASES.append(Case(
                                                      async_lane=False)),
         Step(name="rm-cleanup", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}}]},
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="cleanup-best-effort", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -767,7 +772,7 @@ CASES.append(Case(
         # случайное, и чинить надо оба.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
+                   "protocol": "TCP", "port": 80,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),

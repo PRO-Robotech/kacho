@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_Subnet_VPC_1_33_ConcurrentOverlapCidr_OneWinner — VPC-1-33 (F7):
@@ -34,7 +36,7 @@ func TestIntegration_Subnet_VPC_1_33_ConcurrentOverlapCidr_OneWinner(t *testing.
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -59,6 +61,7 @@ func TestIntegration_Subnet_VPC_1_33_ConcurrentOverlapCidr_OneWinner(t *testing.
 	// TX-A: вставляет 10.20.0.0/24 и держит (без commit).
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	_, err = wa.Subnets().Insert(ctx, mkSub("sub-a", "10.20.0.0/24"))
 	require.NoError(t, err)
 

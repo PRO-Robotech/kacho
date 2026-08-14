@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Lost-update на generic PATCH Update.
@@ -52,7 +54,7 @@ func TestIntegration_RouteTable_ConcurrentDisjointUpdate_NoLostUpdate(t *testing
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -72,6 +74,7 @@ func TestIntegration_RouteTable_ConcurrentDisjointUpdate_NoLostUpdate(t *testing
 	// TX-A: держим row-lock (read-modify-write, маска = {name}).
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	recA, err := wa.RouteTables().GetForUpdate(ctx, rtID)
 	require.NoError(t, err)
 
@@ -138,6 +141,7 @@ func assertGetForUpdateLocks(
 
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	require.NoError(t, lockA(wa)) // TX-A берет row-lock
 
 	bAcquired := make(chan struct{})
@@ -188,7 +192,7 @@ func TestIntegration_Subnet_GetForUpdate_TakesRowLock(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -219,7 +223,7 @@ func TestIntegration_SecurityGroup_GetForUpdate_TakesRowLock(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -249,7 +253,7 @@ func TestIntegration_Gateway_GetForUpdate_TakesRowLock(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -302,7 +306,7 @@ func TestIntegration_Network_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -317,6 +321,7 @@ func TestIntegration_Network_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	recA, err := wa.Networks().GetForUpdate(ctx, netID)
 	require.NoError(t, err)
 

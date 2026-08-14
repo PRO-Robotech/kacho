@@ -73,7 +73,7 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -163,7 +163,7 @@ func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testi
 	cfg.ConnConfig.Tracer = tr
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 

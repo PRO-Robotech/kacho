@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // «Адрес и подсеть, на которую он ссылается, принадлежат ОДНОМУ проекту» — эти
@@ -108,7 +110,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentInsert_OnlyOwnerProject
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -192,7 +194,7 @@ func TestIntegration_Address_SubnetProjectPair_SettersRefuseForeignSubnet(t *tes
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -255,7 +257,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -266,6 +268,7 @@ func TestIntegration_Address_SubnetProjectPair_ConcurrentSubnetDelete_OneWinner(
 	addr := internalAddress(ownerProject, subID, false)
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	_, err = wa.Addresses().Insert(ctx, addr)
 	require.NoError(t, err)
 

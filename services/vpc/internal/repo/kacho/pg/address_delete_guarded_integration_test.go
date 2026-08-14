@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // DeleteGuarded — атомарный backstop Address.Delete: между sync-проверкой
@@ -35,12 +37,13 @@ func TestCQRS_Address_DeleteGuarded_RefusesInUse(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	// Insert external address, затем attach NIC (used=true) — все committed.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	a := newAddress("project-del", "addr-inuse", true)
 	created, err := w1.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
@@ -53,6 +56,7 @@ func TestCQRS_Address_DeleteGuarded_RefusesInUse(t *testing.T) {
 	// DeleteGuarded должен отказать (used=true) и НЕ удалить строку/reference.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, derr := w2.Addresses().DeleteGuarded(ctx, created.ID)
 	require.Error(t, derr)
 	require.True(t, errors.Is(derr, repo.ErrFailedPrecondition))
@@ -76,11 +80,12 @@ func TestCQRS_Address_DeleteGuarded_RefusesProtected(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	a := newAddress("project-del", "addr-prot", true)
 	a.DeletionProtection = true
 	created, err := w1.Addresses().Insert(ctx, a)
@@ -89,6 +94,7 @@ func TestCQRS_Address_DeleteGuarded_RefusesProtected(t *testing.T) {
 
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	_, derr := w2.Addresses().DeleteGuarded(ctx, created.ID)
 	require.Error(t, derr)
 	require.True(t, errors.Is(derr, repo.ErrFailedPrecondition))
@@ -110,11 +116,12 @@ func TestCQRS_Address_DeleteGuarded_DeletesFree(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	a := newAddress("project-del", "addr-free", true)
 	created, err := w1.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
@@ -122,6 +129,7 @@ func TestCQRS_Address_DeleteGuarded_DeletesFree(t *testing.T) {
 
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	deleted, derr := w2.Addresses().DeleteGuarded(ctx, created.ID)
 	require.NoError(t, derr)
 	require.Equal(t, created.ID, deleted.ID)

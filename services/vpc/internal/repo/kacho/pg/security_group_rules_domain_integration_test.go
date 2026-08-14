@@ -23,6 +23,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Область значений правила SG на уровне БД.
@@ -93,7 +95,7 @@ func TestSGRulesDomain_ConstraintPresent(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var n int
 	require.NoError(t, pool.QueryRow(ctx, `
@@ -113,7 +115,7 @@ func TestSGRulesDomain_LegalShapesPass(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	netID := insertNetworkSQL(t, ctx, pool, "net-sgdom-legal")
 
 	cases := []struct {
@@ -163,7 +165,7 @@ func TestSGRulesDomain_UnexpressibleRejected(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	netID := insertNetworkSQL(t, ctx, pool, "net-sgdom-bad")
 
 	cases := []struct {
@@ -225,7 +227,7 @@ func TestSGRulesDomain_RepoInsertMapsAndDoesNotLeak(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	w, err := r.Writer(ctx)
@@ -270,7 +272,7 @@ func TestSGRulesDomain_ConcurrentWritersExactlyOneWins(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	netID := insertNetworkSQL(t, ctx, pool, "net-sgdom-conc")
 
 	sgID := ids.NewID(ids.PrefixSecurityGroup)
@@ -359,7 +361,7 @@ func TestSGRulesDomain_ProtocolNameSetParityWithCode(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	codeNames := domain.KnownProtocolNames()
 	require.NotEmpty(t, codeNames, "перепись: набор имён кода не должен быть пуст")

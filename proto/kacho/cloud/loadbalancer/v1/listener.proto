@@ -36,8 +36,17 @@ message Listener {
   // реальна, обрамление приходит свойством слушателя НОВОГО ВИДА, владеющего
   // соединением, со своей приёмкой и своей ценой по задержке, а не булевым полем
   // на L4 (решение и предикат пересмотра — план датаплейна §7.11).
-  reserved 4, 12, 13, 14, 15, 16;
-  reserved "region_id", "ip_version", "address_id", "allocated_address", "subnet_id", "proxy_protocol_v2";
+  // target_port=11 СНЯТ с контракта (NLB-1b, сценарий NLB-1-25). Backend-порт —
+  // одна величина, и у неё один хозяин: `TargetGroup.port`. Поле слушателя
+  // записывалось, отдавалось обратно и не читалось ничем — решение о том, куда
+  // уходит трафик, принимала группа, а её порт и так виден здесь эхом
+  // (`resolved_backend_port`). Вдобавок поле было обязательным на деле и
+  // необязательным на словах: ноль отвергался проверкой диапазона, поэтому
+  // объявленное умолчание «не задан → наследуется порт группы» не исполнялось ни
+  // при каком входе. Нужен другой backend-порт — ссылайтесь на ДРУГУЮ группу
+  // целей: она дешёвая и переиспользуемая, а порт у неё ровно один.
+  reserved 4, 11, 12, 13, 14, 15, 16;
+  reserved "region_id", "target_port", "ip_version", "address_id", "allocated_address", "subnet_id", "proxy_protocol_v2";
   reserved 50 to 59;
 
   // Lifecycle status (design §2.3). Distinct from NetworkLoadBalancer.Status —
@@ -97,9 +106,6 @@ message Listener {
 
   // Port for incoming traffic.
   int64 port = 10;
-
-  // Port on which targets receive forwarded traffic.
-  int64 target_port = 11;
 
   // Optional target group that receives traffic when no per-listener routing
   // rule matches. Soft reference to a target group attached to the parent LB.

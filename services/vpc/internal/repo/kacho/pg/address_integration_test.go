@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты CQRS-impl Address.
@@ -56,12 +58,13 @@ func TestCQRS_Address_WriterCommit_ReaderSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	a := newAddress("project-1", "addr-1", true)
 	created, err := w.Addresses().Insert(ctx, a)
@@ -91,12 +94,13 @@ func TestCQRS_Address_WriterAbort_ReaderEmpty(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	a := newAddress("project-1", "addr-aborted", true)
 	created, err := w.Addresses().Insert(ctx, a)
@@ -123,7 +127,7 @@ func TestCQRS_Address_WriterSeesOwnWrites(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	w, err := r.Writer(ctx)
@@ -158,13 +162,14 @@ func TestCQRS_Address_SetReference_CAS(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Seed Address.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	a := newAddress("project-cas", "addr-cas", false)
 	_, err = w1.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
@@ -173,6 +178,7 @@ func TestCQRS_Address_SetReference_CAS(t *testing.T) {
 	// Attach NIC-1.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	ref1, err := w2.Addresses().SetReference(ctx, &domain.AddressReference{
 		AddressID:    a.ID,
 		ReferrerType: "network_interface",
@@ -186,6 +192,7 @@ func TestCQRS_Address_SetReference_CAS(t *testing.T) {
 	// Idempotent re-attach к тому же NIC-1 — проходит.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	ref2, err := w3.Addresses().SetReference(ctx, &domain.AddressReference{
 		AddressID:    a.ID,
 		ReferrerType: "network_interface",
@@ -202,6 +209,7 @@ func TestCQRS_Address_SetReference_CAS(t *testing.T) {
 	// прежним).
 	w4, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w4.Abort()
 	_, err = w4.Addresses().SetReference(ctx, &domain.AddressReference{
 		AddressID:    a.ID,
 		ReferrerType: "network_interface",

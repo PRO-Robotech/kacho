@@ -214,8 +214,6 @@ type Listener struct {
 	Protocol Listener_Protocol `protobuf:"varint,9,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
 	// Port for incoming traffic.
 	Port int64 `protobuf:"varint,10,opt,name=port,proto3" json:"port,omitempty"`
-	// Port on which targets receive forwarded traffic.
-	TargetPort int64 `protobuf:"varint,11,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
 	// Optional target group that receives traffic when no per-listener routing
 	// rule matches. Soft reference to a target group attached to the parent LB.
 	DefaultTargetGroupId string `protobuf:"bytes,17,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
@@ -331,13 +329,6 @@ func (x *Listener) GetPort() int64 {
 	return 0
 }
 
-func (x *Listener) GetTargetPort() int64 {
-	if x != nil {
-		return x.TargetPort
-	}
-	return 0
-}
-
 func (x *Listener) GetDefaultTargetGroupId() string {
 	if x != nil {
 		return x.DefaultTargetGroupId
@@ -377,7 +368,7 @@ var File_kacho_cloud_loadbalancer_v1_listener_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd4\b\n" +
+	"*kacho/cloud/loadbalancer/v1/listener.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc6\b\n" +
 	"\bListener\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -390,9 +381,7 @@ const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\x06labels\x18\b \x03(\v21.kacho.cloud.loadbalancer.v1.Listener.LabelsEntryR\x06labels\x12J\n" +
 	"\bprotocol\x18\t \x01(\x0e2..kacho.cloud.loadbalancer.v1.Listener.ProtocolR\bprotocol\x12\x12\n" +
 	"\x04port\x18\n" +
-	" \x01(\x03R\x04port\x12\x1f\n" +
-	"\vtarget_port\x18\v \x01(\x03R\n" +
-	"targetPort\x125\n" +
+	" \x01(\x03R\x04port\x125\n" +
 	"\x17default_target_group_id\x18\x11 \x01(\tR\x14defaultTargetGroupId\x12D\n" +
 	"\x06status\x18\x12 \x01(\x0e2,.kacho.cloud.loadbalancer.v1.Listener.StatusR\x06status\x12&\n" +
 	"\x0ftarget_group_id\x18\x13 \x01(\tR\rtargetGroupId\x122\n" +
@@ -415,7 +404,7 @@ const file_kacho_cloud_loadbalancer_v1_listener_proto_rawDesc = "" +
 	"\tSubstatus\x12\x19\n" +
 	"\x15SUBSTATUS_UNSPECIFIED\x10\x00\x12\x06\n" +
 	"\x02OK\x10\x01\x12\x11\n" +
-	"\rMISCONFIGURED\x10\x02J\x04\b\x04\x10\x05J\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b2\x10<R\tregion_idR\n" +
+	"\rMISCONFIGURED\x10\x02J\x04\b\x04\x10\x05J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b2\x10<R\tregion_idR\vtarget_portR\n" +
 	"ip_versionR\n" +
 	"address_idR\x11allocated_addressR\tsubnet_idR\x11proxy_protocol_v2BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 

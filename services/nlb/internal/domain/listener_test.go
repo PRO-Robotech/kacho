@@ -21,7 +21,6 @@ func validListener() domain.Listener {
 		Labels:         domain.LbLabels{},
 		Protocol:       domain.ProtoTCP,
 		Port:           80,
-		TargetPort:     8080,
 		Status:         domain.ListenerStatusCreating,
 	}
 }

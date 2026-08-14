@@ -64,10 +64,13 @@ func TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID(t *testing.T) {
 // TestUpdateListener_GWT_LST_020_ImmutableFields — all immutable mask paths
 // individually rejected. VIP консолидирован на LoadBalancer: address_id/ip_version/
 // subnet_id/region_id сняты с листенера (proto reserved) — в immutable-списке их
-// больше нет (адресовать в mask нельзя, путь → "not recognised").
+// больше нет (адресовать в mask нельзя, путь → "not recognised"). По той же
+// причине здесь нет target_port: backend-порт снят с контракта и живёт на группе
+// целей, поэтому путь маски с этим именем неизвестен, а не неизменяем — это
+// закреплено отдельно, в target_port_retired_test.go.
 func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 	t.Parallel()
-	immutable := []string{"protocol", "port", "project_id", "target_port"}
+	immutable := []string{"protocol", "port", "project_id"}
 	for _, field := range immutable {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
@@ -252,7 +255,6 @@ func newUpdateSuiteWith(t *testing.T, withDecider bool) *updateSuite {
 			Labels:         domain.LbLabels{},
 			Protocol:       domain.ProtoTCP,
 			Port:           80,
-			TargetPort:     8080,
 			Status:         domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Now().UTC(),

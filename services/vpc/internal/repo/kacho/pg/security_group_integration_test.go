@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты CQRS SG-репо. setupTestDB / coredb / migrations переиспользуются
@@ -45,13 +47,14 @@ func TestCQRS_SG_InsertCommit_ReaderSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Network + SG в одной writer-TX.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-sg-1", "net-sg-1")
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
@@ -83,12 +86,13 @@ func TestCQRS_SG_AbortRollback(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-sg-abort", "net-sg-abort")
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
@@ -119,12 +123,13 @@ func TestCQRS_Network_AtomicDefaultSGCreate(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	net := insertNetworkInTx(t, ctx, w, "project-atomic", "net-atomic")
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
@@ -173,12 +178,13 @@ func TestCQRS_Network_AtomicDefaultSGCreate_AbortOnSG(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-abort", "net-abort")
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
@@ -203,13 +209,14 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Insert Network + SG.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	net := insertNetworkInTx(t, ctx, w1, "project-cycle", "net-cycle")
 	require.NoError(t, w1.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
@@ -221,6 +228,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	// Update.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	created.Name = domain.RcNameVPC("renamed-sg")
 	upd, err := w2.SecurityGroups().Update(ctx, &created.SecurityGroup)
 	require.NoError(t, err)
@@ -231,6 +239,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	// Delete.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	require.NoError(t, w3.SecurityGroups().Delete(ctx, created.ID))
 	require.NoError(t, w3.Outbox().Emit(ctx, "SecurityGroup", created.ID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w3.Commit())

@@ -24,6 +24,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // internal_watch_authorization_test.go — the OBSERVABLE contract of the outbox
@@ -127,7 +129,7 @@ func TestIntegration_Watch_UnidentifiedCallerReceivesNoEvent(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	for _, id := range []string{"epi-a01", "epi-a02", "epi-b01"} {
 		_, err := pool.Exec(base,
@@ -170,7 +172,7 @@ func TestIntegration_Watch_EntitledToOneProjectSeesOnlyItsOwnRows(t *testing.T) 
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	mine := []string{"epi-mine01", "epi-mine02"}
 	theirs := []string{"epi-other1", "epi-other2", "epi-other3"}
@@ -211,7 +213,7 @@ func TestIntegration_Watch_ModelErrorDeliversNothing(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(base,
 		`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload)
@@ -248,7 +250,7 @@ func TestIntegration_Watch_KindWithNoObjectTypeIsNotDelivered(t *testing.T) {
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	for _, row := range []struct{ kind, id string }{
 		{"Instance", "epi-live1"},
@@ -306,7 +308,7 @@ func TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows(t *testing.T
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// A full batch of rows the caller may not see, then one it may.
 	for i := 0; i < catchupBatchSize; i++ {
@@ -379,7 +381,7 @@ func TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone(t *t
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(base, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	for _, row := range []struct{ id, event string }{
 		{"epi-alive", "CREATED"},

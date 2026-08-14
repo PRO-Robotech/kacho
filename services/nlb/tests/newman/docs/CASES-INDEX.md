@@ -383,8 +383,7 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
   rather than silently taken for the zero value — landed in the gateway on 2026-07-29
   (`restmux/strict_enum.go`, commit d67d15fb) and this is its only black-box probe, so the
   case-id keeps its subject instead of being dropped. Rationale in `cases/listener.py`.
-- `*-CR-VAL-TARGET-PORT-ZERO` — VAL,BVA/P1 — target_port=0 → InvalidArgument
-- `*-CR-VAL-TARGET-PORT-OVER` — VAL,BVA/P1 — target_port=65536 → InvalidArgument
+- `*-UPD-VAL-TARGET-PORT-RETIRED` — VAL/P2 — Update with retired target_port in mask → InvalidArgument
 - `*-CR-CRUD-IPV6` — CRUD/P1 — Create with ip_version=IPV6 → OK
 - `*-UPD-VAL-PROXY-PROTO-V2-RETIRED` — VAL/P2 — Update with retired proxy_protocol_v2 in mask → InvalidArgument
 - `*-UPD-CRUD-DEFAULT-TG-CLEAR` — CRUD,STATE/P2 — Update default_target_group_id=null → cleared

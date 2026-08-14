@@ -12,6 +12,8 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // BenchmarkAllocateExternalIP_Freelist — последовательный замер PG-native пути
@@ -31,7 +33,7 @@ func BenchmarkAllocateExternalIP_Freelist(b *testing.B) {
 
 	pgPool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(b, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(b, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
@@ -82,7 +84,7 @@ func BenchmarkAllocateExternalIP_Freelist_Parallel(b *testing.B) {
 
 	pgPool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(b, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(b, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()

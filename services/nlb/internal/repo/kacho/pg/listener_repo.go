@@ -23,7 +23,7 @@ import (
 // empty or dangling → substatus° MISCONFIGURED.
 const listenerCols = `
     id, load_balancer_id, project_id, region_id, created_at, updated_at,
-    name, description, labels, protocol, port, target_port,
+    name, description, labels, protocol, port,
     default_target_group_id, status,
     (SELECT tg.port FROM kacho_nlb.target_groups tg
       WHERE tg.id = listeners.default_target_group_id) AS resolved_backend_port,
@@ -45,14 +45,13 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 		descStr    string
 		protoStr   string
 		port       int32
-		tgtPort    int32
 		dfltTGStr  string
 		statusStr  string
 		resolvedBP *int32
 	)
 	if err := row.Scan(
 		&idStr, &lbIDStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
-		&nameStr, &descStr, &labelsRaw, &protoStr, &port, &tgtPort,
+		&nameStr, &descStr, &labelsRaw, &protoStr, &port,
 		&dfltTGStr, &statusStr, &resolvedBP, &rec.Xmin,
 	); err != nil {
 		return nil, err
@@ -66,7 +65,6 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 	rec.Description = domain.LbDescription(descStr)
 	rec.Protocol = domain.LbProto(protoStr)
 	rec.Port = domain.LbPort(port)
-	rec.TargetPort = domain.LbPort(tgtPort)
 	rec.DefaultTargetGroupID = dto.OptFromStr[domain.ResourceID](dfltTGStr)
 	rec.Status = domain.ListenerStatus(statusStr)
 	labels, err := dto.LabelsFromJSONB(labelsRaw)
@@ -187,18 +185,18 @@ func (w *listenerWriter) Insert(ctx context.Context, l *domain.Listener) (*kacho
 	q := fmt.Sprintf(`
         INSERT INTO kacho_nlb.listeners
             (id, load_balancer_id, project_id, region_id, name, description, labels,
-             protocol, port, target_port,
+             protocol, port,
              default_target_group_id, status)
         SELECT $1, lb.id, lb.project_id, lb.region_id, $3, $4, $5::jsonb,
-               $6, $7, $8, $9, $10
+               $6, $7, $8, $9
           FROM kacho_nlb.load_balancers lb
-         WHERE lb.id = $2 AND lb.status <> $11
+         WHERE lb.id = $2 AND lb.status <> $10
            FOR NO KEY UPDATE OF lb
         RETURNING %s`, listenerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(l.ID), string(l.LoadBalancerID),
 		string(l.Name), string(l.Description), labelsJSON,
-		string(l.Protocol), int32(l.Port), int32(l.TargetPort),
+		string(l.Protocol), int32(l.Port),
 		dto.OptString(l.DefaultTargetGroupID), string(l.Status),
 		string(domain.LBStatusDeleting),
 	)

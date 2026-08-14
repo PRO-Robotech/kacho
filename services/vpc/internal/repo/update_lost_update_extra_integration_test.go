@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Lost-update regression для трёх ресурсов, у которых doUpdate раньше делал
@@ -35,7 +37,7 @@ func TestIntegration_Address_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -52,6 +54,7 @@ func TestIntegration_Address_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	recA, err := wa.Addresses().GetForUpdate(ctx, addrID)
 	require.NoError(t, err)
 
@@ -105,7 +108,7 @@ func TestIntegration_NetworkInterface_ConcurrentDisjointUpdate_NoLostUpdate(t *t
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -132,6 +135,7 @@ func TestIntegration_NetworkInterface_ConcurrentDisjointUpdate_NoLostUpdate(t *t
 
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	recA, err := wa.NetworkInterfaces().GetForUpdate(ctx, nicID)
 	require.NoError(t, err)
 
@@ -185,7 +189,7 @@ func TestIntegration_AddressPool_ConcurrentDisjointUpdate_NoLostUpdate(t *testin
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -202,6 +206,7 @@ func TestIntegration_AddressPool_ConcurrentDisjointUpdate_NoLostUpdate(t *testin
 
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	recA, err := wa.AddressPools().GetForUpdate(ctx, poolID)
 	require.NoError(t, err)
 

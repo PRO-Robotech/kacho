@@ -278,7 +278,6 @@ func TestCreateListener_DurableRegisterIntentIsDrainable(t *testing.T) {
 		Name:           "drainable",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8443,
 		Labels:         map[string]string{"lsn": "treska"},
 	})
 	require.NoError(t, err)

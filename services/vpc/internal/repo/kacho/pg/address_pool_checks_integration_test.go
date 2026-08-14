@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Группа C среза AddressPool parity: DB CHECK-parity (within-service инвариант
@@ -34,7 +36,7 @@ func TestAddressPoolChecks_vpc8G_C1_ConstraintsPresent(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	rows, err := pool.Query(ctx, `
 		SELECT conname FROM pg_constraint
@@ -89,7 +91,7 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// (а) прямой SQL → 23514 на address_pools_name_chk.
 	_, err = pool.Exec(ctx, `
@@ -120,7 +122,7 @@ func TestAddressPoolChecks_vpc8G_C3_DescriptionTooLong(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, description, kind)
@@ -138,7 +140,7 @@ func TestAddressPoolChecks_vpc8G_C4_BadKind(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, kind) VALUES ($1, 'kind-bad', 2)`, ids.NewID("apl"))
@@ -159,7 +161,7 @@ func TestAddressPoolChecks_vpc8G_C5_NegativeSelectorPriority(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, kind, selector_priority)

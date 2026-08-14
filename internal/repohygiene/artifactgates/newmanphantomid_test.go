@@ -246,6 +246,20 @@ type nmBinding struct {
 // `opVar` — имя, которым цепочка адресует саму операцию (берётся из адреса опроса);
 // оно исключается: это ручка операции, а не координата ресурса.
 func nmPublishedResourceVars(src, opVar string) []string {
+	return nmDerivedEnvSets(src, "metadata", func(name string) bool { return name == opVar })
+}
+
+// nmDerivedEnvSets — имена переменных окружения, которым шаг присваивает значение,
+// ПРОИСХОДЯЩЕЕ от `seed`, с учётом области видимости промежуточных объявлений.
+//
+// Разбор один на обе надобности намеренно — так же, как в самих генераторах
+// (`_js_code_and_literals`): два разборщика расходятся молча и расходятся ровно
+// там, где расхождение не видно. `seed` — единственное, чем отличаются два
+// вызывающих: `metadata` (координата ресурса, опубликованная из ответа операции —
+// гейт фантомного идентификатора) и `pm.response` (любой захват из собственного
+// ответа шага — гейт захвата без утверждения). `skip` исключает имена, которые
+// вызывающий координатой не считает.
+func nmDerivedEnvSets(src, seed string, skip func(name string) bool) []string {
 	code := jsCodeSkeleton(src)
 	lit := jsCodeKeepingStrings(src)
 	depth := nmBraceDepth(code)
@@ -280,7 +294,7 @@ func nmPublishedResourceVars(src, opVar string) []string {
 		}
 		expr := code[m[1] : m[1]+semi]
 		b := nmBinding{off: m[0], depth: depth[m[0]], name: code[m[2]:m[3]]}
-		b.derived = strings.Contains(expr, "metadata") || visible(bindings, m[0], expr)
+		b.derived = strings.Contains(expr, seed) || visible(bindings, m[0], expr)
 		bindings = append(bindings, b)
 	}
 
@@ -288,7 +302,7 @@ func nmPublishedResourceVars(src, opVar string) []string {
 	seen := map[string]bool{}
 	for _, m := range nmEnvSetRe.FindAllStringIndex(code, -1) {
 		name, after, ok := nmStringLiteralAt(lit, m[1]-1)
-		if !ok || name == "" || name == opVar {
+		if !ok || name == "" || (skip != nil && skip(name)) {
 			continue
 		}
 		comma := strings.IndexByte(code[after:], ',')
@@ -296,7 +310,7 @@ func nmPublishedResourceVars(src, opVar string) []string {
 			continue
 		}
 		expr := nmArgTail(code, after+comma+1)
-		if !strings.Contains(expr, "metadata") && !visible(bindings, m[0], expr) {
+		if !strings.Contains(expr, seed) && !visible(bindings, m[0], expr) {
 			continue
 		}
 		if !seen[name] {

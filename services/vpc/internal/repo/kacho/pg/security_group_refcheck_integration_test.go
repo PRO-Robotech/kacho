@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты within-service refcheck на SecurityGroup.Delete
@@ -42,6 +44,7 @@ func makeSGWithOptionalNIC(
 	// network + non-default SG в одной writer-TX.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, projectID, "net-sgref-"+suffix)
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
 	sg := &domain.SecurityGroup{
@@ -119,7 +122,7 @@ func TestCQRS_SG_Delete_BlockedByNICReference(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-blocked", "blk", "0e:aa:00:00:00:01", true)
@@ -143,7 +146,7 @@ func TestCQRS_SG_Delete_NoNICReference_Succeeds(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	// SG-keep — на него ссылается NIC; SG-free — свободен, его и удаляем.
@@ -166,7 +169,7 @@ func TestCQRS_SG_Delete_Concurrent_Referenced_AllBlocked(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-conc-ref", "cref", "0e:cc:00:00:00:01", true)
@@ -208,7 +211,7 @@ func TestCQRS_SG_Delete_Concurrent_Unreferenced_ExactlyOne(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	sgID, _ := makeSGWithOptionalNIC(t, ctx, r, pool, "prj-sgref-conc-free", "cfree", "0e:dd:00:00:00:01", false)

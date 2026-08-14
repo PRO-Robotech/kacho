@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты AddressPool :addCidrBlocks / :removeCidrBlocks против
@@ -57,7 +59,7 @@ func TestIntegration_AddressPoolCIDR_AddCidrBlocks_PopulatesFreelist(t *testing.
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -87,7 +89,7 @@ func TestIntegration_AddressPoolCIDR_RemoveInUse_FailedPrecondition(t *testing.T
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -135,7 +137,7 @@ func TestIntegration_AddressPoolCIDR_RemoveClean_DeletesFreeIPs(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -168,7 +170,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAllocVsRemove(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -187,6 +189,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAllocVsRemove(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		w, e := r.Writer(ctx)
+		defer w.Abort()
 		if e != nil {
 			allocErr = e
 			return
@@ -263,7 +266,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAddArrayConverges(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

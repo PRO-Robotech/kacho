@@ -52,6 +52,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // iamPartitionKey mirrors the partition key kacho-iam ships for
@@ -663,7 +665,7 @@ func Test_1_4_48_NarrowKey_OrderHolds_AcrossReplicas(t *testing.T) {
 	pool1, dsn := setupDrainerPG(t)
 	pool2, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool2.Close)
+	pgtest.ClosePoolAtEnd(t, pool2)
 
 	// ONE shared order-sensitive model — both replicas apply into it.
 	st := newTupleState()
