@@ -429,7 +429,7 @@ CASES.append(Case(
             name="create",
             method="POST",
             path="/vpc/v1/subnets",
-            body={"ipv4CidrPrimary": "10.102.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
+            body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
                   "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.204.0.0/24"},
             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                          "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"],
@@ -624,7 +624,7 @@ CASES.append(Case(
     steps=[
         *_make_net("lua"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.103.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.205.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -647,7 +647,7 @@ CASES.append(Case(
     steps=[
         *_make_net("lop"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.104.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.206.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.id", "createOpId"),
@@ -675,7 +675,7 @@ CASES.append(Case(
     steps=[
         *_make_net("upd"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.105.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.207.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -765,7 +765,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="create-bad-net", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.106.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
                    "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.208.0.0/24"},
              test_script=[
                  *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
@@ -808,7 +808,7 @@ CASES.append(Case(
     steps=[
         *_make_net("delok"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.107.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.209.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1299,7 +1299,7 @@ CASES.append(Case(
     steps=[
         *_make_net("delempty"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.108.0.0/24", "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.216.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1704,7 +1704,7 @@ CASES.append(Case(
         # no Operation to poll and nothing to roll back — the resource never comes into
         # being. (`net00000000000000000` is a well-formed, never-allocated network id.)
         Step(name="create-fail", method="POST", path="/vpc/v1/subnets",
-             body={"ipv4CidrPrimary": "10.109.0.0/24", "projectId": "{{_suiteProjectId}}",
+             body={"projectId": "{{_suiteProjectId}}",
                    "networkId": "net00000000000000000",
                    "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.219.0.0/24"},
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),

@@ -4724,7 +4724,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.204.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{garbageVpcId}}\", \"name\": \"sub-nf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{garbageVpcId}}\", \"name\": \"sub-nf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.204.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6697,7 +6697,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.205.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-lua-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-lua-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.205.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7175,7 +7175,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.206.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-lop-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.206.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7889,7 +7889,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.207.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-upd-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.207.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9616,7 +9616,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.208.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{garbageVpcId}}\", \"name\": \"sub-confnf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{garbageVpcId}}\", \"name\": \"sub-confnf-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.208.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10268,7 +10268,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.209.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-delok-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.209.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -26700,7 +26700,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.216.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-delempty-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{netId}}\", \"name\": \"sub-delempty-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.216.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -44955,7 +44955,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"ipv4CidrPrimary\": \"10.219.0.0/24\", \"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"net00000000000000000\", \"name\": \"sub-rollback-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"net00000000000000000\", \"name\": \"sub-rollback-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.219.0.0/24\"}",
               "options": {
                 "raw": {
                   "language": "json"
