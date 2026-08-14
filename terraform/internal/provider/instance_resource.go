@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
@@ -85,8 +86,11 @@ func (r *instanceResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"machine_type_id": schema.StringAttribute{Required: true,
 				MarkdownDescription: "Тип машины из каталога. Меняется только на остановленной машине."},
 			"boot_source_type": schema.StringAttribute{Required: true, PlanModifiers: replace,
-				MarkdownDescription: "Вид источника загрузки: `storage.image`, `storage.snapshot` " +
-					"или `storage.volume`. Неизменяем."},
+				Validators: []validator.String{oneOf(bootSourceTypes...)},
+				MarkdownDescription: "Дискриминатор ВЛАДЕЛЬЦА источника загрузки: `storage.image` " +
+					"(образ хранилища) либо `registry.image` (образ реестра). Неизменяем.\n\n" +
+					"Это не вид ресурса: `SNAPSHOT`, `VOLUME` и подобное край не принимает " +
+					"ни одним значением."},
 			"boot_source_id": schema.StringAttribute{Required: true, PlanModifiers: replace,
 				MarkdownDescription: "Идентификатор источника загрузки у его владельца. Неизменяем."},
 			"subnet_id": schema.StringAttribute{Required: true, PlanModifiers: replace,

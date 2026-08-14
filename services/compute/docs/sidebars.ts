@@ -30,8 +30,16 @@ const sidebars: SidebarsConfig = {
         'api/overview',
         'api/instance',
         'api/machine-type',
+        'api/guest-access-key',
+        'api/placement-group',
         'api/operations',
       ],
+    },
+    {
+      type: 'category',
+      label: 'Terraform',
+      collapsed: true,
+      items: ['terraform/compute'],
     },
     {
       type: 'category',

@@ -65,7 +65,7 @@
 | ListOperations | CRUD-OK, NEG (parent-NF) | INST-LOP-* (2) | ■ |
 | AttachDisk | CRUD-OK (secondary_disks updated), NEG (wrong-zone, already-attached) | INST-AD-* (3) | ▣ |
 | DetachDisk | CRUD-OK, NEG (boot disk → FailedPrec, not-attached) | INST-DD-* (3) | ▣ |
-| UpdateMetadata | CRUD-OK (upsert/delete + FULL-view round-trip) | INST-UMETA-CRUD-OK | ◐ |
+| ~~UpdateMetadata~~ | RPC снят с контракта вместе с полем `metadata` — предмета проверки нет | — | — |
 | GetSerialPortOutput | CRUD-OK (contents string), NEG (NotFound) | INST-SPO-* (2) | ■ |
 | AttachNetworkInterface / DetachNetworkInterface / UpdateNetworkInterface | — NIC binding removed from Instance lifecycle (KAC-266, no auto-NIC); proto-level RPC cleanup tracked separately | — | □ |
 | AddOneToOneNat / RemoveOneToOneNat | — NIC binding removed from Instance lifecycle (KAC-266); Instance has no NIC to NAT | — | □ |

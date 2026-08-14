@@ -23,7 +23,6 @@ export const DICTIONARY = {
   containerSpec: { short: 'Конфигурация контейнера (при instanceKind = CONTAINER)' },
   statusReason: { short: 'Человекочитаемая причина текущего статуса или отложенного изменения (output-only)' },
   placementGroupId: { short: 'Группа размещения инстанса' },
-  metadata: { short: 'Пользовательская метадата key:value (≤256 KiB); меняется через UpdateMetadata' },
   bootDisk: { short: 'Зеркало загрузочного тома (output-only; том принадлежит kacho-storage)' },
   secondaryDisks: { short: 'Зеркало дополнительных присоединённых томов (output-only; тома принадлежат kacho-storage)' },
   networkInterfaces: { short: 'Сетевые интерфейсы инстанса (denormalised-зеркало NIC из kacho-vpc)' },

@@ -183,14 +183,24 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewNLBListenerResource,
 		// compute
 		NewInstanceResource,
+		NewGuestAccessKeyResource,
+		NewPlacementGroupResource,
 	}
 }
 
 // Data-sources появятся в TF-2 вместе с остальными ресурсами vpc: их путь чтения тот же,
 // и заводить их до того, как многошаговое чтение доказано на ресурсах, значило бы
 // размножить непроверенное.
+// DataSources — то, чем конфигурация ЧИТАЕТ облако, ничего в нём не заводя.
+//
+// Сегодня здесь один источник — каталог размеров машин, и он не про удобство:
+// без него конфигурация обязана нести идентификатор типа машины, а
+// идентификаторы у разных установок разные. То есть конфигурация без источника
+// данных непереносима by construction.
 func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		NewMachineTypeDataSource,
+	}
 }
 
 func firstNonEmpty(values ...string) string {

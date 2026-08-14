@@ -30,10 +30,6 @@ export const RESTRICTIONS = {
     'изменение machineTypeId / cpuGuaranteePercent / placementGroupId — только когда Instance в статусе STOPPED',
     'тип в статусе RETIRED отвергается на Create',
   ],
-  metadata: [
-    'карта key:value; суммарный размер всех ключей и значений < 512 KB, каждое значение ≤ 256 KB',
-    'меняется отдельным RPC UpdateMetadata (delete[] + upsert{}), не через Update',
-  ],
   updateMask: [
     'google.protobuf.FieldMask — список изменяемых полей',
     'неизвестное поле в mask → INVALID_ARGUMENT',
