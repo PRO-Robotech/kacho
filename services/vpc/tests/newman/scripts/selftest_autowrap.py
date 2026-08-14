@@ -299,9 +299,96 @@ check("близнец-подтверждение-удаления: заявле�
       "[403].includes" in cbody, cbody[:140])
 
 # ---------------------------------------------------------------------------
+# 13. ИНЪЕКЦИЯ №6: цель проверки прав названа в ТЕЛЕ запроса, а не в адресе.
+#
+#     Край решает вопрос о правах над объектом, который берёт из ПОЛЯ ЗАПРОСА
+#     (`scope_extractor.from_request_field` каталога прав). У создания вложенного
+#     ресурса адрес — коллекционный (`/nlb/v1/listeners`), а свежий родитель
+#     назван в теле, поэтому условие, читающее только `st.path`, такой шаг не
+#     видит ПО ПОСТРОЕНИЮ — сколько бы раз он ни упирался в окно видимости.
+#
+#     Пропуск здесь не гипотетический и стоит дороже обычного: шаг создаёт
+#     ФИКСТУРУ, на которой стоит предмет кейса. Не создалась — кейс идёт дальше
+#     по несозданной ссылке, и предмет («удаление отвергается, пока на группу
+#     ссылаются») проверяется на группе, на которую никто не ссылается. Продукт
+#     отвечает верно, а кейс краснеет утверждением о ссылочной целостности:
+#     красное указывает не туда, где дефект, и заводит работу, которой нет
+#     предмета.
+#
+#     Соседние шаги ТОЙ ЖЕ формы в другой суите обёрнуты ВРУЧНУЮ (все создания
+#     слушателя в `services/nlb/tests/newman/cases/listener.py`) — то есть это
+#     ровно тот пропуск, который предикат и заводился закрыть.
+#
+#     ЧЕМ НЕ ЛЕЧИТСЯ. Ожиданием на СОСЕДНЕЙ полосе: чтение родителя гейтится
+#     отношением `v_get`, а создание вложенного — `editor` (каталог прав,
+#     `NetworkLoadBalancerService/Get` против `ListenerService/Create`). Дождаться
+#     первого и заключить о втором нельзя: это разные отношения, и прокси-предикат
+#     ломается раньше своего предмета.
+# ---------------------------------------------------------------------------
+bodyscope = Case(
+    id="SELFTEST-BODY-SCOPE", title="authz target named in the request body",
+    classes=["CRUD"], priority="P0",
+    steps=[
+        Step(name="create-parent", method="POST", path="/nlb/v1/networkLoadBalancers",
+             body={"projectId": "{{_suiteProjectId}}"},
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "stNlbId")]),
+        Step(name="wire-child", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{stNlbId}}", "port": 80},
+             test_script=[*gen.assert_status(200)]),
+    ],
+)
+check("инъекция-6: свежая цель прав в ТЕЛЕ — шаг обёрнут", wrapped(steps_of(bodyscope)[1]),
+      "цель проверки прав названа в теле, а условие читает только адрес — класс открыт")
+
+# ---------------------------------------------------------------------------
+# 14. ЗАКОННЫЙ БЛИЗНЕЦ №8: в теле — ЧУЖОЙ/посеянный id, не рождённый в этом
+#     кейсе. Окна видимости у него нет (ресурс существует давно), и обёртка
+#     превратила бы отказ по существу в ожидание длиной в бюджет. Предикат
+#     обязан молчать — иначе он ловит форму «переменная в теле», а не существо
+#     «свежая цель прав».
+# ---------------------------------------------------------------------------
+bodyforeign = Case(
+    id="SELFTEST-BODY-FOREIGN", title="body names a seeded, non-fresh id",
+    classes=["CRUD"], priority="P0",
+    steps=[
+        Step(name="create-parent", method="POST", path="/nlb/v1/networkLoadBalancers",
+             body={"projectId": "{{_suiteProjectId}}"},
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "stNlbId2")]),
+        Step(name="wire-foreign", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{existingLbId}}", "port": 80},
+             test_script=[*gen.assert_status(200)]),
+    ],
+)
+check("близнец-8: чужой (не рождённый в кейсе) id в теле — НЕ оборачивается",
+      not wrapped(steps_of(bodyforeign)[1]))
+
+# ---------------------------------------------------------------------------
+# 15. ЗАКОННЫЙ БЛИЗНЕЦ №9: отказ в доступе и есть предмет шага (403 объявлен
+#     исходом) — тело называет свежий ресурс, но ждать нечего.
+# ---------------------------------------------------------------------------
+bodydeny = Case(
+    id="SELFTEST-BODY-DENY", title="cross-account deny names a fresh id in the body",
+    classes=["NEG"], priority="P0",
+    steps=[
+        Step(name="create-parent", method="POST", path="/nlb/v1/networkLoadBalancers",
+             body={"projectId": "{{_suiteProjectId}}"},
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "stNlbId3")]),
+        Step(name="wire-denied", method="POST", path="/nlb/v1/listeners",
+             body={"loadBalancerId": "{{stNlbId3}}", "port": 80},
+             test_script=[*gen.assert_status(403)]),
+    ],
+)
+check("близнец-9: 403 объявлен исходом шага — НЕ оборачивается",
+      not wrapped(steps_of(bodydeny)[1]))
+
+# ---------------------------------------------------------------------------
 # 10. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».
 # ---------------------------------------------------------------------------
-_ALL = (injected, neg, poll, manual, foreign, multi, multi404, authzfirst, grpccodes)
+_ALL = (injected, neg, poll, manual, foreign, multi, multi404, authzfirst, grpccodes,
+        bodyscope, bodyforeign, bodydeny)
 print()
 print(f"осмотрено кейсов самопроверки: {len(_ALL)}, шагов: "
       f"{sum(len(c.steps) for c in _ALL)}")

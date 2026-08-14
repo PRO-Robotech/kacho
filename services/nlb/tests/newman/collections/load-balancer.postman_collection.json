@@ -28273,7 +28273,7 @@
           ]
         },
         {
-          "name": "provision-internal-addr-int-link",
+          "name": "provision-internal-addr-int-link-rya185",
           "request": {
             "method": "POST",
             "header": [
@@ -28309,6 +28309,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
                   "  let m = '';",
                   "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
@@ -28566,7 +28581,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya185",
+          "name": "cleanup-del-lb-rya186",
           "request": {
             "method": "DELETE",
             "header": [
@@ -28687,7 +28702,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcAddrId-rya186",
+          "name": "cleanup-vpc-vpcAddrId-rya187",
           "request": {
             "method": "DELETE",
             "header": [
@@ -28808,7 +28823,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcSubnetId-rya187",
+          "name": "cleanup-vpc-vpcSubnetId-rya188",
           "request": {
             "method": "DELETE",
             "header": [
@@ -29230,7 +29245,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya188",
+          "name": "cleanup-del-lb-rya189",
           "request": {
             "method": "DELETE",
             "header": [
@@ -29351,7 +29366,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcAddrId-rya189",
+          "name": "cleanup-vpc-vpcAddrId-rya190",
           "request": {
             "method": "DELETE",
             "header": [
@@ -29673,7 +29688,7 @@
           ]
         },
         {
-          "name": "provision-internal-addr-ds-v6",
+          "name": "provision-internal-addr-ds-v6-rya191",
           "request": {
             "method": "POST",
             "header": [
@@ -29709,6 +29724,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
                   "  let m = '';",
                   "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
@@ -29968,7 +29998,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya190",
+          "name": "cleanup-del-lb-rya192",
           "request": {
             "method": "DELETE",
             "header": [
@@ -30089,7 +30119,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcAddr6Id-rya191",
+          "name": "cleanup-vpc-vpcAddr6Id-rya193",
           "request": {
             "method": "DELETE",
             "header": [
@@ -30210,7 +30240,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcSubnetId-rya192",
+          "name": "cleanup-vpc-vpcSubnetId-rya194",
           "request": {
             "method": "DELETE",
             "header": [
@@ -30719,7 +30749,7 @@
           ]
         },
         {
-          "name": "upd-placement-rya193",
+          "name": "upd-placement-rya195",
           "request": {
             "method": "PATCH",
             "header": [
@@ -30782,7 +30812,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya194",
+          "name": "cleanup-del-lb-rya196",
           "request": {
             "method": "DELETE",
             "header": [
@@ -31291,7 +31321,7 @@
           ]
         },
         {
-          "name": "upd-v4source-rya195",
+          "name": "upd-v4source-rya197",
           "request": {
             "method": "PATCH",
             "header": [
@@ -31354,7 +31384,7 @@
           ]
         },
         {
-          "name": "upd-v4addr-rya196",
+          "name": "upd-v4addr-rya198",
           "request": {
             "method": "PATCH",
             "header": [
@@ -31417,7 +31447,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya197",
+          "name": "cleanup-del-lb-rya199",
           "request": {
             "method": "DELETE",
             "header": [
@@ -31985,7 +32015,7 @@
           ]
         },
         {
-          "name": "get-drained-rya198",
+          "name": "get-drained-rya200",
           "request": {
             "method": "GET",
             "header": [
@@ -32035,7 +32065,7 @@
           ]
         },
         {
-          "name": "upd-reenable-rya199",
+          "name": "upd-reenable-rya201",
           "request": {
             "method": "PATCH",
             "header": [
@@ -32150,7 +32180,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya200",
+          "name": "cleanup-del-lb-rya202",
           "request": {
             "method": "DELETE",
             "header": [
@@ -32271,7 +32301,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcSubnetId-rya201",
+          "name": "cleanup-vpc-vpcSubnetId-rya203",
           "request": {
             "method": "DELETE",
             "header": [
@@ -32848,7 +32878,7 @@
           ]
         },
         {
-          "name": "cleanup-del-lb-rya202",
+          "name": "cleanup-del-lb-rya204",
           "request": {
             "method": "DELETE",
             "header": [
@@ -33349,7 +33379,7 @@
           ]
         },
         {
-          "name": "lb-gone-rya203",
+          "name": "lb-gone-rya205",
           "request": {
             "method": "GET",
             "header": [
@@ -33401,7 +33431,7 @@
           ]
         },
         {
-          "name": "linked-address-survives-rya204",
+          "name": "linked-address-survives-rya206",
           "request": {
             "method": "GET",
             "header": [
@@ -33453,7 +33483,7 @@
           ]
         },
         {
-          "name": "cleanup-vpc-vpcAddrId-rya205",
+          "name": "cleanup-vpc-vpcAddrId-rya207",
           "request": {
             "method": "DELETE",
             "header": [
