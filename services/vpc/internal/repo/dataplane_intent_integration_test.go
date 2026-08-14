@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	uc "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	dataplanepg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/dataplane"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // dataplaneFixture — своя база, пул и адаптер проекции намерения.
@@ -28,7 +30,7 @@ func dataplaneFixture(t *testing.T) (context.Context, *pgxpool.Pool, *dataplanep
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return ctx, pool, dataplanepg.New(pool)
 }
 

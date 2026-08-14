@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // stopInstance — helper: insert RUNNING then transition to STOPPED, returning a
@@ -48,7 +50,7 @@ func TestIntegration_InstanceResize_RequiresStopped_ConcurrentStart(t *testing.T
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -86,7 +88,7 @@ func TestIntegration_InstanceResize_WhileStopped_OK(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -115,7 +117,7 @@ func TestIntegration_InstanceResize_MissingInstance_NotFound(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -141,7 +143,7 @@ func TestIntegration_InstanceResize_ConcurrentResizersOnRunning_AllRejected(t *t
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 

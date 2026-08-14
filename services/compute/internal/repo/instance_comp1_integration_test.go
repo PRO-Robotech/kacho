@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // comp1Instance — валидный redesign-Instance (COMP-1) для integration-сидов.
@@ -48,7 +50,7 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 
@@ -108,7 +110,7 @@ func TestIntegration_Instance_COMP_1_37_DeleteNameRecycle(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	const project, name = "prj-recycle", "trainer-node-01"

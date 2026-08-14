@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestReconciler_SweepBudget_BoundsClaimTx проверяет, что при медленном Resolver'е
@@ -33,7 +35,7 @@ func TestReconciler_SweepBudget_BoundsClaimTx(t *testing.T) {
 
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := operations.NewRepo(pool, "public")
 

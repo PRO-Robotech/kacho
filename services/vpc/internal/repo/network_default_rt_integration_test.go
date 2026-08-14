@@ -26,6 +26,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // setupTestDBUpToVPC — база на общем Postgres пакета с миграциями ТОЛЬКО до
@@ -74,7 +76,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRouteTableProvisioned(t *testing.T)
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -118,7 +120,7 @@ func TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault(t *testing.T) 
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -176,7 +178,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 	dsn := setupTestDBUpToVPC(t, 16) // состояние ДО 0017
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const proj = "prj-backfill"
 	netID := ids.NewID(ids.PrefixNetwork)
@@ -199,7 +201,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 	migrateVPCTo(t, dsn, 17)
 	pool2, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool2.Close()
+	pgtest.ClosePoolAtEnd(t, pool2)
 
 	var got string
 	require.NoError(t, pool2.QueryRow(ctx,
@@ -250,7 +252,7 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -328,7 +330,7 @@ func TestIntegration_Network_DefaultRT_FKOnDelete(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 

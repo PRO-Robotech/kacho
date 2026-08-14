@@ -71,7 +71,7 @@ func setupPostgres(t *testing.T) *pgxpool.Pool {
 
 	pool, err := pgxpool.New(context.Background(), dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	return pool
 }

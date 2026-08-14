@@ -78,7 +78,7 @@ func TestNetwork_CIL0_06_GetInternalReturnsVrfId(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	n := insertNetwork(t, r, "project-cil0", "net-vrf-06")
@@ -101,7 +101,7 @@ func TestNetwork_CIL0_02_VrfIdUniqueUnderConcurrency(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	const N = 20
@@ -165,7 +165,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	a := insertNetwork(t, r, "project-cil0-reuse", "net-a")
@@ -178,6 +178,7 @@ func TestNetwork_CIL0_05_VrfIdNoReuseMonotonic(t *testing.T) {
 	// delete A
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	require.NoError(t, w.Networks().Delete(ctx, a.ID))
 	require.NoError(t, w.Commit())
 
@@ -201,7 +202,7 @@ func TestNetwork_CIL0_03_VrfIdStableAcrossUpdate(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	n := insertNetwork(t, r, "project-cil0-upd", "net-before")
@@ -213,6 +214,7 @@ func TestNetwork_CIL0_03_VrfIdStableAcrossUpdate(t *testing.T) {
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	n.Name = domain.RcNameVPC("net-after")
 	_, err = w.Networks().Update(ctx, n)
 	require.NoError(t, err)

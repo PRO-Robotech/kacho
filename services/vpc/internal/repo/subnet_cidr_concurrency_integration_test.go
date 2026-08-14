@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Два конкурентных AddCidrBlocks на одну подсеть не должны терять изменения друг
@@ -39,7 +41,7 @@ func TestIntegration_Subnet_ConcurrentAddCidr_NoLostUpdate(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -60,6 +62,7 @@ func TestIntegration_Subnet_ConcurrentAddCidr_NoLostUpdate(t *testing.T) {
 	// TX-A: держим row-lock.
 	wa, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer wa.Abort()
 	subA, err := wa.Subnets().GetForUpdate(ctx, subID)
 	require.NoError(t, err)
 

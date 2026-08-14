@@ -110,7 +110,7 @@ func dtTracedPool(t *testing.T) (*pgxpool.Pool, *dtQueryCounter) {
 	cfg.ConnConfig.Tracer = counter
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool, counter
 }
 

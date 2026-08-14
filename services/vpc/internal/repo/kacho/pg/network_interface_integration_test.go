@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты CQRS NIC-репо: Insert + Commit, Reader видит запись.
@@ -23,7 +25,7 @@ func insertSubnetForNIC(t *testing.T, ctx context.Context, dsn string) (projectI
 	t.Helper()
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	projectID = "project-nic-cqrs"
 	subnetID = ids.NewID(ids.PrefixSubnet)
@@ -49,11 +51,12 @@ func TestCQRS_NIC_InsertCommit_ReaderSees(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	nic := &domain.NetworkInterface{
 		ID:          ids.NewID(ids.PrefixSubnet),
 		ProjectID:   projectID,
@@ -102,7 +105,7 @@ func TestCQRS_NIC_SecurityGroupIDs_DanglingRefSilentlyAccepted(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	// SG id, которого НЕТ в security_groups (well-formed, но не вставлен).
@@ -110,6 +113,7 @@ func TestCQRS_NIC_SecurityGroupIDs_DanglingRefSilentlyAccepted(t *testing.T) {
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	nic := &domain.NetworkInterface{
 		ID:               ids.NewID(ids.PrefixNetworkInterface),
 		ProjectID:        projectID,

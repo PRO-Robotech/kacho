@@ -20,6 +20,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Сужение списка адресов по подсети — что оно ОТБИРАЕТ и во что оно обходится.
@@ -84,6 +86,7 @@ func seedNarrowFixture(t *testing.T, ctx context.Context, r kacho.Repository) (t
 	t.Helper()
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	net := newNetwork(narrowProject, "net-narrow")
 	_, err = w.Networks().Insert(ctx, net)
@@ -166,7 +169,7 @@ func TestIntegration_AddressList_NarrowBySubnet_SelectsBothFamilies(t *testing.T
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -268,7 +271,7 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
@@ -300,7 +303,7 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	cfg.ConnConfig.Tracer = capture
 	traced, err := pgxpool.NewWithConfig(ctx, cfg)
 	require.NoError(t, err)
-	defer traced.Close()
+	pgtest.ClosePoolAtEnd(t, traced)
 
 	tr := kachopg.New(traced, nil)
 	defer tr.Close()
@@ -440,7 +443,7 @@ func TestIntegration_AddressList_NarrowBySubnet_MatchesChildList(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 

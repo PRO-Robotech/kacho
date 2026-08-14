@@ -16,6 +16,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты transactional-outbox для FGA: register/unregister-intent
@@ -69,13 +71,14 @@ func TestVPC_SEC_D_01_RegisterIntentInWriterTx(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.New(pool, nil)
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-a")
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	created, err := w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{"id": created.ID}))
@@ -113,13 +116,14 @@ func TestVPC_SEC_D_02_AbortRollsBackRegisterIntent(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.New(pool, nil)
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-abort")
 
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	created, err := w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
 	_, rerr2 := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID)))
@@ -146,7 +150,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.New(pool, nil)
 	n := newNetwork("proj-aaaaaaaaaaaaaaaaa", "net-del")
@@ -154,6 +158,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	// create
 	w, err := repo.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	created, err := w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
 	require.NoError(t, w.Commit())
@@ -161,6 +166,7 @@ func TestVPC_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	// delete + unregister-intent in one tx
 	w2, err := repo.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	require.NoError(t, w2.Networks().Delete(ctx, created.ID))
 	require.NoError(t, w2.Outbox().Emit(ctx, "Network", created.ID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w2.FGARegister().EmitUnregister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID))))

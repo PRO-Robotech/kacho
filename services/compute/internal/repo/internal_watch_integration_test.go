@@ -17,6 +17,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // TestIntegration_OutboxEmit_OnInstanceCreate проверяет, что Insert ВМ пишет
@@ -33,7 +35,7 @@ func TestIntegration_OutboxEmit_OnInstanceCreate(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := repo.NewInstanceRepo(pool)
 	d := outboxFixtureInstance("i-outbox")
@@ -64,7 +66,7 @@ func TestIntegration_OutboxListenNotify(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// dedicated conn для LISTEN (как в InternalWatchHandler).
 	listenConn, err := pgx.Connect(ctx, dsn)

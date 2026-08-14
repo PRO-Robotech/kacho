@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // walkPoolAddresses прогоняет курсорную пагинацию ListAddressesByPool до пустого
@@ -61,7 +63,7 @@ func TestAddressPool_ListAddressesByPool_CursorWalk(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
@@ -120,7 +122,7 @@ func TestAddressPool_ListAddressesByPool_EmptyPool(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

@@ -33,6 +33,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 const gwFixtureProject = "b1gtestproject00000"
@@ -85,6 +87,7 @@ func seedGatewayFixture(t *testing.T, ctx context.Context, pgPool *pgxpool.Pool,
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	require.NoError(t, w.AddressPools().PopulateFreelistForPool(ctx, poolID))
 	require.NoError(t, w.Commit())
 
@@ -95,7 +98,7 @@ func newGatewayFixture(t *testing.T, ctx context.Context, zoneID, cidr string) g
 	t.Helper()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pgPool.Close)
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	t.Cleanup(func() { r.Close() })
 	return seedGatewayFixture(t, ctx, pgPool, r, zoneID, cidr)
@@ -258,7 +261,7 @@ func TestIntegration_Gateway_ZonalAnchorDoesNotFallBackToAnycastPool(t *testing.
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 

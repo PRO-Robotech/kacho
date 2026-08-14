@@ -101,7 +101,7 @@ func setupRegisterOutboxPG(t *testing.T) *pgxpool.Pool {
 	// package's template (see TestMain) and this is a clone of it.
 	pool, err := pgxpool.New(ctx, pgtest.NewDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	// Applying the schema through this pool used to leave it with a live
 	// connection; keep handing back a warm one.
 	require.NoError(t, pool.Ping(ctx))

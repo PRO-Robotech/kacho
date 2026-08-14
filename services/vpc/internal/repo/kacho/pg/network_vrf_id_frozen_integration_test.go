@@ -15,6 +15,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Заморозка координаты изоляции тенант-домена (`networks.vrf_id`, миграция 0031).
@@ -69,7 +71,7 @@ func TestNetworkVrfFrozen_UpdateOfVrfIdRejected(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	n := insertNetwork(t, r, "project-vrf-frozen", "net-frozen")
@@ -130,7 +132,7 @@ func TestNetworkVrfFrozen_ConcurrentInsertsGetDistinctValues(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const N = 16
 	var (
@@ -185,7 +187,7 @@ func TestNetworkVrfFrozen_ValueNotReissuedAfterDelete(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 
 	const proj = "project-vrf-reuse"
@@ -244,7 +246,7 @@ func TestNetworkVrfFrozen_ValueBeyondDeliverableRangeRejected(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const maxUint32 = int64(4294967295)
 

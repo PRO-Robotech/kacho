@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // fgaRegisterRow is a decoded compute_fga_register_outbox row used by the
@@ -72,7 +74,7 @@ func TestInstance_SEC_D_04_RegisterIntentInWriterTx(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	inID := ids.NewID(ids.PrefixInstance)
@@ -117,7 +119,7 @@ func TestInstance_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	instRepo := repo.NewInstanceRepo(pool)
 	inID := ids.NewID(ids.PrefixInstance)

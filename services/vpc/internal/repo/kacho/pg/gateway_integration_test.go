@@ -15,6 +15,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Integration-тесты CQRS-реализации Gateway-репо в `internal/repo/kacho/pg`.
@@ -85,12 +87,13 @@ func TestCQRS_Gateway_WriterCommit_ReaderSees(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
 	g := newGateway("project-1", "gw-1", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-1"))
@@ -122,12 +125,13 @@ func TestCQRS_Gateway_WriterAbort_RollbacksInsert(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 
 	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
 	g := newGateway("project-1", "gw-abort", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-abort"))
@@ -153,13 +157,14 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// 1) Insert + Emit + Commit → outbox-row есть.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w.Abort()
 	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
 	g := newGateway("project-1", "gw-outbox-commit", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-commit"))
 	_, err = w.Gateways().Insert(ctx, g)
@@ -175,6 +180,7 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	// 2) Insert + Emit + Abort → ни DML, ни outbox-row не должны остаться.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	g2 := newGateway("project-1", "gw-outbox-abort", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-abort"))
 	_, err = w2.Gateways().Insert(ctx, g2)
 	require.NoError(t, err)
@@ -202,13 +208,14 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 
 	// Insert.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w1.Abort()
 	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
 	g := newGateway("project-1", "gw-cycle", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-cycle"))
 	created, err := w1.Gateways().Insert(ctx, g)
@@ -219,6 +226,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	// Update.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w2.Abort()
 	created.Name = domain.RcNameVPC("gw-cycle-updated")
 	updated, err := w2.Gateways().Update(ctx, &created.Gateway)
 	require.NoError(t, err)
@@ -229,6 +237,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	// Delete.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
+	defer w3.Abort()
 	require.NoError(t, w3.Gateways().Delete(ctx, g.ID))
 	require.NoError(t, w3.Outbox().Emit(ctx, "Gateway", g.ID, "DELETED", map[string]any{"id": g.ID}))
 	require.NoError(t, w3.Commit())

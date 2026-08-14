@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Тот же предмет, что у списков блочного хранения: курсорная пагинация продаётся
@@ -50,7 +52,7 @@ func TestIntegration_InstancesCursorIndex_PageDoesNotReadTheWholeProject(t *test
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Предпосылка пробы: форма запроса в ней совпадает с формой репозитория.
 	body, rerr := os.ReadFile("instance_repo.go")

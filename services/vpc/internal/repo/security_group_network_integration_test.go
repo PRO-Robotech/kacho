@@ -23,6 +23,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Интеграционные тесты use-case-уровня против реального Postgres
@@ -56,7 +58,7 @@ func newSGNetFixture(t *testing.T) *sgNetFixture {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	r := kachopg.New(pool, nil)
 	t.Cleanup(func() { r.Close() })

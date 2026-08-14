@@ -30,6 +30,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 func TestFreelist_ConcurrentAllocateSameAddress(t *testing.T) {
@@ -39,7 +41,7 @@ func TestFreelist_ConcurrentAllocateSameAddress(t *testing.T) {
 	ctx := context.Background()
 	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pgPool.Close()
+	pgtest.ClosePoolAtEnd(t, pgPool)
 
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
