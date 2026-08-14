@@ -609,12 +609,28 @@ CASES.append(Case(
         retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
              path="/nlb/v1/networkLoadBalancers/{{nlbId}}", test_script=[])),
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
-        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+        #
+        # Шаг НЕСЁТ утверждение и ОБЁРНУТ — оба пункта выведены из красного прогона,
+        # а не добавлены на всякий случай.
+        #
+        # Без утверждения он молча принимал 403 «no authorization path to the resource»
+        # на свежем балансировщике: `lstId` оставался пустым, слушателя не было, и
+        # кейс падал ТРЕМЯ шагами позже — на утверждении «удаление группы отвергнуто».
+        # Виновником печатался невиновный шаг, сделавший ровно то, что положено при
+        # отсутствующем предмете. Замер: 5 упавших утверждений в двух прогонах подряд,
+        # при том что ответ края на wire-listener лежал в отчёте всё это время.
+        #
+        # Обёртка нужна отдельно от `setup-materialize-lb` выше. Тот ждёт видимости
+        # ЧТЕНИЯ балансировщика (GET), а здесь право требуется на ССЫЛКУ из тела
+        # запроса к другому адресу — предикат автообёртки читает адрес шага и такую
+        # ссылку не видит by construction. Один и тот же прогон показывает обе стороны:
+        # соседний кейс (`tgr-mv-lb`) на том же шаге получил 200.
+        retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
         # owner-tuple materializes -> retry SELF; the block assertion then runs once the
@@ -742,12 +758,17 @@ CASES.append(Case(
         # Wire the TG to the LB via a listener (default_target_group_id) — a listener
         # referencing the TG is what now blocks the TG Move (attach/detach removed).
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
-        Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
+        # Утверждение и обёртка — по той же причине, что у близнеца выше: этот шаг
+        # создаёт ПРЕДМЕТ кейса, и без утверждения его 403 в окне материализации
+        # уезжает молча, а падает шаг, проверяющий отказ переноса. В прогоне, где
+        # близнец получил 403, ЭТОТ получил 200 — то есть отличие между ними
+        # случайное, и чинить надо оба.
+        retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
-             test_script=[*save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
         # Move refuses SYNCHRONOUSLY while a listener still points at the TG
         # (targetgroup/move.go: ReferencingListenerIDs non-empty -> FAILED_PRECONDITION
