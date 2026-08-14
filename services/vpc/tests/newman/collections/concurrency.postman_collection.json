@@ -457,7 +457,7 @@
           ]
         },
         {
-          "name": "list-and-cleanup-rya976",
+          "name": "list-and-cleanup-rya985",
           "request": {
             "method": "GET",
             "header": [
@@ -604,7 +604,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya972",
+          "name": "cleanup-net-rya981",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1093,7 +1093,7 @@
           ]
         },
         {
-          "name": "setup-sub",
+          "name": "setup-sub-rya986",
           "request": {
             "method": "POST",
             "header": [
@@ -1129,6 +1129,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1471,7 +1486,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya973",
+          "name": "cleanup-sub-rya982",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1591,7 +1606,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya974",
+          "name": "cleanup-net-rya983",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1839,7 +1854,7 @@
           ]
         },
         {
-          "name": "create-sg",
+          "name": "create-sg-rya987",
           "request": {
             "method": "POST",
             "header": [
@@ -1875,6 +1890,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1961,7 +1991,7 @@
           ]
         },
         {
-          "name": "await-sg-authorized-rya977",
+          "name": "await-sg-authorized-rya988",
           "request": {
             "method": "GET",
             "header": [
@@ -2123,7 +2153,7 @@
           ]
         },
         {
-          "name": "fetch-sg-rules-after-occ-rya978",
+          "name": "fetch-sg-rules-after-occ-rya989",
           "request": {
             "method": "GET",
             "header": [
@@ -2223,7 +2253,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya979",
+          "name": "cleanup-sg-rya990",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2343,7 +2373,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya975",
+          "name": "cleanup-net-rya984",
           "request": {
             "method": "DELETE",
             "header": [

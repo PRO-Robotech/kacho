@@ -189,7 +189,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya130",
+          "name": "assert-op-success-rya157",
           "request": {
             "method": "GET",
             "header": [
@@ -257,7 +257,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya127",
+          "name": "get-after-create-rya154",
           "request": {
             "method": "GET",
             "header": [
@@ -418,7 +418,7 @@
           ]
         },
         {
-          "name": "delete-rya131",
+          "name": "delete-rya158",
           "request": {
             "method": "DELETE",
             "header": [
@@ -561,7 +561,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya132",
+          "name": "assert-op-success-rya159",
           "request": {
             "method": "GET",
             "header": [
@@ -629,7 +629,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya133",
+          "name": "get-after-delete-rya160",
           "request": {
             "method": "GET",
             "header": [
@@ -926,7 +926,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya134",
+          "name": "assert-op-success-rya161",
           "request": {
             "method": "GET",
             "header": [
@@ -1072,7 +1072,7 @@
           ]
         },
         {
-          "name": "create",
+          "name": "create-rya162",
           "request": {
             "method": "POST",
             "header": [
@@ -1126,6 +1126,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -1213,7 +1228,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya135",
+          "name": "assert-op-success-rya163",
           "request": {
             "method": "GET",
             "header": [
@@ -1281,7 +1296,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya128",
+          "name": "get-after-create-rya155",
           "request": {
             "method": "GET",
             "header": [
@@ -1442,7 +1457,7 @@
           ]
         },
         {
-          "name": "delete-rya136",
+          "name": "delete-rya164",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1585,7 +1600,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya137",
+          "name": "assert-op-success-rya165",
           "request": {
             "method": "GET",
             "header": [
@@ -1653,7 +1668,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya138",
+          "name": "get-after-delete-rya166",
           "request": {
             "method": "GET",
             "header": [
@@ -1808,7 +1823,7 @@
           ]
         },
         {
-          "name": "cleanup-src-vol-rya139",
+          "name": "cleanup-src-vol-rya167",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2097,7 +2112,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya140",
+          "name": "assert-op-success-rya168",
           "request": {
             "method": "GET",
             "header": [
@@ -2243,7 +2258,7 @@
           ]
         },
         {
-          "name": "create",
+          "name": "create-rya169",
           "request": {
             "method": "POST",
             "header": [
@@ -2297,6 +2312,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -2384,7 +2414,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya141",
+          "name": "assert-op-success-rya170",
           "request": {
             "method": "GET",
             "header": [
@@ -2452,7 +2482,7 @@
           ]
         },
         {
-          "name": "get-after-create-rya129",
+          "name": "get-after-create-rya156",
           "request": {
             "method": "GET",
             "header": [
@@ -2613,7 +2643,7 @@
           ]
         },
         {
-          "name": "delete-rya142",
+          "name": "delete-rya171",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2756,7 +2786,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya143",
+          "name": "assert-op-success-rya172",
           "request": {
             "method": "GET",
             "header": [
@@ -2824,7 +2854,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya144",
+          "name": "get-after-delete-rya173",
           "request": {
             "method": "GET",
             "header": [
@@ -2979,7 +3009,7 @@
           ]
         },
         {
-          "name": "cleanup-img-src-vol-rya145",
+          "name": "cleanup-img-src-vol-rya174",
           "request": {
             "method": "DELETE",
             "header": [
