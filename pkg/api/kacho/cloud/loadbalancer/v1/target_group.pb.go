@@ -151,8 +151,21 @@ type TargetGroup struct {
 	Labels      map[string]string      `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	RegionId    string                 `protobuf:"bytes,7,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
 	// Inline targets snapshot. Source of truth is the `targets` child table
-	// (design §5.2); this field is populated on Get/List via a join. Add/Remove
-	// go through dedicated RPCs (TargetGroupService.AddTargets / RemoveTargets).
+	// (design §5.2). Add/Remove go through dedicated RPCs
+	// (TargetGroupService.AddTargets / RemoveTargets).
+	//
+	// Which reads populate it: BOTH — Get and List. A list page loads the targets
+	// of every group on it, so an empty array here always means "this group has no
+	// targets" and never "this read does not fill the field". The two are
+	// indistinguishable on the wire, and a client that syncs its state from the
+	// cheap path (List) would read the second as "all targets were deleted".
+	//
+	// Is the order significant: NO — this is a SET, not a sequence. The server
+	// does not preserve the order targets were supplied in and gives no other
+	// ordering guarantee; compare the field by MEMBERSHIP, never by index. A
+	// client that diffs positionally will read a reshuffle as "target 1 changed
+	// its address, target 2 changed its weight" and revert what it just wrote.
+	// Per-target traffic share is `Target.weight`; position carries no meaning.
 	Targets []*Target `protobuf:"bytes,9,rep,name=targets,proto3" json:"targets,omitempty"`
 	// Embedded health check — single HC per group (hoisted to TG-level; embedded
 	// value-object, redesigned in NLB-1c to drop `name` and carry the 4-way
