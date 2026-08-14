@@ -490,6 +490,15 @@ func NewMux(
 		if err := vpcpb.RegisterCidrGroupServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
 			return nil, fmt.Errorf("register CidrGroupService: %w", err)
 		}
+		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
+		// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
+		// администратор облака через iam.v1.InternalLimitService на внутреннем
+		// слушателе. До этого сервиса вся поверхность квот была административной,
+		// и арендатор, встретив отказ на пределе, не мог узнать ни своего
+		// потолка, ни своего расхода — работающий предел был неотличим от сбоя.
+		if err := vpcpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+			return nil, fmt.Errorf("register QuotaService: %w", err)
+		}
 
 		// --- vpc admin (AddressPool) — kacho-only, internal-port (9091) ---
 		// Эти сервисы экспонируются через apiGW REST для UI/админ-tooling;
