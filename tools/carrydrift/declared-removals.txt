@@ -24,3 +24,5 @@
 
 terraform/internal/provider/instance_resource.go	дубль ресурса kacho_compute_instance: ствол и ветка независимо завели один TypeName, оставлена полная реализация ветки (49 атрибутов против 18), четыре недостающих поля перенесены в неё
 terraform/internal/provider/instance_resource_test.go	пробы снятого дубля; обе перенесены на живые типы в compute_instance_optionals_test.go
+terraform/internal/provider/machine_type_data_source.go	дубль источника kacho_compute_machine_type: ствол и ветка независимо завели один TypeName, оставлена версия ветки — она покрывает поля стволовой целиком (id/name/description/family/status/memory_mib/available_zones/created_at) и несёт шесть своих
+terraform/internal/provider/machine_type_data_source_test.go	пробы снятого дубля источника
