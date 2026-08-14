@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 27 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 25 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -112,12 +112,12 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
 		"kacho.cloud.iam.v1.UserService/Invite",
-		// C — compute per-resource grant (16; non-iam grant-surface).
-		// GpuCluster/HostGroup/PlacementGroup dropped with their born-dead
-		// services (never served on any listener, absent from the enforced
-		// authorization model) — their grant RPCs no longer exist to step up.
-		"kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
-		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
+		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
+		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
+		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
+		// привязками iam, как у прочих доменов. Пример полосы «чувствительное» у
+		// compute здесь поэтому отсутствует, и это не пропуск: у домена не осталось
+		// ни одного RPC, поднимающего планку подтверждения.
 		// D — group membership grant + group destroy (3; Delete = revoke-by-all, R3/B-2)
 		"kacho.cloud.iam.v1.GroupService/AddMember",
 		"kacho.cloud.iam.v1.GroupService/RemoveMember",
@@ -158,13 +158,15 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	// 27, up from 24: category F (ConditionsService Update/Delete) had its
+	// Было 27; стало 25 — с машины снята поверхность выдачи прав (два RPC полосы
+	// «чувствительное» ушли вместе с ней). Прежняя история числа: 27, up from 24:
+	// category F (ConditionsService Update/Delete) had its
 	// subject retired together with the tenant-facing condition surface (26→24),
 	// and category I (InternalInteractiveClientService Create/Update/Delete)
 	// then joined with IAM-INT-1 (24→27). The number is asserted rather than
 	// derived from the list on purpose — a silent shrink is exactly what would
 	// happen if an entry were dropped by accident.
-	require.Len(t, sensitive, 27, "the acceptance-doc sensitive set must contain exactly 27 FQNs")
+	require.Len(t, sensitive, 25, "the acceptance-doc sensitive set must contain exactly 25 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -185,7 +187,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 27, "exactly 27 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 25, "exactly 25 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -198,8 +200,8 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 		// B6 author-inert create → routine
 		"kacho.cloud.iam.v1.RoleService/Create",
 		"kacho.cloud.iam.v1.GroupService/Create",
-		// per-resource ListAccessBindings — reads → routine
-		"kacho.cloud.compute.v1.InstanceService/ListAccessBindings",
+		// per-resource ListAccessBindings — reads → routine. Compute-пример снят
+		// вместе с поверхностью выдачи на машине (см. набор «чувствительных» выше).
 		"kacho.cloud.iam.v1.AccessBindingService/ListByScope",
 		"kacho.cloud.iam.v1.AccessBindingService/ListAssignableRoles",
 		"kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
@@ -383,37 +385,72 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	//
 	// Итог: 59→34 exempt, 209→234 routine, sensitive и total не тронуты.
 	//
-	// ЧИСЛА ПЕРЕМЕРЕНЫ после снятия восьми методов домена сети: три метода правки
-	// маршрутов (отвечали отказом при любом входе), поиск адреса по значению и список
-	// адресов по подсети, три метода под-перечисления сети. Все восемь были рутинной
-	// полосы, поэтому изменились ровно два числа: routine 234→226 и total 295→287;
-	// sensitive и exempt не тронуты. Имена снятых стоят в перечне снятой поверхности,
-	// поэтому вернуться молча они не могут.
+	// 2026-08-13, целевой вид storage: +14 записей, ВСЕ рутинные. Отсчёт ведётся
+	// от состояния ствола ПОСЛЕ производственной формы compute (см. ниже), с
+	// которым эта ветка слита: 244→258 routine, 303→317 total; sensitive (25) и
+	// exempt (34) не тронуты — ни одна из четырнадцати не освобождена от проверки
+	// и ни одна не поднимает планку аутентификации.
 	//
-	// ЧИСЛА ПЕРЕМЕРЕНЫ ещё раз — заведён шов с исполнителем датаплейна
-	// (`vpc.v1.InternalDataplaneService`): поток намерения `WatchIntent`
-	// (`system_viewer` @ cluster) и подтверждение применения
-	// `ReportIntentApplied` (`system_admin` @ cluster). Оба — рутинной полосы
-	// (ACR «1»), поэтому изменились ровно два числа: routine 226→228 и
-	// total 287→289; sensitive и exempt не тронуты.
+	// Числа получены ЗАМЕРОМ по дереву после слияния, а не сложением двух
+	// переписей: две независимые правки каталога, сведённые арифметикой в уме,
+	// дали бы совпадение, которое нечем проверить.
 	//
-	// Полоса ACR у потока — та же, что у остальных внутренних чтений инфра-
-	// поверхности (`InternalNetworkService/GetNetwork`), и поднимать её было бы
-	// требованием повторной аутентификации к машинному вызывающему, который
-	// интерактивной сессии не имеет вовсе. Отношения при этом РАЗНЫЕ у чтения и
-	// записи: право смотреть намерение не даёт права объявлять применённым что
-	// угодно.
-	// ЧИСЛА ПЕРЕМЕРЕНЫ ещё раз — заведён ресурс «именованный набор префиксов»
-	// (`vpc.v1.CidrGroupService`, восемь публичных методов: чтение, список,
-	// история операций, создание, правка, два глагола состава, удаление). Все
-	// восемь — рутинной полосы (ACR «1»), потому что ни один не меняет посадку
-	// безопасности вызывающего: набор адресуется его же проектом и гейтится
-	// пообъектно. Изменились ровно два числа: routine 228→236 и total 289→297;
-	// sensitive и exempt не тронуты.
-	assert.Equal(t, 27, n2, "sensitive count")
-	assert.Equal(t, 236, n1, "routine count")
+	// Состав: четыре публичных глагола (Volume/ChangeDiskType — v_update;
+	// Snapshot/ListOperations — v_list; Snapshot/Copy и Image/Copy — editor@project)
+	// и десять административных на :9091 (StorageBackend ×5, DiskTypeBinding ×3,
+	// DiskType/SetLifecycle, Image/Register), все — system_admin на кластерном
+	// синглтоне.
+	//
+	// Почему десять административных остались РУТИННЫМИ, хотя соблазн поднять их
+	// велик. Полоса «чувствительных» в этом дереве собрана по одному признаку:
+	// метод решает, КАК И КУДА доставляется аутентификация (адреса возврата
+	// авторизационного кода, выдача токенов). Регистрация кластера хранения к
+	// этому признаку не относится: она требует привилегии, а не более сильного
+	// доказательства личности, и её привилегию уже держит system_admin. Подняв
+	// планку одному административному RPC из десятков однотипных в дереве, мы
+	// получили бы расхождение, невидимое ниоткуда, кроме этой переписи. Решение
+	// названо здесь, чтобы следующий читатель видел выбор, а не пропуск.
+	//
+	// Отдельно про Copy: обе копии гейтятся `editor@project`, а НЕ `v_get` на
+	// источник. Копия — новый ресурс (квота, имя, деньги), а роль наблюдателя
+	// материализует v_get на каждый объект проекта: гейт на чтение отдал бы
+	// наблюдателю право порождать ресурсы. Пообъектного `v_create` в платформе
+	// нет by construction (authzmap: «создать» спрашивают у родителя), поэтому
+	// форма у Copy та же, что у всякого Create.
+	//
+	// Итог того перехода: 59→34 exempt, 209→234 routine.
+	//
+	// Числа ниже перемерены 2026-08-13 и изменились по двум причинам, обе
+	// названы: (а) с машины снята поверхность выдачи прав — два RPC полосы
+	// «чувствительное» и один рутинный ушли вместе с ней (27→25 sensitive);
+	// (б) заведён ключ входа в машину — шесть рутинных записей (234→235 с учётом
+	// ушедшего); (в) заведено владение машиной узлом на внутреннем слушателе — три
+	// рутинных записи (235→238); (г) заведена группа размещения — шесть рутинных
+	// записей (238→244). Итог 295→294→297→303.
+
+	// СЛИЯНИЕ: эта ветка добавляет к каталогу ещё две группы, обе рутинные.
+	// (а) шов с исполнителем датаплейна (`vpc.v1.InternalDataplaneService`): поток
+	// намерения `WatchIntent` (`system_viewer` @ cluster) и подтверждение применения
+	// `ReportIntentApplied` (`system_admin` @ cluster). Полоса ACR у потока — та же,
+	// что у остальных внутренних чтений инфра-поверхности: поднимать её значило бы
+	// требовать повторной аутентификации от машинного вызывающего, у которого
+	// интерактивной сессии нет вовсе. Отношения при этом РАЗНЫЕ у чтения и записи:
+	// право смотреть намерение не даёт права объявлять применённым что угодно.
+	// (б) ресурс «именованный набор префиксов» (`vpc.v1.CidrGroupService`, восемь
+	// публичных методов: чтение, список, история операций, создание, правка, два
+	// глагола состава, удаление) — ни один не меняет посадку безопасности
+	// вызывающего: набор адресуется его же проектом и гейтится пообъектно.
+	//
+	// Числа ниже сняты ЗАМЕРОМ слитого дерева, а не сложением двух переписей.
+	// Сложение приведено ОТДЕЛЬНО и только как контроль замера — оно сошлось, и
+	// это единственное, ради чего его стоит называть: 317 записей ствола + 10
+	// заведённых этой веткой − 8 снятых ею с поверхности сети = 319. Разойдись
+	// оно с замером — верным был бы замер, а расхождение означало бы, что одна из
+	// сторон слияния потеряла записи молча.
+	assert.Equal(t, 25, n2, "sensitive count")
+	assert.Equal(t, 260, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 297, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 319, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -520,6 +520,17 @@ func NewMux(
 		if err := computepb.RegisterMachineTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute MachineTypeService: %w", err)
 		}
+		// GuestAccessKeyService — публичные ключи входа в машину
+		// (/compute/v1/guestAccessKeys). Только публичная половина ключа; закрытая
+		// не покидает машину арендатора и в продукте не хранится.
+		if err := computepb.RegisterGuestAccessKeyServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute GuestAccessKeyService: %w", err)
+		}
+		// PlacementGroupService — правила взаимного размещения машин
+		// (/compute/v1/placementGroups).
+		if err := computepb.RegisterPlacementGroupServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute PlacementGroupService: %w", err)
+		}
 
 		// --- compute admin — kacho-only, internal-port (9091) ---
 		// Доступен только через cluster-internal REST listener для UI/admin-tooling.
@@ -588,6 +599,24 @@ func NewMux(
 			// (isInternalRoute → HasInternalSuffix) 404-ит его на external TLS listener.
 			if err := storagepb.RegisterInternalImageServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
 				return nil, fmt.Errorf("register storage InternalImageService: %w", err)
+			}
+			// InternalStorageBackendService + InternalDiskTypeBindingService —
+			// административная плоскость каталога хранения: где стоит кластер
+			// данных и какой класс к нему привязан в какой зоне.
+			//
+			// Обе несут координату инфраструктуры (адрес кластера, имя пула,
+			// пространство имён) и потому живут ТОЛЬКО здесь: на внешнем
+			// слушателе их пути не обслуживаются вовсе — диспетчер
+			// классифицирует по принадлежности RPC Internal*-сервису, а не по
+			// форме пути.
+			//
+			// Ссылка на учётный материал (`credentials_ref`) — именно ссылка:
+			// сам материал не проходит ни через этот край, ни через БД.
+			if err := storagepb.RegisterInternalStorageBackendServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+				return nil, fmt.Errorf("register storage InternalStorageBackendService: %w", err)
+			}
+			if err := storagepb.RegisterInternalDiskTypeBindingServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
+				return nil, fmt.Errorf("register storage InternalDiskTypeBindingService: %w", err)
 			}
 		}
 

@@ -34,8 +34,23 @@ type setter interface {
 	SetAttribute(ctx context.Context, p path.Path, val any) diagList
 }
 
+// accessor — состояние, которое и читают, и пишут.
+//
+// Нужен разбору ответа: два поля из трёх он записывает «как приехало», а поля, которых
+// ответ не несёт вовсе, обязан ОСТАВИТЬ — то есть сначала прочитать уже записанное.
+// Читать при этом надо ровно то состояние, в которое идёт запись, иначе «оставить» брало
+// бы значение из другого источника и разошлось бы с тем, что увидит Terraform.
+type accessor interface {
+	getter
+	setter
+}
+
 type stateSetter struct{ s *tfsdk.State }
 
 func (w stateSetter) SetAttribute(ctx context.Context, pth path.Path, val any) diagList {
 	return w.s.SetAttribute(ctx, pth, val)
+}
+
+func (w stateSetter) GetAttribute(ctx context.Context, pth path.Path, target any) diagList {
+	return w.s.GetAttribute(ctx, pth, target)
 }

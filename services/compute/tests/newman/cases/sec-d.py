@@ -79,7 +79,7 @@ CASES.append(Case(
                    "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": "{{mtId}}",
                    "bootSource": dict(_BOOT_STORAGE),
                    "vmSpec": {"userData": "#cloud-config\n{}",
-                              "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+                              "metadataOptions": {"metadataEndpoint": "ENABLED"}},
                    "acknowledgeUnreachable": True,
                    "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
                                               "securityGroupIds": ["{{existingSgId}}"]}],

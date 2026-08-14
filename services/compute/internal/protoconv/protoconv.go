@@ -63,8 +63,8 @@ func Instance(in *domain.Instance) *computev1.Instance {
 		ZoneId:              in.ZoneID,
 		Status:              computev1.Instance_Status(in.Status), // #nosec G115 -- domain.InstanceStatus зеркалит computev1.Instance_Status
 		StatusReason:        in.StatusReason,
-		Metadata:            in.Metadata,
 		Fqdn:                in.FQDN,
+		GuestAccessKeyIds:   in.GuestAccessKeyIDs,
 		CpuGuaranteePercent: in.CPUGuaranteePercent,
 		InstanceKind:        computev1.InstanceKind(in.InstanceKind), // #nosec G115 -- domain.InstanceKind зеркалит computev1.InstanceKind
 		MachineTypeId:       in.MachineTypeID,
@@ -129,10 +129,9 @@ func bootSource(bs domain.BootSource) *computev1.BootSource {
 
 func vmSpec(v *domain.VMSpec) *computev1.VmSpec {
 	out := &computev1.VmSpec{UserData: v.UserData}
-	if v.MetadataEndpoint != domain.MetadataOptionUnspecified || v.MetadataTokenRequired {
+	if v.MetadataEndpoint != domain.MetadataOptionUnspecified {
 		out.MetadataOptions = &computev1.MetadataOptions{
-			MetadataEndpoint:      computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
-			MetadataTokenRequired: v.MetadataTokenRequired,
+			MetadataEndpoint: computev1.MetadataOption(v.MetadataEndpoint), // #nosec G115 -- domain.MetadataOption зеркалит computev1.MetadataOption
 		}
 	}
 	return out
@@ -202,5 +201,42 @@ func oneToOneNat(n *domain.OneToOneNat) *computev1.OneToOneNat {
 	return &computev1.OneToOneNat{
 		Address:   n.Address,
 		IpVersion: computev1.IpVersion(n.IPVersion),
+	}
+}
+
+// GuestAccessKey конвертирует domain.GuestAccessKey → computev1.GuestAccessKey.
+//
+// Закрытой половины ключа здесь нет и быть не может: её нет в доменной сущности,
+// поэтому «забыть не отдать» тут нечего — свойство держится составом типа, а не
+// внимательностью этой функции.
+func GuestAccessKey(k *domain.GuestAccessKey) *computev1.GuestAccessKey {
+	return &computev1.GuestAccessKey{
+		Id:          k.ID,
+		ProjectId:   k.ProjectID,
+		Name:        k.Name,
+		PublicKey:   k.PublicKey,
+		Fingerprint: k.Fingerprint,
+		Labels:      k.Labels,
+		CreatedAt:   ts(k.CreatedAt),
+	}
+}
+
+// PlacementGroup конвертирует domain.PlacementGroup → computev1.PlacementGroup.
+//
+// Числового параметра разнесения в ответе нет и быть не может: его нет ни в
+// доменной сущности, ни в контракте — свойство держится составом типов, а не
+// внимательностью этой функции.
+func PlacementGroup(g *domain.PlacementGroup) *computev1.PlacementGroup {
+	return &computev1.PlacementGroup{
+		Id:            g.ID,
+		ProjectId:     g.ProjectID,
+		Name:          g.Name,
+		Description:   g.Description,
+		CreatedAt:     ts(g.CreatedAt),
+		Labels:        g.Labels,
+		Strategy:      computev1.PlacementGroup_Strategy(g.Strategy),           // #nosec G115 -- domain зеркалит контракт
+		PlacementType: computev1.PlacementGroup_PlacementType(g.PlacementType), // #nosec G115 -- domain зеркалит контракт
+		ZoneId:        g.ZoneID,
+		RegionId:      g.RegionID,
 	}
 }

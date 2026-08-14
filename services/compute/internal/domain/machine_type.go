@@ -18,18 +18,6 @@ const (
 	MachineTypeFamilyGPU                                  // GPU
 )
 
-// CPUGuaranteeApplies reports whether cpuGuaranteePercent is meaningful for this
-// family (COMP-1 F2/F8): only the CPU-flavor families STANDARD/COMPUTE/MEMORY.
-// For GPU the field is accepted-and-ignored (does not modulate effectiveResources).
-func (f MachineTypeFamily) CPUGuaranteeApplies() bool {
-	switch f {
-	case MachineTypeFamilyStandard, MachineTypeFamilyCompute, MachineTypeFamilyMemory:
-		return true
-	default:
-		return false
-	}
-}
-
 // Valid reports whether the family is one of the concrete classes (not UNSPECIFIED
 // and within range). MachineType.Create requires a concrete family (F7).
 func (f MachineTypeFamily) Valid() bool {

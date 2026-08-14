@@ -27,14 +27,25 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
   const projectId = projectOverride ?? params.projectId ?? project?.id ?? null;
   const spec = REGISTRY[specId];
 
+  // Область видимости ресурса решает, чем его спрашивать. Регион, зона и каталог
+  // типов дисков — ГЛОБАЛЬНЫЕ справочники: измерения «проект» у них нет, поэтому
+  // `project_id` в таком запросе — чужой параметр. Ссылка на них при этом стоит
+  // на страницах ВНУТРИ проекта (том называет свою зону и свой тип диска), так
+  // что проект в контексте есть — и требовать его для запуска запроса значит
+  // молча не резолвить имя там, где проекта нет вовсе.
+  //
+  // Тот же предикат, что в @shared: держится гейтом
+  // `shared/src/test/ref-name-link-scope.test.ts`, который обходит ВСЕ копии
+  // этого компонента в дереве.
+  const projectScoped = spec?.scope === "project";
   const { data } = useQuery({
-    queryKey: ["ref-name", specId, projectId],
+    queryKey: ["ref-name", specId, projectScoped ? projectId : null],
     queryFn: () =>
       api.list<Record<string, Array<{ id: string; name?: string }>>>(spec!.apiPath, {
-        project_id: projectId!,
+        ...(projectScoped ? { project_id: projectId! } : {}),
         pageSize: "500",
       }),
-    enabled: !!spec && !!projectId && !!refId,
+    enabled: !!spec && !!refId && (!projectScoped || !!projectId),
     staleTime: 30_000,
   });
 

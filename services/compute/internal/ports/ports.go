@@ -103,11 +103,6 @@ type InstanceRepo interface {
 	// release-payload delete-саги). Отсутствует → ErrNotFound. Ставится ПЕРЕД
 	// release'ом привязок, чтобы конкурентный AttachDisk-гейт видел DELETING и падал.
 	MarkDeleting(ctx context.Context, id string) (*domain.Instance, error)
-	// MergeMetadata атомарно применяет delete+upsert дельту к map metadata одним
-	// SQL-statement'ом (within-service-инвариант на DB-уровне, project-rule 10 —
-	// не Go-side read-modify-write, иначе second-writer-wins под concurrency).
-	// Возвращает обновлённую ВМ.
-	MergeMetadata(ctx context.Context, id string, del []string, upsert map[string]string) (*domain.Instance, error)
 	// Delete удаляет строку ВМ (+ outbox DELETED + FGA unregister-intent) в одной
 	// writer-tx. Это ФИНАЛЬНЫЙ шаг delete-саги: том/NIC-привязки уже сняты через
 	// storage.Detach/vpc.Detach в use-case ДО этого вызова (compute local
@@ -182,6 +177,40 @@ type MachineTypeRepo interface {
 	Update(ctx context.Context, id string, u MachineTypeUpdate) (*domain.MachineType, error)
 	Delete(ctx context.Context, id string) error
 }
+
+// PlacementGroupUpdate — резолвнутый набор изменений одной правки группы.
+//
+// Стратегии и якоря размещения здесь НЕТ, и это не пропуск: смена любого из них
+// поменяла бы смысл размещения уже стоящих машин, а перекладывать их задним
+// числом мы не будем. Нужна другая стратегия — заводится другая группа.
+type PlacementGroupUpdate struct {
+	Name        *string
+	Description *string
+	Labels      map[string]string
+	LabelsSet   bool
+}
+
+// Touched сообщает, называет ли правка хоть одну колонку.
+func (u PlacementGroupUpdate) Touched() bool {
+	return u.Name != nil || u.Description != nil || u.LabelsSet
+}
+
+// GuestAccessKeyUpdate — резолвнутый набор изменений одной правки ключа.
+// nil-поле означает «колонку не трогать»; LabelsSet отличает «метки названы
+// маской» от «не названы» (пустая карта — законное значение).
+//
+// Материала ключа и отпечатка здесь НЕТ, и это не пропуск: подменить материал
+// значило бы сменить того, кто может войти, не сменив ни идентификатора, ни
+// ссылок на него с машин. Смена материала выражается парой «завести новый,
+// снять старый», и каждая половина этой пары видна в журнале.
+type GuestAccessKeyUpdate struct {
+	Name      *string
+	Labels    map[string]string
+	LabelsSet bool
+}
+
+// Touched сообщает, называет ли правка хоть одну колонку.
+func (u GuestAccessKeyUpdate) Touched() bool { return u.Name != nil || u.LabelsSet }
 
 // ProjectClient — port для проверки существования Project в kacho-iam
 // (ProjectService.Get). Аргумент projectID — id владельца-проекта; в схеме

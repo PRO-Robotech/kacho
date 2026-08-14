@@ -74,7 +74,6 @@ func (h *VolumeHandler) Create(ctx context.Context, req *storagev1.CreateVolumeR
 		ZoneID:         req.GetZoneId(),
 		DiskTypeID:     req.GetDiskTypeId(),
 		SizeBytes:      req.GetSizeBytes(),
-		BlockSize:      req.GetBlockSize(),
 		SourceSnapshot: req.GetSourceSnapshotId(),
 		SourceImage:    req.GetSourceImageId(),
 	}
@@ -117,6 +116,22 @@ func (h *VolumeHandler) ListOperations(ctx context.Context, req *storagev1.ListV
 		resp.Operations = append(resp.Operations, operationToProto(&ops[i]))
 	}
 	return resp, nil
+}
+
+// ChangeDiskType переводит том в другой класс диска (async Operation).
+//
+// Отдельный глагол, а не поле правки: это перемещение данных — оно длится, может
+// отказать на половине и меняет физическое расположение. Тонкий хендлер: решение
+// принимает use-case.
+func (h *VolumeHandler) ChangeDiskType(ctx context.Context, req *storagev1.ChangeDiskTypeRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.ChangeDiskType(ctx, volume.ChangeDiskTypeInput{
+		VolumeID:   req.GetVolumeId(),
+		DiskTypeID: req.GetDiskTypeId(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
 }
 
 // ── SnapshotService (public :9090) ────────────────────────────────────────
@@ -188,6 +203,42 @@ func (h *SnapshotHandler) Update(ctx context.Context, req *storagev1.UpdateSnaps
 // Delete удаляет Snapshot (async Operation).
 func (h *SnapshotHandler) Delete(ctx context.Context, req *storagev1.DeleteSnapshotRequest) (*operationpb.Operation, error) {
 	op, err := h.uc.Delete(ctx, req.GetSnapshotId())
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
+}
+
+// ListOperations возвращает операции по Snapshot.
+//
+// Паритет с томом и образом: у обоих этот глагол есть, и без него владелец
+// снимка не мог узнать, чем кончилось его же копирование, — единственный ответ
+// был «метод не реализован», то есть отказ без причины и без адреса возможности.
+func (h *SnapshotHandler) ListOperations(ctx context.Context, req *storagev1.ListSnapshotOperationsRequest) (*storagev1.ListSnapshotOperationsResponse, error) {
+	ops, next, err := h.uc.ListOperations(ctx, req.GetSnapshotId(), snapshot.Pagination{PageSize: req.GetPageSize(), PageToken: req.GetPageToken()})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	resp := &storagev1.ListSnapshotOperationsResponse{NextPageToken: next}
+	for i := range ops {
+		resp.Operations = append(resp.Operations, operationToProto(&ops[i]))
+	}
+	return resp, nil
+}
+
+// Copy копирует снимок в другую зону (async Operation).
+//
+// Единственный законный путь переноса данных между зонами: зона неизменяема, и без
+// копии её неизменяемость была бы тупиком. Создаётся НОВЫЙ снимок.
+func (h *SnapshotHandler) Copy(ctx context.Context, req *storagev1.CopySnapshotRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Copy(ctx, snapshot.CopyInput{
+		ProjectID:    req.GetProjectId(),
+		SnapshotID:   req.GetSnapshotId(),
+		TargetZoneID: req.GetTargetZoneId(),
+		Name:         req.GetName(),
+		Description:  req.GetDescription(),
+		Labels:       req.GetLabels(),
+	})
 	if err != nil {
 		return nil, serviceerr.ToStatus(err)
 	}
@@ -281,6 +332,22 @@ func (h *ImageHandler) ListOperations(ctx context.Context, req *storagev1.ListIm
 		resp.Operations = append(resp.Operations, operationToProto(&ops[i]))
 	}
 	return resp, nil
+}
+
+// Copy копирует образ в другой регион (async Operation).
+func (h *ImageHandler) Copy(ctx context.Context, req *storagev1.CopyImageRequest) (*operationpb.Operation, error) {
+	op, err := h.uc.Copy(ctx, image.CopyInput{
+		ProjectID:      req.GetProjectId(),
+		ImageID:        req.GetImageId(),
+		TargetRegionID: req.GetTargetRegionId(),
+		Name:           req.GetName(),
+		Description:    req.GetDescription(),
+		Labels:         req.GetLabels(),
+	})
+	if err != nil {
+		return nil, serviceerr.ToStatus(err)
+	}
+	return operationToProto(op), nil
 }
 
 // ── DiskTypeService (public :9090, read-only) ─────────────────────────────

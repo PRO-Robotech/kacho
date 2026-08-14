@@ -44,8 +44,8 @@
   ],
   "item": [
     {
-      "name": "DT-LST-CRUD-OK — List diskTypes → ≥5 seeded slug'ов (block-standard/-balanced/-fast/-single/-io-max), у каждого performanceTier + zoneIds array",
-      "description": "class:CRUD | priority:P1",
+      "name": "DT-LST-CRUD-OK — List diskTypes → массив; у КАЖДОЙ записи tier и lifecycle из закрытых словарей, zoneIds array, limits — целые границы, capabilities — только булевы, и НИ ОДНОГО инфра-поля",
+      "description": "class:CRUD | class:CONF | class:SEC | priority:P1",
       "item": [
         {
           "name": "list",
@@ -78,10 +78,25 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('diskTypes is array', () => pm.expect(j.diskTypes || []).to.be.an('array'));",
-                  "const ids = (j.diskTypes || []).map(x => x.id);",
-                  "pm.test('at least 5 seeded types', () => pm.expect(ids.length).to.be.at.least(5));",
-                  "['block-standard','block-balanced','block-fast','block-single','block-io-max'].forEach(s => pm.test('contains ' + s, () => pm.expect(ids).to.include(s)));",
-                  "pm.test('each has performanceTier + zoneIds array', () => (j.diskTypes || []).forEach(t => { pm.expect(t.performanceTier, t.id).to.be.a('string'); pm.expect(t.zoneIds || [], t.id).to.be.an('array'); }));"
+                  "const TIERS = ['PERFORMANCE_TIER_UNSPECIFIED', 'CAPACITY', 'BALANCED', 'FAST', 'SINGLE', 'IO_MAX'].map(String);",
+                  "const LIFE = ['ACTIVE', 'DEPRECATED', 'RETIRED'].map(String);",
+                  "const CAPS = ['snapshots','cloneFromSnapshot','cloneFromImage','onlineGrow','multiAttach','encryptionAtRest'];",
+                  "const LIMS = ['minSizeBytes','maxSizeBytes','sizeStepBytes'];",
+                  "(j.diskTypes || []).forEach(t => {",
+                  "  pm.test('tier is from the closed dictionary: ' + t.id, () => pm.expect(TIERS).to.include(t.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(t.tier)));",
+                  "  pm.test('lifecycle is from the closed dictionary: ' + t.id, () => pm.expect(LIFE).to.include(String(t.lifecycle)));",
+                  "  pm.test('zoneIds is array: ' + t.id, () => pm.expect(t.zoneIds || []).to.be.an('array'));",
+                  "  pm.test('capabilities — только объявленные булевы способности: ' + t.id, () => {",
+                  "    const c = t.capabilities || {};",
+                  "    Object.keys(c).forEach(k => { pm.expect(CAPS, 'посторонний ключ способностей ' + k).to.include(k); pm.expect(c[k], k).to.be.a('boolean'); });",
+                  "  });",
+                  "  pm.test('limits — целые границы размера: ' + t.id, () => {",
+                  "    const l = t.limits || {};",
+                  "    Object.keys(l).forEach(k => { pm.expect(LIMS, 'посторонний ключ границ ' + k).to.include(k); pm.expect(Number(l[k]), k + '=' + l[k]).to.be.a('number'); pm.expect(Number.isFinite(Number(l[k])), k).to.eql(true); });",
+                  "  });",
+                  "  pm.test('no infra field leaks: ' + t.id, () => ['backendId','backendObject','backendNamespace','endpoint','credentialsRef','locator','poolName','qos','revision'].forEach(k => pm.expect(t, k).to.not.have.property(k)));",
+                  "});",
+                  "pm.test('performanceTier is gone from the contract', () => (j.diskTypes || []).forEach(t => pm.expect(t, t.id).to.not.have.property('performanceTier')));"
                 ]
               }
             }
@@ -90,11 +105,11 @@
       ]
     },
     {
-      "name": "DT-GET-CRUD-OK — Get block-balanced → id=block-balanced, performanceTier=balanced, zoneIds array",
+      "name": "DT-GET-CRUD-OK — Get класса, ВЗЯТОГО ИЗ СПИСКА → те же поля, что отдал список (id/tier/lifecycle/zoneIds); пустой каталог — находка, а не зелёный",
       "description": "class:CRUD | class:CONF | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "list-for-id",
           "request": {
             "method": "GET",
             "header": [
@@ -104,15 +119,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/storage/v1/diskTypes/block-balanced",
+              "raw": "{{baseUrl}}/storage/v1/diskTypes",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "storage",
                 "v1",
-                "diskTypes",
-                "block-balanced"
+                "diskTypes"
               ]
             }
           },
@@ -124,8 +138,71 @@
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('id == block-balanced', () => pm.expect(j.id).to.eql('block-balanced'));",
-                  "pm.test('performanceTier == balanced', () => pm.expect(j.performanceTier).to.eql('balanced'));",
+                  "const ts = j.diskTypes || [];",
+                  "pm.test('каталог не пуст (иначе стенд не обслуживает тома — см. deploy seed-storage)', () => pm.expect(ts.length, 'классов в каталоге').to.be.at.least(1));",
+                  "if (ts.length) {",
+                  "  pm.environment.set('dtProbeId', ts[0].id);",
+                  "  pm.environment.set('dtProbeTier', ts[0].tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(ts[0].tier));",
+                  "  pm.environment.set('dtProbeLifecycle', String(ts[0].lifecycle));",
+                  "  pm.environment.set('dtProbeCaps', JSON.stringify(ts[0].capabilities || {}));",
+                  "  pm.environment.set('dtProbeLimits', JSON.stringify(ts[0].limits || {}));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-rya18",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/diskTypes/{{dtProbeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "diskTypes",
+                "{{dtProbeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('id совпадает со списочным', () => pm.expect(j.id).to.eql(pm.environment.get('dtProbeId')));",
+                  "pm.test('tier совпадает со списочным', () => pm.expect(j.tier === undefined ? 'PERFORMANCE_TIER_UNSPECIFIED' : String(j.tier)).to.eql(pm.environment.get('dtProbeTier')));",
+                  "pm.test('lifecycle совпадает со списочным', () => pm.expect(String(j.lifecycle)).to.eql(pm.environment.get('dtProbeLifecycle')));",
+                  "pm.test('capabilities совпадают со списочными', () => pm.expect(JSON.stringify(j.capabilities || {})).to.eql(pm.environment.get('dtProbeCaps')));",
+                  "pm.test('limits совпадают со списочными', () => pm.expect(JSON.stringify(j.limits || {})).to.eql(pm.environment.get('dtProbeLimits')));",
                   "pm.test('zoneIds is array', () => pm.expect(j.zoneIds || []).to.be.an('array'));"
                 ]
               }
@@ -135,7 +212,7 @@
       ]
     },
     {
-      "name": "DT-GET-NEG-NOTFOUND — Get block-nope → 404 NOT_FOUND 'DiskType block-nope not found'",
+      "name": "DT-GET-NEG-NOTFOUND — Get block-nope → 404 NOT_FOUND 'DiskType block-nope not found' (тон контракта, id в тексте)",
       "description": "class:NEG | class:CONF | priority:P0",
       "item": [
         {
@@ -275,7 +352,7 @@
       ]
     },
     {
-      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 400/403/404 — НИКОГДА 200/мутация seed",
+      "name": "DT-UPD-NEG-EXTERNAL-ABSENT — PATCH /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Update Internal-only): 401/403/404/405/501 — НИКОГДА 200/мутация каталога",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {
@@ -325,7 +402,7 @@
       ]
     },
     {
-      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 400/403/404 — НИКОГДА 200/удаление seed",
+      "name": "DT-DEL-NEG-EXTERNAL-ABSENT — DELETE /storage/v1/diskTypes/<nonexistent> на external → rejected (admin Delete Internal-only): 401/403/404/405/501 — НИКОГДА 200/удаление класса",
       "description": "class:SEC | class:NEG | class:AUTHZ | priority:P0",
       "item": [
         {

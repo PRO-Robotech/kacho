@@ -102,7 +102,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/Create":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Update":                   {},
 	"/kacho.cloud.compute.v1.InstanceService/Delete":                   {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateMetadata":           {},
 	"/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput":      {},
 	"/kacho.cloud.compute.v1.InstanceService/Stop":                     {},
 	"/kacho.cloud.compute.v1.InstanceService/Start":                    {},
@@ -111,20 +110,32 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/DetachDisk":               {},
 	"/kacho.cloud.compute.v1.InstanceService/AttachNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/DetachNetworkInterface":   {},
-	"/kacho.cloud.compute.v1.InstanceService/AddOneToOneNat":           {},
-	"/kacho.cloud.compute.v1.InstanceService/RemoveOneToOneNat":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateNetworkInterface":   {},
 	"/kacho.cloud.compute.v1.InstanceService/ListOperations":           {},
-	"/kacho.cloud.compute.v1.InstanceService/Relocate":                 {},
 	"/kacho.cloud.compute.v1.InstanceService/SimulateMaintenanceEvent": {},
-	"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings":       {},
-	"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings":        {},
-	"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings":     {},
 	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
 	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).
 	"/kacho.cloud.compute.v1.MachineTypeService/Get":  {},
 	"/kacho.cloud.compute.v1.MachineTypeService/List": {},
+	// compute.v1 — GuestAccessKeyService (публичные ключи входа арендатора в свои
+	// машины). Чтения sync, мутации — Operation. Пообъектный тип прав
+	// (`compute_guest_access_key`) нужен потому, что запрос несёт только
+	// идентификатор ключа: проект резолвит владелец прав, а не вызывающий.
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Get":            {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/List":           {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Create":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Update":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/Delete":         {},
+	"/kacho.cloud.compute.v1.GuestAccessKeyService/ListOperations": {},
+	// compute.v1 — PlacementGroupService (правила взаимного размещения машин).
+	// Пообъектный тип прав нужен по той же причине, что у ключа: запрос несёт
+	// только идентификатор группы.
+	"/kacho.cloud.compute.v1.PlacementGroupService/Get":            {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/List":           {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Create":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Update":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/Delete":         {},
+	"/kacho.cloud.compute.v1.PlacementGroupService/ListOperations": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
 
@@ -136,12 +147,20 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.storage.v1.VolumeService/Update":         {},
 	"/kacho.cloud.storage.v1.VolumeService/Delete":         {},
 	"/kacho.cloud.storage.v1.VolumeService/ListOperations": {},
+	// ChangeDiskType — смена класса на живом томе. Публичный глагол: арендатор
+	// вправе переехать между классами, не пересоздавая том. Плоскость данных
+	// переезда наружу не видна — она остаётся предметом сверщика.
+	"/kacho.cloud.storage.v1.VolumeService/ChangeDiskType": {},
 	// storage.v1 — SnapshotService (StorageSnapshot `snp`, отдельно от compute Snapshot)
-	"/kacho.cloud.storage.v1.SnapshotService/Get":    {},
-	"/kacho.cloud.storage.v1.SnapshotService/List":   {},
-	"/kacho.cloud.storage.v1.SnapshotService/Create": {},
-	"/kacho.cloud.storage.v1.SnapshotService/Update": {},
-	"/kacho.cloud.storage.v1.SnapshotService/Delete": {},
+	"/kacho.cloud.storage.v1.SnapshotService/Get":            {},
+	"/kacho.cloud.storage.v1.SnapshotService/List":           {},
+	"/kacho.cloud.storage.v1.SnapshotService/Create":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/Update":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/Delete":         {},
+	"/kacho.cloud.storage.v1.SnapshotService/ListOperations": {},
+	// Copy — перенос снимка в другую зону. Публичный: без него снимок заперт в
+	// зоне своего тома, и восстановление в соседней зоне невозможно арендатору.
+	"/kacho.cloud.storage.v1.SnapshotService/Copy": {},
 	// storage.v1 — DiskTypeService (read-only справочник; admin-CRUD — через
 	// InternalDiskTypeService на :9091, НЕ в allowlist).
 	"/kacho.cloud.storage.v1.DiskTypeService/Get":  {},
@@ -155,6 +174,12 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.storage.v1.ImageService/Update":         {},
 	"/kacho.cloud.storage.v1.ImageService/Delete":         {},
 	"/kacho.cloud.storage.v1.ImageService/ListOperations": {},
+	// Copy — перенос образа в другую зону. Публичный по той же причине, что и у
+	// снимка: образ, запертый в одной зоне, не даёт запустить машину в соседней.
+	// Register (принятие уже существующего объекта плоскости данных) публичным НЕ
+	// является и живёт на InternalImageService — это административный глагол,
+	// который называет координату в хранилище (ban #6).
+	"/kacho.cloud.storage.v1.ImageService/Copy": {},
 	// storage.v1 — InternalVolumeService (Attach/Detach/ListAttachments/GetInternal,
 	// инфра-чувствительные placement-поля) и InternalDiskTypeService (admin CRUD) —
 	// НЕ в allowlist (HasInternalSuffix блокирует автоматически; ban #6). :9091 only.

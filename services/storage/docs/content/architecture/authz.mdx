@@ -30,13 +30,17 @@ title: Права и полосы доступа
 
 ```protobuf
 rpc Get(GetVolumeRequest) returns (Volume) {
-  option (kacho.iam.authz.v1.required_relation) = "viewer";
+  option (kacho.iam.authz.v1.required_relation) = "v_get";
   option (kacho.iam.authz.v1.scope_extractor)   = {
     object_type:        "storage_volume"
     from_request_field: "volume_id"
   };
 }
 ```
+
+Отношение здесь **глагольное** (`v_get`), а не ярусное (`viewer`), и это существенно:
+ярусное отношение стоит у `List` — у метода, чей вопрос про проект, а не про объект.
+Разница разобрана ниже, в разделе про паритет.
 
 Проверка выполняется на границе до того, как сервис прочитает строку. Отказ по правам на
 существующий объект **неотличим** от отсутствия объекта: текст совпадает дословно с

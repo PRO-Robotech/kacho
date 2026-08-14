@@ -28,23 +28,60 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 )
 
-// defaultBlockSize — дефолтный block_size тома (§1.1), если не задан на Create.
-const defaultBlockSize = 4096
+// Колонка block_size остаётся в схеме со своим прежним умолчанием, но контрактом
+// больше не адресуется: у поля не было ни одного читателя, меняющего поведение, —
+// оно только хранилось и возвращалось. Ручка, ничего не меняющая, но объявленная
+// неизменяемой, закрепляет за арендатором ошибку навсегда; в контракте её номер и
+// имя зарезервированы. Значение колонки задаётся умолчанием схемы.
 
 // VolumeRepo — реализация volume.Reader/Writer поверх pgxpool.
 type VolumeRepo struct {
-	pool *pgxpool.Pool
+	// projectBytesLimit — предел провизионированного объёма на проект (0 — нет).
+	// Проверяется ВНУТРИ вставки: отдельным чтением две одновременные заявки
+	// прошли бы обе, каждая увидев доквотное состояние.
+	projectBytesLimit int64
+	pool              *pgxpool.Pool
+	// readyOnCommit — состояние, в котором рождается ресурс.
+	//
+	// Плоскость данных ОБЪЯВЛЕНА → ресурс рождается в намерении, пригодным его
+	// делает сверщик, увидев объект. НЕ объявлена → сверять не с чем, и фиксация
+	// записи сама есть готовность: Kachō — платформа только управляющей
+	// плоскости, и требовать плоскость данных значило бы требовать того, чего в
+	// продукте не бывает.
+	readyOnCommit bool
+}
+
+// WithReadyOnCommit объявляет, что плоскости данных нет и готовность наступает
+// на фиксации записи. Провязывается композиционным корнем из того же признака,
+// который читает проводка сверщика, — иначе два места разошлись бы молча.
+func (r *VolumeRepo) WithReadyOnCommit(v bool) *VolumeRepo { r.readyOnCommit = v; return r }
+
+// bornState — состояние рождения ресурса этого хранилища.
+func bornState(readyOnCommit bool) string {
+	if readyOnCommit {
+		return "READY"
+	}
+	return "CREATING"
 }
 
 // NewVolumeRepo создаёт VolumeRepo поверх pgxpool.
 func NewVolumeRepo(pool *pgxpool.Pool) *VolumeRepo { return &VolumeRepo{pool: pool} }
+
+// WithProjectBytesLimit задаёт предел провизионированного объёма на проект.
+// Ноль — предела нет. Опция, а не параметр конструктора: тридцать вызовов
+// конструктора в пробах не должны переписываться ради величины, которая их не
+// касается.
+func (r *VolumeRepo) WithProjectBytesLimit(limit int64) *VolumeRepo {
+	r.projectBytesLimit = limit
+	return r
+}
 
 // volumeSelectCols — общий проекционный список для Get/List: колонки тома +
 // LEFT JOIN volume_attachments (0..1 строка, PK volume_id). Nullable attach-колонки
 // сканируются в указатели → nil == нет привязки (status derived AVAILABLE).
 const volumeSelectCols = `
 	v.id, v.project_id, v.created_at, v.updated_at, v.name, v.description, v.labels,
-	v.zone_id, v.disk_type_id, v.size_bytes, v.block_size,
+	v.zone_id, v.disk_type_id, v.size_bytes,
 	COALESCE(v.source_snapshot_id, ''), COALESCE(v.source_image_id, ''), v.state,
 	va.instance_id, va.instance_name, va.device_name, va.is_boot, va.mode, va.auto_delete, va.attached_at`
 
@@ -66,7 +103,7 @@ func scanVolume(row pgx.Row) (*domain.Volume, error) {
 	)
 	if err := row.Scan(
 		&v.ID, &v.ProjectID, &v.CreatedAt, &v.UpdatedAt, &v.Name, &v.Description, &labelsJSON,
-		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.BlockSize, &v.SourceSnapshot, &v.SourceImage, &state,
+		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.SourceSnapshot, &v.SourceImage, &state,
 		&instanceID, &instanceName, &deviceName, &isBoot, &mode, &autoDelete, &attachedAt,
 	); err != nil {
 		return nil, err
@@ -250,44 +287,60 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // получает прежний fail-closed, а не выдуманный mismatch.
 const volumeInsertCoherentSQL = `
 	WITH src_project AS (
-		SELECT i.region_id, i.min_disk_bytes
+		SELECT i.region_id, i.min_disk_bytes, i.state
 		  FROM images i
-		 WHERE i.id = $11::text AND i.project_id = $2::text
+		 WHERE i.id = $10::text AND i.project_id = $2::text
 	), src AS (
 		SELECT sp.min_disk_bytes
 		  FROM src_project sp
-		 WHERE $12::text <> '' AND sp.region_id = $12::text
+		 WHERE sp.state = 'READY' AND $11::text <> '' AND sp.region_id = $11::text
 	), snap_project AS (
-		SELECT s.source_volume_id
+		SELECT s.zone_id, s.state
 		  FROM snapshots s
-		 WHERE s.id = $10::text AND s.project_id = $2::text
-	), snap_zone AS (
-		SELECT lv.zone_id
+		 WHERE s.id = $9::text AND s.project_id = $2::text
+	), snap_ok AS (
+		SELECT 1 AS ok
 		  FROM snap_project sp
-		  JOIN volumes lv ON lv.id = sp.source_volume_id
+		 WHERE sp.state = 'READY' AND sp.zone_id <> '' AND sp.zone_id = $6::text
+	), quota AS (
+		SELECT ($13::bigint = 0
+		        OR COALESCE((SELECT sum(v.size_bytes) FROM volumes v WHERE v.project_id = $2::text), 0)
+		           + $8::bigint <= $13::bigint) AS within
+	), bind AS (
+		SELECT b.id, b.pool,
+		       CASE WHEN b.namespace_template = '' THEN $2::text
+		            ELSE replace(b.namespace_template, '{projectId}', $2::text) END AS ns
+		  FROM disk_type_bindings b
+		 WHERE b.disk_type_id = $7::text AND b.zone_id = $6::text AND b.status = 'ACTIVE'
 	), dt AS (
 		SELECT (jsonb_array_length(d.zone_ids) = 0
-		        OR d.zone_ids @> to_jsonb($6::text)) AS offered
+		        OR d.zone_ids @> to_jsonb($6::text)) AS offered,
+		       d.lifecycle,
+		       d.min_size_bytes, d.max_size_bytes, d.size_step_bytes
 		  FROM disk_types d
 		 WHERE d.id = $7::text
 	), ins AS (
 		INSERT INTO volumes
 			(id, project_id, name, description, labels, zone_id, disk_type_id,
-			 size_bytes, block_size, source_snapshot_id, source_image_id, state)
+			 size_bytes, source_snapshot_id, source_image_id, state,
+			 binding_id, backend_object, backend_namespace)
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
-		       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
-		 WHERE ($10::text IS NULL OR EXISTS (
-		            SELECT 1 FROM snap_project sp
-		             WHERE sp.source_volume_id IS NULL
-		                OR EXISTS (SELECT 1 FROM snap_zone z WHERE z.zone_id = $6::text)))
-		   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
-		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
+		       $8::bigint,$9::text,$10::text,'%s',
+		       b.id, $12::text, b.ns
+		  FROM bind b
+		 WHERE ($9::text IS NULL OR EXISTS (SELECT 1 FROM snap_ok))
+		   AND ($10::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
+		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered AND dt.lifecycle = 'ACTIVE')
+		   AND EXISTS (SELECT 1 FROM quota WHERE quota.within)
 		RETURNING created_at, updated_at
 	)
-	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text FROM ins
+	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text,
+	       NULL::text, NULL::text, NULL::text, NULL::text, NULL::boolean FROM ins
 	UNION ALL
 	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt),
-	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_zone)
+	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_project),
+	       (SELECT state FROM src_project), (SELECT state FROM snap_project),
+	       (SELECT lifecycle FROM dt), (SELECT id FROM bind), (SELECT within FROM quota)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -313,10 +366,6 @@ const volumeInsertCoherentSQL = `
 // (FK-текст, который теперь выдаёт сам стейтмент — до FK он не доходит).
 func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID string) (*domain.Volume, []ownerregister.Registration, error) {
 	var regs []ownerregister.Registration
-	blockSize := v.BlockSize
-	if blockSize == 0 {
-		blockSize = defaultBlockSize
-	}
 	labels, err := json.Marshal(nonNilLabels(v.Labels))
 	if err != nil {
 		return nil, nil, storageerr.ErrInternal
@@ -332,7 +381,6 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		srcImg = &v.SourceImage
 	}
 	created := *v
-	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
 		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта,
@@ -341,10 +389,14 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		var srcMinDisk *int64
 		var dtOffered *bool
 		var ownImageRegion, ownSnapshotZone *string
-		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
+		var ownImageState, ownSnapshotState, dtLifecycle, bindingID *string
+		var withinQuota *bool
+		serr := tx.QueryRow(ctx, fmt.Sprintf(volumeInsertCoherentSQL, bornState(r.readyOnCommit)),
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
-			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
-			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone)
+			v.SizeBytes, srcSnap, srcImg, zoneRegionID, v.Backend.BackendObject, r.projectBytesLimit).
+			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone,
+				&ownImageState, &ownSnapshotState, &dtLifecycle, &bindingID, &withinQuota)
+		bindingMissing := bindingID == nil
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
@@ -364,6 +416,40 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			if !*dtOffered {
 				return fmt.Errorf("%w: DiskType %s is not offered in zone %s",
 					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+			}
+			// Класс объявлен и предлагается в зоне, но ДЕЙСТВУЮЩЕЙ ревизии привязки
+			// на эту пару нет — значит исполнять создание некому. Отказ отдельный:
+			// «класс не предлагается в зоне» отправило бы администратора править
+			// каталог, тогда как чинить надо привязку.
+			// Исчерпание разбирается РАНЬШЕ прочего: тот же запрос пройдёт, как
+			// только освободится место, и отправлять вызывающего чинить ввод, в
+			// котором чинить нечего, было бы ложным следом.
+			if withinQuota != nil && !*withinQuota {
+				return fmt.Errorf("%w: storage quota exceeded for project %s",
+					storageerr.ErrResourceExhausted, v.ProjectID)
+			}
+			if bindingMissing {
+				return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+			}
+			// Класс, выведенный из обращения, существующие тома держит, а новые не
+			// принимает. Отказ называется вслух: каталог публичен, скрывать нечего.
+			if dtLifecycle != nil && *dtLifecycle != "ACTIVE" {
+				return fmt.Errorf("%w: DiskType %s is not accepting new volumes",
+					storageerr.ErrFailedPrecondition, v.DiskTypeID)
+			}
+			// Источник СВОЕГО проекта, но не готовый. Полоса отдельная от размещения
+			// намеренно: неготовый источник нельзя использовать независимо от того,
+			// где он лежит, и назвать причину «не та зона» значило бы отправить
+			// вызывающего чинить не то. Чужой проект сюда не доходит — его снимает
+			// полоса проекта, и он остаётся неотличим от промаха.
+			if ownSnapshotState != nil && *ownSnapshotState != "READY" {
+				return fmt.Errorf("%w: Snapshot %s is not ready",
+					storageerr.ErrFailedPrecondition, v.SourceSnapshot)
+			}
+			if ownImageState != nil && *ownImageState != "READY" {
+				return fmt.Errorf("%w: Image %s is not ready",
+					storageerr.ErrFailedPrecondition, v.SourceImage)
 			}
 			// Образ разрешился (свой проект + свой регион), не прошёл только размер —
 			// его минимум вызывающему уже виден, называем причину прямо.
@@ -385,6 +471,14 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// маскируется под промах. Снапшот без происхождения сюда не попадает:
 			// сравнивать было не с чем, полоса его пропустила.
 			if ownSnapshotZone != nil {
+				// Пустая зона — не расхождение, а ОТСУТСТВИЕ размещения: строка
+				// досталась от прежней схемы, где своей зоны у снимка не было.
+				// Доказать когерентность нечем, придумать её задним числом нельзя,
+				// поэтому отказ говорит именно об этом, а не о несовпадении.
+				if *ownSnapshotZone == "" {
+					return fmt.Errorf("%w: Snapshot %s has no placement and cannot seed a volume",
+						storageerr.ErrFailedPrecondition, v.SourceSnapshot)
+				}
 				return fmt.Errorf("%w: Volume and Snapshot must be in the same zone",
 					storageerr.ErrFailedPrecondition)
 			}
@@ -406,7 +500,11 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			snapshotID: v.SourceSnapshot, imageID: v.SourceImage,
 		})
 	}
-	created.Status = domain.DeriveStatus("READY", false) // just created → AVAILABLE
+	// Том рождается СОЗДАВАЕМЫМ. Готовым его объявляет сверщик, увидев объект у
+	// бэкенда: операция фиксирует НАМЕРЕНИЕ, а исход провижининга несёт статус
+	// ресурса. Объявить готовность здесь значило бы утверждать о плоскости
+	// данных то, чего никто не проверял.
+	created.Status = domain.DeriveStatus("CREATING", false)
 	return &created, regs, nil
 }
 
@@ -456,7 +554,8 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 				labels      = COALESCE($4::jsonb, labels),
 				size_bytes  = COALESCE($5, size_bytes),
 				updated_at  = now()
-			WHERE id = $1 AND ($5::bigint IS NULL OR $5 > size_bytes)
+			WHERE id = $1
+			  AND ($5::bigint IS NULL OR ($5 > size_bytes AND state = 'READY'))
 			RETURNING id, project_id, labels`,
 			id, u.Name, u.Description, labelsArg, u.SizeBytes).Scan(&rowID, &projectID, &labelsAfter)
 		if serr == nil {
@@ -523,16 +622,30 @@ func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
 // (TOCTOU, ban #10). Self-describing payload (instance zone/project) сверяется со
 // СВОЕЙ строкой volumes — storage НЕ зовёт compute (ацикличность, INV-1).
 
-// attachCASSQL — атомарная вставка-если-можно: том READY, та же зона/проект. Свободен
-// (нет строки) — вставляет; конфликт по PK volume_id → DO NOTHING (0 rows). device/boot
-// UNIQUE/EXCLUDE НЕ поглощаются arbiter'ом volume_id → всплывают 23505/23P01.
+// attachCASSQL — атомарная вставка-если-можно: том READY, та же зона/проект, и
+// множественная привязка ЛИБО разрешена способностью действующей ревизии, ЛИБО
+// привязок ещё нет.
+//
+// Инвариант «не более одной привязки» больше НЕ выражен формой ключа: ключ описывает
+// форму факта (эта привязка — про этот том и этот инстанс), а допустимость второй —
+// свойство БЭКЕНДА, и разные бэкенды отвечают на него по-разному. Ограничение
+// осталось на уровне БД: оно исполняется тем же единственным стейтментом, что и
+// запись, поэтому обойти его гонкой нельзя — второй писатель ждёт коммита первого и
+// видит уже вставленную строку.
+//
+// Конфликт по составному ключу → DO NOTHING (0 rows) — идемпотентный повтор той же
+// привязки. device/boot UNIQUE/EXCLUDE НЕ поглощаются arbiter'ом ключа → всплывают
+// 23505/23P01 и разбираются вызывающим.
 const attachCASSQL = `
 	INSERT INTO volume_attachments
 		(volume_id, instance_id, instance_name, project_id, zone_id, device_name, is_boot, mode, auto_delete)
 	SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9
 	  FROM volumes v
+	  LEFT JOIN disk_type_bindings b ON b.id = v.binding_id
 	 WHERE v.id = $1 AND v.state = 'READY' AND v.zone_id = $5 AND v.project_id = $4
-	ON CONFLICT (volume_id) DO NOTHING
+	   AND (COALESCE(b.cap_multi_attach, false)
+	        OR NOT EXISTS (SELECT 1 FROM volume_attachments a WHERE a.volume_id = $1))
+	ON CONFLICT (volume_id, instance_id) DO NOTHING
 	RETURNING volume_id`
 
 // maxAutoDeviceAttempts — верхняя граница retry авто-назначения device_name.
@@ -613,16 +726,33 @@ func isDeviceCollision(err error) bool {
 // same zone"; расходится проект → ОТДЕЛЬНЫЙ "Volume and Instance must be in the same
 // project" (zone-текст не переиспользуется — исправление относительно companion S2-04).
 func disambiguateAttach(ctx context.Context, tx pgx.Tx, a *domain.VolumeAttachment) error {
-	var owner string
-	oerr := tx.QueryRow(ctx, `SELECT instance_id FROM volume_attachments WHERE volume_id = $1`, a.VolumeID).Scan(&owner)
+	// Вопрос задаётся про НАШУ привязку, а не про «единственную»: с разрешённой
+	// множественной привязкой строк у тома может быть больше одной, и чтение
+	// «первой попавшейся» отвечало бы про чужую.
+	var mine bool
+	oerr := tx.QueryRow(ctx,
+		`SELECT true FROM volume_attachments WHERE volume_id = $1 AND instance_id = $2`,
+		a.VolumeID, a.InstanceID).Scan(&mine)
 	if oerr == nil {
-		if owner == a.InstanceID {
-			return nil // идемпотентный replay (уже наш)
-		}
-		return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, a.VolumeID)
+		return nil // идемпотентный replay (уже наш)
 	}
 	if !errors.Is(oerr, pgx.ErrNoRows) {
 		return oerr
+	}
+	// Нашей привязки нет. Если у тома есть ЧУЖАЯ и множественная не разрешена —
+	// это и есть занятость.
+	var occupied bool
+	cerr := tx.QueryRow(ctx, `
+		SELECT true FROM volume_attachments a
+		  JOIN volumes v ON v.id = a.volume_id
+		  LEFT JOIN disk_type_bindings b ON b.id = v.binding_id
+		 WHERE a.volume_id = $1 AND NOT COALESCE(b.cap_multi_attach, false)
+		 LIMIT 1`, a.VolumeID).Scan(&occupied)
+	if cerr == nil {
+		return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, a.VolumeID)
+	}
+	if !errors.Is(cerr, pgx.ErrNoRows) {
+		return cerr
 	}
 	// нет привязки → причина в volumes-предикате (state / zone / project).
 	var state, zoneID, projectID string
@@ -786,3 +916,110 @@ var (
 	_ volume.Reader = (*VolumeRepo)(nil)
 	_ volume.Writer = (*VolumeRepo)(nil)
 )
+
+// changeDiskTypeSQL — назначение ЖЕЛАЕМОЙ ревизии привязки одним стейтментом.
+//
+// Все предусловия проверяются ВНУТРИ него, а не запросом «до»: том готов, целевой
+// класс принимает новые тома, у него есть действующая ревизия В ТОЙ ЖЕ ЗОНЕ, а размер
+// тома укладывается в границы целевого класса. Проверка отдельным чтением была бы
+// гонкой — между ней и записью класс успели бы вывести из обращения.
+//
+// Зона НЕ меняется и меняться не может: она неизменяема у тома, а перенос между
+// зонами выражается копией снимка. Поэтому ревизия ищется по зоне тома, а не по
+// названной вызывающим.
+const changeDiskTypeSQL = `
+	WITH target AS (
+		SELECT b.id
+		  FROM disk_type_bindings b
+		  JOIN disk_types d ON d.id = b.disk_type_id
+		  JOIN volumes v ON v.id = $1
+		 WHERE b.disk_type_id = $2 AND b.zone_id = v.zone_id AND b.status = 'ACTIVE'
+		   AND d.lifecycle = 'ACTIVE'
+		   AND (d.min_size_bytes = 0 OR v.size_bytes >= d.min_size_bytes)
+		   AND (d.max_size_bytes = 0 OR v.size_bytes <= d.max_size_bytes)
+	)
+	UPDATE volumes v
+	   SET desired_binding_id = (SELECT id FROM target),
+	       disk_type_id       = $2,
+	       updated_at         = now()
+	  FROM target
+	 WHERE v.id = $1 AND v.state = 'READY' AND v.binding_id IS DISTINCT FROM target.id
+	RETURNING v.id`
+
+// ChangeDiskType реализует volume.Writer: назначает желаемую ревизию привязки.
+// Данные переносит сверщик — здесь фиксируется НАМЕРЕНИЕ.
+func (r *VolumeRepo) ChangeDiskType(ctx context.Context, id, diskTypeID string) (*domain.Volume, error) {
+	var got string
+	err := r.pool.QueryRow(ctx, changeDiskTypeSQL, id, diskTypeID).Scan(&got)
+	if err == nil {
+		return r.Get(ctx, id)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapVolumeErr(err, volErrCtx{volumeID: id, diskTypeID: diskTypeID})
+	}
+	return nil, r.changeDiskTypeUnavailable(ctx, id, diskTypeID)
+}
+
+// changeDiskTypeUnavailable разбирает нулевую выборку: каждая причина называется
+// своим текстом. Общий отказ отправил бы вызывающего чинить не то — а здесь у него
+// три разных предмета: том, класс и совместимость размера.
+func (r *VolumeRepo) changeDiskTypeUnavailable(ctx context.Context, id, diskTypeID string) error {
+	var state string
+	var sizeBytes int64
+	var zoneID, currentBinding string
+	verr := r.pool.QueryRow(ctx,
+		`SELECT state, size_bytes, zone_id, COALESCE(binding_id,'') FROM volumes WHERE id = $1`, id).
+		Scan(&state, &sizeBytes, &zoneID, &currentBinding)
+	if verr != nil {
+		if errors.Is(verr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, id)
+		}
+		return mapVolumeErr(verr, volErrCtx{volumeID: id})
+	}
+	if state != "READY" {
+		return fmt.Errorf("%w: Volume %s is not in a state that allows changing disk type",
+			storageerr.ErrFailedPrecondition, id)
+	}
+
+	var lifecycle string
+	var minSize, maxSize int64
+	derr := r.pool.QueryRow(ctx,
+		`SELECT lifecycle, min_size_bytes, max_size_bytes FROM disk_types WHERE id = $1`, diskTypeID).
+		Scan(&lifecycle, &minSize, &maxSize)
+	if derr != nil {
+		if errors.Is(derr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, diskTypeID)
+		}
+		return mapVolumeErr(derr, volErrCtx{diskTypeID: diskTypeID})
+	}
+	if lifecycle != "ACTIVE" {
+		return fmt.Errorf("%w: DiskType %s is not accepting new volumes",
+			storageerr.ErrFailedPrecondition, diskTypeID)
+	}
+	if minSize > 0 && sizeBytes < minSize {
+		return fmt.Errorf("%w: Volume size %d is less than DiskType %s minimum %d",
+			storageerr.ErrInvalidArg, sizeBytes, diskTypeID, minSize)
+	}
+	if maxSize > 0 && sizeBytes > maxSize {
+		return fmt.Errorf("%w: Volume size %d exceeds DiskType %s maximum %d",
+			storageerr.ErrInvalidArg, sizeBytes, diskTypeID, maxSize)
+	}
+
+	var bindingID string
+	berr := r.pool.QueryRow(ctx,
+		`SELECT id FROM disk_type_bindings WHERE disk_type_id = $1 AND zone_id = $2 AND status = 'ACTIVE'`,
+		diskTypeID, zoneID).Scan(&bindingID)
+	if berr != nil {
+		if errors.Is(berr, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: DiskType %s has no active binding in zone %s",
+				storageerr.ErrFailedPrecondition, diskTypeID, zoneID)
+		}
+		return mapVolumeErr(berr, volErrCtx{diskTypeID: diskTypeID})
+	}
+	if bindingID == currentBinding {
+		// Том уже на этой ревизии: повтор — успех, а не отказ. Смена класса
+		// идемпотентна тем же соображением, что и всё остальное на этом пути.
+		return nil
+	}
+	return storageerr.ErrInternal
+}

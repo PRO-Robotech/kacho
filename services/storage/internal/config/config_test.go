@@ -6,6 +6,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -30,6 +31,17 @@ func secureProd() config.Config {
 			"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway",
 			"spiffe://kacho.cloud/ns/kacho/sa/kacho-compute",
 		},
+		// Плоскость данных — часть БОЕВОЙ посадки, а не украшение: без неё
+		// сверщик не запускается, ничто не переводит ресурс из намерения в
+		// пригодность, и каждый том остаётся создаваемым навсегда при здоровом
+		// рапорте сервиса. Поэтому безопасная отправная точка её несёт.
+		BlockBackendKind:              "CEPH_RBD",
+		BlockBackendInstallPrefix:     "kc7f",
+		BlockBackendCredentialsDir:    "/etc/kacho/storage/credentials",
+		BlockBackendCallTimeout:       30 * time.Second,
+		BlockBackendReconcileInterval: 15 * time.Second,
+		BlockBackendReconcileBatch:    100,
+
 		GeoClientMTLS:      grpcclient.TLSClient{Enable: true},
 		IAMClientMTLS:      grpcclient.TLSClient{Enable: true},
 		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},

@@ -72,9 +72,36 @@ type Snapshot struct {
 	Description    string
 	Labels         map[string]string
 	SourceVolumeID string
-	SizeBytes      int64
-	Status         SnapshotStatus
-	CreatedAt      time.Time
+
+	// SourceSnapshotID — снимок, с которого этот СКОПИРОВАН. Отличается от
+	// источника снятия (том): копия переносит снимок между зонами, и родителем
+	// у неё выступает снимок, а не том. Выставляет Copy, вызывающий — никогда.
+	SourceSnapshotID string
+
+	SizeBytes int64
+	Status    SnapshotStatus
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	// ZoneID — СОБСТВЕННЫЙ якорь размещения снимка.
+	//
+	// Прежде размещения у снимка не было вовсе: зона добиралась через исходный
+	// том, а эта ссылка обнуляется при его удалении — снимок обязан переживать
+	// источник. Проверка когерентности при засеве из такого снимка вырождалась в
+	// тождественно истинную, пропуская ровно тот случай, ради которого писалась.
+	//
+	// Пустая зона — честное «размещение неизвестно» для строк, доставшихся от
+	// прежней схемы. Она ЗАПРЕЩАЕТ засев: доказать когерентность нечем, а
+	// придумать размещение задним числом нельзя.
+	ZoneID string
+
+	StatusReason StatusReason
+
+	// SeededVolumeIDs — тома, засеянные из этого источника. Output-only,
+	// выводится на чтении, на вход не принимается.
+	SeededVolumeIDs []string
+	Backend         Placement
+	Observation     Observation
 }
 
 // Validate проверяет domain-инварианты Snapshot перед созданием/сохранением.
@@ -82,7 +109,18 @@ func (s Snapshot) Validate() error {
 	if s.ProjectID == "" {
 		return fmt.Errorf("snapshot project_id is required")
 	}
-	if s.SourceVolumeID == "" {
+	// Происхождение — РОВНО ОДНО: том (снятие) либо снимок (копирование).
+	//
+	// Второй вид добавлен потому, что без него Copy не работала ни разу: строка
+	// копии несёт родителем снимок, тома у неё нет, и проверка отвергала её как
+	// «том обязателен» — при том что столбец родителя записывался вставкой копии
+	// с самого начала и просто не признавался происхождением.
+	hasVol := s.SourceVolumeID != ""
+	hasSnap := s.SourceSnapshotID != ""
+	switch {
+	case hasVol && hasSnap:
+		return fmt.Errorf("snapshot source_volume_id and source_snapshot_id are mutually exclusive")
+	case !hasVol && !hasSnap:
 		return fmt.Errorf("snapshot source_volume_id is required")
 	}
 	if err := SnapshotName(s.Name).Validate(); err != nil {

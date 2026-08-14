@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.storage.v1;
 
 import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
 import "kacho/cloud/storage/v1/disk_type.proto";
 import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -47,9 +48,9 @@ service DiskTypeService {
 // (:9091); proxied through api-gateway internal mux to /storage/v1/diskTypes —
 // NOT on the external TLS endpoint (workspace CLAUDE.md ban #6).
 //
-// IMPORTANT, on how that isolation actually holds: these three RPCs share their
-// REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]` —
-// DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
+// IMPORTANT, on how that isolation actually holds: Create/Update/Delete share
+// their REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]`
+// — DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
 // The api-gateway external-isolation gate is therefore keyed on the (method,
 // path) PAIR, never on the path alone: a path-only classifier cannot tell these
 // bindings apart and routes the admin mutations to the public mux. The source
@@ -57,6 +58,11 @@ service DiskTypeService {
 // read from the proto descriptors
 // (gateway/internal/restmux/internal_routes.go), so a new RPC on this service
 // is isolated automatically.
+//
+// SetLifecycle путь с публичным чтением не делит (у него suffix-действие), но
+// изолируется ТЕМ ЖЕ правилом: источник классификации — принадлежность RPC этому
+// сервису, а не форма его пути. Полагаться на суффикс было бы вторым правилом об
+// одном предмете, и оно разошлось бы с первым на следующем же добавлении.
 service InternalDiskTypeService {
   rpc Create(CreateDiskTypeRequest) returns (DiskType) {
     option (google.api.http) = {
@@ -87,6 +93,34 @@ service InternalDiskTypeService {
   rpc Delete(DeleteDiskTypeRequest) returns (DeleteDiskTypeResponse) {
     option (google.api.http) = {delete: "/storage/v1/diskTypes/{disk_type_id}"};
     option (kacho.iam.authz.v1.permission)        = "storage.disk_types.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Переводит класс в другое состояние обращения (в обращение / из обращения).
+  //
+  // Отдельный глагол, а не поле правки. Причина в семантике маски: пустая маска у
+  // Update означает полную замену изменяемых полей, поэтому состояние обращения в
+  // его теле возвращало бы выведенный класс в обращение при правке описания —
+  // молча и без заявленного намерения. Здесь намерение и есть весь запрос.
+  //
+  // Вывод из обращения НЕ трогает существующие тома: они продолжают читаться,
+  // обновляться и удаляться. Отказ получают только новые (DEPRECATED/RETIRED →
+  // FAILED_PRECONDITION "DiskType <id> is not accepting new volumes"), а удаление
+  // самого класса по-прежнему упирается в ссылающиеся тома (FK RESTRICT).
+  //
+  // Синхронный и возвращает ресурс: у админ-справочника нет длящейся работы, и
+  // оборачивать её в Operation значило бы заставлять администратора поллить готовое.
+  rpc SetLifecycle(SetDiskTypeLifecycleRequest) returns (DiskType) {
+    option (google.api.http) = {
+      patch: "/storage/v1/diskTypes/{disk_type_id}:setLifecycle"
+      body: "*"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.setLifecycle";
     option (kacho.iam.authz.v1.required_relation) = "system_admin";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "cluster"
@@ -131,16 +165,77 @@ message CreateDiskTypeRequest {
   // Availability zones where this disk type is offered.
   repeated string zone_ids = 4;
 
-  // Performance tier of the disk type.
-  string performance_tier = 5;
+  // Поле 5 несло ярус свободной строкой — см. разбор у [DiskType]. Номер и имя
+  // закрыты здесь по той же причине: запрос и ресурс обязаны говорить об одном
+  // предмете одинаково, иначе строка, отвергнутая ресурсом, проходила бы через
+  // запрос и расхождение обнаруживалось бы только на записи.
+  reserved 5;
+  reserved "performance_tier";
+
+  // Ярус класса. Омит законен (класс вправе не называть ярус); значение вне
+  // словаря — INVALID_ARGUMENT.
+  DiskType.PerformanceTier tier = 6;
+
+  // Состояние обращения регистрируемого класса. Омит означает ACTIVE — умолчание
+  // проставляет край в одном названном месте; домен незаполненное состояние
+  // отвергает, чтобы не принять опечатку за намерение.
+  DiskType.Lifecycle lifecycle = 7;
+
+  // Границы размера тома, объявляемые классом. Ноль в любом из полей означает
+  // «класс не сужает» с этой стороны.
+  DiskType.SizeLimits limits = 8;
+
+  // Способностей здесь нет намеренно: их источник истины — действующие ревизии
+  // привязки (:9091), а класс их ВЫВОДИТ пересечением. Принять их на вход значило
+  // бы завести второй источник одного факта; принять и не сохранить — молча
+  // выбросить параметр, который вызывающий считает применённым.
 }
 
 message UpdateDiskTypeRequest {
+  // ID изменяемого класса. Неизменяем: адресация идёт по нему.
   string disk_type_id = 1 [(required) = true];
+
   string name = 2;
   string description = 3;
+
+  // Список зон, в которых предлагается класс. Замещается целиком, когда назван
+  // маской (или когда маска пуста) — частичного добавления зоны у этого поля нет.
   repeated string zone_ids = 4;
-  string performance_tier = 5;
+
+  // Поле 5 несло ярус свободной строкой — см. [CreateDiskTypeRequest] и [DiskType].
+  reserved 5;
+  reserved "performance_tier";
+
+  // Маска изменяемых полей. Заведена потому, что без неё правка была полной
+  // заменой: тело без `zone_ids` обнуляло список у справочника, от которого
+  // зависит размещение данных, — и запрос, менявший одно имя, снимал класс со
+  // всех зон, ничего об этом не сказав.
+  //
+  // Пустая маска остаётся полной заменой изменяемых полей (единая дисциплина
+  // платформы), неизвестное поле в маске — INVALID_ARGUMENT, неизменяемое —
+  // "<field> is immutable after DiskType.Create".
+  google.protobuf.FieldMask update_mask = 6;
+
+  // Ярус класса.
+  DiskType.PerformanceTier tier = 7;
+
+  // Границы размера тома.
+  DiskType.SizeLimits limits = 8;
+
+  // Состояния обращения здесь нет намеренно: оно меняется глаголом SetLifecycle.
+  // При пустой маске полная замена изменяемых полей вернула бы выведенный класс в
+  // обращение правкой описания — исход, которого вызывающий не заявлял.
+  // Способностей нет по причине из [CreateDiskTypeRequest].
+}
+
+message SetDiskTypeLifecycleRequest {
+  // ID класса, состояние обращения которого меняется.
+  string disk_type_id = 1 [(required) = true];
+
+  // Новое состояние обращения. Обязательно и называется явно: у этого запроса нет
+  // умолчания — «не указано» здесь неотличимо от «верни в обращение», а такой
+  // исход обязан быть выбран, а не получен по недосмотру.
+  DiskType.Lifecycle lifecycle = 2 [(required) = true];
 }
 
 message DeleteDiskTypeRequest {

@@ -31,7 +31,14 @@ const (
 type WatchRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Список kind-ов для подписки (empty = все).
-	// Допустимые значения: "Instance", "Disk", "Image", "Snapshot".
+	//
+	// Допустимое значение РОВНО ОДНО: "Instance". Здесь стояли ещё три — "Disk",
+	// "Image", "Snapshot", — и это пережило свой предмет: блочное хранение выехало
+	// из вычислений расколом, таблицы дропнуты миграциями 0021/0022, а
+	// перечислитель реконсайлера в этом же сервисе несёт одну строку и прямо
+	// объясняет, что перечислять остальные значило бы спрашивать у БД
+	// несуществующие отношения. Подписчик, попросивший снятый вид, получал бы
+	// пустой поток вместо отказа — то есть молчание вместо ответа.
 	Kinds []string `protobuf:"bytes,1,rep,name=kinds,proto3" json:"kinds,omitempty"`
 	// Возобновить с этой позиции (sequence_no exclusive).
 	// 0 = начать с current end (только новые события).
@@ -89,9 +96,12 @@ type Event struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Монотонно возрастающий идентификатор события (BIGSERIAL).
 	SequenceNo int64 `protobuf:"varint,1,opt,name=sequence_no,json=sequenceNo,proto3" json:"sequence_no,omitempty"`
-	// Тип ресурса: "Instance", "Disk", "Image", "Snapshot".
+	// Тип ресурса. Производится ровно одно значение — "Instance" (перепись
+	// эмиттеров: единственный producer в services/compute/internal). Перечень
+	// приведён к производимому той же правкой, что и у поля подписки выше:
+	// объявление в двух местах об одном предмете разошлось бы снова.
 	ResourceKind string `protobuf:"bytes,2,opt,name=resource_kind,json=resourceKind,proto3" json:"resource_kind,omitempty"`
-	// ID ресурса (`<prefix><base32>`: epd..., fd8...).
+	// ID ресурса (`<prefix><base32>`).
 	ResourceId string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// Тип события: "CREATED", "UPDATED", "DELETED".
 	EventType string `protobuf:"bytes,4,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`

@@ -69,6 +69,8 @@ type computeInstanceModel struct {
 	MachineTypeID       types.String `tfsdk:"machine_type_id"`
 	CPUGuaranteePercent types.Int64  `tfsdk:"cpu_guarantee_percent"`
 	ServiceAccountID    types.String `tfsdk:"service_account_id"`
+	PlacementGroupID    types.String `tfsdk:"placement_group_id"`
+	GuestAccessKeyIDs   types.List   `tfsdk:"guest_access_key_ids"`
 
 	// Вложенные объекты — types.Object, а НЕ указатели на структуры: указатель
 	// неспособен держать НЕИЗВЕСТНОЕ значение, а источник загрузки и спецификацию
@@ -105,9 +107,12 @@ type instVMSpecModel struct {
 	MetadataOptions types.Object `tfsdk:"metadata_options"`
 }
 
+// Ручки «требовать ли сеансовый ключ» здесь нет намеренно: поле СНЯТО С КОНТРАКТА
+// (`instance.proto`, номер 8 и имя зарезервированы), потому что ключ обязателен by
+// construction. Держать атрибут, который край не читает, значило бы обещать
+// пользователю управление, которого нет: план сходился бы, а поведение не менялось.
 type instMetadataOptionsModel struct {
-	MetadataEndpoint      types.String `tfsdk:"metadata_endpoint"`
-	MetadataTokenRequired types.Bool   `tfsdk:"metadata_token_required"`
+	MetadataEndpoint types.String `tfsdk:"metadata_endpoint"`
 }
 
 type instContainerSpecModel struct {
@@ -183,7 +188,6 @@ func instBootSourceAttrTypes() map[string]attr.Type {
 func instMetadataOptionsAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"metadata_endpoint":       types.StringType,
-		"metadata_token_required": types.BoolType,
 	}
 }
 
@@ -314,6 +318,15 @@ func (r *computeInstanceResource) Schema(_ context.Context, _ resource.SchemaReq
 					"(`sva-…`). Меняется у работающей машины.\n\n" +
 					"Ссылка мягкая: удаление учётки машину не роняет — связь просто " +
 					"перестаёт разрешаться."},
+			"placement_group_id": schema.StringAttribute{Optional: true,
+				MarkdownDescription: "Группа размещения. Её якорь обязан быть когерентен " +
+					"зоне машины: зональная группа — та же зона, региональная — тот же регион."},
+			"guest_access_key_ids": schema.ListAttribute{Optional: true, Computed: true,
+				ElementType: types.StringType,
+				MarkdownDescription: "Ключи входа гостя — ссылками по неизменяемому " +
+					"идентификатору. Набор ЗАМЕНЯЕТСЯ целиком; ключ обязан принадлежать тому же " +
+					"проекту. Материал ключа сюда не кладётся: ключ — отдельный ресурс со своим " +
+					"сроком жизни."},
 
 			"boot_source": schema.SingleNestedAttribute{Required: true,
 				MarkdownDescription: "Источник загрузки — единственный вход операционной " +
@@ -350,9 +363,6 @@ func (r *computeInstanceResource) Schema(_ context.Context, _ resource.SchemaReq
 							"metadata_endpoint": schema.StringAttribute{Optional: true,
 								MarkdownDescription: "Доступна ли служба метаданных изнутри " +
 									"машины: `ENABLED` или `DISABLED`."},
-							"metadata_token_required": schema.BoolAttribute{Optional: true,
-								MarkdownDescription: "Требовать ли сеансовый ключ для чтения " +
-									"метаданных."},
 						}},
 				}},
 
@@ -825,8 +835,7 @@ func instVMSpecToProto(ctx context.Context, o types.Object) (*computev1.VmSpec, 
 		return nil, err
 	}
 	out.MetadataOptions = &computev1.MetadataOptions{
-		MetadataEndpoint:      computev1.MetadataOption(endpoint),
-		MetadataTokenRequired: mo.MetadataTokenRequired.ValueBool(),
+		MetadataEndpoint: computev1.MetadataOption(endpoint),
 	}
 	return out, nil
 }
@@ -909,6 +918,8 @@ func instanceCreateBody(ctx context.Context, plan *computeInstanceModel) (*compu
 		// #nosec G115 -- диапазон закреплён контрактом края: 0..100
 		CpuGuaranteePercent:    int32(plan.CPUGuaranteePercent.ValueInt64()),
 		ServiceAccountId:       plan.ServiceAccountID.ValueString(),
+		PlacementGroupId:       plan.PlacementGroupID.ValueString(),
+		GuestAccessKeyIds:      stringsFromList(ctx, plan.GuestAccessKeyIDs),
 		NetworkInterfaceSpecs:  instNICSpecsToProto(ctx, plan.NetworkInterfaceSpecs),
 		UseDefaultNetwork:      plan.UseDefaultNetwork.ValueBool(),
 		AssignExternalAddress:  plan.AssignExternalAddress.ValueBool(),
@@ -955,6 +966,8 @@ type instanceWire struct {
 	InstanceKind        string            `json:"instanceKind"`
 	MachineTypeID       string            `json:"machineTypeId"`
 	CPUGuaranteePercent any               `json:"cpuGuaranteePercent"`
+	PlacementGroupID    string            `json:"placementGroupId"`
+	GuestAccessKeyIDs   []string          `json:"guestAccessKeyIds"`
 
 	EffectiveResources *struct {
 		VCPU      any    `json:"vCpu"`
@@ -980,8 +993,7 @@ type instanceWire struct {
 	VMSpec *struct {
 		UserData        string `json:"userData"`
 		MetadataOptions *struct {
-			MetadataEndpoint      string `json:"metadataEndpoint"`
-			MetadataTokenRequired bool   `json:"metadataTokenRequired"`
+			MetadataEndpoint string `json:"metadataEndpoint"`
 		} `json:"metadataOptions"`
 	} `json:"vmSpec"`
 
@@ -1045,6 +1057,13 @@ func applyInstance(ctx context.Context, m *computeInstanceModel, raw []byte) err
 	if w.ServiceAccount != nil {
 		m.ServiceAccountID = strOrNull(w.ServiceAccount.ID)
 	}
+	m.PlacementGroupID = strOrNull(w.PlacementGroupID)
+
+	// Набор ключей ВЫЧИСЛЯЕМЫЙ, поэтому пустой ответ обязан лечь пустым списком, а
+	// не null: у вычисляемого атрибута null означает «край ещё не сказал», и на нём
+	// план расходился бы навсегда — ровно тот вечный дрейф, ради которого обратное
+	// чтение вообще пишется.
+	m.GuestAccessKeyIDs = listFromStrings(ctx, w.GuestAccessKeyIDs)
 
 	if w.BootSource == nil {
 		// Ветка выбирается СВОИМ условием, а её отсутствие — отказ. Машины без
@@ -1100,8 +1119,7 @@ func instApplyVMSpec(m *computeInstanceModel, w *instanceWire) error {
 	opts := types.ObjectNull(instMetadataOptionsAttrTypes())
 	if mo := w.VMSpec.MetadataOptions; mo != nil {
 		v, diags := types.ObjectValue(instMetadataOptionsAttrTypes(), map[string]attr.Value{
-			"metadata_endpoint":       strOrNull(mo.MetadataEndpoint),
-			"metadata_token_required": instBoolOrNull(mo.MetadataTokenRequired),
+			"metadata_endpoint": strOrNull(mo.MetadataEndpoint),
 		})
 		if diags.HasError() {
 			return fmt.Errorf("настройка службы метаданных края не укладывается в объект: %v", diags.Errors())
@@ -1583,6 +1601,17 @@ func (r *computeInstanceResource) Update(ctx context.Context, req resource.Updat
 	if !plan.MachineTypeID.Equal(state.MachineTypeID) {
 		body.MachineTypeId = plan.MachineTypeID.ValueString()
 		paths = append(paths, "machine_type_id")
+	}
+	if !plan.PlacementGroupID.Equal(state.PlacementGroupID) && !plan.PlacementGroupID.IsUnknown() {
+		body.PlacementGroupId = plan.PlacementGroupID.ValueString()
+		paths = append(paths, "placement_group_id")
+	}
+	// Набор ключей входа передаётся ЦЕЛИКОМ и только когда он изменился: пустая
+	// маска у края означала бы правку всех изменяемых полей, а набор ключей в неё
+	// намеренно не входит — иначе правка описания снимала бы весь доступ.
+	if !plan.GuestAccessKeyIDs.Equal(state.GuestAccessKeyIDs) && !plan.GuestAccessKeyIDs.IsUnknown() {
+		body.GuestAccessKeyIds = stringsFromList(ctx, plan.GuestAccessKeyIDs)
+		paths = append(paths, "guest_access_key_ids")
 	}
 	if !plan.CPUGuaranteePercent.Equal(state.CPUGuaranteePercent) {
 		// #nosec G115 -- диапазон закреплён контрактом края: 0..100

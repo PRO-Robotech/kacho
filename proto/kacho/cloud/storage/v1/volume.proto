@@ -7,6 +7,7 @@ package kacho.cloud.storage.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/reference/reference.proto";
+import "kacho/cloud/storage/v1/status_reason.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
 
@@ -34,6 +35,15 @@ message Volume {
 
     // Volume encountered a problem and cannot operate.
     ERROR = 5;
+
+    // Том переезжает на другой класс диска: принят ChangeDiskType, объект у
+    // бэкенда переносится. Отдельное состояние заведено потому, что перенос
+    // ДЛИТСЯ и наблюдаем: без него том всё это время выглядел бы готовым, а
+    // арендатор не отличал бы «класс уже сменился» от «смена идёт». Из
+    // MIGRATING том возвращается в AVAILABLE/IN_USE (перенос завершён) либо
+    // уходит в ERROR с причиной (перенос отказал) — данные при отказе остаются
+    // на исходном классе.
+    MIGRATING = 6;
   }
 
   // ID of the volume. Prefix "vol". Immutable.
@@ -62,23 +72,73 @@ message Volume {
   // kacho-geo (peer-validated, no FK). Immutable.
   string zone_id = 8;
 
-  // ID of the disk type. Same-DB FK to DiskType (ON DELETE RESTRICT). Immutable.
+  // ID класса диска. FK на DiskType в своей БД (ON DELETE RESTRICT).
+  //
+  // Меняется ТОЛЬКО глаголом [VolumeService.ChangeDiskType] и никогда не входит
+  // в update_mask: смена класса — перемещение данных, а не правка поля. Через
+  // Update поле отвергается как неизменяемое — см. комментарий к этому RPC.
   string disk_type_id = 9;
 
   // Size of the volume, specified in bytes. Must be > 0. Update — increase only.
   int64 size_bytes = 10;
 
-  // Block size of the volume, specified in bytes. Default 4096. Immutable.
-  int64 block_size = 11;
+  // Номер 11 занимало block_size — размер блока тома в байтах.
+  //
+  // Поле принималось на Create, подставлялось умолчанием, хранилось колонкой и
+  // возвращалось в ответе — и НИ ОДИН путь не читал его значение, чтобы что-то
+  // сделать иначе. Единственное место логики, где оно упоминалось, — перечень
+  // неизменяемых полей маски, то есть охрана величины, которая ни на что не
+  // влияла. Арендатор читал назад собственный ввод и принимал зеркало за
+  // подтверждение применения: принято-и-проигнорировано — не исход.
+  //
+  // Из трёх законных исходов выбран третий — снять с контракта: размер блока
+  // задаёт бэкенд вместе с классом диска, а не арендатор по каждому тому.
+  // Понадобится управление им — это свойство класса, а не поле тома.
+  //
+  // Ломающее изменение осознанное. Номер и имя закрыты навсегда: слот не
+  // переиспользуется, иначе старый клиент, всё ещё шлющий block_size, попал бы
+  // в поле с другим смыслом, а его значение прочиталось бы как новое намерение.
+  reserved 11;
+  reserved "block_size";
+
+  // Фактически занятые байты, наблюдённые у бэкенда (output-only, вход не
+  // принимается).
+  //
+  // Поле НЕ заполняется, когда бэкенд потребление не сообщил, — и тогда оно
+  // ОТСУТСТВУЕТ, а не равно нулю. Отсюда `optional`: ноль — это утверждение
+  // «том пуст», и на неотвеченном бэкенде такое утверждение было бы ложью,
+  // причём ложью правдоподобной — по ней строят биллинг и решают о ресайзе.
+  // Отсутствие значения обязано быть представимо отдельно от значения.
+  optional int64 used_bytes = 18;
 
   // ID of the source snapshot the volume was restored from. Optional (empty = a
   // fresh volume). Same-DB FK to Snapshot (ON DELETE SET NULL). Immutable.
   // Mutually exclusive with source_image_id (a volume is seeded from one source).
   string source_snapshot_id = 12;
 
-  // Current status of the volume. AVAILABLE / IN_USE are DERIVED from the presence
-  // of an attachment (they cannot drift from the attachment state).
+  // Текущее состояние тома. Отдельной колонкой не хранится — выводится, и у
+  // двух групп значений источники РАЗНЫЕ:
+  //
+  //   AVAILABLE / IN_USE          — из наличия привязки (attachments), поэтому
+  //                                 разойтись с состоянием привязки не могут;
+  //   CREATING / MIGRATING /      — из расхождения желаемого и наблюдённого:
+  //   DELETING / ERROR              наша строка объявила одно, у бэкенда пока
+  //                                 (или уже) другое.
+  //
+  // Разделение названо здесь потому, что оно объясняет, почему статус нельзя
+  // выставить запросом: у каждой группы есть свой производитель, и запись
+  // «поверх» сделала бы дрейф ненаходимым — ровно то, ради чего желаемое и
+  // наблюдённое разведены.
   Status status = 13;
+
+  // Почему том оказался в своём состоянии (output-only). Заполняется у ERROR;
+  // в штатных состояниях STATUS_REASON_UNSPECIFIED.
+  //
+  // Закрытый словарь НАШИХ полос, а не текст бэкенда: свободная строка причины
+  // — прямой канал утечки физики (имя пула, координата узла), который гейт
+  // двухпроекционности не увидит, потому что перечисляет ИМЕНА полей. См.
+  // [StatusReason].
+  StatusReason status_reason = 17;
 
   // ID of the source image the boot volume was materialised from. Optional (empty =
   // a non-boot / snapshot-seeded / fresh volume). Same-DB FK to Image (ON DELETE SET

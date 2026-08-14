@@ -88,7 +88,9 @@ type Payload struct {
 // register intent) — not a live `from project` derivation. Same type mapping the
 // deleted openfga_write_client.go used.
 var fgaTypeByKind = map[string]string{
-	"Instance": "compute_instance",
+	"Instance":       "compute_instance",
+	"GuestAccessKey": "compute_guest_access_key",
+	"PlacementGroup": "compute_placement_group",
 }
 
 // FGAType returns the compute_* FGA object type for a resource_kind, or "" if the

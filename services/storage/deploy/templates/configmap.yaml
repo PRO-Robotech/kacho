@@ -29,3 +29,33 @@ data:
   KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS: {{ .Values.config.listFilter.cacheTtlMs | quote }}
   KACHO_STORAGE_LIST_FILTER_CACHE_MAX_ENTRIES: {{ .Values.config.listFilter.cacheMaxEntries | quote }}
   KACHO_STORAGE_LIST_FILTER_FAIL_OPEN: {{ .Values.config.listFilter.failOpen | quote }}
+
+  # ── Плоскость данных: ЧЕМ обслуживается блочное хранение ──────────────────
+  #
+  # Ручки объявлены здесь ЦЕЛИКОМ, а не по одной по мере надобности: сервис их
+  # читает, и необъявленная ручка означает боевой профиль, который рендерится, но
+  # не поднимается — страж старта отказывает на неполной посадке. Такой профиль
+  # выглядит исправным ровно до `helm install`.
+  #
+  # Вид ПУСТОЙ по умолчанию — это «плоскость данных не подключена», и сверщик
+  # тогда не запускается вовсе. Вид, объявленный без своего исполнителя в бинаре,
+  # роняет старт: принять его и молча ничего не делать значило бы завести
+  # сверщик, который каждый проход берёт работу и не двигает её, при здоровом
+  # рапорте сервиса и томах, стоящих создаваемыми навсегда.
+  KACHO_STORAGE_BLOCK_BACKEND_KIND: {{ .Values.config.blockBackend.kind | quote }}
+  # Префикс имени объектов ЭТОГО развёртывания. Отличает наши объекты от объектов
+  # соседнего облака в общем кластере хранения; пустой боевой страж не пропускает.
+  KACHO_STORAGE_BLOCK_BACKEND_INSTALL_PREFIX: {{ .Values.config.blockBackend.installPrefix | quote }}
+  # Каталог, в котором разрешаются ССЫЛКИ на учётный материал. Сам материал сюда
+  # не попадает: в ресурсе лежит имя секрета, секрет монтируется, значение не
+  # проходит ни через API, ни через БД.
+  KACHO_STORAGE_BLOCK_BACKEND_CREDENTIALS_DIR: {{ .Values.config.blockBackend.credentialsDir | quote }}
+  # Срок ОДНОГО обращения к плоскости данных. Неположительный недопустим:
+  # неотвечающий кластер без срока паркует слот сверщика навсегда.
+  KACHO_STORAGE_BLOCK_BACKEND_CALL_TIMEOUT: {{ .Values.config.blockBackend.callTimeout | quote }}
+  KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_INTERVAL: {{ .Values.config.blockBackend.reconcileInterval | quote }}
+  KACHO_STORAGE_BLOCK_BACKEND_RECONCILE_BATCH: {{ .Values.config.blockBackend.reconcileBatch | quote }}
+  # Инструмент и учётная запись в кластере. Названы явно, а не собраны из имени:
+  # собранное умолчание всегда непусто и потому выглядит настроенным.
+  KACHO_STORAGE_CEPH_RBD_BINARY: {{ .Values.config.blockBackend.ceph.binary | quote }}
+  KACHO_STORAGE_CEPH_CLIENT_NAME: {{ .Values.config.blockBackend.ceph.clientName | quote }}

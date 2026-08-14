@@ -69,7 +69,7 @@ func newAttachUC(w volume.Writer, g *listnarrow.Narrower) *volume.UseCase {
 		GetFunc: func(context.Context, string) (*domain.Volume, error) { return attachedVolume(), nil },
 	}
 	return volume.New(reader, w, &repomock.PeerClient{}, &repomock.PeerClient{},
-		nil, serviceerr.ToStatus).WithInstanceGate(g)
+		nil, serviceerr.ToStatus).WithInstallPrefix(testInstallPrefix).WithInstanceGate(g)
 }
 
 func attachSpec(instanceID string) *domain.VolumeAttachment {

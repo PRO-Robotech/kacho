@@ -176,9 +176,10 @@ var DiskTypeService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	InternalDiskTypeService_Create_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeService/Create"
-	InternalDiskTypeService_Update_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeService/Update"
-	InternalDiskTypeService_Delete_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeService/Delete"
+	InternalDiskTypeService_Create_FullMethodName       = "/kacho.cloud.storage.v1.InternalDiskTypeService/Create"
+	InternalDiskTypeService_Update_FullMethodName       = "/kacho.cloud.storage.v1.InternalDiskTypeService/Update"
+	InternalDiskTypeService_Delete_FullMethodName       = "/kacho.cloud.storage.v1.InternalDiskTypeService/Delete"
+	InternalDiskTypeService_SetLifecycle_FullMethodName = "/kacho.cloud.storage.v1.InternalDiskTypeService/SetLifecycle"
 )
 
 // InternalDiskTypeServiceClient is the client API for InternalDiskTypeService service.
@@ -190,9 +191,9 @@ const (
 // (:9091); proxied through api-gateway internal mux to /storage/v1/diskTypes —
 // NOT on the external TLS endpoint (workspace CLAUDE.md ban #6).
 //
-// IMPORTANT, on how that isolation actually holds: these three RPCs share their
-// REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]` —
-// DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
+// IMPORTANT, on how that isolation actually holds: Create/Update/Delete share
+// their REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]`
+// — DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
 // The api-gateway external-isolation gate is therefore keyed on the (method,
 // path) PAIR, never on the path alone: a path-only classifier cannot tell these
 // bindings apart and routes the admin mutations to the public mux. The source
@@ -200,10 +201,30 @@ const (
 // read from the proto descriptors
 // (gateway/internal/restmux/internal_routes.go), so a new RPC on this service
 // is isolated automatically.
+//
+// SetLifecycle путь с публичным чтением не делит (у него suffix-действие), но
+// изолируется ТЕМ ЖЕ правилом: источник классификации — принадлежность RPC этому
+// сервису, а не форма его пути. Полагаться на суффикс было бы вторым правилом об
+// одном предмете, и оно разошлось бы с первым на следующем же добавлении.
 type InternalDiskTypeServiceClient interface {
 	Create(ctx context.Context, in *CreateDiskTypeRequest, opts ...grpc.CallOption) (*DiskType, error)
 	Update(ctx context.Context, in *UpdateDiskTypeRequest, opts ...grpc.CallOption) (*DiskType, error)
 	Delete(ctx context.Context, in *DeleteDiskTypeRequest, opts ...grpc.CallOption) (*DeleteDiskTypeResponse, error)
+	// Переводит класс в другое состояние обращения (в обращение / из обращения).
+	//
+	// Отдельный глагол, а не поле правки. Причина в семантике маски: пустая маска у
+	// Update означает полную замену изменяемых полей, поэтому состояние обращения в
+	// его теле возвращало бы выведенный класс в обращение при правке описания —
+	// молча и без заявленного намерения. Здесь намерение и есть весь запрос.
+	//
+	// Вывод из обращения НЕ трогает существующие тома: они продолжают читаться,
+	// обновляться и удаляться. Отказ получают только новые (DEPRECATED/RETIRED →
+	// FAILED_PRECONDITION "DiskType <id> is not accepting new volumes"), а удаление
+	// самого класса по-прежнему упирается в ссылающиеся тома (FK RESTRICT).
+	//
+	// Синхронный и возвращает ресурс: у админ-справочника нет длящейся работы, и
+	// оборачивать её в Operation значило бы заставлять администратора поллить готовое.
+	SetLifecycle(ctx context.Context, in *SetDiskTypeLifecycleRequest, opts ...grpc.CallOption) (*DiskType, error)
 }
 
 type internalDiskTypeServiceClient struct {
@@ -244,6 +265,16 @@ func (c *internalDiskTypeServiceClient) Delete(ctx context.Context, in *DeleteDi
 	return out, nil
 }
 
+func (c *internalDiskTypeServiceClient) SetLifecycle(ctx context.Context, in *SetDiskTypeLifecycleRequest, opts ...grpc.CallOption) (*DiskType, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DiskType)
+	err := c.cc.Invoke(ctx, InternalDiskTypeService_SetLifecycle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalDiskTypeServiceServer is the server API for InternalDiskTypeService service.
 // All implementations must embed UnimplementedInternalDiskTypeServiceServer
 // for forward compatibility.
@@ -253,9 +284,9 @@ func (c *internalDiskTypeServiceClient) Delete(ctx context.Context, in *DeleteDi
 // (:9091); proxied through api-gateway internal mux to /storage/v1/diskTypes —
 // NOT on the external TLS endpoint (workspace CLAUDE.md ban #6).
 //
-// IMPORTANT, on how that isolation actually holds: these three RPCs share their
-// REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]` —
-// DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
+// IMPORTANT, on how that isolation actually holds: Create/Update/Delete share
+// their REST path with the PUBLIC catalog read (`GET /storage/v1/diskTypes[/{id}]`
+// — DiskTypeService) and differ from it ONLY by HTTP method (POST/PATCH/DELETE).
 // The api-gateway external-isolation gate is therefore keyed on the (method,
 // path) PAIR, never on the path alone: a path-only classifier cannot tell these
 // bindings apart and routes the admin mutations to the public mux. The source
@@ -263,10 +294,30 @@ func (c *internalDiskTypeServiceClient) Delete(ctx context.Context, in *DeleteDi
 // read from the proto descriptors
 // (gateway/internal/restmux/internal_routes.go), so a new RPC on this service
 // is isolated automatically.
+//
+// SetLifecycle путь с публичным чтением не делит (у него suffix-действие), но
+// изолируется ТЕМ ЖЕ правилом: источник классификации — принадлежность RPC этому
+// сервису, а не форма его пути. Полагаться на суффикс было бы вторым правилом об
+// одном предмете, и оно разошлось бы с первым на следующем же добавлении.
 type InternalDiskTypeServiceServer interface {
 	Create(context.Context, *CreateDiskTypeRequest) (*DiskType, error)
 	Update(context.Context, *UpdateDiskTypeRequest) (*DiskType, error)
 	Delete(context.Context, *DeleteDiskTypeRequest) (*DeleteDiskTypeResponse, error)
+	// Переводит класс в другое состояние обращения (в обращение / из обращения).
+	//
+	// Отдельный глагол, а не поле правки. Причина в семантике маски: пустая маска у
+	// Update означает полную замену изменяемых полей, поэтому состояние обращения в
+	// его теле возвращало бы выведенный класс в обращение при правке описания —
+	// молча и без заявленного намерения. Здесь намерение и есть весь запрос.
+	//
+	// Вывод из обращения НЕ трогает существующие тома: они продолжают читаться,
+	// обновляться и удаляться. Отказ получают только новые (DEPRECATED/RETIRED →
+	// FAILED_PRECONDITION "DiskType <id> is not accepting new volumes"), а удаление
+	// самого класса по-прежнему упирается в ссылающиеся тома (FK RESTRICT).
+	//
+	// Синхронный и возвращает ресурс: у админ-справочника нет длящейся работы, и
+	// оборачивать её в Operation значило бы заставлять администратора поллить готовое.
+	SetLifecycle(context.Context, *SetDiskTypeLifecycleRequest) (*DiskType, error)
 	mustEmbedUnimplementedInternalDiskTypeServiceServer()
 }
 
@@ -285,6 +336,9 @@ func (UnimplementedInternalDiskTypeServiceServer) Update(context.Context, *Updat
 }
 func (UnimplementedInternalDiskTypeServiceServer) Delete(context.Context, *DeleteDiskTypeRequest) (*DeleteDiskTypeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedInternalDiskTypeServiceServer) SetLifecycle(context.Context, *SetDiskTypeLifecycleRequest) (*DiskType, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetLifecycle not implemented")
 }
 func (UnimplementedInternalDiskTypeServiceServer) mustEmbedUnimplementedInternalDiskTypeServiceServer() {
 }
@@ -362,6 +416,24 @@ func _InternalDiskTypeService_Delete_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalDiskTypeService_SetLifecycle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetDiskTypeLifecycleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalDiskTypeServiceServer).SetLifecycle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalDiskTypeService_SetLifecycle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalDiskTypeServiceServer).SetLifecycle(ctx, req.(*SetDiskTypeLifecycleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalDiskTypeService_ServiceDesc is the grpc.ServiceDesc for InternalDiskTypeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -380,6 +452,10 @@ var InternalDiskTypeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _InternalDiskTypeService_Delete_Handler,
+		},
+		{
+			MethodName: "SetLifecycle",
+			Handler:    _InternalDiskTypeService_SetLifecycle_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

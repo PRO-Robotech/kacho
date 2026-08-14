@@ -22,6 +22,33 @@ func hasContractField(m proto.Message, name string) bool {
 	return m.ProtoReflect().Descriptor().Fields().ByName(protoreflect.Name(name)) != nil
 }
 
+// copyTargetOf — каким полем запроса глагола копии едет атрибут ресурса и в каком
+// качестве. Пустое `where` означает, что путь копии этого атрибута не несёт вовсе.
+func copyTargetOf(spec flatSpec, attr string) (target, where string) {
+	if spec.copyFrom == nil {
+		return "", ""
+	}
+	if spec.copyFrom.sourceAttr == attr {
+		return spec.copyFrom.sourceField, "источник копии"
+	}
+	for _, c := range spec.copyFrom.carry {
+		if c.attr == attr {
+			return c.field, "переносимый копией"
+		}
+	}
+	return "", ""
+}
+
+// ownVerbOf — объявлен ли атрибут меняемым собственным глаголом края.
+func ownVerbOf(spec flatSpec, attr string) (verbField, bool) {
+	for _, vf := range spec.verbFields {
+		if vf.attr == attr {
+			return vf, true
+		}
+	}
+	return verbField{}, false
+}
+
 func specFieldNames(spec flatSpec) map[string]fieldSpec {
 	out := map[string]fieldSpec{}
 	for _, f := range spec.fields {
@@ -217,14 +244,63 @@ func TestFlatSpecFieldsExistInTheContractTheyAreSentIn(t *testing.T) {
 					t.Errorf("%s: поле %q помечено «только изменение», но контракт изменения его "+
 						"не несёт — задать его нельзя ни одним запросом", spec.tfName, f.name)
 				}
+			case f.notInCreate:
+				// Поле, которого нет в обычном создании, обязано быть достижимо ПУТЁМ КОПИИ —
+				// иначе задать его нельзя ни одним запросом, и признак превращается в
+				// молчаливое освобождение от проверки. Поэтому здесь не пропуск, а встречное
+				// утверждение: назови глагол, которым это поле доезжает, и поле его контракта.
+				target, where := copyTargetOf(spec, f.name)
+				switch {
+				case spec.copyFrom == nil:
+					t.Errorf("%s: поле %q помечено «не в создании», но пути копии у ресурса НЕТ — "+
+						"задать его нельзя ни одним запросом", spec.tfName, f.name)
+				case where == "":
+					t.Errorf("%s: поле %q помечено «не в создании», но путь копии его не несёт "+
+						"(ни источником, ни переносимым) — признак пережил свой предмет",
+						spec.tfName, f.name)
+				default:
+					req := spec.copyFrom.newRequest()
+					if !hasContractField(req, target) {
+						t.Errorf("%s: поле %q едет в запрос глагола %q как %q (%s), но контракт %s "+
+							"такого поля не несёт", spec.tfName, f.name, spec.copyFrom.verb,
+							target, where, req.ProtoReflect().Descriptor().FullName())
+					}
+				}
+				// Обратная сторона признака обязательна так же, как у «только изменение»:
+				// поле, которое контракт создания ВСЁ ЖЕ несёт, помечать нечем — иначе
+				// значение молча уедет вторым запросом там, где хватило бы первого.
+				if hasContractField(create, f.name) {
+					t.Errorf("%s: поле %q помечено «не в создании», но контракт создания его "+
+						"НЕСЁТ — признак пережил свой предмет", spec.tfName, f.name)
+				}
 			default:
 				if !hasContractField(create, f.name) {
 					t.Errorf("%s: поле %q описания отсутствует в контракте создания %s",
 						spec.tfName, f.name, create.ProtoReflect().Descriptor().FullName())
 				}
 				// Изменяемое поле уходит в маску изменения — значит контракт изменения обязан
-				// его нести. Неизменяемое туда не попадает by construction.
-				if !f.immutable && !hasContractField(update, f.name) {
+				// его нести. Исключений два, и оба со СВОИМ предметом: неизменяемое туда не
+				// попадает by construction, а поле, объявленное меняемым СОБСТВЕННЫМ глаголом
+				// края, едет не маской. Второе тоже проверяется встречно — глагол обязан
+				// существовать и нести оба своих поля.
+				if vf, own := ownVerbOf(spec, f.name); own {
+					req := vf.newRequest()
+					if !hasContractField(req, vf.idField) {
+						t.Errorf("%s: глагол %q не находит в контракте %s поля идентификатора %q",
+							spec.tfName, vf.verb, req.ProtoReflect().Descriptor().FullName(), vf.idField)
+					}
+					if !hasContractField(req, vf.valueField) {
+						t.Errorf("%s: глагол %q не находит в контракте %s поля значения %q",
+							spec.tfName, vf.verb, req.ProtoReflect().Descriptor().FullName(), vf.valueField)
+					}
+					// Та же обратная сторона: если контракт изменения поле НЕСЁТ, отдельный
+					// глагол — лишний способ сделать то же самое, и два пути разойдутся.
+					if hasContractField(update, f.name) {
+						t.Errorf("%s: поле %q объявлено меняемым глаголом %q, но контракт изменения "+
+							"его тоже несёт — два пути к одному предмету разойдутся молча",
+							spec.tfName, f.name, vf.verb)
+					}
+				} else if !f.immutable && !hasContractField(update, f.name) {
 					t.Errorf("%s: изменяемое поле %q отсутствует в контракте изменения %s",
 						spec.tfName, f.name, update.ProtoReflect().Descriptor().FullName())
 				}

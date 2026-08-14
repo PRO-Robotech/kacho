@@ -104,6 +104,35 @@ service ImageService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
+  // Копирует образ в другой регион: создаётся НОВЫЙ образ в целевом регионе, исходный
+  // не изменяется.
+  //
+  // Это единственный законный путь переноса образа между регионами. Образ REGIONAL
+  // (anycast), region_id неизменяем после Create — «переехать» существующей строкой
+  // нечем, перенос возможен только новой.
+  //
+  // Гейт — `editor@project`, как у всякого Create: копия есть НОВЫЙ ресурс, а
+  // право создавать в Kachō спрашивают у родителя. Форма «v_get на источник»
+  // отвергнута осознанно: она отдала бы наблюдателю проекта право порождать
+  // образы. Разбор — у CopySnapshotRequest, здесь не дублируется.
+  rpc Copy(CopyImageRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/storage/v1/images/{image_id}:copy"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CopyImageMetadata"
+      response: "Image"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.images.copy";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
   // Lists operations for the specified image.
   rpc ListOperations(ListImageOperationsRequest) returns (ListImageOperationsResponse) {
     option (google.api.http) = {get: "/storage/v1/images/{image_id}/operations"};
@@ -260,6 +289,64 @@ message DeleteImageRequest {
 
 message DeleteImageMetadata {
   // ID of the image that is being deleted.
+  string image_id = 1;
+}
+
+// CopyImageRequest — копия образа в другом регионе. Источник запросом не изменяется.
+message CopyImageRequest {
+  // Проект, в котором создаётся копия. Он же обязан быть проектом источника.
+  //
+  // Обязателен, хотя выводим из источника: именно он — объект вопроса о правах.
+  // «Создать» спрашивают у родителя (`editor@project`); пообъектного `v_create`
+  // в платформе нет. Причина полностью изложена у CopySnapshotRequest — здесь
+  // не пересказывается, чтобы два места об одном предмете не разошлись.
+  string project_id = 6 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID образа-источника.
+  string image_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID региона, в котором создаётся копия. Peer-валидируется у kacho-geo, как region_id
+  // на Create.
+  //
+  // Обязателен и называется вызывающим: перенос — предмет этого глагола, и пустое
+  // значение пришлось бы угадывать, а угаданное умолчание неотличимо от опечатки.
+  string target_region_id = 2 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // Имя копии. Пустое допустимо — адресуется копия своим новым id, имя косметическое.
+  //
+  // Имя источника не наследуется: оно уникально в паре с проектом, а копия остаётся в
+  // проекте источника — унаследованное имя столкнулось бы с ним самим.
+  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Описание копии.
+  string description = 4 [(length) = "<=256"];
+
+  // Resource labels as `key:value` pairs.
+  map<string, string> labels = 5 [
+    (kacho.cloud.size) = "<=64",
+    (length) = "<=63",
+    (pattern) = "[-_./\\@0-9a-z]*",
+    (map_key).length = "1-63",
+    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
+  ];
+}
+
+message CopyImageMetadata {
+  // ID НОВОГО образа — той самой копии, а не источника (источник назван в пути
+  // запроса).
+  //
+  // Идентификатор выделяется при ПРИЁМЕ операции, поэтому читать его можно только при
+  // done=true И отсутствии error: на отказавшей операции он указывает на ресурс,
+  // которого нет.
   string image_id = 1;
 }
 

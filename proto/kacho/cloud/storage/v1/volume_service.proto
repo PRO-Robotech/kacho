@@ -65,7 +65,11 @@ service VolumeService {
   // Updates the specified volume.
   //
   // Mutable: name / description / labels / size_bytes (increase only).
-  // Immutable: zone_id / disk_type_id / block_size / source_snapshot_id.
+  // Immutable: zone_id / disk_type_id / source_snapshot_id / source_image_id.
+  //
+  // disk_type_id стоит среди неизменяемых НЕ потому, что класс диска пожизненный,
+  // а потому, что он меняется выделенным глаголом [ChangeDiskType]: здесь поле
+  // отвергается как неизменяемое, и отказ называет глагол, которым это делается.
   rpc Update(UpdateVolumeRequest) returns (operation.Operation) {
     option (google.api.http) = {
       patch: "/storage/v1/volumes/{volume_id}"
@@ -108,6 +112,43 @@ service VolumeService {
     option (google.api.http) = {get: "/storage/v1/volumes/{volume_id}/operations"};
     option (kacho.iam.authz.v1.permission)        = "storage.volumes.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "storage_volume"
+      from_request_field: "volume_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Переводит том на другой класс диска.
+  //
+  // # Почему отдельный глагол, а не поле в Update
+  //
+  // Это ПЕРЕМЕЩЕНИЕ ДАННЫХ, а не правка поля. Оно длится (том всё это время в
+  // [Volume.Status.MIGRATING]), может отказать на половине — и тогда данные
+  // остаются на исходном классе, — и меняет физическое расположение объекта у
+  // бэкенда. Полем в Update такое выразить нечем: маска описывает набор правок,
+  // применяемых вместе, и «полуприменённой» правки в её семантике не бывает.
+  // Отдельный глагол называет предмет вслух, несёт собственные предусловия и
+  // даёт клиенту операцию, за которой он следит именно как за переносом.
+  //
+  // # Предусловия
+  //
+  // Целевой класс обязан быть ACTIVE и предлагаться В ТОЙ ЖЕ зоне: смена зоны
+  // этим глаголом не делается (zone_id неизменяем, перенос между зонами идёт
+  // копией снимка). Том обязан быть в AVAILABLE либо IN_USE — иначе
+  // FAILED_PRECONDITION "Volume <id> is not in a state that allows changing disk
+  // type". Размер тома обязан укладываться в границы целевого класса.
+  rpc ChangeDiskType(ChangeDiskTypeRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/storage/v1/volumes/{volume_id}:changeDiskType"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "ChangeDiskTypeMetadata"
+      response: "Volume"
+    };
+    option (kacho.iam.authz.v1.permission)        = "storage.volumes.changeDiskType";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "storage_volume"
       from_request_field: "volume_id"
@@ -208,8 +249,15 @@ message CreateVolumeRequest {
   // Size of the volume, specified in bytes. Must be > 0.
   int64 size_bytes = 7 [(value) = ">0"];
 
-  // Block size of the volume, specified in bytes. Default 4096 when omitted.
-  int64 block_size = 8;
+  // Номер 8 занимал block_size — размер блока создаваемого тома.
+  //
+  // Снят вместе с полем ресурса (см. [Volume], номер 11): значение принималось,
+  // хранилось и возвращалось назад, но ничьё поведение не меняло. Слот закрыт
+  // номером И именем, поэтому запрос со старым blockSize отвергается как
+  // неизвестное поле — а не принимается молча, оставляя отправителя в
+  // уверенности, что размер блока задан им.
+  reserved 8;
+  reserved "block_size";
 
   // ID of the source snapshot to restore the volume from. Optional; empty = a fresh
   // volume. Mutually exclusive with source_image_id.
@@ -299,4 +347,28 @@ message ListVolumeOperationsResponse {
 
   // This token allows you to get the next page of results for list requests.
   string next_page_token = 2;
+}
+
+message ChangeDiskTypeRequest {
+  // ID тома, класс диска которого меняется.
+  string volume_id = 1 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+
+  // ID целевого класса диска. Обязателен: пустое значение — это не «оставить
+  // как есть», а запрос без предмета, и трактовать его умолчанием значило бы
+  // отвечать успехом на несформулированное намерение.
+  //
+  // Класс обязан быть ACTIVE и предлагаться в зоне тома. Зона глаголом не
+  // меняется — целевой класс ищется в той же зоне, где том уже стоит.
+  string disk_type_id = 2 [
+    (required) = true,
+    (length) = "<=50"
+  ];
+}
+
+message ChangeDiskTypeMetadata {
+  // ID тома, класс диска которого меняется.
+  string volume_id = 1;
 }

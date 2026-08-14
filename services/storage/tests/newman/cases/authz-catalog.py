@@ -30,7 +30,17 @@ project-scope в запросе нет, поэтому здесь нет и то
 CASES = []
 
 DT = "/storage/v1/diskTypes"
-_SEEDED_ID = "block-balanced"   # сид миграции 0004; тот же id, что пинит disk-type.py
+# Цель админских отрицаний — ЛЮБОЙ адрес админской полосы, а не конкретный класс.
+# Прежде здесь стоял слаг посева миграции; посев снят, и пин на него означал бы
+# отрицание, чья цель не существует, — отказ пришёл бы «не найдено» вместо
+# «не ваше», и кейс зеленел бы не тем.
+_ABSENT_ID = "block-newman-nx-{{runId}}"
+
+# Класс, который СОЗДАЁТ посев стенда. Читающие кейсы обязаны обращаться к
+# существующему: публичное чтение каталога отдаёт 200 всякому опознанному
+# субъекту, и на отсутствующем id проверка прав подменяется проверкой наличия —
+# кейс зеленел бы (или краснел) не о том.
+_PRESENT_ID = "block-balanced"
 
 # (код, ярлык, env-переменная с bearer'ом). "anonymous" — gen.py снимает заголовок.
 SUBJECTS = [
@@ -110,7 +120,7 @@ def _emit(op_code, op_title, scope, method, path, body):
 
 # Чтение каталога: коллекция и элемент — обе половины публичного read'а.
 _emit("LS", "List diskTypes", "catalog-read", "GET", DT, None)
-_emit("GT", f"Get diskTypes/{_SEEDED_ID}", "catalog-read", "GET", f"{DT}/{_SEEDED_ID}", None)
+_emit("GT", f"Get diskTypes/{_PRESENT_ID}", "catalog-read", "GET", f"{DT}/{_PRESENT_ID}", None)
 
 # Мутация каталога: тот же collection-путь, что у публичного чтения, но метод POST
 # адресует InternalDiskTypeService (system_admin @ cluster). Тело намеренно валидное —
@@ -118,4 +128,4 @@ _emit("GT", f"Get diskTypes/{_SEEDED_ID}", "catalog-read", "GET", f"{DT}/{_SEEDE
 _emit("CR", "Create diskType (admin-каталог)", "catalog-mutate", "POST", DT,
       {"id": "sdt-authz-probe-{{runId}}", "name": "sdt-authz-probe-{{runId}}",
        "description": "newman catalog-authz probe (must never be created)",
-       "performanceTier": "balanced"})
+       "tier": "BALANCED"})

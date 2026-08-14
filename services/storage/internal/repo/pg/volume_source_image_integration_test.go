@@ -14,6 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -26,7 +27,7 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-seed", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "ubuntu-boot", "ru-central1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "ubuntu-boot", "ru-central1", snapID)
 
 	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "boot-vol",
@@ -35,6 +36,10 @@ func TestVolumeSourceImageSeed(t *testing.T) {
 	}, imageRegionFixture)
 	require.NoError(t, err)
 	require.Equal(t, img.ID, boot.SourceImage)
+	// Том рождается в НАМЕРЕНИИ: пригодным его делает сверщик, увидев объект.
+	// Проба ждёт пригодного, поэтому проходит тот же путь, а не объявляет
+	// состояние рукой.
+	confirmReady(t, pool, reconciler.KindVolume, boot.ID, boot.SizeBytes)
 
 	got, err := vr.Get(ctx, boot.ID)
 	require.NoError(t, err)
@@ -69,13 +74,14 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 	ctx := context.Background()
 
 	snapID := mkSnapshotRow(t, pool, "prj-1", "snap-prov", 20<<30)
-	img := mkImageFromSnapshot(t, ir, "prj-1", "prov-img", "ru-central1", snapID)
+	img := mkImageFromSnapshot(t, pool, ir, "prj-1", "prov-img", "ru-central1", snapID)
 	boot, _, err := vr.Insert(ctx, &domain.Volume{
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "prov-boot",
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 21474836480,
 		SourceImage: img.ID,
 	}, imageRegionFixture)
 	require.NoError(t, err)
+	confirmReady(t, pool, reconciler.KindVolume, boot.ID, boot.SizeBytes)
 
 	// Delete Image, засевшего в томе → проходит (provenance SET NULL, не RESTRICT).
 	require.NoError(t, ir.Delete(ctx, img.ID), "deleting a seeded image must succeed (SET NULL, not RESTRICT)")

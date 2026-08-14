@@ -1,0 +1,320 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.storage.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+import "kacho/cloud/validation.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
+
+// InternalStorageBackendService — реестр бэкендов: чем именно исполняется блочное
+// хранение и в каких зонах. Cluster-internal (порт 9091, mTLS), на внешнем
+// TLS-эндпоинте не выставлен ни одним методом (ban #6).
+//
+// # Почему запись инфра-чувствительна ЦЕЛИКОМ
+//
+// Координата бэкенда, охват зон и ссылка на учётные данные вместе картируют
+// плоскость данных: по ним видно, на чём лежит арендатор и куда идти за его
+// блоками. Поэтому [StorageBackend] не проецируется на публичную поверхность ни
+// одним полем — ни на Volume, ни на DiskType. Публично из этой ветки производны
+// только способности класса (булевы) и формула производительности, и то через
+// ревизию привязки, а не напрямую.
+//
+// # Почему gRPC-only, без REST-привязок
+//
+// Адресат сервиса — администратор услуги, а не арендатор, и потребителя REST у
+// него сегодня нет. Объявленный путь, который никто не резолвит, — это
+// поверхность, за которую никто не отвечает: она переживает причину, по которой
+// заводилась. Появится потребитель — привязка добавится вместе с ним и только на
+// внутреннем муксе.
+//
+// # Почему все методы синхронны
+//
+// Регистрация — запись в справочник, длящейся работы за ней нет. Operation здесь
+// заставила бы администратора поллить уже готовое, а её `done` перестал бы
+// означать «намерение закоммичено» (api-conventions).
+//
+// AuthN (mTLS) и AuthZ (per-RPC Check) действуют на этом листенере так же, как на
+// публичном: internal не освобождён. Отношение везде `system_admin` на синглтоне
+// `cluster` — реестр не принадлежит ни проекту, ни аккаунту, поэтому объекта
+// уровня арендатора, на котором можно было бы спросить право, у него нет.
+service InternalStorageBackendService {
+  // Create — регистрирует бэкенд.
+  //
+  // `id` присваивает сервис (префикс `sb-`): внешняя адресация идёт по
+  // неизменяемому id, а не по имени (ban #15). Имя администратор вправе сменить, и
+  // ревизии привязок не должны от этого разъехаться.
+  rpc Create(CreateStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {
+      post: "/storage/v1/storageBackends"
+      body: "*"
+    };
+
+    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Get — возвращает регистрацию по id.
+  rpc Get(GetStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {get: "/storage/v1/storageBackends/{storage_backend_id}"};
+
+    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.get";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // List — перечисляет регистрации. Курсорная пагинация `(created_at, id)`, как у
+  // остальных списков домена: `page_size` вне `[0..1000]` отвергается, а не
+  // подрезается, мусорный `page_token` — `INVALID_ARGUMENT`.
+  rpc List(ListStorageBackendsRequest) returns (ListStorageBackendsResponse) {
+    option (google.api.http) = {get: "/storage/v1/storageBackends"};
+
+    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.list";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Update — правит регистрацию по `update_mask`.
+  //
+  // `kind` в маску не входит НИКОГДА: род бэкенда выбирает адаптер, и смена рода на
+  // месте подменила бы исполнителя под живыми привязками — объекты остались бы у
+  // прежнего, а ходить мы стали бы к новому. Попытка отвергается синхронно:
+  // `"kind is immutable after StorageBackend.Create"`.
+  rpc Update(UpdateStorageBackendRequest) returns (StorageBackend) {
+    option (google.api.http) = {
+      patch: "/storage/v1/storageBackends/{storage_backend_id}"
+      body: "*"
+    };
+
+    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // Delete — снимает регистрацию.
+  //
+  // Бэкенд, на который ссылается хоть одна ревизия привязки, не удаляется (FK
+  // RESTRICT со стороны `disk_type_bindings`) — иначе оборвалась бы ссылка у строк,
+  // которые обязаны быть неизменяемыми, и том потерял бы политику, под которой
+  // создан. Вывод бэкенда из обращения — это `DRAINING`, а не удаление: он
+  // перестаёт принимать новые привязки, а существующие продолжают исполняться.
+  //
+  // Ответ пуст: ресурса после удаления нет, возвращать нечего.
+  rpc Delete(DeleteStorageBackendRequest) returns (DeleteStorageBackendResponse) {
+    option (google.api.http) = {delete: "/storage/v1/storageBackends/{storage_backend_id}"};
+
+    option (kacho.iam.authz.v1.permission)        = "storage.storage_backends.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+// StorageBackend — зарегистрированный бэкенд блочного хранения (internal-only).
+//
+// Регистрация — это утверждение «вот чем мы умеем исполнять хранение и где». Она
+// НЕ несёт устройства бэкенда: ни адресов мониторов, ни пулов, ни топологии. Пул и
+// шаблон изоляции арендатора живут в ревизии привязки [DiskTypeBinding], потому что
+// они меняются вместе с политикой класса, а не вместе с самим бэкендом.
+message StorageBackend {
+  // Род бэкенда — закрытый перечень, а не свободная строка.
+  //
+  // За каждым значением стоит адаптер в нашем коде. Свободная строка позволила бы
+  // зарегистрировать бэкенд, исполнять который некому: регистрация прошла бы, а
+  // первый же том упёрся бы в отсутствующего исполнителя — то есть отказ переехал
+  // бы с пути администратора на путь арендатора.
+  enum BackendKind {
+    BACKEND_KIND_UNSPECIFIED = 0;
+
+    // Ceph RBD — первый и пока единственный адаптер.
+    CEPH_RBD = 1;
+  }
+
+  // Полоса действия бэкенда. Три состояния, потому что вывод из обращения —
+  // процесс, а не событие: тома живут дольше решения администратора о бэкенде.
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+
+    // Принимает новые привязки и исполняет существующие.
+    ACTIVE = 1;
+
+    // Новые привязки создавать нельзя, существующие исполняются. Это и есть штатный
+    // способ вывести бэкенд: удаление невозможно, пока на него ссылаются ревизии.
+    DRAINING = 2;
+
+    // Выведен из обращения: не принимает ни новых привязок, ни работы по
+    // существующим. Строка сохраняется, потому что на неё ссылаются ревизии, а они
+    // неизменяемы.
+    DISABLED = 3;
+  }
+
+  // ID бэкенда. Префикс `sb-` (дефисный канон), присваивается на Create,
+  // неизменяем на всю жизнь записи.
+  string id = 1;
+
+  // Человекочитаемое имя. Косметический ярлык: уникально в реестре, но адресацию не
+  // несёт и меняться вправе свободно.
+  string name = 2;
+
+  // Род бэкенда. Неизменяем после Create — см. комментарий к [Update].
+  BackendKind kind = 3;
+
+  // Описание для администратора. 0-256 символов.
+  string description = 4;
+
+  // Зоны, которые этот бэкенд обслуживает. Ревизия привязки создаётся только на
+  // зону из этого списка — иначе класс объявлялся бы в зоне, где исполнять его
+  // некому.
+  repeated string zone_ids = 5;
+
+  // Непрозрачная координата бэкенда: `<схема>://<путь>`.
+  //
+  // В API НЕ кладутся ни адреса мониторов, ни имена пулов, ни любая иная физика —
+  // схема разрешается конфигурацией процесса, которая и знает, куда идти. Форма
+  // «схема://путь» выбрана не для красоты: она делает запрет проверяемым. Голый
+  // `host:port` под неё не подходит, а именно он и был бы адресом монитора,
+  // просочившимся в контракт.
+  string endpoint = 6;
+
+  // ССЫЛКА на учётные данные, никогда само значение: `<схема>://<путь>`.
+  //
+  // Секрет не проходит через API и не хранится в нашей БД — процесс разрешает
+  // ссылку у хранилища секретов при старте. Причина прямая: то, что прошло через
+  // запрос, попадает в журналы, трассировки и ответы, а то, чего у нас нет, нельзя
+  // выдать ни ошибкой, ни утечкой проекции. Область и ротация учётных данных —
+  // ответственность хранилища секретов, а не наша.
+  string credentials_ref = 7;
+
+  // Текущая полоса действия. Задаётся администратором явно (в том числе на Create):
+  // бэкенд регистрируют и до того, как он готов принимать привязки.
+  Status status = 8;
+
+  // Отметка создания. Усечена до секунд на проводе.
+  google.protobuf.Timestamp created_at = 9;
+
+  // Отметка последнего изменения. Усечена до секунд на проводе.
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message CreateStorageBackendRequest {
+  // Имя бэкенда. Уникально в реестре.
+  string name = 1 [
+    (required) = true,
+    (pattern) = "[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"
+  ];
+
+  // Род бэкенда. Обязателен: неуказанный род — это регистрация без исполнителя.
+  StorageBackend.BackendKind kind = 2 [(required) = true];
+
+  // Описание для администратора.
+  string description = 3 [(length) = "<=256"];
+
+  // Зоны, которые бэкенд обслуживает. Каждая валидируется peer-вызовом kacho-geo на
+  // пути запроса, fail-closed: непроверенная зона означала бы привязку, которую
+  // никто не исполнит.
+  repeated string zone_ids = 4 [(length) = "<=50"];
+
+  // Непрозрачная координата бэкенда, форма `<схема>://<путь>`.
+  string endpoint = 5 [
+    (required) = true,
+    (pattern) = "[a-z][a-z0-9+.-]*://[^ ]+"
+  ];
+
+  // Ссылка на учётные данные, форма `<схема>://<путь>`. Значение, не похожее на
+  // ссылку (в том числе сам секрет), отвергается `INVALID_ARGUMENT` — так материал
+  // секрета не доезжает ни до журнала, ни до колонки.
+  string credentials_ref = 6 [
+    (required) = true,
+    (pattern) = "[a-z][a-z0-9+.-]*://[^ ]+"
+  ];
+
+  // Полоса действия при регистрации. Опущено — `ACTIVE`.
+  StorageBackend.Status status = 7;
+}
+
+message GetStorageBackendRequest {
+  // ID бэкенда, о котором спрашивают.
+  string storage_backend_id = 1 [(required) = true];
+}
+
+message ListStorageBackendsRequest {
+  // Максимальное число записей на странице.
+  int64 page_size = 1 [(value) = "<=1000"];
+
+  // Курсор страницы: значение [ListStorageBackendsResponse.next_page_token] из
+  // предыдущего ответа.
+  string page_token = 2 [(length) = "<=100"];
+}
+
+message ListStorageBackendsResponse {
+  // Страница реестра.
+  repeated StorageBackend storage_backends = 1;
+
+  // Курсор следующей страницы. Пуст, когда страница последняя.
+  string next_page_token = 2;
+}
+
+message UpdateStorageBackendRequest {
+  // ID правимого бэкенда.
+  string storage_backend_id = 1 [(required) = true];
+
+  // Новое имя.
+  string name = 2 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+
+  // Новое описание.
+  string description = 3 [(length) = "<=256"];
+
+  // Новый список обслуживаемых зон (замена целиком, не слияние).
+  repeated string zone_ids = 4 [(length) = "<=50"];
+
+  // Новая координата бэкенда.
+  string endpoint = 5 [(pattern) = "|[a-z][a-z0-9+.-]*://[^ ]+"];
+
+  // Новая ссылка на учётные данные (ротация ссылки, не секрета).
+  string credentials_ref = 6 [(pattern) = "|[a-z][a-z0-9+.-]*://[^ ]+"];
+
+  // Новая полоса действия.
+  StorageBackend.Status status = 7;
+
+  // Какие поля применить.
+  //
+  // Маска с неизвестным полем — `INVALID_ARGUMENT`; маска с `kind` —
+  // `"kind is immutable after StorageBackend.Create"`, причём проверка
+  // неизменяемости идёт ПЕРВОЙ, иначе `kind` вернулся бы обезличенным «unknown
+  // field» вместо конвенционного текста. Пустая маска — правка всех изменяемых
+  // полей из тела.
+  google.protobuf.FieldMask update_mask = 8;
+}
+
+message DeleteStorageBackendRequest {
+  // ID снимаемого с регистрации бэкенда.
+  string storage_backend_id = 1 [(required) = true];
+}
+
+message DeleteStorageBackendResponse {}

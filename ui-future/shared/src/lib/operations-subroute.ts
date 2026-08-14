@@ -18,7 +18,9 @@
 
 /** Ресурсы, у которых ствол несёт `GET <base>/{id}/operations`. */
 export const OPERATIONS_LIST_PATHS = [
+  "/compute/v1/guestAccessKeys/{id}/operations",
   "/compute/v1/instances/{id}/operations",
+  "/compute/v1/placementGroups/{id}/operations",
   "/iam/v1/accessBindings/{id}/operations",
   "/iam/v1/accounts/{id}/operations",
   "/iam/v1/groups/{id}/operations",
@@ -31,6 +33,7 @@ export const OPERATIONS_LIST_PATHS = [
   "/nlb/v1/targetGroups/{id}/operations",
   "/registry/v1/registries/{id}/operations",
   "/storage/v1/images/{id}/operations",
+  "/storage/v1/snapshots/{id}/operations",
   "/storage/v1/volumes/{id}/operations",
   "/vpc/v1/addresses/{id}/operations",
   "/vpc/v1/cidrGroups/{id}/operations",
