@@ -1208,3 +1208,135 @@ CASES.extend(security_injection_block("NET", "/vpc/v1/networks", "/vpc/v1/networ
     {"projectId": "{{_suiteProjectId}}"}))
 CASES.append(conformance_lifecycle_pack("NET", "/vpc/v1/networks",
     {"projectId": "{{_suiteProjectId}}"}))
+
+# ---------------------------------------------------------------------------
+# NET-APPLY — состояние применения намерения в публичном контракте (kacho#296)
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    # index: APPLY-05 · APPLY-21 — состояние применения на чтении ресурса
+    id="NET-APPLY-STATE-CRUD-OK",
+    title="Свежая сеть: applyState виден на Get и отсутствует в ответе операции",
+    classes=["CRUD", "CONF"],
+    priority="P1",
+    steps=[
+        Step(
+            name="create",
+            method="POST",
+            path="/vpc/v1/networks",
+            body={"projectId": "{{_suiteProjectId}}", "name": "net-apst-{{runId}}"},
+            test_script=[
+                *assert_status(200),
+                *save_from_response("j.id", "opId"),
+                *save_from_response("j.metadata && j.metadata.networkId", "netId"),
+            ],
+        ),
+        poll_operation_until_done(),
+        # APPLY-21: ответ операции состояния применения НЕ несёт, и это решение,
+        # а не поломка заполнителя. В момент завершения операции исполнитель
+        # заведомо ещё не отчитался — поле несло бы одно и то же значение всегда
+        # и читалось бы как «операция готова, но что-то не так». Положительный
+        # контроль стоит следующим шагом: тот же ресурс на Get поле несёт.
+        Step(
+            name="op-response-carries-no-apply-state",
+            method="GET",
+            path="/vpc/v1/operations/{{opId}}",
+            test_script=[
+                *assert_status(200),
+                "const j = pm.response.json();",
+                "pm.test('операция завершена без ошибки', () => {",
+                "  pm.expect(j.done, pm.response.text()).to.eql(true);",
+                "  pm.expect(j.error, 'операция завершилась отказом').to.be.oneOf([undefined, null]);",
+                "});",
+                "pm.test('ресурс в ответе операции состояния применения не несёт', () => {",
+                "  pm.expect(j.response, 'в ответе операции нет ресурса').to.be.an('object');",
+                "  pm.expect(j.response.applyState, JSON.stringify(j.response))"
+                ".to.be.oneOf([undefined, null]);",
+                "});",
+            ],
+        ),
+        # APPLY-05: положительный контроль ко всему остальному — поле доезжает.
+        retry_until_authorized(Step(
+            name="get-apply-state",
+            method="GET",
+            path="/vpc/v1/networks/{{netId}}",
+            test_script=[
+                *assert_status(200),
+                *assert_apply_state_in_flight("NET"),
+            ])),
+        Step(
+            name="cleanup",
+            method="DELETE",
+            path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200)],
+        ),
+    ],
+))
+
+CASES.append(Case(
+    # index: APPLY-12 — список несёт то же состояние, что и одиночное чтение
+    id="NET-APPLY-STATE-LIST-PARITY-OK",
+    title="Список сетей несёт то же состояние применения, что и Get каждой",
+    classes=["CRUD", "CONF"],
+    priority="P1",
+    steps=[
+        Step(
+            name="create-a", method="POST", path="/vpc/v1/networks",
+            body={"projectId": "{{_suiteProjectId}}", "name": "net-apst-la-{{runId}}"},
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.networkId", "netApstA")]),
+        poll_operation_until_done(),
+        Step(
+            name="create-b", method="POST", path="/vpc/v1/networks",
+            body={"projectId": "{{_suiteProjectId}}", "name": "net-apst-lb-{{runId}}"},
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.networkId", "netApstB")]),
+        poll_operation_until_done(),
+        Step(
+            name="create-c", method="POST", path="/vpc/v1/networks",
+            body={"projectId": "{{_suiteProjectId}}", "name": "net-apst-lc-{{runId}}"},
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                         *save_from_response("j.metadata && j.metadata.networkId", "netApstC")]),
+        poll_operation_until_done(),
+        # Одиночное чтение одной из трёх — эталон, с которым сверяется страница.
+        retry_until_authorized(Step(
+            name="get-one", method="GET", path="/vpc/v1/networks/{{netApstA}}",
+            test_script=[
+                *assert_status(200),
+                *assert_apply_state_present("NET"),
+                "pm.environment.set('netApstAState', JSON.stringify(pm.response.json().applyState));",
+            ])),
+        # Класс, который закрывает этот кейс: «одно чтение поле заполняет, другое
+        # нет». Список — дешёвый и поэтому частый путь; клиент, обновляющий из
+        # него своё состояние, прочёл бы пустоту как утрату.
+        retry_until_present(Step(
+            name="list-parity", method="GET",
+            path="/vpc/v1/networks?projectId={{_suiteProjectId}}&pageSize=1000",
+            test_script=[
+                *assert_status(200),
+                "const nets = pm.response.json().networks || [];",
+                "const want = ['netApstA', 'netApstB', 'netApstC'].map(v => pm.environment.get(v));",
+                "const mine = nets.filter(n => want.indexOf(n.id) >= 0);",
+                "pm.test('все три сети на странице', () => "
+                "pm.expect(mine.length, pm.response.text()).to.eql(3));",
+                "pm.test('каждый элемент страницы несёт состояние применения', () => {",
+                "  mine.forEach(n => {",
+                "    pm.expect(n.applyState, 'applyState у ' + n.id).to.be.an('object');",
+                "    pm.expect(n.applyState.applied, 'applied у ' + n.id).to.be.a('boolean');",
+                "    pm.expect(n.applyState.reason, 'reason у ' + n.id).to.be.a('string');",
+                "  });",
+                "});",
+                "pm.test('состояние в списке совпадает с одиночным чтением', () => {",
+                "  const one = mine.filter(n => n.id === pm.environment.get('netApstA'))[0];",
+                "  pm.expect(JSON.stringify(one.applyState))"
+                ".to.eql(pm.environment.get('netApstAState'));",
+                "});",
+            ]), "netApstA"),
+        Step(name="cleanup-a", method="DELETE", path="/vpc/v1/networks/{{netApstA}}",
+             test_script=[*assert_status(200)]),
+        Step(name="cleanup-b", method="DELETE", path="/vpc/v1/networks/{{netApstB}}",
+             test_script=[*assert_status(200)]),
+        Step(name="cleanup-c", method="DELETE", path="/vpc/v1/networks/{{netApstC}}",
+             test_script=[*assert_status(200)]),
+    ],
+))

@@ -438,7 +438,9 @@ inline в `CREATE TABLE` базовой схемы:
 
 - **name**: regex `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$` (0–63 байт, allowed empty/uppercase/underscore).
 - **description**: `length(description) ≤ 256`.
-- **status** (NIC): enum-проверка `{PROVISIONING,ACTIVE,AVAILABLE,FAILED,DELETING,STATUS_UNSPECIFIED}|NULL`.
+- **status** (NIC): enum-проверка `{ACTIVE,AVAILABLE,STATUS_UNSPECIFIED}|NULL` (0039). Три
+  значения, заявлявшие программирование сети, сняты вместе с контрактом: производителя у них
+  не было ни одного, а их предмет выражает `apply_state`.
 - **mac_address** (NIC): regex `^[0-9a-f]{2}(:[0-9a-f]{2}){5}$` (lowercase, colon-separated).
 - **labels** (все 7 ресурсов): `CHECK (kacho_labels_valid(labels))` — helper-функция
   `kacho_vpc.kacho_labels_valid(jsonb) IMMUTABLE` проверяет cardinality ≤ 64,

@@ -139,74 +139,6 @@ func (ApplyOutcome) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDescGZIP(), []int{1}
 }
 
-// ApplyFailureReason — закрытый словарь классов отказа исполнителя.
-type ApplyFailureReason int32
-
-const (
-	ApplyFailureReason_APPLY_FAILURE_REASON_UNSPECIFIED ApplyFailureReason = 0
-	// Ресурса фабрики не хватило (ёмкость исчерпана).
-	ApplyFailureReason_APPLY_FAILURE_REASON_CAPACITY ApplyFailureReason = 1
-	// Намерение противоречит уже применённому.
-	ApplyFailureReason_APPLY_FAILURE_REASON_CONFLICT ApplyFailureReason = 2
-	// Намерение выразимо контрактом, но этой фабрикой не поддерживается.
-	ApplyFailureReason_APPLY_FAILURE_REASON_UNSUPPORTED ApplyFailureReason = 3
-	// Намерение опирается на объект, которого исполнитель ещё не применил.
-	ApplyFailureReason_APPLY_FAILURE_REASON_DEPENDENCY_NOT_READY ApplyFailureReason = 4
-	// Временный отказ; исполнитель повторит сам.
-	ApplyFailureReason_APPLY_FAILURE_REASON_TRANSIENT ApplyFailureReason = 5
-	// Внутренний отказ исполнителя.
-	ApplyFailureReason_APPLY_FAILURE_REASON_EXECUTOR_INTERNAL ApplyFailureReason = 6
-)
-
-// Enum value maps for ApplyFailureReason.
-var (
-	ApplyFailureReason_name = map[int32]string{
-		0: "APPLY_FAILURE_REASON_UNSPECIFIED",
-		1: "APPLY_FAILURE_REASON_CAPACITY",
-		2: "APPLY_FAILURE_REASON_CONFLICT",
-		3: "APPLY_FAILURE_REASON_UNSUPPORTED",
-		4: "APPLY_FAILURE_REASON_DEPENDENCY_NOT_READY",
-		5: "APPLY_FAILURE_REASON_TRANSIENT",
-		6: "APPLY_FAILURE_REASON_EXECUTOR_INTERNAL",
-	}
-	ApplyFailureReason_value = map[string]int32{
-		"APPLY_FAILURE_REASON_UNSPECIFIED":          0,
-		"APPLY_FAILURE_REASON_CAPACITY":             1,
-		"APPLY_FAILURE_REASON_CONFLICT":             2,
-		"APPLY_FAILURE_REASON_UNSUPPORTED":          3,
-		"APPLY_FAILURE_REASON_DEPENDENCY_NOT_READY": 4,
-		"APPLY_FAILURE_REASON_TRANSIENT":            5,
-		"APPLY_FAILURE_REASON_EXECUTOR_INTERNAL":    6,
-	}
-)
-
-func (x ApplyFailureReason) Enum() *ApplyFailureReason {
-	p := new(ApplyFailureReason)
-	*p = x
-	return p
-}
-
-func (x ApplyFailureReason) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (ApplyFailureReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_enumTypes[2].Descriptor()
-}
-
-func (ApplyFailureReason) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_enumTypes[2]
-}
-
-func (x ApplyFailureReason) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use ApplyFailureReason.Descriptor instead.
-func (ApplyFailureReason) EnumDescriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDescGZIP(), []int{2}
-}
-
 // WatchIntentRequest — с чего продолжить.
 type WatchIntentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -881,7 +813,7 @@ var File_kacho_cloud_vpc_v1_internal_dataplane_service_proto protoreflect.FileDe
 
 const file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/vpc/v1/internal_dataplane_service.proto\x12\x12kacho.cloud.vpc.v1\x1a&kacho/iam/authz/v1/authz_options.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a kacho/cloud/vpc/v1/gateway.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a$kacho/cloud/vpc/v1/route_table.proto\x1a'kacho/cloud/vpc/v1/security_group.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\";\n" +
+	"3kacho/cloud/vpc/v1/internal_dataplane_service.proto\x12\x12kacho.cloud.vpc.v1\x1a&kacho/iam/authz/v1/authz_options.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\x1a kacho/cloud/vpc/v1/gateway.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a$kacho/cloud/vpc/v1/route_table.proto\x1a'kacho/cloud/vpc/v1/security_group.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\";\n" +
 	"\x12WatchIntentRequest\x12%\n" +
 	"\x0eknown_revision\x18\x01 \x01(\x03R\rknownRevision\"\xe3\x01\n" +
 	"\x13WatchIntentResponse\x12=\n" +
@@ -926,15 +858,7 @@ const file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDesc = "" +
 	"\fApplyOutcome\x12\x1d\n" +
 	"\x19APPLY_OUTCOME_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15APPLY_OUTCOME_APPLIED\x10\x01\x12\x18\n" +
-	"\x14APPLY_OUTCOME_FAILED\x10\x02*\xa5\x02\n" +
-	"\x12ApplyFailureReason\x12$\n" +
-	" APPLY_FAILURE_REASON_UNSPECIFIED\x10\x00\x12!\n" +
-	"\x1dAPPLY_FAILURE_REASON_CAPACITY\x10\x01\x12!\n" +
-	"\x1dAPPLY_FAILURE_REASON_CONFLICT\x10\x02\x12$\n" +
-	" APPLY_FAILURE_REASON_UNSUPPORTED\x10\x03\x12-\n" +
-	")APPLY_FAILURE_REASON_DEPENDENCY_NOT_READY\x10\x04\x12\"\n" +
-	"\x1eAPPLY_FAILURE_REASON_TRANSIENT\x10\x05\x12*\n" +
-	"&APPLY_FAILURE_REASON_EXECUTOR_INTERNAL\x10\x062\x83\x03\n" +
+	"\x14APPLY_OUTCOME_FAILED\x10\x022\x83\x03\n" +
 	"\x18InternalDataplaneService\x12\xa6\x01\n" +
 	"\vWatchIntent\x12&.kacho.cloud.vpc.v1.WatchIntentRequest\x1a'.kacho.cloud.vpc.v1.WatchIntentResponse\"D\x8a\xb5\x18\x1avpc.dataplane.watch_intent\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x0110\x01\x12\xbd\x01\n" +
@@ -953,47 +877,47 @@ func file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDescGZIP() []by
 	return file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_goTypes = []any{
 	(ResyncCause)(0),                    // 0: kacho.cloud.vpc.v1.ResyncCause
 	(ApplyOutcome)(0),                   // 1: kacho.cloud.vpc.v1.ApplyOutcome
-	(ApplyFailureReason)(0),             // 2: kacho.cloud.vpc.v1.ApplyFailureReason
-	(*WatchIntentRequest)(nil),          // 3: kacho.cloud.vpc.v1.WatchIntentRequest
-	(*WatchIntentResponse)(nil),         // 4: kacho.cloud.vpc.v1.WatchIntentResponse
-	(*DataplaneIntent)(nil),             // 5: kacho.cloud.vpc.v1.DataplaneIntent
-	(*NetworkIntent)(nil),               // 6: kacho.cloud.vpc.v1.NetworkIntent
-	(*IntentStreamSynced)(nil),          // 7: kacho.cloud.vpc.v1.IntentStreamSynced
-	(*IntentResyncRequired)(nil),        // 8: kacho.cloud.vpc.v1.IntentResyncRequired
-	(*ReportIntentAppliedRequest)(nil),  // 9: kacho.cloud.vpc.v1.ReportIntentAppliedRequest
-	(*ReportIntentAppliedResponse)(nil), // 10: kacho.cloud.vpc.v1.ReportIntentAppliedResponse
-	(*Subnet)(nil),                      // 11: kacho.cloud.vpc.v1.Subnet
-	(*NetworkInterface)(nil),            // 12: kacho.cloud.vpc.v1.NetworkInterface
-	(*SecurityGroup)(nil),               // 13: kacho.cloud.vpc.v1.SecurityGroup
-	(*RouteTable)(nil),                  // 14: kacho.cloud.vpc.v1.RouteTable
-	(*Gateway)(nil),                     // 15: kacho.cloud.vpc.v1.Gateway
-	(*Address)(nil),                     // 16: kacho.cloud.vpc.v1.Address
-	(*Network)(nil),                     // 17: kacho.cloud.vpc.v1.Network
+	(*WatchIntentRequest)(nil),          // 2: kacho.cloud.vpc.v1.WatchIntentRequest
+	(*WatchIntentResponse)(nil),         // 3: kacho.cloud.vpc.v1.WatchIntentResponse
+	(*DataplaneIntent)(nil),             // 4: kacho.cloud.vpc.v1.DataplaneIntent
+	(*NetworkIntent)(nil),               // 5: kacho.cloud.vpc.v1.NetworkIntent
+	(*IntentStreamSynced)(nil),          // 6: kacho.cloud.vpc.v1.IntentStreamSynced
+	(*IntentResyncRequired)(nil),        // 7: kacho.cloud.vpc.v1.IntentResyncRequired
+	(*ReportIntentAppliedRequest)(nil),  // 8: kacho.cloud.vpc.v1.ReportIntentAppliedRequest
+	(*ReportIntentAppliedResponse)(nil), // 9: kacho.cloud.vpc.v1.ReportIntentAppliedResponse
+	(*Subnet)(nil),                      // 10: kacho.cloud.vpc.v1.Subnet
+	(*NetworkInterface)(nil),            // 11: kacho.cloud.vpc.v1.NetworkInterface
+	(*SecurityGroup)(nil),               // 12: kacho.cloud.vpc.v1.SecurityGroup
+	(*RouteTable)(nil),                  // 13: kacho.cloud.vpc.v1.RouteTable
+	(*Gateway)(nil),                     // 14: kacho.cloud.vpc.v1.Gateway
+	(*Address)(nil),                     // 15: kacho.cloud.vpc.v1.Address
+	(*Network)(nil),                     // 16: kacho.cloud.vpc.v1.Network
+	(ApplyFailureReason)(0),             // 17: kacho.cloud.vpc.v1.ApplyFailureReason
 }
 var file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_depIdxs = []int32{
-	5,  // 0: kacho.cloud.vpc.v1.WatchIntentResponse.intent:type_name -> kacho.cloud.vpc.v1.DataplaneIntent
-	7,  // 1: kacho.cloud.vpc.v1.WatchIntentResponse.synced:type_name -> kacho.cloud.vpc.v1.IntentStreamSynced
-	8,  // 2: kacho.cloud.vpc.v1.WatchIntentResponse.resync:type_name -> kacho.cloud.vpc.v1.IntentResyncRequired
-	6,  // 3: kacho.cloud.vpc.v1.DataplaneIntent.network:type_name -> kacho.cloud.vpc.v1.NetworkIntent
-	11, // 4: kacho.cloud.vpc.v1.DataplaneIntent.subnet:type_name -> kacho.cloud.vpc.v1.Subnet
-	12, // 5: kacho.cloud.vpc.v1.DataplaneIntent.network_interface:type_name -> kacho.cloud.vpc.v1.NetworkInterface
-	13, // 6: kacho.cloud.vpc.v1.DataplaneIntent.security_group:type_name -> kacho.cloud.vpc.v1.SecurityGroup
-	14, // 7: kacho.cloud.vpc.v1.DataplaneIntent.route_table:type_name -> kacho.cloud.vpc.v1.RouteTable
-	15, // 8: kacho.cloud.vpc.v1.DataplaneIntent.gateway:type_name -> kacho.cloud.vpc.v1.Gateway
-	16, // 9: kacho.cloud.vpc.v1.DataplaneIntent.address:type_name -> kacho.cloud.vpc.v1.Address
-	17, // 10: kacho.cloud.vpc.v1.NetworkIntent.network:type_name -> kacho.cloud.vpc.v1.Network
+	4,  // 0: kacho.cloud.vpc.v1.WatchIntentResponse.intent:type_name -> kacho.cloud.vpc.v1.DataplaneIntent
+	6,  // 1: kacho.cloud.vpc.v1.WatchIntentResponse.synced:type_name -> kacho.cloud.vpc.v1.IntentStreamSynced
+	7,  // 2: kacho.cloud.vpc.v1.WatchIntentResponse.resync:type_name -> kacho.cloud.vpc.v1.IntentResyncRequired
+	5,  // 3: kacho.cloud.vpc.v1.DataplaneIntent.network:type_name -> kacho.cloud.vpc.v1.NetworkIntent
+	10, // 4: kacho.cloud.vpc.v1.DataplaneIntent.subnet:type_name -> kacho.cloud.vpc.v1.Subnet
+	11, // 5: kacho.cloud.vpc.v1.DataplaneIntent.network_interface:type_name -> kacho.cloud.vpc.v1.NetworkInterface
+	12, // 6: kacho.cloud.vpc.v1.DataplaneIntent.security_group:type_name -> kacho.cloud.vpc.v1.SecurityGroup
+	13, // 7: kacho.cloud.vpc.v1.DataplaneIntent.route_table:type_name -> kacho.cloud.vpc.v1.RouteTable
+	14, // 8: kacho.cloud.vpc.v1.DataplaneIntent.gateway:type_name -> kacho.cloud.vpc.v1.Gateway
+	15, // 9: kacho.cloud.vpc.v1.DataplaneIntent.address:type_name -> kacho.cloud.vpc.v1.Address
+	16, // 10: kacho.cloud.vpc.v1.NetworkIntent.network:type_name -> kacho.cloud.vpc.v1.Network
 	0,  // 11: kacho.cloud.vpc.v1.IntentResyncRequired.cause:type_name -> kacho.cloud.vpc.v1.ResyncCause
 	1,  // 12: kacho.cloud.vpc.v1.ReportIntentAppliedRequest.outcome:type_name -> kacho.cloud.vpc.v1.ApplyOutcome
-	2,  // 13: kacho.cloud.vpc.v1.ReportIntentAppliedRequest.reason:type_name -> kacho.cloud.vpc.v1.ApplyFailureReason
-	3,  // 14: kacho.cloud.vpc.v1.InternalDataplaneService.WatchIntent:input_type -> kacho.cloud.vpc.v1.WatchIntentRequest
-	9,  // 15: kacho.cloud.vpc.v1.InternalDataplaneService.ReportIntentApplied:input_type -> kacho.cloud.vpc.v1.ReportIntentAppliedRequest
-	4,  // 16: kacho.cloud.vpc.v1.InternalDataplaneService.WatchIntent:output_type -> kacho.cloud.vpc.v1.WatchIntentResponse
-	10, // 17: kacho.cloud.vpc.v1.InternalDataplaneService.ReportIntentApplied:output_type -> kacho.cloud.vpc.v1.ReportIntentAppliedResponse
+	17, // 13: kacho.cloud.vpc.v1.ReportIntentAppliedRequest.reason:type_name -> kacho.cloud.vpc.v1.ApplyFailureReason
+	2,  // 14: kacho.cloud.vpc.v1.InternalDataplaneService.WatchIntent:input_type -> kacho.cloud.vpc.v1.WatchIntentRequest
+	8,  // 15: kacho.cloud.vpc.v1.InternalDataplaneService.ReportIntentApplied:input_type -> kacho.cloud.vpc.v1.ReportIntentAppliedRequest
+	3,  // 16: kacho.cloud.vpc.v1.InternalDataplaneService.WatchIntent:output_type -> kacho.cloud.vpc.v1.WatchIntentResponse
+	9,  // 17: kacho.cloud.vpc.v1.InternalDataplaneService.ReportIntentApplied:output_type -> kacho.cloud.vpc.v1.ReportIntentAppliedResponse
 	16, // [16:18] is the sub-list for method output_type
 	14, // [14:16] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
@@ -1007,6 +931,7 @@ func file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_init() {
 		return
 	}
 	file_kacho_cloud_vpc_v1_address_proto_init()
+	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	file_kacho_cloud_vpc_v1_gateway_proto_init()
 	file_kacho_cloud_vpc_v1_network_proto_init()
 	file_kacho_cloud_vpc_v1_network_interface_proto_init()
@@ -1032,7 +957,7 @@ func file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_internal_dataplane_service_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      2,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,

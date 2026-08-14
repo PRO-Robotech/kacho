@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/vpc/v1/apply_state.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -40,6 +41,18 @@ message RouteTable {
 
   // List of static routes.
   repeated StaticRoute static_routes = 8;
+
+  // Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
+  //
+  // Незаполненное поле означает «платформа не делает утверждения об этом
+  // объекте» (намерение снимается) и НЕ означает «не применено».
+  //
+  // Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
+  // НЕ заполняется: `Operation.response`, поток намерения исполнителя
+  // (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
+  // ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
+  // ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
+  ApplyState apply_state = 9;
 }
 
 // A StaticRoute resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).

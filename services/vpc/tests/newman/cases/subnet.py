@@ -74,7 +74,11 @@ CASES.append(Case(
             method="GET",
             path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
-                         "pm.test('cidr matches', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.42.0.0/24'));"],
+                         "pm.test('cidr matches', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.42.0.0/24'));",
+                         # APPLY-11: у ресурса со строкой намерения чтение несёт
+                         # состояние применения — иначе арендатор не узнает,
+                         # доехало ли его изменение до сети.
+                         *assert_apply_state_in_flight("SUB")],
         )),
         retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),

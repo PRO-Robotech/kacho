@@ -7,6 +7,7 @@ package kacho.cloud.vpc.v1;
 
 import "kacho/iam/authz/v1/authz_options.proto";
 import "kacho/cloud/vpc/v1/address.proto";
+import "kacho/cloud/vpc/v1/apply_state.proto";
 import "kacho/cloud/vpc/v1/gateway.proto";
 import "kacho/cloud/vpc/v1/network.proto";
 import "kacho/cloud/vpc/v1/network_interface.proto";
@@ -243,28 +244,10 @@ enum ApplyOutcome {
   APPLY_OUTCOME_FAILED = 2;
 }
 
-// ApplyFailureReason — закрытый словарь классов отказа исполнителя.
-enum ApplyFailureReason {
-  APPLY_FAILURE_REASON_UNSPECIFIED = 0;
-
-  // Ресурса фабрики не хватило (ёмкость исчерпана).
-  APPLY_FAILURE_REASON_CAPACITY = 1;
-
-  // Намерение противоречит уже применённому.
-  APPLY_FAILURE_REASON_CONFLICT = 2;
-
-  // Намерение выразимо контрактом, но этой фабрикой не поддерживается.
-  APPLY_FAILURE_REASON_UNSUPPORTED = 3;
-
-  // Намерение опирается на объект, которого исполнитель ещё не применил.
-  APPLY_FAILURE_REASON_DEPENDENCY_NOT_READY = 4;
-
-  // Временный отказ; исполнитель повторит сам.
-  APPLY_FAILURE_REASON_TRANSIENT = 5;
-
-  // Внутренний отказ исполнителя.
-  APPLY_FAILURE_REASON_EXECUTOR_INTERNAL = 6;
-}
+// ApplyFailureReason объявлен в `apply_state.proto` — НЕЙТРАЛЬНОМ файле пакета,
+// а не здесь. Причина названа там же: словарь у приёма отчёта и у публичной
+// проекции ОДИН, и публичным сообщениям семи ресурсов не место в импорте файла,
+// чьё имя называет внутренний сервис. Полное имя типа при переезде не менялось.
 
 // ReportIntentAppliedResponse — что платформа записала.
 message ReportIntentAppliedResponse {

@@ -16,36 +16,34 @@ func OrEmptyStrSlice(s []string) []string {
 }
 
 // NIStatusName — domain enum → DB column text (status TEXT в network_interfaces).
+//
+// Ветвей столько же, сколько значений у перечисления: снятые значения статуса не
+// производит ни один путь записи, а ограничение столбца их больше не принимает —
+// ветвь под них была бы кодом, который не исполнится, и одновременно заявкой на
+// значение, которое база отвергнет.
 func NIStatusName(s domain.NetworkInterfaceStatus) string {
 	switch s {
-	case domain.NIStatusProvisioning:
-		return domain.NIStatusStrProvisioning
 	case domain.NIStatusActive:
 		return domain.NIStatusStrActive
 	case domain.NIStatusAvailable:
 		return domain.NIStatusStrAvailable
-	case domain.NIStatusFailed:
-		return domain.NIStatusStrFailed
-	case domain.NIStatusDeleting:
-		return domain.NIStatusStrDeleting
 	default:
 		return domain.NIStatusStrUnspecified
 	}
 }
 
 // NIStatusFromName — DB column text → domain enum.
+//
+// Значение вне словаря приезжает как `STATUS_UNSPECIFIED`, а не роняет чтение:
+// столбец закрыт CHECK-ограничением, поэтому попасть сюда чужая строка может
+// только при расхождении ограничения с кодом, и это расхождение ловит
+// интеграционная проба ограничения, а не путь чтения арендатора.
 func NIStatusFromName(s string) domain.NetworkInterfaceStatus {
 	switch s {
-	case domain.NIStatusStrProvisioning:
-		return domain.NIStatusProvisioning
 	case domain.NIStatusStrActive:
 		return domain.NIStatusActive
 	case domain.NIStatusStrAvailable:
 		return domain.NIStatusAvailable
-	case domain.NIStatusStrFailed:
-		return domain.NIStatusFailed
-	case domain.NIStatusStrDeleting:
-		return domain.NIStatusDeleting
 	default:
 		return domain.NIStatusUnspecified
 	}

@@ -180,6 +180,52 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
     ]
 
 
+def assert_apply_state_present(prefix: str = "") -> List[str]:
+    """Состояние применения намерения доехало до арендатора.
+
+    Утверждается ТРИ вещи, и каждая закрывает свой способ солгать:
+
+      * поле присутствует и не `null` — «утверждения нет» означает снятое
+        намерение, и на живом ресурсе это был бы дефект заполнителя;
+      * `applied` присутствует как булево — незаполненное поле-сообщение и
+        `applied=false` на проводе выглядят одинаково у скаляра, поэтому
+        проверяется именно ПРИСУТСТВИЕ объекта, а не значение внутри него;
+      * `reason` — строка из закрытого словаря. Маршалер края отдаёт
+        незаполненные поля, поэтому «класса нет» приезжает токеном
+        `APPLY_FAILURE_REASON_UNSPECIFIED`, а не отсутствием ключа.
+
+    Ревизии, времени отчёта и имени узла здесь нет и появиться неоткуда:
+    состав проекции заперт пробой по дескриптору.
+    """
+    label = f"{prefix}: " if prefix else ""
+    return [
+        "const __as = pm.response.json().applyState;",
+        f"pm.test('{label}applyState доехал до арендатора', () => {{",
+        "  pm.expect(__as, 'applyState отсутствует: платформа молчит о живом ресурсе')"
+        ".to.be.an('object');",
+        "  pm.expect(__as.applied, 'applied').to.be.a('boolean');",
+        "  pm.expect(__as.reason, 'reason').to.be.a('string');",
+        "});",
+    ]
+
+
+def assert_apply_state_in_flight(prefix: str = "") -> List[str]:
+    """Свежее намерение читается как «в работе»: не применено, класса нет.
+
+    Положительный контроль ко всем отрицаниям про класс отказа: без него
+    «класса не видно» было бы неотличимо от «поля нет».
+    """
+    label = f"{prefix}: " if prefix else ""
+    return [
+        *assert_apply_state_present(prefix),
+        f"pm.test('{label}свежее намерение — в работе, без класса отказа', () => {{",
+        "  const as2 = pm.response.json().applyState;",
+        "  pm.expect(as2.applied, 'applied').to.eql(false);",
+        "  pm.expect(as2.reason, 'reason').to.eql('APPLY_FAILURE_REASON_UNSPECIFIED');",
+        "});",
+    ]
+
+
 def assert_transcode_error() -> List[str]:
     """400 + непустое тело. На ошибки JSON-transcoding (неверный тип поля, oneof задан
     дважды) api-gateway отдает JSON {code,message}; формат тела зависит от
@@ -3397,6 +3443,8 @@ def load_cases_module(path: Path):
     mod.assert_status = assert_status
     mod.assert_grpc_code = assert_grpc_code
     mod.assert_transcode_error = assert_transcode_error
+    mod.assert_apply_state_present = assert_apply_state_present
+    mod.assert_apply_state_in_flight = assert_apply_state_in_flight
     mod.assert_field_violation = assert_field_violation
     mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.assert_absent_id_rejected = assert_absent_id_rejected

@@ -72,30 +72,34 @@ func (t GatewayType) IPFamily() int {
 
 // ---- NetworkInterfaceStatus --------------------------------------------------
 
-// NetworkInterfaceStatus — грубый статус NIC (зеркалит vpcv1.NetworkInterface_Status).
+// NetworkInterfaceStatus — состояние ПРИВЯЗКИ NIC (зеркалит
+// vpcv1.NetworkInterface_Status).
+//
+// Отвечает на «занят интерфейс потребителем или свободен», и только на это.
+// Вопрос «доехало ли изменение до сети» задаётся отдельному полю применения
+// намерения: держать на него второй ответ значило бы выпустить контракт, где
+// один вопрос закрывается двумя способами.
 type NetworkInterfaceStatus int
 
 // Значения NetworkInterfaceStatus. STATUS_UNSPECIFIED — для legacy rows (DB-layer
 // возвращает его если status-колонка пустая или содержит неизвестное значение).
+//
+// Значений ровно столько, сколько производит запись: `AVAILABLE` ставят создание
+// и отвязка, `ACTIVE` — привязка. Три значения, заявлявшие программирование
+// датаплейна, сняты вместе с контрактом — их не производил ни один путь.
 const (
 	NIStatusUnspecified NetworkInterfaceStatus = iota
-	NIStatusProvisioning
 	NIStatusActive
 	NIStatusAvailable
-	NIStatusFailed
-	NIStatusDeleting
 )
 
 // String-значения NetworkInterfaceStatus для DB-CHECK constraint и DB-маппинга
 // (network_interfaces.status TEXT). Используется в маппинге
 // internal/repo/helpers/nic.go (NIStatusName / NIStatusFromName), в DTO
 // toproto/network_interface.go и в CHECK-constraint
-// network_interfaces_status_check (0001_initial.sql).
+// network_interfaces_status_check (0039_network_interface_status_binding_only.sql).
 const (
-	NIStatusStrProvisioning = "PROVISIONING"
-	NIStatusStrActive       = "ACTIVE"
-	NIStatusStrAvailable    = "AVAILABLE"
-	NIStatusStrFailed       = "FAILED"
-	NIStatusStrDeleting     = "DELETING"
-	NIStatusStrUnspecified  = "STATUS_UNSPECIFIED"
+	NIStatusStrActive      = "ACTIVE"
+	NIStatusStrAvailable   = "AVAILABLE"
+	NIStatusStrUnspecified = "STATUS_UNSPECIFIED"
 )
