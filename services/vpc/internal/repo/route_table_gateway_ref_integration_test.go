@@ -386,7 +386,7 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 			// адрес», и проба зеленела бы на чужой полосе, ничего не сказав о той,
 			// которую называет её имя.
 			ExternalAddressID: f.externalAddress(ctx, t, "gw-absent-anchor"),
-			SubnetID: absent,
+			SubnetID:          absent,
 		})
 		return e
 	})
@@ -419,7 +419,7 @@ func TestGatewayAnchorFamilyEnforcedOnInsert(t *testing.T) {
 			// адрес», и проба зеленела бы на чужой полосе, ничего не сказав о той,
 			// которую называет её имя.
 			ExternalAddressID: f.externalAddress(ctx, t, "gw-foreign-anchor"),
-			SubnetID: foreignSub,
+			SubnetID:          foreignSub,
 		})
 		return e
 	})

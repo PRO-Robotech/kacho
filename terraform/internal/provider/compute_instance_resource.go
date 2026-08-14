@@ -187,7 +187,7 @@ func instBootSourceAttrTypes() map[string]attr.Type {
 
 func instMetadataOptionsAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"metadata_endpoint":       types.StringType,
+		"metadata_endpoint": types.StringType,
 	}
 }
 
@@ -1212,17 +1212,14 @@ func instApplyNICMirror(ctx context.Context, m *computeInstanceModel, w *instanc
 	return nil
 }
 
-// instBoolOrNull / instListOrNull / instMapOrNull — нули края означают «поле не
-// задано»: край опускает значения по умолчанию, и обратно они приходят отсутствием.
-// Записать их значением значило бы объявить вызывающему то, чего он не писал, — и
-// получить расхождение на следующем плане, а у неизменяемого блока ещё и
-// пересоздание машины.
-func instBoolOrNull(b bool) types.Bool {
-	if !b {
-		return types.BoolNull()
-	}
-	return types.BoolValue(b)
-}
+// instListOrNull / instMapOrNull — нули края означают «поле не задано»: край
+// опускает значения по умолчанию, и обратно они приходят отсутствием. Записать их
+// значением значило бы объявить вызывающему то, чего он не писал, — и получить
+// расхождение на следующем плане, а у неизменяемого блока ещё и пересоздание машины.
+//
+// Булев близнец этой пары снят вместе со своим единственным читателем: поле
+// «требовать ли сеансовый ключ» СНЯТО С КОНТРАКТА, и помощник без читателя жил бы
+// мёртвым — тем самым, который следующий примет за действующий.
 
 func instListOrNull(ctx context.Context, in []string) types.List {
 	if len(in) == 0 {
