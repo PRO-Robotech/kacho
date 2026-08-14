@@ -59,6 +59,18 @@ func (s *stubProjectClient) Exists(_ context.Context, projectID string) (bool, e
 	return s.defaultRe.exists, s.defaultRe.err
 }
 
+// AccountOf — тот же единственный вызов, что и Exists (см. projectDescriber):
+// аккаунт выводится из существования, потому что настоящий клиент получает оба
+// факта одним ответом соседа. Дублёр, отвечающий на них по отдельности, дал бы
+// декоратору состояние, которого продукт не производит.
+func (s *stubProjectClient) Describe(ctx context.Context, projectID string) (bool, string, error) {
+	exists, err := s.Exists(ctx, projectID)
+	if err != nil || !exists {
+		return exists, "", err
+	}
+	return true, "acc-" + projectID, nil
+}
+
 func (s *stubProjectClient) callCount(projectID string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
