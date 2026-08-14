@@ -55,3 +55,13 @@ var ErrMacCollision = repo.ErrMacCollision
 // allocator). Маппится в FailedPrecondition; тот же error-value использует repo,
 // поэтому `errors.Is(err, serviceerr.ErrPoolExhausted)` сработает на ошибке из repo.
 var ErrPoolExhausted = repo.ErrPoolExhausted
+
+// ErrQuotaExceeded — потолок на число ресурсов вида у носителя достигнут.
+// Маппится в ResourceExhausted (край → HTTP 429) с признаком `QUOTA_EXCEEDED`.
+var ErrQuotaExceeded = repo.ErrQuotaExceeded
+
+// ErrQuotaNotProvisioned — потолок не назван ни на одной области видимости.
+// Маппится в FailedPrecondition (край → HTTP 400) с признаком
+// `QUOTA_NOT_PROVISIONED` — отдельным от исчерпания, потому что это разные
+// требования к администратору: завести потолок против поднять его.
+var ErrQuotaNotProvisioned = repo.ErrQuotaNotProvisioned
