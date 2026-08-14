@@ -317,8 +317,9 @@ jobs:
           # restore кэша распаковывает его же поверх → tar падает на существующих
           # файлах. Проявляется через раз (зависит от того, что лежит в кэше), из-за
           # чего выглядит как «CI моргает».
-          # Терять тут нечего: джобе нужен лишь `go install` трёх protoc-плагинов,
-          # кэш экономил секунды и стоил красных прогонов.
+          # Терять тут нечего: вся сборка Go в этой джобе — три плагина генерации,
+          # которые объявление зовёт через `go run` (версия из go.mod); кэш экономил
+          # секунды и стоил красных прогонов.
           cache: false
       # Пин: buf влияет и на lint-правила, и на генерацию. Разъезд local-vs-CI уже
       # стоил ложного «unused import» (свежий buf ловит то, что старый пропускал) —
@@ -391,14 +392,11 @@ jobs:
       # перегенерировать после правки .proto.
       - name: generate-diff (стабы в синхроне с .proto)
         run: |
-          # БЕЗ @latest: версии плагинов пинит go.mod через tools/tools.go. Плагины
-          # ОПРЕДЕЛЯЮТ содержимое pkg/api — с @latest версия у разработчика и в CI
-          # разъезжается по времени, и этот самый generate-diff начинает мигать
-          # «фантомным диффом» при нетронутых .proto.
-          go install google.golang.org/protobuf/cmd/protoc-gen-go
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
-          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
-
+          # ПЛАГИНЫ ЗДЕСЬ НЕ СТАВЯТСЯ, И ЭТО НЕ УПУЩЕНИЕ. Объявление генерации
+          # (proto/buf.gen.yaml) зовёт каждый плагин через `go run <пакет>`, то есть
+          # берёт его версию из go.mod в момент вызова. Предустановка в PATH ничего
+          # не добавляла бы: её копия всё равно не будет исполнена.
+          #
           # Рукописные файлы, живущие рядом со стабами (напр.
           # registry_rest_routing_test.go — ловит REST-shadow catch-all-роутов), buf НЕ
           # генерит. `rm -rf pkg/api` их сносит, и diff показывал бы их как удаление —
@@ -413,7 +411,7 @@ jobs:
 
           if ! git diff --quiet -- pkg/api; then
             echo "::error::pkg/api разошёлся с proto/ — прогони './scripts/ci-local.sh proto' и закоммить"
-            echo "::notice::НЕ вызывай buf generate напрямую: плагин из PATH может быть другой версии, чем требует go.mod, и тогда коммит внесёт выход чужой версии. Различить: 'which -a protoc-gen-grpc-gateway' и 'go version -m \"\$(which protoc-gen-grpc-gateway)\"'. scripts/ci-local.sh ставит плагины из go.mod и кладёт их первыми в PATH."
+            echo "::notice::Причина здесь ровно одна: дерево не перегенерировано после правки .proto. Версия плагина в неё больше не входит — объявление генерации зовёт плагины через 'go run <пакет>', то есть версией из go.mod, и копия в PATH не исполняется. Класс держит гейт internal/repohygiene TestGeneratorPluginsArePinned."
             git diff --stat -- pkg/api
             exit 1
           fi
