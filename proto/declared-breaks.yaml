@@ -26,150 +26,17 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-declared:
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: create_default_security_group
-    reason: >-
-      поле позволяло сети остаться без группы правил по умолчанию, тогда как модель
-      закрыта в обе стороны и интерфейс наследует группу своей сети — сеть без группы
-      означала бы интерфейс без единого правила
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/security_group.proto
-    symbol: predefined_target
-    reason: >-
-      свободная строка без словаря и без ветвления: платформа не называла ни одного
-      значения, поэтому вызывающий не мог узнать, что в ней написать
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/security_group_service.proto
-    symbol: predefined_target
-    reason: >-
-      та же ветвь цели в списочном запросе правил: снимается вместе с проекцией,
-      иначе вход принимал бы то, чего в ответе нет
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: AddRoutes
-    reason: >-
-      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: RemoveRoutes
-    reason: >-
-      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: UpdateRoute
-    reason: >-
-      метод отвечал отказом при ЛЮБОМ входе: идентичности маршрута в модели нет, адресовать правку было нечем
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: GetByValue
-    reason: >-
-      внешняя ветвь неавторизуема по построению — область бралась из подсети, которой у внешнего адреса нет; замена — список с сужением по значению
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: ListBySubnet
-    reason: >-
-      строгое подмножество списка, который уже несёт сужение по подсети: два пути к одному ответу с разными объектами проверки прав
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListSubnets
-    reason: >-
-      второй путь к ответу списка подсетей, объект проверки прав другой (сеть, а не ресурс); замена — список с сужением по сети
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListSecurityGroups
-    reason: >-
-      второй путь к ответу списка групп правил, объект проверки прав другой; замена — список с сужением по сети
-    issue: kacho#246
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListRouteTables
-    reason: >-
-      второй путь к ответу списка таблиц маршрутизации, объект проверки прав другой; замена — список с сужением по сети
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/address.proto
-    symbol: requirements
-    reason: >-
-      сообщение требований несло ровно два поля, и оба сняты: словарь защиты от атак в
-      общем фундаменте называл конкретного внешнего поставщика и ни на чём не ветвился,
-      а у возможности исходящей почты не было ни одного законного непустого входа
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: requirements
-    reason: >-
-      сообщение требований несло ровно два поля, и оба сняты: словарь защиты от атак в
-      общем фундаменте называл конкретного внешнего поставщика и ни на чём не ветвился,
-      а у возможности исходящей почты не было ни одного законного непустого входа
-    issue: kacho#246
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/address.proto
-    symbol: AddressRequirements
-    reason: >-
-      оба поля сообщения сняты, и оставлять его значило бы держать пустую разновидность —
-      тот же дефект, что у пустого варианта шлюза
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway.proto
-    symbol: shared_egress_gateway
-    reason: >-
-      единственная ветвь вида шлюза не несла ни одного поля и ни на чём не ветвилась;
-      заменена двумя ветвями, отвечающими за то, что называют, — семейством якорной
-      подсети и семейством назначения маршрутов, которым разрешено идти через шлюз
-    issue: kacho#246
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway.proto
-    symbol: SharedEgressGateway
-    reason: >-
-      сообщение снятой ветви; держать его значило бы оставить пустую разновидность,
-      на которую ничто не ссылается
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway_service.proto
-    symbol: shared_egress_gateway_spec
-    reason: >-
-      спецификация снятой ветви в запросах создания и изменения; на пути изменения она
-      вдобавок не имела читателя вовсе — вид шлюза неизменяем после создания
-    issue: kacho#246
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway_service.proto
-    symbol: SharedEgressGatewaySpec
-    reason: >-
-      сообщение спецификации снятой ветви; замена — NatGatewaySpec и EgressOnlyGatewaySpec
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/loadbalancer/v1/listener.proto
-    symbol: proxy_protocol_v2
-    reason: >-
-      заголовок PROXY-протокола уходит до любых данных соединения, то есть его
-      вставляет только владелец байтового потока к бекенду; балансировщик четвёртого
-      уровня потоком не владеет, а у рассмотренного программного датаплейна такого
-      обрамления нет вовсе — исполнителя не существует ни в одном варианте
-    issue: kacho#246
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/loadbalancer/v1/listener_service.proto
-    symbol: proxy_protocol_v2
-    reason: >-
-      тот же признак в ОБОИХ входах — создания и изменения: вход, у которого нет ни
-      исполнителя, ни выхода в ресурсе, — принято-и-проигнорировано; путь маски с
-      этим именем теперь отвергается как неизвестный, а не принимается молча
-    issue: kacho#246
-  - rule: ONEOF_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway_service.proto
-    symbol: gateway
-    reason: >-
-      ветвь вида шлюза снята с ЗАПРОСА ИЗМЕНЕНИЯ целиком: вид выбирается при создании и
-      неизменяем, поэтому читателя у неё быть не могло, а принято-и-проигнорировано —
-      не исход; номер и имя зарезервированы
-    issue: kacho#246
+declared: []
+# Перечень ПУСТ, и это его нормальное состояние, а не недосмотр.
+#
+# Все двадцать одна запись относились к kacho#246 и истекли разом 2026-08-14, когда
+# разрывы влились в `main`: база сравнения поднялась, `buf breaking` их больше не
+# показывает, и адъюдикация обязана была покраснеть исходом «послабление истекло».
+# Правило шапки требует снимать такие записи ТЕМ ЖЕ изменением, которое поднимает
+# базу; здесь этого не случилось, поэтому они сняты отдельно.
+#
+# Проверять состояние надо ПРОТИВ `origin/main`, а не против локальной ветки `main`:
+# отставшая локальная база показывает разрывы, которых нет, и одновременно прячет
+# истёкшие записи — на ней перечень выглядит действующим. Замер того дня: против
+# локальной `main` (отставшей на 78 коммитов) — 29 находок и «четыре необъявленных
+# разрыва»; против `origin/main` — 0 находок и 21 истёкшая запись.

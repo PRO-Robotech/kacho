@@ -62,12 +62,42 @@ proto_group() {
     # Та же адъюдикация, что в конвейере, и ТЕМ ЖЕ инструментом — иначе локально и
     # на чужой машине исполнялись бы две разные проверки одного предмета, и разошлись
     # бы они молча: обе отвечают «зелено» на зелёном входе.
+    #
+    # БАЗА СРАВНЕНИЯ — `origin/main`, А НЕ ЛОКАЛЬНАЯ ВЕТКА `main`.
+    #
+    # Конвейер сравнивает с `main` НА GITHUB. Локальная ветка `main` в общем клоне
+    # живёт своей жизнью: её никто не обязан обновлять, и она отстаёт ровно настолько,
+    # насколько давно тут не делали checkout. Сравнение с ней даёт вердикт о другом
+    # дереве, причём ошибается в ОБЕ стороны сразу.
+    #
+    # Замер 2026-08-14, локальная `main` отставала на 78 коммитов: против неё — 29
+    # находок и «четыре необъявленных разрыва», по которым была заведена задача;
+    # против `origin/main` — 0 находок и 21 истёкшая запись перечня, то есть ровно то,
+    # на чём покраснел бы MR в ствол. Отставшая база показывает разрывы, которых нет,
+    # и одновременно ПРЯЧЕТ истёкшие послабления: перечень выглядит действующим,
+    # потому что сопоставляется с находками, которых в стволе давно нет.
     run "adjudicate breaking (перечень объявленных разрывов)" bash -c '
         set -uo pipefail
         go build -o "'"$WORK"'/adjudicate" ./tools/declaredbreak/cmd/adjudicate-declared-breaks
         cd "'"$ROOT"'/proto"
+
+        # Свежесть базы — предпосылка вердикта, поэтому она проверяется, а не
+        # предполагается. Молчаливый откат на локальную ветку запрещён: он вернул бы
+        # ровно тот вердикт о другом дереве, ради которого написан этот абзац.
+        if git -C "'"$ROOT"'" rev-parse --verify --quiet origin/main >/dev/null; then
+            against="'"$ROOT"'/.git#ref=origin/main,subdir=proto"
+            behind=$(git -C "'"$ROOT"'" rev-list --count origin/main..main 2>/dev/null || echo 0)
+            ahead=$(git -C "'"$ROOT"'" rev-list --count main..origin/main 2>/dev/null || echo 0)
+            [ "${ahead:-0}" -gt 0 ] && echo "   (локальная main отстаёт от origin/main на ${ahead} коммитов — сравниваю с origin/main, как конвейер)"
+        else
+            echo "   ОТКАЗ: origin/main не разрешается — базы сравнения нет." >&2
+            echo "   Локальная main ею НЕ является: вердикт был бы о другом дереве." >&2
+            echo "   Почините: git fetch origin" >&2
+            exit 2
+        fi
+
         set +e
-        buf breaking --against "'"$ROOT"'/.git#branch=main,subdir=proto"             --error-format=json > "'"$WORK"'/buf-breaking.jsonl" 2>"'"$WORK"'/buf-breaking.err"
+        buf breaking --against "$against" --error-format=json > "'"$WORK"'/buf-breaking.jsonl" 2>"'"$WORK"'/buf-breaking.err"
         rc=$?
         set -e
         case "$rc" in
