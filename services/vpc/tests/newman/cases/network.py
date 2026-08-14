@@ -1240,7 +1240,11 @@ CASES.append(Case(
         Step(
             name="op-response-carries-no-apply-state",
             method="GET",
-            path="/vpc/v1/operations/{{opId}}",
+            # Маршрут операции объявлен БЕЗ префикса сервиса
+            # (`get: "/operations/{operation_id}"` в контракте), поэтому здесь
+            # его быть не должно: с префиксом край отвечает 404, и падают все
+            # три утверждения шага разом — включая те, что о поле не говорят.
+            path="/operations/{{opId}}",
             test_script=[
                 *assert_status(200),
                 "const j = pm.response.json();",

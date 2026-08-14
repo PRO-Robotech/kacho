@@ -15443,13 +15443,11 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/operations/{{opId}}",
+              "raw": "{{baseUrl}}/operations/{{opId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "vpc",
-                "v1",
                 "operations",
                 "{{opId}}"
               ]
