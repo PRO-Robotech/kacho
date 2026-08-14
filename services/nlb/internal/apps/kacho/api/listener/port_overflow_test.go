@@ -55,22 +55,7 @@ func TestCreateListener_PortOverflowRejected(t *testing.T) {
 
 	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
 		LoadBalancerId: string(lb.ID), Name: "ovf-port",
-		Protocol: lbv1.Listener_TCP, Port: overflowTo(443), TargetPort: 8080,
-	})
-	require.Equal(t, codes.InvalidArgument, grpcstatus.Code(err))
-	require.Contains(t, fieldViolationsText(err), "port must be in range [1, 65535]")
-}
-
-// TestCreateListener_TargetPortOverflowRejected — тот же guard на target_port.
-func TestCreateListener_TargetPortOverflowRejected(t *testing.T) {
-	t.Parallel()
-	repo := newFakeRepo()
-	lb := seedParentLB(t, repo)
-	uc := newCreateUC(repo, newFakeOpsRepo())
-
-	_, err := uc.Run(context.Background(), &lbv1.CreateListenerRequest{
-		LoadBalancerId: string(lb.ID), Name: "ovf-tport",
-		Protocol: lbv1.Listener_TCP, Port: 443, TargetPort: overflowTo(8080),
+		Protocol: lbv1.Listener_TCP, Port: overflowTo(443),
 	})
 	require.Equal(t, codes.InvalidArgument, grpcstatus.Code(err))
 	require.Contains(t, fieldViolationsText(err), "port must be in range [1, 65535]")

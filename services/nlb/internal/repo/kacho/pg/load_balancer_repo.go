@@ -587,17 +587,14 @@ func (w *loadBalancerWriter) MoveProject(ctx context.Context, id, newProjectID s
 	return rec, nil
 }
 
-// Delete — DELETE WHERE id (безусловный). FK violation → ErrFailedPrecondition.
+// Delete — DELETE WHERE id (безусловный). Ссылку слушателя держит схема
+// (`listeners_load_balancer_id_fkey`, ON DELETE RESTRICT); отказ 23503
+// отображается в тот же контрактный текст, что даёт предпроверка use-case'а и
+// DB-guard MarkDeleting (`markDeletingBlockReason`) — см. restrict_fk.go.
 // row absent → ErrNotFound. Используется для compensation-rollback (Create).
 func (w *loadBalancerWriter) Delete(ctx context.Context, id string) error {
-	tag, err := w.tx.Exec(ctx, `DELETE FROM kacho_nlb.load_balancers WHERE id = $1`, id)
-	if err != nil {
-		return mapPgErr(err, "NetworkLoadBalancer", id)
-	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: NetworkLoadBalancer %s not found", kacho.ErrNotFound, id)
-	}
-	return nil
+	return deleteParentRow(ctx, w.tx, "NetworkLoadBalancer", id,
+		`DELETE FROM kacho_nlb.load_balancers WHERE id = $1`)
 }
 
 // DeleteIfUnprotected — atomic guarded delete: удаляет строку только если

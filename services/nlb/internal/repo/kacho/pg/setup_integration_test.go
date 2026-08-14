@@ -104,7 +104,6 @@ func newListener(lbID domain.ResourceID, projectID, name string, port int32) *do
 		Labels:         domain.LbLabels{},
 		Protocol:       domain.ProtoTCP,
 		Port:           domain.LbPort(port),
-		TargetPort:     domain.LbPort(8080),
 		Status:         domain.ListenerStatusActive,
 	}
 }

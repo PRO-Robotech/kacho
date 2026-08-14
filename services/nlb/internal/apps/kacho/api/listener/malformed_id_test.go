@@ -38,7 +38,6 @@ func TestCreateListener_MalformedLoadBalancerID(t *testing.T) {
 		Name:           "l1",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           80,
-		TargetPort:     8080,
 	})
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

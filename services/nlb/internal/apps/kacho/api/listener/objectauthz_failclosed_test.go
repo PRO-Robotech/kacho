@@ -58,7 +58,6 @@ func createTGWiringReq(lbID string, port int64) *lbv1.CreateListenerRequest {
 		Name:           "tcp-wire",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           port,
-		TargetPort:     8080,
 		TargetGroupId:  string(failClosedTGID),
 	}
 }

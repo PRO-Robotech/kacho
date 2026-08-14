@@ -23,9 +23,16 @@ import (
 // the DIRECT-FK contract; the legacy pivot-composite-FK tests were replaced
 // (межфазовая эволюция, grind-note #2 EVOLUTION).
 
-// tgReferencedByListenerMsg — verbatim contract text of the direct FK RESTRICT
-// (TG.Delete while referenced by a listener). Part of the API contract.
-const tgReferencedByListenerMsg = "target group is referenced by one or more listeners"
+// tgReferencedByListenerMsg — НАЧАЛО контрактного текста отказа прямого FK
+// RESTRICT (TG.Delete при живой ссылке слушателя). Часть API-контракта.
+//
+// Здесь стояла форма «referenced by one or more listeners» — безымянная, и она
+// расходилась с текстом предпроверки того же факта, который перечень как раз
+// несёт. Два текста об одном отказе — это два места об одном предмете, из
+// которых верно одно; на пути БД (единственном, который держится под гонкой)
+// вызывающий получал сообщение, не называющее, что именно чинить. Перечень и
+// его пробы — restrict_fk.go и restrict_fk_blocker_naming_integration_test.go.
+const tgReferencedByListenerMsg = "target group is referenced by listeners"
 
 // seedLBTGWiredListener — LB + TG (same region) + listener WIRED directly to the
 // TG with NO pivot attach. Returns the three domain objects.

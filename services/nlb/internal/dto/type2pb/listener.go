@@ -56,7 +56,6 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 		Labels:               domain.LabelsToMap(rec.Labels),
 		Protocol:             protoPb,
 		Port:                 int64(rec.Port),
-		TargetPort:           int64(rec.TargetPort),
 		DefaultTargetGroupId: defaultTGID,
 		Status:               statusPb,
 		TargetGroupId:        defaultTGID,

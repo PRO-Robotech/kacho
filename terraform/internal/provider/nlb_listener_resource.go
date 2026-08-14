@@ -34,7 +34,6 @@ type listenerModel struct {
 	Labels              types.Map    `tfsdk:"labels"`
 	Protocol            types.String `tfsdk:"protocol"`
 	Port                types.Int64  `tfsdk:"port"`
-	TargetPort          types.Int64  `tfsdk:"target_port"`
 	TargetGroupID       types.String `tfsdk:"target_group_id"`
 	ResolvedBackendPort types.Int64  `tfsdk:"resolved_backend_port"`
 	Status              types.String `tfsdk:"status"`
@@ -87,32 +86,18 @@ func (r *listenerResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.Int64{int64planmodifier.RequiresReplace()},
 				MarkdownDescription: "Порт, который слушает балансировщик, `1`–`65535`. " +
 					"Изменение пересоздаёт слушателя."},
-			// ОБЯЗАТЕЛЕН, хотя контракт объявляет его необязательным.
-			//
-			// Контракт говорит: не задан — берётся порт группы целей, и фактический виден в
-			// `resolved_backend_port`. Край на сегодня ведёт себя иначе: без этого поля он
-			// отвергает создание, причём нарушение объявляет по полю `port` — то есть
-			// называет НЕ ТО поле, и вызывающий правит не то, что сломано. Измерено на
-			// живом крае; предмет заведён отдельно.
-			//
-			// Провайдер требует поле явно, а не подставляет порт слушателя молча:
-			// подстановка выглядела бы как «наследование», а наследуется по контракту порт
-			// ГРУППЫ, и это разные числа. Когда край начнёт исполнять своё умолчание,
-			// требование снимется — ослабление обязательного до необязательного ничего не
-			// ломает.
-			"target_port": schema.Int64Attribute{Required: true,
-				PlanModifiers: []planmodifier.Int64{int64planmodifier.RequiresReplace()},
-				MarkdownDescription: "Порт, на который трафик уходит в цель, `1`–`65535`.\n\n" +
-					":::note Обязателен, хотя контракт объявляет его необязательным\n" +
-					"По контракту незаданный порт цели наследуется от группы целей. Край на " +
-					"сегодня так не делает и отвергает создание — вдобавок называя в отказе " +
-					"поле `port`, а не `target_port`. Задавайте явно.\n:::"},
 			"target_group_id": schema.StringAttribute{Optional: true, Computed: true,
 				MarkdownDescription: "Группа целей. Обязана быть в том же регионе, что и " +
 					"балансировщик, — иначе край откажет."},
 
+			// Backend-порта у слушателя нет и задавать его нечем: величина живёт на
+			// группе целей, а здесь видна эхом. Прежде рядом стоял `target_port` —
+			// поле, объявленное необязательным и отвергавшее единственную форму «не
+			// задавал», поэтому провайдер требовал его явно. Край снял поле с
+			// контракта (kacho#231), и требование ушло вместе с ним.
 			"resolved_backend_port": schema.Int64Attribute{Computed: true,
-				MarkdownDescription: "Порт цели, выбранный краем: свой, если задан, иначе порт группы."},
+				MarkdownDescription: "Порт, на который трафик уходит в цели, — эхо `port` " +
+					"привязанной группы целей. Нужен другой — привяжите другую группу."},
 			"status": schema.StringAttribute{Computed: true},
 			"substatus": schema.StringAttribute{Computed: true,
 				MarkdownDescription: "`OK` или `MISCONFIGURED` — второе означает, что слушатель " +
@@ -131,7 +116,6 @@ type listenerWire struct {
 	Labels              map[string]string `json:"labels"`
 	Protocol            string            `json:"protocol"`
 	Port                any               `json:"port"`
-	TargetPort          any               `json:"targetPort"`
 	TargetGroupID       string            `json:"targetGroupId"`
 	ResolvedBackendPort any               `json:"resolvedBackendPort"`
 	Status              string            `json:"status"`
@@ -152,7 +136,6 @@ func applyListener(ctx context.Context, m *listenerModel, raw []byte) error {
 	m.Labels = mapToTF(ctx, w.Labels)
 	m.Protocol = types.StringValue(w.Protocol)
 	m.Port = types.Int64Value(numOf(w.Port))
-	m.TargetPort = types.Int64Value(numOf(w.TargetPort))
 	m.TargetGroupID = types.StringValue(w.TargetGroupID)
 	m.ResolvedBackendPort = types.Int64Value(numOf(w.ResolvedBackendPort))
 	m.Status = types.StringValue(w.Status)
@@ -175,7 +158,6 @@ func (r *listenerResource) Create(ctx context.Context, req resource.CreateReques
 		Labels:         mapFromTF(ctx, plan.Labels),
 		Protocol:       nlbv1.Listener_Protocol(enumOf(plan.Protocol, nlbv1.Listener_Protocol_value)),
 		Port:           plan.Port.ValueInt64(),
-		TargetPort:     plan.TargetPort.ValueInt64(),
 		TargetGroupId:  plan.TargetGroupID.ValueString(),
 	}
 

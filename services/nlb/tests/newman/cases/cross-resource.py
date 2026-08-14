@@ -185,7 +185,7 @@ CASES.append(Case(
         # left the child-CREATE unwrapped, so a transient 403 reddened the whole chain).
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "edge-https-{{runId}}",
-                   "protocol": "TCP", "port": 443, "targetPort": 8443},
+                   "protocol": "TCP", "port": 443},
              test_script=[*assert_status(200),
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
@@ -329,7 +329,7 @@ CASES.append(Case(
         *_create_external_lb("def-absent"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "def-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -361,7 +361,7 @@ CASES.append(Case(
         # WHERE THE SUBJECT WENT. This case used to POST a listener and call the result a
         # family mismatch — but sub-phase 8.1 moved the VIP off the listener onto the load
         # balancer and RESERVED `ip_version` in CreateListenerRequest, so the body it was
-        # sending (loadBalancerId/name/protocol/port/targetPort) named no address and no
+        # sending (loadBalancerId/name/protocol/port) named no address and no
         # family at all. It was an ordinary, VALID listener create, asserted as
         # `oneOf([403, 200, 400])` — every possible answer — followed by a code check
         # written `if (j.error)`, which only ran when an error it never produced appeared.
@@ -472,7 +472,7 @@ CASES.append(Case(
              ])),
         retry_until_authorized(Step(name="create-internal-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[
                  # Child-create under the fresh INTERNAL LB → editor@lb owner-tuple lag (403)
                  # is what the wrapper retries. The parent LB is now asserted to exist
@@ -613,7 +613,7 @@ CASES.append(Case(
         *_create_external_lb("teardown"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "td-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -695,7 +695,7 @@ CASES.append(Case(
         *_create_external_lb("del-notempty"),
         retry_until_authorized(Step(name="create-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "ne-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),

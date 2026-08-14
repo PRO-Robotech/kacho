@@ -584,7 +584,7 @@ CASES.append(Case(
         # написан. Отказ обязан называться на месте, а не через три шага чужим именем.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "mv-att-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080,
+                   "protocol": "TCP", "port": 80,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
@@ -1553,7 +1553,7 @@ CASES.append(Case(
         # честно получил бы 200 на балансировщике без слушателей.
         retry_until_authorized(Step(name="setup-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "del-has-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(fixture_ids=["lstId"]),

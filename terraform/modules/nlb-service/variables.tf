@@ -167,13 +167,13 @@ variable "listeners" {
   description = <<-EOT
     Слушатели: ключ — суффикс имени, значение — порт и протокол.
 
-    `target_port` обязателен: контракт объявляет его необязательным с наследованием от
-    группы целей, но край на сегодня его требует.
+    Backend-порта здесь нет и быть не может: он живёт на группе целей (`backend_port`
+    модуля) и виден у слушателя эхом `resolved_backend_port`. Нужен другой — заводите
+    отдельную группу.
   EOT
   type = map(object({
-    protocol    = optional(string, "TCP")
-    port        = number
-    target_port = number
+    protocol = optional(string, "TCP")
+    port     = number
   }))
   default = {}
 }

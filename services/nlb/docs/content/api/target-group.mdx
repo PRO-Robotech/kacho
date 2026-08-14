@@ -32,7 +32,7 @@ Health-check живёт **на группе** (не на привязке): ед
     <tr><td><code>description</code></td><td>string</td><td>mutable</td><td>Описание (≤256)</td></tr>
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки</td></tr>
     <tr><td><code>healthCheck</code></td><td>HealthCheck</td><td>mutable</td><td>Единый health-check группы (обязателен на Create)</td></tr>
-    <tr><td><code>targets</code></td><td>Target[]</td><td>output-only**</td><td>Снимок таргетов; источник истины — дочерняя таблица, состав меняется через Add/RemoveTargets</td></tr>
+    <tr><td><code>targets</code></td><td>Target[]</td><td>output-only**</td><td>Снимок таргетов (<strong>набор</strong>, не последовательность); источник истины — дочерняя таблица, состав меняется через Add/RemoveTargets. Заполняется <strong>обоими</strong> чтениями — <code>Get</code> и <code>List</code></td></tr>
     <tr><td><code>deregistrationDelaySeconds</code></td><td>int32</td><td>mutable</td><td>Таймаут drain при удалении таргета (0–3600, дефолт 300)</td></tr>
     <tr><td><code>slowStartSeconds</code></td><td>int32</td><td>mutable</td><td>Окно slow-start для новых таргетов (0–900, дефолт 0)</td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td><code>ACTIVE</code> / <code>DELETING</code></td></tr>
@@ -109,6 +109,13 @@ Health-check живёт **на группе** (не на привязке): ед
 Возвращает группы проекта (`projectId` обязателен). Страница фильтруется по доступу пообъектно:
 строка попадает в выдачу тогда и только тогда, когда вызывающий вправе прочитать её одиночным
 `Get` (отношение `v_get`). `filter` поддерживает `name = "..."`.
+
+Проекция списка **совпадает** с проекцией `Get`: у каждой группы страницы заполнен `targets`.
+Пустой массив здесь означает «у группы нет таргетов» — и только это. Клиент, ведущий своё
+состояние из списка, вправе на это опираться.
+
+**Порядок `targets` не сохраняется** — это набор. Сверяйте состав по элементам, не по индексам:
+позиционное сравнение прочитает перестановку как изменение самих таргетов.
 
 </ApiOperation>
 

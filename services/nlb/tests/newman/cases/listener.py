@@ -237,7 +237,7 @@ CASES.append(Case(
         # transient 403 reddened the whole listener CRUD chain — wrap it too (fail-closed).
         retry_until_authorized(Step(name="cr-lst", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -289,7 +289,7 @@ CASES.append(Case(
         *_setup_lb("byo", lb_type="EXTERNAL_LINKED"),
         retry_until_authorized(Step(name="cr-byo", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "byo-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -325,7 +325,7 @@ CASES.append(Case(
         *_setup_lb("int", lb_type="INTERNAL"),
         retry_until_authorized(Step(name="cr-int", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -342,7 +342,7 @@ CASES.append(Case(
         *_setup_lb("get-ok"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "getok-{{runId}}",
-                   "protocol": "TCP", "port": 81, "targetPort": 8081},
+                   "protocol": "TCP", "port": 81},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -381,7 +381,7 @@ CASES.append(Case(
         *_setup_lb("upd-ok"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "upd-{{runId}}",
-                   "protocol": "TCP", "port": 82, "targetPort": 8082},
+                   "protocol": "TCP", "port": 82},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -413,7 +413,7 @@ CASES.append(Case(
         *_setup_lb("del-ok", lb_type="EXTERNAL"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "del-ok-{{runId}}",
-                   "protocol": "TCP", "port": 83, "targetPort": 8083},
+                   "protocol": "TCP", "port": 83},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -442,7 +442,7 @@ CASES.append(Case(
         *_setup_lb("lops"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "lops-{{runId}}",
-                   "protocol": "TCP", "port": 85, "targetPort": 8085},
+                   "protocol": "TCP", "port": 85},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -473,7 +473,7 @@ CASES.append(Case(
         # still runs (fail-closed on a terminal 403), so the negative is not masked or weakened.
         retry_until_authorized(Step(name="cr-p0", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "p0-{{runId}}",
-                   "protocol": "TCP", "port": 0, "targetPort": 8080},
+                   "protocol": "TCP", "port": 0},
              # Product IS correct: Listener.Create sync-validates port=0 (LbPortFromProto
              # → InvalidArgument "port must be in range [1, 65535]"), but the gateway
              # editor@lb authz gate runs first, so a genuine owner-tuple lag on a REAL
@@ -501,7 +501,7 @@ CASES.append(Case(
         *_setup_lb("port-over"),
         retry_until_authorized(Step(name="cr-po", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "po-{{runId}}",
-                   "protocol": "TCP", "port": 65536, "targetPort": 8080},
+                   "protocol": "TCP", "port": 65536},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
@@ -523,7 +523,7 @@ CASES.append(Case(
         # the `403` is what the retry wrapper absorbs — asserting it defeats the wrap.
         retry_until_authorized(Step(name="cr-pn", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pn-{{runId}}",
-                   "protocol": "TCP", "port": -1, "targetPort": 8080},
+                   "protocol": "TCP", "port": -1},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
@@ -546,7 +546,7 @@ CASES.append(Case(
         # the freshly created parent balancer.
         retry_until_authorized(Step(name="cr-http", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
-                   "protocol": "HTTP", "port": 80, "targetPort": 8080},
+                   "protocol": "HTTP", "port": 80},
              test_script=[
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ])),
@@ -589,7 +589,7 @@ CASES.append(Case(
         *_setup_lb("bad-name"),
         retry_until_authorized(Step(name="cr-bad-name", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "Bad_Name!",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
@@ -608,7 +608,7 @@ CASES.append(Case(
         *_setup_lb("port-1"),
         retry_until_authorized(Step(name="cr-p1", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "p1-{{runId}}",
-                   "protocol": "TCP", "port": 1, "targetPort": 8080},
+                   "protocol": "TCP", "port": 1},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -625,7 +625,7 @@ CASES.append(Case(
         *_setup_lb("port-max"),
         retry_until_authorized(Step(name="cr-pmax", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pmax-{{runId}}",
-                   "protocol": "TCP", "port": 65535, "targetPort": 8080},
+                   "protocol": "TCP", "port": 65535},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -646,7 +646,7 @@ CASES.append(Case(
     steps=[
         Step(name="cr-no-lb", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{garbageNlbId}}", "name": "nolb-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_unscoped_rejected()]),
     ],
 ))
@@ -659,7 +659,7 @@ CASES.append(Case(
         *_setup_lb("dup-pp"),
         retry_until_authorized(Step(name="cr-1", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp1-{{runId}}",
-                   "protocol": "TCP", "port": 86, "targetPort": 8086},
+                   "protocol": "TCP", "port": 86},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -678,7 +678,7 @@ CASES.append(Case(
         # account by the poll below.
         retry_until_authorized(Step(name="cr-2-dup", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
-                   "protocol": "TCP", "port": 86, "targetPort": 8086},
+                   "protocol": "TCP", "port": 86},
              test_script=assert_refused_sync_or_async(
                  "duplicate (load_balancer_id, port, protocol)", sync_codes=(409,)))),
         poll_operation_until_done(must_fail=True),
@@ -719,7 +719,7 @@ CASES.append(Case(
         *_setup_lb("vip-comp"),
         retry_until_authorized(Step(name="cr-likely-fail", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "vipc-{{runId}}",
-                   "protocol": "TCP", "port": 87, "targetPort": 8087, "defaultTargetGroupId": "{{garbageTgrId}}"},
+                   "protocol": "TCP", "port": 87, "defaultTargetGroupId": "{{garbageTgrId}}"},
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('refusal guides the caller to create the TargetGroup first', () => "
@@ -776,7 +776,7 @@ CASES.append(Case(
         *_setup_lb("def-tg-region"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "dtgr-{{runId}}",
-                   "protocol": "TCP", "port": 88, "targetPort": 8088},
+                   "protocol": "TCP", "port": 88},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -920,7 +920,7 @@ CASES.append(Case(
         *_setup_lb("name-digit"),
         retry_until_authorized(Step(name="cr-digit", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "9bad-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
@@ -934,48 +934,58 @@ CASES.append(Case(
         *_setup_lb("name-hyp"),
         retry_until_authorized(Step(name="cr-hyp", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "-bad-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
 
+# RETIRED: LST-CR-VAL-TARGET-PORT-ZERO and LST-CR-VAL-TARGET-PORT-OVER — the subject
+# left the product, the cases did not break.
+#
+# Both asserted the range check on `target_port`, a Create-request field that is now gone
+# from the contract (kacho#231): the backend port has ONE owner, `TargetGroup.port`, and
+# the listener echoes it back as `resolvedBackendPort`. The field the two cases named no
+# longer exists, so their bodies would be dropped by the edge (`DiscardUnknown`) and both
+# creates would SUCCEED — an assertion of 400 on a call that returns 200 is not a
+# stricter test, it is a red one, and masking it would be worse still.
+#
+# They are not replaced one-for-one, and that is deliberate. The upper/lower bounds of the
+# port range are still asserted, on the field that still exists — LST-CR-VAL-PORT-ZERO /
+# -OVER / -NEGATIVE, immediately above. What the retirement newly makes observable through
+# the black box is the update mask, and that is what the case below asserts: the same
+# statement as the retired proxy_protocol_v2 pair, for the same reason (a Create body key
+# is discarded silently, so only a mask path can carry the negative).
 CASES.append(Case(
-    id="LST-CR-VAL-TARGET-PORT-ZERO",
-    title="Create with target_port=0 → InvalidArgument",
-    classes=["VAL", "BVA"], priority="P1",
+    id="LST-UPD-VAL-TARGET-PORT-RETIRED",
+    title="Update with retired target_port in mask → InvalidArgument",
+    classes=["VAL"], priority="P2",
     steps=[
-        *_setup_lb("tp-0"),
-        # NAMED negative (task round-4b): the fresh-LB editor-tuple lag was pre-empting the
-        # target_port=0 InvalidArgument with a 403. Wrap retries only the transient 403/404 so
-        # the real InvalidArgument assertion runs — the negative is preserved, not weakened.
-        # SYNC-VALIDATE lane: target_port goes through the SAME LbPort.Validate as port
-        # (listener.Validate() combines l.Port and l.TargetPort — domain/listener.go:37),
-        # so 0 is refused before the Operation exists → 400 / grpc 3, as the green
-        # LST-CR-VAL-PORT-ZERO asserts for the sibling field. The wrap absorbs only the
-        # transient fresh-LB 403; naming 403 (or 200) in the assertion would have made
-        # both the wrap and the negative pointless — which is what it did.
-        retry_until_authorized(Step(name="cr-tp-0", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "tp0-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 0},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
-        *_cleanup_lb(),
-    ],
-))
-
-CASES.append(Case(
-    id="LST-CR-VAL-TARGET-PORT-OVER",
-    title="Create with target_port=65536 → InvalidArgument",
-    classes=["VAL", "BVA"], priority="P1",
-    steps=[
-        *_setup_lb("tp-over"),
-        # SYNC-VALIDATE lane — same statement as LST-CR-VAL-TARGET-PORT-ZERO, upper end:
-        # 65536 clears the int32 narrowing and is refused by LbPort.Validate (range
-        # [1, 65535]) inside listener.Validate(), before the Operation is minted.
-        retry_until_authorized(Step(name="cr-tp-o", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "tpo-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 65536},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
+        *_setup_lb("tpr"),
+        retry_until_authorized(Step(name="cr-tpr", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "tpr-{{runId}}",
+                   "protocol": "TCP", "port": 91},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+        poll_operation_until_done(must_succeed=True),
+        # This create is ALSO the positive control for the retirement itself: it carries no
+        # backend port at all, which the edge used to refuse. Without it, "the mask path is
+        # rejected" would say nothing about whether the field became optional or the whole
+        # resource stopped being creatable.
+        #
+        # Positive control for the mask lives in LST-UPD-CRUD-OK (a legitimate path still
+        # applies): without it "rejected" would not be distinguishable from "no path is
+        # accepted".
+        retry_until_authorized(Step(name="upd-retired-tp", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
+             body={"updateMask": "targetPort"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('rejection names the retired path', () => "
+                          "  pm.expect(pm.response.json().message || '')"
+                          "    .to.include('target_port'));",
+                          "pm.test('rejected as unknown, not as immutable', () => "
+                          "  pm.expect(pm.response.json().message || '')"
+                          "    .to.not.include('immutable'));"])),
+        *_cleanup_lst(),
         *_cleanup_lb(),
     ],
 ))
@@ -1016,7 +1026,7 @@ CASES.append(Case(
         # window to absorb.
         Step(name="cr-enum-unk", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "enum-{{runId}}",
-                   "protocol": "DOES_NOT_EXIST", "port": 80, "targetPort": 8080},
+                   "protocol": "DOES_NOT_EXIST", "port": 80},
              test_script=[
                  "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -1051,7 +1061,7 @@ CASES.append(Case(
         *_setup_lb("ipv6"),
         retry_until_authorized(Step(name="cr-ipv6", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "v6-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+                   "protocol": "TCP", "port": 80},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(must_succeed=True),
@@ -1085,7 +1095,7 @@ CASES.append(Case(
         *_setup_lb("pp2"),
         retry_until_authorized(Step(name="cr-pp2", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
-                   "protocol": "TCP", "port": 90, "targetPort": 9090},
+                   "protocol": "TCP", "port": 90},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(must_succeed=True),
@@ -1110,7 +1120,7 @@ CASES.append(Case(
         *_setup_lb("def-tg-clear"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "dtgc-{{runId}}",
-                   "protocol": "TCP", "port": 91, "targetPort": 9091},
+                   "protocol": "TCP", "port": 91},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -1233,7 +1243,7 @@ CASES.append(Case(
         *_setup_lb("udp"),
         retry_until_authorized(Step(name="cr-udp", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "udp-{{runId}}",
-                   "protocol": "UDP", "port": 53, "targetPort": 53},
+                   "protocol": "UDP", "port": 53},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
@@ -1532,7 +1542,7 @@ CASES.append(Case(
         # would only mask the deny it is meant to observe.
         Step(name="cr-lst-cross-tg", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "xtg-{{runId}}",
-                   "protocol": "TCP", "port": 8443, "targetPort": 8080,
+                   "protocol": "TCP", "port": 8443,
                    "targetGroupId": "{{tgCrossId}}"},
              test_script=[
                  "pm.test('cross-project target group is refused (never 200)', () => "
@@ -1542,7 +1552,7 @@ CASES.append(Case(
         # Same guard on the legacy wiring field — both map to the same reference.
         Step(name="cr-lst-cross-tg-legacy", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "xtgl-{{runId}}",
-                   "protocol": "TCP", "port": 8444, "targetPort": 8080,
+                   "protocol": "TCP", "port": 8444,
                    "defaultTargetGroupId": "{{tgCrossId}}"},
              test_script=[
                  "pm.test('cross-project target group is refused via the legacy field too', () => "
@@ -1562,7 +1572,7 @@ CASES.append(Case(
         *_setup_lb("xtg-upd"),
         retry_until_authorized(Step(name="cr", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "xtgu-{{runId}}",
-                   "protocol": "TCP", "port": 8445, "targetPort": 8080},
+                   "protocol": "TCP", "port": 8445},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),

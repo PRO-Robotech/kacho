@@ -62,7 +62,6 @@ func NewListener(
 	name LbName,
 	protocol LbProto,
 	port LbPort,
-	targetPort LbPort,
 ) Listener {
 	return Listener{
 		ID:             ResourceID(ids.NewID(ids.PrefixListener)),
@@ -72,7 +71,6 @@ func NewListener(
 		Name:           name,
 		Protocol:       protocol,
 		Port:           port,
-		TargetPort:     targetPort,
 		Status:         ListenerStatusCreating,
 	}
 }

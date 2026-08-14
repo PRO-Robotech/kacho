@@ -178,7 +178,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya429",
+          "name": "setup-materialize-lb-rya427",
           "request": {
             "method": "GET",
             "header": [
@@ -227,7 +227,7 @@
           ]
         },
         {
-          "name": "cr-lst-rya430",
+          "name": "cr-lst-rya428",
           "request": {
             "method": "POST",
             "header": [
@@ -249,7 +249,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"http-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"http-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -363,7 +363,7 @@
           ]
         },
         {
-          "name": "get-st431",
+          "name": "get-st429",
           "request": {
             "method": "GET",
             "header": [
@@ -420,7 +420,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-st432",
+          "name": "get-lb-vip-st430",
           "request": {
             "method": "GET",
             "header": [
@@ -477,7 +477,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya527",
+          "name": "cleanup-lst-rya523",
           "request": {
             "method": "DELETE",
             "header": [
@@ -598,7 +598,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya528",
+          "name": "cleanup-lb-rya524",
           "request": {
             "method": "DELETE",
             "header": [
@@ -846,7 +846,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya433",
+          "name": "setup-materialize-lb-rya431",
           "request": {
             "method": "GET",
             "header": [
@@ -895,7 +895,7 @@
           ]
         },
         {
-          "name": "cr-byo-rya434",
+          "name": "cr-byo-rya432",
           "request": {
             "method": "POST",
             "header": [
@@ -917,7 +917,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"byo-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"byo-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1031,7 +1031,7 @@
           ]
         },
         {
-          "name": "get-byo-rya435",
+          "name": "get-byo-rya433",
           "request": {
             "method": "GET",
             "header": [
@@ -1088,7 +1088,7 @@
           ]
         },
         {
-          "name": "get-lb-byo-vip-st436",
+          "name": "get-lb-byo-vip-st434",
           "request": {
             "method": "GET",
             "header": [
@@ -1145,7 +1145,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya529",
+          "name": "cleanup-lst-rya525",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1266,7 +1266,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya530",
+          "name": "cleanup-lb-rya526",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1516,7 +1516,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr437",
+          "name": "setup-lb-cr435",
           "request": {
             "method": "POST",
             "header": [
@@ -1660,7 +1660,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr437');",
+                  "  pm.execution.setNextRequest('setup-lb-cr435');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1672,7 +1672,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya438",
+          "name": "setup-materialize-lb-rya436",
           "request": {
             "method": "GET",
             "header": [
@@ -1721,7 +1721,7 @@
           ]
         },
         {
-          "name": "cr-int-rya439",
+          "name": "cr-int-rya437",
           "request": {
             "method": "POST",
             "header": [
@@ -1743,7 +1743,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"int-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"int-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1857,7 +1857,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya531",
+          "name": "cleanup-lst-rya527",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1978,7 +1978,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya532",
+          "name": "cleanup-lb-rya528",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2329,7 +2329,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr440",
+          "name": "setup-lb-cr438",
           "request": {
             "method": "POST",
             "header": [
@@ -2473,7 +2473,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr440');",
+                  "  pm.execution.setNextRequest('setup-lb-cr438');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2485,7 +2485,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya441",
+          "name": "setup-materialize-lb-rya439",
           "request": {
             "method": "GET",
             "header": [
@@ -2534,7 +2534,7 @@
           ]
         },
         {
-          "name": "cr-rya442",
+          "name": "cr-rya440",
           "request": {
             "method": "POST",
             "header": [
@@ -2556,7 +2556,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"getok-{{runId}}\", \"protocol\": \"TCP\", \"port\": 81, \"targetPort\": 8081}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"getok-{{runId}}\", \"protocol\": \"TCP\", \"port\": 81}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2670,7 +2670,7 @@
           ]
         },
         {
-          "name": "get-rya443",
+          "name": "get-rya441",
           "request": {
             "method": "GET",
             "header": [
@@ -2723,7 +2723,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya533",
+          "name": "cleanup-lst-rya529",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2844,7 +2844,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya534",
+          "name": "cleanup-lb-rya530",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3195,7 +3195,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr444",
+          "name": "setup-lb-cr442",
           "request": {
             "method": "POST",
             "header": [
@@ -3339,7 +3339,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr444');",
+                  "  pm.execution.setNextRequest('setup-lb-cr442');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3351,7 +3351,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya445",
+          "name": "setup-materialize-lb-rya443",
           "request": {
             "method": "GET",
             "header": [
@@ -3400,7 +3400,7 @@
           ]
         },
         {
-          "name": "lst-rya535",
+          "name": "lst-rya531",
           "request": {
             "method": "GET",
             "header": [
@@ -3450,7 +3450,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya536",
+          "name": "cleanup-lb-rya532",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3801,7 +3801,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr446",
+          "name": "setup-lb-cr444",
           "request": {
             "method": "POST",
             "header": [
@@ -3945,7 +3945,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr446');",
+                  "  pm.execution.setNextRequest('setup-lb-cr444');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3957,7 +3957,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya447",
+          "name": "setup-materialize-lb-rya445",
           "request": {
             "method": "GET",
             "header": [
@@ -4006,7 +4006,7 @@
           ]
         },
         {
-          "name": "cr-rya448",
+          "name": "cr-rya446",
           "request": {
             "method": "POST",
             "header": [
@@ -4028,7 +4028,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"upd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 82, \"targetPort\": 8082}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"upd-{{runId}}\", \"protocol\": \"TCP\", \"port\": 82}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4142,7 +4142,7 @@
           ]
         },
         {
-          "name": "upd-rya449",
+          "name": "upd-rya447",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4261,7 +4261,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya537",
+          "name": "cleanup-lst-rya533",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4382,7 +4382,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya538",
+          "name": "cleanup-lb-rya534",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4731,7 +4731,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya450",
+          "name": "setup-materialize-lb-rya448",
           "request": {
             "method": "GET",
             "header": [
@@ -4780,7 +4780,7 @@
           ]
         },
         {
-          "name": "cr-rya451",
+          "name": "cr-rya449",
           "request": {
             "method": "POST",
             "header": [
@@ -4802,7 +4802,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"del-ok-{{runId}}\", \"protocol\": \"TCP\", \"port\": 83, \"targetPort\": 8083}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"del-ok-{{runId}}\", \"protocol\": \"TCP\", \"port\": 83}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4916,7 +4916,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-before-st452",
+          "name": "get-lb-vip-before-st450",
           "request": {
             "method": "GET",
             "header": [
@@ -4972,7 +4972,7 @@
           ]
         },
         {
-          "name": "del-rya453",
+          "name": "del-rya451",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5091,7 +5091,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-after-rya539",
+          "name": "get-lb-vip-after-rya535",
           "request": {
             "method": "GET",
             "header": [
@@ -5142,7 +5142,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya540",
+          "name": "cleanup-lb-rya536",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5392,7 +5392,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr454",
+          "name": "setup-lb-cr452",
           "request": {
             "method": "POST",
             "header": [
@@ -5536,7 +5536,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr454');",
+                  "  pm.execution.setNextRequest('setup-lb-cr452');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5548,7 +5548,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya455",
+          "name": "setup-materialize-lb-rya453",
           "request": {
             "method": "GET",
             "header": [
@@ -5597,7 +5597,7 @@
           ]
         },
         {
-          "name": "cr-rya456",
+          "name": "cr-rya454",
           "request": {
             "method": "POST",
             "header": [
@@ -5619,7 +5619,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"lops-{{runId}}\", \"protocol\": \"TCP\", \"port\": 85, \"targetPort\": 8085}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"lops-{{runId}}\", \"protocol\": \"TCP\", \"port\": 85}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5733,7 +5733,7 @@
           ]
         },
         {
-          "name": "lops-rya457",
+          "name": "lops-rya455",
           "request": {
             "method": "GET",
             "header": [
@@ -5786,7 +5786,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya541",
+          "name": "cleanup-lst-rya537",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5907,7 +5907,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya542",
+          "name": "cleanup-lb-rya538",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6258,7 +6258,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr458",
+          "name": "setup-lb-cr456",
           "request": {
             "method": "POST",
             "header": [
@@ -6402,7 +6402,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr458');",
+                  "  pm.execution.setNextRequest('setup-lb-cr456');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6414,7 +6414,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya459",
+          "name": "setup-materialize-lb-rya457",
           "request": {
             "method": "GET",
             "header": [
@@ -6463,7 +6463,7 @@
           ]
         },
         {
-          "name": "cr-p0-rya460",
+          "name": "cr-p0-rya458",
           "request": {
             "method": "POST",
             "header": [
@@ -6485,7 +6485,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"p0-{{runId}}\", \"protocol\": \"TCP\", \"port\": 0, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"p0-{{runId}}\", \"protocol\": \"TCP\", \"port\": 0}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6522,7 +6522,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya543",
+          "name": "cleanup-lb-rya539",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6873,7 +6873,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr461",
+          "name": "setup-lb-cr459",
           "request": {
             "method": "POST",
             "header": [
@@ -7017,7 +7017,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr461');",
+                  "  pm.execution.setNextRequest('setup-lb-cr459');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7029,7 +7029,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya462",
+          "name": "setup-materialize-lb-rya460",
           "request": {
             "method": "GET",
             "header": [
@@ -7078,7 +7078,7 @@
           ]
         },
         {
-          "name": "cr-po-rya463",
+          "name": "cr-po-rya461",
           "request": {
             "method": "POST",
             "header": [
@@ -7100,7 +7100,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"po-{{runId}}\", \"protocol\": \"TCP\", \"port\": 65536, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"po-{{runId}}\", \"protocol\": \"TCP\", \"port\": 65536}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7140,7 +7140,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya544",
+          "name": "cleanup-lb-rya540",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7491,7 +7491,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr464",
+          "name": "setup-lb-cr462",
           "request": {
             "method": "POST",
             "header": [
@@ -7635,7 +7635,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr464');",
+                  "  pm.execution.setNextRequest('setup-lb-cr462');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7647,7 +7647,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya465",
+          "name": "setup-materialize-lb-rya463",
           "request": {
             "method": "GET",
             "header": [
@@ -7696,7 +7696,7 @@
           ]
         },
         {
-          "name": "cr-pn-rya466",
+          "name": "cr-pn-rya464",
           "request": {
             "method": "POST",
             "header": [
@@ -7718,7 +7718,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pn-{{runId}}\", \"protocol\": \"TCP\", \"port\": -1, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pn-{{runId}}\", \"protocol\": \"TCP\", \"port\": -1}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7758,7 +7758,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya545",
+          "name": "cleanup-lb-rya541",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8109,7 +8109,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr467",
+          "name": "setup-lb-cr465",
           "request": {
             "method": "POST",
             "header": [
@@ -8253,7 +8253,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr467');",
+                  "  pm.execution.setNextRequest('setup-lb-cr465');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8265,7 +8265,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya468",
+          "name": "setup-materialize-lb-rya466",
           "request": {
             "method": "GET",
             "header": [
@@ -8314,7 +8314,7 @@
           ]
         },
         {
-          "name": "cr-http-rya469",
+          "name": "cr-http-rya467",
           "request": {
             "method": "POST",
             "header": [
@@ -8336,7 +8336,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"http-{{runId}}\", \"protocol\": \"HTTP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"http-{{runId}}\", \"protocol\": \"HTTP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8376,7 +8376,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya546",
+          "name": "cleanup-lb-rya542",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8727,7 +8727,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr470",
+          "name": "setup-lb-cr468",
           "request": {
             "method": "POST",
             "header": [
@@ -8871,7 +8871,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr470');",
+                  "  pm.execution.setNextRequest('setup-lb-cr468');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8883,7 +8883,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya471",
+          "name": "setup-materialize-lb-rya469",
           "request": {
             "method": "GET",
             "header": [
@@ -8932,7 +8932,7 @@
           ]
         },
         {
-          "name": "cr-bad-name-rya472",
+          "name": "cr-bad-name-rya470",
           "request": {
             "method": "POST",
             "header": [
@@ -8954,7 +8954,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"Bad_Name!\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"Bad_Name!\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8994,7 +8994,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya547",
+          "name": "cleanup-lb-rya543",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9345,7 +9345,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr473",
+          "name": "setup-lb-cr471",
           "request": {
             "method": "POST",
             "header": [
@@ -9489,7 +9489,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr473');",
+                  "  pm.execution.setNextRequest('setup-lb-cr471');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -9501,7 +9501,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya474",
+          "name": "setup-materialize-lb-rya472",
           "request": {
             "method": "GET",
             "header": [
@@ -9550,7 +9550,7 @@
           ]
         },
         {
-          "name": "cr-p1-rya475",
+          "name": "cr-p1-rya473",
           "request": {
             "method": "POST",
             "header": [
@@ -9572,7 +9572,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"p1-{{runId}}\", \"protocol\": \"TCP\", \"port\": 1, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"p1-{{runId}}\", \"protocol\": \"TCP\", \"port\": 1}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9686,7 +9686,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya548",
+          "name": "cleanup-lst-rya544",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9807,7 +9807,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya549",
+          "name": "cleanup-lb-rya545",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10158,7 +10158,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr476",
+          "name": "setup-lb-cr474",
           "request": {
             "method": "POST",
             "header": [
@@ -10302,7 +10302,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr476');",
+                  "  pm.execution.setNextRequest('setup-lb-cr474');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -10314,7 +10314,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya477",
+          "name": "setup-materialize-lb-rya475",
           "request": {
             "method": "GET",
             "header": [
@@ -10363,7 +10363,7 @@
           ]
         },
         {
-          "name": "cr-pmax-rya478",
+          "name": "cr-pmax-rya476",
           "request": {
             "method": "POST",
             "header": [
@@ -10385,7 +10385,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pmax-{{runId}}\", \"protocol\": \"TCP\", \"port\": 65535, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pmax-{{runId}}\", \"protocol\": \"TCP\", \"port\": 65535}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10499,7 +10499,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya550",
+          "name": "cleanup-lst-rya546",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10620,7 +10620,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya551",
+          "name": "cleanup-lb-rya547",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10870,7 +10870,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"nolb-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{garbageNlbId}}\", \"name\": \"nolb-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11026,7 +11026,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr479",
+          "name": "setup-lb-cr477",
           "request": {
             "method": "POST",
             "header": [
@@ -11170,7 +11170,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr479');",
+                  "  pm.execution.setNextRequest('setup-lb-cr477');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -11182,7 +11182,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya480",
+          "name": "setup-materialize-lb-rya478",
           "request": {
             "method": "GET",
             "header": [
@@ -11231,7 +11231,7 @@
           ]
         },
         {
-          "name": "cr-1-rya481",
+          "name": "cr-1-rya479",
           "request": {
             "method": "POST",
             "header": [
@@ -11253,7 +11253,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp1-{{runId}}\", \"protocol\": \"TCP\", \"port\": 86, \"targetPort\": 8086}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp1-{{runId}}\", \"protocol\": \"TCP\", \"port\": 86}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11367,7 +11367,7 @@
           ]
         },
         {
-          "name": "cr-2-dup-rya482",
+          "name": "cr-2-dup-rya480",
           "request": {
             "method": "POST",
             "header": [
@@ -11389,7 +11389,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 86, \"targetPort\": 8086}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 86}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11486,7 +11486,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya552",
+          "name": "cleanup-lst-rya548",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11607,7 +11607,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya553",
+          "name": "cleanup-lb-rya549",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11958,7 +11958,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr483",
+          "name": "setup-lb-cr481",
           "request": {
             "method": "POST",
             "header": [
@@ -12102,7 +12102,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr483');",
+                  "  pm.execution.setNextRequest('setup-lb-cr481');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -12114,7 +12114,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya484",
+          "name": "setup-materialize-lb-rya482",
           "request": {
             "method": "GET",
             "header": [
@@ -12163,7 +12163,7 @@
           ]
         },
         {
-          "name": "cr-likely-fail-rya485",
+          "name": "cr-likely-fail-rya483",
           "request": {
             "method": "POST",
             "header": [
@@ -12185,7 +12185,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"vipc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 87, \"targetPort\": 8087, \"defaultTargetGroupId\": \"{{garbageTgrId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"vipc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 87, \"defaultTargetGroupId\": \"{{garbageTgrId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12227,7 +12227,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya554",
+          "name": "cleanup-lb-rya550",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12746,7 +12746,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr486",
+          "name": "setup-lb-cr484",
           "request": {
             "method": "POST",
             "header": [
@@ -12890,7 +12890,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr486');",
+                  "  pm.execution.setNextRequest('setup-lb-cr484');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -12902,7 +12902,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya487",
+          "name": "setup-materialize-lb-rya485",
           "request": {
             "method": "GET",
             "header": [
@@ -12951,7 +12951,7 @@
           ]
         },
         {
-          "name": "cr-rya488",
+          "name": "cr-rya486",
           "request": {
             "method": "POST",
             "header": [
@@ -12973,7 +12973,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgr-{{runId}}\", \"protocol\": \"TCP\", \"port\": 88, \"targetPort\": 8088}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgr-{{runId}}\", \"protocol\": \"TCP\", \"port\": 88}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13199,7 +13199,7 @@
           ]
         },
         {
-          "name": "upd-default-tg-mismatch-rya489",
+          "name": "upd-default-tg-mismatch-rya487",
           "request": {
             "method": "PATCH",
             "header": [
@@ -13267,7 +13267,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-alt-rya555",
+          "name": "cleanup-tg-alt-rya551",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13388,7 +13388,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya556",
+          "name": "cleanup-lst-rya552",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13509,7 +13509,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya557",
+          "name": "cleanup-lb-rya553",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14125,7 +14125,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr490",
+          "name": "setup-lb-cr488",
           "request": {
             "method": "POST",
             "header": [
@@ -14269,7 +14269,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr490');",
+                  "  pm.execution.setNextRequest('setup-lb-cr488');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14281,7 +14281,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya491",
+          "name": "setup-materialize-lb-rya489",
           "request": {
             "method": "GET",
             "header": [
@@ -14330,7 +14330,7 @@
           ]
         },
         {
-          "name": "cr-digit-rya492",
+          "name": "cr-digit-rya490",
           "request": {
             "method": "POST",
             "header": [
@@ -14352,7 +14352,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"9bad-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"9bad-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14392,7 +14392,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya558",
+          "name": "cleanup-lb-rya554",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14743,7 +14743,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr493",
+          "name": "setup-lb-cr491",
           "request": {
             "method": "POST",
             "header": [
@@ -14887,7 +14887,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr493');",
+                  "  pm.execution.setNextRequest('setup-lb-cr491');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14899,7 +14899,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya494",
+          "name": "setup-materialize-lb-rya492",
           "request": {
             "method": "GET",
             "header": [
@@ -14948,7 +14948,7 @@
           ]
         },
         {
-          "name": "cr-hyp-rya495",
+          "name": "cr-hyp-rya493",
           "request": {
             "method": "POST",
             "header": [
@@ -14970,7 +14970,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"-bad-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"-bad-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15010,7 +15010,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya559",
+          "name": "cleanup-lb-rya555",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15234,8 +15234,8 @@
       ]
     },
     {
-      "name": "LST-CR-VAL-TARGET-PORT-ZERO — Create with target_port=0 → InvalidArgument",
-      "description": "class:VAL | class:BVA | priority:P1",
+      "name": "LST-UPD-VAL-TARGET-PORT-RETIRED — Update with retired target_port in mask → InvalidArgument",
+      "description": "class:VAL | priority:P2",
       "item": [
         {
           "name": "setup-subnet",
@@ -15260,7 +15260,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-0-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tpr-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15361,7 +15361,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr496",
+          "name": "setup-lb-cr494",
           "request": {
             "method": "POST",
             "header": [
@@ -15383,7 +15383,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-0-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tpr-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15505,7 +15505,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr496');",
+                  "  pm.execution.setNextRequest('setup-lb-cr494');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -15517,7 +15517,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya497",
+          "name": "setup-materialize-lb-rya495",
           "request": {
             "method": "GET",
             "header": [
@@ -15566,7 +15566,7 @@
           ]
         },
         {
-          "name": "cr-tp-0-rya498",
+          "name": "cr-tpr-rya496",
           "request": {
             "method": "POST",
             "header": [
@@ -15588,7 +15588,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tp0-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 0}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tpr-{{runId}}\", \"protocol\": \"TCP\", \"port\": 91}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15617,69 +15617,18 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-lb-rya560",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
                   "} catch (e) {}",
-                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
-                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
-                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.listenerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -15734,22 +15683,79 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
-                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
-                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
-                  "(function () {",
-                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
-                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
-                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-lst-subnet",
+          "name": "upd-retired-tp-rya497",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "{{lstId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"targetPort\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('rejection names the retired path', () =>   pm.expect(pm.response.json().message || '')    .to.include('target_port'));",
+                  "pm.test('rejected as unknown, not as immutable', () =>   pm.expect(pm.response.json().message || '')    .to.not.include('immutable'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lst-rya556",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15759,15 +15765,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{lstSubnetId}}",
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "vpc",
+                "nlb",
                 "v1",
-                "subnets",
-                "{{lstSubnetId}}"
+                "listeners",
+                "{{lstId}}"
               ]
             }
           },
@@ -15777,10 +15783,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.environment.set('opId', '');",
-                  "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
-                  "pm.environment.unset('lstSubnetId');"
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -15848,405 +15874,9 @@
               }
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "LST-CR-VAL-TARGET-PORT-OVER — Create with target_port=65536 → InvalidArgument",
-      "description": "class:VAL | class:BVA | priority:P1",
-      "item": [
-        {
-          "name": "setup-subnet",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "subnets"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-tp-over-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-                  "pm.environment.set('_cidrSeq', String(__seq));",
-                  "var __run = (pm.environment.get('runId') || 'x0') + '/listener';",
-                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-                  "__h = __h & 0x7fffffff;",
-                  "var __oct2 = 16 + (__h % 220);",
-                  "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.environment.unset('lstSubnetId');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "if (pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.set('opId', ''); }"
-                ]
-              }
-            }
-          ]
         },
         {
-          "name": "poll-op-105",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "if (j.error) {",
-                  "  pm.environment.unset('lstSubnetId');",
-                  "}",
-                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "setup-lb-cr499",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-tp-over-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
-                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
-                  "// SELF only while the sync create says the PEER REFERENCE did not resolve:",
-                  "//   - ErrorInfo.reason == PEER_RESOURCE_MISSING  (machine discriminator; the",
-                  "//     linked-address lane's prose is generic anti-oracle text on purpose), or",
-                  "//   - a 400/404 whose message contains 'not found' (subnet lane prose).",
-                  "// A terminal mismatch carries NEITHER, so negatives still fail on attempt one.",
-                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_crRetryCount', '0');",
-                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
-                  "let _crNotFound = false;",
-                  "try {",
-                  "  const _crb = pm.response.json();",
-                  "  const _crPeerMiss = (_crb.details || []).some(d => d && d.reason === 'PEER_RESOURCE_MISSING');",
-                  "  _crNotFound = _crPeerMiss || ([400, 404].includes(pm.response.code) && /not found/i.test(_crb.message || ''));",
-                  "} catch (e) {}",
-                  "if (_crNotFound && _crc < 25) {",
-                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
-                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_crRetryCount');",
-                  "pm.environment.unset('_crRetryStarted');",
-                  "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('lstSubnetId')) {",
-                  "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.set('opId', ''); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-106",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "if (j.error) {",
-                  "  pm.environment.unset('nlbId');",
-                  "}",
-                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
-                  "// peer was visible to the sync precheck but still stale to the worker's",
-                  "// own peer call, so the failure surfaced on the Operation, not on the",
-                  "// create response. Discriminated on the peer-miss text — a capacity",
-                  "// refusal reads differently and is NEVER retried.",
-                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_opRedriveCount', '0');",
-                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
-                  "}",
-                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
-                  "let _opTransient = false;",
-                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
-                  "if (_opTransient && _orc < 8) {",
-                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
-                  "  pm.environment.unset('_crRetryStarted');",
-                  "  pm.environment.unset('_crRetryCount');",
-                  "  pm.environment.unset('opId');",
-                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr499');",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_opRedriveCount');",
-                  "pm.environment.unset('_opRedriveStarted');",
-                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "setup-materialize-lb-rya500",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cr-tp-o-rya501",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/listeners",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "listeners"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tpo-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 65536}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-lb-rya561",
+          "name": "cleanup-lb-rya557",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16304,7 +15934,7 @@
           ]
         },
         {
-          "name": "poll-op-107",
+          "name": "poll-op-105",
           "request": {
             "method": "GET",
             "header": [
@@ -16405,7 +16035,7 @@
           ]
         },
         {
-          "name": "poll-op-108",
+          "name": "poll-op-106",
           "request": {
             "method": "GET",
             "header": [
@@ -16539,7 +16169,7 @@
           ]
         },
         {
-          "name": "poll-op-109",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -16597,7 +16227,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr502",
+          "name": "setup-lb-cr498",
           "request": {
             "method": "POST",
             "header": [
@@ -16672,7 +16302,7 @@
           ]
         },
         {
-          "name": "poll-op-110",
+          "name": "poll-op-108",
           "request": {
             "method": "GET",
             "header": [
@@ -16741,7 +16371,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr502');",
+                  "  pm.execution.setNextRequest('setup-lb-cr498');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -16753,7 +16383,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya503",
+          "name": "setup-materialize-lb-rya499",
           "request": {
             "method": "GET",
             "header": [
@@ -16824,7 +16454,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"enum-{{runId}}\", \"protocol\": \"DOES_NOT_EXIST\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"enum-{{runId}}\", \"protocol\": \"DOES_NOT_EXIST\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16851,7 +16481,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya562",
+          "name": "cleanup-lb-rya558",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16909,7 +16539,7 @@
           ]
         },
         {
-          "name": "poll-op-111",
+          "name": "poll-op-109",
           "request": {
             "method": "GET",
             "header": [
@@ -17010,7 +16640,7 @@
           ]
         },
         {
-          "name": "poll-op-112",
+          "name": "poll-op-110",
           "request": {
             "method": "GET",
             "header": [
@@ -17144,7 +16774,7 @@
           ]
         },
         {
-          "name": "poll-op-113",
+          "name": "poll-op-111",
           "request": {
             "method": "GET",
             "header": [
@@ -17202,7 +16832,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr504",
+          "name": "setup-lb-cr500",
           "request": {
             "method": "POST",
             "header": [
@@ -17277,7 +16907,7 @@
           ]
         },
         {
-          "name": "poll-op-114",
+          "name": "poll-op-112",
           "request": {
             "method": "GET",
             "header": [
@@ -17346,7 +16976,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr504');",
+                  "  pm.execution.setNextRequest('setup-lb-cr500');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -17358,7 +16988,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya505",
+          "name": "setup-materialize-lb-rya501",
           "request": {
             "method": "GET",
             "header": [
@@ -17407,7 +17037,7 @@
           ]
         },
         {
-          "name": "cr-ipv6-rya506",
+          "name": "cr-ipv6-rya502",
           "request": {
             "method": "POST",
             "header": [
@@ -17429,7 +17059,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"v6-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"v6-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17476,7 +17106,7 @@
           ]
         },
         {
-          "name": "poll-op-115",
+          "name": "poll-op-113",
           "request": {
             "method": "GET",
             "header": [
@@ -17531,7 +17161,7 @@
           ]
         },
         {
-          "name": "cleanup-best-effort-rya563",
+          "name": "cleanup-best-effort-rya559",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17589,7 +17219,7 @@
           ]
         },
         {
-          "name": "poll-op-116",
+          "name": "poll-op-114",
           "request": {
             "method": "GET",
             "header": [
@@ -17652,7 +17282,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya564",
+          "name": "cleanup-lb-rya560",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17710,7 +17340,7 @@
           ]
         },
         {
-          "name": "poll-op-117",
+          "name": "poll-op-115",
           "request": {
             "method": "GET",
             "header": [
@@ -17811,7 +17441,7 @@
           ]
         },
         {
-          "name": "poll-op-118",
+          "name": "poll-op-116",
           "request": {
             "method": "GET",
             "header": [
@@ -17945,7 +17575,7 @@
           ]
         },
         {
-          "name": "poll-op-119",
+          "name": "poll-op-117",
           "request": {
             "method": "GET",
             "header": [
@@ -18003,7 +17633,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr507",
+          "name": "setup-lb-cr503",
           "request": {
             "method": "POST",
             "header": [
@@ -18078,7 +17708,7 @@
           ]
         },
         {
-          "name": "poll-op-120",
+          "name": "poll-op-118",
           "request": {
             "method": "GET",
             "header": [
@@ -18147,7 +17777,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr507');",
+                  "  pm.execution.setNextRequest('setup-lb-cr503');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -18159,7 +17789,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya508",
+          "name": "setup-materialize-lb-rya504",
           "request": {
             "method": "GET",
             "header": [
@@ -18208,7 +17838,7 @@
           ]
         },
         {
-          "name": "cr-pp2-rya509",
+          "name": "cr-pp2-rya505",
           "request": {
             "method": "POST",
             "header": [
@@ -18230,7 +17860,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 90, \"targetPort\": 9090}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 90}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -18277,7 +17907,7 @@
           ]
         },
         {
-          "name": "poll-op-121",
+          "name": "poll-op-119",
           "request": {
             "method": "GET",
             "header": [
@@ -18332,7 +17962,7 @@
           ]
         },
         {
-          "name": "upd-retired-rya510",
+          "name": "upd-retired-rya506",
           "request": {
             "method": "PATCH",
             "header": [
@@ -18396,7 +18026,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya565",
+          "name": "cleanup-lst-rya561",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18454,7 +18084,7 @@
           ]
         },
         {
-          "name": "poll-op-122",
+          "name": "poll-op-120",
           "request": {
             "method": "GET",
             "header": [
@@ -18517,7 +18147,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya566",
+          "name": "cleanup-lb-rya562",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18575,7 +18205,7 @@
           ]
         },
         {
-          "name": "poll-op-123",
+          "name": "poll-op-121",
           "request": {
             "method": "GET",
             "header": [
@@ -18676,7 +18306,7 @@
           ]
         },
         {
-          "name": "poll-op-124",
+          "name": "poll-op-122",
           "request": {
             "method": "GET",
             "header": [
@@ -18810,7 +18440,7 @@
           ]
         },
         {
-          "name": "poll-op-125",
+          "name": "poll-op-123",
           "request": {
             "method": "GET",
             "header": [
@@ -18868,7 +18498,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr511",
+          "name": "setup-lb-cr507",
           "request": {
             "method": "POST",
             "header": [
@@ -18943,7 +18573,7 @@
           ]
         },
         {
-          "name": "poll-op-126",
+          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -19012,7 +18642,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr511');",
+                  "  pm.execution.setNextRequest('setup-lb-cr507');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -19024,7 +18654,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya512",
+          "name": "setup-materialize-lb-rya508",
           "request": {
             "method": "GET",
             "header": [
@@ -19073,7 +18703,7 @@
           ]
         },
         {
-          "name": "cr-rya513",
+          "name": "cr-rya509",
           "request": {
             "method": "POST",
             "header": [
@@ -19095,7 +18725,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 91, \"targetPort\": 9091}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 91}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -19142,7 +18772,7 @@
           ]
         },
         {
-          "name": "poll-op-127",
+          "name": "poll-op-125",
           "request": {
             "method": "GET",
             "header": [
@@ -19209,7 +18839,7 @@
           ]
         },
         {
-          "name": "upd-clear-rya514",
+          "name": "upd-clear-rya510",
           "request": {
             "method": "PATCH",
             "header": [
@@ -19274,7 +18904,7 @@
           ]
         },
         {
-          "name": "poll-op-128",
+          "name": "poll-op-126",
           "request": {
             "method": "GET",
             "header": [
@@ -19329,7 +18959,7 @@
           ]
         },
         {
-          "name": "get-after-clear-rya515",
+          "name": "get-after-clear-rya511",
           "request": {
             "method": "GET",
             "header": [
@@ -19383,7 +19013,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya567",
+          "name": "cleanup-lst-rya563",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19441,7 +19071,7 @@
           ]
         },
         {
-          "name": "poll-op-129",
+          "name": "poll-op-127",
           "request": {
             "method": "GET",
             "header": [
@@ -19504,7 +19134,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya568",
+          "name": "cleanup-lb-rya564",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19562,7 +19192,7 @@
           ]
         },
         {
-          "name": "poll-op-130",
+          "name": "poll-op-128",
           "request": {
             "method": "GET",
             "header": [
@@ -19663,7 +19293,7 @@
           ]
         },
         {
-          "name": "poll-op-131",
+          "name": "poll-op-129",
           "request": {
             "method": "GET",
             "header": [
@@ -19883,7 +19513,7 @@
           ]
         },
         {
-          "name": "poll-op-132",
+          "name": "poll-op-130",
           "request": {
             "method": "GET",
             "header": [
@@ -19941,7 +19571,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr516",
+          "name": "setup-lb-cr512",
           "request": {
             "method": "POST",
             "header": [
@@ -20016,7 +19646,7 @@
           ]
         },
         {
-          "name": "poll-op-133",
+          "name": "poll-op-131",
           "request": {
             "method": "GET",
             "header": [
@@ -20085,7 +19715,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr516');",
+                  "  pm.execution.setNextRequest('setup-lb-cr512');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -20097,7 +19727,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya517",
+          "name": "setup-materialize-lb-rya513",
           "request": {
             "method": "GET",
             "header": [
@@ -20146,7 +19776,7 @@
           ]
         },
         {
-          "name": "page-1-rya569",
+          "name": "page-1-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -20196,7 +19826,7 @@
           ]
         },
         {
-          "name": "page-2-rya570",
+          "name": "page-2-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -20245,7 +19875,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya571",
+          "name": "cleanup-lb-rya567",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20303,7 +19933,7 @@
           ]
         },
         {
-          "name": "poll-op-134",
+          "name": "poll-op-132",
           "request": {
             "method": "GET",
             "header": [
@@ -20404,7 +20034,7 @@
           ]
         },
         {
-          "name": "poll-op-135",
+          "name": "poll-op-133",
           "request": {
             "method": "GET",
             "header": [
@@ -20642,7 +20272,7 @@
           ]
         },
         {
-          "name": "poll-op-136",
+          "name": "poll-op-134",
           "request": {
             "method": "GET",
             "header": [
@@ -20700,7 +20330,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr518",
+          "name": "setup-lb-cr514",
           "request": {
             "method": "POST",
             "header": [
@@ -20775,7 +20405,7 @@
           ]
         },
         {
-          "name": "poll-op-137",
+          "name": "poll-op-135",
           "request": {
             "method": "GET",
             "header": [
@@ -20844,7 +20474,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr518');",
+                  "  pm.execution.setNextRequest('setup-lb-cr514');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -20856,7 +20486,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya519",
+          "name": "setup-materialize-lb-rya515",
           "request": {
             "method": "GET",
             "header": [
@@ -20905,7 +20535,7 @@
           ]
         },
         {
-          "name": "cr-udp-rya520",
+          "name": "cr-udp-rya516",
           "request": {
             "method": "POST",
             "header": [
@@ -20927,7 +20557,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"udp-{{runId}}\", \"protocol\": \"UDP\", \"port\": 53, \"targetPort\": 53}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"udp-{{runId}}\", \"protocol\": \"UDP\", \"port\": 53}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -20974,7 +20604,7 @@
           ]
         },
         {
-          "name": "poll-op-138",
+          "name": "poll-op-136",
           "request": {
             "method": "GET",
             "header": [
@@ -21041,7 +20671,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya572",
+          "name": "cleanup-lst-rya568",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21099,7 +20729,7 @@
           ]
         },
         {
-          "name": "poll-op-139",
+          "name": "poll-op-137",
           "request": {
             "method": "GET",
             "header": [
@@ -21162,7 +20792,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya573",
+          "name": "cleanup-lb-rya569",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21220,7 +20850,7 @@
           ]
         },
         {
-          "name": "poll-op-140",
+          "name": "poll-op-138",
           "request": {
             "method": "GET",
             "header": [
@@ -21321,7 +20951,7 @@
           ]
         },
         {
-          "name": "poll-op-141",
+          "name": "poll-op-139",
           "request": {
             "method": "GET",
             "header": [
@@ -21898,7 +21528,7 @@
           ]
         },
         {
-          "name": "poll-op-142",
+          "name": "poll-op-140",
           "request": {
             "method": "GET",
             "header": [
@@ -21956,7 +21586,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr521",
+          "name": "setup-lb-cr517",
           "request": {
             "method": "POST",
             "header": [
@@ -22031,7 +21661,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-141",
           "request": {
             "method": "GET",
             "header": [
@@ -22100,7 +21730,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr521');",
+                  "  pm.execution.setNextRequest('setup-lb-cr517');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -22112,7 +21742,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya522",
+          "name": "setup-materialize-lb-rya518",
           "request": {
             "method": "GET",
             "header": [
@@ -22217,7 +21847,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-142",
           "request": {
             "method": "GET",
             "header": [
@@ -22306,7 +21936,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtg-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8443, \"targetPort\": 8080, \"targetGroupId\": \"{{tgCrossId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtg-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8443, \"targetGroupId\": \"{{tgCrossId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22350,7 +21980,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtgl-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8444, \"targetPort\": 8080, \"defaultTargetGroupId\": \"{{tgCrossId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtgl-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8444, \"defaultTargetGroupId\": \"{{tgCrossId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -22410,7 +22040,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-143",
           "request": {
             "method": "GET",
             "header": [
@@ -22473,7 +22103,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya574",
+          "name": "cleanup-lb-rya570",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22531,7 +22161,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-144",
           "request": {
             "method": "GET",
             "header": [
@@ -22632,7 +22262,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-145",
           "request": {
             "method": "GET",
             "header": [
@@ -22766,7 +22396,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-146",
           "request": {
             "method": "GET",
             "header": [
@@ -22824,7 +22454,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr523",
+          "name": "setup-lb-cr519",
           "request": {
             "method": "POST",
             "header": [
@@ -22899,7 +22529,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-147",
           "request": {
             "method": "GET",
             "header": [
@@ -22968,7 +22598,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr523');",
+                  "  pm.execution.setNextRequest('setup-lb-cr519');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -22980,7 +22610,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya524",
+          "name": "setup-materialize-lb-rya520",
           "request": {
             "method": "GET",
             "header": [
@@ -23029,7 +22659,7 @@
           ]
         },
         {
-          "name": "cr-rya525",
+          "name": "cr-rya521",
           "request": {
             "method": "POST",
             "header": [
@@ -23051,7 +22681,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtgu-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8445, \"targetPort\": 8080}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"xtgu-{{runId}}\", \"protocol\": \"TCP\", \"port\": 8445}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23098,7 +22728,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-148",
           "request": {
             "method": "GET",
             "header": [
@@ -23221,7 +22851,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-149",
           "request": {
             "method": "GET",
             "header": [
@@ -23333,7 +22963,7 @@
           ]
         },
         {
-          "name": "get-after-refused-repoint-rya526",
+          "name": "get-after-refused-repoint-rya522",
           "request": {
             "method": "GET",
             "header": [
@@ -23425,7 +23055,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-150",
           "request": {
             "method": "GET",
             "header": [
@@ -23488,7 +23118,7 @@
           ]
         },
         {
-          "name": "cleanup-lst-rya575",
+          "name": "cleanup-lst-rya571",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23546,7 +23176,7 @@
           ]
         },
         {
-          "name": "poll-op-153",
+          "name": "poll-op-151",
           "request": {
             "method": "GET",
             "header": [
@@ -23609,7 +23239,7 @@
           ]
         },
         {
-          "name": "cleanup-lb-rya576",
+          "name": "cleanup-lb-rya572",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23667,7 +23297,7 @@
           ]
         },
         {
-          "name": "poll-op-154",
+          "name": "poll-op-152",
           "request": {
             "method": "GET",
             "header": [
@@ -23768,7 +23398,7 @@
           ]
         },
         {
-          "name": "poll-op-155",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [

@@ -34,7 +34,7 @@ run "names_are_derived_from_one_base" {
   command = plan
 
   variables {
-    listeners = { http = { port = 80, target_port = 8080 } }
+    listeners = { http = { port = 80 } }
   }
 
   assert {
@@ -58,7 +58,7 @@ run "listener_references_both_by_id" {
   command = plan
 
   variables {
-    listeners = { http = { port = 80, target_port = 8080 } }
+    listeners = { http = { port = 80 } }
   }
 
   assert {

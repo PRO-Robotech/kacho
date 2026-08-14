@@ -226,9 +226,9 @@ func TestIntegration_DeleteLoadBalancer_BlocksOnListener(t *testing.T) {
 	// TX is committed because the pool sees a different snapshot.
 	_, err = pool.Exec(context.Background(), `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port,
+			description, labels, protocol, port,
 			default_target_group_id, status)
-		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, '', 'ACTIVE')`,
+		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, '', 'ACTIVE')`,
 		ids.NewID(ids.PrefixListener), "prj-x", string(lb.ID), "ru-central1",
 	)
 	require.NoError(t, err)
@@ -278,9 +278,9 @@ func TestIntegration_Move_Blocked_ListenerWiredToTG(t *testing.T) {
 	// target_groups(id) is satisfied because the TG exists.
 	_, err = pool.Exec(context.Background(), `
 		INSERT INTO kacho_nlb.listeners (id, project_id, load_balancer_id, region_id, name,
-			description, labels, protocol, port, target_port,
+			description, labels, protocol, port,
 			default_target_group_id, status)
-		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, 80, $5, 'ACTIVE')`,
+		VALUES ($1, $2, $3, $4, 'lst-1', '', '{}', 'TCP', 8080, $5, 'ACTIVE')`,
 		ids.NewID(ids.PrefixListener), "prj-src", lbID, "ru-central1", tgID,
 	)
 	require.NoError(t, err)

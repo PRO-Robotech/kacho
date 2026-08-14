@@ -92,7 +92,6 @@ func newDeleteSuite(t *testing.T) *deleteSuite {
 			Labels:         domain.LbLabels{},
 			Protocol:       domain.ProtoTCP,
 			Port:           443,
-			TargetPort:     8443,
 			Status:         domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Now().UTC(),

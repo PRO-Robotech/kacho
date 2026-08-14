@@ -129,14 +129,13 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 	if err != nil {
 		return nil, err
 	}
-	// Port/target_port are int64 on the wire; guard int32 overflow before the
-	// narrowing so an out-of-range value can't alias onto a valid port and bypass
-	// LbPort.Validate (api-conventions malformed-input discipline; gosec G115).
+	// port is int64 on the wire; guard int32 overflow before the narrowing so an
+	// out-of-range value can't alias onto a valid port and bypass LbPort.Validate
+	// (api-conventions malformed-input discipline; gosec G115).
+	//
+	// The backend port is NOT read here and has no field of its own: it lives on
+	// the wired TargetGroup and comes back as resolved_backend_port (NLB-1-25).
 	port, err := domain.LbPortFromProto(req.GetPort())
-	if err != nil {
-		return nil, err
-	}
-	targetPort, err := domain.LbPortFromProto(req.GetTargetPort())
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +144,6 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 		name,
 		domain.LbProto(req.GetProtocol().String()),
 		port,
-		targetPort,
 	)
 	listener.Description = domain.LbDescription(req.GetDescription())
 	listener.Labels = domain.LabelsFromMap(req.GetLabels())

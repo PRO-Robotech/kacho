@@ -90,7 +90,6 @@ func TestCreateListener_NLB_1b_TargetGroupId(t *testing.T) {
 		Name:           "tcp-443",
 		Protocol:       lbv1.Listener_TCP,
 		Port:           443,
-		TargetPort:     8080,
 		TargetGroupId:  "tgr-wired00000000001",
 	})
 	require.NoError(t, err)
@@ -119,7 +118,6 @@ func TestCreateListener_NLB_1b_TargetGroupId_Precedence(t *testing.T) {
 		Name:                 "tcp-443",
 		Protocol:             lbv1.Listener_TCP,
 		Port:                 443,
-		TargetPort:           8080,
 		TargetGroupId:        "tgr-new0000000000001",
 		DefaultTargetGroupId: "tgr-legacy0000000001",
 	})

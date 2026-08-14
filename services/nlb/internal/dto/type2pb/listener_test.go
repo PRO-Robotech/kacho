@@ -34,7 +34,6 @@ func TestListener_Transfer(t *testing.T) {
 			Labels:         domain.LabelsFromMap(map[string]string{"role": "edge"}),
 			Protocol:       domain.ProtoTCP,
 			Port:           443,
-			TargetPort:     8443,
 			Status:         domain.ListenerStatusActive,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 1, 2, 3, 0, time.UTC),
@@ -46,7 +45,6 @@ func TestListener_Transfer(t *testing.T) {
 	assert.Equal(t, "nlb01ABCDEF1234567xx", pb.LoadBalancerId)
 	assert.Equal(t, lbv1.Listener_TCP, pb.Protocol)
 	assert.Equal(t, int64(443), pb.Port)
-	assert.Equal(t, int64(8443), pb.TargetPort)
 	assert.Equal(t, lbv1.Listener_ACTIVE, pb.Status)
 }
 
