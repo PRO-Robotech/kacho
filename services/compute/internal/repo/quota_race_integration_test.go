@@ -138,6 +138,91 @@ func TestQuota_RefundReturnsTheSlot(t *testing.T) {
 	require.NoError(t, charge(), "возвращённое место обязано быть доступно снова")
 }
 
+// TestQuota_LoweringBelowUsageIsExpressibleAndFreezes — администратор понижает
+// предел ниже текущего потребления; старые машины живут, новые не создаются,
+// удаление работает.
+//
+// # Что здесь утверждается и почему это НЕ «перерасход»
+//
+// `used > limit_value` — законное состояние, а не поломка: оно означает ровно
+// то, что нужно после понижения — новые нельзя, старые живут. Запретить его
+// схемой значит запретить САМО ПОНИЖЕНИЕ, потому что записать новый предел
+// можно было бы только после того, как арендатор сам удалит машины. То есть
+// административное действие становится заложником того, кого оно ограничивает.
+//
+// # Почему отрицание идёт в паре с положительным контролем
+//
+// «Списание отвергнуто» само по себе зеленеет и на проекте, где сломано всё:
+// на исчерпанном пределе, на потерянной строке, на отказе хранилища. Поэтому
+// сначала утверждается, что до понижения списание ПРОХОДИТ, а в конце — что
+// освободившееся место снова используется, когда потребление опускается под
+// новый предел.
+func TestQuota_LoweringBelowUsageIsExpressibleAndFreezes(t *testing.T) {
+	pool := auditTestPool(t)
+	ctx := context.Background()
+
+	const projectID = "prj-quota-lower"
+
+	_, err := pool.Exec(ctx,
+		`INSERT INTO project_instance_quotas (project_id, limit_value, used) VALUES ($1, 3, 0)`,
+		projectID)
+	require.NoError(t, err)
+
+	charge := func() error {
+		tx, err := pool.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := chargeProjectQuota(ctx, tx, projectID); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	refund := func() {
+		tx, err := pool.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		require.NoError(t, refundProjectQuota(ctx, tx, projectID))
+		require.NoError(t, tx.Commit(ctx))
+	}
+	usedNow := func() int {
+		var used int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT used FROM project_instance_quotas WHERE project_id = $1`, projectID).Scan(&used))
+		return used
+	}
+
+	// (+) до понижения предел работает как обычно
+	for i := 0; i < 3; i++ {
+		require.NoError(t, charge(), "списание в пределах предела обязано проходить")
+	}
+	require.Equal(t, 3, usedNow())
+
+	// Само понижение — то, ради чего проба написана. Сегодня падает на 23514.
+	_, err = pool.Exec(ctx,
+		`UPDATE project_instance_quotas SET limit_value = 1 WHERE project_id = $1`, projectID)
+	require.NoError(t, err,
+		"понижение предела ниже потребления обязано быть выразимо: иначе администратор "+
+			"не может ограничить проект, пока проект сам не освободит место")
+
+	// Заморозка: новые нельзя…
+	require.ErrorIs(t, charge(), ErrProjectInstanceLimit,
+		"после понижения создание обязано отвергаться именно пределом")
+
+	// …старые живут, и удаление работает.
+	refund()
+	refund()
+	require.Equal(t, 1, usedNow(), "возврат обязан работать и на замороженном проекте")
+
+	// Потребление всё ещё не ниже нового предела — по-прежнему заморожено.
+	require.ErrorIs(t, charge(), ErrProjectInstanceLimit)
+
+	// (+) опустились под новый предел — место снова доступно.
+	refund()
+	require.Equal(t, 0, usedNow())
+	require.NoError(t, charge(),
+		"под новым пределом создание обязано снова проходить: иначе заморозка вечна")
+}
+
 // TestQuota_ProjectWithoutLimitIsNotBlocked — проект без назначенного предела не
 // блокируется.
 //

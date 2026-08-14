@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ErrProjectInstanceLimit — предел числа машин проекта исчерпан.
@@ -17,14 +16,6 @@ import (
 // предела от сбоя хранилища. Первое — штатный ответ, который клиент понимает и
 // на который реагирует; второе требует внимания оператора.
 var ErrProjectInstanceLimit = errors.New("project instance limit reached")
-
-// quotaWithinLimitConstraint — имя ограничения, ловящего превышение.
-//
-// Имя названо здесь, а не собрано из строки: отображение отказа хранилища в
-// ответ вызывающему обязано знать, ЧТО именно нарушено. Без имени превышение
-// предела пришло бы фиксированным внутренним отказом — то есть арендатор увидел
-// бы «что-то сломалось» вместо «место кончилось».
-const quotaWithinLimitConstraint = "project_instance_quotas_within_limit_check"
 
 // chargeProjectQuota списывает одну машину из предела проекта.
 //
@@ -35,11 +26,27 @@ const quotaWithinLimitConstraint = "project_instance_quotas_within_limit_check"
 // ними помещается чужая запись, и оба создателя пройдут проверку, увидев одно и
 // то же свободное место.
 //
-// # Почему превышение ловит схема, а не это условие
+// # Почему потолок держит ПРЕДИКАТ, а не ограничение схемы
 //
-// Условие здесь есть, и оно полезно: оно даёт понятный отказ раньше, чем база
-// откажет своим. Но НЕСУЩИМ является ограничение схемы: оно защищает все пути,
-// включая те, что появятся позже и про эту функцию знать не будут.
+// Прежде превышение ловил `CHECK (used <= limit_value)`. Он же делал невозможным
+// понижение предела ниже текущего потребления: запись нового предела падала на
+// 23514, то есть администратор не мог ограничить проект, пока проект сам не
+// освободит место. Ограничение снято миграцией 0035, а условие переехало сюда, в
+// тот же единственный оператор, что берёт блокировку строки. Потолок от этого не
+// ослаб: схема ловила превышение ПОСЛЕ записи, предикат не даёт его записать.
+//
+// Цена названа в миграции: инвариант держит этот предикат, поэтому путь, который
+// запишет used мимо него, потолок обойдёт. Сегодня таких путей нет — эта функция
+// единственный писатель счётчика.
+//
+// # Три исхода, и они РАЗЛИЧАЮТСЯ
+//
+// Ноль изменённых строк означает два разных состояния, и свести их к одному
+// нельзя: «строки нет» — предел не назначен, «строка есть, но полна» — место
+// кончилось. Поэтому на нулевой кардинальности идёт отдельный вопрос о
+// существовании строки. Это НЕ check-then-act: решение о списании уже принято
+// одним атомарным оператором, и дополнительное чтение ничего не решает — оно
+// только классифицирует уже случившийся отказ.
 //
 // # Проект без строки предела
 //
@@ -50,18 +57,27 @@ const quotaWithinLimitConstraint = "project_instance_quotas_within_limit_check"
 func chargeProjectQuota(ctx context.Context, tx pgx.Tx, projectID string) error {
 	const q = `UPDATE project_instance_quotas
 		          SET used = used + 1, updated_at = now()
-		        WHERE project_id = $1`
+		        WHERE project_id = $1
+		          AND used < limit_value`
 	tag, err := tx.Exec(ctx, q, projectID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.ConstraintName == quotaWithinLimitConstraint {
-			return ErrProjectInstanceLimit
-		}
 		return wrapPgErr(err, "Instance", projectID)
 	}
-	// Ноль строк — предел проекту не назначен. Это не ошибка: см. выше.
-	_ = tag
-	return nil
+	if tag.RowsAffected() > 0 {
+		return nil
+	}
+
+	// Ноль строк — либо предел не назначен, либо он исчерпан. Различаем.
+	const exists = `SELECT 1 FROM project_instance_quotas WHERE project_id = $1`
+	var one int
+	switch err := tx.QueryRow(ctx, exists, projectID).Scan(&one); {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil // предел проекту не назначен: см. выше
+	case err != nil:
+		return wrapPgErr(err, "Instance", projectID)
+	default:
+		return ErrProjectInstanceLimit
+	}
 }
 
 // refundProjectQuota возвращает одну машину в предел проекта.
