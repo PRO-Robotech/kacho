@@ -110,7 +110,7 @@ jobs:
   # компилируются, поэтому опечатка в связывании ресурсов и снятая проверка входа
   # проходят молча до первого apply у пользователя.
   terraform:
-    name: terraform — формат · модульные пробы (tofu test)
+    name: terraform — формат · модульные пробы · приёмка провайдера
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -190,6 +190,16 @@ jobs:
             seen=$((seen + 1))
           done
           echo "примеров осмотрено: $seen"
+
+      # Поведение РЕСУРСОВ под настоящим terraform: план, повторный план, пересоздание,
+      # импорт, уборка. Джоба go этого не видит вовсе — она проверяет отображение полей,
+      # а не то, что делает с ними цикл. Провайдер разговаривает с поддельным краем в том
+      # же процессе, поэтому ни стенда, ни сети пробам не нужно.
+      #
+      # Исполнителя пробы находят сами: setup-opentofu выше положил tofu в PATH. Отбор
+      # `-run Acceptance` берёт ровно приёмочные — юнитовые уже прогнаны джобой go.
+      - name: приёмка провайдера (цикл terraform)
+        run: go test ./terraform/internal/provider -run Acceptance -count=1
 
   integration:
     name: integration (${{ matrix.svc }})
@@ -1059,18 +1069,17 @@ jobs:
         working-directory: services/vpc/tests/newman
         run: python3 scripts/selftest_autowrap.py
 
-  tofu-fmt:
-    name: конфигурации terraform отформатированы
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # Провайдер живёт в общем модуле, поэтому его Go-код проверяют те же джобы, что и
-      # весь продукт. Отдельного внимания требует только HCL: `go vet` его не читает.
-      - name: tofu fmt
-        run: |
-          curl -sL -o /tmp/tofu.zip https://github.com/opentofu/opentofu/releases/download/v1.12.5/tofu_1.12.5_linux_amd64.zip
-          unzip -oq /tmp/tofu.zip -d /tmp/tofubin
-          /tmp/tofubin/tofu fmt -check -recursive terraform/modules terraform/examples
+  # Здесь стояла job `tofu-fmt` — второй `tofu fmt -check`, по terraform/modules и
+  # terraform/examples. Джоба terraform выше проверяет формат по ВСЕМУ terraform/, то
+  # есть строго шире, поэтому вторая ничего не добавляла и стоила отдельного ранера —
+  # того самого ресурса, ради которого работа сводится в накопительную ветку.
+  #
+  # Дороже расхода было другое: она пинила версию tofu ВТОРОЙ раз, в URL для curl.
+  # Сторож пинов (.github/scripts/check-pinned-tools.sh) ищет этот инструмент по входу
+  # `tofu_version:` и URL не видел — то есть докладывал «сходится во всех вхождениях (1)»,
+  # имея в дереве два. Разъехавшись, они дали бы два разных вердикта об одном предмете
+  # при зелёном стороже. Пин теперь один на конвейер, второй — в scripts/ci-local.sh, и
+  # оба сторожу видны.
 
   lint:
     name: golangci-lint
