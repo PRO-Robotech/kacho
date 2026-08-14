@@ -18,7 +18,7 @@ tests/newman/scripts/validate-cases.py — сверщик переписи ке�
     python3 tests/newman/scripts/validate-cases.py
     python3 tests/newman/scripts/validate-cases.py --self-test
 
-Проверяет ЧЕТЫРЕ вещи, и каждая заведена против того, что здесь реально сгнило:
+Проверяет ПЯТЬ вещей, и каждая заведена против того, что здесь реально сгнило:
 
   1. НЕТ ДУБЛЕЙ case-id по всем модулям, которые собирает gen.py.
 
@@ -63,6 +63,27 @@ tests/newman/scripts/validate-cases.py — сверщик переписи ке�
          причины. Свойство проверяется по ИМЕНИ переменной операции: чей `save_from_response`
          её опубликовал последним, тот актор и обязан быть у читателя.
 
+  5. ПЕРВОЕ ОБРАЩЕНИЕ К СВОЕМУ СВЕЖЕМУ ИНТЕРФЕЙСУ — ЧТЕНИЕ, А НЕ АСИНХРОННАЯ МУТАЦИЯ.
+     Окно материализации owner-tuple закрывает ограниченный ретрай на первом доступе, и
+     generator ставит его сам. Но ретрай ключуется на КОДЕ ОТВЕТА шага, а привязка/
+     отвязка асинхронна: её POST отвечает `200` и `Operation` ВСЕГДА, а отказ владельца
+     приезжает в терминальной ошибке операции, которую читает уже другой шаг. Обёртка на
+     таком шаге стоит и сработать не может — форма есть, содержания нет.
+
+     Отличить это от настоящего промаха кейс НЕ МОЖЕТ by construction: цель проверки прав
+     у `InternalNetworkInterfaceService.{Attach,Detach}` — САМ интерфейс, vpc прячет
+     существование, а текст берётся из общей таблицы — «Network interface <id> not found»,
+     байт-в-байт как у реального отсутствия. Поэтому свойство требуется от ФИКСТУРЫ:
+     идентификатор свежего интерфейса уезжает в мутацию только после того, как интерфейс
+     прочитан. Класс наблюдался: два утверждения кейса идемпотентной отвязки читали
+     открытое окно как утверждение о продукте.
+
+     Предпосылка ПРОВЕРЯЕТСЯ: гейт читает каталог прав и требует, чтобы цель этих RPC
+     действительно была `vpc_network_interface` из `nic_id`. Сместится на машину — гейт
+     скажет, что греть интерфейс больше незачем, вместо того чтобы тихо остаться.
+     Обычное «создал родителя → создал потомка» под запрет НЕ подпадает: там цель —
+     проект, давно материализованный, и требовать чтения было бы запретом формы.
+
 ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ — это отступление от соседей, и оно объявлено, а не умолчано.
 У vpc и registry есть четвёртая проверка: каждый case-id обязан быть каталогизирован в
 CASES-INDEX (буквально либо суффиксным шаблоном), иначе — отказ. Для compute она
@@ -77,15 +98,17 @@ CASES-INDEX (буквально либо суффиксным шаблоном),
 (его прогоняет deploy/scripts/run-gate-self-tests.sh, который сам находит такие ветки по
 дереву и требует, чтобы найденное совпадало с объявленным составом). Сдвиг переписи на
 единицу, лишний модуль в переписи, ссылка на несуществующий файл, бутстрап в дефолте
-коллекции, шаг админ-маршрута без явного актора и опрос операции чужим актором дают красное
-с координатой; законное добавление кейса вместе с обновлённой переписью, шаг на ПУБЛИЧНОМ
-маршруте того же ресурса без актора и опрос, следующий за НОВЫМ издателем идентификатора
-операции, — молчание.
+коллекции, шаг админ-маршрута без явного актора, опрос операции чужим актором и свежий
+интерфейс, уехавший в мутацию первым обращением, дают красное с координатой; законное
+добавление кейса вместе с обновлённой переписью, шаг на ПУБЛИЧНОМ маршруте того же ресурса
+без актора, опрос, следующий за НОВЫМ издателем идентификатора операции, прочитанный до
+мутации интерфейс, литеральный идентификатор в отрицательном кейсе и обычное «родитель →
+потомок» — молчание.
 
 ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль находок» обязано быть отличимо от «ноль прочитанного»:
-модулей, кейсов, шагов, шагов на админ-маршруте и пар «издатель→читатель операции». Нулевой
-объём по двум последним — отказ, а не чистота: предпосылка проверок 4b/4c в том, что предмет
-в дереве есть.
+модулей, кейсов, шагов, шагов на админ-маршруте, пар «издатель→читатель операции» и шагов
+привязки/отвязки интерфейса. Нулевой объём по трём последним — отказ, а не чистота:
+предпосылка проверок 4b/4c/5 в том, что предмет в дереве есть.
 """
 from __future__ import annotations
 
@@ -109,6 +132,15 @@ _ADMIN_RPCS = (
 )
 _ADMIN_RELATION = "system_admin"
 _ADMIN_SCOPE_TYPE = "cluster"
+# Проверка 5. Глаголы ребра compute→vpc, у которых цель проверки прав — САМ интерфейс
+# (а не машина в пути запроса), и записи каталога, которыми это обосновано.
+_NIC_VERB_SUFFIXES = (":attachNetworkInterface", ":detachNetworkInterface")
+_NIC_TARGET_RPCS = (
+    "kacho.cloud.vpc.v1.InternalNetworkInterfaceService/Attach",
+    "kacho.cloud.vpc.v1.InternalNetworkInterfaceService/Detach",
+)
+_NIC_TARGET_OBJECT = "vpc_network_interface"
+_NIC_TARGET_FIELD = "nic_id"
 # Актор, которого дефолт коллекции обязан читать, и тот, которого он читать НЕ вправе.
 _PROJECT_ACTOR = "jwtProjectAdminA1"
 _CLUSTER_ADMIN_ACTOR = "jwtBootstrap"
@@ -127,12 +159,19 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 
-def _all_cases() -> tuple[list[tuple[str, str]], list[tuple]]:
+def _all_cases() -> tuple[list[tuple[str, str]], list[tuple], list[tuple]]:
     """Загрузить модули кейсов ТАК ЖЕ, как gen.py.
 
-    Возвращает (перепись [(case_id, module), …], записи шагов). Записи шагов читаются
-    из ТЕХ ЖЕ объектов Case, которые сериализует gen.py, — то есть проверка 4 смотрит на
-    то, что написал автор кейса, а не на пересказ."""
+    Возвращает (перепись [(case_id, module), …], записи шагов, записи ссылок). Записи
+    читаются из ТЕХ ЖЕ объектов Case, которые сериализует gen.py, — то есть проверки 4
+    и 5 смотрят на то, что написал автор кейса, а не на пересказ.
+
+    Запись ССЫЛКИ (проверка 5) — (case_id, имя, метод, путь, ссылки, публикации):
+    какие переменные шаг ЧИТАЕТ (в пути и теле) и какие идентификаторы РЕСУРСОВ он
+    публикует. Переменные операций из публикаций исключены тем же признаком, что и в
+    проверке 4c (`gen._is_operation_id_var`): опрос операции — не обращение к ресурсу,
+    и считать его первым доступом значило бы закрывать окно видимости шагом, который
+    его не открывает."""
     import gen  # noqa: E402
 
     global path_op_var
@@ -140,6 +179,7 @@ def _all_cases() -> tuple[list[tuple[str, str]], list[tuple]]:
 
     census: list[tuple[str, str]] = []
     records: list[tuple] = []
+    refs: list[tuple] = []
     for f in sorted(CASES_DIR.glob("*.py")):
         if f.name.startswith("_"):
             continue
@@ -149,7 +189,14 @@ def _all_cases() -> tuple[list[tuple[str, str]], list[tuple]]:
             for st in c.steps:
                 records.append((c.id, st.name, st.method, st.path, st.auth,
                                 _published_op_vars(st.test_script, gen._is_operation_id_var)))
-    return census, records
+                body = "\n".join(st.test_script)
+                refs.append((
+                    c.id, st.name, st.method, st.path,
+                    sorted(set(gen._VAR_REF_RE.findall(st.path + gen._body_text(st)))),
+                    [n for n in gen._FRESH_VAR_SET_RE.findall(body)
+                     if not gen._is_operation_id_var(n)],
+                ))
+    return census, records, refs
 
 
 def _census_from_index(index_text: str) -> tuple[int | None, dict[str, int]]:
@@ -323,11 +370,102 @@ def check_admin_premise(catalog_text: str) -> list[str]:
     return errors
 
 
+def check_nic_target_premise(catalog_text: str) -> list[str]:
+    """ПРЕДПОСЫЛКА 5: привязка/отвязка интерфейса гейтится У ВЛАДЕЛЬЦА на САМОМ
+    интерфейсе, а не на машине.
+
+    Запрет 5 обоснован ровно этим: цель проверки прав — `vpc_network_interface`,
+    взятая из `nic_id`. Пока это так, свежий интерфейс обязан быть прочитан до того,
+    как его идентификатор уедет в мутацию. Перестанет — запрет останется без
+    основания, и сказать об этом обязан сам гейт, а не следующий читатель."""
+    try:
+        entries = json.loads(catalog_text)
+    except json.JSONDecodeError as exc:
+        return [f"каталог прав {CATALOG_FILE} не читается как JSON ({exc}) — предпосылка "
+                f"запрета 5 не проверена, значит запрет не обоснован"]
+    by_fqn = {e.get("fqn", ""): e for e in entries}
+    errors = []
+    for fqn in _NIC_TARGET_RPCS:
+        e = by_fqn.get(fqn)
+        if e is None:
+            errors.append(f"каталог прав не содержит записи {fqn} — запрет 5 держался на её "
+                          f"наличии; предмет запрета исчез, проверку пересобрать")
+            continue
+        scope = e.get("scope_extractor") or {}
+        got = (scope.get("object_type"), scope.get("from_request_field"))
+        want = (_NIC_TARGET_OBJECT, _NIC_TARGET_FIELD)
+        if got != want:
+            errors.append(
+                f"{fqn}: каталог прав объявляет цель проверки прав {got!r}, а запрет 5 "
+                f"обоснован парой {want!r}. Основание запрета изменилось — пересмотреть, "
+                f"нужно ли греть интерфейс перед мутацией.")
+    return errors
+
+
+def check_first_nic_access_is_a_read(refs) -> tuple[list[str], int]:
+    """5 — ПЕРВОЕ обращение к своему свежему интерфейсу не может быть асинхронной мутацией.
+
+    Почему именно интерфейс, а не «всякий свежий ресурс». Окно материализации owner-tuple
+    закрывает ограниченный ретрай на первом доступе (`testing.md` §e2e-инварианты), и
+    generator ставит его сам (`_wrap_own_fresh_reads`). Но ретрай ключуется на КОДЕ ОТВЕТА
+    шага, а привязка/отвязка — асинхронная мутация: её POST отвечает `200` и `Operation`
+    ВСЕГДА, а отказ владельца приезжает в терминальной ошибке операции, которую читает уже
+    другой шаг. То есть обёртка на таком шаге стоит и сработать не может — форма есть,
+    содержания нет.
+
+    Отказ при этом НЕОТЛИЧИМ от настоящего промаха: vpc прячет существование
+    (`ErrHideExistence`), и текст берётся из общей таблицы — «Network interface <id> not
+    found», байт-в-байт как у реального отсутствия (`pkg/authz/hide_existence.go`). Значит
+    кейс не может отличить «окно ещё открыто» от «интерфейса нет», и красное приезжает как
+    утверждение о продукте.
+
+    Поэтому свойство требуется от ФИКСТУРЫ: идентификатор свежего интерфейса уезжает в
+    attach/detach только после того, как этот интерфейс прочитан — чтением, которое
+    обёртку принимает и на котором она работает.
+
+    Проверяются ТОЛЬКО два глагола ребра compute→vpc: у них цель проверки прав — сам
+    интерфейс (предпосылка сверяется с каталогом прав). Обычное «создал родителя →
+    создал потомка» под запрет НЕ подпадает: там цель — проект, давно материализованный,
+    и требовать чтения было бы запретом формы, а не существа.
+
+    Литеральный идентификатор (несуществующий/malformed в отрицательных кейсах) ссылкой
+    на переменную не является и сюда не попадает — греть там нечего, а ретрай на
+    отрицании запрещён."""
+    errors: list[str] = []
+    seen = 0
+    by_case: dict[str, list[tuple]] = {}
+    order: list[str] = []
+    for rec in refs:
+        if rec[0] not in by_case:
+            by_case[rec[0]] = []
+            order.append(rec[0])
+        by_case[rec[0]].append(rec)
+    for case_id in order:
+        fresh: set[str] = set()
+        read: set[str] = set()
+        for _cid, name, method, path, refd, published in by_case[case_id]:
+            if any(path.endswith(v) for v in _NIC_VERB_SUFFIXES):
+                seen += 1
+                cold = sorted((set(refd) & fresh) - read)
+                if cold:
+                    errors.append(
+                        f"{case_id}/{name}: {', '.join('{{%s}}' % c for c in cold)} — свежий "
+                        f"ресурс уезжает в асинхронную мутацию `{path}` ПЕРВЫМ обращением. "
+                        f"Цель проверки прав здесь — сам интерфейс, поэтому в окне "
+                        f"материализации владелец отвечает отказом, неотличимым от "
+                        f"настоящего промаха, а обёртка ретрая на этом шаге сработать не "
+                        f"может (POST всегда 200+Operation). Прочитать ресурс до мутации.")
+            if method == "GET":
+                read |= set(refd)
+            fresh |= set(published)
+    return errors, seen
+
+
 def main() -> int:
     errors: list[str] = []
 
     try:
-        cases, records = _all_cases()
+        cases, records, refs = _all_cases()
         import gen  # noqa: E402  — PRE_GLOBAL / ADMIN_AUTH / MT_INTERNAL_PATH
     except Exception as exc:  # noqa: BLE001 — предъявить как провал сверки
         sys.stderr.write(f"validate-cases: FAIL — модули кейсов не загрузились: {exc}\n")
@@ -403,14 +541,20 @@ def main() -> int:
     # сказать это, а не молча продолжать требовать.
     if not CATALOG_FILE.exists():
         errors.append(f"нет каталога прав {CATALOG_FILE} — предпосылка запрета 4b не проверена")
+        errors.append(f"нет каталога прав {CATALOG_FILE} — предпосылка запрета 5 не проверена")
     else:
-        errors += check_admin_premise(CATALOG_FILE.read_text())
+        catalog_text = CATALOG_FILE.read_text()
+        errors += check_admin_premise(catalog_text)
+        errors += check_nic_target_premise(catalog_text)
     errors += check_default_actor_is_project(gen.PRE_GLOBAL)
     admin_errs, admin_seen = check_admin_route_names_its_actor(
         records, gen.MT_INTERNAL_PATH, gen.ADMIN_AUTH)
     errors += admin_errs
     op_errs, op_pairs = check_operation_read_by_its_creator(records)
     errors += op_errs
+    # ---- (5) первое обращение к своему свежему интерфейсу — чтение ----
+    nic_errs, nic_seen = check_first_nic_access_is_a_read(refs)
+    errors += nic_errs
     # Объём осмотренного — отдельное утверждение. Ноль шагов админ-маршрута или ноль пар
     # «издатель→читатель» означает, что предмет 4b/4c потерян (или обход сломан), и это
     # ОТКАЗ: совпадение пустого с пустым ничего не доказывает.
@@ -420,6 +564,10 @@ def main() -> int:
     if op_pairs == 0:
         errors.append("проверка 4c не нашла НИ ОДНОЙ пары «издатель операции → её читатель» — "
                       "предмет запрета потерян либо разбор пути/публикации сломан")
+    if nic_seen == 0:
+        errors.append("проверка 5 не осмотрела НИ ОДНОГО шага привязки/отвязки интерфейса "
+                      f"({', '.join(_NIC_VERB_SUFFIXES)}) — предмет запрета потерян либо "
+                      "обход сломан")
 
     if errors:
         sys.stderr.write("validate-cases: FAIL\n")
@@ -433,7 +581,8 @@ def main() -> int:
         ", ".join(f"{m} {n}" for m, n in sorted(actual_per.items())) + "); "
         f"актор: дефолт коллекции {_PROJECT_ACTOR}, осмотрено {len(records)} шагов — "
         f"{admin_seen} на админ-маршруте (все несут {gen.ADMIN_AUTH}), "
-        f"{op_pairs} пар «издатель операции → читатель» (акторы совпадают)"
+        f"{op_pairs} пар «издатель операции → читатель» (акторы совпадают), "
+        f"{nic_seen} шагов привязки/отвязки интерфейса (свежий интерфейс прочитан до мутации)"
     )
     return 0
 
@@ -564,6 +713,72 @@ def _self_test() -> int:  # noqa: C901 — линейный перечень и�
     else:
         print(f"  ПРОВАЛ каталога прав нет по пути {CATALOG_FILE}", file=sys.stderr)
         ok = False
+
+    print("=== 5 — первое обращение к своему свежему интерфейсу ===")
+    _DET = "/compute/v1/instances/{{instanceId}}:detachNetworkInterface"
+    _ATT = "/compute/v1/instances/{{instanceId}}:attachNetworkInterface"
+    _NIC_GET = "/vpc/v1/networkInterfaces/{{nicId}}"
+
+    def _nrec(case_id, name, method, path, refd=(), published=()):
+        return (case_id, name, method, path, list(refd), list(published))
+
+    errs, seen = check_first_nic_access_is_a_read([
+        _nrec("C1", "seed-nic", "POST", "/vpc/v1/networkInterfaces", [], ["nicId"]),
+        _nrec("C1", "detach-1", "POST", _DET, ["instanceId", "nicId"]),
+    ])
+    want("свежий интерфейс уезжает в отвязку первым обращением → находка", errs, True)
+    if seen != 1:
+        print(f"  ПРОВАЛ 5 осмотрела {seen} шагов вместо 1", file=sys.stderr)
+        ok = False
+    errs, _ = check_first_nic_access_is_a_read([
+        _nrec("C1", "seed-nic", "POST", "/vpc/v1/networkInterfaces", [], ["nicId"]),
+        _nrec("C1", "warm-nic", "GET", _NIC_GET, ["nicId"]),
+        _nrec("C1", "detach-1", "POST", _DET, ["instanceId", "nicId"]),
+        _nrec("C1", "detach-2", "POST", _DET, ["instanceId", "nicId"]),
+    ])
+    want("ЗАКОННЫЙ БЛИЗНЕЦ: интерфейс прочитан до мутации (и повтор тоже) → молчание", errs, False)
+    errs, _ = check_first_nic_access_is_a_read([
+        _nrec("C1", "seed-nic", "POST", "/vpc/v1/networkInterfaces", [], ["nicId"]),
+        _nrec("C1", "detach-absent", "POST", _DET, ["instanceId"]),
+    ])
+    want("ЗАКОННЫЙ БЛИЗНЕЦ: идентификатор литеральный (отрицательный кейс) → молчание", errs, False)
+    errs, _ = check_first_nic_access_is_a_read([
+        _nrec("C1", "seed-nic", "POST", "/vpc/v1/networkInterfaces", [], ["nicId"]),
+        _nrec("C1", "attach", "POST", _ATT, ["instanceId", "nicId"]),
+    ])
+    want("тот же запрет на привязке, не только на отвязке → находка", errs, True)
+    errs, _ = check_first_nic_access_is_a_read([
+        _nrec("C1", "seed-net", "POST", "/vpc/v1/networks", [], ["netId"]),
+        _nrec("C1", "seed-subnet", "POST", "/vpc/v1/subnets", ["netId"], ["subId"]),
+    ])
+    want("ЗАКОННЫЙ БЛИЗНЕЦ: обычное «родитель → потомок» не подпадает (цель прав — проект)",
+         errs, False)
+    errs, _ = check_first_nic_access_is_a_read([
+        _nrec("C1", "warm-nic", "GET", _NIC_GET, ["nicId"]),
+        _nrec("C2", "detach-1", "POST", _DET, ["instanceId", "nicId"], []),
+        _nrec("C2", "seed-nic", "POST", "/vpc/v1/networkInterfaces", [], ["nicId"]),
+    ])
+    want("ЗАКОННЫЙ БЛИЗНЕЦ: чтение в ДРУГОМ кейсе не считается прогревом, а несвежий "
+         "идентификатор не подпадает вовсе", errs, False)
+
+    print("=== предпосылка 5 — цель проверки прав у привязки/отвязки ===")
+    good_nic = json.dumps([{"fqn": f, "required_relation": "editor",
+                            "scope_extractor": {"object_type": _NIC_TARGET_OBJECT,
+                                                "from_request_field": _NIC_TARGET_FIELD}}
+                           for f in _NIC_TARGET_RPCS])
+    want("каталог объявляет цель — сам интерфейс → молчание",
+         check_nic_target_premise(good_nic), False)
+    moved_nic = json.dumps([{"fqn": f, "required_relation": "editor",
+                             "scope_extractor": {"object_type": "compute_instance",
+                                                 "from_request_field": "instance_id"}}
+                            for f in _NIC_TARGET_RPCS])
+    want("цель сместилась на машину → находка (греть интерфейс больше незачем)",
+         check_nic_target_premise(moved_nic), True)
+    want("записи в каталоге больше нет → находка", check_nic_target_premise("[]"), True)
+    want("каталог нечитаем → находка", check_nic_target_premise("{not json"), True)
+    if CATALOG_FILE.exists():
+        want("каталог ИЗ ДЕРЕВА → молчание",
+             check_nic_target_premise(CATALOG_FILE.read_text()), False)
 
     print()
     print("PASS: самопроверка validate-cases" if ok else "FAIL: самопроверка validate-cases")
