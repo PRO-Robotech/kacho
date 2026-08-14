@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Разбор класса «имя шага зависит от того, сколько модулей обработал
@@ -210,51 +212,66 @@ func firstDifference(want, got []byte) string {
 // из skip. Пропускается только вывод генератора: всё остальное копируется, даже
 // если сегодня не читается, — перечень «что генератору нужно» стал бы вторым
 // местом об одном предмете и разошёлся бы с генератором молча.
+//
+// СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА, и это требование гейта
+// TestTreeWalkersAskTheIndex, а не вкус. Обход диска под каталогом набора
+// подхватил бы всё, что там лежит на конкретной машине: кэш байт-компиляции,
+// распакованные чарты, каталоги сборки фронтенда, отчёты прошлых прогонов.
+// Тогда вердикт «генерация детерминирована» стал бы свойством машины: на чистом
+// клоне зелено, у того, кто вчера поднимал стенд, — красное или, хуже, зелёное
+// по другой причине. Индекс отвечает одинаково везде.
+//
+// Пропуск `__pycache__` при этом сохранён отдельной ветвью и остаётся нужным:
+// каталог не отслеживается, но интерпретатор создаёт его ВНУТРИ копии во время
+// самого прогона, а сверяется он с исходником по времени правки и размеру —
+// копия времени не сохраняет.
 func copyTreeExcept(src, dst string, skip ...string) error {
 	skipped := make(map[string]bool, len(skip))
 	for _, s := range skip {
 		skipped[s] = true
 	}
-	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	tracked, err := treecorpus.Under(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, path := range tracked {
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
 		}
-		if rel == "." {
-			return os.MkdirAll(dst, 0o755)
-		}
 		slash := filepath.ToSlash(rel)
-		top := strings.SplitN(slash, "/", 2)[0]
-		// `__pycache__` пропускается на ЛЮБОЙ глубине: скопированный кэш
-		// байт-компиляции сверяется с исходником по времени правки и размеру, а
-		// копия времени не сохраняет — интерпретатор мог бы взять чужой кэш, и
-		// вердикт гейта стал бы свойством копии, а не генератора.
-		if skipped[top] || strings.Contains("/"+slash+"/", "/__pycache__/") {
-			if d.IsDir() {
-				return filepath.SkipDir
+		if skipped[strings.SplitN(slash, "/", 2)[0]] ||
+			strings.Contains("/"+slash+"/", "/__pycache__/") {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			// Индекс называет файл, которого на диске нет — это состояние
+			// рабочей копии, а не дефект: копируем то, что есть.
+			if os.IsNotExist(err) {
+				continue
 			}
-			return nil
+			return err
 		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		if !d.Type().IsRegular() {
-			return nil
+		if !info.Mode().IsRegular() {
+			continue
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		info, err := d.Info()
-		if err != nil {
+		target := filepath.Join(dst, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(target, body, info.Mode().Perm())
-	})
+		if err := os.WriteFile(target, body, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // TestGeneratedStepNamesDoNotDependOnHowManyModulesRan — гейт по дереву.
