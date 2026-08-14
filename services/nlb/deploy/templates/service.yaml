@@ -23,10 +23,6 @@ spec:
       port: {{ .Values.ports.grpc }}
       targetPort: grpc
       protocol: TCP
-    - name: metrics
-      port: {{ .Values.ports.metrics }}
-      targetPort: metrics
-      protocol: TCP
 ---
 apiVersion: v1
 kind: Service
@@ -41,6 +37,15 @@ spec:
   selector:
     {{- include "kacho-nlb.selectorLabels" . | nindent 4 }}
   ports:
+    # Порт диагностики стоит на ВНУТРЕННЕМ Service, а не рядом с арендаторской
+    # gRPC-поверхностью. Сегодня оба Service — ClusterIP, и наружу это не
+    # выходит; но соседство инфра-диагностики с поверхностью арендатора обязано
+    # быть исключено ПОСТРОЕНИЕМ, а не типом Service, который завтра поменяют
+    # (`security.md` §Internal-vs-external).
+    - name: metrics
+      port: {{ .Values.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
     - name: igrpc
       port: {{ .Values.ports.internalGrpc }}
       targetPort: igrpc

@@ -40,6 +40,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
@@ -228,6 +229,11 @@ func runServe(configPath string) error {
 	// LRO-worker/reconciler recorder и diagnostic /metrics. Заменяет in-memory
 	// MemRecorder (метрики не экспортировались наружу) и NopRecorder LRO-worker'а.
 	metricsAdapter := nlbmetrics.New(buildVersion, buildCommit)
+	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
+	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
+	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
+	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return peers.ListFilter.Counts() })
 	var outboxRec metrics.Recorder = metricsAdapter
 	var lroRec operations.Recorder = metricsAdapter
 

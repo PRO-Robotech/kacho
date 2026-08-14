@@ -20,6 +20,7 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
@@ -195,6 +196,11 @@ func runServe(cfg config.Config) error {
 	// Приватный prometheus-реестр. Скрейпится ТОЛЬКО с cluster-internal
 	// diagnostic-порта; ServiceMonitor чарта нацелен именно на него.
 	svcMetrics := metrics.New()
+	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
+	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
+	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
+	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	svcMetrics.RegisterListNarrow(func() listnarrow.Counts { return narrower.Counts() })
 
 	// ── use-cases (repo → use-case → handler). CQRS reader/writer связываются
 	// раздельно (сейчас обе стороны — один pg-adapter). errStatus — transport-

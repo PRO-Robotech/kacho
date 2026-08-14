@@ -22,6 +22,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
@@ -389,6 +390,11 @@ func runServe(cfg config.Config) error {
 		}
 	}
 	listFilter := buildListFilter(cfg, authorizeConn, logger)
+	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
+	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
+	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
+	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return listFilter.Counts() })
 
 	// Sync-primary owner-tuple registrar (Decision 2): create-flow синхронно
 	// регистрирует owner-tuple в kacho-iam после commit — грант доступен сразу, без

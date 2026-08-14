@@ -6,80 +6,100 @@ package middleware_test
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-func TestAuthzMetrics_Counters(t *testing.T) {
+// TestAuthzMetrics_FourDecisionBands — четыре полосы исхода считаются РАЗДЕЛЬНО.
+//
+// Полоса «проверка не состоялась» была одна на два противоположных исхода, и по
+// её значению нельзя было сказать, отклонил контроль запрос или пропустил.
+func TestAuthzMetrics_FourDecisionBands(t *testing.T) {
 	m := middleware.NewAuthzMetrics()
 	m.RecordAllow()
 	m.RecordAllow()
 	m.RecordDeny()
-	m.RecordError()
+	m.RecordErrorRefused()
+	m.RecordErrorPassed()
+	m.RecordErrorPassed()
 
-	snap := m.Snapshot()
-	assert.Equal(t, float64(2), snap[`kacho_api_gateway_authz_check_total{result="allowed"}`])
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_total{result="denied"}`])
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_total{result="error"}`])
+	c := m.Counts()
+	assert.Equal(t, uint64(2), c.Allowed)
+	assert.Equal(t, uint64(1), c.Denied)
+	assert.Equal(t, uint64(1), c.ErrorRefused)
+	assert.Equal(t, uint64(2), c.ErrorPassed)
 }
 
-func TestAuthzMetrics_CacheRatio(t *testing.T) {
+// TestAuthzMetrics_FreshCarrierReadsZeros — свежий накопитель отдаёт ЧИТАЕМЫЕ
+// нули по всем полосам, а не отсутствие величин.
+func TestAuthzMetrics_FreshCarrierReadsZeros(t *testing.T) {
+	c := middleware.NewAuthzMetrics().Counts()
+	assert.Equal(t, uint64(0), c.Allowed)
+	assert.Equal(t, uint64(0), c.Denied)
+	assert.Equal(t, uint64(0), c.ErrorRefused)
+	assert.Equal(t, uint64(0), c.ErrorPassed)
+	assert.Equal(t, uint64(0), c.CacheHits)
+	assert.Equal(t, uint64(0), c.CacheMisses)
+	assert.Equal(t, uint64(0), c.DurationCount)
+	require.NotEmpty(t, c.DurationBuckets, "границы корзин обязаны быть объявлены и на свежем накопителе")
+	assert.Len(t, c.DurationCounts, len(c.DurationBuckets)+1, "последняя корзина — +Inf")
+}
+
+// TestAuthzMetrics_NilCarrierStillDeclaresBands — накопителя нет, а корзины и
+// нули есть.
+//
+// Коллектор, собранный на посадке без накопителя, обязан отдать те же серии
+// нулями: иначе «поверхность есть, серий нет» снова стало бы неотличимо от
+// «событий не было».
+func TestAuthzMetrics_NilCarrierStillDeclaresBands(t *testing.T) {
+	var m *middleware.AuthzMetrics
+	c := m.Counts()
+	assert.Equal(t, uint64(0), c.DurationCount)
+	assert.Equal(t, middleware.DefaultCheckDurationBuckets, c.DurationBuckets)
+	assert.Len(t, c.DurationCounts, len(middleware.DefaultCheckDurationBuckets)+1)
+}
+
+// TestAuthzMetrics_DurationIsSeconds — длительность наблюдается в БАЗОВЫХ
+// единицах, и корзины попадают туда, куда положено.
+func TestAuthzMetrics_DurationIsSeconds(t *testing.T) {
+	m := middleware.NewAuthzMetricsWithBuckets([]float64{0.001, 0.01, 0.1})
+	m.ObserveCheckDuration(500 * time.Microsecond) // 0.0005 s → корзина ≤0.001
+	m.ObserveCheckDuration(5 * time.Millisecond)   // 0.005  s → корзина ≤0.01
+	m.ObserveCheckDuration(50 * time.Millisecond)  // 0.05   s → корзина ≤0.1
+	m.ObserveCheckDuration(2 * time.Second)        // → +Inf
+
+	c := m.Counts()
+	require.Len(t, c.DurationCounts, 4)
+	assert.Equal(t, uint64(1), c.DurationCounts[0])
+	assert.Equal(t, uint64(1), c.DurationCounts[1])
+	assert.Equal(t, uint64(1), c.DurationCounts[2])
+	assert.Equal(t, uint64(1), c.DurationCounts[3], "наблюдение сверх последней границы — в +Inf")
+	assert.Equal(t, uint64(4), c.DurationCount)
+	assert.InDelta(t, 0.0005+0.005+0.05+2.0, c.DurationSum, 1e-9)
+}
+
+// TestAuthzMetrics_BadBucketsFallBackToDefault — невозрастающие границы
+// отвергаются целиком, а не применяются частично.
+func TestAuthzMetrics_BadBucketsFallBackToDefault(t *testing.T) {
+	m := middleware.NewAuthzMetricsWithBuckets([]float64{0.005, 0.002, 0.01})
+	assert.Equal(t, middleware.DefaultCheckDurationBuckets, m.Counts().DurationBuckets)
+}
+
+// TestAuthzMetrics_NegativeDurationClamped — отрицательная длительность
+// (часы прыгнули назад) не уезжает в чужую корзину.
+func TestAuthzMetrics_NegativeDurationClamped(t *testing.T) {
 	m := middleware.NewAuthzMetrics()
-	for i := 0; i < 4; i++ {
-		m.RecordCacheHit()
-	}
-	m.RecordCacheMiss()
-
-	snap := m.Snapshot()
-	assert.Equal(t, 0.8, snap["kacho_api_gateway_authz_cache_hit_ratio"])
-	assert.Equal(t, 0.8, m.CacheHitRatio())
+	m.ObserveCheckDuration(-5 * time.Second)
+	c := m.Counts()
+	assert.Equal(t, uint64(1), c.DurationCounts[0])
+	assert.Equal(t, 0.0, c.DurationSum)
 }
 
-func TestAuthzMetrics_LatencyBuckets(t *testing.T) {
-	m := middleware.NewAuthzMetrics()
-	// Observations at various ms values.
-	m.ObserveLatencyMs(0.5)
-	m.ObserveLatencyMs(3)
-	m.ObserveLatencyMs(50)
-	m.ObserveLatencyMs(2000) // +Inf bucket
-	snap := m.Snapshot()
-
-	// LE 1 → counts everything <=1ms → 1 (the 0.5ms observation).
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="1"}`])
-	// LE 5 → cumulative <=5ms → 2.
-	assert.Equal(t, float64(2), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="5"}`])
-	// LE 50 → cumulative <=50ms → 3.
-	assert.Equal(t, float64(3), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="50"}`])
-	// +Inf → all 4.
-	assert.Equal(t, float64(4), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="+Inf"}`])
-	// Count.
-	assert.Equal(t, float64(4), snap["kacho_api_gateway_authz_check_latency_ms_count"])
-}
-
-func TestAuthzMetrics_CustomBuckets(t *testing.T) {
-	m := middleware.NewAuthzMetricsWithBuckets([]float64{2, 4, 8})
-	m.ObserveLatencyMs(3)
-	m.ObserveLatencyMs(7)
-	snap := m.Snapshot()
-	assert.Equal(t, float64(0), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="2"}`])
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="4"}`])
-	assert.Equal(t, float64(2), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="8"}`])
-}
-
-func TestAuthzMetrics_CustomBucketsBadInput_FallsBackDefault(t *testing.T) {
-	// Non-monotonic input → default buckets used.
-	m := middleware.NewAuthzMetricsWithBuckets([]float64{5, 2, 10})
-	m.ObserveLatencyMs(1)
-	snap := m.Snapshot()
-	// Default bucket "1" exists; "2" does not (default has 5, not 2).
-	_, hasOne := snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="1"}`]
-	_, hasTwo := snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="2"}`]
-	assert.True(t, hasOne)
-	assert.False(t, hasTwo)
-}
-
+// TestAuthzMetrics_ConcurrentSafe — накопитель считает под конкуренцией.
 func TestAuthzMetrics_ConcurrentSafe(t *testing.T) {
 	m := middleware.NewAuthzMetrics()
 	const goroutines = 16
@@ -91,24 +111,12 @@ func TestAuthzMetrics_ConcurrentSafe(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < each; i++ {
 				m.RecordAllow()
-				m.ObserveLatencyMs(float64(i))
+				m.ObserveCheckDuration(time.Duration(i) * time.Millisecond)
 			}
 		}()
 	}
 	wg.Wait()
-	snap := m.Snapshot()
-	assert.Equal(t, float64(goroutines*each), snap[`kacho_api_gateway_authz_check_total{result="allowed"}`])
-	assert.Equal(t, float64(goroutines*each), snap["kacho_api_gateway_authz_check_latency_ms_count"])
-}
-
-func TestAuthzMetrics_CacheHitRatio_NoData(t *testing.T) {
-	m := middleware.NewAuthzMetrics()
-	assert.Equal(t, 0.0, m.CacheHitRatio())
-}
-
-func TestAuthzMetrics_NegativeLatencyClamped(t *testing.T) {
-	m := middleware.NewAuthzMetrics()
-	m.ObserveLatencyMs(-5) // clamp to 0
-	snap := m.Snapshot()
-	assert.Equal(t, float64(1), snap[`kacho_api_gateway_authz_check_latency_ms_bucket{le="1"}`])
+	c := m.Counts()
+	assert.Equal(t, uint64(goroutines*each), c.Allowed)
+	assert.Equal(t, uint64(goroutines*each), c.DurationCount)
 }
