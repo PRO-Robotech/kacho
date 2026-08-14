@@ -70,36 +70,24 @@ _VPC_ADDRESSES = "/vpc/v1/addresses"
 # ---------------------------------------------------------------------------
 
 def _cidr_alloc_pre():
-    """Pre-request: allocate a fresh, run-scoped, HIGH-ENTROPY /24 in the seeded network.
+    """Pre-request: run-scoped адрес(а) подсети, ВЫРЕЗАННЫЕ ИЗ ПЛАНА сети посева.
 
-    Spreads allocation across ~56k distinct /24s (oct2 ∈ [16,235] run-scoped, oct3 =
-    run-random base + per-run seq) so distinct runs land in distinct /24s. Replaces the old
-    `10.{200+hash%40}.{seq}.0/24` — only 40 second-octet values (shared with listener/
-    cross-resource/authz-deny) with seq restarting at 1 each process — which collided at
-    oct3=1,2,3… with subnets leaked by prior runs into the shared never-cleaned network →
-    `Subnet CIDRs can not overlap` (the wandering e2e flake). Java-style 31-bit string hash
-    (`(h<<5)-h` kept 32-bit via `|0`) — no Math.imul, newman-sandbox-safe. See listener.py
-    _CIDR_ALLOC_PRE for the full root-cause note; this file already reclaims its subnets via
-    _cleanup_vpc()."""
-    return [
-        "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-        "pm.environment.set('_cidrSeq', String(__seq));",
-        "var __run = (pm.environment.get('runId') || 'x0') + '/load-balancer';",
-        "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-        "__h = __h & 0x7fffffff;",
-        "var __oct2 = 16 + (__h % 220);",
-        "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-        "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
-        # v6 anchor for a dualstack subnet, from the SAME run-scoped entropy: a ULA /64
-        # under fd00::/8 keyed on the two octets, so parallel runs land in distinct blocks
-        # exactly as the v4 side does.
-        # Дополнение до двух цифр обязательно: без него значение < 16 даёт ОДНУ
-        # цифру, и `fd`+`c` = `fdc:` уезжает из fd00::/8, который комментарий выше
-        # объявляет. Тот же дефект — в placement-coherence.py, где он и был найден
-        # по красному прогону; здесь он ждал своего значения энтропии.
-        "pm.environment.set('_subnetCidr6', 'fd' + (__oct2 % 256).toString(16).padStart(2, '0') + ':'"
-        " + (__oct3 % 256).toString(16) + '::/64');",
-    ]
+    Здесь стояла собственная копия генератора, выводившая `10.<октет>.<октет>.0/24` и
+    `'fd' + число.toString(16) + …` из хеша прогона — без всякой связи с адресным планом,
+    который объявила сеть. Попадание в план было СОВПАДЕНИЕМ: держалось на том, что один
+    из двух посевов набора объявляет `10.0.0.0/8` и `fd00::/8`. Второй объявляет план
+    у́же (`10.196.0.0/16`, `fd00:196::/48`) — мимо него уходили ВСЕ адреса, на всех хешах.
+
+    Ширина хекстета здесь чинилась отдельно (дополнение до двух цифр — иначе `fd`+`c`
+    даёт `fdc:` вне `fd00::/8`), и это ровно та починка, которая держится совпадением:
+    она верна для плана `fd00::/8` и не значит ничего для любого другого. Помощник
+    берёт префикс из плана, поэтому чинить ширину больше негде и незачем.
+
+    Разводка параллельных прогонов сохранена помощником целиком (хеш runId + порядковый
+    номер + соль набора); изменился ИСТОЧНИК префикса. Разбор класса и гейт, который
+    держит свойство, — scripts/gen.py, раздел «АДРЕС НАРЕЗАЕМОЙ ПОДСЕТИ».
+    """
+    return carve_cidr_pre('load-balancer', v6_var='_subnetCidr6')
 
 
 def _provision_subnet(placement, suffix, save_var="vpcSubnetId", dualstack=False):

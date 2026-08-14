@@ -29,6 +29,16 @@
 // создавший сеть без плана и объявивший его следующим шагом, гейта не касается:
 // к моменту нарезки план есть. Порядок шагов гейт и читает.
 //
+// # Оба семейства считаются ПОРОЗНЬ
+//
+// Продукт проверяет вложенность по одному разу на семейство, поэтому сеть,
+// объявившая только `ipv4CidrBlocks`, для подсети v6 плановой НЕ является. Первая
+// редакция гейта несла один флаг на оба семейства — слепая зона, доказанная
+// инъекцией: тот же кейс, внесённый в дерево, оставлял гейт зелёным, хотя шаг он
+// видел и в перепись засчитывал. Обе стороны различителя закреплены
+// `TestSubnetSupernetGateSeesFamiliesApart`, а предпосылка («нарезок v6 в дереве
+// не нашлось вовсе») роняет прогон, чтобы молчание не читалось как проверка.
+//
 // # Чего гейт НЕ покрывает, и это названо числом
 //
 // Родитель, приходящий В КЕЙС ИЗВНЕ (`{{existingNetworkId}}`, `{{seedNetworkA1Id}}`
@@ -37,6 +47,12 @@
 // переменной. Такие шаги гейт считает ОТДЕЛЬНО и печатает их число, чтобы «ноль
 // находок» не читалось шире, чем есть, — молчание про них означает «не смотрел», а
 // не «проверено».
+//
+// Само по себе объявление слепой зоны её не закрывает, и инцидент случился именно
+// в ней. Теперь эти шаги судит `newmancarveplananchor_test.go`: раз план родителя
+// здесь не виден, он требует, чтобы адрес был ВЫВЕДЕН из плана, который посев
+// публикует. Разделение предметов остаётся: тот гейт про ПОПАДАНИЕ в план, этот —
+// про его НАЛИЧИЕ, и вопрос у каждого один.
 //
 // # Предмет гейта — СГЕНЕРИРОВАННЫЕ коллекции, а не питоновские исходники
 //
@@ -47,6 +63,7 @@ package repohygiene
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,10 +103,52 @@ type pmCollection struct {
 type subnetSupernetScan struct {
 	cases           int
 	subnetFixtures  int // шагов-фикстур, режущих подсеть с адресом
+	carvesV4        int // из них режущих адрес семейства v4
+	carvesV6        int // из них режущих адрес семейства v6 (шаг может резать оба)
 	refusalProbes   int // шагов, чей предмет — отказ (утверждают 4xx/5xx)
 	declaredPlans   int // объявлений плана (создание с блоками либо :add-cidr-blocks)
+	declaredV4      int // из них объявивших план семейства v4
+	declaredV6      int // из них объявивших план семейства v6
 	parentOutOfCase int // фикстур, чей родитель приходит извне кейса — НЕ покрыты
 	hits            []string
+}
+
+// planFamilies — какие семейства адресного плана объявлены/нарезаны. Гейт первой
+// редакции нёс ОДИН флаг «план объявлен» на оба семейства, и это была слепая зона,
+// доказанная инъекцией, а не вычитанная: сеть, объявившая только `ipv4CidrBlocks`,
+// засчитывалась плановой и для подсети v6, которую продукт отвергает синхронно.
+// Семейства независимы у продукта (`eachWithinSupernet` зовётся по одному на каждое),
+// значит и здесь они обязаны считаться порознь.
+type planFamilies struct{ v4, v6 bool }
+
+func (p planFamilies) any() bool { return p.v4 || p.v6 }
+
+// covers — план покрывает ВСЕ семейства, которые режет шаг. Шаг двух семейств
+// требует обоих планов: продукт откажет по первому же непокрытому.
+func (p planFamilies) covers(need planFamilies) bool {
+	return (!need.v4 || p.v4) && (!need.v6 || p.v6)
+}
+
+// missing — человекочитаемое имя семейства, которого не хватает (для координаты).
+func (p planFamilies) missing(need planFamilies) string {
+	switch {
+	case need.v4 && !p.v4 && need.v6 && !p.v6:
+		return "IPv4 и IPv6"
+	case need.v4 && !p.v4:
+		return "IPv4"
+	default:
+		return "IPv6"
+	}
+}
+
+// familiesIn — какие семейства называет текст (тело запроса либо скрипт шага).
+// Читается имя ПОЛЯ контракта, а не подстрока адреса: `ipv6CidrPrimary` и
+// `ipv6CidrBlocks` — единственные две формы, которыми приходит адрес v6.
+func familiesIn(text string) planFamilies {
+	return planFamilies{
+		v4: strings.Contains(text, "ipv4Cidr"),
+		v6: strings.Contains(text, "ipv6Cidr"),
+	}
 }
 
 // TestSubnetFixtureNeverCarvesFromAPlanlessNetwork — ни одна фикстура не режет
@@ -104,8 +163,12 @@ func TestSubnetFixtureNeverCarvesFromAPlanlessNetwork(t *testing.T) {
 		res := analyzeSubnetSupernetFixtures(t, rel, body)
 		total.cases += res.cases
 		total.subnetFixtures += res.subnetFixtures
+		total.carvesV4 += res.carvesV4
+		total.carvesV6 += res.carvesV6
 		total.refusalProbes += res.refusalProbes
 		total.declaredPlans += res.declaredPlans
+		total.declaredV4 += res.declaredV4
+		total.declaredV6 += res.declaredV6
 		total.parentOutOfCase += res.parentOutOfCase
 		total.hits = append(total.hits, res.hits...)
 	})
@@ -130,15 +193,33 @@ func TestSubnetFixtureNeverCarvesFromAPlanlessNetwork(t *testing.T) {
 			"различитель «фикстура против пробы» не исполнился ни разу; молчание ничего "+
 			"не доказывает", files)
 	}
-	t.Logf("осмотрено коллекций: %d; кейсов: %d; шагов, режущих подсеть с адресом: %d; "+
-		"из них с родителем ИЗВНЕ кейса (посев/окружение — этим гейтом НЕ покрыты): %d; "+
-		"объявлений плана: %d; шагов, утверждающих отказ: %d",
-		files, total.cases, total.subnetFixtures, total.parentOutOfCase,
-		total.declaredPlans, total.refusalProbes)
+	// Предпосылка РАЗЛИЧИТЕЛЯ СЕМЕЙСТВ. Требование «план того же семейства» проверяемо
+	// ровно тогда, когда в дереве есть что различать: если ни одной нарезки v6 не
+	// найдено, различитель на живых данных не исполнялся и его молчание — «не
+	// смотрел», а не «проверено». Ровно этим гейт и был слеп в первой редакции.
+	if total.carvesV6 == 0 {
+		t.Fatalf("гейт не нашёл НИ ОДНОЙ нарезки семейства IPv6 в %d коллекциях (нарезок v4: %d) — "+
+			"различитель семейств не исполнился ни разу; молчание ничего не доказывает",
+			files, total.carvesV4)
+	}
+	if total.declaredV6 == 0 {
+		t.Fatalf("гейт не распознал НИ ОДНОГО объявления плана семейства IPv6 в %d коллекциях "+
+			"(объявлений v4: %d) — а именно его наличие он и требует от нарезки v6; "+
+			"молчание ничего не доказывает", files, total.declaredV4)
+	}
+	t.Logf("осмотрено коллекций: %d; кейсов: %d; шагов, режущих подсеть с адресом: %d "+
+		"(из них семейства v4: %d, семейства v6: %d); "+
+		"из них с родителем ИЗВНЕ кейса (посев/окружение — этим гейтом НЕ покрыты, их "+
+		"держит TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan): %d; "+
+		"объявлений плана: %d (v4: %d, v6: %d); шагов, утверждающих отказ: %d",
+		files, total.cases, total.subnetFixtures, total.carvesV4, total.carvesV6,
+		total.parentOutOfCase, total.declaredPlans, total.declaredV4, total.declaredV6,
+		total.refusalProbes)
 
 	if len(total.hits) > 0 {
 		sort.Strings(total.hits)
-		t.Errorf("найдено %d фикстур, режущих подсеть в сети без объявленного плана:\n  %s\n\n"+
+		t.Errorf("найдено %d фикстур, режущих подсеть в сети без объявленного плана ТОГО ЖЕ "+
+			"семейства:\n  %s\n\n"+
 			"Следствие: сеть без супернета семейства подсеть этого семейства не принимает "+
 			"(sync INVALID_ARGUMENT — нарезать не из чего), поэтому падает не только этот шаг, "+
 			"но и всё, что стоит на подсети: адрес, интерфейс, балансировщик. Симптом при этом "+
@@ -187,6 +268,29 @@ func carvesAddressByScript(it pmItem) bool {
 	return strings.Contains(script, "ipv4CidrPrimary") || strings.Contains(script, "ipv6CidrPrimary")
 }
 
+// countCarveFamilies — перепись нарезок по семействам. Считается ФАКТ нарезки
+// каждого семейства, а не шаг: дуальный шаг режет оба и обязан требовать оба плана.
+func countCarveFamilies(out *subnetSupernetScan, need planFamilies) {
+	if need.v4 {
+		out.carvesV4++
+	}
+	if need.v6 {
+		out.carvesV6++
+	}
+}
+
+// declareFamilies — то же для объявлений плана.
+func declareFamilies(out *subnetSupernetScan, have *planFamilies, got planFamilies) {
+	if got.v4 {
+		out.declaredV4++
+		have.v4 = true
+	}
+	if got.v6 {
+		out.declaredV6++
+		have.v6 = true
+	}
+}
+
 func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnetSupernetScan {
 	t.Helper()
 	var coll pmCollection
@@ -207,7 +311,9 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 		// когда шаг её не публикует, работает признак «последняя созданная».
 		planless := map[string]string{} // переменная → координата шага-создателя
 		lastPlanless := ""
-		planDeclared := false
+		// Планы считаются ПОСЕМЕЙНО: сеть, объявившая только v4, для подсети v6
+		// плановой не является (продукт зовёт проверку по одному разу на семейство).
+		planDeclared := planFamilies{}
 
 		for _, step := range flattenItems(group, nil) {
 			if step.Request == nil {
@@ -235,7 +341,9 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 					continue
 				}
 				out.subnetFixtures++
-				if planDeclared {
+				need := familiesIn(stepScript(step, "test") + "\n" + stepScript(step, "prerequest"))
+				countCarveFamilies(&out, need)
+				if planDeclared.covers(need) {
 					continue
 				}
 				if lastPlanless == "" {
@@ -244,11 +352,11 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 				}
 				out.hits = append(out.hits, rel+" :: "+c.Name+" :: шаг «"+step.Name+
 					"» режет подсеть скриптом в сети из шага «"+lastPlanless+
-					"», которая плана не объявила")
+					"», которая не объявила план "+planDeclared.missing(need))
 			case method == "POST" && reAddBlocks.MatchString(strings.TrimSpace(url)):
 				if strings.Contains(raw, "CidrBlocks") && !refusal {
 					out.declaredPlans++
-					planDeclared = true
+					declareFamilies(&out, &planDeclared, familiesIn(raw))
 				}
 			case method == "POST" && reNetCreate.MatchString(strings.TrimSpace(url)):
 				if refusal {
@@ -256,7 +364,14 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 				}
 				if strings.Contains(raw, "CidrBlocks") {
 					out.declaredPlans++
-					planDeclared = true
+					declareFamilies(&out, &planDeclared, familiesIn(raw))
+					// Сеть, объявившая план ОДНОГО семейства, для другого остаётся
+					// беспланой: её имя обязано попасть в набор «без плана», иначе
+					// нарезка второго семейства не найдёт координаты своего родителя.
+					for _, v := range publishedVars(step) {
+						planless[v] = step.Name
+					}
+					lastPlanless = step.Name
 					continue
 				}
 				for _, v := range publishedVars(step) {
@@ -270,7 +385,9 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 					continue
 				}
 				out.subnetFixtures++
-				if planDeclared {
+				need := familiesIn(raw)
+				countCarveFamilies(&out, need)
+				if planDeclared.covers(need) {
 					continue
 				}
 				if lastPlanless == "" {
@@ -279,7 +396,7 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 				}
 				out.hits = append(out.hits, rel+" :: "+c.Name+" :: шаг «"+step.Name+
 					"» добавляет адрес подсети в сети из шага «"+lastPlanless+
-					"», которая плана не объявила")
+					"», которая не объявила план "+planDeclared.missing(need))
 			case method == "POST" && reSubnetCreate.MatchString(strings.TrimSpace(url)):
 				if !strings.Contains(raw, "ipv4CidrPrimary") && !strings.Contains(raw, "ipv6CidrPrimary") &&
 					!carvesAddressByScript(step) {
@@ -289,25 +406,36 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 					continue // предмет пробы — сам отказ, фикстурой она не является
 				}
 				out.subnetFixtures++
+				need := familiesIn(raw)
+				if !need.any() {
+					need = familiesIn(stepScript(step, "test") + "\n" + stepScript(step, "prerequest"))
+				}
+				countCarveFamilies(&out, need)
 				ref := ""
 				if m := reNetworkIDRef.FindStringSubmatch(raw); m != nil {
 					ref = m[1]
 				}
-				fromCase := lastPlanless != "" || planDeclared
+				fromCase := lastPlanless != "" || planDeclared.any()
 				if _, ok := planless[ref]; !ok && !fromCase {
 					// Родителя в кейсе нет — он приходит из посева/окружения.
 					out.parentOutOfCase++
 					continue
 				}
-				if planDeclared {
+				if planDeclared.covers(need) {
 					continue
 				}
 				where := planless[ref]
 				if where == "" {
 					where = lastPlanless
 				}
+				if where == "" {
+					// Родитель кейсу известен только объявленным планом ДРУГОГО
+					// семейства: координаты шага-создателя нет, но предмет есть.
+					where = "<создан вне кейса>"
+				}
 				out.hits = append(out.hits, rel+" :: "+c.Name+" :: шаг «"+step.Name+
-					"» режет подсеть в сети из шага «"+where+"», которая плана не объявила")
+					"» режет подсеть в сети из шага «"+where+"», которая не объявила план "+
+					planDeclared.missing(need))
 			}
 		}
 	}
@@ -445,6 +573,70 @@ func TestSubnetSupernetGateRedOnInjectedDefect(t *testing.T) {
 	if !strings.Contains(got.hits[0], "pre-sub") || !strings.Contains(got.hits[0], "pre-net") ||
 		!strings.Contains(got.hits[0], "SUB-X") {
 		t.Errorf("гейт обязан назвать кейс, режущий шаг и сеть без плана, получено: %q", got.hits[0])
+	}
+}
+
+// TestSubnetSupernetGateSeesFamiliesApart — различитель семейств, доказанный
+// инъекцией в ОБЕ стороны на одной и той же форме шага.
+//
+// Первая редакция гейта несла один флаг «план объявлен» на оба семейства, и это
+// была не описка, а слепая зона с последствием: сеть, объявившая только
+// `ipv4CidrBlocks`, засчитывалась плановой и для подсети v6 — которую продукт
+// отвергает синхронно. Слепота найдена не чтением: тот же кейс, внесённый в дерево,
+// оставлял гейт зелёным, хотя шаг он ВИДЕЛ и в перепись засчитывал.
+//
+// Обе стороны обязательны. Без красной гейт ничего не требует; без зелёной он
+// запрещал бы нарезку v4 в сети, объявившей план только v4, — и был бы снят первым
+// же ложным срабатыванием.
+func TestSubnetSupernetGateSeesFamiliesApart(t *testing.T) {
+	const shape = `{"item":[{"name":"F — %s carve on a %s-only plan","item":[
+      {"name":"mk-net","request":{"method":"POST","url":{"raw":"{{baseUrl}}/vpc/v1/networks"},
+        "body":{"raw":"{\"name\":\"n\",\"%sCidrBlocks\":[\"%s\"]}"}},
+        "event":[{"listen":"test","script":{"exec":[
+          "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+          "pm.environment.set('netId', pm.response.json().metadata.networkId);"]}}]},
+      {"name":"mk-sub","request":{"method":"POST","url":{"raw":"{{baseUrl}}/vpc/v1/subnets"},
+        "body":{"raw":"{\"networkId\":\"{{netId}}\",\"%sCidrPrimary\":\"%s\"}"}},
+        "event":[{"listen":"test","script":{"exec":[
+          "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"]}}]}
+    ]}]}`
+
+	build := func(planFam, planCIDR, subFam, subCIDR string) []byte {
+		return []byte(fmt.Sprintf(shape, subFam, planFam, planFam, planCIDR, subFam, subCIDR))
+	}
+
+	// КРАСНАЯ сторона: план только v4, режется v6.
+	red := analyzeSubnetSupernetFixtures(t, "families-red.json",
+		build("ipv4", "10.0.0.0/8", "ipv6", "fd00:1::/64"))
+	if red.carvesV6 != 1 || red.declaredV6 != 0 {
+		t.Fatalf("вход не разобран: carvesV6=%d declaredV6=%d — на неразобранном входе "+
+			"ни находка, ни молчание ничего не доказывают", red.carvesV6, red.declaredV6)
+	}
+	if len(red.hits) != 1 {
+		t.Fatalf("нарезка v6 в сети с планом ТОЛЬКО v4 обязана быть находкой, получено: %v", red.hits)
+	}
+	if !strings.Contains(red.hits[0], "IPv6") {
+		t.Errorf("находка обязана назвать НЕДОСТАЮЩЕЕ семейство, получено: %q", red.hits[0])
+	}
+
+	// ЗЕЛЁНАЯ сторона, случай 1: та же форма, но режется семейство объявленного плана.
+	sameFam := analyzeSubnetSupernetFixtures(t, "families-green-v4.json",
+		build("ipv4", "10.0.0.0/8", "ipv4", "10.1.0.0/24"))
+	if sameFam.carvesV4 != 1 {
+		t.Fatalf("вход не разобран: carvesV4=%d", sameFam.carvesV4)
+	}
+	if len(sameFam.hits) != 0 {
+		t.Fatalf("гейт сработал на законной нарезке v4 при плане v4: %v", sameFam.hits)
+	}
+
+	// ЗЕЛЁНАЯ сторона, случай 2: v6 при объявленном плане v6 — то же зеркально.
+	v6ok := analyzeSubnetSupernetFixtures(t, "families-green-v6.json",
+		build("ipv6", "fd00::/8", "ipv6", "fd00:1::/64"))
+	if v6ok.carvesV6 != 1 || v6ok.declaredV6 != 1 {
+		t.Fatalf("вход не разобран: carvesV6=%d declaredV6=%d", v6ok.carvesV6, v6ok.declaredV6)
+	}
+	if len(v6ok.hits) != 0 {
+		t.Fatalf("гейт сработал на законной нарезке v6 при плане v6: %v", v6ok.hits)
 	}
 }
 

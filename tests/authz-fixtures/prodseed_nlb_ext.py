@@ -58,11 +58,20 @@ def create(path, body, key):
 # Сеть объявляет адресный план: сеть без него подсеть не принимает (sync 400) —
 # нарезать не из чего. Посев без плана был бы снисходительнее продукта и
 # обрушил бы всё, что стоит на подсети (адрес, интерфейс, балансировщик).
+_NET_PLAN_V4 = "10.196.0.0/16"
+_NET_PLAN_V6 = "fd00:196::/48"
+
 net = create("/vpc/v1/networks",
              {"projectId": proj, "name": f"ps-nlb-net-{RID}",
-              "ipv4CidrBlocks": ["10.196.0.0/16"], "ipv6CidrBlocks": ["fd00:196::/48"]},
+              "ipv4CidrBlocks": [_NET_PLAN_V4], "ipv6CidrBlocks": [_NET_PLAN_V6]},
              "networkId")
 out["existingNetworkId"] = net
+# Публикуем ОБЪЯВЛЕННЫЙ план рядом с сетью — из него набор и режет свои подсети
+# (`carve_cidr_pre`). Этот посев объявляет план у́же, чем seed-nlb-fixtures.sh, и
+# кейс, выводивший адрес сам, уходил мимо него на КАЖДОМ прогоне: ширина плана —
+# свойство посева, а не набора, поэтому её нельзя прошивать на другой стороне.
+out["existingNetworkV4Plan"] = _NET_PLAN_V4
+out["existingNetworkV6Plan"] = _NET_PLAN_V6
 
 sub = create("/vpc/v1/subnets",
              {"projectId": proj, "networkId": net, "name": f"ps-nlb-sub-a-{RID}",
