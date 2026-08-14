@@ -292,9 +292,19 @@ CASES.append(Case(
             ],
         ),
         # Cleanup: можем не знать который subId выжил — list по net и удалить все.
+        #
+        # Список подсетей СЕТИ спрашивается сужением списочного запроса по
+        # `network_id`. Под-перечисление сети (`/vpc/v1/networks/{id}/subnets`)
+        # снято с контракта как второй путь к одному ответу; края такого маршрута
+        # не знает и отказывает fail-closed 403 (`type: authz.catalog`, пустой
+        # `action`), поэтому шаг падал не на своём предмете. Хуже того — падал
+        # ИМЕННО тот шаг, который несёт поведенческий замок EXCLUDE («две
+        # пересекающиеся подсети не переживают»), то есть инвариант гонки
+        # переставал проверяться вовсе.
         Step(
             name="list-and-cleanup", method="GET",
-            path="/vpc/v1/networks/{{netId}}/subnets?projectId={{_suiteProjectId}}",
+            path="/vpc/v1/subnets?projectId={{_suiteProjectId}}&pageSize=1000"
+                 "&filter=network_id%3D%22{{netId}}%22",
             test_script=[
                 *assert_status(200),
                 "const subs = (pm.response.json().subnets || []);",

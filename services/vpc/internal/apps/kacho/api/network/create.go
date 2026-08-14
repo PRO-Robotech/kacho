@@ -32,11 +32,12 @@ import (
 // SetDefaultRouteTableID со всеми outbox-emit'ами. Либо весь композит виден
 // (Commit), либо ни один DML (Abort/crash) — orphan-window исключён.
 //
-// Default-SG creation решается ДВУМЯ источниками, и решение вызывающего сильнее:
-// `CreateNetworkRequest.create_default_security_group` (tri-state, приходит опцией
-// `WithDefaultSecurityGroup`), а при его отсутствии — флаг `defaultSGInline`
-// (`KACHO_VPC_DEFAULT_SG_INLINE`). При итоговом «нет» worker default-SG не создаёт —
-// admin может досоздать его через public API. Default-RouteTable (F3) флагом НЕ гейтится: она
+// Default-SG creation БЕЗУСЛОВНО: ни поля запроса, ни настройки оператора, которые
+// бы её отменяли, больше нет. Условность была непоставленным пунктом утверждённой
+// приёмки и давала состояние, в котором сеть жива, а группы у неё нет; по решению
+// владельца модель закрыта в обе стороны и интерфейс НАСЛЕДУЕТ группу своей сети,
+// поэтому сеть без группы означала бы интерфейс без единого правила — «не разрешено
+// ничего». Default-RouteTable (F3) тоже не гейтится: она
 // материализует `Network.defaultRouteTableId°`, от которого зависит
 // детерминированная auto-assoc RT в Subnet.Create. Обе inline-композиции вынесены
 // в отдельные use-case'ы (`default_sg.go` / `default_rt.go`) и вызываются ВНУТРИ
@@ -45,7 +46,6 @@ type CreateNetworkUseCase struct {
 	repo            Repo
 	projectClient   ProjectClient
 	opsRepo         operations.Repo
-	defaultSGInline bool // KACHO_VPC_DEFAULT_SG_INLINE
 	createDefaultSG *CreateDefaultSGUseCase
 	// createDefaultRT — inline-провижн системной default-RouteTable (VPC-1 F3).
 	// В отличие от default-SG флагом НЕ гейтится: `Network.defaultRouteTableId°`
@@ -64,16 +64,17 @@ type CreateNetworkUseCase struct {
 	logger *slog.Logger
 }
 
-// NewCreateNetworkUseCase создает CreateNetworkUseCase. defaultSGInline берется
-// из конфига (`cfg.Network.DefaultSGInline`) — при true в одной writer-TX
+// NewCreateNetworkUseCase создает CreateNetworkUseCase. Признака условности
+// создания группы по умолчанию у конструктора НЕТ намеренно: его появление снова
+// сделало бы посадку безопасности зависящей от настройки стенда. Прежний текст
+// пояснял, откуда берётся
 // создается default SG (через композицию с `CreateDefaultSGUseCase`) и
 // `Network.default_security_group_id` заполняется атомарно с Insert(Network).
-func NewCreateNetworkUseCase(r Repo, projectClient ProjectClient, opsRepo operations.Repo, defaultSGInline bool) *CreateNetworkUseCase {
+func NewCreateNetworkUseCase(r Repo, projectClient ProjectClient, opsRepo operations.Repo) *CreateNetworkUseCase {
 	return &CreateNetworkUseCase{
 		repo:            r,
 		projectClient:   projectClient,
 		opsRepo:         opsRepo,
-		defaultSGInline: defaultSGInline,
 		createDefaultSG: NewCreateDefaultSGUseCase(),
 		createDefaultRT: NewCreateDefaultRTUseCase(),
 	}
@@ -96,48 +97,11 @@ func (u *CreateNetworkUseCase) WithRegistrar(r fgaregister.Registrar) *CreateNet
 	return u
 }
 
-// CreateOption — опция вызова `Execute`, несущая РЕШЕНИЕ ВЫЗЫВАЮЩЕГО, а не свойство
-// ресурса. Вариадическая форма выбрана намеренно: решение приходит из запроса и
-// существует только на время Create, поэтому в `domain.Network` ему места нет
-// (сущность осталась самовалидируемой и без create-time инструкций), а все прежние
-// вызовы `Execute(ctx, n)` продолжают компилироваться и означать прежнее.
-type CreateOption func(*createOptions)
-
-type createOptions struct {
-	// defaultSG — tri-state: nil = «вызывающий не высказался» (fallback на конфиг),
-	// иначе явное решение. Именно tri-state, а не bool: proto3 не различает
-	// «не прислано» и `false`, поэтому поле объявлено `optional` — и различие обязано
-	// дойти до решения, иначе `false` неотличим от молчания.
-	defaultSG *bool
-}
-
-// WithDefaultSecurityGroup — явное решение вызывающего про авто-создание default-SG
-// (`CreateNetworkRequest.create_default_security_group`). nil → решает конфиг стенда
-// (`KACHO_VPC_DEFAULT_SG_INLINE`), как обещает комментарий поля в контракте.
-//
-// До появления этой опции поле запроса до use-case'а не доезжало вовсе: решение
-// принимал ТОЛЬКО конфиг, и тенант, попросивший сеть без системной группы
-// безопасности, получал её вместе с системной — с кодом успеха. Речь о том, что
-// определяет допустимый трафик, поэтому «поле на будущее» здесь не оправдание.
-// Лок: default_sg_request_test.go.
-func WithDefaultSecurityGroup(v *bool) CreateOption {
-	return func(o *createOptions) { o.defaultSG = v }
-}
-
 // Execute — sync-валидация + create Operation + запуск worker'а. Возвращает
 // созданный Operation указателем (caller'у нужен он для `OperationService.Get`).
 // Принимает `domain.Network` напрямую; поле `n.ID` на входе пустое — назначаем
 // внутри use-case'а через `ids.NewID(ids.PrefixNetwork)`.
-func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network, opts ...CreateOption) (*operations.Operation, error) {
-	var o createOptions
-	for _, apply := range opts {
-		apply(&o)
-	}
-	// Решение вызывающего перебивает конфиг; молчание — падает на конфиг.
-	inlineSG := u.defaultSGInline
-	if o.defaultSG != nil {
-		inlineSG = *o.defaultSG
-	}
+func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*operations.Operation, error) {
 	if n.ProjectID == "" {
 		return nil, status.Error(codes.InvalidArgument, "project_id required")
 	}
@@ -209,7 +173,7 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network, op
 				}
 			}
 		}()
-		res, derr = u.doCreate(ctx, netID, n, inlineSG)
+		res, derr = u.doCreate(ctx, netID, n)
 		if derr != nil && u.logger != nil {
 			u.logger.Error("network create operation failed",
 				"op", op.ID, "network_id", netID, "project_id", string(n.ProjectID),
@@ -251,7 +215,7 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network, op
 // ссылается на только что вставленный Network в той же tx (видимость + Postgres
 // constraint check на коммите — INSERT(child) после INSERT(parent) в одной TX
 // проходит).
-func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n domain.Network, inlineSG bool) (*anypb.Any, error) {
+func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n domain.Network) (*anypb.Any, error) {
 	exists, err := u.projectClient.Exists(ctx, n.ProjectID)
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "project check: %v", err)
@@ -276,15 +240,13 @@ func (u *CreateNetworkUseCase) doCreate(ctx context.Context, netID string, n dom
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 
-	if inlineSG {
-		// Композиция use-case'ов в одной writer-TX: CreateDefaultSGUseCase
-		// работает в нашей `w` — Abort/Commit делает caller. Возвращаемую им
-		// проекцию сети здесь не удерживаем: следующий шаг (default-RT) обновляет
-		// ту же строку и его RETURNING отдаёт её целиком, уже с проставленным
-		// default_security_group_id.
-		if _, sgErr := u.createDefaultSG.Execute(ctx, w, created.Network); sgErr != nil {
-			return nil, sgErr
-		}
+	// Системная группа правил по умолчанию — в ТОЙ ЖЕ writer-TX, БЕЗУСЛОВНО.
+	// Композиция use-case'ов в одной транзакции: он работает в нашей `w`, а
+	// Abort/Commit делает вызывающий. Возвращаемую им проекцию сети здесь не
+	// удерживаем: следующий шаг (таблица по умолчанию) обновляет ту же строку и его
+	// RETURNING отдаёт её целиком, уже с проставленным идентификатором группы.
+	if _, sgErr := u.createDefaultSG.Execute(ctx, w, created.Network); sgErr != nil {
+		return nil, sgErr
 	}
 
 	// Системная default-RouteTable (F3) — в ТОЙ ЖЕ writer-TX, безусловно:

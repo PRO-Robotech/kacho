@@ -55,7 +55,7 @@ Owns:
 | NetworkInterface | first-class NIC: принадлежит Subnet, ссылается на Address по id | `nic` |
 | RouteTable | static routes для Network | `rtb` |
 | SecurityGroup | firewall rules; `network_id` **обязателен** на Create и immutable после него | `sgr` |
-| Gateway | shared egress (NAT-style) | `gtw` |
+| Gateway | выход наружу: `NAT` (IPv4) либо `EGRESS_ONLY` (IPv6); якорь — подсеть | `gtw` |
 
 > Префиксы — из `pkg/ids` (3-char + 17 crockford-base32), у каждого ресурса свой.
 > Operation у VPC несет **отдельный** prefix `PrefixOperationVPC = "enp"` (декаплен от

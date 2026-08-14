@@ -31,24 +31,10 @@ service AddressService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Returns the specified Address resource by a given value.
-  //
-  // To get the list of all available Address resources, make a [List] request.
-  rpc GetByValue(GetAddressByValueRequest) returns (Address) {
-    option (google.api.http) = {get: "/vpc/v1/addresses:byValue"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.address_by_values.getByValue";
-    option (kacho.iam.authz.v1.required_relation) = "v_get";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_subnet"
-      from_request_field: "subnet_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
   // Retrieves the list of Address resources in the specified folder.
   rpc List(ListAddressesRequest) returns (ListAddressesResponse) {
     option (google.api.http) = {get: "/vpc/v1/addresses"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.addresseses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.addresses.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -61,18 +47,6 @@ service AddressService {
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Retrieves the list of Address resources in the specified subnet.
-  rpc ListBySubnet(ListAddressesBySubnetRequest) returns (ListAddressesBySubnetResponse) {
-    option (google.api.http) = {get: "/vpc/v1/addresses:bySubnet"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.addresses_by_subnets.listBySubnet";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_subnet"
-      from_request_field: "subnet_id"
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
@@ -134,7 +108,7 @@ service AddressService {
   // List operations for the specified address.
   rpc ListOperations(ListAddressOperationsRequest) returns (ListAddressOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/addresses/{address_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.address_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.address_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_address"
@@ -202,6 +176,19 @@ message ListAddressesRequest {
   // internal_ipv6 with this subnet_id). Used by the UI ref-picker for a NIC's
   // addresses in a given subnet.
   string subnet_id = 5 [(length) = "<=50"];
+
+  // Optional: list only the address whose allocated value equals this IP.
+  //
+  // Замена снятому `GetByValue`. Тот метод отвечал на вопрос «чей это адрес?», но
+  // его внешняя ветвь была НЕАВТОРИЗУЕМА ПО ПОСТРОЕНИЮ: область запроса бралась из
+  // подсети, а у внешнего адреса подсети нет — значит для него не существовало
+  // объекта, про который можно задать вопрос о правах. Тот же сценарий закрывается
+  // списком с сужением: область берётся из `project_id`, который вызывающий и так
+  // обязан назвать, а страница проверяется по правам построчно.
+  //
+  // Сужение применяется к ОБОИМ семействам и к обеим формам владения (внутренний
+  // адрес подсети и внешний из пула): «чей это адрес» — один вопрос, а не четыре.
+  string ip_address = 6 [(length) = "<=45"];
 }
 
 message ListAddressesResponse {
@@ -311,7 +298,24 @@ message ExternalIpv4AddressSpec {
   string zone_id = 2; // only if address unspecified
 
   // Parameters of the allocated address, for example DDoS Protection.
-  AddressRequirements requirements = 3;
+  // 3 — requirements, СНЯТО с контракта вместе с сообщением AddressRequirements.
+  //
+  // Сообщение несло РОВНО ДВА поля, и оба сняты, поэтому оставлять его значило бы
+  // держать пустую разновидность — тот же дефект, что у пустого варианта шлюза.
+  //
+  // Что было в этих полях:
+  //   - защита от распределённых атак: словарь допустимых значений в ОБЩЕМ фундаменте
+  //     называл имя конкретного ВНЕШНЕГО поставщика, то есть публичное поле опознавало
+  //     конкретную оснастку; при этом ни одна ветвь на значении не ветвилась —
+  //     принято-и-проигнорировано;
+  //   - возможность исходящей почты: у поля не было ни одного законного непустого
+  //     входа (любое непустое значение отвергалось всегда), то есть поле не несло
+  //     ничего.
+  //
+  // Целая подсистема защиты от атак заводится своим доменом со своей приёмкой, а не
+  // полем в чужом сообщении. Разрывы объявлены в proto/declared-breaks.yaml.
+  reserved 3;
+  reserved "requirements";
 }
 
 message InternalIpv4AddressSpec {
@@ -352,7 +356,24 @@ message ExternalIpv6AddressSpec {
   // Parameters of the allocated address. Same shape as v4 even if some
   // attributes (e.g. SMTP capability) may not apply for v6 — kept symmetric
   // for client-side ergonomics.
-  AddressRequirements requirements = 3;
+  // 3 — requirements, СНЯТО с контракта вместе с сообщением AddressRequirements.
+  //
+  // Сообщение несло РОВНО ДВА поля, и оба сняты, поэтому оставлять его значило бы
+  // держать пустую разновидность — тот же дефект, что у пустого варианта шлюза.
+  //
+  // Что было в этих полях:
+  //   - защита от распределённых атак: словарь допустимых значений в ОБЩЕМ фундаменте
+  //     называл имя конкретного ВНЕШНЕГО поставщика, то есть публичное поле опознавало
+  //     конкретную оснастку; при этом ни одна ветвь на значении не ветвилась —
+  //     принято-и-проигнорировано;
+  //   - возможность исходящей почты: у поля не было ни одного законного непустого
+  //     входа (любое непустое значение отвергалось всегда), то есть поле не несло
+  //     ничего.
+  //
+  // Целая подсистема защиты от атак заводится своим доменом со своей приёмкой, а не
+  // полем в чужом сообщении. Разрывы объявлены в proto/declared-breaks.yaml.
+  reserved 3;
+  reserved "requirements";
 }
 
 // DnsRecordSpec used to live here, referenced only by the two withdrawn

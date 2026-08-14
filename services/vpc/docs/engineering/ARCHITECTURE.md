@@ -169,7 +169,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | `KACHO_VPC_INTERNAL_PORT` | `9091` | Internal gRPC |
 | `KACHO_VPC_IAM_GRPC_ADDR` | `iam.kacho.svc:9090` | Endpoint kacho-iam (`extapi.iam.endpoint`) |
 | `KACHO_VPC_IAM_TLS` | `false` | TLS на канале к kacho-iam (`extapi.iam.tls.enable`) |
-| `KACHO_VPC_DEFAULT_SG_INLINE` | `true` | `true` — `Network.doCreate` синхронно создает default SG. `false` — Network.Create НЕ создает SG (убирает 2 INSERT + 1 UPDATE из hot-path, +30-40% write-throughput; для load-тестов и deploy с внешним SG-reconciler'ом). При `false` newman-кейсы `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` краснеют |
+
 | `KACHO_VPC_AUTH_MODE` | `dev` | `dev / production / production-strict` |
 
 `production-strict` требует `KACHO_VPC_IAM_TLS=true` и `DB_SSLMODE ∈
@@ -212,7 +212,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
 | Файл | Тип | Заметки |
 |---|---|---|
 | `network.go` | `Network` | `default_security_group_id` поле строкой |
-| `subnet.go` | `Subnet` + `DhcpOptions` | CIDR-блоки строками, не `net.IPNet` |
+| `subnet.go` | `Subnet` | CIDR-блоки строками, не `net.IPNet` |
 | `address.go` | `Address`, `ExternalIpv4Spec`, `InternalIpv4Spec`, `AddressRequirements` | JSONB-формы для external/internal |
 | `route_table.go` | `RouteTable` + `StaticRoute` | StaticRoute хранится как jsonb-массив |
 | `security_group.go` | `SecurityGroup` + `SecurityGroupRule` | Rules embedded в jsonb |
@@ -575,8 +575,8 @@ admin-заголовка. Привилегию выдаёт и отзывает 
 
 | Ресурс | ID prefix | Доп. поля | Особенности |
 |---|---|---|---|
-| Network | `net` | `default_security_group_id`, `ipv4_cidr_blocks`/`ipv6_cidr_blocks` (объявленный супернет), `default_route_table_id`, `route_distinguisher`, `vrf_id` (internal-only) | default SG создается inline в worker'е Create (опционально — `KACHO_VPC_DEFAULT_SG_INLINE`, умолчание `true`); супернет ограничивает CIDR подсетей; `default_route_table_id` — источник истины о RT подсети без явной ссылки; `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
-| Subnet | `sub` | `network_id`, `placement_type` (`ZONAL`\|`REGIONAL`), `zone_id`\|`region_id`, `v4_cidr_blocks[]`/`v6_cidr_blocks[]` (элемент `[1]` — якорь `ipv4_cidr_primary`/`ipv6_cidr_primary` контракта), `route_table_id` | Размещение — дискриминатор, обязателен и immutable, пара зона/регион взаимоисключается CHECK'ом; якорь CIDR immutable, дополнительные блоки — `:add/:remove-cidr-blocks`; неперекрытие ВСЕХ блоков — EXCLUDE на child-таблице `subnet_cidr_blocks`; `zone_id`/`region_id` — id-строки домена geo (без FK). Колонка `dhcp_options` осталась от baseline, контракта у неё нет |
+| Network | `net` | `default_security_group_id`, `ipv4_cidr_blocks`/`ipv6_cidr_blocks` (объявленный супернет), `default_route_table_id`, `vrf_id` (internal-only) | группа правил по умолчанию создаётся в воркере Create БЕЗУСЛОВНО; супернет ограничивает CIDR подсетей; `default_route_table_id` — источник истины о RT подсети без явной ссылки; `vrf_id` — internal-only инфра-идентификатор, на публичной поверхности нет |
+| Subnet | `sub` | `network_id`, `placement_type` (`ZONAL`\|`REGIONAL`), `zone_id`\|`region_id`, `v4_cidr_blocks[]`/`v6_cidr_blocks[]` (элемент `[1]` — якорь `ipv4_cidr_primary`/`ipv6_cidr_primary` контракта), `route_table_id` | Размещение — дискриминатор, обязателен и immutable, пара зона/регион взаимоисключается CHECK'ом; якорь CIDR immutable, дополнительные блоки — `:add/:remove-cidr-blocks`; неперекрытие ВСЕХ блоков — EXCLUDE на child-таблице `subnet_cidr_blocks`; `zone_id`/`region_id` — id-строки домена geo (без FK) |
 | Address | `adr` | `addr_type`, `ip_version`, `reserved`, `used`, `used_by`, `deletion_protection`, `external_ipv4` (jsonb), `internal_ipv4` (jsonb), `internal_ipv6` (jsonb) | Generated `internal_subnet_id` (из `internal_ipv4` ИЛИ `internal_ipv6`) → FK `addresses_internal_subnet_fkey ON DELETE RESTRICT`; `internal_ipv6_address_spec` + `InternalAddressService.AllocateInternalIPv6`; `Delete` used-адреса (referrer=NIC) → `FailedPrecondition` |
 | NetworkInterface | `nic` | `subnet_id` (FK RESTRICT), `mac_address`, `v4_address_ids[]`/`v6_address_ids[]` (ссылки на Address по id), `security_group_ids[]`, `used_by` (Reference — Attach/Detach), `status` enum | first-class самостоятельный сетевой интерфейс (отдельный от Instance); может быть создан без адресов; один Address ≤ на одном NIC (referrer-rows `address_references`, `referrer_type="network_interface"`); проекция чисто control-plane (lean) — инфра-полей у kacho-vpc нет |
 | RouteTable | `rtb` | `network_id`, `static_routes` (jsonb-массив) | Static-routes embedded |
@@ -642,7 +642,7 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 **Dependency / delete-blocking chain:** NIC → Address → Subnet → Network — все RESTRICT, удаление снизу вверх:
 - `Address.Delete` used-адреса (referrer = NIC) → `FailedPrecondition "address ... is in use by network interface ...; detach it before deleting the address"`. Освободить — detach от NIC / удаление NIC.
 - `Subnet.Delete` — sync-precheck: есть внутренний Address (v4 ИЛИ v6 — `AddressesBySubnet` смотрит и `internal_ipv4`, и `internal_ipv6`) → `FailedPrecondition "Subnet has allocated internal addresses"`; есть NIC → `FailedPrecondition "subnet ... has N network interface(s) (...); delete them first"`. DB-backstops: `addresses_internal_subnet_fkey` (на generated-колонке `addresses.internal_subnet_id`) + `network_interfaces_subnet_id_fkey ON DELETE RESTRICT`.
-- `Network.Delete` непустой (subnets / route tables / non-default SG) → `FailedPrecondition "Network ... is not empty"`; default SG авто-удаляется Delete-worker'ом.
+- `Network.Delete` непустой (subnets / route tables / non-default SG) → `FailedPrecondition "Network <id> is not empty (subnets: 2, route tables: 1)"` (перечень мешающего по видам и числам); default SG авто-удаляется Delete-worker'ом.
 
 Реальные FK constraint-ы в схеме:
 
@@ -683,8 +683,8 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | Таблица | Колонки (ключевые) |
 |---|---|
 | `operations` | `id text PK`, `description`, `created_at`, `created_by`, `done`, `metadata_type`, `metadata_data bytea`, `resource_id`, `response_type`, `response_data bytea`, `error_*` |
-| `networks` | `id text PK`, `project_id`, `created_at`, `name`, `description`, `labels jsonb`, `default_security_group_id`, `route_distinguisher`, `vrf_id bigint` (internal-only) |
-| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `placement_type text` (CHECK `ZONAL`\|`REGIONAL`), `zone_id text` / `region_id text` (без FK — geography→geo, взаимоисключаются CHECK'ом), `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `route_table_id`, `dhcp_options jsonb` (без контракта), `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
+| `networks` | `id text PK`, `project_id`, `created_at`, `name`, `description`, `labels jsonb`, `default_security_group_id`, `vrf_id bigint` (internal-only) |
+| `subnets` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `network_id`, `placement_type text` (CHECK `ZONAL`\|`REGIONAL`), `zone_id text` / `region_id text` (без FK — geography→geo, взаимоисключаются CHECK'ом), `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `route_table_id`, `v4_cidr_primary cidr GENERATED`, `v6_cidr_primary cidr GENERATED` |
 | `addresses` | `id`, `project_id`, `created_at`, `name`, `description`, `labels`, `addr_type smallint`, `ip_version smallint`, `reserved`, `used`, `used_by_type/id/name`, `deletion_protection`, `external_ipv4 jsonb`, `internal_ipv4 jsonb`, `internal_ipv6 jsonb`, `internal_subnet_id text GENERATED` (из `internal_ipv4` ИЛИ `internal_ipv6`) |
 | `network_interfaces` | `id text PK` (`nic…`), `project_id`, `created_at`, `name`, `labels`, `subnet_id text NOT NULL FK→subnets ON DELETE RESTRICT`, `mac_address text`, `v4_address_ids text[]`, `v6_address_ids text[]`, `security_group_ids text[]`, `used_by_type/id/name text`, `status smallint` |
 | `address_references` | `address_id text PK FK→addresses ON DELETE CASCADE`, `referrer_type text` (`compute_instance` \| `network_interface`), `referrer_id`, `referrer_name`, `attached_at` |
@@ -929,10 +929,8 @@ client      api-gw    vpc.handler    vpc.service    projectClient    iam    netw
   |<--Network---+                                                                                      |
 ```
 
-> При `KACHO_VPC_DEFAULT_SG_INLINE=false` шаги `Insert(default SG)` /
-> `Network UPDATE default_sg_id` / `emit SecurityGroup.CREATED` пропускаются —
-> `Network.default_security_group_id` остается пустым (создание default SG
-> делегируется внешнему reconciler'у). Default — `true`.
+> Группа правил по умолчанию создаётся безусловно: шагов, которые бы пропускались
+> настройкой, больше нет.
 
 ### 9.2 Allocate External IP (cascade + двухфазный allocator)
 
@@ -1175,7 +1173,6 @@ tests/newman/
 Запуск: `python3 tests/newman/scripts/gen.py` (перегенерить коллекции) → `tests/newman/scripts/run.sh`
 (все 8 сервисов; `--service network` для одного). Изоляция: каждый case — внутри своего
 `runId`, suite — внутри pre-allocated `existingProjectId`/`existingProjectCrossId` (env), Account/Project
-не создает. Требует `KACHO_VPC_DEFAULT_SG_INLINE=true` (default; иначе default-SG-кейсы краснеют).
 Текущий результат — `tests/newman/docs/RESULTS.md`.
 
 (Нагрузочные сценарии — рядом, `tests/k6/` (k6 HTTP + ghz gRPC Jobs),
@@ -1338,7 +1335,6 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | Линтер | `golangci-lint run` чистый |
 | Миграции | `bin/kacho-vpc migrate up` идемпотентен |
 | Service start | `bin/kacho-vpc serve` слушает 9090 и 9091 |
-| Newman | `python3 tests/newman/scripts/gen.py && tests/newman/scripts/run.sh` — 0 failures (нужен port-forward api-gateway → 18080 + `KACHO_VPC_DEFAULT_SG_INLINE=true`) |
 | Polling-наблюдение | Создание Network → `OperationService.Get` доходит до `done=true`, ресурс виден в `List` (Watch RPC нет) |
 | Allocate IP | `InternalAddressService.AllocateExternalIP` возвращает IP из настроенного pool'а |
 | Cascade | Изменение network-default binding / is_default-пула меняет выбираемый pool без рестарта |

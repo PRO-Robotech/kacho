@@ -63,6 +63,17 @@ helper-функции). Дальше — обычные инкрементные
 | 0025 | `0025_addresses_read_path.sql` | чтения по адресам стоят столько, сколько отдают: страница адресов подсети читалась дизъюнкцией по jsonb |
 | 0026 | `0026_addresses_external_v6_global_uniq.sql` | внешний IPv6 глобально уникален, как и внешний IPv4 (ban #10 — инвариант на DB-уровне) |
 | 0027 | `0027_security_group_rules_domain.sql` | область значений правила SG (протокол, диапазон портов) — конструкцией базы, а не только синхронной проверкой |
+| 0029 | `0029_retired_contract_columns_and_rule_targets.sql` | снятое с контракта пережило свои строки: DROP `subnets.dhcp_options` и `networks.route_distinguisher` (читателей ноль), плюс нормализация правил SG со снятой ветвью цели — `self_security_group` выражается живой ветвью (цель = сама группа), правило без выразимой цели снимается (оно не разрешало ничего и блокировало правку группы). Числа по каждому виду печатаются в NOTICE |
+
+| 0036 | `0036_network_interface_bandwidth_limit.sql` | верхняя граница полосы интерфейса, заданная арендатором: колонка `bandwidth_limit_mbps` (0 = не задано) + CHECK «ноль либо строго выше обещанного продуктом пола». Верхний край промежутка — объявление посадки, поэтому в схеме его нет: он живёт в профиле возможностей исполнителя и проверяется на пути запроса |
+| 0037 | `0037_security_group_used_by_indexes.sql` | обратная ссылка группы правил («кем используется») — запросом, а не таблицей: GIN `jsonb_path_ops` на `network_interfaces.security_group_ids` + частичный btree на `networks.default_security_group_id`. Предикат частичного — `IS NOT NULL`, а не сравнение с пустой строкой: из `col = $1` планировщик выводит первое и не выводит второе, поэтому индекс с `<> ''` не применился бы ни разу |
+
+> [!note] Перечень выше НЕ полон и полнотой не притворяется
+> Строки 0028 и 0030…0036 в него не внесены — они появились в дереве, а сюда не
+> доехали. Свой ряд добавляю, чужие не сочиняю: восстановить их по памяти значило бы
+> завести описания, которых никто не сверял. Предикат, по которому расхождение видно
+> одной командой: `ls services/vpc/internal/migrations/*.sql | wc -l` против числа
+> строк таблицы (`grep -c '^| 00' 05-database.md`).
 
 ⚠️ Запреты:
 - НЕ редактировать примененную миграцию. Только новая, со следующим свободным номером.
@@ -114,8 +125,6 @@ v6_cidr_blocks                 TEXT[] NOT NULL DEFAULT '{}'   -- [1] = якор�
 v4_cidr_primary                CIDR GENERATED ALWAYS AS (v4_cidr_blocks[1]) STORED
 v6_cidr_primary                CIDR GENERATED STORED
 route_table_id                 TEXT NULL FK ON DELETE SET NULL
-dhcp_options                   JSONB   -- baseline-колонка БЕЗ контракта: поле снято из
-                                       -- Subnet/Create/Update (номера и имя зарезервированы)
 
 subnets_project_id_name_key      UNIQUE (project_id, name) WHERE name <> ''
 subnets_placement_type_chk       CHECK (placement_type IN ('ZONAL','REGIONAL'))          -- 0012
@@ -145,7 +154,7 @@ CIDR задаётся якорем на Create (immutable); дополнител
 id, project_id                  TEXT NOT NULL
 addr_type                      smallint  (1=ext, 2=int)
 ip_version                     smallint
-external_ipv4                  JSONB     (address, zone_id, address_pool_id, requirements)
+external_ipv4                  JSONB     (address, zone_id, address_pool_id) — блок требований снят с контракта
 external_ipv6                  JSONB
 internal_ipv4                  JSONB     (address, subnet_id)
 internal_ipv6                  JSONB     (address, subnet_id)
@@ -183,6 +192,11 @@ used_by_index       INT     -- 0014: слот привязки NIC↔Instance (d
 used_by_type / used_by_id / used_by_name   TEXT   -- denormalised Reference «кто использует NIC» — устанавливается атомарным CAS на смену владельца
 mac_address         TEXT UNIQUE cloud-wide, NOT NULL    -- output-only, аллоцируется при Create
 status              TEXT  -- PROVISIONING/ACTIVE/AVAILABLE/FAILED/DELETING
+bandwidth_limit_mbps BIGINT NOT NULL DEFAULT 0  -- 0036: верхняя граница полосы, заданная арендатором.
+                            -- 0 — «не задано» (единственное представление отсутствия; ограничение в
+                            -- ноль мегабит не выражает ни одна законная просьба). CHECK: 0 ИЛИ строго
+                            -- выше опубликованного пола продукта. Верхний край — объявление ПОСАДКИ,
+                            -- в схему не вморожен: он разошёлся бы с настройкой при первой её правке
 created_at          TIMESTAMPTZ
 ```
 

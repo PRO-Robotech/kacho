@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A Gateway resource. For more information, see [Gateway](/docs/vpc/concepts/gateways).
+// A Gateway resource. For more information, see [Gateway](https://vpc.kacho.cloud/api/gateway).
 type Gateway struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the gateway. Generated at creation time.
@@ -47,11 +47,24 @@ type Gateway struct {
 	// The string length in characters for each key must be 1-63.
 	// Each key must match the regular expression `[a-z][-_./\\@0-9a-z]*`.
 	Labels map[string]string `protobuf:"bytes,6,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Gateway specification
+	// ID of the subnet the gateway is attached to. Required at creation time and
+	// immutable afterwards.
+	//
+	// This is the gateway's binding AND its placement anchor: the gateway does not
+	// carry a zone or a region of its own, it inherits placement from the subnet —
+	// the same way a NetworkInterface and an Address do. A static route may name
+	// this gateway as its next hop only from a route table of the same network, and
+	// only when placement stays coherent (zonal to zonal — same zone; a REGIONAL
+	// anycast subnet carries no zone and is therefore out of the zonal comparison
+	// by construction).
+	SubnetId string `protobuf:"bytes,8,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	// What the gateway does. Chosen at creation time, immutable afterwards:
+	// changing the kind of a gateway means a different gateway.
 	//
 	// Types that are valid to be assigned to Gateway:
 	//
-	//	*Gateway_SharedEgressGateway
+	//	*Gateway_NatGateway
+	//	*Gateway_EgressOnlyGateway
 	Gateway       isGateway_Gateway `protobuf_oneof:"gateway"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -129,6 +142,13 @@ func (x *Gateway) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *Gateway) GetSubnetId() string {
+	if x != nil {
+		return x.SubnetId
+	}
+	return ""
+}
+
 func (x *Gateway) GetGateway() isGateway_Gateway {
 	if x != nil {
 		return x.Gateway
@@ -136,10 +156,19 @@ func (x *Gateway) GetGateway() isGateway_Gateway {
 	return nil
 }
 
-func (x *Gateway) GetSharedEgressGateway() *SharedEgressGateway {
+func (x *Gateway) GetNatGateway() *NatGateway {
 	if x != nil {
-		if x, ok := x.Gateway.(*Gateway_SharedEgressGateway); ok {
-			return x.SharedEgressGateway
+		if x, ok := x.Gateway.(*Gateway_NatGateway); ok {
+			return x.NatGateway
+		}
+	}
+	return nil
+}
+
+func (x *Gateway) GetEgressOnlyGateway() *EgressOnlyGateway {
+	if x != nil {
+		if x, ok := x.Gateway.(*Gateway_EgressOnlyGateway); ok {
+			return x.EgressOnlyGateway
 		}
 	}
 	return nil
@@ -149,33 +178,70 @@ type isGateway_Gateway interface {
 	isGateway_Gateway()
 }
 
-type Gateway_SharedEgressGateway struct {
-	SharedEgressGateway *SharedEgressGateway `protobuf:"bytes,7,opt,name=shared_egress_gateway,json=sharedEgressGateway,proto3,oneof"`
+type Gateway_NatGateway struct {
+	// Public egress translation for IPv4.
+	NatGateway *NatGateway `protobuf:"bytes,9,opt,name=nat_gateway,json=natGateway,proto3,oneof"`
 }
 
-func (*Gateway_SharedEgressGateway) isGateway_Gateway() {}
+type Gateway_EgressOnlyGateway struct {
+	// Egress-only reachability for IPv6.
+	EgressOnlyGateway *EgressOnlyGateway `protobuf:"bytes,10,opt,name=egress_only_gateway,json=egressOnlyGateway,proto3,oneof"`
+}
 
-// Shared Egress Gateway configuration
-type SharedEgressGateway struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+func (*Gateway_NatGateway) isGateway_Gateway() {}
+
+func (*Gateway_EgressOnlyGateway) isGateway_Gateway() {}
+
+// Public egress translation for IPv4: instances of the subnets that route
+// through this gateway reach outside, translated to a public address; inbound
+// connections are not established by the translation itself.
+//
+// What the arm decides is checked, not merely recorded: the anchor subnet must
+// carry an IPv4 CIDR block (there is nothing to translate otherwise), and a
+// static route naming this gateway must have an IPv4 destination.
+type NatGateway struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the external Address this gateway translates through.
+	//
+	// Output-only. The address is allocated when the gateway is created and is
+	// held for as long as the gateway exists; there is no input counterpart on
+	// `NatGatewaySpec`, because a translating gateway without a public address
+	// does not do the one thing it exists for, and so there is nothing for the
+	// caller to choose. Read the address value itself with
+	// [AddressService.Get] — it is not mirrored here, so it cannot go stale.
+	//
+	// The binding is a reference the address itself carries: the allocated
+	// address reports this gateway back in [Address.used_by] with
+	// `referrer.type = "vpc_gateway"`. One address serves at most one gateway.
+	//
+	// Placement is not a choice either — it is inherited. The address is taken
+	// from the pool of the anchor subnet's zone, so a zonal gateway translates
+	// through an address of its own zone; a REGIONAL (anycast) anchor subnet
+	// carries no zone, so its gateway takes a zone-independent address and is out
+	// of the zonal comparison by construction.
+	//
+	// The lease returns to the pool when the gateway is deleted. There is no
+	// second release path: the kind of a gateway is immutable, so an address
+	// cannot be stranded by turning translation off.
+	AddressId     string `protobuf:"bytes,1,opt,name=address_id,json=addressId,proto3" json:"address_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SharedEgressGateway) Reset() {
-	*x = SharedEgressGateway{}
+func (x *NatGateway) Reset() {
+	*x = NatGateway{}
 	mi := &file_kacho_cloud_vpc_v1_gateway_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SharedEgressGateway) String() string {
+func (x *NatGateway) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SharedEgressGateway) ProtoMessage() {}
+func (*NatGateway) ProtoMessage() {}
 
-func (x *SharedEgressGateway) ProtoReflect() protoreflect.Message {
+func (x *NatGateway) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_vpc_v1_gateway_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -187,16 +253,66 @@ func (x *SharedEgressGateway) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SharedEgressGateway.ProtoReflect.Descriptor instead.
-func (*SharedEgressGateway) Descriptor() ([]byte, []int) {
+// Deprecated: Use NatGateway.ProtoReflect.Descriptor instead.
+func (*NatGateway) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_gateway_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *NatGateway) GetAddressId() string {
+	if x != nil {
+		return x.AddressId
+	}
+	return ""
+}
+
+// Egress-only reachability for IPv6: traffic leaves outward, inbound connections
+// are not established. No public address is allocated — the absence of inbound
+// reachability is the whole point of the arm, which is why it carries no address
+// parameter.
+//
+// The anchor subnet must carry an IPv6 CIDR block, and a static route naming this
+// gateway must have an IPv6 destination.
+type EgressOnlyGateway struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EgressOnlyGateway) Reset() {
+	*x = EgressOnlyGateway{}
+	mi := &file_kacho_cloud_vpc_v1_gateway_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EgressOnlyGateway) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EgressOnlyGateway) ProtoMessage() {}
+
+func (x *EgressOnlyGateway) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_gateway_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EgressOnlyGateway.ProtoReflect.Descriptor instead.
+func (*EgressOnlyGateway) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_gateway_proto_rawDescGZIP(), []int{2}
 }
 
 var File_kacho_cloud_vpc_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/gateway.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8f\x03\n" +
+	" kacho/cloud/vpc/v1/gateway.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x86\x04\n" +
 	"\aGateway\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -205,13 +321,21 @@ const file_kacho_cloud_vpc_v1_gateway_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x05 \x01(\tR\vdescription\x12?\n" +
-	"\x06labels\x18\x06 \x03(\v2'.kacho.cloud.vpc.v1.Gateway.LabelsEntryR\x06labels\x12]\n" +
-	"\x15shared_egress_gateway\x18\a \x01(\v2'.kacho.cloud.vpc.v1.SharedEgressGatewayH\x00R\x13sharedEgressGateway\x1a9\n" +
+	"\x06labels\x18\x06 \x03(\v2'.kacho.cloud.vpc.v1.Gateway.LabelsEntryR\x06labels\x12\x1b\n" +
+	"\tsubnet_id\x18\b \x01(\tR\bsubnetId\x12A\n" +
+	"\vnat_gateway\x18\t \x01(\v2\x1e.kacho.cloud.vpc.v1.NatGatewayH\x00R\n" +
+	"natGateway\x12W\n" +
+	"\x13egress_only_gateway\x18\n" +
+	" \x01(\v2%.kacho.cloud.vpc.v1.EgressOnlyGatewayH\x00R\x11egressOnlyGateway\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
-	"\agateway\"\x15\n" +
-	"\x13SharedEgressGatewayB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\agatewayJ\x04\b\a\x10\bR\x15shared_egress_gateway\"+\n" +
+	"\n" +
+	"NatGateway\x12\x1d\n" +
+	"\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"\x13\n" +
+	"\x11EgressOnlyGatewayB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_gateway_proto_rawDescOnce sync.Once
@@ -225,22 +349,24 @@ func file_kacho_cloud_vpc_v1_gateway_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_gateway_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_kacho_cloud_vpc_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_kacho_cloud_vpc_v1_gateway_proto_goTypes = []any{
 	(*Gateway)(nil),               // 0: kacho.cloud.vpc.v1.Gateway
-	(*SharedEgressGateway)(nil),   // 1: kacho.cloud.vpc.v1.SharedEgressGateway
-	nil,                           // 2: kacho.cloud.vpc.v1.Gateway.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*NatGateway)(nil),            // 1: kacho.cloud.vpc.v1.NatGateway
+	(*EgressOnlyGateway)(nil),     // 2: kacho.cloud.vpc.v1.EgressOnlyGateway
+	nil,                           // 3: kacho.cloud.vpc.v1.Gateway.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_kacho_cloud_vpc_v1_gateway_proto_depIdxs = []int32{
-	3, // 0: kacho.cloud.vpc.v1.Gateway.created_at:type_name -> google.protobuf.Timestamp
-	2, // 1: kacho.cloud.vpc.v1.Gateway.labels:type_name -> kacho.cloud.vpc.v1.Gateway.LabelsEntry
-	1, // 2: kacho.cloud.vpc.v1.Gateway.shared_egress_gateway:type_name -> kacho.cloud.vpc.v1.SharedEgressGateway
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	4, // 0: kacho.cloud.vpc.v1.Gateway.created_at:type_name -> google.protobuf.Timestamp
+	3, // 1: kacho.cloud.vpc.v1.Gateway.labels:type_name -> kacho.cloud.vpc.v1.Gateway.LabelsEntry
+	1, // 2: kacho.cloud.vpc.v1.Gateway.nat_gateway:type_name -> kacho.cloud.vpc.v1.NatGateway
+	2, // 3: kacho.cloud.vpc.v1.Gateway.egress_only_gateway:type_name -> kacho.cloud.vpc.v1.EgressOnlyGateway
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_gateway_proto_init() }
@@ -249,7 +375,8 @@ func file_kacho_cloud_vpc_v1_gateway_proto_init() {
 		return
 	}
 	file_kacho_cloud_vpc_v1_gateway_proto_msgTypes[0].OneofWrappers = []any{
-		(*Gateway_SharedEgressGateway)(nil),
+		(*Gateway_NatGateway)(nil),
+		(*Gateway_EgressOnlyGateway)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -257,7 +384,7 @@ func file_kacho_cloud_vpc_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_gateway_proto_rawDesc), len(file_kacho_cloud_vpc_v1_gateway_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

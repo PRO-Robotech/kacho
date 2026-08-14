@@ -5019,6 +5019,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5029,7 +5030,8 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.listenerId);",
                   "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', () => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"
                 ]
               }
             }

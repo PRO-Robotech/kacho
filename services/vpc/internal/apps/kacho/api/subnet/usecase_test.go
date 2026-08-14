@@ -196,9 +196,17 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	})
 	require.Error(t, err)
 
+	// Ниже каждый под-случай несёт адресный якорь: без него отказ приходил бы по
+	// ОТСУТСТВИЮ ЯКОРЯ (`ipv4_cidr_primary or ipv6_cidr_primary is required`), и
+	// под-случай зеленел бы, ничего не сказав про свой предмет — зону. Особенно
+	// тихо это у peer-полосы: код сменился бы с FAILED_PRECONDITION на
+	// INVALID_ARGUMENT, то есть проба про резолв у владельца перестала бы до
+	// владельца доходить.
+
 	// zone_id required под ZONAL.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: netID, ZoneID: "",
+		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
@@ -208,6 +216,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	// зона названа корректно, но у владельца Geography не резолвится.
 	_, err = uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: netID, ZoneID: "zone-z",
+		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
@@ -248,6 +257,10 @@ func TestCreateUseCase_ProjectNotFound(t *testing.T) {
 	op, err := uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: netID, ZoneID: testZone,
 		Name: domain.RcNameVPC("sub1"),
+		// Якорь обязателен: предмет пробы — отказ ВОРКЕРА по отсутствующему
+		// проекту, а без якоря запрос не доехал бы до операции вовсе, и проба
+		// зеленела бы на синхронном отказе, ничего не сказав про воркер.
+		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, op.ID)
@@ -269,6 +282,10 @@ func TestCreateUseCase_NetworkNotFound(t *testing.T) {
 	_, err := uc.Execute(context.Background(), domain.Subnet{
 		ProjectID: "f1", NetworkID: ids.NewID(ids.PrefixNetwork),
 		ZoneID: testZone,
+		// Якорь обязателен: предмет пробы — NotFound по родительской сети, и без
+		// якоря отказ пришёл бы раньше, из синтаксической полосы (InvalidArgument),
+		// то есть проба про сеть до чтения сети не доходила бы.
+		V4CidrBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)

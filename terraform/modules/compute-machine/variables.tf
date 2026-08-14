@@ -60,6 +60,15 @@ variable "machines" {
     guest_access_key_ids  = optional(list(string))
 
     service_account_id = optional(string)
+
+    # Достижимость машины извне — выбор ВЫЗЫВАЮЩЕГО, и умолчания у него нет.
+    #
+    # Край требует ровно одного из двух: заказать внешний адрес либо подтвердить, что
+    # снаружи до машины не достучаться. Модуль этот выбор ПРОВОДИТ, а не делает: подставив
+    # подтверждение, он молча завёл бы недостижимую машину; подставив адрес — выписал бы
+    # ресурс, о котором не просили, и счёт за него.
+    assign_external_address = optional(bool)
+    acknowledge_unreachable = optional(bool)
   }))
 
   validation {

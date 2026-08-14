@@ -63,7 +63,7 @@ func TestCreateUseCase_SyncRegister_OwnerTuple(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
 	reg := &recordingRegistrar{}
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false).WithRegistrar(reg)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or).WithRegistrar(reg)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
@@ -120,7 +120,7 @@ func TestCreateUseCase_SyncRegisterFailure_DoesNotFailTheMutation(t *testing.T) 
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
 	reg := &recordingRegistrar{err: errors.New("iam unavailable")}
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false).WithRegistrar(reg)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or).WithRegistrar(reg)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
@@ -144,7 +144,7 @@ func TestCreateUseCase_SyncRegisterFailure_DoesNotFailTheMutation(t *testing.T) 
 func TestCreateUseCase_NilRegistrar_BackCompat(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := uc.Execute(context.Background(), domain.Network{ProjectID: "f1", Name: domain.RcNameVPC("net-nil")})
 	require.NoError(t, err)

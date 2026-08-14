@@ -28,7 +28,6 @@ var verbGetRPCs = []string{
 	"/kacho.cloud.vpc.v1.NetworkService/Get",
 	"/kacho.cloud.vpc.v1.SubnetService/Get",
 	"/kacho.cloud.vpc.v1.AddressService/Get",
-	"/kacho.cloud.vpc.v1.AddressService/GetByValue",
 	"/kacho.cloud.vpc.v1.RouteTableService/Get",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/Get",
 	"/kacho.cloud.vpc.v1.GatewayService/Get",
@@ -45,9 +44,6 @@ var verbUpdateRPCs = []string{
 	"/kacho.cloud.vpc.v1.SubnetService/RemoveCidrBlocks",
 	"/kacho.cloud.vpc.v1.AddressService/Update",
 	"/kacho.cloud.vpc.v1.RouteTableService/Update",
-	"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes",
-	"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes",
-	"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/Update",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/UpdateRules",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/UpdateRule",
@@ -69,13 +65,9 @@ var verbDeleteRPCs = []string{
 // verbListOnResourceRPCs — object-self read (видимость дочерних/операций на самом
 // ресурсе): Check → `v_list`. Это НЕ top-level project-List (тот остается viewer).
 var verbListOnResourceRPCs = []string{
-	"/kacho.cloud.vpc.v1.NetworkService/ListSubnets",
-	"/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups",
-	"/kacho.cloud.vpc.v1.NetworkService/ListRouteTables",
 	"/kacho.cloud.vpc.v1.NetworkService/ListOperations",
 	"/kacho.cloud.vpc.v1.SubnetService/ListUsedAddresses",
 	"/kacho.cloud.vpc.v1.SubnetService/ListOperations",
-	"/kacho.cloud.vpc.v1.AddressService/ListBySubnet",
 	"/kacho.cloud.vpc.v1.AddressService/ListOperations",
 	"/kacho.cloud.vpc.v1.RouteTableService/ListOperations",
 	"/kacho.cloud.vpc.v1.SecurityGroupService/ListOperations",
@@ -99,6 +91,13 @@ var createChildRPCs = []string{
 // projectListRPCs — top-level project-scoped List (Extract → project): остается
 // `viewer`. Visibility per-object идет через iam BatchCheck `viewer ∪ v_list`
 // (authzfilter), не через per-RPC Check relation.
+// Перечни ниже НЕ содержат восьми методов, снятых с контракта: три метода правки
+// маршрутов (отвечали отказом при любом входе), поиск адреса по значению (внешняя
+// ветвь неавторизуема по построению) и список адресов по подсети, плюс три метода
+// под-перечисления сети — все три были вторым путём к одному ответу с ДРУГИМ объектом
+// проверки прав. Их имена стоят в перечне снятой поверхности
+// (`internal/repohygiene/retiredrpcsurface_test.go`), поэтому вернуться молча они не
+// могут.
 var projectListRPCs = []string{
 	"/kacho.cloud.vpc.v1.NetworkService/List",
 	"/kacho.cloud.vpc.v1.SubnetService/List",

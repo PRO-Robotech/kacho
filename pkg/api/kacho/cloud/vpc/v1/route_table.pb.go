@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// A RouteTable resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A RouteTable resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 type RouteTable struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the route table.
@@ -140,7 +140,7 @@ func (x *RouteTable) GetStaticRoutes() []*StaticRoute {
 	return nil
 }
 
-// A StaticRoute resource. For more information, see [Static Routes](/docs/vpc/concepts/routing).
+// A StaticRoute resource. For more information, see [RouteTable](https://vpc.kacho.cloud/api/route-table).
 type StaticRoute struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Destination:
@@ -257,13 +257,24 @@ type StaticRoute_NextHopAddress struct {
 }
 
 type StaticRoute_GatewayId struct {
-	// NOT ACCEPTED. Routing a next hop through a Gateway resource has no
-	// subsystem in vpc: the stored route carries an IP address only. A set value
-	// is refused synchronously with INVALID_ARGUMENT naming
-	// `static_routes[<i>].gateway_id` (accepted-and-ignored is not a lawful
-	// outcome). Kept on the contract rather than removed because the REST edge
-	// discards unknown body keys, so removal would turn a named refusal back
-	// into the neighbouring arm's "next_hop_address is required".
+	// ID of the Gateway resource to route through.
+	//
+	// Resolved, not recorded. The gateway is owned by vpc itself, so the id is
+	// read from vpc's own database on the request path: no row → NOT_FOUND
+	// "Gateway <id> not found". A gateway that exists but cannot serve this route
+	// → FAILED_PRECONDITION. Three conditions have to hold, and each of them is
+	// enforced by the write statement itself rather than by a check preceding it:
+	//
+	//   - same network — the gateway's anchor subnet belongs to the network of
+	//     this route table;
+	//   - placement coherence — zonal to zonal means the same zone; a REGIONAL
+	//     anycast subnet on either side carries no zone and is therefore out of the
+	//     zonal comparison by construction;
+	//   - family — an IPv4 destination routes through a NAT gateway, an IPv6
+	//     destination through an egress-only gateway.
+	//
+	// A gateway named by a live route cannot be deleted (FAILED_PRECONDITION
+	// "gateway is in use").
 	GatewayId string `protobuf:"bytes,4,opt,name=gateway_id,json=gatewayId,proto3,oneof"`
 }
 

@@ -49,4 +49,5 @@ var PageRelations = map[string][]string{
 	"vpc_address":           {"v_get"},
 	"vpc_gateway":           {"v_get"},
 	"vpc_network_interface": {"v_get"},
+	"vpc_cidr_group":        {"v_get"},
 }

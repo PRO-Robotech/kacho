@@ -36,8 +36,18 @@ variable "public_key" {
 # Размер называется ИМЕНЕМ каталога, а машине достаётся неизменяемый
 # идентификатор. Вписать идентификатор прямо в конфигурацию значило бы сделать её
 # непереносимой: у разных установок он разный.
-data "kacho_compute_machine_type" "small" {
+# Поиск по ИМЕНИ делает списочный источник: имя в каталоге уникально, поэтому фильтр
+# оставляет не больше одной записи. Одиночный источник читает по идентификатору — он
+# для случая, когда идентификатор уже известен.
+data "kacho_compute_machine_types" "small" {
   name = "std-v3-2"
+}
+
+locals {
+  # `one()` — не украшение: он ПАДАЕТ, если записей больше одной, вместо того чтобы
+  # молча взять первую. Имя уникально, значит расхождение здесь означало бы, что
+  # изменился каталог, а не что надо выбрать любую.
+  small_machine_type = one(data.kacho_compute_machine_types.small.machine_types)
 }
 
 module "vpc" {
@@ -77,12 +87,27 @@ resource "kacho_compute_instance" "app" {
   project_id      = var.project_id
   name            = "compute-example-app"
   zone_id         = var.zone_id
-  machine_type_id = data.kacho_compute_machine_type.small.id
+  machine_type_id = local.small_machine_type.id
 
-  boot_source_type = "storage.image"
-  boot_source_id   = var.boot_image_id
+  # Род машины — первый различитель контракта, задаётся отдельно от спецификации.
+  instance_kind = "VM"
 
-  subnet_id = module.vpc.subnet_ids["compute-example-a"]
+  # Источник загрузки — ОДИН вложенный блок: тип называет владельца источника
+  # (`storage.image` / `registry.image`), а не вид ресурса.
+  boot_source = {
+    type = "storage.image"
+    id   = var.boot_image_id
+  }
+
+  # Интерфейс — элемент списка спецификаций: у машины их может быть несколько.
+  network_interface_specs = [{
+    subnet_id = module.vpc.subnet_ids["compute-example-a"]
+  }]
+
+  # Достижимость извне — ОСОЗНАННЫЙ выбор, умолчания у него нет: край требует либо
+  # заказать внешний адрес, либо подтвердить, что снаружи до машины не достучаться.
+  # Здесь подтверждаем: пример заводит машину во внутренней сети.
+  acknowledge_unreachable = true
 
   guest_access_key_ids = [kacho_compute_guest_access_key.operator.id]
   placement_group_id   = kacho_compute_placement_group.spread.id
@@ -91,8 +116,8 @@ resource "kacho_compute_instance" "app" {
     # Каталог сообщает, где размер заказуем. Проверка стоит здесь, чтобы
     # несовпадение было видно НА ПЛАНЕ, а не отказом края на применении.
     precondition {
-      condition     = contains(data.kacho_compute_machine_type.small.available_zones, var.zone_id)
-      error_message = "Тип машины ${data.kacho_compute_machine_type.small.name} не заказуем в зоне ${var.zone_id}."
+      condition     = contains(local.small_machine_type.available_zones, var.zone_id)
+      error_message = "Тип машины ${local.small_machine_type.name} не заказуем в зоне ${var.zone_id}."
     }
 
     # Отпечаток вычисляет край. Сверьте его с тем, что видите у себя, — так
@@ -108,7 +133,9 @@ output "instance_id" { value = kacho_compute_instance.app.id }
 output "instance_fqdn" { value = kacho_compute_instance.app.fqdn }
 output "machine_size" {
   value = {
-    vcpu       = data.kacho_compute_machine_type.small.vcpu
-    memory_mib = data.kacho_compute_machine_type.small.memory_mib
+    # Размерность лежит во вложенном блоке: у типа машины есть ОБЪЯВЛЕННЫЙ размер и
+    # ДЕЙСТВУЮЩИЙ, и второй край считает сам. Плоские поля читали бы объявленное.
+    vcpu       = local.small_machine_type.effective_resources.v_cpu
+    memory_mib = local.small_machine_type.effective_resources.memory_mib
   }
 }

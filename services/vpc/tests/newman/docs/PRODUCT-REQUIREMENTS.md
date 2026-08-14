@@ -129,11 +129,16 @@ Malformed JSON → `400`. Неверный тип поля (`description`=чис
 - Validated-by: `*-CR-BVA-DESC-MAX-256`/`-OVER-257`, `*-CR-BVA-LABELS-MAX-64`/`-OVER-65`, `*-CR-VAL-LABELS-INVALID-KEY-CHAR`, `*-CR-VAL-LABELS-UPPERCASE-KEY`
 - Проверка: самовалидирующиеся domain-типы `RcDescription`/`LabelKey`/`LabelVal` в `internal/domain/types.go` (метод `Validate`) + их вызовы из `Validate()` каждого ресурса. Отдельного файла-валидатора в сервисе нет — проверка живёт в самом типе поля.
 
-### REQ-VAL-04 — DhcpOptions / static_routes валидация [P1]
-Subnet `dhcp_options`: `domain_name` по RFC 1123 (invalid → `400`); `domain_name_servers[]`/`ntp_servers[]` — валидные IP (invalid → `400`).
+### REQ-VAL-04 — static_routes валидация [P1]
 RouteTable `static_routes[]`: непустой `destination_prefix` (валидный CIDR) и `next_hop_address` (валидный IP) — иначе `400`.
-- Validated-by: `*-CR-VAL-DHCP-DOMAIN-INVALID`/`-OK`, `*-CR-VAL-DHCP-NS-INVALID-IP`/`-OK`, `*-CR-VAL-DHCP-NTP-INVALID-IP`/`-OK`, `*-CR-VAL-ROUTE-EMPTY-HOP`/`-EMPTY-PREFIX`/`-INVALID-HOP`/`-INVALID-PREFIX`/`-OK`
-- Проверка: `internal/apps/kacho/api/subnet/` (DhcpOptions), `internal/apps/kacho/api/routetable/` (static_routes) — sync-валидация.
+- Validated-by: `*-CR-VAL-ROUTE-EMPTY-HOP`/`-EMPTY-PREFIX`/`-INVALID-HOP`/`-INVALID-PREFIX`/`-OK`
+- Проверка: `internal/apps/kacho/api/routetable/` (static_routes) — sync-валидация.
+
+> Здесь же требовались параметры DHCP подсети (`domain_name` по RFC 1123, IP в списках
+> DNS/NTP) и назывались шесть кейсов `*-CR-VAL-DHCP-*`. **Ни одного из них в наборе нет**:
+> поле снято с контракта `Subnet` (номера и имя зарезервированы), а колонка и Go-тип —
+> миграцией 0029. Требование пережило свой предмет и держало в перечне «проверено» шесть
+> имён без кейсов; предикат, которым это видно: `grep -rn CR-VAL-DHCP cases/`.
 
 ---
 
@@ -198,19 +203,57 @@ CIDR не из списка → `InvalidArgument`/`FailedPrecondition` (доку
 **Снято вместе с RPC `Subnet.Relocate`** (см. contract-removal в шапке). Требование
 описывало отказ метода, которого в контракте больше нет, — отказывать нечему.
 
-### REQ-CIDR-07 — Subnet IPv4-префикс ≤ /28 [P2]
-Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`, `/32`) → sync
-`InvalidArgument "Illegal argument Invalid network prefix /N"` (контракт Kachō
-). Касается Create.v4_cidr_blocks и AddCidrBlocks. `/28` — допустимо.
-- Validated-by: `SUB-CR-BVA-CIDR-28`, `SUB-CR-BVA-CIDR-29`, `SUB-CR-BVA-CIDR-30`, `SUB-CR-BVA-CIDR-31`
-- Проверка: `validateSubnetV4CIDR` в `internal/apps/kacho/api/subnet/helpers.go` (`prefix.Addr.Is4 && prefix.Bits > 28`).
+### REQ-CIDR-07 — размер IPv4-подсети внутри диапазона /16../28 [P2]
+Диапазон **двусторонний и включительный с обеих сторон**: `/16` и `/28` законны, `/15` и
+`/29` — нет. Префикс вне диапазона → sync `InvalidArgument "Illegal argument Invalid network
+prefix /N"`. Касается `Create.ipv4_cidr_primary`/`v4_cidr_blocks` и `AddCidrBlocks`.
 
-### REQ-CIDR-08 — Subnet: IPv4 CIDR опционален (CIDR-less subnet) [P1]
-`Subnet.Create` БЕЗ `v4_cidr_blocks` → 200, создается CIDR-less (или v6-only) подсеть.
-`Address.Create` с internal-spec в подсеть без IPv4 CIDR → `FailedPrecondition`/`InvalidArgument`
-(`"subnet <id> has no IPv4 CIDR"` — некуда аллоцировать v4-IP).
-- Validated-by: `SUB-CR-NO-CIDR-OK`, `SUB-CR-NEG-ADDR-INTO-CIDRLESS`
-- Проверка: `internal/apps/kacho/api/subnet/` Create (`v4_cidr_blocks` не required); `internal/apps/kacho/api/address/` doCreate (guard «no IPv4 CIDR» перед allocate).
+Прежняя редакция называла только одну сторону («≤ /28») и предикат `prefix.Bits > 28` — тогда
+как контракт обещал диапазон с ДВУХ сторон, а код исполнял одну: `/8` проходил. Обещание
+осталось, код приведён к нему.
+- Validated-by: `SUB-CR-BVA-CIDR-28`, `SUB-CR-BVA-CIDR-29`, `SUB-CR-BVA-CIDR-30`, `SUB-CR-BVA-CIDR-31`
+- Проверка: `validateSubnetV4CIDR` в `internal/apps/kacho/api/subnet/helpers.go`; **границы
+  названы один раз** в `internal/apps/kacho/api/subnet/cidr_bounds.go`, и их совпадение с
+  текстом контракта держит проба паритета `TestSubnetCidrBoundsMatchTheContract` — иначе
+  обещание и предикат разъедутся молча, причём разъедутся именно там, где расхождение не
+  видно: оба «работают».
+- IPv6 своего диапазона **не имеет**: контракт его не обещает, а граница, которую никто не
+  обещал, не выдумывается. Появление обещания ловит та же проба паритета.
+
+### REQ-CIDR-08 — Subnet: пустым может быть ОДИН якорь из двух, но не оба [P1]
+`Subnet.Create` с **одним** адресным якорем → 200: v4-only и v6-only подсети законны.
+`Subnet.Create` **без обоих** якорей → sync `InvalidArgument`, и отказ **называет поле**
+(`ipv4_cidr_primary`): из такой подсети нельзя выделить ни один адрес и ни один интерфейс, а
+`UNIQUE(project,name)` она занимает.
+
+`Address.Create` с internal-spec в подсеть, где нет плана нужного семейства (например v4-адрес
+в v6-only подсеть) → `FailedPrecondition`/`InvalidArgument` (`"subnet <id> has no IPv4 CIDR"`).
+Эта половина требования не менялась.
+
+> [!warning] Прежняя редакция требовала ОБРАТНОГО и устарела дважды
+> Она заявляла «без `v4_cidr_blocks` → 200, создаётся CIDR-less подсеть». Реестр намеренных
+> решений сервиса (`docs/engineering/architecture/07-known-divergences.md` §2) называет границу
+> прямо: «подсеть может быть одной семьи — но не „без CIDR вообще как норма“». Реестр
+> существует затем, чтобы решения не фиксили по второму разу, — значит верен он.
+> Вдобавок требование называло поле `v4_cidr_blocks`, которого на пути `Create` **больше нет**:
+> его номер зарезервирован, место занял неизменяемый якорь. То есть требование расходилось и с
+> решением, и с контрактом.
+
+**Порядок проверок — часть требования, а не деталь реализации.** Перекрёстное требование
+(«хотя бы одно из двух») выносится **после** локальных проверок отдельных полей — имени,
+описания, метки — и **перед** обращением к владельцу Geography. Раньше локальных оно
+перекрывало их собственные отказы: перепись набора (130 кейсов, 97 шагов создания подсети)
+показала **двенадцать** шагов, которые ждут отказа по своему предмету и получили бы 400 по
+чужой причине, оставшись при этом ЗЕЛЁНЫМИ. Свойство закреплено пробой
+`TestSubnetPerFieldRefusalsPrecedeTheAnchorRequirement` (вход выбран так, что при неверном
+порядке текст отказа ДРУГОЙ) и доказано инъекцией в обе стороны.
+- Validated-by: `SUB-CR-NEG-NO-ANCHOR` (отказ на обоих пустых, с именем поля),
+  `SUB-CR-V6ONLY-NO-V4-OK` (положительный контроль: только v6),
+  `SUB-CR-CRUD-OK` (положительный контроль: только v4),
+  `SUB-CR-NEG-ADDR-INTO-V6ONLY` (адрес отсутствующего семейства)
+- Проверка: `internal/apps/kacho/api/subnet/create.go` (перекрёстное требование после
+  `s.Validate()`, до `resolvePlacement`); `internal/apps/kacho/api/address/` doCreate (guard
+  «no IPv4 CIDR» перед allocate).
 
 ### REQ-CIDR-09 — Subnet: IPv6 CIDR (dual-stack / v6-only) [P1]
 `Subnet.Create` с `v6_cidr_blocks` → 200, `v6_cidr_blocks` виден в GET; допустимы dual-stack
@@ -224,6 +267,30 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 (Прямое изменение `v6_cidr_blocks` через `Update.mask` — soft-immutable no-op, см. REQ-UPD-05.)
 - Validated-by: `SUB-CIDR-ADD-V6-OK`, `SUB-CIDR-ADD-V6-NEG-HOSTBITS`, `SUB-CIDR-REMOVE-V6-OK`
 - Проверка: `internal/apps/kacho/api/subnet/` AddCidrBlocks/RemoveCidrBlocks (family-aware: v4→`v4_cidr_blocks`, v6→`v6_cidr_blocks`); `validateCIDRPrefix` (host-bits для обеих семей).
+
+### REQ-CIDR-11 — Subnet: диапазон поверх зарезервированного платформой отвергается синхронно [P0]
+Часть адресного пространства обслуживает саму платформу; подсеть поверх такого диапазона
+проходила бы все проверки и НЕ РАБОТАЛА БЫ. Поэтому объявляемый префикс, пересекающийся со
+служебным диапазоном, отвергается **синхронно**, до создания `Operation`:
+`InvalidArgument`, текст — `"<slot> <value> overlaps an address range reserved by the platform"`.
+
+- Проверка стоит на **обоих** глаголах, которыми диапазон подсети объявляется — `Create` и
+  `:add-cidr-blocks`. `Update` набор не меняет (soft-immutable), `:remove-cidr-blocks` только
+  сужает — им проверка не нужна.
+- Пересечение ловится в **обе стороны вложенности**: и подсеть внутри служебного диапазона,
+  и подсеть шире него. Соседство границами пересечением НЕ является — примыкающий вплотную
+  префикс законен.
+- Отказ называет **слот присланного набора и присланное значение** и **не раскрывает**
+  перечень служебных диапазонов: карта служебного адресного пространства на публичной
+  поверхности не появляется (`security.md` §«Инфра-чувствительные данные»).
+- Перечень задаётся **посадкой** (`deploy/values.yaml`, `dataplane.reservedPrefixes`), а не
+  константой продукта; необъявленный перечень означает «не сужаем», и боевая посадка с ним
+  не стартует (страж `config.ValidateReservedPrefixes`).
+- Validated-by: `SUB-CR-CONF-RESERVED-OVERLAP`, `SUB-ACB-CONF-RESERVED-OVERLAP`
+- Проверка: `internal/apps/kacho/api/subnet/reserved_prefixes.go` (`validateSubnetNotReserved`,
+  зовётся из `create.go` и `add_cidr_blocks.go` ДО вызова к `kacho-geo`);
+  `internal/domain/reserved_prefixes.go` (`Overlaps` — обе стороны вложенности);
+  страница арендатора — `docs/content/api/subnet.mdx` §Create / §AddCidrBlocks.
 
 ---
 
@@ -511,7 +578,7 @@ Boundary 1000 → ok; 1001 → `400`.
 - Проверка: `internal/apps/kacho/api/*/` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
 
 ### REQ-DEL-02 — Network: нельзя удалить с детьми (FK RESTRICT) [P0]
-`Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "network is not empty"` (FK RESTRICT).
+`Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "Network <id> is not empty (subnets: 1, route tables: 1, security groups: 1)"` (FK RESTRICT + sync-precheck; перечень по видам и числам).
 - Validated-by: `*-DEL-NEG-HAS-SUBNETS`, `*-DEL-NEG-HAS-ROUTE-TABLE`, `*-DEL-NEG-HAS-NONDEFAULT-SG`
 - Проверка: миграция — FK `ON DELETE RESTRICT` от children к networks; `serviceerr.MapRepoErr` `23503` → `ErrFailedPrecondition`.
 
@@ -547,7 +614,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 - Проверка: `internal/migrations/0001_initial.sql` (`network_interfaces.subnet_id … REFERENCES subnets(id) ON DELETE RESTRICT`); `internal/apps/kacho/api/subnet/` Delete (sync-precheck NIC); FK RESTRICT в worker'е как backstop.
 
 ### REQ-DEL-08 — Network: транзитивно нельзя удалить (Subnet с NIC) [P0]
-`Delete` Network, у которой Subnet содержит NIC → `FailedPrecondition "network is not empty"`
+`Delete` Network, у которой Subnet содержит NIC → `FailedPrecondition "Network <id> is not empty (subnets: 1)"`
 (NIC блокирует Subnet, Subnet блокирует Network). Удаление возможно только после зачистки снизу вверх.
 - Validated-by: `NET-DEL-NEG-HAS-SUBNET-WITH-NIC` (+ `*-DEL-NEG-HAS-SUBNETS` базовый)
 - Проверка: FK-цепочка `network_interfaces→subnets→networks` (все RESTRICT); `internal/apps/kacho/api/network/` doDelete.
@@ -631,6 +698,25 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 
 ## L. SecurityGroup rules
 
+### SG-RULE-TARGET-01 — правило несёт РОВНО ОДНУ цель [P1]
+Цель правила — одна из двух: блоки адресов (`cidr_blocks`, ОБА семейства вместе считаются
+**одной** целью) либо группа (`security_group_id`). Ноль целей → sync `InvalidArgument`,
+отказ называет `<field>.target`. Две цели → sync `InvalidArgument` там же.
+
+Контракт обещал это аннотацией `exactly_one` на `oneof target`, но **энфорсера у обещания не
+было**: правило без цели принималось, сохранялось и возвращалось при чтении — то есть
+вызывающий получал успех на правиле, которое по закрытой модели не разрешает ничего.
+Правило с двумя целями принималось тоже, а на проводе `oneof` держит одну: вторая молча
+терялась при обратном преобразовании.
+
+Проверка стоит **после** проверок отдельных полей: раньше них она перекрывала бы их
+собственные отказы, и правило с малформированным блоком получало бы «нет цели» вместо
+«блок неверен».
+- Validated-by: `SG-CR-VAL-RULE-NO-TARGET` (отказ + положительный контроль)
+- Проверка: `validateSGRuleTarget` в `internal/apps/kacho/api/securitygroup/helpers.go`;
+  проба `TestRuleTargetIsExactlyOne` (шесть случаев: два отказа, четыре положительных
+  контроля, включая двухсемейное правило как ОДНУ цель)
+
 ### REQ-SG-01 — UpdateRules / UpdateRule: модификация правил [P1]
 `UpdateRules` (batch) и `UpdateRule` (single) добавляют/меняют правила; результат виден в `Get`.
 `UpdateRule` несуществующего `rule_id` → `NOT_FOUND`.
@@ -673,7 +759,7 @@ SG-target rule (`oneof target = security_group_id`) разрешен **толь�
 group`» (НЕ `NOT_FOUND`). Оба несут `google.rpc.BadRequest.field_violations[].field` (напр.
 `rule_specs[0].security_group_id` / `addition_rule_specs[0].security_group_id` / `security_group_id`).
 Sync fast-fail (Operation НЕ создается). Применяется на `Create` (`rule_specs`), `UpdateRules`
-(`addition_rule_specs`), `UpdateRule` (смена target). CIDR-rule / `predefined_target` — не затронуты.
+(`addition_rule_specs`), `UpdateRule` (смена target). Правила с целью-блоками адресов — не затронуты. Ветвь `predefined_target` снята с контракта.
 Same-network target → OK. Валидация на service-слое (достаточна без нормализованной
 rule-target-таблицы).
 - Validated-by: `SG-NET-07-NEG-RULE-CROSS-NETWORK-CREATE`, `SG-NET-08-RULE-SAME-NETWORK-OK`,
@@ -844,7 +930,8 @@ network-bound валидацию SG-привязки не навязывает �
 
 ### REQ-NIC-06 — проекция NIC — lean (control-plane only, без инфра-полей) [P0]
 `NetworkInterface` (`Get`/`List`/`Create`-result) содержит ТОЛЬКО `id`/`project_id`/`name`/
-`labels`/`subnet_id`/`v4_address_ids`/`v6_address_ids`/`security_group_ids`/`used_by`/`mac_address`/`status`.
+`labels`/`subnet_id`/`v4_address_ids`/`v6_address_ids`/`security_group_ids`/`used_by`/`mac_address`/
+`status`/`bandwidth_limit_mbps`.
 Инфра/data-plane-полей у `kacho-vpc` нет — они появятся на стороне будущего data-plane сервиса
 `kacho-vpc-implement`. Регрессионное требование: публичная NIC НИКОГДА не должна нести инфра-чувствительные
 поля (placement, SRv6-SID, host-wiring) — защита от случайного reintroduce.
@@ -852,10 +939,28 @@ network-bound валидацию SG-привязки не навязывает �
 - Проверка: `proto/kacho/cloud/vpc/v1/network_interface_service.proto` (public `NetworkInterface` без инфра-полей); `internal/apps/kacho/api/networkinterface/handler.go` (public mapper не выставляет инфра-поля); разделом про инфра-чувствительные данные.
 
 ### REQ-NIC-07 — Update NIC: меняются mutable-поля, subnet_id/инфра — нет [P1]
-`Update` NIC через mask (`name`/`labels`/`security_group_ids`) → Operation → новые значения видны;
+`Update` NIC через mask (`name`/`labels`/`security_group_ids`/`bandwidth_limit_mbps`) → Operation →
+новые значения видны;
 `subnet_id` — immutable (в mask → `InvalidArgument`); инфра-поля недоступны для записи через публичный API.
 - Validated-by: `NIC-UPD-OK`
 - Проверка: `internal/apps/kacho/api/networkinterface/` Update — `subnet_id` в hard-immutable reject-switch; mask-применение только к mutable.
+
+### REQ-NIC-BANDWIDTH-LIMIT — ограничение полосы принимается только при признаке в профиле исполнителя [P1]
+`NetworkInterface.bandwidth_limit_mbps` — верхняя граница полосы, которую задаёт АРЕНДАТОР;
+`0` — ограничения нет (единственное представление отсутствия), величина ИЗМЕНЯЕМА.
+Непустая величина принимается ТОЛЬКО когда посадка объявила
+`dataplane.executor.tenant-settable-bandwidth-limit`; иначе — синхронный `InvalidArgument`
+с именем поля в `google.rpc.BadRequest.field_violations[].field` и причиной в message
+(«принято-и-проигнорировано» запрещено: успех на настройке, которая не действует, хуже отказа).
+Промежуток приёма — строго выше опубликованного пола продукта
+(`domain.GuaranteedInterfaceBandwidthFloorMbps`) и не выше гарантии, объявленной этим стендом;
+пустой промежуток при объявленном умении не поднимает сервис (страж старта).
+- Validated-by: `NIC-CR-VAL-BANDWIDTH-LIMIT-NOT-DECLARED`, `NIC-CR-VAL-BANDWIDTH-LIMIT-UNSET-OK`
+- Проверка: `internal/domain/tenant_bandwidth_limit.go` (правило и оба края);
+  `internal/apps/kacho/api/networkinterface/` Create/Update (синхронный отказ, применение по маске);
+  `internal/apps/kacho/config/validate.go` (`ValidateExecutorProfile` — пустой промежуток и полоса
+  ниже обещания продукта); `internal/migrations/0036_network_interface_bandwidth_limit.sql`
+  (нижний край на конструкции базы).
 
 ### REQ-NIC-08 — NIC.mac_address — output-only, стабилен, cloud-wide unique [P1]
 `mac_address` на публичной `NetworkInterface` (самостоятельный сетевой интерфейс): аллоцируется системой

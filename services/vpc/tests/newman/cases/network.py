@@ -4,8 +4,11 @@
 """Case-set для NetworkService (kacho-vpc).
 
 Covered RPCs:
-  Get, List, Create, Update, Delete, Move,
-  ListSubnets, ListSecurityGroups, ListRouteTables, ListOperations
+  Get, List, Create, Update, Delete, Move, ListOperations
+
+Под-перечисления сети (`ListSubnets`/`ListSecurityGroups`/`ListRouteTables`)
+СНЯТЫ С КОНТРАКТА как вторые пути к одному ответу; их место заняло сужение
+списочного запроса ресурса по `network_id` — см. разбор у NET-LSUB-CRUD-EMPTY.
 """
 
 # Helpers инжектятся gen.py через namespace модуля:
@@ -13,6 +16,28 @@ Covered RPCs:
 #   save_from_response, assert_operation_envelope, poll_operation_until_done
 
 CASES = []
+
+
+def _assert_network_not_empty(blockers: str):
+    """Отказ на удалении непустой сети ПЕРЕЧИСЛЯЕТ мешающее по видам и числам.
+
+    Контракт: `Network <id> is not empty (subnets: 2, route tables: 1)` — виды
+    с нулём в перечень не попадают, идентификаторы дочерних не печатаются
+    никогда. Прежняя редакция четырёх кейсов локала `/^Network .* is not empty$/`
+    с якорем конца строки, то есть требовала текста БЕЗ перечисления. Это
+    утверждение пережило свой предмет: перечень заведён осознанно, потому что
+    без него арендатор выяснял радиус ПЕРЕБОРОМ — снял подсети, повторил,
+    получил тот же текст из-за группы правил, повторил снова.
+
+    Утверждение здесь СИЛЬНЕЕ прежнего, а не слабее: сверяется вся строка
+    целиком вместе с ожидаемым видом и числом, поэтому и потеря перечня, и
+    подмена вида, и лишний вид с нулём — каждое падает по отдельности.
+    """
+    return [
+        "pm.test('отказ перечисляет мешающее: " + blockers + "', () => "
+        "pm.expect(pm.response.json().message, pm.response.text()).to.eql("
+        "'Network ' + pm.environment.get('netId') + ' is not empty (" + blockers + ")'));",
+    ]
 
 # ---------------------------------------------------------------------------
 # NET-CR — Create Network
@@ -455,9 +480,30 @@ CASES.append(Case(
 # NET-LSUB / NET-LSG / NET-LRT — child lists
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Три кейса ниже спрашивали под-перечисления сети
+# (`/vpc/v1/networks/{id}/{subnets,security_groups,route_tables}`). Эти три метода
+# СНЯТЫ С КОНТРАКТА как вторые пути к одному ответу с ДРУГИМ объектом проверки
+# прав; замена — сужение списочного запроса ресурса по `network_id`, и она была
+# заведена ДО снятия (белый список фильтра). Снятого маршрута край не знает,
+# поэтому запрос по нему не доходит до сервиса вовсе: каталог прав не резолвит
+# метод и край отказывает fail-closed — `403` с пустым `action` и
+# `type: authz.catalog`. То есть шаг падал НЕ на предмете кейса, а на
+# несуществующем адресе, и «has at least 1 SG» читалось как «группы по умолчанию
+# нет», хотя она есть (проверено на живом стенде: `defaultSecurityGroupId` в
+# ответе Create, `defaultForNetwork: true` в списке по фильтру).
+#
+# Что меняется в утверждении, кроме адреса: замена — список С ПООБЪЕКТНОЙ
+# фильтрацией прав, поэтому свежесозданный системный ребёнок появляется в
+# странице в окне материализации owner-tuple. Ожидание берётся `retry_until_present`
+# по КОНКРЕТНОМУ id (его называет сам ресурс: `defaultSecurityGroupId` /
+# `defaultRouteTableId`), а не «пока массив непуст» — иначе кейс сошёлся бы на
+# чужой строке.
+# ---------------------------------------------------------------------------
+
 CASES.append(Case(
     id="NET-LSUB-CRUD-EMPTY",
-    title="ListSubnets для пустой network → 200 + empty array",
+    title="Список подсетей, суженный по network_id, для пустой сети → 200 + пустой массив",
     classes=["CRUD"],
     priority="P2",
     steps=[
@@ -476,10 +522,15 @@ CASES.append(Case(
         Step(
             name="list-subnets",
             method="GET",
-            path="/vpc/v1/networks/{{netId}}/subnets",
+            path="/vpc/v1/subnets?projectId={{_suiteProjectId}}&pageSize=1000"
+                 "&filter=network_id%3D%22{{netId}}%22",
             test_script=[
                 *assert_status(200),
-                "pm.test('subnets array empty or one (default-SG sometimes)', () => pm.expect(pm.response.json().subnets || []).to.be.an('array'));",
+                # Пусто — это и есть утверждение: подсетей сети никто не заводил.
+                # Ждать здесь нечего (ожидание нужно на ПОЯВЛЕНИЕ своего свежего
+                # id, а не на его отсутствие), поэтому retry тут был бы маскировкой.
+                "pm.test('пустой список подсетей этой сети', () => "
+                "pm.expect(pm.response.json().subnets || [], pm.response.text()).to.eql([]));",
             ],
         ),
         Step(
@@ -493,7 +544,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LSG-CRUD-DEFAULT-SG",
-    title="ListSecurityGroups → default SG присутствует (inline create в doCreate)",
+    title="Список групп правил, суженный по network_id → группа по умолчанию присутствует и помечена",
     classes=["CRUD"],
     priority="P1",
     steps=[
@@ -509,17 +560,35 @@ CASES.append(Case(
             ],
         ),
         poll_operation_until_done(),
-        Step(
-            name="list-sgs",
-            method="GET",
-            path="/vpc/v1/networks/{{netId}}/security_groups",
+        # Сеть САМА называет свою группу по умолчанию — ждать в списке будем
+        # именно её id, а не «какую-нибудь строку»: иначе кейс сошёлся бы на
+        # чужой группе того же проекта и остался бы зелёным без своей.
+        retry_until_authorized(Step(
+            name="net-names-default-sg", method="GET", path="/vpc/v1/networks/{{netId}}",
             test_script=[
                 *assert_status(200),
-                "const j = pm.response.json();",
-                "const sgs = j.securityGroups || [];",
-                "pm.test('has at least 1 SG (default)', () => pm.expect(sgs.length).to.be.at.least(1));",
-                "pm.test('default SG flag set', () => pm.expect(sgs.some(s => s.defaultForNetwork === true)).to.eql(true));",
-            ],
+                "pm.test('сеть называет свою группу по умолчанию', () => "
+                "pm.expect(pm.response.json().defaultSecurityGroupId, pm.response.text())"
+                ".to.be.a('string').and.not.empty);",
+                *save_from_response("j.defaultSecurityGroupId", "defSgId"),
+            ])),
+        retry_until_present(
+            Step(
+                name="list-sgs",
+                method="GET",
+                path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000"
+                     "&filter=network_id%3D%22{{netId}}%22",
+                test_script=[
+                    *assert_status(200),
+                    "const sgs = pm.response.json().securityGroups || [];",
+                    "const def = sgs.filter(s => s.id === pm.environment.get('defSgId'));",
+                    "pm.test('группа по умолчанию, названная самой сетью, в списке', () => "
+                    "pm.expect(def.length, pm.response.text()).to.eql(1));",
+                    "pm.test('она же помечена как группа по умолчанию', () => "
+                    "pm.expect(def.length && def[0].defaultForNetwork).to.eql(true));",
+                ],
+            ),
+            "defSgId",
         ),
         Step(
             name="cleanup",
@@ -532,7 +601,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LRT-CRUD-EMPTY",
-    title="ListRouteTables → 200 + empty",
+    title="Список таблиц маршрутизации, суженный по network_id → ровно системная таблица сети, арендаторских нет",
     classes=["CRUD"],
     priority="P2",
     steps=[
@@ -548,14 +617,35 @@ CASES.append(Case(
             ],
         ),
         poll_operation_until_done(),
-        Step(
-            name="list-rt",
-            method="GET",
-            path="/vpc/v1/networks/{{netId}}/route_tables",
+        # Прежнее утверждение звучало «массив» — это не утверждение вовсе: оно
+        # выполняется и на пустом, и на любом другом ответе, поэтому пережило бы
+        # любую регрессию списка. Сеть провижнит СВОЮ таблицу маршрутизации на
+        # Create, значит «пусто» неверно, а верно «ровно она и ничего больше».
+        retry_until_authorized(Step(
+            name="net-names-default-rt", method="GET", path="/vpc/v1/networks/{{netId}}",
             test_script=[
                 *assert_status(200),
-                "pm.test('routeTables array', () => pm.expect(pm.response.json().routeTables || []).to.be.an('array'));",
-            ],
+                "pm.test('сеть называет свою таблицу маршрутизации', () => "
+                "pm.expect(pm.response.json().defaultRouteTableId, pm.response.text())"
+                ".to.be.a('string').and.not.empty);",
+                *save_from_response("j.defaultRouteTableId", "defRtId"),
+            ])),
+        retry_until_present(
+            Step(
+                name="list-rt",
+                method="GET",
+                path="/vpc/v1/routeTables?projectId={{_suiteProjectId}}&pageSize=1000"
+                     "&filter=network_id%3D%22{{netId}}%22",
+                test_script=[
+                    *assert_status(200),
+                    "const rts = pm.response.json().routeTables || [];",
+                    "pm.test('ровно одна таблица — системная таблица этой сети', () => {",
+                    "  pm.expect(rts.map(r => r.id), pm.response.text())"
+                    ".to.eql([pm.environment.get('defRtId')]);",
+                    "});",
+                ],
+            ),
+            "defRtId",
         ),
         Step(
             name="cleanup",
@@ -636,31 +726,59 @@ CASES.append(Case(
     ],
 ))
 
-# NEG для child-Lists Network: ListSubnets/SGs/RTs/Ops на garbage network
-for prefix, child, method_short in [
-    ("LSUB", "subnets", "LSUB"),
-    ("LSG", "security_groups", "LSG"),
-    ("LRT", "route_tables", "LRT"),
-    ("LOP", "operations", "LOP"),
-]:
+# NEG: обращение к дочерним сущностям несуществующей сети.
+#
+# Операции сети по-прежнему адресуются вложенным путём, и у него сохраняется
+# прежний предмет: путь несёт объект `vpc_network`, отношения на несуществующей
+# сети нет ни у кого → край отказывает до сервиса.
+CASES.append(Case(
+    id="NET-LOP-NEG-PARENT-NF",
+    title="List operations в несуществующей network → отказ края до сервиса",
+    classes=["NEG"], priority="P1",
+    steps=[
+        Step(name="list-child", method="GET",
+             path="/vpc/v1/networks/{{garbageVpcId}}/operations",
+             # Вложенный список гейтится отношением v_list на объекте
+             # vpc_network из пути. У несуществующей сети такого отношения нет
+             # ни у кого, край отказывает до сервиса, и подмены отказа на 404
+             # тут не происходит: сокрытие существования включено только для
+             # одиночного чтения `/Get` с отношением v_get. Исход один.
+             #
+             # Прежний список принимал и 200 — то есть заголовок обещал отказ,
+             # а утверждение проходило и при выдаче содержимого.
+             test_script=[
+                 *assert_status(403),
+                 *assert_grpc_code(7, "PERMISSION_DENIED"),
+             ]),
+    ],
+))
+
+# Три соседних кейса той же семьи (`.../subnets`, `.../security_groups`,
+# `.../route_tables`) утверждали ровно то же про снятые ныне под-перечисления.
+# Их нельзя было оставить как есть: снятого маршрута край не знает, поэтому
+# `403` он отдаёт на ЛЮБОЙ идентификатор сети — и на несуществующий, и на
+# собственный живой. Утверждение «у несуществующего родителя отказ» выполнялось
+# бы тождественно, то есть перестало быть утверждением: предмет (гейт по объекту
+# из пути) исчез вместе с методом, а форма проверки осталась бы.
+#
+# Предмет заменён на предмет ЗАМЕНЫ — сужения списочного запроса по `network_id`.
+# У неё своё, проверяемое свойство: неизвестная сеть в фильтре не ошибка и не
+# утечка, а пустая страница СВОЕГО проекта. Кейс краснеет на любом другом исходе —
+# на отказе (значит фильтр стал вторым гейтом), на непустой странице (значит
+# сужение не сузило) и на ошибке разбора.
+for _kind, _res in [("LSUB", "subnets"), ("LSG", "securityGroups"), ("LRT", "routeTables")]:
     CASES.append(Case(
-        id=f"NET-{method_short}-NEG-PARENT-NF",
-        title=f"List {child} в несуществующей network → 404 NotFound",
+        id=f"NET-{_kind}-NEG-PARENT-NF",
+        title=f"Список {_res}, суженный по несуществующей сети → 200 + пустая страница (не отказ, не утечка)",
         classes=["NEG"], priority="P1",
         steps=[
-            Step(name="list-child", method="GET",
-                 path=f"/vpc/v1/networks/{{{{garbageVpcId}}}}/{child}",
-                 # Вложенный список гейтится отношением v_list на объекте
-                 # vpc_network из пути. У несуществующей сети такого отношения нет
-                 # ни у кого, край отказывает до сервиса, и подмены отказа на 404
-                 # тут не происходит: сокрытие существования включено только для
-                 # одиночного чтения `/Get` с отношением v_get. Исход один.
-                 #
-                 # Прежний список принимал и 200 — то есть заголовок обещал отказ,
-                 # а утверждение проходило и при выдаче содержимого.
+            Step(name="list-by-absent-network", method="GET",
+                 path=f"/vpc/v1/{_res}?projectId={{{{_suiteProjectId}}}}&pageSize=1000"
+                      "&filter=network_id%3D%22{{garbageVpcId}}%22",
                  test_script=[
-                     *assert_status(403),
-                     *assert_grpc_code(7, "PERMISSION_DENIED"),
+                     *assert_status(200),
+                     f"pm.test('пустая страница, а не отказ и не чужие строки', () => "
+                     f"pm.expect(pm.response.json().{_res} || [], pm.response.text()).to.eql([]));",
                  ]),
         ],
     ))
@@ -844,7 +962,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-net-blocked", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                 "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));",
+                 *_assert_network_not_empty("subnets: 1"),
              ])),
         # cleanup в обратном порядке
         retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
@@ -875,7 +993,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-net-blocked", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                 "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));",
+                 *_assert_network_not_empty("route tables: 1"),
              ])),
         Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -906,7 +1024,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-net-blocked", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                 "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));",
+                 *_assert_network_not_empty("security groups: 1"),
              ])),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -928,12 +1046,26 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
-        # Проверка что default SG действительно создался
-        Step(name="check-default-sg", method="GET",
-             path="/vpc/v1/networks/{{netId}}/security_groups",
-             test_script=[*assert_status(200),
-                          "const sgs = pm.response.json().securityGroups || [];",
-                          "pm.test('exactly 1 default SG present', () => pm.expect(sgs.filter(s => s.defaultForNetwork === true).length).to.eql(1));"]),
+        # Проверка что default SG действительно создался. Спрашивается список,
+        # суженный по `network_id`: под-перечисление сети снято с контракта
+        # (см. разбор у NET-LSUB-CRUD-EMPTY), и запрос по снятому адресу не
+        # доходил до сервиса — «ни одной группы по умолчанию» означало «край не
+        # знает такого маршрута», а не отсутствие группы.
+        retry_until_authorized(Step(
+            name="net-names-default-sg", method="GET", path="/vpc/v1/networks/{{netId}}",
+            test_script=[*assert_status(200),
+                         *save_from_response("j.defaultSecurityGroupId", "defSgId")])),
+        retry_until_present(
+            Step(name="check-default-sg", method="GET",
+                 path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000"
+                      "&filter=network_id%3D%22{{netId}}%22",
+                 test_script=[*assert_status(200),
+                              "const sgs = pm.response.json().securityGroups || [];",
+                              "pm.test('exactly 1 default SG present', () => "
+                              "pm.expect(sgs.filter(s => s.defaultForNetwork === true).map(s => s.id), "
+                              "pm.response.text()).to.eql([pm.environment.get('defSgId')]));"]),
+            "defSgId",
+        ),
         # Delete network — должен пройти (default SG автоматически чистится service-кодом)
         retry_until_authorized(Step(name="del-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
@@ -1015,7 +1147,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-net-blocked", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=[
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                 "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));",
+                 *_assert_network_not_empty("subnets: 1"),
              ])),
         # cleanup снизу вверх: NIC → Subnet → Network
         Step(name="cleanup-nic", method="DELETE", path="/vpc/v1/networkInterfaces/{{nicId}}",

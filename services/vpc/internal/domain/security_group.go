@@ -77,7 +77,7 @@ func (s SecurityGroup) Equal(other SecurityGroup) bool {
 //
 // Description — newtype `RcDescription`. Direction — enum
 // `SecurityGroupRuleDirection`. Остальные поля (Protocol/Ports/CidrBlocks/
-// SecurityGroupID/PredefinedTarget) валидируются в service-слое — это сложные
+// SecurityGroupID) валидируются в service-слое — это сложные
 // cross-field invariants.
 //
 // Labels на rule-уровне остается `map[string]string`, не `RcLabels`.
@@ -101,11 +101,16 @@ type SecurityGroupRule struct {
 	V6CidrBlocks   []string
 	// Rule target — взаимоисключающие виды (proto oneof): cidr_blocks
 	// (V4CidrBlocks/V6CidrBlocks), security_group_id (SG-target) или
-	// predefined_target. SG-target (`SecurityGroupID`) разрешен ТОЛЬКО в пределах
+	// Цель-группа (`SecurityGroupID`) разрешена ТОЛЬКО в пределах
 	// той же Network, что и владеющая правилом SG (валидация —
 	// `securitygroup.validateSGTargetSameNetwork`).
-	SecurityGroupID  string
-	PredefinedTarget string
+	SecurityGroupID string
+	// CidrGroupID — третья ветвь цели: именованный набор префиксов
+	// (`vpc.CidrGroup`). Набор обязан лежать в ТОМ ЖЕ проекте, что и группа
+	// правил, и быть непустым — валидация `securitygroup.validateSGTargetCidrGroup`.
+	// Ссылка держится внешним ключом (миграция 0035), поэтому набор с живой
+	// ссылкой не удаляется.
+	CidrGroupID string
 }
 
 // Validate проверяет description/labels rule'а. Direction-семантика и
@@ -133,5 +138,5 @@ func (r SecurityGroupRule) Equal(other SecurityGroupRule) bool {
 		stringSlicesEqual(r.V4CidrBlocks, other.V4CidrBlocks) &&
 		stringSlicesEqual(r.V6CidrBlocks, other.V6CidrBlocks) &&
 		r.SecurityGroupID == other.SecurityGroupID &&
-		r.PredefinedTarget == other.PredefinedTarget
+		r.CidrGroupID == other.CidrGroupID
 }

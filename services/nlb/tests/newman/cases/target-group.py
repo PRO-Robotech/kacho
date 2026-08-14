@@ -630,7 +630,9 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
+                          "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', "
+                          "() => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"])),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
         # owner-tuple materializes -> retry SELF; the block assertion then runs once the
@@ -768,7 +770,9 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
+                          "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', "
+                          "() => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"])),
         poll_operation_until_done(),
         # Move refuses SYNCHRONOUSLY while a listener still points at the TG
         # (targetgroup/move.go: ReferencingListenerIDs non-empty -> FAILED_PRECONDITION

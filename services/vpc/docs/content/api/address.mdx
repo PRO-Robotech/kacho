@@ -50,10 +50,10 @@ IP можно создать заранее, переиспользовать, �
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
-    <tr><td><code>externalIpv4Address</code></td><td><code>ExternalIpv4Address</code></td><td>Вариант oneof: внешний IPv4 (<code>address</code>, <code>zoneId</code>, <code>requirements</code>)</td></tr>
+    <tr><td><code>externalIpv4Address</code></td><td><code>ExternalIpv4Address</code></td><td>Вариант oneof: внешний IPv4 (<code>address</code>, <code>zoneId</code>)</td></tr>
     <tr><td><code>internalIpv4Address</code></td><td><code>InternalIpv4Address</code></td><td>Вариант oneof: внутренний IPv4 (<code>address</code>, <code>subnetId</code>)</td></tr>
     <tr><td><code>internalIpv6Address</code></td><td><code>InternalIpv6Address</code></td><td>Вариант oneof: внутренний IPv6 (<code>address</code>, <code>subnetId</code>)</td></tr>
-    <tr><td><code>externalIpv6Address</code></td><td><code>ExternalIpv6Address</code></td><td>Вариант oneof: внешний IPv6 (<code>address</code>, <code>zoneId</code>, <code>requirements</code>)</td></tr>
+    <tr><td><code>externalIpv6Address</code></td><td><code>ExternalIpv6Address</code></td><td>Вариант oneof: внешний IPv6 (<code>address</code>, <code>zoneId</code>)</td></tr>
     <tr><td><code>reserved</code></td><td><code>{TYPES.bool}</code></td><td>Адрес удерживается за проектом сам по себе. Свежесозданный адрес — <code>true</code>: <code>Create</code> и есть заказ адреса тенантом. Снять — <code>Update</code> (см. <a href="#reserved">ниже</a>)</td></tr>
     <tr><td><code>used</code></td><td><code>{TYPES.bool}</code></td><td>Адрес используется (output-only; <code>true</code>, когда его использует <code>NetworkInterface</code> или network load balancer)</td></tr>
     <tr><td><code>type</code></td><td><code>Address.Type</code></td><td>Тип адреса: <code>INTERNAL</code> / <code>EXTERNAL</code> (output-only enum)</td></tr>
@@ -188,6 +188,17 @@ IP можно создать заранее, переиспользовать, �
 Список адресов проекта с фильтром и cursor-пагинацией. Опциональный `subnetId` ограничивает
 выборку адресами, выделенными из указанной подсети.
 
+Сужение по подсети — **объединение по обеим внутренним семьям**: адрес попадает в выборку, если
+ссылка на подсеть стоит в его `internalIpv4Address` **либо** в `internalIpv6Address`. Внешний адрес
+подсети не имеет и в такую выборку не попадает никогда. Сужение выполняет сервер, поэтому оно
+относится ко **всему** списку, а не к загруженной странице, и цена страницы не растёт вместе с
+числом адресов подсети.
+
+`subnetId` — ссылка на ресурс этого же сервиса, поэтому её форма проверяется синхронно: строка,
+которая идентификатором подсети быть не может, отвергается как `InvalidArgument`
+(`invalid subnet id '<X>'`), а не возвращает пустую страницу. Пустое значение означает «без
+сужения». Несуществующая, но правильно оформленная подсеть — пустая выборка, а не отказ.
+
 #### Параметры запроса
 
 <table>
@@ -195,7 +206,7 @@ IP можно создать заранее, переиспользовать, �
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
     <tr><td><code>filter</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
-    <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адреса, выделенные из этой подсети (для ref-picker NIC)</td></tr>
+    <tr><td><code>subnetId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Только адреса, выделенные из этой подсети — обе внутренние семьи</td></tr>
     <tr><td><code>pageSize</code></td><td>нет</td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
     <tr><td><code>pageToken</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
   </tbody>
@@ -265,8 +276,8 @@ IP можно создать заранее, переиспользовать, �
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>internalIpv4AddressSpec</code></td><td>oneof</td><td><code>InternalIpv4AddressSpec</code></td><td>Внутренний IPv4: <code>address?</code> + <code>subnetId</code> (обязателен)</td></tr>
     <tr><td><code>internalIpv6AddressSpec</code></td><td>oneof</td><td><code>InternalIpv6AddressSpec</code></td><td>Внутренний IPv6: <code>address?</code> + <code>subnetId</code> (обязателен)</td></tr>
-    <tr><td><code>externalIpv4AddressSpec</code></td><td>oneof</td><td><code>ExternalIpv4AddressSpec</code></td><td>Внешний IPv4: <code>address?</code> + <code>zoneId</code> (если адрес не задан) + <code>requirements?</code></td></tr>
-    <tr><td><code>externalIpv6AddressSpec</code></td><td>oneof</td><td><code>ExternalIpv6AddressSpec</code></td><td>Внешний IPv6: <code>address?</code> + <code>zoneId</code> (если адрес не задан) + <code>requirements?</code></td></tr>
+    <tr><td><code>externalIpv4AddressSpec</code></td><td>oneof</td><td><code>ExternalIpv4AddressSpec</code></td><td>Внешний IPv4: <code>address?</code> + <code>zoneId</code> (если адрес не задан)</td></tr>
+    <tr><td><code>externalIpv6AddressSpec</code></td><td>oneof</td><td><code>ExternalIpv6AddressSpec</code></td><td>Внешний IPv6: <code>address?</code> + <code>zoneId</code> (если адрес не задан)</td></tr>
     <tr><td><code>deletionProtection</code></td><td>нет</td><td><code>{TYPES.bool}</code></td><td>{DICTIONARY.deletionProtection.short}</td></tr>
   </tbody>
 </table>

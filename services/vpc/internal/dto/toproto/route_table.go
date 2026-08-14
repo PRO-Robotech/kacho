@@ -35,8 +35,21 @@ func (routeTable) toPb(rec kachorepo.RouteTableRecord) (*vpcv1.RouteTable, error
 		if sr.DestinationPrefix != "" {
 			psr.Destination = &vpcv1.StaticRoute_DestinationPrefix{DestinationPrefix: sr.DestinationPrefix}
 		}
-		if sr.NextHopAddress != "" {
+		// `next_hop` — oneof из ДВУХ ветвей, и обе обязаны доезжать до ответа.
+		// Ветвь шлюза приземлена вместе с якорем размещения шлюза: запись её
+		// хранит (`static_routes` JSONB + `route_table_gateway_refs`) и по ней
+		// же ЭНФОРСИТ — шлюз, названный живым маршрутом, не удаляется. Пока
+		// маппер знал только адрес, арендатор получал на Create 200, а на
+		// чтении — маршрут без следующего узла: сервер сам нарушал свой oneof,
+		// и причина неудаляемости шлюза в ответе не показывалась. Взаимоисключение
+		// обеспечено валидацией на записи (`validateStaticRoutes`), поэтому здесь
+		// ветви разбираются в порядке «адрес, иначе шлюз» — двух непустых значений
+		// в строке быть не может.
+		switch {
+		case sr.NextHopAddress != "":
 			psr.NextHop = &vpcv1.StaticRoute_NextHopAddress{NextHopAddress: sr.NextHopAddress}
+		case sr.GatewayID != "":
+			psr.NextHop = &vpcv1.StaticRoute_GatewayId{GatewayId: sr.GatewayID}
 		}
 		p.StaticRoutes = append(p.StaticRoutes, psr)
 	}

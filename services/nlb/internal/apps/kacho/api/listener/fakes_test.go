@@ -364,7 +364,6 @@ func (lw *fakeListenerWriter) Update(_ context.Context, l *domain.Listener, _ st
 	cur.Name = l.Name
 	cur.Description = l.Description
 	cur.Labels = l.Labels
-	cur.ProxyProtocolV2 = l.ProxyProtocolV2
 	cur.DefaultTargetGroupID = l.DefaultTargetGroupID
 	cur.UpdatedAt = time.Now().UTC()
 	rec := *cur

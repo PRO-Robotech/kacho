@@ -50,6 +50,8 @@ import {
   type ResourceSpec,
 } from "@shared/lib/resource-registry";
 import { operationsListPath } from "@shared/lib/operations-subroute";
+import { relatedListQuery } from "@shared/lib/related-list-query";
+import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
@@ -62,16 +64,22 @@ function specByRoute(route: string): ResourceSpec | undefined {
 }
 
 /** RelatedTable — встроенная таблица дочернего ресурса (тот же ResourceTable,
- *  что на списке): поиск + конфигуратор колонок + «⋮» actions + welcome-empty. */
+ *  что на списке): поиск + конфигуратор колонок + «⋮» actions + welcome-empty +
+ *  продолжение курсора. */
 function RelatedTable({
   childSpec,
   filterFields,
+  narrowBy,
   parentId,
   projectId,
   detailBase,
 }: {
   childSpec: ResourceSpec;
   filterFields: string[];
+  /** Чем владелец ребёнка принимает сужение по родителю НА СЕРВЕРЕ — выражением
+   *  фильтра либо типизированным полем запроса (`spec.related[]`). Ничего не
+   *  объявлено — сужает только клиент. */
+  narrowBy: Pick<RelatedSpec, "serverFilterField" | "serverParamField">;
   parentId: string;
   projectId: string;
   detailBase: string;
@@ -81,15 +89,32 @@ function RelatedTable({
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${childSpec.id}`);
   // Дочерний список тянется в scope своего родителя: account-scoped ресурсы
   // (Project/ServiceAccount) требуют account_id = uid аккаунта-родителя; прочие —
-  // project_id из URL. Затем ownRows дофильтровывает по filterField.
+  // project_id из URL.
   const accountScoped = childSpec.scope === "account";
-  const { data, isLoading, isError, error } = useResourceList(
+  // Сужение по родителю просит СЕРВЕР, когда владелец ребёнка его принимает:
+  // тогда страница курсора состоит из детей ЭТОГО родителя, а не из первой
+  // страницы списка проекта, в которой они могли и не оказаться. Чем именно
+  // просить — решает одна функция (`relatedListQuery`), а не эта разметка:
+  // механизмов два, и выбор между ними принадлежит владельцу ребёнка.
+  const extraQuery = useMemo(
+    () => relatedListQuery(narrowBy, parentId),
+    [narrowBy, parentId],
+  );
+  const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     childSpec,
     accountScoped ? "account_id" : "project_id",
     accountScoped ? parentId : projectId,
+    undefined,
+    extraQuery,
   );
   const all = data?.[childSpec.payloadKey] ?? [];
-  // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
+  // Клиентское сужение — ПОДСТРАХОВКА, а не основной путь. Когда серверное поле
+  // объявлено, страница уже состоит из детей этого родителя и фильтр ничего не
+  // убирает. Он остаётся ради ребра БЕЗ такого поля (у владельца нет пригодного
+  // поля — напр. адрес хранит подсеть внутри jsonb) и ради вложенных путей
+  // (OR по нескольким полям, напр. subnet→addresses v4∪v6), которые выражением
+  // фильтра не выражаются вовсе. Сам по себе он судит только о ПРОЧИТАННЫХ
+  // страницах — поэтому ниже обязателен видимый курсор.
   const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
 
   // Поиск по имени или идентификатору (client-side).
@@ -140,7 +165,12 @@ function RelatedTable({
 
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
   // показывается внутри таблицы). createLabel передаём отдельно (тот же текст).
-  if (!isLoading && ownRows.length === 0) {
+  //
+  // «Создайте первый» — утверждение об ОТСУТСТВИИ детей, поэтому оно допустимо
+  // только когда список дочитан. Пока за курсором есть ещё, детей может не быть
+  // на прочитанных страницах и быть на следующих: приглашение создать поверх
+  // недочитанного списка сообщало бы об отсутствии, которого никто не проверял.
+  if (!isLoading && ownRows.length === 0 && !hasMore) {
     return <ResourceEmptyState spec={childSpec} onCreate={() => navigate(createPath)} createLabel={createLabel} />;
   }
 
@@ -157,8 +187,30 @@ function RelatedTable({
         columns={columns}
         loading={isLoading}
         rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-        empty={q ? "По запросу ничего не найдено." : undefined}
+        empty={
+          q
+            ? "По запросу ничего не найдено."
+            : ownRows.length === 0
+              ? "На прочитанных страницах списка таких ресурсов нет — за курсором есть ещё."
+              : undefined
+        }
       />
+      {/* Продолжение курсора — ТОТ ЖЕ вид, что на странице списка: общего числа
+          List не отдаёт, поэтому «ещё» — это наличие курсора, а не арифметика по
+          общему числу. Показано и при серверном сужении: сужённый список тоже
+          бывает длиннее страницы.
+
+          Догрузку НЕЛЬЗЯ вешать на эффект: эффект, зовущий продолжение на каждый
+          ответ, вызывает себя же — это бесконечный рендер, который в этой консоли
+          дважды убивал прогон по памяти, не оставив вердикта ни одной пробе.
+          Продолжение — по действию пользователя. */}
+      {hasMore && (
+        <div style={{ flexShrink: 0, marginTop: 12, textAlign: "center" }}>
+          <Button loading={isFetchingMore} onClick={() => void fetchMore()}>
+            Показать ещё
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -353,6 +405,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
         <RelatedTable
           childSpec={childSpec}
           filterFields={filterFields}
+          narrowBy={r}
           parentId={getByPath<string>(data, "id") ?? uid ?? ""}
           projectId={projectId ?? ""}
           detailBase={detailBase}

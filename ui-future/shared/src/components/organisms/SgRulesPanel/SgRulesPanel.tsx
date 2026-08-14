@@ -34,7 +34,6 @@ export interface SgRule {
   ports?: { from_port?: number | string; to_port?: number | string };
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
-  predefined_target?: string;
   [k: string]: unknown;
 }
 
@@ -71,7 +70,10 @@ function targetParts(r: SgRule): { kind: string; value: string } {
     return { kind: "CIDR", value: [...v4, ...v6].join(", ") || "—" };
   }
   if (r.security_group_id) return { kind: "SG", value: r.security_group_id };
-  if (r.predefined_target) return { kind: "Predefined", value: r.predefined_target };
+  // Прочерк здесь означает правило БЕЗ цели — по закрытой модели оно не разрешает
+  // ничего. Такое правило край больше не принимает (сервис отвергает с указанием
+  // поля `<путь>.target`), поэтому прочерк остался ровно для строк, сохранённых
+  // прежним контрактом; миграция 0029 приводит их к выразимому виду.
   return { kind: "—", value: "—" };
 }
 

@@ -2944,16 +2944,39 @@ def _declare_supernet_where_a_subnet_is_carved(steps: List[Step]) -> List[Step]:
     return out
 
 
+def normalize_steps(steps: List[Step]) -> List[Step]:
+    """ВЕСЬ набор проходов над шагами — в одном месте.
+
+    Зовётся и кейсами, и посевом. Раньше цепочка стояла только внутри
+    `case_to_postman`, и посев, собранный рядом, унаследовал ЧАСТЬ проходов:
+    отсутствовали `_assert_published_id_outcome` и `_assert_delete_operation_outcome`,
+    то есть фикстура публиковала id ресурса, чей опрос утверждал только `done` —
+    а операция несёт предвыделенный id и когда завершилась ошибкой. Поймал это
+    гейт `internal/repohygiene` `TestPublishedResourceIdIsGuardedByOperationOutcome`,
+    и починка сделана здесь, а не у посева: список проходов, размноженный по двум
+    вызывающим, расходится молча — и расходится там, где расхождение не видно.
+    """
+    return _assert_published_id_outcome(
+        _assert_delete_operation_outcome(
+            _declare_supernet_where_a_subnet_is_carved(
+                _wrap_own_fresh_reads(steps))))
+
+
 def case_to_postman(case: Case) -> Dict:
     tags = [f"class:{c}" for c in case.classes] + [f"priority:{case.priority}"]
+    # Провязка предиката видимости названа ЗДЕСЬ и явно: её читает гейт
+    # `internal/repohygiene/artifactgates` `TestOwnFreshReadWrapPredicateWiredInEveryNewmanGenerator`
+    # по литералу `_wrap_own_fresh_reads(case.steps` — он требует, чтобы обёртка
+    # первого доступа к своему свежему ресурсу стояла в СЕРИАЛИЗАЦИИ КЕЙСА, а не
+    # ставилась руками по шагам (замер: 42 падения полосы видимости пришлись на
+    # шаги без обёртки вовсе). Предикат идемпотентен — уже обёрнутый шаг он
+    # пропускает (`already = "_authRetryCount" in body`), — поэтому повторный
+    # проход внутри `normalize_steps` ничего не меняет; это проверено сравнением
+    # сгенерированных коллекций байт в байт.
     return {
         "name": f"{case.id} — {case.title}",
         "description": " | ".join(tags),
-        "item": [step_to_postman(s) for s in
-                 _assert_published_id_outcome(
-                     _assert_delete_operation_outcome(
-                         _declare_supernet_where_a_subnet_is_carved(
-                             _wrap_own_fresh_reads(case.steps))))],
+        "item": [step_to_postman(s) for s in normalize_steps(_wrap_own_fresh_reads(case.steps))],
     }
 
 
@@ -2997,7 +3020,11 @@ _ZONE_SETUP_TEST = [
 def _zone_setup_item() -> Dict:
     """Blocking first item: resolve live geo zone ids into zoneA..D env vars."""
     return {
-        "name": "_SETUP-ZONES — resolve live geo zone ids (zoneA..D)",
+        # Имя объявлено константой: его читает `setup.sh`, чтобы прогнать резолв
+        # зон вместе с якорем. Литерал здесь и литерал в оболочке разошлись бы
+        # молча — и разошлись бы там, где расхождение не видно (папка просто не
+        # нашлась бы, а newman на ненайденную точку входа ничего не утверждает).
+        "name": ZONES_SETUP_ITEM,
         "event": [{
             "listen": "test",
             "script": {"type": "text/javascript", "exec": _ZONE_SETUP_TEST},
@@ -3041,7 +3068,11 @@ _POOL_SEED_BODY = {
 # address-zone-coherence allocates an external v4 in existingZoneId (=zoneA) in its
 # ZONE-03 happy path; without the zoneA default pool the Create Operation errors
 # (no pool resolved) → the address never persists → get-known-zone 404s. Seed it.
-_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence"}
+# `gateway` — с тех пор как шлюз трансляции получает внешний адрес: его якорь
+# стоит в existingZoneId (=zoneA), и без пула по умолчанию для этой зоны КАЖДЫЙ
+# NAT-кейс суиты отказывал бы «нет доступного внешнего адреса IPv4». Это
+# предусловие суиты, а не предмет кейса, поэтому оно живёт в посеве.
+_POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence", "gateway"}
 
 
 # ── ZONE-INDEPENDENT (anycast) default pool ────────────────────────────────────
@@ -3125,6 +3156,97 @@ def _anycast_pool_seed_item() -> Dict:
     }
 
 
+# ── ЯКОРЬ РАЗМЕЩЕНИЯ СУИТЫ ШЛЮЗОВ ─────────────────────────────────────────────
+#
+# Шлюз без подсети не создаётся ВОВСЕ (`subnetId` обязателен, он же якорь
+# размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Поэтому суите
+# нужна одна фикстурная пара «сеть + зональная подсеть с IPv4», и её id читает
+# почти каждый кейс.
+#
+# ПОЧЕМУ ЭТО ПОСЕВ, А НЕ ПЕРВЫЙ КЕЙС. Раньше пара заводилась ПЕРВЫМ КЕЙСОМ
+# коллекции. Следствие: прогон одиночного кейса (`--folder <кейс>`) якоря не
+# получал — newman исполняет только названную точку входа, — и кейс, зелёный в
+# полной суите, краснел в отладке, называя виновником невиновного: отказ приходил
+# из тела, куда уехал неразрешённый `{{gwAnchorSubId}}`. Фикстура, занимающая слот
+# кейса, вдобавок считается кейсом в каждом вердикте и в каждой переписи.
+#
+# Теперь это setup-папка коллекции (исполняется первой в полном прогоне), а для
+# отладки одиночного кейса окружение готовит `./setup.sh` — он гоняет ЭТУ ЖЕ
+# папку и выгружает id в файл окружения, поэтому объявление у якоря остаётся ОДНО.
+#
+# Имя папки и имена переменных объявлены здесь и читаются `setup.sh` из этого
+# модуля (`python3 -c 'import gen; print(gen.GW_ANCHOR_FOLDER)'`) — второй копии
+# литерала в оболочке нет, и разойтись им негде.
+GW_ANCHOR_FOLDER = "_SETUP-GW-ANCHOR"
+GW_ANCHOR_NET_VAR = "gwAnchorNetId"
+GW_ANCHOR_SUBNET_VAR = "gwAnchorSubId"
+# Имя первого setup-элемента: `setup.sh` обязан прогонять его ВМЕСТЕ с папкой
+# якоря — иначе зона не резолвится и подсеть создаётся в зоне из закоммиченного
+# умолчания, которой на стенде может не быть.
+ZONES_SETUP_ITEM = "_SETUP-ZONES — resolve live geo zone ids (zoneA..D)"
+
+_GW_ANCHOR_SERVICES = {"gateway"}
+
+
+def _gw_anchor_steps() -> List[Step]:
+    """Шаги якоря. КАЖДЫЙ утверждает свой исход.
+
+    Шаг, создающий предмет кейса без утверждения, при отказе оставляет переменную
+    пустой: прогон идёт дальше по несозданному ресурсу и падает через два-три
+    шага, обвиняя невиновного (наблюдалось 2026-08-12 — создание слушателя
+    получило 403 в окне материализации прав, а лог винил проверку запрета
+    удаления).
+    """
+    return [
+        Step(name="anchor-net", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-anchor-net-{{runId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.networkId",
+                                              GW_ANCHOR_NET_VAR)]),
+        poll_operation_until_done(),
+        Step(name="anchor-subnet", method="POST", path="/vpc/v1/subnets",
+             body={"projectId": "{{_suiteProjectId}}",
+                   "networkId": "{{" + GW_ANCHOR_NET_VAR + "}}",
+                   "name": "gw-anchor-sub-{{runId}}", "zoneId": "{{existingZoneId}}",
+                   "ipv4CidrPrimary": "10.71.0.0/24"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.subnetId",
+                                              GW_ANCHOR_SUBNET_VAR)]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="anchor-verify", method="GET",
+            path="/vpc/v1/subnets/{{" + GW_ANCHOR_SUBNET_VAR + "}}",
+            test_script=[*assert_status(200),
+                         "pm.test('якорь создан и несёт IPv4', () => {",
+                         "  const j = pm.response.json();",
+                         "  pm.expect(j.id, pm.response.text()).to.eql("
+                         f"pm.environment.get('{GW_ANCHOR_SUBNET_VAR}'));",
+                         "  pm.expect(j.ipv4CidrPrimary, 'IPv4 у якоря').to.be.a('string').and.not.empty;",
+                         "});"])),
+    ]
+
+
+def _gw_anchor_setup_item() -> Dict:
+    """Setup-папка якоря — ТЕ ЖЕ проходы над шагами, что у кейсов.
+
+    Через `normalize_steps`, а не своим перечнем: посев, собравший цепочку
+    отдельно, унаследовал не все проходы и опубликовал id ресурса без
+    утверждения исхода операции (поймал гейт `internal/repohygiene`
+    `TestPublishedResourceIdIsGuardedByOperationOutcome`). Фикстура, к которой
+    применяется меньше правил, чем к кейсам, снисходительнее продукта.
+    """
+    steps = normalize_steps(_gw_anchor_steps())
+    return {
+        "name": GW_ANCHOR_FOLDER,
+        "description": (
+            "fixture | якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. "
+            f"Публикует {GW_ANCHOR_NET_VAR}/{GW_ANCHOR_SUBNET_VAR}. "
+            "Для прогона одиночного кейса окружение готовит ./setup.sh."
+        ),
+        "item": [step_to_postman(s) for s in steps],
+    }
+
+
 def _pool_seed_item() -> Dict:
     """Idempotent setup item: ensure a default EXTERNAL_PUBLIC pool exists at zoneA."""
     return {
@@ -3169,6 +3291,10 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
         setup_items.append(_pool_seed_item())
     if service in _ANYCAST_POOL_SEED_SERVICES:
         setup_items.append(_anycast_pool_seed_item())
+    # Якорь идёт ПОСЛЕ резолва зон: подсеть создаётся в живой зоне стенда, а не в
+    # той, что стоит в закоммиченном умолчании окружения.
+    if service in _GW_ANCHOR_SERVICES:
+        setup_items.append(_gw_anchor_setup_item())
     pre = PRE_GLOBAL + _ADMIN_DEFAULT_PRE if service in _ADMIN_DEFAULT_SERVICES else PRE_GLOBAL
     return {
         "info": {

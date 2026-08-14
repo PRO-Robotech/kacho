@@ -36,6 +36,7 @@ export const OPERATIONS_LIST_PATHS = [
   "/storage/v1/snapshots/{id}/operations",
   "/storage/v1/volumes/{id}/operations",
   "/vpc/v1/addresses/{id}/operations",
+  "/vpc/v1/cidrGroups/{id}/operations",
   "/vpc/v1/gateways/{id}/operations",
   "/vpc/v1/networkInterfaces/{id}/operations",
   "/vpc/v1/networks/{id}/operations",

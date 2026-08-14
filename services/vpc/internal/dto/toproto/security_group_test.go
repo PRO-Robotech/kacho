@@ -21,7 +21,7 @@ import (
 
 // TestDTO_SecurityGroupRule_AllTargetOneofBranches — regression: toPb обязан
 // сериализовать ВСЕ три взаимоисключающие ветки target-oneof
-// {cidr_blocks | security_group_id | predefined_target}. Раньше мапилась только
+// {cidr_blocks | security_group_id}. Раньше мапилась только
 // cidr_blocks → rule с SG-target/predefined приходил Target=nil (в Get/List
 // `securityGroupId`/`predefinedTarget` были undefined).
 func TestDTO_SecurityGroupRule_AllTargetOneofBranches(t *testing.T) {
@@ -35,7 +35,6 @@ func TestDTO_SecurityGroupRule_AllTargetOneofBranches(t *testing.T) {
 			Rules: []domain.SecurityGroupRule{
 				{ID: "rule-cidr", Direction: domain.SecurityGroupRuleDirectionIngress, V4CidrBlocks: []string{"10.0.0.0/8"}},
 				{ID: "rule-sg", Direction: domain.SecurityGroupRuleDirectionIngress, SecurityGroupID: "enpsgpeer"},
-				{ID: "rule-pre", Direction: domain.SecurityGroupRuleDirectionEgress, PredefinedTarget: "self_security_group"},
 			},
 		},
 		CreatedAt: at,
@@ -43,7 +42,7 @@ func TestDTO_SecurityGroupRule_AllTargetOneofBranches(t *testing.T) {
 	var dst *vpcv1.SecurityGroup
 	require.NoError(t, dto.Transfer(dto.FromTo(rec, &dst)))
 	require.NotNil(t, dst)
-	require.Len(t, dst.Rules, 3)
+	require.Len(t, dst.Rules, 2)
 
 	cidr, ok := dst.Rules[0].Target.(*vpcv1.SecurityGroupRule_CidrBlocks)
 	require.True(t, ok, "rule-cidr → CidrBlocks target")
@@ -53,7 +52,4 @@ func TestDTO_SecurityGroupRule_AllTargetOneofBranches(t *testing.T) {
 	require.True(t, ok, "rule-sg → SecurityGroupId target (было Target=nil)")
 	assert.Equal(t, "enpsgpeer", sg.SecurityGroupId)
 
-	pre, ok := dst.Rules[2].Target.(*vpcv1.SecurityGroupRule_PredefinedTarget)
-	require.True(t, ok, "rule-pre → PredefinedTarget target (было Target=nil)")
-	assert.Equal(t, "self_security_group", pre.PredefinedTarget)
 }

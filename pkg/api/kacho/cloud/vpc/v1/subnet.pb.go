@@ -128,7 +128,7 @@ func (IpVersion) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_subnet_proto_rawDescGZIP(), []int{1}
 }
 
-// A Subnet resource. For more information, see [Subnets](/docs/vpc/concepts/network#subnet).
+// A Subnet resource. For more information, see [Subnet](https://vpc.kacho.cloud/api/subnet).
 type Subnet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the subnet.

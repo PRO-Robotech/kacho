@@ -187,46 +187,20 @@ func (h *Handler) ListOperations(ctx context.Context, req *vpcv1.ListRouteTableO
 	return resp, nil
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Гранулярная правка маршрутов — ЯВНЫЙ отказ (исход 2), а не молчаливый.
+// Здесь стоял ЯВНЫЙ отказ трёх методов гранулярной правки маршрутов и текст этого
+// отказа — снято вместе с предметом.
 //
-// Три verb-RPC объявлены контрактом, и до этих методов ни один не был
-// переопределён: вызывающий получал `UNIMPLEMENTED` с текстом
-// «method AddRoutes not implemented» — то есть без причины и без рабочего пути,
-// при том что сайт документации описывал все три полностью и советовал ими
-// пользоваться.
+// Отказ был исходом 2 конвенции: методы объявлены контрактом, реализовать их нельзя
+// (два из трёх адресуют маршрут по идентификатору, которого набор не несёт ни в
+// контракте, ни в домене, ни в хранилище), поэтому они отказывали явно и с причиной
+// вместо молчаливого «не реализовано». Волна снятий перевела предмет в исход 3: методы
+// сняты с контракта с резервированием номеров и имён, разрыв объявлен в перечне.
 //
-// Реализовать два из трёх нельзя: `RemoveRoutes` и `UpdateRoute` адресуют
-// маршрут по идентификатору, которого `StaticRoute` не несёт НИ в контракте, НИ
-// в домене, НИ в хранилище (`static_routes jsonb` — массив объектов без ключа).
-// Идентичность маршрута — отдельный инкремент со своей приёмкой; разбор и
-// предикат снятия — `docs/engineering/architecture/07-known-divergences.md`,
-// запись 26.
-//
-// `AddRoutes` идентификатора не требует и реализуем сам по себе, но отказывает
-// вместе с соседями НАМЕРЕННО: «добавить гранулярно можно, удалить нельзя» —
-// поверхность, на которой набор маршрутов только растёт, и вызывающий узнаёт об
-// этом на втором вызове, а не на первом.
-//
-// Тон и содержание сообщения — часть контракта (проба
-// granular_route_refusal_test.go утверждает СООБЩЕНИЕ, а не только код: у
-// названного отказа и у унаследованного код один и тот же).
-const granularRouteRefusal = "granular route editing is not available: a static route id " +
-	"does not exist in this API — StaticRoute carries destination, next hop and labels only. " +
-	"Edit the set with RouteTableService.Update and update_mask [\"static_routes\"], sending the " +
-	"full list"
-
-func (h *Handler) AddRoutes(_ context.Context, _ *vpcv1.AddRouteTableRoutesRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
-
-func (h *Handler) RemoveRoutes(_ context.Context, _ *vpcv1.RemoveRouteTableRoutesRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
-
-func (h *Handler) UpdateRoute(_ context.Context, _ *vpcv1.UpdateRouteTableRouteRequest) (*operationpb.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, granularRouteRefusal)
-}
+// Константа пережила своих вызывающих на один заход и держалась тем, что компилятор не
+// проверяет достижимость. Её комментарий при этом ссылался на пробу, которой в дереве
+// НЕТ — то есть утверждал, что текст закреплён, когда закреплять было уже нечего.
+// Решение и предикат снятия остаются в записи 26
+// docs/engineering/architecture/07-known-divergences.md — там им и место.
 
 // routeTableToPb — repo-entity RouteTable → proto RouteTable через DTO-реестр.
 func routeTableToPb(rec *kachorepo.RouteTableRecord) (*vpcv1.RouteTable, error) {

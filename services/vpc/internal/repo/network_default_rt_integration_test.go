@@ -23,6 +23,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
@@ -78,7 +79,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRouteTableProvisioned(t *testing.T)
 	defer r.Close()
 
 	or := repomock.NewOpsRepo()
-	uc := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or, true)
+	uc := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or)
 	op, err := uc.Execute(ctx, domain.Network{
 		ProjectID: "prj-default-rt", Name: domain.RcNameVPC("core-default-rt"),
 		IPv4CidrBlocks: []string{"10.30.0.0/16"},
@@ -123,7 +124,7 @@ func TestIntegration_Subnet_VPC_1_37_AutoAssocUsesDeclaredDefault(t *testing.T) 
 
 	const proj = "prj-auto-rt"
 	or := repomock.NewOpsRepo()
-	netUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or, true)
+	netUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or)
 	op, err := netUC.Execute(ctx, domain.Network{
 		ProjectID: proj, Name: domain.RcNameVPC("core-auto-rt"),
 		IPv4CidrBlocks: []string{"10.31.0.0/16"},
@@ -239,7 +240,7 @@ func TestIntegration_Network_VPC_1_11_DefaultRTBackfill(t *testing.T) {
 //
 // RED (регрессия, которую вносит F3, если её не закрыть): после провижна default
 // RT `checkNetworkEmpty` видит одну route_tables-строку и КАЖДЫЙ Network.Delete
-// отвечает FAILED_PRECONDITION "Network <id> is not empty" — сеть нельзя удалить
+// отвечает FAILED_PRECONDITION "Network <id> is not empty (route tables: N)" — сеть нельзя удалить
 // вообще никогда.
 func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	if testing.Short() {
@@ -255,9 +256,17 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 
 	const proj = "prj-del-default-rt"
 	or := repomock.NewOpsRepo()
-	// defaultSGInline=false — тест изолирует RT-ветку; default-SG-cleanup у
-	// Delete отдельный (и требует SG-репо в wiring), он здесь не предмет.
-	createUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or, false)
+	// Группа правил по умолчанию создаётся БЕЗУСЛОВНО, поэтому изолировать ветвь
+	// таблицы маршрутизации «сетью без группы» больше НЕЛЬЗЯ: такого состояния не
+	// существует. Прежняя редакция строила его настройкой стенда, а Delete собирала
+	// БЕЗ репозитория групп — и это работало ровно потому, что группы не было.
+	//
+	// Теперь провязка та же, что в бою: удаление получает репозиторий групп и
+	// снимает системную группу в той же транзакции. Предмет пробы от этого не
+	// изменился — она о том, что СОБСТВЕННАЯ системная таблица маршрутизации сети не
+	// делает её неудаляемой; системная группа теперь просто часть неизбежной
+	// обстановки.
+	createUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or)
 	mk := func(name string) *vpcv1.Network {
 		op, cerr := createUC.Execute(ctx, domain.Network{ProjectID: proj, Name: domain.RcNameVPC(name)})
 		require.NoError(t, cerr)
@@ -272,7 +281,7 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = rd.Close() }()
 	delUC := network.NewDeleteNetworkUseCase(r,
-		rd.Subnets(), rd.RouteTables(), nil, or)
+		rd.Subnets(), rd.RouteTables(), cqrsadapter.NewSecurityGroup(r), or)
 
 	// Только системные default-ресурсы → сеть удаляется.
 	plain := mk("del-plain")
@@ -294,7 +303,11 @@ func TestIntegration_Network_Delete_IgnoresOwnDefaultRouteTable(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
-	assert.Equal(t, "Network "+withTenantRT.Id+" is not empty", st.Message())
+	// Отказ ПЕРЕЧИСЛЯЕТ мешающее по видам и числам: прежний текст называл только
+	// факт непустоты, и арендатор выяснял радиус перебором. Идентификаторы
+	// дочерних в текст не попадают — число координатой не является, перечень
+	// идентификаторов чужих объектов ею становится.
+	assert.Equal(t, "Network "+withTenantRT.Id+" is not empty (route tables: 1)", st.Message())
 }
 
 // TestIntegration_Network_DefaultRT_FKOnDelete — within-service ссылка
@@ -321,7 +334,7 @@ func TestIntegration_Network_DefaultRT_FKOnDelete(t *testing.T) {
 
 	const proj = "prj-default-rt-fk"
 	or := repomock.NewOpsRepo()
-	netUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or, false)
+	netUC := network.NewCreateNetworkUseCase(r, &repomock.ProjectClient{OK: true}, or)
 	op, err := netUC.Execute(ctx, domain.Network{
 		ProjectID: proj, Name: domain.RcNameVPC("core-rt-fk"),
 		IPv4CidrBlocks: []string{"10.32.0.0/16"},

@@ -47,10 +47,12 @@ type UpdateRuleUseCase struct {
 // NewUpdateRuleUseCase создает UpdateRuleUseCase.
 //
 // sgReader резолвит network_id редактируемой SG + target-SG ее SG-target-правила
-// для same-network-валидации. Composition-root инжектит
-// `cqrsadapter.SecurityGroupAdapter`; nil = пропуск.
+// для same-network-валидации. Composition-root передаёт
+// `cqrsadapter.SecurityGroupAdapter`; **nil означает «читать через уже
+// обязательный repo», а НЕ «пропустить»** — выключенного состояния у проверки
+// больше нет (см. `sgTargetReader`).
 func NewUpdateRuleUseCase(r Repo, opsRepo operations.Repo, sgReader SecurityGroupReader) *UpdateRuleUseCase {
-	return &UpdateRuleUseCase{repo: r, opsRepo: opsRepo, sgReader: sgReader}
+	return &UpdateRuleUseCase{repo: r, opsRepo: opsRepo, sgReader: sgTargetReader(sgReader, r)}
 }
 
 // Execute — sync-валидация id и domain self-validation
@@ -102,16 +104,14 @@ func (u *UpdateRuleUseCase) Execute(ctx context.Context, in UpdateRuleInput) (*o
 	// только description/labels, так что target не переписывается — проверка
 	// валидирует итоговое (= текущее) правило как defense-in-depth и ловит
 	// унаследованный cross-network target.
-	if u.sgReader != nil {
-		for _, r := range cur.Rules {
-			if r.ID != in.RuleID || r.SecurityGroupID == "" {
-				continue
-			}
-			if verr := validateSGTargetSameNetwork(ctx, u.sgReader, cur.NetworkID,
-				[]domain.SecurityGroupRule{r},
-				func(int) string { return "security_group_id" }); verr != nil {
-				return nil, verr
-			}
+	for _, r := range cur.Rules {
+		if r.ID != in.RuleID || r.SecurityGroupID == "" {
+			continue
+		}
+		if verr := validateSGTargetSameNetwork(ctx, u.sgReader, cur.NetworkID,
+			[]domain.SecurityGroupRule{r},
+			func(int) string { return "security_group_id" }); verr != nil {
+			return nil, verr
 		}
 	}
 

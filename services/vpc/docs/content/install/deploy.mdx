@@ -196,7 +196,6 @@ init-container `migrate` запускает `kacho-migrator up` **до** ста�
     <tr><td><code>ports.grpc</code> / <code>ports.internalGrpc</code></td><td><code>9090</code> / <code>9091</code></td><td>Public / internal gRPC</td></tr>
     <tr><td><code>db.host</code> / <code>db.name</code> / <code>db.user</code></td><td><code>kacho-umbrella-pg-vpc</code> / <code>kacho\_vpc</code> / <code>vpc</code></td><td>Подключение к PostgreSQL</td></tr>
     <tr><td><code>repository.postgres.maxConns</code></td><td><code>200</code></td><td>Размер pgxpool (тюнинг под Address.Create)</td></tr>
-    <tr><td><code>network.defaultSgInline</code></td><td><code>true</code></td><td>Inline-создание default-SG при Network.Create</td></tr>
     <tr><td><code>autoscaling.maxReplicas</code></td><td><code>10</code></td><td>Верхняя граница HPA (CPU 70%)</td></tr>
   </tbody>
 </table>

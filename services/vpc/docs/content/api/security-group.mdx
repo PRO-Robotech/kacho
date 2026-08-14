@@ -32,6 +32,19 @@ HTTPS из интернета», «ходить в БД только из app-п
 default-`SecurityGroup`** этой сети (см. [Network](/api/network)) — стартовая политика, к
 которой по умолчанию привязываются новые интерфейсы.
 
+:::warning Снятие правила обрывает соединения, которые оно разрешало
+Обратный трафик установленного соединения проходит **пока это соединение разрешено
+действующим правилом**. Уберете правило — соединения, которые им разрешались, обрываются
+**сразу**; они не «доживают» до своего закрытия. Ваши клиенты увидят разрыв в тот же
+момент, а не начиная со следующего подключения.
+
+Обрываются ровно те соединения, которых не разрешает **ни одно из оставшихся** правил:
+если тот же трафик покрывает более широкое правило, соединения продолжают работать.
+Поэтому перед правкой на живом трафике проверьте, чем еще разрешено то, что вы убираете:
+`Update` с неполным `ruleSpecs` и `UpdateRules` с `deletionRuleIds` — это операции с
+**немедленным** эффектом, а не отложенным.
+:::
+
 ```mermaid
 graph TD
   N[Network · net-…] --> SGd["default SecurityGroup · sgr-… · defaultForNetwork=true"]
@@ -67,7 +80,7 @@ SG-target правило может ссылаться лишь на SG **той
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>rules</code></td><td><code>SecurityGroupRule[]</code></td><td>Список правил (см. «Правило» ниже); output-only — мутируется через <code>UpdateRules</code>/<code>UpdateRule</code></td></tr>
     <tr><td><code>defaultForNetwork</code></td><td><code>{TYPES.bool}</code></td><td>Признак default-SG сети (output-only; <code>true</code> у SG, авто-созданной при <code>Network.Create</code>)</td></tr>
-    <tr><td><code>usedBy</code></td><td><code>&#123;TYPES.reference&#125;[]</code></td><td>Потребители SG (output-only, derived-on-read): <code>NetworkInterface</code> (его <code>securityGroupIds</code> содержит эту SG) + <code>Network</code> (его <code>defaultSecurityGroupId</code> == эта SG)</td></tr>
+    <tr><td><code>usedBy</code></td><td><code>&#123;TYPES.reference&#125;[]</code></td><td>Потребители SG (output-only, выводится на чтении — <code>Get</code>/<code>List</code>; в ответах мутаций не заполняется): <code>NetworkInterface</code> (его <code>securityGroupIds</code> содержит эту SG) + <code>Network</code> (его <code>defaultSecurityGroupId</code> == эта SG). <strong>Ответ ограничен 33 записями</strong> — см. «Сколько потребителей отдаётся» ниже. Потребители чужих проектов не показываются</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
   </tbody>
 </table>
@@ -84,16 +97,35 @@ SG-target правило может ссылаться лишь на SG **той
     <tr><td><code>ports</code></td><td><code>PortRange</code></td><td>Диапазон портов <code>&#123;fromPort, toPort&#125;</code> (0..65535). Пусто = любой порт</td></tr>
     <tr><td><code>protocolName</code></td><td><code>{TYPES.string}</code></td><td>Имя протокола (<code>TCP</code>/<code>UDP</code>/<code>ICMP</code>, IANA). Oneof <code>protocol</code> с <code>protocolNumber</code>; пусто = любой</td></tr>
     <tr><td><code>protocolNumber</code></td><td><code>{TYPES.int64}</code></td><td>Номер протокола (IANA). Альтернатива <code>protocolName</code></td></tr>
-    <tr><td><code>cidrBlocks</code></td><td><code>{TYPES.cidrSpec}</code></td><td>Target = CIDR-блоки <code>&#123;v4CidrBlocks[], v6CidrBlocks[]&#125;</code>. Oneof <code>target</code> — ровно один из трех</td></tr>
+    <tr><td><code>cidrBlocks</code></td><td><code>{TYPES.cidrSpec}</code></td><td>Target = CIDR-блоки <code>&#123;v4CidrBlocks[], v6CidrBlocks[]&#125;</code>. Oneof <code>target</code> — ровно одна из трёх ветвей</td></tr>
     <tr><td><code>securityGroupId</code></td><td><code>{TYPES.string}</code></td><td>Target = другая SG (<strong>только same-network</strong>). Oneof <code>target</code></td></tr>
-    <tr><td><code>predefinedTarget</code></td><td><code>{TYPES.string}</code></td><td>Target = предопределенная цель. Oneof <code>target</code></td></tr>
+    <tr><td><code>cidrGroupId</code></td><td><code>{TYPES.string}</code></td><td>Target = именованный набор префиксов <code>CidrGroup</code> (<strong>того же проекта</strong>, <strong>непустой</strong>). Oneof <code>target</code></td></tr>
   </tbody>
 </table>
 
 :::note Target правила — `exactly_one`
-В каждом правиле задается **ровно один** target: `cidrBlocks` **или** `securityGroupId` **или**
-`predefinedTarget`. Нарушение → `InvalidArgument`. Для SG-target — целевая SG обязана принадлежать
-**той же** сети (`network_id`), иначе правило отвергается (`InvalidArgument`).
+В каждом правиле задается **ровно один** target: `cidrBlocks`, `securityGroupId`
+**или** `cidrGroupId`. Ноль или больше одного → `InvalidArgument`. Для цели-группы правил
+она обязана принадлежать **той же** сети (`network_id`), иначе правило отвергается
+(`InvalidArgument`).
+:::
+
+:::info Именованный набор префиксов как цель
+`cidrGroupId` существует ради одного: перечень сетей, повторяющийся в двадцати правилах,
+правится **один раз**. Набор ([`CidrGroup`](/api/cidr-group), идентификатор `cdg-…`)
+заводится в проекте отдельно, правило ссылается на него, и правка состава набора действует
+во всех правилах, которые на него ссылаются.
+
+Две границы, о которых стоит знать заранее:
+
+* набор обязан лежать **в том же проекте**, что и группа правил;
+* набор обязан быть **непустым** — и пока на него ссылается хотя бы одно правило, снять
+  его последний префикс нельзя (`FAILED_PRECONDITION`). Пустой набор в ссылке либо
+  заставил бы правило исчезнуть целиком, либо заставил бы фильтр молча пропасть из него:
+  первое сужает разрешение незаметно, второе — расширяет.
+
+Удалить набор, на который ссылается живое правило, тоже нельзя: отказ
+(`FAILED_PRECONDITION`) перечисляет, сколько групп правил и сколько правил его держат.
 :::
 
 ---
@@ -531,7 +563,8 @@ sync `InvalidArgument` (`Invalid rule id <id>`); корректный по фо�
 - **Старт на default-SG.** Новые интерфейсы по умолчанию попадают в default-группу сети —
   доработайте ее правила вместо создания новой группы для простых случаев.
 - **Аудит использования.** Перед изменением/удалением группы посмотрите `usedBy`, чтобы
-  понять, какие интерфейсы и сети затронет правка.
+  понять, какие интерфейсы и сети затронет правка. Учитывайте потолок ответа (ниже):
+  ровно 33 записи означают, что показаны не все.
 
 ## Что важно знать (corner cases)
 
@@ -540,7 +573,7 @@ sync `InvalidArgument` (`Invalid rule id <id>`); корректный по фо�
 - **SG-target только same-network.** Правило с `securityGroupId` обязано ссылаться на
   группу **той же** сети; cross-network и несуществующая target-SG → `INVALID_ARGUMENT`.
 - **Ровно один target на правило.** В каждом правиле задается **один** из `cidrBlocks` /
-  `securityGroupId` / `predefinedTarget`; ноль или несколько → `INVALID_ARGUMENT`.
+  `securityGroupId`; ноль или несколько → `INVALID_ARGUMENT`.
 - **default-SG нельзя удалить вручную.** Попытка → `FAILED_PRECONDITION
   "default security group cannot be deleted"`; она удаляется автоматически вместе с сетью
   при `Network.Delete`.
@@ -551,6 +584,11 @@ sync `InvalidArgument` (`Invalid rule id <id>`); корректный по фо�
   получите его из ответной `SecurityGroup` для последующих `UpdateRules`/`UpdateRule`.
 - **`Update(ruleSpecs)` — полная замена.** Передача неполного списка сотрет остальные
   правила; для дельт используйте `UpdateRules`.
+- **Снятое правило обрывает свои соединения.** Удаление правила (`UpdateRules` с
+  `deletionRuleIds`) и его исчезновение из полного списка (`Update` с `ruleSpecs`) дают
+  один и тот же эффект: соединения, которые разрешались только этим правилом, обрываются
+  немедленно. Если тот же трафик покрыт более широким правилом — не обрываются.
+  Планируйте правку политики на живом трафике с этим расчетом.
 
 ## Рекомендации (best practices)
 
@@ -560,5 +598,30 @@ sync `InvalidArgument` (`Invalid rule id <id>`); корректный по фо�
   «любой порт/любой протокол».
 - Снабжайте правила `description`/`labels` (назначение, тикет владельца процесса) — это
   ключ к аудиту больших групп.
-- Перед удалением или существенной правкой сверяйтесь с `usedBy` и при необходимости
-  поднимайте историю изменений через `ListOperations`.
+- Перед удалением или существенной правкой сверяйтесь с `usedBy` (помня о его потолке —
+  см. «Сколько потребителей отдаётся») и при необходимости поднимайте историю изменений
+  через `ListOperations`.
+
+## Сколько потребителей отдаётся
+
+`usedBy` — не постраничная выборка: у поля нет ни курсора, ни признака «есть ещё»
+отдельным полем. Поэтому сервер отдаёт **не больше 33 записей** на группу, и признаком
+служит сама длина ответа:
+
+| Получено | Что это значит |
+|---:|---|
+| 0…32 | список **полон** — это все потребители группы |
+| ровно 33 | потребителей **больше 32**; отданы первые по порядку |
+
+Порядок детерминирован и не меняется между двумя одинаковыми чтениями: сначала сеть,
+для которой группа является группой по умолчанию (такая сеть одна), затем интерфейсы по
+времени создания.
+
+Потолок существует потому, что число интерфейсов, держащих одну группу, ничем не
+ограничено: отдавать их все означало бы неограниченный запрос на каждое чтение группы.
+Если 33 записи получены и нужен полный перечень — перебирайте интерфейсы через
+`NetworkInterfaceService.List` и отбирайте те, чей `securityGroupIds` содержит эту
+группу.
+
+Потребители **из других проектов не показываются**: ответ на группу, которую держит
+чужой интерфейс, неотличим от ответа на группу без потребителей.

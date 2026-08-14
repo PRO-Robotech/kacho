@@ -3,15 +3,13 @@
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │ SECURITY — throwaway DEV/CI credentials only.                              │
 # │                                                                           │
-# │ Every credential in this file (DB passwords `changeme-dev-*`, MinIO       │
-# │ `changeme-dev-minio-*`) is a NON-SECRET PLACEHOLDER for the ephemeral kind │
+# │ Every credential in this file (DB passwords `changeme-dev-*`)             │
 # │ stand (`make dev-up`) and the newman CI cluster ONLY. They are committed   │
 # │ to git deliberately so the local stand is reproducible — they carry no    │
 # │ confidentiality and MUST NEVER be reused on a shared, staging or           │
 # │ production cluster.                                                        │
 # │                                                                           │
 # │ Production sources every credential from external-secrets / SealedSecret  │
-# │ (values.prod.yaml: minioDev.enabled=false, DB passwords via existingSecret │
 # │ + ssl-mode=require). The prod profile is fail-closed and guarded by        │
 # │ tests/helm/prod-profile-fail-closed-test.sh. Rotate/override these         │
 # │ placeholders before any non-dev use.                                      │
@@ -707,35 +705,6 @@ pg-nlb:
 
 # KAC-127: Zitadel chart + конфиг удалены — auth-tier (identity/OIDC) на Ory
 # Kratos + Hydra. OIDC issuer для kacho-iam теперь Hydra.
-
-# KAC-183: MinIO dev instance for compliance report S3 upload.
-# values.dev.yaml ↓ also declares KACHO_IAM_COMPLIANCE__S3__ENDPOINT=http://minio-dev:9000
-# (see kacho-iam.env / kacho-iam.compliance.s3 below). Until KAC-183 there was no
-# minio-dev Service in the cluster → ComplianceReportService.GenerateAccessReport
-# failed reproducibly in newman (6 cases) because s3_report_store.doPut retried
-# against an unresolvable DNS name. Prod uses external S3 / managed MinIO with
-# creds from Vault/SealedSecret — `minioDev.enabled=false` in values.prod.yaml.
-minioDev:
-  enabled: true
-  # Dev-only root credentials — match `kacho-iam.compliance.s3.{accessKey,secretKey}`
-  # below. Do NOT use in prod; values.prod.yaml has minioDev.enabled=false and the
-  # service points at an external MinIO/S3 with secrets from Vault/SealedSecret.
-  # INFRA sec-hardening r2: these are materialised into a Secret (minio-dev-root)
-  # and consumed via secretKeyRef — never inline plaintext env in the pod specs
-  # (templates/minio-dev-secret.yaml). An operator may instead point the pods at
-  # a pre-provisioned Secret via `minioDev.existingSecret`.
-  rootUser: changeme-dev-minio-access
-  rootPassword: changeme-dev-minio-secret
-  # Must match `kacho-iam.compliance.s3.bucket` below — init Job creates it.
-  bucket: kacho-compliance-reports
-  image:
-    repository: quay.io/minio/minio
-    # Pinned to a stable RELEASE tag (not :latest) for reproducible CI.
-    tag: "RELEASE.2024-12-18T13-15-44Z"
-  mcImage:
-    repository: quay.io/minio/mc
-    # Stable mc client release — pinned to match server release semantics.
-    tag: "RELEASE.2024-11-21T17-21-54Z"
 
 # KAC-115: Ory stack — Kratos (identity) + Hydra (OIDC) + Keto (REBAC).
 # Включаются вместо Zitadel+OpenFGA через overrides.yaml.

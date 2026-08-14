@@ -49,6 +49,7 @@ var objectTypeTable = map[string]string{
 	"vpc_security_group":    "security_groups",
 	"vpc_gateway":           "gateways",
 	"vpc_network_interface": "network_interfaces",
+	"vpc_cidr_group":        "cidr_groups",
 }
 
 // ObjectExists возвращает true, если строка с данным id есть в таблице,

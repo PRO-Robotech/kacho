@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -34,17 +33,16 @@ const networksPath = "/vpc/v1/networks"
 // Это пережило свой предмет: аргумент объявлен, приведение написано — и утверждение
 // объясняло бы следующему читателю отсутствие того, что у него перед глазами.
 type networkModel struct {
-	ID                         types.String `tfsdk:"id"`
-	ProjectID                  types.String `tfsdk:"project_id"`
-	Name                       types.String `tfsdk:"name"`
-	Description                types.String `tfsdk:"description"`
-	Labels                     types.Map    `tfsdk:"labels"`
-	CreateDefaultSecurityGroup types.Bool   `tfsdk:"create_default_security_group"`
-	CreatedAt                  types.String `tfsdk:"created_at"`
-	DefaultSecurityGroupID     types.String `tfsdk:"default_security_group_id"`
-	DefaultRouteTableID        types.String `tfsdk:"default_route_table_id"`
-	IPv4CidrBlocks             types.List   `tfsdk:"ipv4_cidr_blocks"`
-	IPv6CidrBlocks             types.List   `tfsdk:"ipv6_cidr_blocks"`
+	ID                     types.String `tfsdk:"id"`
+	ProjectID              types.String `tfsdk:"project_id"`
+	Name                   types.String `tfsdk:"name"`
+	Description            types.String `tfsdk:"description"`
+	Labels                 types.Map    `tfsdk:"labels"`
+	CreatedAt              types.String `tfsdk:"created_at"`
+	DefaultSecurityGroupID types.String `tfsdk:"default_security_group_id"`
+	DefaultRouteTableID    types.String `tfsdk:"default_route_table_id"`
+	IPv4CidrBlocks         types.List   `tfsdk:"ipv4_cidr_blocks"`
+	IPv6CidrBlocks         types.List   `tfsdk:"ipv6_cidr_blocks"`
 }
 
 type networkResource struct{ c *client.Client }
@@ -94,13 +92,6 @@ func (r *networkResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				MarkdownDescription: "Произвольное описание."},
 			"labels": schema.MapAttribute{Optional: true, Computed: true, ElementType: types.StringType,
 				MarkdownDescription: "Метки вида ключ-значение."},
-			"create_default_security_group": schema.BoolAttribute{
-				Optional: true,
-				MarkdownDescription: "Создавать ли группу безопасности по умолчанию вместе с сетью. " +
-					"Край это значение НЕ возвращает, поэтому после импорта оно принимается на " +
-					"веру. Изменение пересоздаёт сеть.",
-				PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
-			},
 			"created_at": schema.StringAttribute{Computed: true,
 				MarkdownDescription: "Момент создания по данным края."},
 			"default_security_group_id": schema.StringAttribute{Computed: true,
@@ -142,11 +133,6 @@ func (r *networkResource) Create(ctx context.Context, req resource.CreateRequest
 		Ipv4CidrBlocks: stringsFromTF(ctx, plan.IPv4CidrBlocks),
 		Ipv6CidrBlocks: stringsFromTF(ctx, plan.IPv6CidrBlocks),
 	}
-	if !plan.CreateDefaultSecurityGroup.IsNull() {
-		v := plan.CreateDefaultSecurityGroup.ValueBool()
-		body.CreateDefaultSecurityGroup = &v
-	}
-
 	// Ключ повторной подачи считается по ВСЕМУ телу запроса, а не по трём его полям.
 	//
 	// Прежняя редакция собирала для ключа отдельную карту из проекта, имени и описания —

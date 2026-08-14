@@ -44,8 +44,8 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		// storage InternalImageService — infra projection (internal-only).
 		{"kacho.cloud.storage.v1.InternalImageService/GetInternal", "storage.images.getInternal", "viewer", "storage_image", "image_id"},
 		// vpc NetworkService :verb supernet growth/shrink (object-scoped v_update).
-		{"kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks", "vpc.network_cidr_blockses.addCidrBlocks", "v_update", "vpc_network", "network_id"},
-		{"kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks", "vpc.network_cidr_blockses.removeCidrBlocks", "v_update", "vpc_network", "network_id"},
+		{"kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks", "vpc.network_cidr_blocks.addCidrBlocks", "v_update", "vpc_network", "network_id"},
+		{"kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks", "vpc.network_cidr_blocks.removeCidrBlocks", "v_update", "vpc_network", "network_id"},
 		// iam AccessBindingService soft-revoke (object-scoped). The unified List is
 		// NOT here: it declares the scope-filtered lane and therefore carries no
 		// relation and no scope of its own — see the dedicated case below.

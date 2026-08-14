@@ -39,8 +39,19 @@ func marshalSubnetRecord(rec *kachorepo.SubnetRecord) (*anypb.Any, error) {
 
 // ---- CIDR helpers ----
 
-// validateSubnetV4CIDR — host-bits=0 (canonical form) + ограничение размера /≤28.
-// Префикс /29..32 → InvalidArgument "Illegal argument Invalid network prefix /<N>".
+// validateSubnetV4CIDR — host-bits=0 (canonical form) + размер подсети внутри
+// диапазона, обещанного контрактом с ДВУХ сторон («Minimum /28, maximum /16»,
+// см. `cidr_bounds.go`). Префикс вне диапазона — короче `subnetV4PrefixLenMin`
+// или длиннее `subnetV4PrefixLenMax` — → InvalidArgument
+// "Illegal argument Invalid network prefix /<N>" с именем поля в деталях.
+//
+// Прежде исполнялась только одна сторона: длинный префикс отвергался, короткий
+// проходил, и `/8` забирал у сети адресное пространство, которого контракт
+// подсети не обещал.
+//
+// Значение ЧУЖОГО семейства эта проверка не судит (как и не судила): семейство
+// решает сверка с супернетом сети — `prefixWithinAny` сопоставляет семейства и
+// возвращает контрактный отказ «not within any network CIDR block».
 func validateSubnetV4CIDR(field, value string) error {
 	if err := validateCIDRPrefix(field, value); err != nil {
 		return err
@@ -49,13 +60,27 @@ func validateSubnetV4CIDR(field, value string) error {
 	if err != nil {
 		return serviceerr.InvalidArg(field, field+" must be a valid CIDR (e.g. 10.0.0.0/24)")
 	}
-	if prefix.Addr().Is4() && prefix.Bits() > 28 {
-		return status.Errorf(codes.InvalidArgument, "Illegal argument Invalid network prefix /%d", prefix.Bits())
+	if !prefix.Addr().Is4() {
+		return nil
+	}
+	if prefix.Bits() < subnetV4PrefixLenMin || prefix.Bits() > subnetV4PrefixLenMax {
+		// Текст — часть контракта и утверждается дословно (newman SUB-CR-BVA-CIDR-*),
+		// поэтому он тот же, что был у единственной прежней границы. Добавлено
+		// только имя поля в деталях: без него вызывающий читает «что-то не так с
+		// запросом» и правит наугад.
+		return serviceerr.InvalidArg(field,
+			fmt.Sprintf("Illegal argument Invalid network prefix /%d", prefix.Bits()))
 	}
 	return nil
 }
 
 // validateSubnetV6CIDR — host-bits=0 + проверка, что префикс реально IPv6.
+//
+// Диапазона размера здесь нет, и это не пропуск: контракт границ для IPv6 не
+// называет — ни у `ipv6_cidr_primary`, ни у `ipv6_cidr_blocks`. Граница,
+// которую никто не обещал, не выдумывается; появление обещания в контракте
+// краснит пробу паритета `TestSubnetCidrBoundsMatchTheContract`, и тогда оно и
+// исполняется.
 func validateSubnetV6CIDR(field, value string) error {
 	if err := validateCIDRPrefix(field, value); err != nil {
 		return err

@@ -45,7 +45,26 @@ resource "kacho_vpc_network" "this" {
   # (`KACHO_VPC_DEFAULT_SG_INLINE`) — то есть одна и та же конфигурация давала бы разный
   # итог на разных стендах, и разный молча. Группа заводится с правилами «любой протокол
   # отовсюду» в обе стороны, поэтому умолчание такого рода не оставляют краю.
-  create_default_security_group = var.create_default_security_group
+}
+
+# Именованный набор префиксов принадлежит ПРОЕКТУ, а не сети: поля сети в его контракте нет
+# вовсе. С сетью этого модуля его связывают ПРАВИЛА, которые на него ссылаются.
+#
+# Набор заводится РАНЬШЕ группы безопасности — не порядком строк, а ссылкой: правило берёт
+# `kacho_vpc_cidr_group.this[<ключ>].id`, и получившееся ребро графа задаёт обратный порядок
+# сноса. Порядок здесь несущий: край не удаляет набор, на который ссылается живое правило.
+resource "kacho_vpc_cidr_group" "this" {
+  for_each = var.cidr_groups
+
+  project_id  = var.project_id
+  name        = each.key
+  description = each.value.description
+  labels      = each.value.labels
+
+  # Семьи — РАЗНЫЕ поля, а не один список с выведенным семейством: член чужого семейства
+  # край отвергает на входе, поэтому смешанный набор невыразим вовсе.
+  v4_cidr_blocks = each.value.v4_cidr_blocks
+  v6_cidr_blocks = each.value.v6_cidr_blocks
 }
 
 # Группа безопасности заводится В СЕТИ модуля и ссылается на неё ПО ИДЕНТИФИКАТОРУ: ссылка
@@ -101,7 +120,17 @@ resource "kacho_vpc_security_group" "this" {
       }
 
       security_group_id = rule.security_group_id
-      predefined_target = rule.predefined_target
+
+      # Набор называется ОДНИМ из двух способов, и никогда обоими (это проверено на входе):
+      # `cidr_group` — ключ карты `cidr_groups` этого модуля, идентификатор подставляется
+      # здесь и тем строит ребро графа; `cidr_group_id` — готовый идентификатор набора,
+      # заведённого ВНЕ модуля. У несозданного набора идентификатора нет ни у кого, поэтому
+      # внутри модуля ссылаются ключом.
+      cidr_group_id = (
+        rule.cidr_group == null
+        ? rule.cidr_group_id
+        : kacho_vpc_cidr_group.this[rule.cidr_group].id
+      )
     }
   ]
 }
@@ -165,12 +194,17 @@ resource "kacho_vpc_subnet" "this" {
   )
 }
 
-# Шлюз общего исхода. Собственных настроек у него нет: контракт объявляет спецификацию
-# пустой, и шлюз здесь — сам факт наличия исхода, а не набор ручек.
+# Шлюз общего исхода.
 #
-# Он принадлежит ПРОЕКТУ, а не сети: ссылки на сеть у ресурса нет, поэтому ребра графа
-# между ним и сетью не возникает — снос идёт независимо. Дописать `depends_on` ради
-# видимости порядка нельзя: это объявило бы гарантию, которой край не даёт.
+# Здесь стояло «собственных настроек у него нет: контракт объявляет спецификацию пустой».
+# Это перестало быть правдой: у шлюза есть ВИД (`nat` — публичная трансляция IPv4,
+# `egress_only` — только исход IPv6) и ЯКОРЬ размещения — подсеть, чьё семейство адресов
+# вид обязан обслуживать. Комментарий пережил свой предмет, и модуль вместе с ним: край
+# отвергал создание, а вызывающий узнавал об этом на применении.
+#
+# Ссылка на якорь ПО КЛЮЧУ карты подсетей строит граф — шлюз снимается раньше своей
+# подсети. Раньше ребра между шлюзом и сетью не было вовсе, и снос шёл независимо; теперь
+# порядок несущий: край не удаляет подсеть, из которой выделен адрес шлюза.
 resource "kacho_vpc_gateway" "this" {
   count = var.create_gateway ? 1 : 0
 
@@ -178,6 +212,8 @@ resource "kacho_vpc_gateway" "this" {
   name        = local.gateway_name
   description = var.gateway_description
   labels      = var.gateway_labels
+  kind        = var.gateway_kind
+  subnet_id   = kacho_vpc_subnet.this[var.gateway_subnet].id
 
   lifecycle {
     # Проверка стоит здесь, а не в переменной: она смотрит на ВЫВЕДЕННОЕ имя, то есть на
@@ -186,6 +222,41 @@ resource "kacho_vpc_gateway" "this" {
     precondition {
       condition     = can(regex("^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$", local.gateway_name))
       error_message = "Имя шлюза «${local.gateway_name}», выведенное из имени сети, край не примет: у шлюза разрешены строчные латинские буквы, цифры и дефис. Задайте gateway_name явно."
+    }
+
+    # Вид обязан быть НАЗВАН, раз шлюз заводится. Проверка стоит здесь, а не в переменной:
+    # у не заводящего шлюз вызывающего вида нет и быть не должно.
+    precondition {
+      condition     = var.gateway_kind != null
+      error_message = "gateway_kind не задан, а шлюз заводится: назовите вид — `nat` (публичная трансляция IPv4) либо `egress_only` (только исход IPv6). Умолчания нет намеренно: вид решает, достижима ли машина снаружи."
+    }
+
+    # Якорь обязан быть НАЗВАН. Без него ссылка на карту подсетей не разрешается вовсе, и
+    # отказ пришёл бы невнятным «ключ null не найден»; здесь он называет переменную.
+    precondition {
+      condition     = var.gateway_subnet != null
+      error_message = "gateway_subnet не задан, а шлюз заводится: у шлюза обязателен якорь размещения — ключ карты subnets, чья подсеть его удержит."
+    }
+
+    # Якорь обязан СУЩЕСТВОВАТЬ в карте подсетей этого модуля.
+    precondition {
+      condition     = var.gateway_subnet == null ? true : contains(keys(var.subnets), var.gateway_subnet)
+      error_message = "gateway_subnet = «${var.gateway_subnet == null ? "(не задан)" : var.gateway_subnet}» — такого ключа в subnets нет. Якорь называется ключом карты этого модуля, а не идентификатором."
+    }
+
+    # Семейство якоря обязано отвечать виду, и здесь это ГРАНИЦА МОДУЛЯ, а не придирка.
+    #
+    # Подсеть этого модуля несёт ровно один якорь адресов — `ipv4_cidr_primary`, поле
+    # обязательное и единственное. Значит IPv4 у неё есть всегда, а IPv6 — не бывает
+    # вовсе, и вид «только исход» здесь анкерить НЕЧЕМ. Отказ приходит на плане и
+    # называет причину; край отверг бы то же самое, но посреди применения и словами
+    # про семейство блоков, из которых не видно, что дело в форме модуля.
+    #
+    # Появится у подсети IPv6-якорь — эта проверка станет ложной сама: условие говорит
+    # о поле, которого в форме нет, и разойтись молча с ним не может.
+    precondition {
+      condition     = var.gateway_kind != "egress_only"
+      error_message = "gateway_kind = «egress_only» требует подсети с IPv6, а подсеть этого модуля несёт только ipv4_cidr_primary — анкерить такой шлюз здесь нечем. Заведите шлюз отдельным ресурсом на своей IPv6-подсети."
     }
   }
 }
@@ -274,9 +345,6 @@ resource "kacho_vpc_address" "external_ipv4" {
   external_ipv4 = {
     address = each.value.external_ipv4.address
     zone_id = each.value.external_ipv4.zone_id
-    requirements = each.value.external_ipv4.requirements == null ? null : {
-      ddos_protection_provider = each.value.external_ipv4.requirements.ddos_protection_provider
-    }
   }
 }
 
@@ -292,9 +360,6 @@ resource "kacho_vpc_address" "external_ipv6" {
   external_ipv6 = {
     address = each.value.external_ipv6.address
     zone_id = each.value.external_ipv6.zone_id
-    requirements = each.value.external_ipv6.requirements == null ? null : {
-      ddos_protection_provider = each.value.external_ipv6.requirements.ddos_protection_provider
-    }
   }
 }
 

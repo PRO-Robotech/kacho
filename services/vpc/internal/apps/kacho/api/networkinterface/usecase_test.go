@@ -359,6 +359,19 @@ func TestCreateUseCase_OK(t *testing.T) {
 // же ответом, что для несуществующего subnet (без existence-oracle). RED до фикса:
 // cross-project subnet reference проходил (Subnets().Get не сверял project) и NIC
 // создавался в чужой подсети.
+//
+// # Ожидание сообщения переписано (2026-08-13)
+//
+// Прежняя редакция утверждала `repo.ErrNotFound.Error()` — то есть «not found» БЕЗ
+// имени ресурса и без идентификатора. Это ЗАКРЕПЛЯЛО дефект: настоящий промах
+// владельца читается «Subnet <id> not found» (форма — `repo/kacho/pg/subnet.go`),
+// поэтому отказ отличался от промаха и работал оракулом существования, а
+// комментарий рядом заявлял неотличимость.
+//
+// Эталон текста выписан ЗДЕСЬ по владельцу, а не считан у mock'а: `kachomock`
+// отдаёт голый sentinel, то есть его собственный промах беднее продуктового, и
+// сверка «отказ == промах mock'а» требовала бы от прод-кода ровно той бедности,
+// из-за которой оракул и возник (фикстура не может быть снисходительнее продукта).
 func TestCreateUseCase_CrossProjectSubnet_Denied(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
@@ -376,8 +389,9 @@ func TestCreateUseCase_CrossProjectSubnet_Denied(t *testing.T) {
 	require.True(t, saved.Done)
 	require.NotNil(t, saved.Error, "cross-project subnet reference must fail")
 	assert.Equal(t, int32(codes.NotFound), saved.Error.Code)
-	// Ответ идентичен «subnet нет» — cross-project не распознаётся как отдельный код.
-	assert.Equal(t, repo.ErrNotFound.Error(), saved.Error.Message)
+	// Ответ побайтово равен настоящему промаху владельца подсети — cross-project не
+	// распознаётся ни отдельным кодом, ни отдельным текстом.
+	assert.Equal(t, "Subnet e9bsub9 not found", saved.Error.Message)
 	// NIC не создан.
 	require.Empty(t, kr.NetworkInterfaces())
 }

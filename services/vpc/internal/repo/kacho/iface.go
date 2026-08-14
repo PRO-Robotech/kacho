@@ -52,6 +52,9 @@ type RepositoryReader interface {
 	// AddressPoolBindings — admin-only explicit-биндинги (network_default).
 	// Read для cascade-resolve.
 	AddressPoolBindings() AddressPoolBindingReaderIface
+	// CidrGroups — именованные наборы префиксов, на которые ссылаются правила
+	// групп безопасности.
+	CidrGroups() CidrGroupReaderIface
 	// Close завершает read-TX (rollback). Идемпотентно.
 	Close() error
 }
@@ -77,6 +80,9 @@ type RepositoryWriter interface {
 	// AddressPoolBindings — admin-only write для explicit-биндингов
 	// (Set/Unset Network default).
 	AddressPoolBindings() AddressPoolBindingWriterIface
+	// CidrGroups — write-iface именованных наборов префиксов. Потолок состава и
+	// отсутствие затирания держатся конструкцией базы внутри этих методов.
+	CidrGroups() CidrGroupWriterIface
 	// Outbox — emit события в vpc_outbox в той же tx-области writer'а.
 	Outbox() OutboxEmitter
 	// FGARegister — emit FGA owner-tuple register/unregister intent в

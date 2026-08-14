@@ -64,7 +64,7 @@ Specific:
   Прежняя редакция называла здесь отдельный «повторяемый internal»-sentinel — имени с
   таким смыслом в дереве нет, и оно тут не воспроизводится: в обратных кавычках оно
   читалось бы как живая координата.
-- Dependency-chain `FailedPrecondition` (sync-prechecks): `Address.Delete` used-адреса → `"address ... is in use by network interface ...; detach it before deleting the address"`; `Subnet.Delete` с внутренними адресами (v4/v6) → `"Subnet has allocated internal addresses"`, с NIC'ами → `"subnet ... has N network interface(s) (...); delete them first"`; `Network.Delete` непустой → `"Network ... is not empty"`; CIDR-less подсеть при internal-v4-allocate → `"subnet ... has no IPv4 CIDR"`.
+- Dependency-chain `FailedPrecondition` (sync-prechecks): `Address.Delete` used-адреса → `"address ... is in use by network interface ...; detach it before deleting the address"`; `Subnet.Delete` с внутренними адресами (v4/v6) → `"Subnet has allocated internal addresses"`, с NIC'ами → `"subnet ... has N network interface(s) (...); delete them first"`; `Network.Delete` непустой → `"Network <id> is not empty (subnets: 2, route tables: 1)"` — отказ ПЕРЕЧИСЛЯЕТ мешающее по видам и числам (виды с нулём в перечень не попадают; идентификаторы дочерних не печатаются никогда); CIDR-less подсеть при internal-v4-allocate → `"subnet ... has no IPv4 CIDR"`.
 
 ## Hard delete
 
@@ -142,7 +142,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 
 ## Default Security Group (inline, опционально)
 
-Управляется флагом `KACHO_VPC_DEFAULT_SG_INLINE` (default `true`).
+Создаётся БЕЗУСЛОВНО: флага, которым это отменялось, больше нет — интерфейс наследует группу своей сети, поэтому сеть без неё означала бы интерфейс без единого правила.
 
 При `true` — Network.Create:
 1. SYNC создается Operation, возвращается клиенту.
@@ -158,7 +158,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 Убирает 2 INSERT + 1 UPDATE из hot-path (≈ +30-40% write-throughput) — для load-тестов.
 В таком режиме newman-кейсы `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` ожидаемо падают.
 
-При Network.Delete worker сначала удаляет default SG (если есть), потом Network. Не-default SG / subnets / route tables препятствуют удалению (FK RESTRICT + sync-precheck) → клиент получает `FailedPrecondition "Network ... is not empty"`.
+При Network.Delete worker сначала удаляет default SG (если есть), потом Network. Не-default SG / subnets / route tables препятствуют удалению (FK RESTRICT + sync-precheck) → клиент получает `FailedPrecondition "Network <id> is not empty (<виды и числа>)"` — перечень мешающего, а не один факт непустоты.
 
 ## Admin boundary
 
@@ -183,7 +183,7 @@ NIC `used_by` (кто использует NIC) — денормализован
 4. **CIDR host-bits=0** обязательно, sync через `netip.Prefix.Masked`.
 5. **Subnet immutable**: `network_id`, `placement_type`, `zone_id`/`region_id` — reject в mask, silent ignore в full-PATCH. CIDR-полей в `Update` нет вовсе.
 6. **Hard-delete, не soft**.
-7. **Default SG создается inline в NetworkService.doCreate** при `KACHO_VPC_DEFAULT_SG_INLINE=true` (default). Флаг `=false` отключает inline-SG (для load-тестов / внешнего reconciler'а).
+7. **Группа правил по умолчанию создаётся в `NetworkService.doCreate` БЕЗУСЛОВНО.** Флага, отключавшего её, больше нет: интерфейс наследует группу своей сети, поэтому сеть без неё означала бы интерфейс без единого правила, а по закрытой модели — «не разрешено ничего».
 8. **Timestamp truncate to seconds** в proto-ответе (БД хранит микросекунды).
 9. **DeletionProtection sync-check** перед Delete — `FailedPrecondition` `"... deletion_protection enabled"`.
 10. **page_size валидируется**, garbage page_token → `InvalidArgument`.

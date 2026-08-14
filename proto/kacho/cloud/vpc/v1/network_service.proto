@@ -64,7 +64,7 @@ service NetworkService {
     // their grants were live. There is likewise no pre-resolved allow-set to
     // short-circuit on before touching the database — the page is read first
     // and the question is asked about it.
-    option (kacho.iam.authz.v1.permission)        = "vpc.networkses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.networks.list";
     option (kacho.iam.authz.v1.required_relation) = "viewer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
@@ -135,7 +135,7 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.addCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.addCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -155,44 +155,8 @@ service NetworkService {
       metadata: "UpdateNetworkMetadata"
       response: "Network"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blockses.removeCidrBlocks";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_cidr_blocks.removeCidrBlocks";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Lists subnets from the specified network.
-  rpc ListSubnets (ListNetworkSubnetsRequest) returns (ListNetworkSubnetsResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/subnets" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_subnetses.listSubnets";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Lists security groups from the specified network.
-  rpc ListSecurityGroups (ListNetworkSecurityGroupsRequest) returns (ListNetworkSecurityGroupsResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/security_groups" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_security_groupses.listSecurityGroups";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "vpc_network"
-      from_request_field: "network_id"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
-
-  // Lists route tables from the specified network.
-  rpc ListRouteTables (ListNetworkRouteTablesRequest) returns (ListNetworkRouteTablesResponse) {
-    option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/route_tables" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_route_tableses.listRouteTables";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
       from_request_field: "network_id"
@@ -203,7 +167,7 @@ service NetworkService {
   // Lists operations for the specified network.
   rpc ListOperations (ListNetworkOperationsRequest) returns (ListNetworkOperationsResponse) {
     option (google.api.http) = { get: "/vpc/v1/networks/{network_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.network_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.network_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_network"
@@ -269,11 +233,22 @@ message CreateNetworkRequest {
 
   // Resource labels as `` key:value `` pairs.
   map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
-
-  // Управление авто-созданием default security group.
-  // Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
-  // true → создать default-SG для сети; false → сеть без default-SG.
-  optional bool create_default_security_group = 5;
+  // 5 — create_default_security_group, СНЯТО с контракта.
+  //
+  // Поле позволяло сети остаться БЕЗ группы правил по умолчанию, а по решению
+  // владельца модель закрыта в обе стороны и интерфейс НАСЛЕДУЕТ группу своей
+  // сети: сеть без группы означала бы интерфейс без единого правила, то есть «не
+  // разрешено ничего». Посадка безопасности не может зависеть от того, что
+  // прислали в теле.
+  //
+  // Настройка оператора, дублировавшая это решение, снята тем же изменением:
+  // оставить её значило бы держать второй способ получить то же запрещённое
+  // состояние.
+  //
+  // Номер И имя зарезервированы: переиспользование дало бы старому клиенту поле с
+  // другим смыслом. Разрыв объявлен в proto/declared-breaks.yaml.
+  reserved 5;
+  reserved "create_default_security_group";
 
   // Declared IPv4 supernet block(s). Optional here, but a network without them
   // refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the

@@ -55,9 +55,6 @@ func TestNewListener_Defaults(t *testing.T) {
 	if l.Status != domain.ListenerStatusCreating {
 		t.Errorf("expected CREATING, got %q", l.Status)
 	}
-	if l.ProxyProtocolV2 {
-		t.Error("ProxyProtocolV2 default must be false")
-	}
 	if err := l.Validate(); err != nil {
 		t.Fatalf("built Listener should validate: %v", err)
 	}

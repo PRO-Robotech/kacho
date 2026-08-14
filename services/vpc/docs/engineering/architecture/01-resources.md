@@ -44,14 +44,14 @@ erDiagram
 | `name` | text | NameVPC permissive |
 | `description` | text | ≤256 |
 | `labels` | jsonb | ≤64 пар |
-| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается inline в worker'е Create при `KACHO_VPC_DEFAULT_SG_INLINE=true` (умолчание). ON DELETE SET NULL |
+| `default_security_group_id` | text NULL FK→`security_groups` | устанавливается в воркере Create БЕЗУСЛОВНО. ON DELETE SET NULL |
 | `ipv4_cidr_blocks` / `ipv6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | **объявленный супернет сети** (миграция 0015, VPC-1 F2): CIDR каждой подсети обязан лежать внутри одного из этих блоков. Тенант-управляемые аддитивные наборы, меняются через `:add-cidr-blocks`/`:remove-cidr-blocks`; кардинальность ограничена CHECK (0016) |
 | `default_route_table_id` | text NULL FK→`route_tables` | системная RT сети, создаётся на `Network.Create` и является **источником истины** о том, какую RT наследует подсеть без явного `route_table_id` (0015 объявила колонку, 0017 сделала её действующей) |
 | `vrf_id` | bigint, internal-only | VRF tenancy-id, аллоцируется control-plane'ом (sequence); инфра-чувствительное поле, отдается **только** через `InternalNetworkService` — на публичной поверхности нет |
 | `created_at` | tstz | в proto-ответе truncate до секунд |
 
 **Инварианты**:
-- При Create (`KACHO_VPC_DEFAULT_SG_INLINE=true`, умолчание) — атомарно создается
+- При Create БЕЗУСЛОВНО — атомарно создается
   Network + Default SG + биндинг `default_security_group_id` в одной TX worker'а.
   При `=false` Network создается без SG (для load-тестов / внешнего reconciler'а).
 - Супернет объявляется на Create и **ограничивает** подсети: CIDR подсети обязан быть
@@ -78,7 +78,6 @@ erDiagram
 | `v6_cidr_blocks` | text[] NOT NULL DEFAULT `'{}'` | то же для IPv6: `[1]` = `ipv6_cidr_primary`; v4-only подсеть легальна |
 | `v4_cidr_primary` / `v6_cidr_primary` | cidr GENERATED STORED | производные от `[1]`; нужны EXCLUDE-констрейнтам |
 | `route_table_id` | text NULL FK→`route_tables` | не задан на Create → подставляется `network.default_route_table_id` |
-| `dhcp_options` | jsonb | **колонка осталась от baseline, контракта у неё больше нет**: поле снято из `Subnet`/`Create`/`Update` (номера и имя зарезервированы, VPC-1-43). Ни один RPC его не принимает и не отдаёт |
 
 **Инварианты**:
 - CIDR подсети обязан лежать **внутри объявленного супернета сети**
@@ -112,7 +111,7 @@ External (project-scoped public IP) или internal (IP в Subnet).
 | `project_id` | text NOT NULL | |
 | `addr_type` | smallint | 0=unspec, 1=external, 2=internal |
 | `ip_version` | smallint | |
-| `external_ipv4` | jsonb | `{address, zone_id, address_pool_id, requirements}` |
+| `external_ipv4` | jsonb | `{address, zone_id, address_pool_id}` — блок требований снят с контракта вместе с обоими полями |
 | `internal_ipv4` | jsonb | `{address, subnet_id}` |
 | `internal_ipv6` | jsonb | `{address, subnet_id}` (oneof `Address.internal_ipv6_address` — `{address, oneof scope{subnet_id}}`) |
 | `internal_subnet_id` | text computed | derived из `internal_ipv4->>'subnet_id'` **ИЛИ** `internal_ipv6->>'subnet_id'` — для UNIQUE per subnet + FK `addresses_internal_subnet_fkey` (и v4-, и v6-internal-адрес блокирует свою подсеть) |
@@ -194,10 +193,12 @@ First-class NIC-ресурс домена VPC. Project-level (`project_id` об�
 | `security_group_ids[]` | jsonb | подставляемого умолчания НЕТ: пустой массив остаётся пустым (`Network.default_security_group_id` в этот путь не читается). Каждый переданный id проверяется на существование, принадлежность проекту интерфейса и сеть подсети; network-less (project-level) SG принимается в любой подсети своего проекта. Число групп ограничено (`MaxNICSecurityGroups` + CHECK) |
 | `used_by` | `kacho.cloud.reference.Reference` | денормализованное зеркало «кто использует этот NIC»; flat-колонки `used_by_type`/`used_by_id`/`used_by_name` |
 | `status` | enum | `PROVISIONING` / `ACTIVE` / `AVAILABLE` / `FAILED` / `DELETING` |
+| `bandwidth_limit_mbps` | bigint, mutable | верхняя граница полосы, задаваемая АРЕНДАТОРОМ; `0` — ограничения нет. Непустая величина принимается ТОЛЬКО когда посадка объявила `dataplane.executor.tenant-settable-bandwidth-limit`, иначе синхронный `InvalidArgument` с именем поля. Промежуток: строго выше `domain.GuaranteedInterfaceBandwidthFloorMbps` и не выше гарантии, объявленной стендом; нижний край продублирован CHECK'ом (0036), верхний в схему не вморожен — он свойство посадки |
 
 **Проекция** (lean, control-plane-only):
 - **`NetworkInterface`:** `id`, `name`, `labels`, `subnet_id`, `mac_address`,
-  `v4_address_ids`, `v6_address_ids`, `security_group_ids`, `used_by`, `status`.
+  `v4_address_ids`, `v6_address_ids`, `security_group_ids`, `used_by`, `status`,
+  `bandwidth_limit_mbps`.
 - Инфра/data-plane-проекции у kacho-vpc нет — ресурс несет только control-plane-поля.
   **На публичной поверхности инфра-чувствительных полей нет.**
 
@@ -238,14 +239,85 @@ Firewall rules. **`network_id` обязателен на Create и immutable п�
 |---|---|
 | `id` (prefix `sgr`), `project_id` | UNIQUE(project_id, name) WHERE name<>'' |
 | `network_id` | text; **обязателен** на Create, immutable после. Колонка объявлена NULLABLE ради FK (пустая строка сломала бы ссылку), но use-case пустую не пропускает. `List?filter=network_id="<id>"` работает (whitelist фильтра включает `network_id`) |
-| `default_for_network` | bool — `true` у inline-создаваемой default SG (если `KACHO_VPC_DEFAULT_SG_INLINE=true`) |
+| `default_for_network` | bool — `true` у системной группы, которую создаёт сама сеть (безусловно) |
 | `rules` | jsonb array; область значений правила (протокол, диапазон портов) держится CHECK'ами на DB-уровне — миграция `0027_security_group_rules_domain.sql` |
+| `used_by` | output-only; выводится ЧТЕНИЕМ (Get/List), не хранится. См. §«Кем используется» ниже |
+
+#### `used_by` — кем используется группа (output-only, выводится на чтении)
+
+Поле объявлено контрактом с основания репозитория и до задачи 40 **не имело
+производителя**: сервер его не заполнял, а карточка консоли показывала прочерк при
+живых потребителях — то есть утверждала о ресурсе неправду. Отношение при этом уже
+выражено базой, поэтому обратная ссылка — **запрос, а не новая таблица**.
+
+Две полосы потребителей:
+
+| Полоса | Откуда | Кардинальность |
+|---|---|---|
+| `network` | `networks.default_security_group_id = <sg>` | ≤ 1 (у сети одна группа по умолчанию) |
+| `network_interface` | `network_interfaces.security_group_ids @> [<sg>]` | **не ограничена** |
+
+**Ответ ограничен, и предел — часть контракта чтения.** Запрос читает не больше
+`SecurityGroupUsedByLimit + 1` = **33** записей на группу
+(`internal/repo/kacho/entity_security_group.go`). Отдельного поля «есть ещё» в
+сообщении нет, поэтому признаком служит сама длина:
+
+- получено **≤ 32** — список полон;
+- получено **ровно 33** — потребителей **больше 32**, наружу уехали первые.
+
+Порядок детерминирован: сначала сеть, затем интерфейсы по `(created_at, id)`.
+
+**Граница проекта выражена внутри запроса** (`project_id = sg.project_id` на обеих
+полосах): потребитель другого проекта не попадает в ответ, поэтому группа с чужим
+потребителем **неотличима** от группы без потребителей вовсе.
+
+**Заполняется только на путях чтения** (`Get`/`List`). Резолверы (`GetMany`,
+`GetForUpdate`, проверка целей правил, предусловие удаления) и ответы мутаций его не
+несут — обратная ссылка стоит запроса, и платить за неё там, где её никто не читает,
+не за что.
+
+**Индексы под предикаты** — миграция `0037_security_group_used_by_indexes.sql`:
+GIN (`jsonb_path_ops`) на `network_interfaces.security_group_ids` и частичный btree
+`WHERE default_security_group_id IS NOT NULL` на `networks`. Частичный предикат
+выписан через `IS NOT NULL`, а не через сравнение с пустой строкой: из `col = $1`
+планировщик выводит `col IS NOT NULL`, но не `col <> ''`, и индекс с таким предикатом
+не применился бы ни разу.
 
 **RPC специфика**:
-- `UpdateRules` — полный replace массива.
+- `Update` с маской `rule_specs` — ПОЛНАЯ замена массива правил
+  (`applySGMask` подставляет `sg.Rules = assignRuleIDs(...)` целиком).
+- `UpdateRules` — ИНКРЕМЕНТАЛЬНО: снять по `deletion_rule_ids`, добавить
+  `addition_rule_specs`, одной транзакцией.
+  > [!note] Здесь стояло «UpdateRules — полный replace массива» — это про `Update`
+  > Полную замену делает `Update` с маской `rule_specs`; у `UpdateRules` в запросе
+  > вообще нет поля полного списка — только пара «снять по id / добавить спеки»
+  > (`UpdateSecurityGroupRulesRequest`), и use-case складывает их в один атомарный
+  > пересчёт (`internal/apps/kacho/api/securitygroup/update_rules.go`). Страница
+  > сайта (`docs/content/api/security-group.mdx`, таблица «Update vs UpdateRules vs
+  > UpdateRule») говорила верно всё это время — два места об одном предмете, из
+  > которых неверным было инженерное.
 - `UpdateRule` — патч одного правила по `rule_id`.
 - Optimistic concurrency через `xmin::text` (zero-overhead, без отдельной
   колонки).
+
+**Снятие правила — операция с немедленным эффектом на трафик.** Фильтрация ведётся с
+учётом состояния: обратный трафик установленного соединения разрешается, пока это
+соединение покрыто действующим правилом. Снятое правило (по `deletion_rule_ids` либо
+исчезнувшее из полного списка `rule_specs`) обрывает соединения, которые разрешались
+**только им**; покрытые более широким оставшимся правилом — продолжают работать. Это
+свойство исполнителя трафика, а не контура: контур снимает правило, и наблюдаемое
+следствие у арендатора — разрыв текущих соединений, а не «новые не пойдут». Оно
+объявлено арендатору в контракте (комментарий `SecurityGroup.rules` в
+`proto/kacho/cloud/vpc/v1/security_group.proto`) и на странице сайта — правьте все три
+места вместе.
+
+Предпосылка этого утверждения объявляется посадкой и держится стражем старта: боевой
+режим требует объявленных семейств отслеживания состояния
+(`dataplane.executor.state-tracking-families`, случай S5-05 в
+`internal/apps/kacho/config/guardrail_executor_profile_test.go`). Стенд, где отслеживания
+нет, не поднимается — то есть посадки, на которой это утверждение было бы ложным, не
+существует. Сделаете отслеживание необязательным — утверждение выше станет ложным молча,
+и править придётся его, а не только стража.
 
 ### Gateway
 
@@ -254,7 +326,8 @@ Shared egress (NAT-style), не привязан к Network.
 | Поле | Замечания |
 |---|---|
 | `id` (prefix `gtw`), `project_id` | UNIQUE(project_id, name) WHERE name<>'' |
-| `shared_egress_gateway` | nested message |
+| `nat_gateway` / `egress_only_gateway` | ветви `oneof gateway`, взаимоисключающие |
+| `subnet_id` | TEXT NOT NULL, FK на подсеть-якорь (ON DELETE RESTRICT) |
 
 ## Internal/admin ресурсы (kacho-only, глобальные)
 

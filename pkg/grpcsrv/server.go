@@ -31,12 +31,28 @@ func DefaultKeepaliveEnforcement() keepalive.EnforcementPolicy {
 // NewServer создает gRPC-сервер с зарегистрированными Health-сервисом в состоянии SERVING
 // и server-reflection (для grpcurl, debug, dev-tooling).
 //
-// DefaultKeepaliveEnforcement() ставится ПЕРВЫМ в opts, чтобы caller-opts могли его
-// переопределить.
+// DefaultKeepaliveEnforcement() и DefaultServerLimits() ставятся ПЕРВЫМИ в opts,
+// чтобы caller-opts могли их переопределить.
+//
+// # Почему пределы стоят ЗДЕСЬ, а не у каждого вызывающего
+//
+// Умолчания библиотеки оставляют сервер без предела одновременных вызовов и без
+// предела размера ответа (числа и координаты — в limits.go). Пока пределы
+// выставлял бы каждый сервис у себя, «не выставил» было бы неотличимо от «выставил
+// такие же»: опция не обязательна, её отсутствие ничего не печатает, и слушатель
+// поднимается молча. Здесь у величин ОДИН источник, и ни один из слушателей
+// платформы не может подняться без них — не потому, что это правило, а потому что
+// другого конструктора сервера в дереве нет.
+//
+// Следствие для гейта: «сервер без объявленного предела одновременных вызовов»
+// перестал быть находкой, которую надо искать по дереву, — такого состояния не
+// существует по построению. Утверждается это не прочтением, а на проводе:
+// [TestServerAdvertisesItsConcurrentStreamLimit] читает кадр настроек соединения.
 func NewServer(opts ...grpc.ServerOption) *grpc.Server {
-	s := grpc.NewServer(append([]grpc.ServerOption{
+	base := append([]grpc.ServerOption{
 		grpc.KeepaliveEnforcementPolicy(DefaultKeepaliveEnforcement()),
-	}, opts...)...)
+	}, DefaultServerLimits().ServerOptions()...)
+	s := grpc.NewServer(append(base, opts...)...)
 	h := health.NewServer()
 	h.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(s, h)

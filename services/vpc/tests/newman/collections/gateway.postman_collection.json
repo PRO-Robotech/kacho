@@ -124,6 +124,355 @@
       }
     },
     {
+      "name": "_SETUP-POOL — ensure default EXTERNAL_PUBLIC pool at zoneA",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response && pm.response.code === 200) {",
+              "  try { pm.environment.set('_seededDefaultPoolId', pm.response.json().id); } catch (e) {}",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtBootstrap}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"seed-default-external-zonea\", \"kind\": \"EXTERNAL_PUBLIC\", \"zoneId\": \"{{zoneA}}\", \"v4CidrBlocks\": [\"100.64.0.0/24\"], \"v6CidrBlocks\": [], \"isDefault\": true}"
+        },
+        "url": {
+          "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
+          "host": [
+            "{{internalBaseUrl}}"
+          ],
+          "path": [
+            "vpc",
+            "v1",
+            "addressPools"
+          ]
+        }
+      }
+    },
+    {
+      "name": "_SETUP-GW-ANCHOR",
+      "description": "fixture | якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. Публикует gwAnchorNetId/gwAnchorSubId. Для прогона одиночного кейса окружение готовит ./setup.sh.",
+      "item": [
+        {
+          "name": "anchor-net",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-anchor-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.networkId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwAnchorNetId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1254",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
+                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
+                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
+                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
+                  "(function () {",
+                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
+                  "  if (_po.error) {",
+                  "    pm.environment.unset('gwAnchorNetId');",
+                  "  }",
+                  "  pm.test('operation succeeded (no phantom gwAnchorNetId)', function () {",
+                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "anchor-subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{gwAnchorNetId}}\", \"name\": \"gw-anchor-sub-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"ipv4CidrPrimary\": \"10.71.0.0/24\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.subnetId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwAnchorSubId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1255",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
+                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
+                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
+                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
+                  "(function () {",
+                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
+                  "  if (_po.error) {",
+                  "    pm.environment.unset('gwAnchorSubId');",
+                  "  }",
+                  "  pm.test('operation succeeded (no phantom gwAnchorSubId)', function () {",
+                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "anchor-verify-rya1016",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{gwAnchorSubId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{gwAnchorSubId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('якорь создан и несёт IPv4', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, pm.response.text()).to.eql(pm.environment.get('gwAnchorSubId'));",
+                  "  pm.expect(j.ipv4CidrPrimary, 'IPv4 у якоря').to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "GW-CR-CRUD-OK — Create gateway + Get",
       "description": "class:CRUD | priority:P1",
       "item": [
@@ -150,7 +499,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-cr-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-cr-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -182,7 +531,7 @@
           ]
         },
         {
-          "name": "poll-op-1112",
+          "name": "poll-op-1204",
           "request": {
             "method": "GET",
             "header": [
@@ -250,7 +599,7 @@
           ]
         },
         {
-          "name": "get-rya900",
+          "name": "get-rya980",
           "request": {
             "method": "GET",
             "header": [
@@ -301,7 +650,7 @@
           ]
         },
         {
-          "name": "cleanup-rya901",
+          "name": "cleanup-rya981",
           "request": {
             "method": "DELETE",
             "header": [
@@ -357,7 +706,7 @@
           ]
         },
         {
-          "name": "poll-op-1113",
+          "name": "poll-op-1205",
           "request": {
             "method": "GET",
             "header": [
@@ -449,7 +798,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"gw-nf-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"name\": \"gw-nf-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -740,7 +1089,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lop-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lop-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -772,7 +1121,7 @@
           ]
         },
         {
-          "name": "poll-op-1114",
+          "name": "poll-op-1206",
           "request": {
             "method": "GET",
             "header": [
@@ -840,7 +1189,7 @@
           ]
         },
         {
-          "name": "list-ops-rya902",
+          "name": "list-ops-rya982",
           "request": {
             "method": "GET",
             "header": [
@@ -892,7 +1241,7 @@
           ]
         },
         {
-          "name": "cleanup-rya903",
+          "name": "cleanup-rya983",
           "request": {
             "method": "DELETE",
             "header": [
@@ -948,7 +1297,7 @@
           ]
         },
         {
-          "name": "poll-op-1115",
+          "name": "poll-op-1207",
           "request": {
             "method": "GET",
             "header": [
@@ -1270,7 +1619,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-upd-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-upd-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1302,7 +1651,7 @@
           ]
         },
         {
-          "name": "poll-op-1116",
+          "name": "poll-op-1208",
           "request": {
             "method": "GET",
             "header": [
@@ -1370,7 +1719,7 @@
           ]
         },
         {
-          "name": "patch-rya904",
+          "name": "patch-rya984",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1435,7 +1784,7 @@
           ]
         },
         {
-          "name": "poll-op-1117",
+          "name": "poll-op-1209",
           "request": {
             "method": "GET",
             "header": [
@@ -1490,7 +1839,7 @@
           ]
         },
         {
-          "name": "cleanup-rya905",
+          "name": "cleanup-rya985",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1546,7 +1895,7 @@
           ]
         },
         {
-          "name": "poll-op-1118",
+          "name": "poll-op-1210",
           "request": {
             "method": "GET",
             "header": [
@@ -1838,7 +2187,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-delok-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-delok-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1870,7 +2219,7 @@
           ]
         },
         {
-          "name": "poll-op-1119",
+          "name": "poll-op-1211",
           "request": {
             "method": "GET",
             "header": [
@@ -1938,7 +2287,7 @@
           ]
         },
         {
-          "name": "del-happy-rya906",
+          "name": "del-happy-rya986",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1994,7 +2343,7 @@
           ]
         },
         {
-          "name": "poll-op-1120",
+          "name": "poll-op-1212",
           "request": {
             "method": "GET",
             "header": [
@@ -2086,7 +2435,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{garbageRmId}}\", \"name\": \"gw-fnf-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{garbageRmId}}\", \"name\": \"gw-fnf-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2185,7 +2534,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2212,7 +2561,7 @@
           ]
         },
         {
-          "name": "poll-op-1121",
+          "name": "poll-op-1213",
           "request": {
             "method": "GET",
             "header": [
@@ -2275,7 +2624,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya907",
+          "name": "ecp-cleanup-rya987",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2331,7 +2680,7 @@
           ]
         },
         {
-          "name": "poll-op-1122",
+          "name": "poll-op-1214",
           "request": {
             "method": "GET",
             "header": [
@@ -2423,7 +2772,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2450,7 +2799,7 @@
           ]
         },
         {
-          "name": "poll-op-1123",
+          "name": "poll-op-1215",
           "request": {
             "method": "GET",
             "header": [
@@ -2513,7 +2862,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya908",
+          "name": "ecp-cleanup-rya988",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2569,7 +2918,7 @@
           ]
         },
         {
-          "name": "poll-op-1124",
+          "name": "poll-op-1216",
           "request": {
             "method": "GET",
             "header": [
@@ -2661,7 +3010,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2714,7 +3063,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2768,7 +3117,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2821,7 +3170,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"-bad-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"-bad-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2874,7 +3223,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"name!@#-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"name!@#-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2927,7 +3276,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-desc-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-desc-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2954,7 +3303,7 @@
           ]
         },
         {
-          "name": "poll-op-1125",
+          "name": "poll-op-1217",
           "request": {
             "method": "GET",
             "header": [
@@ -3017,7 +3366,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya909",
+          "name": "ecp-cleanup-rya989",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3073,7 +3422,7 @@
           ]
         },
         {
-          "name": "poll-op-1126",
+          "name": "poll-op-1218",
           "request": {
             "method": "GET",
             "header": [
@@ -3165,7 +3514,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-d2-{{runId}}\", \"description\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3218,7 +3567,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblup-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}, \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3271,7 +3620,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblbad-{{runId}}\", \"labels\": {\"bad key!\": \"v\"}, \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3324,7 +3673,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblm-{{runId}}\", \"labels\": {\"key0\": \"v0\", \"key1\": \"v1\", \"key2\": \"v2\", \"key3\": \"v3\", \"key4\": \"v4\", \"key5\": \"v5\", \"key6\": \"v6\", \"key7\": \"v7\", \"key8\": \"v8\", \"key9\": \"v9\", \"key10\": \"v10\", \"key11\": \"v11\", \"key12\": \"v12\", \"key13\": \"v13\", \"key14\": \"v14\", \"key15\": \"v15\", \"key16\": \"v16\", \"key17\": \"v17\", \"key18\": \"v18\", \"key19\": \"v19\", \"key20\": \"v20\", \"key21\": \"v21\", \"key22\": \"v22\", \"key23\": \"v23\", \"key24\": \"v24\", \"key25\": \"v25\", \"key26\": \"v26\", \"key27\": \"v27\", \"key28\": \"v28\", \"key29\": \"v29\", \"key30\": \"v30\", \"key31\": \"v31\", \"key32\": \"v32\", \"key33\": \"v33\", \"key34\": \"v34\", \"key35\": \"v35\", \"key36\": \"v36\", \"key37\": \"v37\", \"key38\": \"v38\", \"key39\": \"v39\", \"key40\": \"v40\", \"key41\": \"v41\", \"key42\": \"v42\", \"key43\": \"v43\", \"key44\": \"v44\", \"key45\": \"v45\", \"key46\": \"v46\", \"key47\": \"v47\", \"key48\": \"v48\", \"key49\": \"v49\", \"key50\": \"v50\", \"key51\": \"v51\", \"key52\": \"v52\", \"key53\": \"v53\", \"key54\": \"v54\", \"key55\": \"v55\", \"key56\": \"v56\", \"key57\": \"v57\", \"key58\": \"v58\", \"key59\": \"v59\", \"key60\": \"v60\", \"key61\": \"v61\", \"key62\": \"v62\", \"key63\": \"v63\"}, \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblm-{{runId}}\", \"labels\": {\"key0\": \"v0\", \"key1\": \"v1\", \"key2\": \"v2\", \"key3\": \"v3\", \"key4\": \"v4\", \"key5\": \"v5\", \"key6\": \"v6\", \"key7\": \"v7\", \"key8\": \"v8\", \"key9\": \"v9\", \"key10\": \"v10\", \"key11\": \"v11\", \"key12\": \"v12\", \"key13\": \"v13\", \"key14\": \"v14\", \"key15\": \"v15\", \"key16\": \"v16\", \"key17\": \"v17\", \"key18\": \"v18\", \"key19\": \"v19\", \"key20\": \"v20\", \"key21\": \"v21\", \"key22\": \"v22\", \"key23\": \"v23\", \"key24\": \"v24\", \"key25\": \"v25\", \"key26\": \"v26\", \"key27\": \"v27\", \"key28\": \"v28\", \"key29\": \"v29\", \"key30\": \"v30\", \"key31\": \"v31\", \"key32\": \"v32\", \"key33\": \"v33\", \"key34\": \"v34\", \"key35\": \"v35\", \"key36\": \"v36\", \"key37\": \"v37\", \"key38\": \"v38\", \"key39\": \"v39\", \"key40\": \"v40\", \"key41\": \"v41\", \"key42\": \"v42\", \"key43\": \"v43\", \"key44\": \"v44\", \"key45\": \"v45\", \"key46\": \"v46\", \"key47\": \"v47\", \"key48\": \"v48\", \"key49\": \"v49\", \"key50\": \"v50\", \"key51\": \"v51\", \"key52\": \"v52\", \"key53\": \"v53\", \"key54\": \"v54\", \"key55\": \"v55\", \"key56\": \"v56\", \"key57\": \"v57\", \"key58\": \"v58\", \"key59\": \"v59\", \"key60\": \"v60\", \"key61\": \"v61\", \"key62\": \"v62\", \"key63\": \"v63\"}, \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3351,7 +3700,7 @@
           ]
         },
         {
-          "name": "poll-op-1127",
+          "name": "poll-op-1219",
           "request": {
             "method": "GET",
             "header": [
@@ -3414,7 +3763,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya910",
+          "name": "ecp-cleanup-rya990",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3470,7 +3819,7 @@
           ]
         },
         {
-          "name": "poll-op-1128",
+          "name": "poll-op-1220",
           "request": {
             "method": "GET",
             "header": [
@@ -3562,7 +3911,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-lblo-{{runId}}\", \"labels\": {\"k0\": \"v0\", \"k1\": \"v1\", \"k2\": \"v2\", \"k3\": \"v3\", \"k4\": \"v4\", \"k5\": \"v5\", \"k6\": \"v6\", \"k7\": \"v7\", \"k8\": \"v8\", \"k9\": \"v9\", \"k10\": \"v10\", \"k11\": \"v11\", \"k12\": \"v12\", \"k13\": \"v13\", \"k14\": \"v14\", \"k15\": \"v15\", \"k16\": \"v16\", \"k17\": \"v17\", \"k18\": \"v18\", \"k19\": \"v19\", \"k20\": \"v20\", \"k21\": \"v21\", \"k22\": \"v22\", \"k23\": \"v23\", \"k24\": \"v24\", \"k25\": \"v25\", \"k26\": \"v26\", \"k27\": \"v27\", \"k28\": \"v28\", \"k29\": \"v29\", \"k30\": \"v30\", \"k31\": \"v31\", \"k32\": \"v32\", \"k33\": \"v33\", \"k34\": \"v34\", \"k35\": \"v35\", \"k36\": \"v36\", \"k37\": \"v37\", \"k38\": \"v38\", \"k39\": \"v39\", \"k40\": \"v40\", \"k41\": \"v41\", \"k42\": \"v42\", \"k43\": \"v43\", \"k44\": \"v44\", \"k45\": \"v45\", \"k46\": \"v46\", \"k47\": \"v47\", \"k48\": \"v48\", \"k49\": \"v49\", \"k50\": \"v50\", \"k51\": \"v51\", \"k52\": \"v52\", \"k53\": \"v53\", \"k54\": \"v54\", \"k55\": \"v55\", \"k56\": \"v56\", \"k57\": \"v57\", \"k58\": \"v58\", \"k59\": \"v59\", \"k60\": \"v60\", \"k61\": \"v61\", \"k62\": \"v62\", \"k63\": \"v63\", \"k64\": \"v64\"}, \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3873,7 +4222,7 @@
           ]
         },
         {
-          "name": "list-p2-rya933",
+          "name": "list-p2-rya1017",
           "request": {
             "method": "GET",
             "header": [
@@ -3950,7 +4299,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-upd-name-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-upd-name-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3977,7 +4326,7 @@
           ]
         },
         {
-          "name": "poll-op-1129",
+          "name": "poll-op-1221",
           "request": {
             "method": "GET",
             "header": [
@@ -4040,7 +4389,7 @@
           ]
         },
         {
-          "name": "patch-rya911",
+          "name": "patch-rya991",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4105,7 +4454,7 @@
           ]
         },
         {
-          "name": "poll-op-1130",
+          "name": "poll-op-1222",
           "request": {
             "method": "GET",
             "header": [
@@ -4160,7 +4509,7 @@
           ]
         },
         {
-          "name": "verify-rya912",
+          "name": "verify-rya992",
           "request": {
             "method": "GET",
             "header": [
@@ -4211,7 +4560,7 @@
           ]
         },
         {
-          "name": "cleanup-rya913",
+          "name": "cleanup-rya993",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4269,7 +4618,7 @@
           ]
         },
         {
-          "name": "poll-op-1131",
+          "name": "poll-op-1223",
           "request": {
             "method": "GET",
             "header": [
@@ -4361,7 +4710,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-upd-desc-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-upd-desc-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4388,7 +4737,7 @@
           ]
         },
         {
-          "name": "poll-op-1132",
+          "name": "poll-op-1224",
           "request": {
             "method": "GET",
             "header": [
@@ -4451,7 +4800,7 @@
           ]
         },
         {
-          "name": "patch-rya914",
+          "name": "patch-rya994",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4516,7 +4865,7 @@
           ]
         },
         {
-          "name": "poll-op-1133",
+          "name": "poll-op-1225",
           "request": {
             "method": "GET",
             "header": [
@@ -4571,7 +4920,7 @@
           ]
         },
         {
-          "name": "verify-rya915",
+          "name": "verify-rya995",
           "request": {
             "method": "GET",
             "header": [
@@ -4622,7 +4971,7 @@
           ]
         },
         {
-          "name": "cleanup-rya916",
+          "name": "cleanup-rya996",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4680,7 +5029,7 @@
           ]
         },
         {
-          "name": "poll-op-1134",
+          "name": "poll-op-1226",
           "request": {
             "method": "GET",
             "header": [
@@ -4772,7 +5121,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-upd-labels-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-upd-labels-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4799,7 +5148,7 @@
           ]
         },
         {
-          "name": "poll-op-1135",
+          "name": "poll-op-1227",
           "request": {
             "method": "GET",
             "header": [
@@ -4862,7 +5211,7 @@
           ]
         },
         {
-          "name": "patch-rya917",
+          "name": "patch-rya997",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4927,7 +5276,7 @@
           ]
         },
         {
-          "name": "poll-op-1136",
+          "name": "poll-op-1228",
           "request": {
             "method": "GET",
             "header": [
@@ -4982,7 +5331,7 @@
           ]
         },
         {
-          "name": "verify-rya918",
+          "name": "verify-rya998",
           "request": {
             "method": "GET",
             "header": [
@@ -5034,7 +5383,7 @@
           ]
         },
         {
-          "name": "cleanup-rya919",
+          "name": "cleanup-rya999",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5092,7 +5441,7 @@
           ]
         },
         {
-          "name": "poll-op-1137",
+          "name": "poll-op-1229",
           "request": {
             "method": "GET",
             "header": [
@@ -5424,7 +5773,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-multi-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-multi-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5451,7 +5800,7 @@
           ]
         },
         {
-          "name": "poll-op-1138",
+          "name": "poll-op-1230",
           "request": {
             "method": "GET",
             "header": [
@@ -5514,7 +5863,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya920",
+          "name": "patch-multi-rya1000",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5579,7 +5928,7 @@
           ]
         },
         {
-          "name": "poll-op-1139",
+          "name": "poll-op-1231",
           "request": {
             "method": "GET",
             "header": [
@@ -5634,7 +5983,7 @@
           ]
         },
         {
-          "name": "verify-all-rya921",
+          "name": "verify-all-rya1001",
           "request": {
             "method": "GET",
             "header": [
@@ -5689,7 +6038,7 @@
           ]
         },
         {
-          "name": "cleanup-rya922",
+          "name": "cleanup-rya1002",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5747,7 +6096,7 @@
           ]
         },
         {
-          "name": "poll-op-1140",
+          "name": "poll-op-1232",
           "request": {
             "method": "GET",
             "header": [
@@ -5839,7 +6188,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"sharedEgressGatewaySpec\": {}, \"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-iso-{{runId}}\"}",
+              "raw": "{\"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-iso-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5866,7 +6215,7 @@
           ]
         },
         {
-          "name": "poll-op-1141",
+          "name": "poll-op-1233",
           "request": {
             "method": "GET",
             "header": [
@@ -5965,7 +6314,7 @@
           ]
         },
         {
-          "name": "cleanup-rya934",
+          "name": "cleanup-rya1018",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6023,7 +6372,7 @@
           ]
         },
         {
-          "name": "poll-op-1142",
+          "name": "poll-op-1234",
           "request": {
             "method": "GET",
             "header": [
@@ -6115,7 +6464,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-flt-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-flt-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6142,7 +6491,7 @@
           ]
         },
         {
-          "name": "poll-op-1143",
+          "name": "poll-op-1235",
           "request": {
             "method": "GET",
             "header": [
@@ -6205,7 +6554,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst923",
+          "name": "list-filtered-lst1003",
           "request": {
             "method": "GET",
             "header": [
@@ -6258,7 +6607,7 @@
           ]
         },
         {
-          "name": "cleanup-rya924",
+          "name": "cleanup-rya1004",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6316,7 +6665,7 @@
           ]
         },
         {
-          "name": "poll-op-1144",
+          "name": "poll-op-1236",
           "request": {
             "method": "GET",
             "header": [
@@ -6408,7 +6757,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": null}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": null}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6435,7 +6784,7 @@
           ]
         },
         {
-          "name": "poll-op-1145",
+          "name": "poll-op-1237",
           "request": {
             "method": "GET",
             "header": [
@@ -6498,7 +6847,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya925",
+          "name": "ecp-cleanup-rya1005",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6554,7 +6903,7 @@
           ]
         },
         {
-          "name": "poll-op-1146",
+          "name": "poll-op-1238",
           "request": {
             "method": "GET",
             "header": [
@@ -6646,7 +6995,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-bt-{{runId}}\", \"labels\": \"not-an-object\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-bt-{{runId}}\", \"labels\": \"not-an-object\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6701,7 +7050,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-bd-{{runId}}\", \"description\": 12345}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-bd-{{runId}}\", \"description\": 12345}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6950,7 +7299,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-mn-{{runId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-mn-{{runId}}\", \"description\": \"init\", \"labels\": {\"orig\": \"1\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6977,7 +7326,7 @@
           ]
         },
         {
-          "name": "poll-op-1147",
+          "name": "poll-op-1239",
           "request": {
             "method": "GET",
             "header": [
@@ -7040,7 +7389,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya926",
+          "name": "patch-name-only-rya1006",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7105,7 +7454,7 @@
           ]
         },
         {
-          "name": "poll-op-1148",
+          "name": "poll-op-1240",
           "request": {
             "method": "GET",
             "header": [
@@ -7160,7 +7509,7 @@
           ]
         },
         {
-          "name": "verify-rya927",
+          "name": "verify-rya1007",
           "request": {
             "method": "GET",
             "header": [
@@ -7214,7 +7563,7 @@
           ]
         },
         {
-          "name": "cleanup-rya928",
+          "name": "cleanup-rya1008",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7272,7 +7621,7 @@
           ]
         },
         {
-          "name": "poll-op-1149",
+          "name": "poll-op-1241",
           "request": {
             "method": "GET",
             "header": [
@@ -7364,7 +7713,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-perf-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-perf-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7391,7 +7740,7 @@
           ]
         },
         {
-          "name": "poll-op-1150",
+          "name": "poll-op-1242",
           "request": {
             "method": "GET",
             "header": [
@@ -7454,7 +7803,7 @@
           ]
         },
         {
-          "name": "get-timed-rya929",
+          "name": "get-timed-rya1009",
           "request": {
             "method": "GET",
             "header": [
@@ -7505,7 +7854,7 @@
           ]
         },
         {
-          "name": "cleanup-rya935",
+          "name": "cleanup-rya1019",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7563,7 +7912,7 @@
           ]
         },
         {
-          "name": "poll-op-1151",
+          "name": "poll-op-1243",
           "request": {
             "method": "GET",
             "header": [
@@ -7696,7 +8045,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-noct-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-noct-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7732,7 +8081,7 @@
           ]
         },
         {
-          "name": "poll-op-1152",
+          "name": "poll-op-1244",
           "request": {
             "method": "GET",
             "header": [
@@ -7795,7 +8144,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya930",
+          "name": "ecp-cleanup-rya1010",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7851,7 +8200,7 @@
           ]
         },
         {
-          "name": "poll-op-1153",
+          "name": "poll-op-1245",
           "request": {
             "method": "GET",
             "header": [
@@ -7917,7 +8266,7 @@
       ]
     },
     {
-      "name": "GW-CR-VAL-MISSING-TYPE — Create Gateway без gateway-type oneof → 400 InvalidArgument 'Illegal argument gateway'",
+      "name": "GW-CR-VAL-MISSING-TYPE — Create Gateway без ветви вида → 400 InvalidArgument 'gateway: required'",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -7943,7 +8292,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-nt-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-nt-{{runId}}\", \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7962,7 +8311,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('mentions gateway', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('gateway'));"
+                  "pm.test('отказ называет поле вида', () => pm.expect(String(pm.response.json().message || '')).to.eql('gateway: required'));"
                 ]
               }
             }
@@ -8369,7 +8718,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"gw-req-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"name\": \"gw-req-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8475,7 +8824,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"test' OR 1=1--\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"test' OR 1=1--\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8532,7 +8881,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"x' UNION SELECT * FROM operations--\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"x' UNION SELECT * FROM operations--\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8589,7 +8938,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"<script>alert(1)</script>\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"<script>alert(1)</script>\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8646,7 +8995,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"; rm -rf / ;\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"; rm -rf / ;\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8703,7 +9052,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"../../etc/passwd\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"../../etc/passwd\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8760,7 +9109,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"x y\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"x y\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8817,7 +9166,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8915,7 +9264,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"sharedEgressGatewaySpec\": {}, \"name\": \"gw-life-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"gw-life-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8942,7 +9291,7 @@
           ]
         },
         {
-          "name": "poll-op-1154",
+          "name": "poll-op-1246",
           "request": {
             "method": "GET",
             "header": [
@@ -9005,7 +9354,7 @@
           ]
         },
         {
-          "name": "get-1-rya931",
+          "name": "get-1-rya1011",
           "request": {
             "method": "GET",
             "header": [
@@ -9056,7 +9405,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst932",
+          "name": "lst-includes-lst1012",
           "request": {
             "method": "GET",
             "header": [
@@ -9109,7 +9458,7 @@
           ]
         },
         {
-          "name": "upd-rya936",
+          "name": "upd-rya1020",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9174,7 +9523,7 @@
           ]
         },
         {
-          "name": "poll-op-1155",
+          "name": "poll-op-1247",
           "request": {
             "method": "GET",
             "header": [
@@ -9229,7 +9578,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya937",
+          "name": "get-after-upd-rya1021",
           "request": {
             "method": "GET",
             "header": [
@@ -9280,7 +9629,7 @@
           ]
         },
         {
-          "name": "del-rya938",
+          "name": "del-rya1022",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9336,7 +9685,7 @@
           ]
         },
         {
-          "name": "poll-op-1156",
+          "name": "poll-op-1248",
           "request": {
             "method": "GET",
             "header": [
@@ -9436,7 +9785,7 @@
           ]
         },
         {
-          "name": "get-404-rya939",
+          "name": "get-404-rya1023",
           "request": {
             "method": "GET",
             "header": [
@@ -9483,6 +9832,979 @@
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GW-CR-VAL-MISSING-ANCHOR — Create Gateway без subnetId → 400 InvalidArgument 'subnet_id: required'",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-noanchor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-na-{{runId}}\", \"natGatewaySpec\": {}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('отказ называет поле якоря', () => pm.expect(String(pm.response.json().message || '')).to.eql('subnet_id: required'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GW-CR-CONF-EGRESS-ONLY-NEEDS-V6 — Шлюз «только исход» в подсети без IPv6 → отказ по состоянию якоря",
+      "description": "class:CONF | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-eo-on-v4",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-eo-{{runId}}\", \"subnetId\": \"{{gwAnchorSubId}}\", \"egressOnlyGatewaySpec\": {}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"\\u0448\\u043b\\u044e\\u0437 \\u00ab\\u0442\\u043e\\u043b\\u044c\\u043a\\u043e \\u0438\\u0441\\u0445\\u043e\\u0434\\u00bb \\u0432 \\u043f\\u043e\\u0434\\u0441\\u0435\\u0442\\u0438 \\u0431\\u0435\\u0437 IPv6 refused (sync 400/403/404, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404, 200]));",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1249",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GW-CR-NAT-EXTERNAL-ADDRESS-OK — Шлюз трансляции несёт внешний адрес, и адрес называет шлюз в ответ",
+      "description": "class:CRUD | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-extaddr-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.gatewayId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwXaId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1250",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
+                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
+                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
+                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
+                  "(function () {",
+                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
+                  "  if (_po.error) {",
+                  "    pm.environment.unset('gwXaId');",
+                  "  }",
+                  "  pm.test('operation succeeded (no phantom gwXaId)', function () {",
+                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-gateway-rya1013",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways/{{gwXaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways",
+                "{{gwXaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('ветвь трансляции присутствует', () => pm.expect(j.natGateway, pm.response.text()).to.be.an('object'));",
+                  "pm.test('шлюз трансляции несёт внешний адрес', () => pm.expect(String((j.natGateway || {}).addressId || ''), pm.response.text()).to.match(/^adr/));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((j.natGateway || {}).addressId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwXaAddrId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-address-rya1014",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{gwXaAddrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{gwXaAddrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const a = pm.response.json();",
+                  "pm.test('внешний IPv4', () => {",
+                  "  pm.expect(a.type, pm.response.text()).to.eql('EXTERNAL');",
+                  "  pm.expect(a.ipVersion, pm.response.text()).to.eql('IPV4');",
+                  "});",
+                  "pm.test('адресу выдан IP', () => pm.expect(String(((a.externalIpv4Address || {}).address) || ''), pm.response.text()).to.not.be.empty);",
+                  "pm.test('адрес помечен занятым', () => pm.expect(a.used, pm.response.text()).to.eql(true));",
+                  "pm.test('адрес называет свой шлюз', () => {",
+                  "  const refs = (a.usedBy || []).map(u => (u.referrer || {}));",
+                  "  pm.expect(refs.map(r => r.id), pm.response.text()).to.include(pm.environment.get('gwXaId'));",
+                  "  pm.expect(refs.map(r => r.type), pm.response.text()).to.include('vpc_gateway');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-rya1024",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways/{{gwXaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways",
+                "{{gwXaId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1251",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "address-gone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{gwXaAddrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{gwXaAddrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('absent-id request rejected (400/403/404)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+                  "});",
+                  "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "GW-NEG-EXTERNAL-ADDRESS-NOT-DELETABLE-WHILE-BOUND — Адрес, занятый шлюзом, не удаляется — сначала снимите шлюз",
+      "description": "class:NEG | class:CONF | priority:P1",
+      "item": [
+        {
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"gw-bound-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.gatewayId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwBdId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1252",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
+                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
+                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
+                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
+                  "(function () {",
+                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
+                  "  if (_po.error) {",
+                  "    pm.environment.unset('gwBdId');",
+                  "  }",
+                  "  pm.test('operation succeeded (no phantom gwBdId)', function () {",
+                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-gateway-rya1015",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways/{{gwBdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways",
+                "{{gwBdId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = ((pm.response.json().natGateway || {}).addressId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('gwBdAddrId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-address-refused-rya1025",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{gwBdAddrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{gwBdAddrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('отказ называет занятость', () => pm.expect(String(pm.response.json().message || '')).to.match(/in use/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-gateway-rya1026",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/gateways/{{gwBdId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "gateways",
+                "{{gwBdId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-1253",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "address-released",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{gwBdAddrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{gwBdAddrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('absent-id request rejected (400/403/404)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403, 404]);",
+                  "});",
+                  "pm.test('grpc code INVALID_ARGUMENT/NOT_FOUND/PERMISSION_DENIED (3/5/7)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 5, 7]);",
                   "});"
                 ]
               }

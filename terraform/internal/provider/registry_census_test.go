@@ -105,6 +105,19 @@ func producedKind(fn *ast.FuncDecl) string {
 	if fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
 		return ""
 	}
+	// Функция С ПАРАМЕТРАМИ конструктором реестра быть НЕ МОЖЕТ — by construction:
+	// реестр принимает `func() resource.Resource` / `func() datasource.DataSource`,
+	// то есть функцию без аргументов. Параметризованная — это ФАБРИКА, из которой
+	// именованные конструкторы собираются (`newCatalogOne(geoZoneCatalog)`), и сама
+	// она ресурсом не является: требовать её упоминания значило бы требовать
+	// невозможного, а гейт, краснеющий на законном, снимут первым же срабатыванием.
+	//
+	// Дыры это не открывает: фабрика без единого именованного конструктора не даст
+	// ни одного типа, и её отсутствие поймает сверка страницы с реестром — там
+	// считаются ИМЕНА ТИПОВ, а не функции.
+	if fn.Type.Params != nil && len(fn.Type.Params.List) > 0 {
+		return ""
+	}
 	switch typ := fn.Type.Results.List[0].Type.(type) {
 	case *ast.SelectorExpr:
 		return selectorKind(typ)

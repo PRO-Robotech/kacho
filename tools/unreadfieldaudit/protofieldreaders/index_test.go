@@ -208,17 +208,17 @@ func TestIndexRecordsOneofArmDiscrimination(t *testing.T) {
 	}
 
 	// (1) положительная сторона — живой разбор входа шлюза.
-	const discriminated = "CreateGatewayRequest_SharedEgressGatewaySpec"
+	const discriminated = "CreateGatewayRequest_NatGatewaySpec"
 	if !disc[discriminated] {
 		t.Errorf("тип-обёртка %s дискриминируется в services/vpc "+
-			"(handler.go: `req.Gateway.(*vpcv1.%s)`), но в индексе её нет — "+
-			"единственный возможный читатель этого члена oneof невидим",
-			discriminated, discriminated)
+			"(api/gateway/helpers.go: type-switch по `req.GetGateway()`), но в индексе "+
+			"её нет — единственный возможный читатель этого члена oneof невидим",
+			discriminated)
 	}
 
 	// (2) отрицательная сторона — законный близнец той же формы: тип-обёртка,
 	// которую прод-код только конструирует на пути ответа.
-	const constructedOnly = "Gateway_SharedEgressGateway"
+	const constructedOnly = "Gateway_NatGateway"
 	if disc[constructedOnly] {
 		t.Errorf("тип-обёртка %s в services/vpc только КОНСТРУИРУЕТСЯ "+
 			"(dto/toproto/gateway.go), а индекс считает её дискриминированной — "+

@@ -26,19 +26,30 @@ func TestTruncateID_ShortIDLen(t *testing.T) {
 	assert.Equal(t, "", domain.TruncateID(""))
 }
 
+// TestNewDefaultSecurityGroupRules — набор правил группы по умолчанию.
+//
+// Прежняя редакция этой пробы ЗАКРЕПЛЯЛА снятое поведение: она требовала, чтобы
+// первым правилом стояло разрешение всего ВХОДЯЩЕГО трафика. То есть проба
+// защищала открытый вход, а не закрытую модель, и любая попытка привести посадку
+// к решению владельца упиралась в неё.
+//
+// Содержательная часть — свежий слайс на каждый вызов — сохранена. Утверждения о
+// СОСТАВЕ живут в `default_security_group_posture_test.go`: там они названы вместе
+// с решением, которое их объясняет, и разбирают оба семейства адресов.
 func TestNewDefaultSecurityGroupRules(t *testing.T) {
 	rules := domain.NewDefaultSecurityGroupRules()
-	require.Len(t, rules, 2)
-	assert.Equal(t, domain.SecurityGroupRuleDirectionIngress, rules[0].Direction)
-	assert.Equal(t, "ANY", rules[0].ProtocolName)
-	assert.Equal(t, int64(-1), rules[0].ProtocolNumber)
-	assert.Equal(t, []string{"0.0.0.0/0"}, rules[0].V4CidrBlocks)
-	assert.Equal(t, domain.SecurityGroupRuleDirectionEgress, rules[1].Direction)
+	require.Len(t, rules, 2, "исходящее разрешение в двух семействах")
+	for i, r := range rules {
+		assert.Equal(t, domain.SecurityGroupRuleDirectionEgress, r.Direction,
+			"правило %d: группа по умолчанию не открывает вход", i)
+		assert.Equal(t, "ANY", r.ProtocolName)
+		assert.Equal(t, int64(-1), r.ProtocolNumber)
+	}
 
-	// Каждый вызов отдает fresh slice (caller может мутировать).
+	// Каждый вызов отдаёт свежий слайс (вызывающий вправе мутировать).
 	rules2 := domain.NewDefaultSecurityGroupRules()
 	rules[0].Direction = "MUTATED"
-	assert.Equal(t, domain.SecurityGroupRuleDirectionIngress, rules2[0].Direction)
+	assert.Equal(t, domain.SecurityGroupRuleDirectionEgress, rules2[0].Direction)
 }
 
 func TestNewDefaultSecurityGroup(t *testing.T) {

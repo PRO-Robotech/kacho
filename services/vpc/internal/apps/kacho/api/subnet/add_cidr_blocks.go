@@ -16,6 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 )
@@ -38,13 +39,27 @@ import (
 //
 // Get + SetCidrBlocks + outbox-emit UPDATED атомарны в одной writer-TX.
 type AddCidrBlocksUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo     Repo
+	opsRepo  operations.Repo
+	reserved domain.ReservedPrefixes
 }
 
 // NewAddCidrBlocksUseCase создает AddCidrBlocksUseCase.
 func NewAddCidrBlocksUseCase(r Repo, opsRepo operations.Repo) *AddCidrBlocksUseCase {
 	return &AddCidrBlocksUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithReservedPrefixes подключает перечень адресных диапазонов, которые платформа
+// держит за собой.
+//
+// Этот глагол несёт ту же проверку, что `Create`, и по той же причине: он —
+// ВТОРОЕ и последнее место, где диапазон подсети объявляется. Закрыв только
+// создание, мы оставили бы обход в один запрос: создать подсеть законным блоком и
+// добавить служебный вторым вызовом. Обоснование нулевого значения и то, чем
+// держится провязка, — в `CreateSubnetUseCase.WithReservedPrefixes`.
+func (u *AddCidrBlocksUseCase) WithReservedPrefixes(r domain.ReservedPrefixes) *AddCidrBlocksUseCase {
+	u.reserved = r
+	return u
 }
 
 // Execute — sync-валидация id/CIDR-формата + Operation + async-merge в worker'е.
@@ -79,6 +94,13 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 	// Disjointness внутри переданного v6-списка (sync; mirror v4 — для v4 это
 	// проверяется ниже на merged-наборе, что покрывает и intra-request).
 	if err := checkCIDRDisjoint("v6_cidr_blocks", v6); err != nil {
+		return nil, err
+	}
+	// Служебное адресное пространство платформы (`dataplane.reserved-prefixes`) —
+	// синхронно, до создания операции. Проверяется ПРИСЛАННЫЙ набор, а не
+	// накопленный: уже записанные блоки этот запрос не объявляет, а отказ по ним
+	// заблокировал бы расширение подсети, созданной до объявления перечня.
+	if err := validateSubnetNotReserved(u.reserved, v4, v6); err != nil {
 		return nil, err
 	}
 

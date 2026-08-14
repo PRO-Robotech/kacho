@@ -42,8 +42,9 @@ func (r *addressReader) Get(ctx context.Context, id string) (*kacho.AddressRecor
 	return a, nil
 }
 
-// List — cursor-based pagination + filter.Parse. SubnetID-filter матчит
-// internal_ipv4.subnet_id ИЛИ internal_ipv6.subnet_id (обе семьи).
+// List — cursor-based pagination + filter.Parse. SubnetID-сужение — объединение
+// по обеим внутренним семьям через хранимую колонку internal_subnet_id
+// (индекс addresses_project_subnet_page_idx, миграция 0034).
 func (r *addressReader) List(ctx context.Context, f kacho.AddressFilter, p kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {
@@ -65,12 +66,44 @@ func (r *addressReader) List(ctx context.Context, f kacho.AddressFilter, p kacho
 		argIdx++
 	}
 	if f.SubnetID != "" {
-		conditions = append(conditions, fmt.Sprintf("(internal_ipv4->>'subnet_id' = $%d OR internal_ipv6->>'subnet_id' = $%d)", argIdx, argIdx))
+		// Один предикат на оба пути чтения — тот же, что исполняет дочерний список
+		// подсети (helpers.AddressesBySubnetWhereAt). Он идёт по хранимой колонке
+		// internal_subnet_id, а не по дизъюнкции jsonb-выражений: последнюю не
+		// покрывает ни один индекс, то есть страница вкладки стоила бы чтения
+		// таблицы адресов ВСЕХ проектов. Отбирает колонка то же множество —
+		// «внутренний адрес несёт ровно одну семью» закреплено проверкой
+		// addresses_single_internal_family (0025), поэтому объединение по семьям
+		// сохранено: подсеть берётся из v4, иначе из v6.
+		conditions = append(conditions, helpers.AddressesBySubnetWhereAt(argIdx))
 		args = append(args, f.SubnetID)
 		argIdx++
 	}
+	if f.IPAddress != "" {
+		// Четыре формы владения, один вопрос. Значение приходит параметром, поэтому
+		// инъекция через него невозможна; имена путей внутри JSONB — литералы кода.
+		conditions = append(conditions, fmt.Sprintf(
+			"(internal_ipv4->>'address' = $%d OR internal_ipv6->>'address' = $%d"+
+				" OR external_ipv4->>'address' = $%d OR external_ipv6->>'address' = $%d)",
+			argIdx, argIdx, argIdx, argIdx))
+		args = append(args, f.IPAddress)
+		argIdx++
+	}
 	if f.Filter != "" {
-		ast, perr := filter.Parse(f.Filter, []string{"name"})
+		// Добавлены только те поля, у которых совпадают ТРИ вещи: имя контракта, имя
+		// колонки и пригодность к сравнению по контрактному значению.
+		//
+		// Что осознанно НЕ добавлено и почему — иначе следующий читатель добавит:
+		//   - `type` и `ip_version` — перечисления, и в схеме они лежат ЧИСЛОМ
+		//     (`smallint`). Арендатор написал бы `ipVersion=IPV4`, а в колонке 1:
+		//     фильтр либо не нашёл бы ничего, либо упал бы приведением типа.
+		//     Пригодность требует отображения имя→выражение, которого общий
+		//     разборщик не имеет (он подставляет имя поля в SQL дословно);
+		//   - значение адреса и подсеть — живут в JSONB, а не в колонке, поэтому
+		//     фильтром по имени колонки не выражаются вовсе. Замена методам
+		//     `GetByValue`/`ListBySubnet` — типизированные поля списочного запроса,
+		//     а не фильтр.
+		ast, perr := filter.Parse(f.Filter,
+			[]string{"name", "reserved", "used", "deletion_protection"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)
 		}
@@ -244,9 +277,43 @@ func (w *addressWriter) Insert(ctx context.Context, a *domain.Address) (*kacho.A
 	)
 	result, err := helpers.ScanAddress(row)
 	if err != nil {
+		if perr := subnetPairRefusal(err, referencedSubnetID(a.InternalIpv4, a.InternalIpv6)); perr != nil {
+			return nil, perr
+		}
 		return nil, helpers.WrapPgErr(err, "Address", string(a.Name))
 	}
 	return result, nil
+}
+
+// referencedSubnetID — та подсеть, которую видит хранимая колонка
+// `internal_subnet_id`: v4, если её спек несёт непустой subnet_id, иначе v6.
+//
+// Порядок повторяет выражение колонки из миграции 0001 намеренно и обязан
+// оставаться его зеркалом: он определяет, ЧЬЁ имя стоит в тексте отказа. Два
+// разных порядка здесь и в базе дали бы отказ, называющий не ту подсеть, — то
+// есть утверждение о ресурсе, которого вызывающий не касался.
+func referencedSubnetID(v4 *domain.InternalIpv4Spec, v6 *domain.InternalIpv6Spec) string {
+	if v4 != nil && v4.SubnetID != "" {
+		return v4.SubnetID
+	}
+	if v6 != nil && v6.SubnetID != "" {
+		return v6.SubnetID
+	}
+	return ""
+}
+
+// subnetPairRefusal — отказ составного внешнего ключа «адрес и подсеть одного
+// проекта» (миграция 0033), переведённый в контрактный тон. Не тот ключ или не
+// нарушение внешнего ключа — nil, и вызывающий продолжает своей классификацией.
+//
+// Обе причины — подсети нет и подсеть чужого проекта — отдают ОДИН текст: см.
+// `helpers.AddressSubnetProjectFKConstraint` о том, почему различимость здесь
+// была бы existence-oracle.
+func subnetPairRefusal(err error, subnetID string) error {
+	if !helpers.IsFKViolationOn(err, helpers.AddressSubnetProjectFKConstraint) {
+		return nil
+	}
+	return fmt.Errorf("%w: Subnet %s not found", helpers.ErrNotFound, subnetID)
 }
 
 // GetForUpdate — Get с row-lock (`FOR UPDATE`) в writer-TX. Сериализует
@@ -335,6 +402,12 @@ func (w *addressWriter) SetInternalIPv4(ctx context.Context, id string, intn *do
 		a, serr := helpers.ScanAddress(sp.QueryRow(ctx,
 			`UPDATE addresses SET internal_ipv4 = $2::jsonb WHERE id = $1 RETURNING `+helpers.AddressCols, id, intJSON))
 		if serr != nil {
+			// Ключ 0033 отсюда срабатывает ровно тогда, когда хранимая колонка
+			// принимает ИМЕННО эту подсеть (v4 первой в её выражении), поэтому
+			// названное имя — то самое, которое отказ и вызвало.
+			if perr := subnetPairRefusal(serr, intn.SubnetID); perr != nil {
+				return nil, perr
+			}
 			return nil, helpers.WrapPgErr(serr, "Address", id)
 		}
 		return a, nil
@@ -357,6 +430,12 @@ func (w *addressWriter) SetInternalIPv6(ctx context.Context, id string, spec *do
 		a, err := helpers.ScanAddress(sp.QueryRow(ctx,
 			`UPDATE addresses SET internal_ipv6 = $2::jsonb WHERE id = $1 RETURNING `+helpers.AddressCols, id, int6JSON))
 		if err != nil {
+			// Симметрично v4: если v4-спек строки уже несёт подсеть, хранимая
+			// колонка эту запись не читает вовсе и ключ по ней не срабатывает —
+			// значит сработавший ключ означает, что колонка приняла ЭТУ подсеть.
+			if perr := subnetPairRefusal(err, spec.SubnetID); perr != nil {
+				return nil, perr
+			}
 			return nil, helpers.WrapPgErr(err, "Address", id)
 		}
 		return a, nil

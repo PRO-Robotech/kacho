@@ -4,6 +4,7 @@
 package toproto
 
 import (
+	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
@@ -31,6 +32,16 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 		Labels:            domain.LabelsToMap(rec.Labels),
 		DefaultForNetwork: rec.DefaultForNetwork,
 	}
+	// used_by — потребители группы. Заполняется только там, где запись пришла с
+	// путей чтения: на путях резолва и мутации `rec.UsedBy` пуст, и поле уезжает
+	// пустым, а не прочерком «неизвестно». Контракт поля так и объявлен —
+	// output-only, выводится на чтении.
+	for _, ref := range rec.UsedBy {
+		p.UsedBy = append(p.UsedBy, &reference.Reference{
+			Referrer: &reference.Referrer{Type: ref.Type, Id: ref.ID, Name: ref.Name},
+			Type:     reference.Reference_USED_BY,
+		})
+	}
 	for _, r := range rec.Rules {
 		pr := &vpcv1.SecurityGroupRule{
 			Id:             r.ID,
@@ -43,9 +54,10 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 		if r.FromPort != 0 || r.ToPort != 0 {
 			pr.Ports = &vpcv1.PortRange{FromPort: r.FromPort, ToPort: r.ToPort}
 		}
-		// target — oneof {cidr_blocks | security_group_id | predefined_target},
-		// взаимоисключающее. Все три ветки обязаны сериализоваться, иначе Get/List
-		// отдаёт rule с Target=nil (SG-target/predefined приходили undefined).
+		// target — oneof {cidr_blocks | security_group_id | cidr_group_id},
+		// взаимоисключающее. КАЖДАЯ ветвь обязана сериализоваться, иначе Get/List
+		// отдаёт правило с Target=nil — то есть правило, которое сервер принял и
+		// сохранил, читается как правило без цели.
 		switch {
 		case len(r.V4CidrBlocks) > 0 || len(r.V6CidrBlocks) > 0:
 			pr.Target = &vpcv1.SecurityGroupRule_CidrBlocks{
@@ -58,9 +70,9 @@ func (securityGroup) toPb(rec kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGro
 			pr.Target = &vpcv1.SecurityGroupRule_SecurityGroupId{
 				SecurityGroupId: r.SecurityGroupID,
 			}
-		case r.PredefinedTarget != "":
-			pr.Target = &vpcv1.SecurityGroupRule_PredefinedTarget{
-				PredefinedTarget: r.PredefinedTarget,
+		case r.CidrGroupID != "":
+			pr.Target = &vpcv1.SecurityGroupRule_CidrGroupId{
+				CidrGroupId: r.CidrGroupID,
 			}
 		}
 		p.Rules = append(p.Rules, pr)

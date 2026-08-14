@@ -18,17 +18,46 @@ func DefaultSGName(networkID string) string {
 // DefaultSGDescription — описание автосоздаваемого default-SG.
 const DefaultSGDescription = "Default security group (auto-created by kacho-vpc)"
 
-// NewDefaultSecurityGroupRules возвращает дефолтный набор правил, который
-// получает каждый автосозданный default-SG: разрешить весь INGRESS и EGRESS
-// от/в 0.0.0.0/0 (2 правила, protocol=ANY (=-1), v4 cidr `0.0.0.0/0`).
+// NewDefaultSecurityGroupRules возвращает набор правил, который получает каждая
+// автосозданная группа по умолчанию: разрешить весь ИСХОДЯЩИЙ трафик в обоих
+// семействах адресов и НИ ОДНОГО входящего правила.
 //
-// Это builder, а не глобальная переменная — каждый вызов отдает fresh slice
-// (caller может мутировать без побочных эффектов). Direction — enum
-// `SecurityGroupRuleDirection`, а не голая string-literal.
+// # Посадка, а не оформление (решение владельца)
+//
+// Модель fail-closed в ОБЕ стороны: нет правила — значит не разрешено. Послабление,
+// без которого арендатор не работает, объявлено РЕСУРСОМ, а не спрятано в
+// умолчании: разница между «модель открыта» и «модель закрыта, а послабление
+// объявлено ресурсом» в том, что второе ВИДНО в ответе `Get` и правится обычной
+// правкой группы, а первое обнаруживается по последствиям.
+//
+// Почему исходящее вообще разрешено: безопасность требует закрытой модели,
+// работоспособность — исходящего доступа. Арендатор, чья машина не может дойти до
+// репозитория пакетов, заводит обращение в первый час.
+//
+// Почему В ОБОИХ СЕМЕЙСТВАХ: обещание симметрии семейств не сужается. Асимметрия
+// была бы скрытой дырой наоборот — правило защищает одно семейство и не защищает
+// другое, а арендатор об этом не знает.
+//
+// Что было до: два правила, разрешавшие весь ВХОД и весь выход, и только в IPv4.
+// То есть вход был открыт у каждой сети по умолчанию, а IPv6 не покрыт вовсе.
+//
+// Это builder, а не глобальная переменная — каждый вызов отдаёт свежий слайс
+// (вызывающий вправе мутировать без побочных эффектов у следующего). Направление —
+// перечисление, а не голый строковый литерал.
 func NewDefaultSecurityGroupRules() []SecurityGroupRule {
 	return []SecurityGroupRule{
-		{Direction: SecurityGroupRuleDirectionIngress, ProtocolName: "ANY", ProtocolNumber: -1, V4CidrBlocks: []string{"0.0.0.0/0"}},
-		{Direction: SecurityGroupRuleDirectionEgress, ProtocolName: "ANY", ProtocolNumber: -1, V4CidrBlocks: []string{"0.0.0.0/0"}},
+		{
+			Direction:      SecurityGroupRuleDirectionEgress,
+			ProtocolName:   "ANY",
+			ProtocolNumber: -1,
+			V4CidrBlocks:   []string{"0.0.0.0/0"},
+		},
+		{
+			Direction:      SecurityGroupRuleDirectionEgress,
+			ProtocolName:   "ANY",
+			ProtocolNumber: -1,
+			V6CidrBlocks:   []string{"::/0"},
+		},
 	}
 }
 

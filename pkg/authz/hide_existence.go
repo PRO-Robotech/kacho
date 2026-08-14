@@ -75,6 +75,10 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	// vpc CidrGroup — текст взят у слоя хранения
+	// (services/vpc/internal/repo/kacho/pg/cidr_group.go), а не сочинён здесь:
+	// отказ обязан читаться дословно как настоящий промах владельца.
+	"vpc_cidr_group": "CidrGroup %s not found",
 	// storage — services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go.
 	// Reachable since storage's object-self reads moved off the tier onto `v_get`:
 	// a read refused here must read exactly like the owner's own miss.

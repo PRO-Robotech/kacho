@@ -23,6 +23,7 @@ import (
 func TestVPCObjectTypesCoverEveryResourceScope(t *testing.T) {
 	want := []string{
 		"vpc_address",
+		"vpc_cidr_group",
 		"vpc_gateway",
 		"vpc_network",
 		"vpc_network_interface",

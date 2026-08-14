@@ -19,11 +19,57 @@ import (
 	"github.com/stretchr/testify/require"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	gwapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
+
+// seedGatewayAnchorSQL заводит сеть и ЗОНАЛЬНУЮ подсеть с блоком IPv4 прямо в БД
+// и возвращает id подсети — якорь размещения шлюза (`gateways.subnet_id` NOT NULL
+// + FK, миграция 0030). Предмет этих проб — намерение регистрации, а не якорь,
+// поэтому он ставится минимальным SQL, без прогона use-case'ов подсети.
+func seedGatewayAnchorSQL(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID string) string {
+	t.Helper()
+	netID := ids.NewID(ids.PrefixNetwork)
+	subID := ids.NewID(ids.PrefixSubnet)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO kacho_vpc.networks (id, project_id, name) VALUES ($1, $2, $3)`,
+		netID, projectID, "net-anchor")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO kacho_vpc.subnets (id, project_id, name, network_id, placement_type, zone_id, v4_cidr_blocks)
+		 VALUES ($1, $2, $3, $4, 'ZONAL', $5, $6)`,
+		subID, projectID, "sub-anchor", netID, "zone-a", []string{"10.79.0.0/24"})
+	require.NoError(t, err)
+	seedDefaultExternalPool(ctx, t, pool, "zone-a", "198.51.100.0/28")
+	return subID
+}
+
+// seedDefaultExternalPool — пул внешних адресов по умолчанию для зоны якоря.
+//
+// Нужен потому, что эти пробы идут ПРОДУКТОВЫМ путём создания, а он выделяет
+// шлюзу трансляции внешний адрес: вид и адрес связаны биусловием на уровне базы
+// (миграция 0038). Без пула создание отвечает «нет свободного внешнего адреса»,
+// и проба падает на нехватке фикстуры, ничего не сказав о том, что называет её
+// имя, — эмиссии намерения регистрации.
+func seedDefaultExternalPool(ctx context.Context, t *testing.T, pool *pgxpool.Pool, zoneID, cidr string) {
+	t.Helper()
+	poolID := ids.NewID("apl")
+	_, err := pool.Exec(ctx, `
+		INSERT INTO kacho_vpc.address_pools (id, name, v4_cidr_blocks, kind, zone_id, is_default)
+		VALUES ($1, $2, ARRAY[$3]::text[], 1, $4, true)`,
+		poolID, "pool-"+poolID, cidr, zoneID)
+	require.NoError(t, err)
+
+	r := kachopg.New(pool, nil)
+	t.Cleanup(r.Close)
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	require.NoError(t, w.AddressPools().PopulateFreelistForPool(ctx, poolID))
+	require.NoError(t, w.Commit())
+}
 
 // singleGatewayID возвращает единственный id gateway в проекте.
 func singleGatewayID(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID string) string {
@@ -56,10 +102,12 @@ func TestGatewayRepo_T32Create01_CreateEmitsLabels_UpdateRevokes(t *testing.T) {
 	updateUC := gwapp.NewUpdateGatewayUseCase(r, or)
 
 	// --- Create Gateway с labels ---
+	anchor := seedGatewayAnchorSQL(ctx, t, pool, "prj-A")
 	op, err := createUC.Execute(ctx, domain.Gateway{
 		ProjectID:   "prj-A",
 		Name:        domain.RcNameVPC("gw-okun"),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		GatewayType: domain.GatewayTypeNat,
+		SubnetID:    anchor,
 		Labels:      domain.LabelsFromMap(map[string]string{"gw": "okun"}),
 	})
 	require.NoError(t, err)
@@ -121,9 +169,11 @@ func TestGatewayRepo_T32FullPatch01_EmptyMaskEmits(t *testing.T) {
 	createUC := gwapp.NewCreateGatewayUseCase(r, pc, or)
 	updateUC := gwapp.NewUpdateGatewayUseCase(r, or)
 
+	anchor := seedGatewayAnchorSQL(ctx, t, pool, "prj-A")
 	op, err := createUC.Execute(ctx, domain.Gateway{
 		ProjectID: "prj-A", Name: domain.RcNameVPC("gw-fp"),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		GatewayType: domain.GatewayTypeNat,
+		SubnetID:    anchor,
 		Labels:      domain.LabelsFromMap(map[string]string{"gw": "treska"}),
 	})
 	require.NoError(t, err)

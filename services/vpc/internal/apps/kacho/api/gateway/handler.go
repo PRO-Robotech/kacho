@@ -94,16 +94,13 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListGatewaysRequest) (*vp
 // Create — proto → domain → use-case. Project-scope AuthZ (`editor @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateGatewayRequest) (*operationpb.Operation, error) {
-	gtype := ""
-	if _, ok := req.Gateway.(*vpcv1.CreateGatewayRequest_SharedEgressGatewaySpec); ok {
-		gtype = "shared_egress"
-	}
 	g := domain.Gateway{
 		ProjectID:   req.ProjectId,
 		Name:        domain.RcNameVPC(req.Name),
 		Description: domain.RcDescription(req.Description),
 		Labels:      domain.LabelsFromMap(req.Labels),
-		GatewayType: domain.GatewayType(gtype),
+		GatewayType: gatewayTypeFromCreateSpec(req),
+		SubnetID:    req.SubnetId,
 	}
 	op, err := h.create.Execute(ctx, g)
 	if err != nil {
@@ -125,17 +122,16 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateGatewayRequest) (
 	if req.UpdateMask != nil {
 		mask = req.UpdateMask.Paths
 	}
-	gtype := ""
-	if _, ok := req.Gateway.(*vpcv1.UpdateGatewayRequest_SharedEgressGatewaySpec); ok {
-		gtype = "shared_egress"
-	}
+	// Вид шлюза и его привязка на пути обновления НЕ читаются, и это не пропуск:
+	// оба неизменяемы после Create, поэтому их ветвь oneof снята с
+	// `UpdateGatewayRequest` с резервированием номера и имени. Указание их имён в
+	// `update_mask` отвергает use-case конвенционным тоном.
 	in := UpdateInput{
 		GatewayID: req.GatewayId,
 		Gateway: domain.Gateway{
 			Name:        domain.RcNameVPC(req.Name),
 			Description: domain.RcDescription(req.Description),
 			Labels:      domain.LabelsFromMap(req.Labels),
-			GatewayType: domain.GatewayType(gtype),
 		},
 		UpdateMask: mask,
 	}

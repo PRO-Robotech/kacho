@@ -155,8 +155,12 @@ message CreateListenerRequest {
   // VIP переехал Listener→LoadBalancer: листенер больше не аллоцирует адрес.
   // ip_version=8 и address_spec=9 сняты → reserved (наследует один anycast VIP
   // родительского LB на семейство).
-  reserved 8, 9;
-  reserved "ip_version", "address_spec";
+  //
+  // proxy_protocol_v2=10 СНЯТ вместе с полем ресурса: исполнителя обрамления не
+  // существует ни в одном рассмотренном датаплейне (см. listener.proto). Вход,
+  // у которого нет ни исполнителя, ни выхода, — «принято-и-проигнорировано».
+  reserved 8, 9, 10;
+  reserved "ip_version", "address_spec", "proxy_protocol_v2";
 
   string load_balancer_id = 1 [
     (required) = true,
@@ -177,8 +181,6 @@ message CreateListenerRequest {
   int64 port = 6 [(value) = "1-65535"];
   int64 target_port = 7 [(value) = "1-65535"];
 
-  bool proxy_protocol_v2 = 10;
-
   // Default target group ID — soft reference to a TG attached to the parent
   // LB. Optional; can be set later via Update.
   string default_target_group_id = 11 [(length) = "<=50"];
@@ -195,6 +197,12 @@ message CreateListenerMetadata {
 }
 
 message UpdateListenerRequest {
+  // proxy_protocol_v2=6 СНЯТ вместе с полем ресурса и полем создания. Путь маски
+  // с этим именем теперь отвергается как НЕИЗВЕСТНЫЙ — вызывающий видит отказ,
+  // а не молчаливое принятие настройки, которую никто не исполняет.
+  reserved 6;
+  reserved "proxy_protocol_v2";
+
   string listener_id = 1 [
     (required) = true,
     (length) = "<=50"
@@ -215,7 +223,6 @@ message UpdateListenerRequest {
     (map_key).pattern = "[a-z][-_0-9a-z]*"
   ];
 
-  bool proxy_protocol_v2 = 6;
   string default_target_group_id = 7 [(length) = "<=50"];
 
   // target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the

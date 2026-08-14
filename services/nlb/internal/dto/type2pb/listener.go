@@ -57,7 +57,6 @@ func (listener) toPb(rec kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 		Protocol:             protoPb,
 		Port:                 int64(rec.Port),
 		TargetPort:           int64(rec.TargetPort),
-		ProxyProtocolV2:      rec.ProxyProtocolV2,
 		DefaultTargetGroupId: defaultTGID,
 		Status:               statusPb,
 		TargetGroupId:        defaultTGID,

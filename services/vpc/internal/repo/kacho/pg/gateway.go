@@ -5,6 +5,7 @@ package pg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -59,6 +60,12 @@ func (r *gatewayReader) List(ctx context.Context, f kacho.GatewayFilter, p kacho
 		argIdx++
 	}
 	if f.Filter != "" {
+		// Список остаётся при одном поле ОСОЗНАННО, а не по отставанию. Плоский
+		// контракт шлюза несёт только id, project_id, created_at, name и
+		// description: сужать больше нечем. Колонка `gateway_type` существует, но
+		// полем КОНТРАКТА не является (тот же дефект отдельно чинится в маске
+		// обновления) — вынести её в публичный фильтр значило бы завести
+		// неконтрактное имя на публичной поверхности.
 		ast, perr := filter.Parse(f.Filter, []string{"name"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)
@@ -137,22 +144,99 @@ func (w *gatewayWriter) Insert(ctx context.Context, g *domain.Gateway) (*kacho.G
 	}
 
 	now := time.Now().UTC()
+	// Якорь размещения проверяется ВНУТРИ вставки, а не отдельным чтением до неё:
+	// «прочитал подсеть → вставил шлюз» под READ COMMITTED допускает удаление или
+	// правку подсети между двумя операторами, и второй писатель молча победил бы
+	// (ban #10). Здесь один оператор, и он решает всё:
+	//
+	//   * подсети НЕТ (или она чужого проекта — см. ниже) → внутренний EXISTS
+	//     ложен, значит строка вставляется и её отвергает внешний ключ
+	//     `gateways_subnet_fk` (23503). Это НЕ обход проверки: существование
+	//     держит именно FK, потому что коррелированный подзапрос строк не лочит, а
+	//     FK берёт разделяемую блокировку на строку-referent;
+	//   * подсеть есть, но НЕ несёт семейства, которое обслуживает выбранный вид
+	//     шлюза, ЛИБО принадлежит другому проекту → предикат отсекает строку, ноль
+	//     строк, классификация ниже.
+	//
+	// Чужой проект отсекается предикатом (а не FK) намеренно: ответ обязан быть
+	// БАЙТ-ИДЕНТИЧЕН настоящему промаху — «Subnet <id> not found». Различимый
+	// ответ был бы оракулом существования чужой подсети.
+	// `external_address_id` кладётся ВНУТРИ этой же вставки, а не отдельным
+	// UPDATE следом: биусловие `gateways_nat_has_address_chk` (0038) связывает
+	// каждую записываемую строку, поэтому «сначала вставим шлюз, потом припишем
+	// адрес» не прошло бы вовсе — промежуточного состояния «NAT без адреса» не
+	// существует. Пустая строка означает «адреса нет» и обязана лечь NULL'ом:
+	// частичный UNIQUE считал бы пустые строки равными и допустил бы ровно один
+	// безадресный шлюз на всю таблицу.
 	q := fmt.Sprintf(`
-		INSERT INTO gateways (id, project_id, created_at, name, description, labels, gateway_type)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO gateways (id, project_id, created_at, name, description, labels, gateway_type, subnet_id, external_address_id)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, '')
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM subnets s
+		    WHERE s.id = $8
+		      AND ( s.project_id <> $2
+		         OR NOT ( ($7 = 'NAT'         AND coalesce(array_length(s.v4_cidr_blocks, 1), 0) >= 1)
+		               OR ($7 = 'EGRESS_ONLY' AND coalesce(array_length(s.v6_cidr_blocks, 1), 0) >= 1) ) )
+		 )
 		RETURNING %s`, helpers.GatewayCols)
 
 	row := w.tx.QueryRow(ctx, q,
-		g.ID, g.ProjectID, now, string(g.Name), string(g.Description), labelsJSON, string(g.GatewayType),
+		g.ID, g.ProjectID, now, string(g.Name), string(g.Description), labelsJSON,
+		string(g.GatewayType), g.SubnetID, g.ExternalAddressID,
 	)
 	result, err := helpers.ScanGateway(row)
 	if err != nil {
+		if helpers.IsFKViolationOn(err, helpers.GatewaySubnetFKConstraint) {
+			return nil, fmt.Errorf("%w: Subnet %s not found", helpers.ErrNotFound, g.SubnetID)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, w.classifyAnchorRejection(ctx, &g.ProjectID, g.SubnetID, g.GatewayType)
+		}
 		return nil, helpers.WrapGatewayErr(err, string(g.Name))
 	}
 	return result, nil
 }
 
-// Update — UPDATE gateways RETURNING name/description/labels/gateway_type.
+// classifyAnchorRejection — СООБЩЕНИЕ для отвергнутой вставки шлюза; решение уже
+// принято оператором выше, здесь только выясняется, что именно сказать.
+//
+// Порядок ветвей повторяет порядок предиката вставки. Ветвь «причина больше не
+// видна» — не корзина «прочее»: под READ COMMITTED следующий оператор той же
+// транзакции получает новый снимок, поэтому подсеть могла измениться между
+// вставкой и этим чтением. Тогда правдиво сказать ровно то, что известно:
+// предусловие не выполнено, — и не выдумывать причину.
+func (w *gatewayWriter) classifyAnchorRejection(
+	ctx context.Context, projectID *string, subnetID string, gtype domain.GatewayType,
+) error {
+	var hasV4, hasV6 bool
+	err := w.tx.QueryRow(ctx, `
+		SELECT coalesce(array_length(v4_cidr_blocks, 1), 0) >= 1,
+		       coalesce(array_length(v6_cidr_blocks, 1), 0) >= 1
+		  FROM subnets WHERE id = $1 AND project_id = $2`, subnetID, *projectID).Scan(&hasV4, &hasV6)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Подсети нет ЛИБО она чужого проекта — один и тот же ответ, дословно
+		// равный настоящему промаху.
+		return fmt.Errorf("%w: Subnet %s not found", helpers.ErrNotFound, subnetID)
+	}
+	if err != nil {
+		return helpers.WrapPgErr(err, "Subnet", subnetID)
+	}
+	switch {
+	case gtype == domain.GatewayTypeNat && !hasV4:
+		return fmt.Errorf("%w: Subnet %s has no IPv4 CIDR block", helpers.ErrFailedPrecondition, subnetID)
+	case gtype == domain.GatewayTypeEgressOnly && !hasV6:
+		return fmt.Errorf("%w: Subnet %s has no IPv6 CIDR block", helpers.ErrFailedPrecondition, subnetID)
+	}
+	return fmt.Errorf("%w: Subnet %s can not anchor this gateway", helpers.ErrFailedPrecondition, subnetID)
+}
+
+// Update — UPDATE gateways RETURNING name/description/labels.
+//
+// `gateway_type` и `subnet_id` в SET НЕ входят: вид шлюза и его якорь размещения
+// выбираются на Create и неизменяемы (`update_mask` с их именами отвергается
+// синхронно с конвенционным тоном). Держать их в SET значило бы иметь путь
+// записи у поля, которое контракт объявляет неизменяемым, — расхождение, которое
+// однажды кто-нибудь «починит», добавив ветвь в маску.
 //
 // outbox-write — в use-case-е (см. Insert).
 func (w *gatewayWriter) Update(ctx context.Context, g *domain.Gateway) (*kacho.GatewayRecord, error) {
@@ -162,12 +246,12 @@ func (w *gatewayWriter) Update(ctx context.Context, g *domain.Gateway) (*kacho.G
 	}
 
 	q := fmt.Sprintf(`
-		UPDATE gateways SET name=$2, description=$3, labels=$4, gateway_type=$5
+		UPDATE gateways SET name=$2, description=$3, labels=$4
 		WHERE id=$1
 		RETURNING %s`, helpers.GatewayCols)
 
 	row := w.tx.QueryRow(ctx, q,
-		g.ID, string(g.Name), string(g.Description), labelsJSON, string(g.GatewayType),
+		g.ID, string(g.Name), string(g.Description), labelsJSON,
 	)
 	result, err := helpers.ScanGateway(row)
 	if err != nil {
@@ -192,6 +276,12 @@ func (w *gatewayWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Gat
 // Delete — DELETE gateways WHERE id = $1. FK violation (gateway в использовании)
 // → ErrFailedPrecondition с текстом "gateway is in use". row not affected →
 // ErrNotFound "Gateway <id> not found".
+//
+// У ветви FK появился ПРОИЗВОДИТЕЛЬ: до миграции 0030 на `gateways` не ссылался
+// ни один внешний ключ, поэтому ветвь была недостижима и защищала от того, чего
+// не было. Теперь на шлюз ссылается `route_table_gateway_refs.gateway_id`
+// (ON DELETE RESTRICT) — шлюз, названный живым статическим маршрутом, не
+// удаляется, и именно этот отказ здесь классифицируется.
 //
 // outbox-write (DELETED tombstone) — в use-case-е.
 func (w *gatewayWriter) Delete(ctx context.Context, id string) error {

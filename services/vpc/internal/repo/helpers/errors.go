@@ -14,7 +14,7 @@
 //   - outbox.go — EmitVPC + DomainToMap для outbox-payload снимков.
 //   - paging.go — Encode/DecodePageToken + InvalidPageTokenErr / InvalidFilterErr.
 //   - unique.go — SQLSTATE-классификаторы + WrapPgErr.
-//   - sql.go — JoinAnd / NullableStr / NormalizeMap / MarshalDhcp / MarshalStaticRoutes.
+//   - sql.go — JoinAnd / NullableStr / NormalizeMap / MarshalStaticRoutes.
 //   - scans.go — column-list-константы и scan-функции по 10 ресурсам.
 //   - payloads.go — payload-функции для outbox-snapshots.
 //   - nic.go — NIC-specific (NIStatusName / NIStatusFromName / OrEmptyStrSlice).

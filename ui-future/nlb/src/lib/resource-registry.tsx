@@ -486,14 +486,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Порт на target-е (1..65535). Если не задан — равен «Порт».",
       },
       {
-        name: "proxy_protocol_v2",
-        label: "PROXY-protocol v2",
-        type: "bool",
-        required: false,
-        default: false,
-        description: "PROXY-protocol v2 framing на входящих соединениях (передаёт target'у исходный адрес клиента).",
-      },
-      {
         name: "default_target_group_id",
         label: "Target group по умолчанию",
         type: "ref",

@@ -8,7 +8,7 @@ verified by the kacho-nlb newman regression suite. Each requirement maps
 The list is consumed by code-review and acceptance gates: any product change
 that affects behaviour covered here must be reflected as either an updated
 `REQ-*` (and corresponding case) or — if intentionally relaxed — explicitly
-noted in `docs/architecture/07-known-divergences.md` of kacho-nlb.
+noted in `docs/engineering/architecture/08-known-divergences.md` of kacho-nlb.
 
 > Style: **normative wording** (MUST / MUST NOT / SHOULD). Verbatim error
 > texts are quoted exactly. Wording mirrors kacho-vpc PRODUCT-REQUIREMENTS.md

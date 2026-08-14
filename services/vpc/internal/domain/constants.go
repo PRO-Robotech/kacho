@@ -31,15 +31,44 @@ const (
 
 // ---- GatewayType -------------------------------------------------------------
 
-// GatewayType — sentinel для Gateway.oneof spec; сейчас поддержан один тип
-// (shared_egress). Не string-literal, а enum-константа.
+// GatewayType — выбранная ветвь `Gateway.gateway` (oneof). Не голая строка, а
+// enum-константа: значение выбирается на Create и НЕИЗМЕНЯЕМО (смена вида шлюза
+// означает другой шлюз).
+//
+// Значения — те же, что хранит столбец `gateways.gateway_type`, и набор закреплён
+// DB-CHECK'ом `gateways_type_chk` (миграция 0030). Расширяется в lockstep: новая
+// ветвь oneof — новая константа здесь И новая миграция, меняющая CHECK.
 type GatewayType string
 
 const (
-	// GatewayTypeSharedEgress — единственный поддерживаемый Gateway oneof
-	// (SharedEgressGateway: NAT gateway для исходящего трафика).
-	GatewayTypeSharedEgress GatewayType = "shared_egress"
+	// GatewayTypeNat — публичная трансляция исходящего IPv4
+	// (`Gateway.nat_gateway`).
+	GatewayTypeNat GatewayType = "NAT"
+
+	// GatewayTypeEgressOnly — «только исход» для IPv6
+	// (`Gateway.egress_only_gateway`): наружу можно, входящие соединения не
+	// устанавливаются.
+	GatewayTypeEgressOnly GatewayType = "EGRESS_ONLY"
 )
+
+// IPFamily — семейство адресов, которое обслуживает вид шлюза: 4 либо 6.
+// Ноль означает «вид не назван» — вызывающий обязан отличать этот случай сам,
+// потому что required-проверку ветви oneof делает use-case, а не эта функция.
+//
+// Функция — ЕДИНЫЙ источник соответствия «вид шлюза → семейство» для кода
+// сервиса. Зеркало предиката живёт в SQL (миграция 0030 и оператор записи ссылок
+// маршрутов); расхождение между ними ловит интеграционная проба
+// TestGatewayFamilyRuleMatchesDBPredicate.
+func (t GatewayType) IPFamily() int {
+	switch t {
+	case GatewayTypeNat:
+		return 4
+	case GatewayTypeEgressOnly:
+		return 6
+	default:
+		return 0
+	}
+}
 
 // ---- NetworkInterfaceStatus --------------------------------------------------
 

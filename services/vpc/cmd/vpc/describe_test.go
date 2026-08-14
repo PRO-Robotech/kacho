@@ -163,28 +163,35 @@ func TestHideExistenceFormsCoverEveryObjectScopedTypeAndComeFromTheProducer(t *t
 // адаптера решателя (`internal/check`), где тот же вывод жил рядом с ним.
 func TestHiddenTypesAreResourcesNotHierarchyAnchors(t *testing.T) {
 	want := []string{
-		"vpc_address", "vpc_gateway", "vpc_network", "vpc_network_interface",
-		"vpc_route_table", "vpc_security_group", "vpc_subnet",
+		"vpc_address", "vpc_cidr_group", "vpc_gateway", "vpc_network",
+		"vpc_network_interface", "vpc_route_table", "vpc_security_group", "vpc_subnet",
 	}
 	assert.Equal(t, want, hiddenObjectTypes(),
 		"скрывающие типы — ресурсы домена, и только они")
 }
 
-// Срок жизни подписки объявлен ИЗЪЯТИЕМ с непустой причиной.
+// Срок жизни подписки объявлен ВЕЛИЧИНОЙ и превосходит срок одиночного вызова.
 //
-// Само заявление судит носитель по служимому набору (О11) — здесь проверяется
-// лишь то, что оно объявлено именно изъятием, а не величиной и не пустотой.
-func TestStreamBudgetIsAnExemptionWithAReason(t *testing.T) {
+// Прежде здесь проверялось обратное — что ось объявлена изъятием «серверных
+// стримов не служу». Изъятие истекло от появления предмета: vpc служит поток
+// намерения датаплейна (`InternalDataplaneService/WatchIntent`). Само заявление
+// судит носитель по СЛУЖИМОМУ набору (О11); здесь проверяется, что объявлена
+// именно величина и что она больше границы обработки одиночного вызова —
+// подписка, накрытая сроком запроса, рвалась бы раз в этот срок, и клиент читал
+// бы это как сетевой сбой.
+func TestStreamBudgetIsAValueLongerThanTheRequestBudget(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
 	require.NoError(t, err)
 
-	_, hasValue := desc.Spec().StreamBudget.Get()
-	assert.False(t, hasValue, "серверных стримов vpc не служит — величине здесь неоткуда взяться")
-	because, na := desc.Spec().StreamBudget.NotApplicableBecause()
-	require.True(t, na, "ось обязана быть ОБЪЯВЛЕНА изъятием, а не оставлена пустой")
-	assert.NotEmpty(t, strings.TrimSpace(because), "изъятие без причины объявлением не является")
+	budget, hasValue := desc.Spec().StreamBudget.Get()
+	require.True(t, hasValue, "у процесса есть служимый серверный стрим — величина обязана быть объявлена")
+	assert.Equal(t, dataplaneStreamLifetime, budget)
+	_, na := desc.Spec().StreamBudget.NotApplicableBecause()
+	assert.False(t, na, "ось объявлена изъятием при живом стриме — заявление ложно")
+	assert.Greater(t, budget, desc.Spec().HandlingBudget,
+		"срок подписки не больше срока одиночного вызова: подписка рвалась бы по границе запроса")
 }
 
 // Проводка сужателя — ровно на тот метод, который каталог объявляет сужаемым.

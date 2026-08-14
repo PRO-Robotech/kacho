@@ -43,6 +43,12 @@ const sidebars: SidebarsConfig = {
       collapsed: true,
       items: ['advanced/design-decisions', 'advanced/observability'],
     },
+    {
+      type: 'category',
+      label: 'Terraform',
+      collapsed: false,
+      items: ['terraform/provider', 'terraform/module-storage-set'],
+    },
   ],
 }
 

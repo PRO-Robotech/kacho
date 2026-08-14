@@ -5,11 +5,13 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"go.uber.org/multierr"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
 
 // Frozen-тексты boot-гардрейлов. Это часть контракта (наблюдаемый отказ старта),
@@ -100,6 +102,121 @@ const (
 		"KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true (the client identity shared with the Check edge). This is a " +
 		"SEPARATE connection from the authz Check edge — it targets the iam public listener and carries the " +
 		"per-object visibility decision behind every List, so securing the Check edge alone does not cover it"
+
+	// S5-гардрейлы (профиль возможностей исполнителя датаплейна, см. dataplane.go).
+	//
+	// Тексты читает оператор, которому стенд отказал в старте, поэтому они обязаны
+	// называть ручку — и ключ файла настроек, и переменную окружения: посадка
+	// задаёт профиль то так, то так, а искать имя в исходниках оператор не обязан.
+	// %s = Mode.String().
+	errExecutorOverlapRequired = "mode %s: dataplane.executor.overlapping-tenant-addresses=true is required " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__OVERLAPPING_TENANT_ADDRESSES) — tenant address ranges in vpc are " +
+		"unique only WITHIN a network by construction (subnet/pool migrations constrain overlap with " +
+		"`EXCLUDE USING gist (network_id WITH =, …)`), so two tenants holding the same range is the normal case, " +
+		"not an edge one. An executor that does not isolate identical addresses of different tenants merges " +
+		"their traffic. Until that isolation is declared, accepting overlapping ranges is not allowed: declare " +
+		"the capability, or run this stand against an executor that has it"
+	errExecutorStateTrackingRequired = "mode %s: dataplane.executor.state-tracking-families is not declared " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__STATE_TRACKING_FAMILIES, allowed: %s) — an empty declaration means " +
+		"UNKNOWN, not «tracks nothing»: return traffic is permitted by connection state, so on unknown " +
+		"statefulness a rule is accepted and cannot be realized. Note that a lone comma is NOT a declaration — " +
+		"it normalises to zero families, and the guard reads the same normalised value the rest of the process reads"
+	errExecutorUnknownFamily = "dataplane.executor.state-tracking-families: unknown family %s " +
+		"(allowed: %s) — a silently dropped entry would leave a profile the operator considers declared and the " +
+		"guard does not; fix the spelling or drop the entry"
+	errExecutorNamedSetRequired = "mode %s: dataplane.executor.named-set-reference-in-rule=true is required " +
+		"(env KACHO_VPC_DATAPLANE__EXECUTOR__NAMED_SET_REFERENCE_IN_RULE) — a security-group rule target is " +
+		"either address ranges OR a group id (mutually exclusive branches of the accepted contract), so an " +
+		"executor without named-set references leaves part of the already-accepted rules unrealizable"
+	errExecutorGuaranteeRequired = "mode %s: %s must be a positive number (env %s, got %d) — zero is the " +
+		"ABSENCE of a guarantee, not a guarantee of zero, and the control plane has nothing to state to the " +
+		"tenant about what the executor will hold"
+	errExecutorGuaranteeNegative = "%s must not be negative (env %s, got %d) — a negative number is not " +
+		"«no limit», it is an unusable declaration"
+	// %[1]s = Mode.String(), %[2]d = объявлено, %[3]d = обещано продуктом.
+	//
+	// Оба числа обязательны: без объявленного оператор не знает, ЧТО чинить, без
+	// обещанного — ДО КАКОЙ величины. Имя инкапсуляции и арифметика вычета сюда не
+	// попадают намеренно — по величине накладных расходов опознаётся сетевая
+	// фабрика (см. godoc domain.GuaranteedPayloadFloorBytes).
+	errExecutorPayloadBelowProductFloor = "mode %[1]s: dataplane.executor.guaranteed-payload-bytes=%[2]d is " +
+		"below the payload floor this product promises the tenant (%[3]d bytes, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES) — the promise is a product-wide lower bound " +
+		"the tenant reads in the documentation and cannot verify against this stand, so a stand whose executor " +
+		"carries less makes it false for everyone who arrives here, and makes it false SILENTLY (the control " +
+		"plane keeps accepting the same traffic). Either point this stand at an executor that carries at least " +
+		"the promised payload, or raise the declaration to what the executor actually holds; lowering the " +
+		"promise is a product decision and changes the documentation that states it"
+	errExecutorTenantLimitWithoutBand = "dataplane.executor.tenant-settable-bandwidth-limit=true while " +
+		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps is not declared (got %d) — the declaration " +
+		"contradicts itself: a tenant-settable limit is a ceiling under the guaranteed band, and there is no " +
+		"band to limit against. Declare the guaranteed band, or drop the tenant-settable limit"
+	// %[1]d = объявлено стендом, %[2]d = обещано продуктом.
+	//
+	// Оба числа обязательны по той же причине, что и у размера кадра: без первого
+	// оператор не знает, ЧТО чинить, без второго — ДО КАКОЙ величины.
+	errExecutorTenantLimitRangeEmpty = "dataplane.executor.tenant-settable-bandwidth-limit=true while " +
+		"dataplane.executor.guaranteed-bandwidth-per-interface-mbps=%[1]d is not ABOVE the band this product " +
+		"promises every interface (%[2]d Mbps, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS) — a tenant limit is accepted " +
+		"strictly above the promised floor and up to what this stand guarantees, so these two numbers leave an " +
+		"EMPTY interval: the capability is declared and cannot be used once. Either raise the declared " +
+		"guarantee to what the executor actually holds, or drop the tenant-settable limit"
+	errExecutorBandBelowProductFloor = "mode %[1]s: dataplane.executor.guaranteed-bandwidth-per-interface-mbps=%[2]d " +
+		"is below the band this product promises the tenant (%[3]d Mbps, env " +
+		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS) — the promise is a product-wide " +
+		"lower bound the tenant reads in the documentation and cannot verify against this stand, so a stand whose " +
+		"executor carries less makes it false for everyone who arrives here, and makes it false SILENTLY. Either " +
+		"point this stand at an executor that carries at least the promised band, or raise the declaration to " +
+		"what the executor actually holds; lowering the promise is a product decision and changes the " +
+		"documentation that states it"
+
+	// S6-гардрейлы (перечень адресных диапазонов, которые платформа держит за
+	// собой, см. dataplane.go `ReservedPrefixes`).
+	//
+	// Тексты читает оператор, которому стенд отказал в старте, поэтому они обязаны
+	// называть ручку — и ключ файла настроек, и переменную окружения: посадка
+	// задаёт перечень то так, то так, а искать имя в исходниках оператор не обязан.
+	// Это рантайм-диагностика, и требование сдержанности к публичным артефактам к
+	// ней не относится. Сами служебные диапазоны отказ НЕ печатает — их незачем
+	// пересказывать тому, у кого они и так в файле настроек.
+	// %s = Mode.String().
+	errReservedPrefixesRequired = "mode %s: dataplane.reserved-prefixes is not declared " +
+		"(env KACHO_VPC_DATAPLANE__RESERVED_PREFIXES) — part of the address space serves the platform " +
+		"itself (node service addresses, in-subnet service addresses, the instance metadata endpoint), and " +
+		"an EMPTY list means «we do not narrow», not «there is nothing to narrow»: every tenant prefix is " +
+		"then accepted, including one laid over a service range, and the result is a product that «sometimes " +
+		"does not work» with the investigation going into the network instead of into the overlap. Declare the " +
+		"ranges this stand keeps for itself. Note that a lone comma is NOT a declaration — it normalises to " +
+		"zero entries, and the guard reads the same normalised value the rest of the process reads"
+	// errReservedPrefixUnusable — негодное ОБЪЯВЛЕНИЕ, отвергается в любом режиме.
+	// %s = запись оператора (в кавычках), %s = причина от доменного конструктора.
+	errReservedPrefixUnusable = "dataplane.reserved-prefixes: entry %s is unusable (%s) — a silently " +
+		"dropped entry would leave a range the operator considers reserved and the control plane does not, " +
+		"so a tenant subnet laid over it would be accepted; fix the entry or drop it"
+
+	// S7-гардрейл: величины допуска запросов. Тот же довод, что у S6, и та же
+	// граница между «посадка не объявила» (вопрос режима) и «объявление
+	// противоречит себе» (негодность в любом режиме).
+	//
+	// Текст читает оператор, которому стенд отказал в старте, поэтому он называет
+	// и ключ файла настроек, и переменные окружения. Опубликованные величины
+	// (§8.6) в отказе НЕ пересказываются: два места об одном числе разъезжаются
+	// молча, а их единственный дом — таблица решений и values.yaml чарта.
+	// %s = ключ листенера (api-server.rate-limit.public|internal);
+	// %s = Mode.String(); %s = префикс переменных окружения этого листенера.
+	errRateLimitRequired = "%s: request admission limits are not declared for this listener in mode %s " +
+		"(env %s__{READ_PER_SEC,MUTATION_PER_SEC,BURST_FACTOR,IN_FLIGHT}) — a request costs three rows " +
+		"in the database on every mutation and up to a full page of objects with a batched permission " +
+		"check on every read, so an unbounded rate does not hit the network, it hits the DATABASE. " +
+		"Zero values mean «we do not limit», not «there is nothing to limit»: the limiter is then either " +
+		"absent or empty, and in both cases it looks armed while never having refused once. Declare all " +
+		"four axes for this listener"
+	// errRateLimitUnusable — негодное ОБЪЯВЛЕНИЕ, отвергается в любом режиме.
+	// %s = ключ листенера, %s = причина от конструктора величин.
+	errRateLimitUnusable = "%s: %s — a declaration the process cannot execute is worse than none: " +
+		"the operator reads the knob as set while the axis limits nothing (or, with a burst below the " +
+		"sustained rate, refuses even a lawful flow)"
 )
 
 // Validate проверяет инварианты Config — чистая функция без побочных эффектов и без
@@ -417,6 +534,292 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 	return errs
 }
 
+// ValidateExecutorProfile — boot-гардрейл S5: профиль возможностей исполнителя
+// датаплейна (секция `dataplane.executor`, см. dataplane.go).
+//
+// # Что здесь проверяется и почему это не косметика
+//
+// Управляющий контур принимает от арендатора то, что исполнять будет НЕ он:
+// адресные диапазоны, правила со ссылкой на именованный набор, ограничение полосы.
+// Возможностей исполнителя контур не знает и вывести не может — их объявляет
+// посадка. Пока объявления нет, «принято» и «реализуемо» неотличимы.
+//
+// # Два разных вида отказа, и они разделены НАМЕРЕННО
+//
+//   - ПОСАДКА (пересечение адресов, отслеживание состояния, ссылка на именованный
+//     набор, положительность гарантий) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур, где датаплейна нет вовсе; любой
+//     РАЗВЁРНУТЫЙ стенд работает в боевом режиме (core rule #16), поэтому
+//     освобождение dev не оставляет дыры ни на одном стенде.
+//   - ОБЪЯВЛЕНИЕ (неизвестное семейство, отрицательное число, ограничение полосы
+//     без объявленной полосы) — негодно САМО ПО СЕБЕ, вне зависимости от посадки, и
+//     отвергается в любом режиме. Это опечатка или самопротиворечие, а не выбор
+//     оператора: приняв её молча, мы получили бы профиль, который оператор считает
+//     объявленным, а страж — нет.
+//
+// Предикат непустоты семейств — ТОТ ЖЕ, что читает остальной процесс
+// (Config.StateTrackingFamilies().IsDeclared()), а не длина сырой настройки:
+// одинокая запятая разбирается в две пустые записи, то есть «непусто» по длине и
+// «пусто» по существу. Разошедшись здесь, страж и читатель разошлись бы ровно там,
+// где расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями сразу: оператор обязан увидеть полный
+// список за один прогон, а не чинить профиль по одному отказу за перезапуск.
+func (c Config) ValidateExecutorProfile() error {
+	var errs error
+
+	e := c.Dataplane.Executor
+	families := c.StateTrackingFamilies()
+
+	// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+	for _, u := range families.Unknown() {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorUnknownFamily,
+			strconv.Quote(u), strings.Join(KnownAddressFamilies(), ", ")))
+	}
+	for _, g := range c.executorGuarantees() {
+		if g.value < 0 {
+			errs = multierr.Append(errs,
+				fmt.Errorf(errExecutorGuaranteeNegative, g.knob, g.env, g.value))
+		}
+	}
+	if e.TenantSettableBandwidthLimit && e.GuaranteedBandwidthPerInterfaceMbps <= 0 {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorTenantLimitWithoutBand,
+			e.GuaranteedBandwidthPerInterfaceMbps))
+	}
+	// Умение объявлено, но промежуток приёма ПУСТ. Арендаторское ограничение
+	// принимается строго выше опубликованного пола продукта и не выше того, что
+	// гарантирует этот стенд (`domain.BandwidthLimitPolicy`); гарантия на уровне
+	// пола или ниже делает эти два края несовместимыми, и объявленным умением
+	// нельзя воспользоваться НИ РАЗУ. Это негодность самого объявления, а не
+	// требование к посадке, поэтому проверяется в любом режиме — как и остальные
+	// самопротиворечия профиля. Второй отказ про то же число не выдаётся: ветвь
+	// выше уже сработала на неположительной гарантии.
+	if e.TenantSettableBandwidthLimit &&
+		e.GuaranteedBandwidthPerInterfaceMbps > 0 &&
+		e.GuaranteedBandwidthPerInterfaceMbps <= domain.GuaranteedInterfaceBandwidthFloorMbps {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorTenantLimitRangeEmpty,
+			e.GuaranteedBandwidthPerInterfaceMbps, domain.GuaranteedInterfaceBandwidthFloorMbps))
+	}
+
+	// (2) Требования к ПОСАДКЕ — только там, где исполнитель есть.
+	if !c.AuthN.Mode.IsProduction() {
+		return errs
+	}
+	if !e.OverlappingTenantAddresses {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorOverlapRequired, c.AuthN.Mode))
+	}
+	if !families.IsDeclared() {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorStateTrackingRequired,
+			c.AuthN.Mode, strings.Join(KnownAddressFamilies(), ", ")))
+	}
+	if !e.NamedSetReferenceInRule {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorNamedSetRequired, c.AuthN.Mode))
+	}
+	for _, g := range c.executorGuarantees() {
+		if g.value == 0 {
+			errs = multierr.Append(errs, fmt.Errorf(errExecutorGuaranteeRequired,
+				c.AuthN.Mode, g.knob, g.env, g.value))
+		}
+	}
+	// Полезный размер кадра — гарантия профиля, у которой есть ОБЕЩАНИЕ ПРОДУКТА
+	// (domain.GuaranteedPayloadFloorBytes): арендатор читает нижнюю границу в
+	// документации и рассчитывает на неё, не зная ни этого стенда, ни его
+	// исполнителя. Поэтому здесь проверяется не только «объявлено», но и «не меньше
+	// обещанного».
+	//
+	// Прежняя редакция называла её ЕДИНСТВЕННОЙ такой гарантией. Это было верно на
+	// день, когда писалось, и перестало быть верным вместе с публикацией полосы на
+	// интерфейс: обещаний продукта в профиле стало два, и второе проверяется ниже —
+	// тем же порядком и по той же причине.
+	//
+	// Ноль отсеян выше как ОТСУТСТВИЕ гарантии, и второй отказ про то же число
+	// назвал бы оператору две проблемы там, где она одна. Граница ВКЛЮЧАЮЩАЯ —
+	// обещание звучит «не ниже», и ровно обещанное законно.
+	if p := e.GuaranteedPayloadBytes; p > 0 && p < domain.GuaranteedPayloadFloorBytes {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorPayloadBelowProductFloor,
+			c.AuthN.Mode, p, domain.GuaranteedPayloadFloorBytes))
+	}
+	// Полоса на интерфейс — ВТОРАЯ гарантия профиля с обещанием продукта
+	// (`domain.GuaranteedInterfaceBandwidthFloorMbps`, «не менее 1 Гбит/с»), и
+	// проверяется она тем же порядком и по той же причине, что и размер кадра.
+	// Ноль отсеян выше как ОТСУТСТВИЕ гарантии; граница ВКЛЮЧАЮЩАЯ — обещание
+	// звучит «не менее», и ровно обещанное законно.
+	if b := e.GuaranteedBandwidthPerInterfaceMbps; b > 0 && b < domain.GuaranteedInterfaceBandwidthFloorMbps {
+		errs = multierr.Append(errs, fmt.Errorf(errExecutorBandBelowProductFloor,
+			c.AuthN.Mode, b, domain.GuaranteedInterfaceBandwidthFloorMbps))
+	}
+	return errs
+}
+
+// executorGuarantee — числовая гарантия профиля вместе с именами, которыми её
+// задают. Имена лежат РЯДОМ со значением, чтобы отказ не мог назвать не ту ручку:
+// три числа проверяются одинаково, и общий текст «что-то не объявлено» не сказал бы
+// оператору, что именно чинить.
+type executorGuarantee struct {
+	knob  string
+	env   string
+	value int
+}
+
+func (c Config) executorGuarantees() []executorGuarantee {
+	e := c.Dataplane.Executor
+	return []executorGuarantee{
+		{
+			knob:  "dataplane.executor.guaranteed-payload-bytes",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES",
+			value: e.GuaranteedPayloadBytes,
+		},
+		{
+			knob:  "dataplane.executor.guaranteed-bandwidth-per-interface-mbps",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS",
+			value: e.GuaranteedBandwidthPerInterfaceMbps,
+		},
+		{
+			knob:  "dataplane.executor.connection-limit-per-interface",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE",
+			value: e.ConnectionLimitPerInterface,
+		},
+	}
+}
+
+// ValidateReservedPrefixes — boot-гардрейл S6: перечень адресных диапазонов,
+// которые платформа держит ЗА СОБОЙ (секция `dataplane.reserved-prefixes`, см.
+// dataplane.go).
+//
+// # Что здесь проверяется и почему у этого обязан быть страж, а не умолчание
+//
+// Часть адресного пространства обслуживает саму платформу: служебные адреса узлов,
+// адреса служб внутри подсети, точка получения метаданных экземпляра. Подсеть
+// арендатора, объявленная поверх такого диапазона, проходит все проверки контура и
+// не работает — причём симптом выглядит сетевым, а причина лежит в перекрытии.
+//
+// Перечень нельзя зашить в код: у разных посадок платформы служебные диапазоны
+// разные, и литерал описывал бы один стенд, оставаясь ложью про остальные. А раз
+// это настройка, у неё есть состояние «не задана», и оно НЕ безобидно: пустой
+// перечень означает «не сужаем», а не «нечего сужать» — проверка на пути запроса
+// присутствует, исполняется на каждом создании подсети и не отвергает ничего.
+// Поэтому боевая посадка с необъявленным перечнем не поднимается.
+//
+// # Два разных вида отказа, и они разделены НАМЕРЕННО (как в S5)
+//
+//   - ПОСАДКА (перечень не объявлен) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур, где датаплейна нет вовсе; любой
+//     РАЗВЁРНУТЫЙ стенд работает в боевом режиме (core rule #16), поэтому
+//     освобождение dev не оставляет дыры ни на одном стенде.
+//   - ОБЪЯВЛЕНИЕ (запись, которая диапазоном стать не может) — негодно САМО ПО
+//     СЕБЕ, вне зависимости от посадки, и отвергается в любом режиме. Это опечатка
+//     или самопротиворечие, а не выбор оператора: приняв её молча, мы получили бы
+//     диапазон, который оператор считает зарезервированным, а контур — нет.
+//
+// Предикат непустоты — ТОТ ЖЕ, что читает путь запроса
+// (Config.ReservedPrefixes().IsDeclared()), а не длина сырой настройки: одинокая
+// запятая разбирается в две пустые записи, то есть «непусто» по длине и «пусто» по
+// существу. Разошедшись здесь, страж и читатель разошлись бы ровно там, где
+// расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями сразу: оператор обязан увидеть полный
+// список за один прогон, а не чинить перечень по одной записи за перезапуск.
+func (c Config) ValidateReservedPrefixes() error {
+	var errs error
+
+	reserved := c.ReservedPrefixes()
+
+	// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+	for _, bad := range reserved.Rejected() {
+		errs = multierr.Append(errs, fmt.Errorf(errReservedPrefixUnusable,
+			strconv.Quote(bad.Entry), bad.Reason))
+	}
+
+	// (2) Требование к ПОСАДКЕ — только там, где датаплейн есть.
+	if !c.AuthN.Mode.IsProduction() {
+		return errs
+	}
+	if !reserved.IsDeclared() {
+		errs = multierr.Append(errs, fmt.Errorf(errReservedPrefixesRequired, c.AuthN.Mode))
+	}
+	return errs
+}
+
+// ratelimitKnob — ключ настроек и префикс переменных окружения одного листенера.
+// Пара, а не две строки в двух местах: отказ обязан назвать оба имени, потому что
+// посадка задаёт величины то файлом, то окружением.
+type ratelimitKnob struct {
+	key    string
+	envPfx string
+}
+
+var (
+	publicRateLimitKnob = ratelimitKnob{
+		key:    "api-server.rate-limit.public",
+		envPfx: "KACHO_VPC_API_SERVER__RATE_LIMIT__PUBLIC",
+	}
+	internalRateLimitKnob = ratelimitKnob{
+		key:    "api-server.rate-limit.internal",
+		envPfx: "KACHO_VPC_API_SERVER__RATE_LIMIT__INTERNAL",
+	}
+)
+
+// ValidateRequestRateLimits — boot-гардрейл S7: величины допуска запросов на
+// ОБОИХ листенерах.
+//
+// # Что защищается
+//
+// Стоимость запроса в этом продукте высокая по построению: каждая мутация — три
+// строки в базе (ресурс, очередь намерения, операция), каждое чтение — до 1000
+// объектов на страницу с проверкой прав партиями. Неограниченный темп бьёт не в
+// сеть, а в базу, и один арендатор занимает процесс, обслуживающий всех.
+//
+// # Почему это настройка со стражем, а не константа
+//
+// Исполняется предел ведром В ПРОЦЕССЕ, поэтому при N репликах эффективная
+// величина равна N × объявленного, и посадка обязана уметь назвать свою. А раз
+// это настройка, у неё есть состояние «не задана», и оно НЕ безобидно: нулевые
+// величины означают «не ограничиваем», а не «ограничивать нечего». Ограничитель
+// тогда либо не навешивается вовсе, либо навешивается пустым — и в обоих случаях
+// выглядит включённым, ни разу не отказав.
+//
+// # Два разных вида отказа, разделены НАМЕРЕННО (как в S5/S6)
+//
+//   - ПОСАДКА (величины не объявлены) — требуется в боевом режиме. Dev остаётся
+//     режимом внутрипроцессных фикстур; любой РАЗВЁРНУТЫЙ стенд работает в боевом
+//     режиме (правило #16), поэтому освобождение dev не оставляет дыры ни на одном
+//     стенде.
+//   - ОБЪЯВЛЕНИЕ (неполный набор осей, отрицательная величина, всплеск ниже
+//     устойчивого темпа) — негодно САМО ПО СЕБЕ и отвергается в любом режиме. Это
+//     опечатка или самопротиворечие, а не выбор оператора.
+//
+// Предикат объявленности — ТОТ ЖЕ, что читает композиционный корень
+// (grpcsrv.AdmissionLimits.IsDeclared через Config.*AdmissionLimits), а не
+// сравнение полей на месте: разойдясь здесь, страж и проводка разошлись бы ровно
+// там, где расхождение опасно.
+//
+// Возвращает multierr со ВСЕМИ нарушениями обоих листенеров: оператор обязан
+// увидеть полный список за один прогон, а не чинить их по одному за перезапуск.
+func (c Config) ValidateRequestRateLimits() error {
+	var errs error
+	for _, l := range []struct {
+		knob   ratelimitKnob
+		limits grpcsrv.AdmissionLimits
+	}{
+		{publicRateLimitKnob, c.PublicAdmissionLimits()},
+		{internalRateLimitKnob, c.InternalAdmissionLimits()},
+	} {
+		// (1) Негодное ОБЪЯВЛЕНИЕ — в любом режиме.
+		for _, reason := range l.limits.Unusable() {
+			errs = multierr.Append(errs, fmt.Errorf(errRateLimitUnusable, l.knob.key, reason))
+		}
+		// (2) Требование к ПОСАДКЕ — только там, где листенер принимает трафик.
+		if !c.AuthN.Mode.IsProduction() {
+			continue
+		}
+		if !l.limits.IsDeclared() && len(l.limits.Unusable()) == 0 {
+			errs = multierr.Append(errs, fmt.Errorf(errRateLimitRequired,
+				l.knob.key, c.AuthN.Mode, l.knob.envPfx))
+		}
+	}
+	return errs
+}
+
 // ValidateBoot — единый boot-валидатор: агрегирует Validate (S1 + базовые
 // инварианты), ValidateServerMTLS (S2) и ValidatePeerTransport (S4) в один multierr,
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
@@ -429,11 +832,19 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 // оставалось записанным, но неверным, агрегатор был ЛОВУШКОЙ: он выглядит как
 // «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
 // вместо явной пары вызовов, тихо остался бы без проверки фильтра.
+//
+// S5 (ValidateExecutorProfile), S6 (ValidateReservedPrefixes) и S7
+// (ValidateRequestRateLimits) входят сюда по той же причине и каждый с того же
+// дня, что заведён сам: проверка, не попавшая в агрегатор, становится той самой
+// ловушкой.
 func (c Config) ValidateBoot(m MTLSConfig) error {
-	return multierr.Append(
-		multierr.Append(
-			multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
-			c.ValidateListFilter()),
+	return multierr.Combine(
+		c.Validate(),
+		c.ValidateServerMTLS(m),
+		c.ValidateListFilter(),
+		c.ValidateExecutorProfile(),
+		c.ValidateReservedPrefixes(),
+		c.ValidateRequestRateLimits(),
 		c.ValidatePeerTransport(m),
 	)
 }

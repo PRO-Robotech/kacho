@@ -36,6 +36,8 @@ import (
 
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
+	cidrgroupapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
+	dataplaneapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	niapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/networkinterface"
@@ -49,6 +51,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto" // регистрирует DTO-трансферы (init); boot-check ниже
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/handler"
@@ -56,6 +59,7 @@ import (
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
+	dataplanepg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/dataplane"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
@@ -82,6 +86,40 @@ func main() {
 	// «защищать нечего».
 	if err := cfg.ValidateListFilter(); err != nil {
 		log.Fatalf("config validate (list-filter): %v", err)
+	}
+	// S5 boot-guard: профиль возможностей исполнителя датаплейна. Контур принимает
+	// от арендатора то, что исполнять будет НЕ он (адресные диапазоны, правила со
+	// ссылкой на именованный набор, ограничение полосы), и возможностей исполнителя
+	// вывести не может — их объявляет посадка. Несущее предусловие — пересечение
+	// адресов между арендаторами: диапазоны у vpc уникальны лишь в пределах сети по
+	// построению, поэтому боевая посадка, не объявившая изоляцию одинаковых адресов
+	// разных арендаторов, здесь и останавливается.
+	if err := cfg.ValidateExecutorProfile(); err != nil {
+		log.Fatalf("config validate (dataplane executor profile): %v", err)
+	}
+	// S6 boot-guard: перечень адресных диапазонов, которые платформа держит ЗА
+	// СОБОЙ (служебные адреса узлов, адреса служб внутри подсети, точка получения
+	// метаданных экземпляра). Подсеть арендатора поверх такого диапазона проходит
+	// все проверки контура и не работает, причём симптом выглядит сетевым. Перечень
+	// зависит от посадки, поэтому объявляется настройкой — а у настройки есть
+	// состояние «не задана», и оно НЕ безобидно: пустой перечень означает «не
+	// сужаем», а не «нечего сужать», то есть проверка на пути запроса исполняется на
+	// каждом создании подсети и не отвергает ничего. Боевая посадка здесь и
+	// останавливается.
+	if err := cfg.ValidateReservedPrefixes(); err != nil {
+		log.Fatalf("config validate (dataplane reserved prefixes): %v", err)
+	}
+	// S7 boot-guard: величины допуска запросов на каждом листенере. Стоимость
+	// запроса здесь высокая по построению — три строки в базе на мутацию, до
+	// полной страницы объектов с проверкой прав партиями на чтение, — поэтому
+	// неограниченный темп бьёт не в сеть, а в базу, и один вызывающий занимает
+	// процесс, обслуживающий всех. Величина исполняется ведром В ПРОЦЕССЕ (при N
+	// репликах эффективный предел равен N × объявленного), значит её объявляет
+	// посадка; а у настройки есть состояние «не задана», и оно НЕ безобидно:
+	// нулевые величины означают «не ограничиваем», а не «ограничивать нечего».
+	// Боевая посадка здесь и останавливается.
+	if err := cfg.ValidateRequestRateLimits(); err != nil {
+		log.Fatalf("config validate (request rate limits): %v", err)
 	}
 
 	if len(os.Args) >= 2 {
@@ -117,6 +155,18 @@ type services struct {
 	networkInternal          *networkinternal.Service
 	networkInterfaceHandler  *niapp.Handler
 	networkInterfaceInternal *nicinternal.Service
+	// cidrGroupHandler — именованные наборы префиксов: предмет, на который
+	// ссылается правило группы безопасности вместо своей копии перечня.
+	cidrGroupHandler *cidrgroupapp.Handler
+	// dataplaneHandler — шов с исполнителем датаплейна: поток намерения и приём
+	// подтверждения применения (:9091, запрет #6). На публичный слушатель НЕ
+	// регистрируется: поток несёт намерение по всем арендаторам сразу и
+	// координату изоляции сети.
+	dataplaneHandler *dataplaneapp.Handler
+	// dataplaneCompactor — уплотнение снятых намерений. Без него журнал растёт
+	// на каждый удалённый ресурс и не убывает никогда, а исход «твоя ревизия
+	// слишком стара» остаётся веткой без производителя.
+	dataplaneCompactor *dataplaneapp.Compactor
 }
 
 func runServe(cfg config.Config) error {
@@ -142,8 +192,42 @@ func runServe(cfg config.Config) error {
 	if cfg.AuthN.Mode == config.ModeProductionStrict {
 		logger.Warn("authn.mode=production-strict: anonymous rejected + TLS+SSL strictly validated")
 	}
-	// breakglass в production сюда не доходит: Config.Validate() отвергает такой
-	// конфиг ещё до этой точки (fail-closed вместо прежнего WARN).
+	// Здесь стояло утверждение, что аварийный пропуск страницы в боевом режиме
+	// «сюда не доходит, потому что Config.Validate() отвергает такой конфиг».
+	// Условия про этот пропуск в Config.Validate НЕ БЫЛО ни в одной редакции:
+	// страж отвергал выключенный фильтр и нерезолвимый адрес, но не саму ручку, —
+	// то есть комментарий называл несуществующую защиту. Это хуже обычного
+	// расхождения: он ОТВЕТИЛ читателю на вопрос «закрыта ли эта ручка», поэтому
+	// проверять никто не шёл. Ручка снята целиком (её имя — в
+	// `retired_knobs_test.go`), и запрет держится тем, что предмета больше нет:
+	// сужатель без соединения отказывает по построению, снять отказ настройкой
+	// нельзя.
+
+	// Профиль возможностей исполнителя — в журнал старта, ОДНОЙ строкой и целиком.
+	//
+	// Он уже прошёл стража (S5, до этой точки), и печатается здесь не ради проверки,
+	// а ради наблюдаемости: гейт посадки читает то, что процесс сам объявил при
+	// старте, а не хранимый ConfigMap (правка ConfigMap не перекатывает под, и
+	// процесс живёт с boot-time окружением). Семейства печатаются НОРМАЛИЗОВАННЫМ
+	// значением — тем же, что читал страж, — иначе журнал показывал бы «v4,,» там,
+	// где страж видел «не объявлено».
+	//
+	// Рядом с объявленным полезным размером кадра печатается ОБЕЩАНИЕ ПРОДУКТА
+	// (`product_payload_floor_bytes`): это единственная гарантия профиля, у которой
+	// есть нижняя граница, обещанная арендатору, и читающий журнал обязан видеть обе
+	// величины в одной строке — иначе объявленное число нечем сопоставить с тем, на
+	// что арендатор рассчитывает. Стенд с объявлением НИЖЕ обещания страж (S5, выше)
+	// до этой точки уже не пустил; строка ниже — наблюдаемость, а не проверка.
+	logger.Info("dataplane executor profile declared",
+		"overlapping_tenant_addresses", cfg.Dataplane.Executor.OverlappingTenantAddresses,
+		"state_tracking_families", cfg.StateTrackingFamilies().String(),
+		"named_set_reference_in_rule", cfg.Dataplane.Executor.NamedSetReferenceInRule,
+		"guaranteed_payload_bytes", cfg.Dataplane.Executor.GuaranteedPayloadBytes,
+		"product_payload_floor_bytes", domain.GuaranteedPayloadFloorBytes,
+		"guaranteed_bandwidth_per_interface_mbps", cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
+		"connection_limit_per_interface", cfg.Dataplane.Executor.ConnectionLimitPerInterface,
+		"tenant_settable_bandwidth_limit", cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
+	)
 
 	// Per-edge opt-in mTLS-конфиг из env (KACHO_VPC_*). enable=false на ребре →
 	// insecure (dev backward-compat). Используется для ребер vpc→iam
@@ -450,6 +534,16 @@ func runServe(cfg config.Config) error {
 		gracefulTimeout = 10 * time.Second
 	}
 
+	// Ограничитель допуска запросов — по одному на листенер, с РАЗНЫМИ ключами и
+	// разными величинами (см. admission.go). Собирается ДО постановки задач:
+	// негодное объявление обязано остановить старт, а не всплыть на первом
+	// запросе. Величины уже одобрены стражем S7 выше; здесь читается ТО ЖЕ
+	// значение.
+	admission, err := buildAdmission(cfg, logger)
+	if err != nil {
+		return err
+	}
+
 	// Отдельный контекст слушателей. Носитель гасит ОБА слушателя по отмене СВОЕГО
 	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
 	// этой отмены, а не одновременно с ней: kubelet перестаёт слать трафик до
@@ -508,8 +602,12 @@ func runServe(cfg config.Config) error {
 		// наравне с публичным — это его свойство, а не наше.
 		func() error {
 			serr := servicehost.Serve(serveCtx, desc,
-				func(reg grpc.ServiceRegistrar) { registerPublicServices(reg, svcs, opsRepo) },
-				func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs) },
+				func(reg grpc.ServiceRegistrar) {
+					registerPublicServices(guard(admission.public, reg), svcs, opsRepo)
+				},
+				func(reg grpc.ServiceRegistrar) {
+					registerInternalServices(guard(admission.internal, reg), svcs)
+				},
 			)
 			close(serveDone)
 			triggerShutdown()
@@ -517,6 +615,28 @@ func runServe(cfg config.Config) error {
 				logger.Error("grpc listeners stopped", "err", serr)
 				return fmt.Errorf("grpc: %w", serr)
 			}
+			return nil
+		},
+		// Уплотнение журнала намерения. Ставится задачей носителя, а не «горутиной
+		// в стороне»: у неё тот же контекст, что у слушателей, поэтому гашение
+		// процесса гасит и её, а не оставляет читать базу после закрытия портов.
+		//
+		// Отказ уплотнения процесс НЕ роняет: журнал растёт, но доставка
+		// намерения работает. Отказ громкий и со счётом подряд идущих — «не
+		// уплотняется месяц» обязано быть заметно, иначе горизонт стоит, таблица
+		// растёт, и узнают об этом по месту на диске.
+		func() error {
+			svcs.dataplaneCompactor.Run(serveCtx)
+			return nil
+		},
+		// Счёт допущенных и отвергнутых по каждому листенеру. Ставится задачей
+		// носителя по той же причине, что и уплотнение журнала: тот же контекст,
+		// что у слушателей, поэтому гашение процесса гасит и её.
+		//
+		// Отчёт печатается ВСЕГДА, включая нули: «ноль отказов за всю жизнь
+		// контроля» обязано быть заметно, иначе мёртвый ограничитель невидим.
+		func() error {
+			admission.report(serveCtx, logger)
 			return nil
 		},
 		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →
@@ -640,16 +760,24 @@ func dialPeer(
 // здесь nil, и use-case'ы трактовали его как «сужение выключено, страницу отдать»:
 // посадка без модели показывала каждому участнику проекта каждую его строку, а у
 // помеченных scope-filtered RPC пропадала единственная пообъектная авторизация
-// вовсе. Теперь сужатель собирается ВСЕГДА и отказывает, пока ему не с кем говорить;
-// пропуск возможен только явным аварийным режимом, и каждое его срабатывание
-// считается и называется.
+// вовсе. Теперь сужатель собирается ВСЕГДА и отказывает, пока ему не с кем говорить.
+//
+// Настройки, снимающей этот отказ, НЕ СУЩЕСТВУЕТ. Прежде здесь читалась ручка
+// аварийного пропуска (имя — в `retired_knobs_test.go`), и её предмет был
+// недостижим: на выключенном фильтре и на нерезолвимом адресе процесс не
+// поднимается — `ValidateListFilter` отказывает на любой посадке, а адрес там и
+// здесь резолвится ОДНИМ методом Config. Отказ на отсутствующей модели остаётся
+// свойством самого сужателя (`pkg/listnarrow`: нет соединения ⇒ PermissionDenied),
+// а не следствием того, что ручку не тронули.
 func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) *authzfilter.Narrower {
-	breakglass := !cfg.AuthZ.ListFilter.Enabled || conn == nil
-	if breakglass {
+	if !cfg.AuthZ.ListFilter.Enabled || conn == nil {
+		// Обе половины условия — то, чему страж старта не даёт случиться; журнал
+		// нужен на случай, если сужатель собирают мимо стража (проба, будущий
+		// второй вызывающий): «страница отказывает» обязано быть названо, а не
+		// выведено потом из отказов на чтении.
 		logger.Warn("per-object list-filter has no rights model to ask — every list will REFUSE "+
-			"unless the emergency bypass is armed",
-			"enabled", cfg.AuthZ.ListFilter.Enabled, "authorize_conn", conn != nil,
-			"breakglass", cfg.AuthZ.ListFilter.Breakglass)
+			"(no configuration waives this: the emergency bypass knob is retired)",
+			"enabled", cfg.AuthZ.ListFilter.Enabled, "authorize_conn", conn != nil)
 		conn = nil
 	}
 	f := authzfilter.New(conn, authzfilter.Config{
@@ -657,7 +785,6 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 		CacheTTL:              cfg.AuthZ.ListFilter.CacheTTL,
 		CacheMaxEntries:       cfg.AuthZ.ListFilter.MaxEntries,
 		SoftPassOnPeerFailure: cfg.AuthZ.ListFilter.FailOpen,
-		Breakglass:            breakglass && cfg.AuthZ.ListFilter.Breakglass,
 	}).WithLogger(logger)
 	logger.Info("per-object list-filter wired",
 		// per_call_timeout_ms гейтит ОДИН BatchCheck; operation_budget — потолок
@@ -775,16 +902,14 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 }
 
 // buildServices создает все repo'ы поверх pool и собирает из них бизнес-сервисы.
-// При network.default-sg-inline=false sgRepo не передается в Network.Create —
-// default SG не создается inline.
+//
+// Группа правил по умолчанию создаётся БЕЗУСЛОВНО: настройки, которая бы это
+// отменяла, больше нет, и предупреждения о ней тоже — оно объявляло состояние,
+// которое сегодня недостижимо.
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
 func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger) *services {
-	if !cfg.Network.DefaultSGInline {
-		logger.Warn("network.default-sg-inline=false — Network.Create НЕ создает default SG")
-	}
-
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kacho-iam
@@ -807,6 +932,20 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	routeTableAdapter := cqrsadapter.NewRouteTable(kachoRepo)
 	sgAdapter := cqrsadapter.NewSecurityGroup(kachoRepo)
 	niAdapter := cqrsadapter.NewNetworkInterface(kachoRepo)
+
+	// Шов с исполнителем датаплейна. Адаптер работает НАПРЯМУЮ с пулом, а не
+	// через `kacho.Repository`: его предмет — проекция намерения и таблицы
+	// ресурсов, читаемые в ОДНОМ снимке (REPEATABLE READ), и разложить это по
+	// per-resource читателям значило бы читать курсор и тела разными
+	// транзакциями — то есть отдавать пару, которой ни в один момент не
+	// существовало.
+	dataplaneStore := dataplanepg.New(pool)
+	dataplaneObserver := dataplaneapp.NewObserver(logger.With("component", "dataplane-intent"))
+	dataplaneHandler := dataplaneapp.NewHandler(
+		dataplaneapp.NewWatchIntentUseCase(dataplaneStore, dataplaneObserver),
+		dataplaneapp.NewReportAppliedUseCase(dataplaneStore, dataplaneObserver),
+		dataplaneObserver,
+	)
 
 	// AddressPool — admin-only use-case-структура (см.
 	// `internal/apps/kacho/api/addresspool/`). Composition root собирает use-case'ы +
@@ -838,7 +977,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// adapter'ы, отделенные от writer-TX (каждый открывает свою TX).
 	// defaultSGInline=true (default) — при Network.Create в одной writer-TX создается
 	// inline default SG и Network.default_security_group_id заполняется атомарно.
-	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo, cfg.Network.DefaultSGInline).
+	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo).
 		WithLogger(logger).WithRegistrar(registrar)
 	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)
@@ -884,14 +1023,24 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 
 	// Subnet use-case'ы работают через CQRS-Repository (kachoRepo). niAdapter
 	// передается в Delete для precondition-check «нет привязанных NIC».
-	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar)
+	// Перечень служебных диапазонов читается ОДНИМ методом настроек — тем же,
+	// который спрашивает страж старта (cfg.ValidateReservedPrefixes выше). Поэтому
+	// «страж пропустил» ⟺ «путь запроса сверяется с тем же перечнем»; своя сборка
+	// значения здесь дала бы два места об одном предмете. Оба глагола, объявляющих
+	// диапазон подсети (Create и :addCidrBlocks), получают его — второй не менее
+	// важен: без него обход занимает один дополнительный запрос. Провязку держит
+	// гейт reserved_prefixes_wiring_test.go.
+	reservedPrefixes := cfg.ReservedPrefixes()
+	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).
+		WithRegistrar(registrar).
+		WithReservedPrefixes(reservedPrefixes)
 	subnetHandler := subnetapp.NewHandler(
 		subnetCreateUC,
 		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
 		subnetapp.NewGetSubnetUseCase(kachoRepo),
 		subnetapp.NewListSubnetsUseCase(kachoRepo, listFilter),
-		subnetapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo),
+		subnetapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo).WithReservedPrefixes(reservedPrefixes),
 		subnetapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
 		subnetapp.NewListUsedAddressesUseCase(kachoRepo, addressAdapter),
 		subnetapp.NewListOperationsUseCase(opsRepo),
@@ -946,14 +1095,46 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// CQRS-Repository (`kachoRepo`). У NIC нет Move RPC (NIC привязан к Subnet).
 	// Address-attach/detach идёт через writer-TX (`w.Addresses()`) внутри Create/
 	// Update — отдельный addressAdapter в эти UC больше не передаётся.
-	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
+	//
+	// Ограничение полосы, задаваемое арендатором, принимается ровно тогда, когда
+	// посадка объявила умение исполнителя, и в промежутке, верхний край которого —
+	// её же объявленная гарантия. Правило собирается ОДИН раз и раздаётся обоим
+	// путям: собери его дважды — и стенд однажды получит поле, которое нельзя
+	// задать при создании и можно дописать изменением. Пустоту промежутка при
+	// объявленном умении не пускает страж старта (`cfg.ValidateExecutorProfile`
+	// выше), поэтому здесь остаётся чтение настроек, а не своя арифметика.
+	bandwidthPolicy := domain.NewBandwidthLimitPolicy(
+		cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
+		cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
+	)
+	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).
+		WithRegistrar(registrar).
+		WithBandwidthLimitPolicy(bandwidthPolicy)
 	niHandler := niapp.NewHandler(
 		niCreateUC,
-		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
+		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).
+			WithRegistrar(registrar).
+			WithBandwidthLimitPolicy(bandwidthPolicy),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo),
 		niapp.NewListNetworkInterfacesUseCase(kachoRepo, listFilter),
 		niapp.NewListOperationsUseCase(opsRepo),
+	)
+
+	// CidrGroup — use-case-структура. Форма ровно та же, что у сети: чтение
+	// синхронно, мутации через операцию, состав правится глаголами. Потолок
+	// состава и отсутствие затирания живут в writer'е репозитория (условный
+	// инкремент счётчика под блокировкой строки), а не в этих use-case'ах.
+	cgHandler := cidrgroupapp.NewHandler(
+		cidrgroupapp.NewCreateCidrGroupUseCase(kachoRepo, projectClient, opsRepo).
+			WithLogger(logger).WithRegistrar(registrar),
+		cidrgroupapp.NewUpdateCidrGroupUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
+		cidrgroupapp.NewDeleteCidrGroupUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewGetCidrGroupUseCase(kachoRepo),
+		cidrgroupapp.NewListCidrGroupsUseCase(kachoRepo, listFilter),
+		cidrgroupapp.NewAddCidrBlocksUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
+		cidrgroupapp.NewListOperationsUseCase(opsRepo),
 	)
 
 	return &services{
@@ -979,6 +1160,9 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		networkInterfaceInternal: nicinternal.NewService(kachoRepo).
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
+		cidrGroupHandler:   cgHandler,
+		dataplaneHandler:   dataplaneHandler,
+		dataplaneCompactor: dataplaneapp.NewCompactor(dataplaneStore, logger.With("component", "dataplane-compaction")),
 	}
 }
 
@@ -991,6 +1175,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	vpcv1.RegisterSecurityGroupServiceServer(srv, svcs.securityGroupHandler)
 	vpcv1.RegisterGatewayServiceServer(srv, svcs.gatewayHandler)
 	vpcv1.RegisterNetworkInterfaceServiceServer(srv, svcs.networkInterfaceHandler)
+	vpcv1.RegisterCidrGroupServiceServer(srv, svcs.cidrGroupHandler)
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
@@ -1009,6 +1194,12 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// external mux (INV-2). Регистрируется на internalSrv → та же authz-Check-цепочка
 	// интерсепторов (internalUnary + authzIntr), что и прочие internal RPC (INV-2a).
 	vpcv1.RegisterInternalNetworkInterfaceServiceServer(srv, handler.NewInternalNetworkInterfaceHandler(svcs.networkInterfaceInternal))
+	// InternalDataplaneService — доставка намерения исполнителю датаплейна и
+	// приём подтверждения применения. Только internal listener: и поток, и
+	// подтверждение оперируют намерением по ВСЕМ арендаторам, а поток вдобавок
+	// несёт координату изоляции сети — инфра-чувствительное поле, которого нет и
+	// не может быть на публичной поверхности.
+	vpcv1.RegisterInternalDataplaneServiceServer(srv, svcs.dataplaneHandler)
 }
 
 // maskDSN отдает DSN с замаскированным паролем — для безопасного логирования

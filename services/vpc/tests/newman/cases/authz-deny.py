@@ -295,12 +295,25 @@ define_resource_cases("route-table", "routeTables", create_body_extra={
 define_resource_cases("security-group", "securityGroups", create_body_extra={
     "networkId": "{{seedNetworkA1Id}}"
 })
-# Gateway. `sharedEgressGatewaySpec` is the Create-side oneof branch
-# (CreateGatewayRequest field 5); `sharedEgressGateway` is what the READ projection
-# calls it, and sending that name meant the edge dropped it and the permitted
-# subject created a gateway with no configuration at all.
+# Gateway. Ветвь вида и якорь размещения — поля ЖИВОГО контракта; прежняя ветвь снята
+# с резервированием номера и имени, и её имя здесь не воспроизводится.
+#
+# ПОЧЕМУ ЯКОРЬ — ЗАВЕДОМО НЕРЕЗОЛВЯЩИЙСЯ, А НЕ ПОСЕВНОЙ. Утверждение этой суиты —
+# `allow_asserts` — проверяет РОВНО отсутствие отказа в правах (не 403, не 401) и прямо
+# объявляет исход валидации вне своего предмета. Значит телу нужна верная ФОРМА полей, а
+# не резолвящиеся значения: подставить сюда посевную сеть под именем подсети значило бы
+# написать неправду ради значения, которое кейс не читает. Соседний кейс интерфейса это
+# делает — здесь так не сделано намеренно.
+#
+# ЧТО ЭТО ЛОВИТ. Тело обязано быть полеверным: край разбирает его строго, и незнакомое
+# поле отвергается ДО решения о правах — тогда кейс зеленел бы, ни разу не спросив про
+# права, то есть перестал бы быть тем, чем назван. Ровно это здесь и случилось: снятие
+# ветви прошло по кейсам шлюза и маршрутов, но не по этому файлу, и гейт тел коллекций
+# нашёл 12 вхождений. Радиус берётся по имени снятого поля, а не по диффу, в котором его
+# заметили.
 define_resource_cases("gateway", "gateways", create_body_extra={
-    "sharedEgressGatewaySpec": {}
+    "natGatewaySpec": {},
+    "subnetId": "subnonexistent000001",
 })
 # NetworkInterface
 define_resource_cases("nic", "networkInterfaces", create_body_extra={

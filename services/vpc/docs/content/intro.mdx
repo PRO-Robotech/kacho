@@ -148,7 +148,7 @@ flowchart LR
 
 ## Доменная модель
 
-Kachō VPC управляет **8 типами ресурсов** (7 публичных + admin-only `AddressPool`).
+Kachō VPC управляет **9 типами ресурсов** (8 публичных + admin-only `AddressPool`).
 Все ресурсы — «плоские» (flat): domain-поля на верхнем уровне сообщения, без K8s-envelope.
 
 <table>
@@ -161,15 +161,18 @@ Kachō VPC управляет **8 типами ресурсов** (7 публи�
     <tr><td><strong>Address</strong></td><td><code>adr</code></td><td>IP-адрес: внутренний (в подсети) или внешний (из пула)</td></tr>
     <tr><td><strong>RouteTable</strong></td><td><code>rtb</code></td><td>Таблица маршрутов; авто-ассоциируется с подсетями сети</td></tr>
     <tr><td><strong>SecurityGroup</strong></td><td><code>sgr</code></td><td>Группа безопасности с правилами ingress/egress; принадлежит Network</td></tr>
-    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз (shared egress) — project-level</td></tr>
+    <tr><td><strong>CidrGroup</strong></td><td><code>cdg-</code></td><td>Именованный набор префиксов проекта — цель правил вместо копии перечня в каждом</td></tr>
+    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз выхода наружу — привязан к подсети, вид выбирается при создании</td></tr>
     <tr><td><strong>NetworkInterface</strong></td><td><code>nic</code></td><td>Сетевой интерфейс в подсети: ≤1 IPv4 / ≤1 IPv6, авто-аллокация MAC</td></tr>
     <tr><td><strong>AddressPool</strong></td><td><code>apl</code></td><td><em>(internal/admin)</em> Глобальный пул CIDR для аллокации внешних IP</td></tr>
   </tbody>
 </table>
 
 :::note ID-формат
-Каждый id — 3-символьный префикс ресурса + 17 символов crockford-base32 (`kacho-corelib/ids`);
-тип ресурса читается по префиксу. `Operation` использует собственный префикс `enp`.
+Каждый id — префикс ресурса + 17 символов crockford-base32; тип ресурса читается по
+префиксу. У ресурсов первой волны префикс трёхсимвольный и слитный (`net…`, `sgr…`), у
+заводимых сейчас он отделён дефисом (`cdg-…`) — валидны обе формы. `Operation` использует
+собственный префикс `enp`.
 :::
 
 ### Связи ресурсов

@@ -152,7 +152,8 @@ type Transferrable interface {
 		*DTO[kachorepo.RouteTableRecord, *vpcv1.RouteTable] |
 		*DTO[kachorepo.SecurityGroupRecord, *vpcv1.SecurityGroup] |
 		*DTO[kachorepo.GatewayRecord, *vpcv1.Gateway] |
-		*DTO[kachorepo.NetworkInterfaceRecord, *vpcv1.NetworkInterface]
+		*DTO[kachorepo.NetworkInterfaceRecord, *vpcv1.NetworkInterface] |
+		*DTO[kachorepo.CidrGroupRecord, *vpcv1.CidrGroup]
 }
 
 // Transfer запускает Perform() на dto. Это единственная публичная entry-point.
@@ -184,6 +185,7 @@ func MustBeRegistered() {
 		{"SecurityGroupRecord→SecurityGroup", isRegistered[kachorepo.SecurityGroupRecord, *vpcv1.SecurityGroup]()},
 		{"GatewayRecord→Gateway", isRegistered[kachorepo.GatewayRecord, *vpcv1.Gateway]()},
 		{"NetworkInterfaceRecord→NetworkInterface", isRegistered[kachorepo.NetworkInterfaceRecord, *vpcv1.NetworkInterface]()},
+		{"CidrGroupRecord→CidrGroup", isRegistered[kachorepo.CidrGroupRecord, *vpcv1.CidrGroup]()},
 	}
 	var missing []string
 	for _, c := range checks {

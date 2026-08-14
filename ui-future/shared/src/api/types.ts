@@ -188,10 +188,10 @@ export interface SecurityGroupRule {
   ports?: { from_port?: number; to_port?: number };
   protocol_name?: string;
   protocol_number?: number;
-  // oneof target
+  // oneof target — РОВНО ОДНА ветвь. Предустановленная цель снята с контракта
+  // (была принимаемым, но нечитаемым полем); сервис отвергает и ноль целей, и две.
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
-  predefined_target?: string;
 }
 
 export interface SecurityGroup {

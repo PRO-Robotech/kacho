@@ -171,10 +171,9 @@ variable "listeners" {
     группы целей, но край на сегодня его требует.
   EOT
   type = map(object({
-    protocol          = optional(string, "TCP")
-    port              = number
-    target_port       = number
-    proxy_protocol_v2 = optional(bool, false)
+    protocol    = optional(string, "TCP")
+    port        = number
+    target_port = number
   }))
   default = {}
 }

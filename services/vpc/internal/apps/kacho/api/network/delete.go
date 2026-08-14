@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,6 +21,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
 
 // DeleteNetworkUseCase — sync FAILED_PRECONDITION если в Network есть subnets /
@@ -117,8 +119,9 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 	}
 
 	// Default-SG cleanup в той же writer-TX. Не-default SG — preserve, FK
-	// RESTRICT не даст удалить Network ⇒ FAILED_PRECONDITION "network is not
-	// empty". sgRepo == nil → default-SG-inline выключен, чистить нечего.
+	// RESTRICT не даст удалить Network ⇒ FAILED_PRECONDITION с перечнем мешающего
+	// (см. checkNetworkEmpty; sync-путь отвергает раньше, FK — backstop).
+	// sgRepo == nil → default-SG-inline выключен, чистить нечего.
 	if u.sgRepo != nil {
 		n, gerr := w.Networks().Get(ctx, id)
 		switch {
@@ -163,18 +166,30 @@ func (u *DeleteNetworkUseCase) doDelete(ctx context.Context, id string) (*anypb.
 }
 
 // checkNetworkEmpty — sync FAILED_PRECONDITION, если в сети еще есть subnets /
-// tenant route tables / non-default security groups (текст контракта:
-// "Network <id> is not empty"). Reader'ы могут быть nil — тогда соответствующий
-// child-класс не проверяется.
+// tenant route tables / non-default security groups. Reader'ы могут быть nil —
+// тогда соответствующий child-класс не проверяется.
+//
+// Текст контракта: `"Network <id> is not empty (subnets: 2, route tables: 1)"` —
+// отказ ПЕРЕЧИСЛЯЕТ мешающее по видам и числам. Прежняя редакция называла только
+// факт непустоты, и арендатор выяснял радиус ПЕРЕБОРОМ: снял подсети, повторил,
+// получил тот же текст из-за группы правил, повторил снова. Отсюда два свойства
+// перечисления, каждое закреплено пробой:
+//
+//   - **опрашиваются ВСЕ классы, а не до первого мешающего** — иначе перечень
+//     называл бы один вид из трёх, то есть снова не радиус. Стоимость: на пустой
+//     сети три чтения, как и прежде (там короткого замыкания не было by
+//     construction); на непустой — те же три вместо одного;
+//   - **печатаются ВИДЫ И ЧИСЛА, никогда идентификаторы дочерних.** Число
+//     координатой не является; перечень идентификаторов чужих объектов ею
+//     становится. Класс с нулём мешающих в перечень не попадает — «subnets: 0»
+//     не сообщает ничего, а перечень с нулями нельзя прочитать как радиус.
 //
 // Из RT-проверки исключается СОБСТВЕННАЯ system-provisioned default-RT сети
 // (`network.defaultRouteTableId°`) — ровно так же, как из SG-проверки исключается
 // default-SG (`DefaultForNetwork`). Иначе сеть, которой сервис сам провижнит RT
-// на Create, стала бы неудаляемой навсегда.
+// на Create, стала бы неудаляемой навсегда. Оба системных ребёнка снимает
+// doDelete в той же writer-TX, поэтому непустой сеть делают только tenant-строки.
 func (u *DeleteNetworkUseCase) checkNetworkEmpty(ctx context.Context, networkID string) error {
-	notEmpty := func() error {
-		return status.Errorf(codes.FailedPrecondition, "Network %s is not empty", networkID)
-	}
 	// id системной RT (пусто, если сеть не найдена — Delete ниже вернёт NotFound).
 	var systemRT string
 	if rd, err := u.repo.Reader(ctx); err == nil {
@@ -183,36 +198,101 @@ func (u *DeleteNetworkUseCase) checkNetworkEmpty(ctx context.Context, networkID 
 		}
 		_ = rd.Close()
 	}
+
+	var blockers []string
+	countKind := func(kind string, count int) {
+		if count > 0 {
+			blockers = append(blockers, fmt.Sprintf("%s: %d", kind, count))
+		}
+	}
+
 	if u.subnetReader != nil {
-		subs, _, err := u.subnetReader.List(ctx, SubnetFilter{NetworkID: networkID}, Pagination{})
+		n, err := countPagedChildren(ctx,
+			func(ctx context.Context, token string) ([]*kacho.SubnetRecord, string, error) {
+				return u.subnetReader.List(ctx, SubnetFilter{NetworkID: networkID}, childCountPage(token))
+			},
+			func(*kacho.SubnetRecord) bool { return true })
 		if err != nil {
 			return serviceerr.MapRepoErr(err)
 		}
-		if len(subs) > 0 {
-			return notEmpty()
-		}
+		countKind("subnets", n)
 	}
 	if u.routeTableRead != nil {
-		rts, _, err := u.routeTableRead.List(ctx, RouteTableFilter{NetworkID: networkID}, Pagination{})
+		n, err := countPagedChildren(ctx,
+			func(ctx context.Context, token string) ([]*kacho.RouteTableRecord, string, error) {
+				return u.routeTableRead.List(ctx, RouteTableFilter{NetworkID: networkID}, childCountPage(token))
+			},
+			func(rt *kacho.RouteTableRecord) bool { return rt.ID != systemRT })
 		if err != nil {
 			return serviceerr.MapRepoErr(err)
 		}
-		for _, rt := range rts {
-			if rt.ID != systemRT {
-				return notEmpty()
-			}
-		}
+		countKind("route tables", n)
 	}
 	if u.sgRepo != nil {
-		sgs, _, err := u.sgRepo.List(ctx, SecurityGroupFilter{NetworkID: networkID}, Pagination{})
+		n, err := countPagedChildren(ctx,
+			func(ctx context.Context, token string) ([]*kacho.SecurityGroupRecord, string, error) {
+				return u.sgRepo.List(ctx, SecurityGroupFilter{NetworkID: networkID}, childCountPage(token))
+			},
+			func(sg *kacho.SecurityGroupRecord) bool { return !sg.DefaultForNetwork })
 		if err != nil {
 			return serviceerr.MapRepoErr(err)
 		}
-		for _, sg := range sgs {
-			if !sg.DefaultForNetwork {
-				return notEmpty()
+		countKind("security groups", n)
+	}
+
+	if len(blockers) == 0 {
+		return nil
+	}
+	return status.Errorf(codes.FailedPrecondition,
+		"Network %s is not empty (%s)", networkID, strings.Join(blockers, ", "))
+}
+
+// childCountPage — страница курсора для подсчёта дочерних. Размер берётся у
+// верхней границы контракта (`corevalidate.MaxPageSize`), а не выписывается
+// числом: чем крупнее страница, тем меньше обходов на один отказ, а границу всё
+// равно валидирует репозиторий — двух копий предела не заводится.
+func childCountPage(token string) Pagination {
+	return Pagination{PageToken: token, PageSize: corevalidate.MaxPageSize}
+}
+
+// countPagedChildren считает дочерние, проходя ВСЕ страницы курсора.
+//
+// Одна страница лгала бы числом: List отдаёт не больше page_size строк, поэтому
+// счёт по первой странице занижал бы радиус ровно там, где он велик, — арендатор
+// чинил бы «subnets: 1000» при трёх тысячах. Прежней проверке «пусто?» одной
+// страницы хватало (пустая первая страница ⟹ строк нет вовсе); у счёта этого
+// свойства нет.
+//
+// Курсор непрозрачен: токен приходит от репозитория и уезжает обратно КАК ЕСТЬ,
+// без разбора. Токен, не сдвинувший курсор, — нарушение контракта чтения, а не
+// «страниц больше нет»: вернуть на нём недосчёт значило бы выдать заниженное
+// число за измеренное, поэтому это ErrInternal (наружу — фиксированный
+// непрозрачный текст). Проверяется именно НЕсдвиг, наблюдаемый за один шаг;
+// цикл длиннее одного шага ни один репозиторий дерева не производит, а вечное
+// вращение здесь держало бы горутину запроса.
+func countPagedChildren[T any](
+	ctx context.Context,
+	page func(ctx context.Context, token string) ([]T, string, error),
+	blocks func(T) bool,
+) (int, error) {
+	total := 0
+	token := ""
+	for {
+		rows, next, err := page(ctx, token)
+		if err != nil {
+			return 0, err
+		}
+		for _, row := range rows {
+			if blocks(row) {
+				total++
 			}
 		}
+		if next == "" {
+			return total, nil
+		}
+		if next == token {
+			return 0, fmt.Errorf("%w: child count pagination cursor did not advance", repo.ErrInternal)
+		}
+		token = next
 	}
-	return nil
 }

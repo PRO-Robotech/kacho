@@ -3,42 +3,55 @@
 
 package network
 
+// Группа правил по умолчанию создаётся БЕЗУСЛОВНО: ни поля запроса, ни настройки
+// оператора, которые бы это отменяли, больше нет.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧТО ЗДЕСЬ БЫЛО И ПОЧЕМУ ЭТО СНЯТО
+//
+// Прежняя редакция проверяла ТРИ ветки решения: явный `false` запрещает группу,
+// явный `true` создаёт её, не задано — решает настройка стенда. Ветки были верны
+// для того контракта, который тогда существовал, и проба была честной.
+//
+// Снят сам контракт. Условность создания группы по умолчанию — непоставленный пункт
+// утверждённой приёмки при поставленных соседних, и она давала состояние, в котором
+// сеть жива, а группы у неё нет. По решению владельца модель закрыта в обе стороны и
+// интерфейс НАСЛЕДУЕТ группу своей сети — значит сеть без группы означает интерфейс
+// без единого правила, то есть «не разрешено ничего». Посадка безопасности не может
+// зависеть от того, что арендатор прислал в теле и что оператор написал в файле
+// значений.
+//
+// Поле снято с контракта с резервированием номера И имени; разрыв объявлен в
+// перечне (`proto/declared-breaks.yaml`). Настройка оператора снята вместе с ним:
+// оставить её значило бы держать второй способ получить то же запрещённое
+// состояние.
+//
+// ПОЧЕМУ ПРОБА ОСТАЛАСЬ НА УРОВНЕ ХЕНДЛЕРА. Прежний дефект сидел именно в
+// отображении контракта в домен — поле не доезжало из хендлера в use-case вовсе.
+// Проверять безусловность на уровне use-case значило бы проверять её там, где
+// прежний дефект и не жил.
+
 import (
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
 
-// `CreateNetworkRequest.create_default_security_group` объявляет ТРЁХЗНАЧНУЮ
-// процедуру решения, и до этой правки исполнялась только одна её ветка.
-//
-// Комментарий поля в контракте: «не задано → fallback на env
-// KACHO_VPC_DEFAULT_SG_INLINE (back-compat); true → создать default-SG для сети;
-// false → сеть без default-SG». Читал же решение ТОЛЬКО конфиг: поле запроса не
-// доезжало из хендлера в use-case вовсе. Значит вызывающий, попросивший `false`,
-// получал сеть С default-SG, если стенд настроен inline, а попросивший `true` не
-// получал её, если не настроен, — и в обоих случаях успех.
-//
-// Почему это не «поле на будущее», а дефект: решение касается ГРУППЫ БЕЗОПАСНОСТИ,
-// то есть того, что определяет допустимый трафик. Тенант, сознательно отказавшийся
-// от автосоздания (свои правила, свой SG), молча получал системный — и наоборот.
-//
-// Проверяется на уровне ХЕНДЛЕРА, потому что дефект сидел именно в отображении
-// proto → domain: use-case решение принимал корректно для того входа, который до
-// него доезжал. Handler собирается с одним нужным use-case'ом (`Create` не
-// касается остальных) — так тест проходит по настоящему пути, а не по его модели.
-func newSGRequestHandler(t *testing.T, inlineFromConfig bool) (*Handler, *kachomock.Repository) {
+func newSGRequestHandler(t *testing.T) (*Handler, *kachomock.Repository) {
 	t.Helper()
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, inlineFromConfig)
+	// Конструктор БОЛЬШЕ НЕ ПРИНИМАЕТ признак условности: если он появится снова,
+	// этот вызов перестанет компилироваться. Для смены формы это строже
+	// утверждения — «не собралось» нельзя обойти толерантностью.
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	return NewHandler(create, nil, nil, NewGetNetworkUseCase(kr), nil, nil, nil, nil, nil, nil, nil), kr
 }
 
@@ -53,62 +66,57 @@ func createdNetwork(t *testing.T, h *Handler, req *vpcv1.CreateNetworkRequest) *
 	return &n
 }
 
-// TestNetwork_CreateDefaultSG_RequestFalseWins — явный `false` запрещает default-SG
-// даже когда конфиг стенда велит создавать её inline.
-func TestNetwork_CreateDefaultSG_RequestFalseWins(t *testing.T) {
-	h, _ := newSGRequestHandler(t, true) // стенд настроен inline
+// TestNetwork_CreateDefaultSG_Unconditional — группа по умолчанию есть у КАЖДОЙ
+// созданной сети, и она существует как РЕСУРС, а не как непустой идентификатор.
+func TestNetwork_CreateDefaultSG_Unconditional(t *testing.T) {
+	h, kr := newSGRequestHandler(t)
 	n := createdNetwork(t, h, &vpcv1.CreateNetworkRequest{
-		ProjectId:                  "prj-b3n7k1x9q2m5t8",
-		Name:                       "sg-off",
-		Ipv4CidrBlocks:             []string{"10.31.0.0/16"},
-		CreateDefaultSecurityGroup: proto.Bool(false),
-	})
-	assert.Empty(t, n.DefaultSecurityGroupId,
-		"вызывающий попросил сеть БЕЗ default-SG — контракт поля обещает именно это; "+
-			"непустой id значит, что решение принял конфиг стенда, а выбор тенанта выброшен")
-}
-
-// TestNetwork_CreateDefaultSG_RequestTrueWins — явный `true` создаёт default-SG
-// даже когда конфиг стенда inline-провижн выключил.
-func TestNetwork_CreateDefaultSG_RequestTrueWins(t *testing.T) {
-	h, kr := newSGRequestHandler(t, false) // стенд inline НЕ настроен
-	n := createdNetwork(t, h, &vpcv1.CreateNetworkRequest{
-		ProjectId:                  "prj-b3n7k1x9q2m5t8",
-		Name:                       "sg-on",
-		Ipv4CidrBlocks:             []string{"10.32.0.0/16"},
-		CreateDefaultSecurityGroup: proto.Bool(true),
+		ProjectId:      "prj-b3n7k1x9q2m5t8",
+		Name:           "sg-always",
+		Ipv4CidrBlocks: []string{"10.31.0.0/16"},
 	})
 	require.NotEmpty(t, n.DefaultSecurityGroupId,
-		"вызывающий попросил default-SG — она обязана быть создана и её id проставлен")
+		"у каждой сети есть группа по умолчанию: без неё интерфейс, наследующий её, "+
+			"получил бы пустой набор, то есть по закрытой модели — «не разрешено ничего»")
 
-	// Ресурс, а не висячий id: SG лежит в той же writer-TX, что и сеть.
 	rd, err := kr.Reader(context.Background())
 	require.NoError(t, err)
 	defer func() { _ = rd.Close() }()
 	sg, sgErr := rd.SecurityGroups().Get(context.Background(), n.DefaultSecurityGroupId)
-	require.NoError(t, sgErr, "default-SG обязана существовать как ресурс")
+	require.NoError(t, sgErr,
+		"идентификатор непуст, а ресурса нет — это висячая ссылка, а не группа")
 	assert.Equal(t, n.Id, sg.NetworkID)
+	assert.True(t, sg.DefaultForNetwork, "группа помечена как системная для своей сети")
+
+	// Посадка: послабление объявлено ресурсом и только на выход.
+	require.Len(t, sg.Rules, 2, "исходящее разрешение в двух семействах адресов")
+	for i, r := range sg.Rules {
+		assert.Equal(t, domain.SecurityGroupRuleDirectionEgress, r.Direction,
+			"правило %d: вход у группы по умолчанию закрыт", i)
+	}
 }
 
-// TestNetwork_CreateDefaultSG_UnsetFollowsConfig — не задано → решает конфиг
-// (back-compat, ровно как обещает комментарий поля). Обе ветки, чтобы «молчание»
-// не оказалось замаскированным «всегда да» или «всегда нет».
-func TestNetwork_CreateDefaultSG_UnsetFollowsConfig(t *testing.T) {
-	hOn, _ := newSGRequestHandler(t, true)
-	on := createdNetwork(t, hOn, &vpcv1.CreateNetworkRequest{
-		ProjectId:      "prj-b3n7k1x9q2m5t8",
-		Name:           "sg-unset-on",
-		Ipv4CidrBlocks: []string{"10.33.0.0/16"},
-	})
-	assert.NotEmpty(t, on.DefaultSecurityGroupId,
-		"поле не задано, стенд inline → default-SG создаётся (back-compat)")
-
-	hOff, _ := newSGRequestHandler(t, false)
-	off := createdNetwork(t, hOff, &vpcv1.CreateNetworkRequest{
-		ProjectId:      "prj-b3n7k1x9q2m5t8",
-		Name:           "sg-unset-off",
-		Ipv4CidrBlocks: []string{"10.34.0.0/16"},
-	})
-	assert.Empty(t, off.DefaultSecurityGroupId,
-		"поле не задано, стенд inline выключен → default-SG нет (back-compat)")
+// TestNetwork_CreateDefaultSG_UnknownRequestFieldIsRejectedByTheEdge — снятое поле
+// не принимается молча.
+//
+// Это НЕ дублирование предыдущей пробы: та утверждает, что группа создаётся, а эта
+// — что прежний способ ОТМЕНИТЬ её больше не существует как вход. Без второй
+// половины снятие поля было бы неотличимо от «поле принимается и игнорируется» —
+// ровно того исхода, который конвенция запрещает.
+//
+// Разбор тела делает край (grpc-gateway со строгим маршалером), поэтому проверяется
+// он на уровне края, а не здесь: здесь достаточно того, что в сгенерированном типе
+// запроса поля НЕТ — иначе оно снова доехало бы до сервиса.
+func TestNetwork_CreateDefaultSG_UnknownRequestFieldIsRejectedByTheEdge(t *testing.T) {
+	md := (&vpcv1.CreateNetworkRequest{}).ProtoReflect().Descriptor()
+	for i := 0; i < md.Fields().Len(); i++ {
+		f := md.Fields().Get(i)
+		assert.NotEqual(t, "create_default_security_group", string(f.Name()),
+			"поле снято с контракта: его присутствие в дескрипторе означает, что край "+
+				"его примет, а сервис — проигнорирует")
+	}
+	// Номер и имя зарезервированы — повторное использование запрещено.
+	assert.True(t, md.ReservedNames().Has("create_default_security_group"),
+		"имя снятого поля обязано стоять в reserved: иначе его переиспользуют, и "+
+			"старый клиент получит поле с другим смыслом")
 }

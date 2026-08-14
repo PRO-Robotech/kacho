@@ -122,22 +122,6 @@ func TestHandler_ListOperations_RequiresID(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 }
 
-func TestHandler_GetByValue_Empty(t *testing.T) {
-	h, _, _, _ := minimalHandler(t, true)
-	_, err := h.GetByValue(context.Background(), &vpcv1.GetAddressByValueRequest{})
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-}
-
-func TestHandler_ListBySubnet_RequiresID(t *testing.T) {
-	h, _, _, _ := minimalHandler(t, true)
-	_, err := h.ListBySubnet(context.Background(), &vpcv1.ListAddressesBySubnetRequest{SubnetId: ""})
-	require.Error(t, err)
-	st, _ := status.FromError(err)
-	assert.Equal(t, codes.InvalidArgument, st.Code())
-}
-
 // ---- use-case-level ---------------------------------------------------------
 
 func TestCreateUseCase_NoSpec(t *testing.T) {

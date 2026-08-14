@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/netip"
 
 	"google.golang.org/grpc/codes"
@@ -28,15 +29,8 @@ import (
 
 // ExternalAddrSpec — спецификация внешнего адреса.
 type ExternalAddrSpec struct {
-	Address      string
-	ZoneID       string
-	Requirements *AddrRequirements
-}
-
-// AddrRequirements — параметры внешнего IP (DDoS provider, SMTP capability).
-type AddrRequirements struct {
-	DdosProtectionProvider string
-	OutgoingSmtpCapability string
+	Address string
+	ZoneID  string
 }
 
 // InternalAddrSpec — спецификация внутреннего адреса (v4/v6 одинаковый shape).
@@ -172,23 +166,6 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 	}
 	if err := serviceerr.FromValidation(addrForValidate.Validate()); err != nil {
 		return nil, err
-	}
-
-	// requirements.ddos_protection_provider — только из whitelist;
-	// requirements.outgoing_smtp_capability — только пустое.
-	if in.ExternalSpec != nil && in.ExternalSpec.Requirements != nil {
-		if err := corevalidate.DdosProvider(
-			"external_ipv4_address_spec.requirements.ddos_protection_provider",
-			in.ExternalSpec.Requirements.DdosProtectionProvider,
-		); err != nil {
-			return nil, err
-		}
-		if err := corevalidate.SmtpCapability(
-			"external_ipv4_address_spec.requirements.outgoing_smtp_capability",
-			in.ExternalSpec.Requirements.OutgoingSmtpCapability,
-		); err != nil {
-			return nil, err
-		}
 	}
 
 	// Явный внешний адрес: формат и семейство проверяются СИНХРОННО, первым
@@ -395,18 +372,6 @@ func (u *CreateAddressUseCase) validateInternalIPv6InSubnet(ctx context.Context,
 	)
 }
 
-// mapRequirements — общий маппинг spec-Requirements → domain для external-family
-// (v4 и v6 несут одинаковый AddrRequirements). nil → nil (поле остается пустым).
-func mapRequirements(r *AddrRequirements) *domain.AddressRequirements {
-	if r == nil {
-		return nil
-	}
-	return &domain.AddressRequirements{
-		DdosProtectionProvider: r.DdosProtectionProvider,
-		OutgoingSmtpCapability: r.OutgoingSmtpCapability,
-	}
-}
-
 // validateExternalZone — placement-coherence existence-check `zone_id`
 // external-адреса через geo (зеркало subnet.validateZoneID). Условная:
 //   - пустой zone_id → пропуск (anycast из global-пула, зоне-независим — в
@@ -463,9 +428,8 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 		a.Type = domain.AddressTypeExternal
 		a.IpVersion = domain.IpVersionIPv4
 		a.ExternalIpv4 = &domain.ExternalIpv4Spec{
-			Address:      in.ExternalSpec.Address,
-			ZoneID:       in.ExternalSpec.ZoneID,
-			Requirements: mapRequirements(in.ExternalSpec.Requirements),
+			Address: in.ExternalSpec.Address,
+			ZoneID:  in.ExternalSpec.ZoneID,
 		}
 	case in.InternalSpec != nil:
 		a.Type = domain.AddressTypeInternal
@@ -493,9 +457,8 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 		a.Type = domain.AddressTypeExternal
 		a.IpVersion = domain.IpVersionIPv6
 		a.ExternalIpv6 = &domain.ExternalIpv6Spec{
-			Address:      in.ExternalIpv6Spec.Address,
-			ZoneID:       in.ExternalIpv6Spec.ZoneID,
-			Requirements: mapRequirements(in.ExternalIpv6Spec.Requirements),
+			Address: in.ExternalIpv6Spec.Address,
+			ZoneID:  in.ExternalIpv6Spec.ZoneID,
 		}
 	default:
 		// Ни одна ветвь oneof не выбрана. Раньше сюда падала внешняя IPv6 —
@@ -526,7 +489,19 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in CreateInput) (*anypb.Any, error) {
 	exists, err := u.projectClient.Exists(ctx, in.ProjectID)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "project check: %v", err)
+		// Проза соседа — оператору, в журнал. Наружу — фиксированный текст: сырой
+		// отказ транспорта несёт адрес и порт узла, а через `operation.error`
+		// уезжает арендатору. Клиент, приняв «не годится» за «повтори позже» (или
+		// наоборот), выбирает не то действие, поэтому важен КОД, а не проза: он
+		// остаётся `UNAVAILABLE` — непроверяемое предусловие мутации не считается
+		// выполненным (fail-closed).
+		//
+		// Текст совпадает с `compute` дословно и намеренно: у двух сервисов один
+		// вопрос к одному соседу, и два разных ответа на него читались бы как два
+		// разных состояния платформы.
+		slog.ErrorContext(ctx, "address create: project existence check failed",
+			"project_id", in.ProjectID, "address_id", addrID, "err", err)
+		return nil, status.Error(codes.Unavailable, "project check: upstream project service unavailable")
 	}
 	if !exists {
 		return nil, status.Errorf(codes.NotFound, "Project %s not found", in.ProjectID)
@@ -556,13 +531,13 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == "" {
 			v4Pool, err = u.pools.ResolvePoolForAddressObjFamily(ctx, &kachorepo.AddressRecord{Address: *a}, addresspool.FamilyV4)
 			if err != nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+				return nil, poolResolveFailure(ctx, addrID, domain.IpVersionIPv4, err)
 			}
 		}
 		if a.ExternalIpv6 != nil && a.ExternalIpv6.Address == "" {
 			v6Pool, err = u.pools.ResolvePoolForAddressObjFamily(ctx, &kachorepo.AddressRecord{Address: *a}, addresspool.FamilyV6)
 			if err != nil {
-				return nil, status.Errorf(codes.FailedPrecondition, "resolve address pool: %v", err)
+				return nil, poolResolveFailure(ctx, addrID, domain.IpVersionIPv6, err)
 			}
 		}
 	}
@@ -757,8 +732,7 @@ func (u *CreateAddressUseCase) allocateExternalIPv4(ctx context.Context, w Write
 	}
 	pool := resolved.Pool
 	if len(pool.V4CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v4_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addr.ID, domain.IpVersionIPv4)
 	}
 	ip, err := allocateExternalV4IntoTx(ctx, w, pool.ID, addr.ID)
 	if err != nil {
@@ -780,8 +754,7 @@ func (u *CreateAddressUseCase) allocateExternalIPv6(ctx context.Context, w Write
 	}
 	pool := resolved.Pool
 	if len(pool.V6CIDRBlocks) == 0 {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"address pool %s has no v6_cidr_blocks", pool.ID)
+		return nil, poolCarriesNoBlocks(ctx, pool.ID, addr.ID, domain.IpVersionIPv6)
 	}
 	ip, err := allocateExternalV6IntoTx(ctx, w, pool.ID, addr.ID, addr.ExternalIpv6.ZoneID)
 	if err != nil {

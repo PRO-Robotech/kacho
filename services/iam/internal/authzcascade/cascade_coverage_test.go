@@ -81,6 +81,7 @@ var notDerivableHere = map[string]string{
 	"vpc_gateway":               "owned by kacho-vpc",
 	"vpc_network_interface":     "owned by kacho-vpc",
 	"vpc_address_pool":          "owned by kacho-vpc",
+	"vpc_cidr_group":            "owned by kacho-vpc",
 	"compute_instance":          "owned by kacho-compute",
 	"compute_guest_access_key":  "owned by kacho-compute",
 	"compute_placement_group":   "owned by kacho-compute",

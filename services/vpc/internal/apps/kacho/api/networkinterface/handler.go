@@ -110,6 +110,8 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateNetworkInterfaceR
 			V4AddressIDs:     req.V4AddressIds,
 			V6AddressIDs:     req.V6AddressIds,
 			SecurityGroupIDs: req.SecurityGroupIds,
+
+			BandwidthLimitMbps: req.BandwidthLimitMbps,
 		},
 		InstanceID: req.InstanceId,
 		Index:      req.Index,
@@ -143,6 +145,8 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateNetworkInterfaceR
 			SecurityGroupIDs: req.SecurityGroupIds,
 			V4AddressIDs:     req.V4AddressIds,
 			V6AddressIDs:     req.V6AddressIds,
+
+			BandwidthLimitMbps: req.BandwidthLimitMbps,
 		},
 		UpdateMask: mask,
 	}

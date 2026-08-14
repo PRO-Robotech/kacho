@@ -4,8 +4,28 @@
 package helpers
 
 import (
+	"net/netip"
+
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
+
+// PrefixFamily — семейство адресов CIDR-префикса: 4, 6 либо 0, если строка
+// префиксом не является.
+//
+// Ноль — ОТДЕЛЬНЫЙ исход, а не «по умолчанию IPv4»: он означает «семейство не
+// установлено», и вызывающий обязан на него отказать. Молчаливый выбор семейства
+// за вызывающего превратил бы сверку «вид шлюза ↔ семейство назначения» в
+// тождественно истинную для мусорного ввода.
+func PrefixFamily(prefix string) int {
+	p, err := netip.ParsePrefix(prefix)
+	if err != nil {
+		return 0
+	}
+	if p.Addr().Is4() {
+		return 4
+	}
+	return 6
+}
 
 // JoinAnd соединяет conds через " AND " для построения композитного WHERE.
 // Empty slice → "".
@@ -27,15 +47,6 @@ func NullableStr(s string) *string {
 		return nil
 	}
 	return &s
-}
-
-// MarshalDhcp — JSONB-сериализация Subnet.dhcp_options. nil → nil (NULL в SQL),
-// non-nil → JSONB bytes.
-func MarshalDhcp(d *domain.DhcpOptions) ([]byte, error) {
-	if d == nil {
-		return nil, nil
-	}
-	return MarshalJSONB(d, "Subnet.dhcp_options")
 }
 
 // MarshalStaticRoutes — JSONB-сериализация RouteTable.static_routes. nil → "[]",

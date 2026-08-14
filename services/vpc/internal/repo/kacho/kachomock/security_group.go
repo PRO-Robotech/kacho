@@ -25,8 +25,18 @@ import (
 // ---- SecurityGroup reader ----
 
 // securityGroupReader — read-only snapshot SG.
+//
+// niSnap / netSnap — интерфейсы и сети того же снимка: по ним выводится
+// «кем используется», ровно как pg-реализация выводит это боковым соединением
+// по `security_group_ids` и `default_security_group_id`.
 type securityGroupReader struct {
-	snap map[string]*kacho.SecurityGroupRecord
+	snap    map[string]*kacho.SecurityGroupRecord
+	niSnap  map[string]*kacho.NetworkInterfaceRecord
+	netSnap map[string]*kacho.NetworkRecord
+}
+
+func (r *securityGroupReader) ReferrersFor(_ context.Context, sgIDs []string) (map[string][]kacho.SecurityGroupReferrer, error) {
+	return sgReferrers(r.snap, r.niSnap, r.netSnap, sgIDs), nil
 }
 
 func (r *securityGroupReader) Get(_ context.Context, id string) (*kacho.SecurityGroupRecord, error) {
@@ -125,6 +135,87 @@ func (sw *securityGroupWriter) List(_ context.Context, f kacho.SecurityGroupFilt
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
 	return result, "", nil
+}
+
+func (sw *securityGroupWriter) ReferrersFor(_ context.Context, sgIDs []string) (map[string][]kacho.SecurityGroupReferrer, error) {
+	return sgReferrers(sw.w.localSGs, sw.w.localNIs, sw.w.local, sgIDs), nil
+}
+
+// sgReferrers выводит потребителей групп из того же снимка — тот же предмет,
+// который в базе выражают `network_interfaces.security_group_ids` и
+// `networks.default_security_group_id`.
+//
+// Дублёр обязан быть НЕ СНИСХОДИТЕЛЬНЕЕ настоящего, иначе он прячет ровно тот
+// дефект, ради которого его подставляют. Поэтому здесь воспроизведены оба
+// свойства запроса, а не только выборка: граница проекта (потребитель чужого
+// проекта не показывается) и потолок ответа (предел плюс одна строка —
+// признак «есть ещё»). Порядок — тот же: сеть впереди интерфейсов, дальше по
+// времени создания и идентификатору.
+func sgReferrers(
+	sgs map[string]*kacho.SecurityGroupRecord,
+	nics map[string]*kacho.NetworkInterfaceRecord,
+	nets map[string]*kacho.NetworkRecord,
+	sgIDs []string,
+) map[string][]kacho.SecurityGroupReferrer {
+	out := make(map[string][]kacho.SecurityGroupReferrer, len(sgIDs))
+	for _, id := range sgIDs {
+		sg, ok := sgs[id]
+		if !ok {
+			continue
+		}
+		type row struct {
+			ref  kacho.SecurityGroupReferrer
+			kind int
+			at   time.Time
+		}
+		var rows []row
+		for _, n := range nets {
+			if n.DefaultSecurityGroupID != id || n.ProjectID != sg.ProjectID {
+				continue
+			}
+			rows = append(rows, row{
+				ref: kacho.SecurityGroupReferrer{Type: kacho.SecurityGroupReferrerNetwork, ID: n.ID, Name: string(n.Name)},
+				at:  n.CreatedAt,
+			})
+		}
+		for _, ni := range nics {
+			if ni.ProjectID != sg.ProjectID {
+				continue
+			}
+			for _, held := range ni.SecurityGroupIDs {
+				if held != id {
+					continue
+				}
+				rows = append(rows, row{
+					ref:  kacho.SecurityGroupReferrer{Type: kacho.SecurityGroupReferrerNIC, ID: ni.ID, Name: string(ni.Name)},
+					kind: 1,
+					at:   ni.CreatedAt,
+				})
+				break
+			}
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].kind != rows[j].kind {
+				return rows[i].kind < rows[j].kind
+			}
+			if !rows[i].at.Equal(rows[j].at) {
+				return rows[i].at.Before(rows[j].at)
+			}
+			return rows[i].ref.ID < rows[j].ref.ID
+		})
+		if len(rows) > kacho.SecurityGroupUsedByFetch {
+			rows = rows[:kacho.SecurityGroupUsedByFetch]
+		}
+		refs := make([]kacho.SecurityGroupReferrer, 0, len(rows))
+		for _, r := range rows {
+			refs = append(refs, r.ref)
+		}
+		out[id] = refs
+	}
+	return out
 }
 
 func (sw *securityGroupWriter) Insert(_ context.Context, sg *domain.SecurityGroup) (*kacho.SecurityGroupRecord, error) {

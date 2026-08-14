@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -43,6 +44,52 @@ func importByID(ctx context.Context, kindName, prefix string, req resource.Impor
 		return
 	}
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// importHyphenByID — общая проверка формата при импорте ресурса с ДЕФИСНЫМ идентификатором.
+//
+// Отдельная функция, а не ветка в importByID: у платформы две живые формы адресации, и
+// проверка слитной формы отвергает КАЖДЫЙ идентификатор дефисной (он длиннее на
+// разделитель). Спутать их значит объявить импорт ресурса невозможным, хотя невозможной
+// была бы только проверка.
+func importHyphenByID(ctx context.Context, kindName, prefix string, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	if !hyphenIDIsValid(req.ID, prefix) {
+		resp.Diagnostics.AddError("Негодный идентификатор: "+kindName,
+			"Строка "+strconv.Quote(req.ID)+" не является идентификатором этого ресурса: "+
+				"он записывается как «"+prefix+"-» и "+strconv.Itoa(idBodyLen)+" знаков "+
+				"crockford-base32. Идентификатор виден в выводе списка и в консоли.")
+		return
+	}
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// idBodyProbePrefix / idBodyLen — как проверяется ТЕЛО дефисного идентификатора.
+//
+// Своей копии алфавита crockford-base32 здесь нет намеренно: вторая копия разошлась бы с
+// платформенной молча и именно там, где расхождение не видно (обе отвечают «годно» на
+// годном вводе). Тело проверяется ТОЙ ЖЕ функцией платформы, что и у слитной формы:
+// `ids.IsValid` сверяет ровно три первых знака с переданным префиксом и затем читает
+// остаток своим алфавитом — значит с сентинелом вместо префикса она и есть проверка тела,
+// пригодная при дефисном префиксе любой длины.
+const (
+	idBodyProbePrefix = "aaa"
+	idBodyLen         = 17
+)
+
+// hyphenIDIsValid — форма «<prefix>-<тело>», где prefix объявлен КАНОНОМ ПЛАТФОРМЫ.
+//
+// Принадлежность префикса канону спрашивается у общего каталога (`ids.KnownHyphenPrefixes`),
+// а не сверяется со строкой: тогда опечатка в самой таблице видов провайдера ловится этой
+// же проверкой, а не выясняется отказом края у пользователя.
+func hyphenIDIsValid(id, prefix string) bool {
+	if _, ok := ids.KnownHyphenPrefixes()[prefix]; !ok {
+		return false
+	}
+	body, ok := strings.CutPrefix(id, prefix+"-")
+	if !ok {
+		return false
+	}
+	return ids.IsValid(idBodyProbePrefix+body, idBodyProbePrefix)
 }
 
 // awaitCreate отправляет создание, дожидается операции и возвращает идентификатор.

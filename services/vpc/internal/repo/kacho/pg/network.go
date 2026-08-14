@@ -71,6 +71,9 @@ func (r *networkReader) List(ctx context.Context, f kacho.NetworkFilter, p kacho
 		argIdx++
 	}
 	if f.Filter != "" {
+		// Список остаётся при одном поле ОСОЗНАННО: у сети нет родителя, которым её
+		// сужают, а объявленные супернеты — МАССИВЫ, и равенство по ним смысла не
+		// имеет (нужен оператор вложенности, которого разборщик не знает).
 		ast, perr := filter.Parse(f.Filter, []string{"name"})
 		if perr != nil {
 			return nil, "", helpers.InvalidFilterErr(perr)

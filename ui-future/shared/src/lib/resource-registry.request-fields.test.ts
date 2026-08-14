@@ -62,10 +62,22 @@ describe("spec fields name real request fields", () => {
     expect(maskable("security-groups")).not.toContain("network_id");
   });
 
+  // vpc.v1.CreateNetworkInterfaceRequest / UpdateNetworkInterfaceRequest both
+  // carry bandwidth_limit_mbps. The edge rejects a non-empty value on a stand
+  // whose executor does not declare the capability — that is a stand property, so
+  // the form must offer the field on BOTH paths or the setting is unreachable
+  // where it does work.
+  it("network-interfaces offers the bandwidth limit on create and on edit", () => {
+    expect(createKeys("network-interfaces")).toContain("bandwidth_limit_mbps");
+    expect(maskable("network-interfaces")).toContain("bandwidth_limit_mbps");
+  });
+
   // loadbalancer.v1.CreateListenerRequest {load_balancer_id, name, description,
-  // labels, protocol, port, target_port, proxy_protocol_v2,
-  // default_target_group_id, target_group_id}. A listener inherits its project
-  // from the parent load balancer.
+  // labels, protocol, port, target_port, default_target_group_id,
+  // target_group_id}. A listener inherits its project from the parent load
+  // balancer. proxy_protocol_v2 is retired from the contract (reserved): no
+  // reviewed L4 dataplane can insert the framing, so the field was accepted and
+  // never executed.
   it("listeners does not send a project the message has no field for", () => {
     expect(createKeys("listeners")).not.toContain("project_id");
   });

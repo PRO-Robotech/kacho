@@ -187,7 +187,7 @@
           ]
         },
         {
-          "name": "poll-op-1280",
+          "name": "poll-op-1389",
           "request": {
             "method": "GET",
             "header": [
@@ -255,7 +255,7 @@
           ]
         },
         {
-          "name": "get-confirms-rya1092",
+          "name": "get-confirms-rya1185",
           "request": {
             "method": "GET",
             "header": [
@@ -309,7 +309,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1142",
+          "name": "cleanup-delete-rya1241",
           "request": {
             "method": "DELETE",
             "header": [
@@ -419,7 +419,7 @@
           ]
         },
         {
-          "name": "poll-op-1281",
+          "name": "poll-op-1390",
           "request": {
             "method": "GET",
             "header": [
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "get-no-vpnid-rya1093",
+          "name": "get-no-vpnid-rya1186",
           "request": {
             "method": "GET",
             "header": [
@@ -539,7 +539,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya1094",
+          "name": "cleanup-delete-rya1187",
           "request": {
             "method": "DELETE",
             "header": [
@@ -762,7 +762,7 @@
           ]
         },
         {
-          "name": "poll-op-1282",
+          "name": "poll-op-1391",
           "request": {
             "method": "GET",
             "header": [
@@ -878,7 +878,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya1143",
+          "name": "cleanup-first-rya1242",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1299,7 +1299,7 @@
           ]
         },
         {
-          "name": "poll-op-1283",
+          "name": "poll-op-1392",
           "request": {
             "method": "GET",
             "header": [
@@ -1367,7 +1367,7 @@
           ]
         },
         {
-          "name": "update-desc-rya1095",
+          "name": "update-desc-rya1188",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1432,7 +1432,7 @@
           ]
         },
         {
-          "name": "poll-op-1284",
+          "name": "poll-op-1393",
           "request": {
             "method": "GET",
             "header": [
@@ -1487,7 +1487,7 @@
           ]
         },
         {
-          "name": "verify-rya1096",
+          "name": "verify-rya1189",
           "request": {
             "method": "GET",
             "header": [
@@ -1538,7 +1538,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1097",
+          "name": "cleanup-rya1190",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1794,7 +1794,7 @@
       ]
     },
     {
-      "name": "NET-LSUB-CRUD-EMPTY — ListSubnets для пустой network → 200 + empty array",
+      "name": "NET-LSUB-CRUD-EMPTY — Список подсетей, суженный по network_id, для пустой сети → 200 + пустой массив",
       "description": "class:CRUD | priority:P2",
       "item": [
         {
@@ -1852,7 +1852,7 @@
           ]
         },
         {
-          "name": "poll-op-1285",
+          "name": "poll-op-1394",
           "request": {
             "method": "GET",
             "header": [
@@ -1920,7 +1920,7 @@
           ]
         },
         {
-          "name": "list-subnets-rya1144",
+          "name": "list-subnets-rya1243",
           "request": {
             "method": "GET",
             "header": [
@@ -1930,16 +1930,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}/subnets",
+              "raw": "{{baseUrl}}/vpc/v1/subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "networks",
-                "{{netId}}",
-                "subnets"
+                "subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22"
               ]
             }
           },
@@ -1965,14 +1963,14 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('subnets array empty or one (default-SG sometimes)', () => pm.expect(pm.response.json().subnets || []).to.be.an('array'));"
+                  "pm.test('пустой список подсетей этой сети', () => pm.expect(pm.response.json().subnets || [], pm.response.text()).to.eql([]));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rya1145",
+          "name": "cleanup-rya1244",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2024,7 +2022,7 @@
       ]
     },
     {
-      "name": "NET-LSG-CRUD-DEFAULT-SG — ListSecurityGroups → default SG присутствует (inline create в doCreate)",
+      "name": "NET-LSG-CRUD-DEFAULT-SG — Список групп правил, суженный по network_id → группа по умолчанию присутствует и помечена",
       "description": "class:CRUD | priority:P1",
       "item": [
         {
@@ -2082,7 +2080,7 @@
           ]
         },
         {
-          "name": "poll-op-1286",
+          "name": "poll-op-1395",
           "request": {
             "method": "GET",
             "header": [
@@ -2150,7 +2148,7 @@
           ]
         },
         {
-          "name": "list-sgs-rya1146",
+          "name": "net-names-default-sg-rya1191",
           "request": {
             "method": "GET",
             "header": [
@@ -2160,7 +2158,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}/security_groups",
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2168,8 +2166,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "{{netId}}",
-                "security_groups"
+                "{{netId}}"
               ]
             }
           },
@@ -2195,17 +2192,74 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const sgs = j.securityGroups || [];",
-                  "pm.test('has at least 1 SG (default)', () => pm.expect(sgs.length).to.be.at.least(1));",
-                  "pm.test('default SG flag set', () => pm.expect(sgs.some(s => s.defaultForNetwork === true)).to.eql(true));"
+                  "pm.test('сеть называет свою группу по умолчанию', () => pm.expect(pm.response.json().defaultSecurityGroupId, pm.response.text()).to.be.a('string').and.not.empty);",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.defaultSecurityGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('defSgId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rya1147",
+          "name": "list-sgs-lst1192",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('defSgId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const sgs = pm.response.json().securityGroups || [];",
+                  "const def = sgs.filter(s => s.id === pm.environment.get('defSgId'));",
+                  "pm.test('группа по умолчанию, названная самой сетью, в списке', () => pm.expect(def.length, pm.response.text()).to.eql(1));",
+                  "pm.test('она же помечена как группа по умолчанию', () => pm.expect(def.length && def[0].defaultForNetwork).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-rya1245",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2257,7 +2311,7 @@
       ]
     },
     {
-      "name": "NET-LRT-CRUD-EMPTY — ListRouteTables → 200 + empty",
+      "name": "NET-LRT-CRUD-EMPTY — Список таблиц маршрутизации, суженный по network_id → ровно системная таблица сети, арендаторских нет",
       "description": "class:CRUD | priority:P2",
       "item": [
         {
@@ -2315,7 +2369,7 @@
           ]
         },
         {
-          "name": "poll-op-1287",
+          "name": "poll-op-1396",
           "request": {
             "method": "GET",
             "header": [
@@ -2383,7 +2437,7 @@
           ]
         },
         {
-          "name": "list-rt-rya1148",
+          "name": "net-names-default-rt-rya1193",
           "request": {
             "method": "GET",
             "header": [
@@ -2393,7 +2447,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}/route_tables",
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -2401,8 +2455,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "{{netId}}",
-                "route_tables"
+                "{{netId}}"
               ]
             }
           },
@@ -2428,14 +2481,74 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('routeTables array', () => pm.expect(pm.response.json().routeTables || []).to.be.an('array'));"
+                  "pm.test('сеть называет свою таблицу маршрутизации', () => pm.expect(pm.response.json().defaultRouteTableId, pm.response.text()).to.be.a('string').and.not.empty);",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.defaultRouteTableId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('defRtId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rya1149",
+          "name": "list-rt-lst1194",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/routeTables?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "routeTables?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('defRtId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const rts = pm.response.json().routeTables || [];",
+                  "pm.test('ровно одна таблица — системная таблица этой сети', () => {",
+                  "  pm.expect(rts.map(r => r.id), pm.response.text()).to.eql([pm.environment.get('defRtId')]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-rya1246",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2551,7 +2664,7 @@
           ]
         },
         {
-          "name": "poll-op-1288",
+          "name": "poll-op-1397",
           "request": {
             "method": "GET",
             "header": [
@@ -2619,7 +2732,7 @@
           ]
         },
         {
-          "name": "list-ops-rya1150",
+          "name": "list-ops-rya1247",
           "request": {
             "method": "GET",
             "header": [
@@ -2674,7 +2787,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1151",
+          "name": "cleanup-rya1248",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2981,145 +3094,7 @@
       ]
     },
     {
-      "name": "NET-LSUB-NEG-PARENT-NF — List subnets в несуществующей network → 404 NotFound",
-      "description": "class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "list-child",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{garbageVpcId}}/subnets",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{garbageVpcId}}",
-                "subnets"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-LSG-NEG-PARENT-NF — List security_groups в несуществующей network → 404 NotFound",
-      "description": "class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "list-child",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{garbageVpcId}}/security_groups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{garbageVpcId}}",
-                "security_groups"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-LRT-NEG-PARENT-NF — List route_tables в несуществующей network → 404 NotFound",
-      "description": "class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "list-child",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{garbageVpcId}}/route_tables",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{garbageVpcId}}",
-                "route_tables"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
-                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-LOP-NEG-PARENT-NF — List operations в несуществующей network → 404 NotFound",
+      "name": "NET-LOP-NEG-PARENT-NF — List operations в несуществующей network → отказ края до сервиса",
       "description": "class:NEG | priority:P1",
       "item": [
         {
@@ -3157,6 +3132,129 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
                   "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-LSUB-NEG-PARENT-NF — Список subnets, суженный по несуществующей сети → 200 + пустая страница (не отказ, не утечка)",
+      "description": "class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-by-absent-network",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('пустая страница, а не отказ и не чужие строки', () => pm.expect(pm.response.json().subnets || [], pm.response.text()).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-LSG-NEG-PARENT-NF — Список securityGroups, суженный по несуществующей сети → 200 + пустая страница (не отказ, не утечка)",
+      "description": "class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-by-absent-network",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('пустая страница, а не отказ и не чужие строки', () => pm.expect(pm.response.json().securityGroups || [], pm.response.text()).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-LRT-NEG-PARENT-NF — Список routeTables, суженный по несуществующей сети → 200 + пустая страница (не отказ, не утечка)",
+      "description": "class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "list-by-absent-network",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/routeTables?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "routeTables?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{garbageVpcId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('пустая страница, а не отказ и не чужие строки', () => pm.expect(pm.response.json().routeTables || [], pm.response.text()).to.eql([]));"
                 ]
               }
             }
@@ -3223,7 +3321,7 @@
           ]
         },
         {
-          "name": "poll-op-1289",
+          "name": "poll-op-1398",
           "request": {
             "method": "GET",
             "header": [
@@ -3291,7 +3389,7 @@
           ]
         },
         {
-          "name": "delete-happy-rya1098",
+          "name": "delete-happy-rya1195",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3347,7 +3445,7 @@
           ]
         },
         {
-          "name": "poll-op-1290",
+          "name": "poll-op-1399",
           "request": {
             "method": "GET",
             "header": [
@@ -3411,7 +3509,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya1152",
+          "name": "get-after-delete-rya1249",
           "request": {
             "method": "GET",
             "header": [
@@ -3623,7 +3721,7 @@
           ]
         },
         {
-          "name": "poll-op-1291",
+          "name": "poll-op-1400",
           "request": {
             "method": "GET",
             "header": [
@@ -3686,7 +3784,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1099",
+          "name": "ecp-cleanup-rya1196",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3742,7 +3840,7 @@
           ]
         },
         {
-          "name": "poll-op-1292",
+          "name": "poll-op-1401",
           "request": {
             "method": "GET",
             "header": [
@@ -3861,7 +3959,7 @@
           ]
         },
         {
-          "name": "poll-op-1293",
+          "name": "poll-op-1402",
           "request": {
             "method": "GET",
             "header": [
@@ -3924,7 +4022,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1100",
+          "name": "ecp-cleanup-rya1197",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3980,7 +4078,7 @@
           ]
         },
         {
-          "name": "poll-op-1294",
+          "name": "poll-op-1403",
           "request": {
             "method": "GET",
             "header": [
@@ -4152,7 +4250,7 @@
           ]
         },
         {
-          "name": "poll-op-1295",
+          "name": "poll-op-1404",
           "request": {
             "method": "GET",
             "header": [
@@ -4215,7 +4313,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1101",
+          "name": "ecp-cleanup-rya1198",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4271,7 +4369,7 @@
           ]
         },
         {
-          "name": "poll-op-1296",
+          "name": "poll-op-1405",
           "request": {
             "method": "GET",
             "header": [
@@ -4549,7 +4647,7 @@
           ]
         },
         {
-          "name": "poll-op-1297",
+          "name": "poll-op-1406",
           "request": {
             "method": "GET",
             "header": [
@@ -4612,7 +4710,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1102",
+          "name": "ecp-cleanup-rya1199",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4668,7 +4766,7 @@
           ]
         },
         {
-          "name": "poll-op-1298",
+          "name": "poll-op-1407",
           "request": {
             "method": "GET",
             "header": [
@@ -4946,7 +5044,7 @@
           ]
         },
         {
-          "name": "poll-op-1299",
+          "name": "poll-op-1408",
           "request": {
             "method": "GET",
             "header": [
@@ -5009,7 +5107,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1103",
+          "name": "ecp-cleanup-rya1200",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5065,7 +5163,7 @@
           ]
         },
         {
-          "name": "poll-op-1300",
+          "name": "poll-op-1409",
           "request": {
             "method": "GET",
             "header": [
@@ -5468,7 +5566,7 @@
           ]
         },
         {
-          "name": "list-p2-rya1153",
+          "name": "list-p2-rya1250",
           "request": {
             "method": "GET",
             "header": [
@@ -5576,7 +5674,7 @@
           ]
         },
         {
-          "name": "poll-1-rya1154",
+          "name": "poll-1-rya1251",
           "request": {
             "method": "GET",
             "header": [
@@ -5685,7 +5783,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1104",
+          "name": "cleanup-rya1201",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5790,7 +5888,7 @@
           ]
         },
         {
-          "name": "poll-op-1301",
+          "name": "poll-op-1410",
           "request": {
             "method": "GET",
             "header": [
@@ -5853,7 +5951,7 @@
           ]
         },
         {
-          "name": "patch-rya1105",
+          "name": "patch-rya1202",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5918,7 +6016,7 @@
           ]
         },
         {
-          "name": "poll-op-1302",
+          "name": "poll-op-1411",
           "request": {
             "method": "GET",
             "header": [
@@ -5973,7 +6071,7 @@
           ]
         },
         {
-          "name": "verify-rya1106",
+          "name": "verify-rya1203",
           "request": {
             "method": "GET",
             "header": [
@@ -6024,7 +6122,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1107",
+          "name": "cleanup-rya1204",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6082,7 +6180,7 @@
           ]
         },
         {
-          "name": "poll-op-1303",
+          "name": "poll-op-1412",
           "request": {
             "method": "GET",
             "header": [
@@ -6201,7 +6299,7 @@
           ]
         },
         {
-          "name": "poll-op-1304",
+          "name": "poll-op-1413",
           "request": {
             "method": "GET",
             "header": [
@@ -6264,7 +6362,7 @@
           ]
         },
         {
-          "name": "patch-rya1108",
+          "name": "patch-rya1205",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6329,7 +6427,7 @@
           ]
         },
         {
-          "name": "poll-op-1305",
+          "name": "poll-op-1414",
           "request": {
             "method": "GET",
             "header": [
@@ -6384,7 +6482,7 @@
           ]
         },
         {
-          "name": "verify-rya1109",
+          "name": "verify-rya1206",
           "request": {
             "method": "GET",
             "header": [
@@ -6435,7 +6533,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1110",
+          "name": "cleanup-rya1207",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6493,7 +6591,7 @@
           ]
         },
         {
-          "name": "poll-op-1306",
+          "name": "poll-op-1415",
           "request": {
             "method": "GET",
             "header": [
@@ -6612,7 +6710,7 @@
           ]
         },
         {
-          "name": "poll-op-1307",
+          "name": "poll-op-1416",
           "request": {
             "method": "GET",
             "header": [
@@ -6675,7 +6773,7 @@
           ]
         },
         {
-          "name": "patch-rya1111",
+          "name": "patch-rya1208",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6740,7 +6838,7 @@
           ]
         },
         {
-          "name": "poll-op-1308",
+          "name": "poll-op-1417",
           "request": {
             "method": "GET",
             "header": [
@@ -6795,7 +6893,7 @@
           ]
         },
         {
-          "name": "verify-rya1112",
+          "name": "verify-rya1209",
           "request": {
             "method": "GET",
             "header": [
@@ -6847,7 +6945,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1113",
+          "name": "cleanup-rya1210",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6905,7 +7003,7 @@
           ]
         },
         {
-          "name": "poll-op-1309",
+          "name": "poll-op-1418",
           "request": {
             "method": "GET",
             "header": [
@@ -7264,7 +7362,7 @@
           ]
         },
         {
-          "name": "poll-op-1310",
+          "name": "poll-op-1419",
           "request": {
             "method": "GET",
             "header": [
@@ -7327,7 +7425,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya1114",
+          "name": "patch-multi-rya1211",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7392,7 +7490,7 @@
           ]
         },
         {
-          "name": "poll-op-1311",
+          "name": "poll-op-1420",
           "request": {
             "method": "GET",
             "header": [
@@ -7447,7 +7545,7 @@
           ]
         },
         {
-          "name": "verify-all-rya1115",
+          "name": "verify-all-rya1212",
           "request": {
             "method": "GET",
             "header": [
@@ -7502,7 +7600,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1116",
+          "name": "cleanup-rya1213",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7560,7 +7658,7 @@
           ]
         },
         {
-          "name": "poll-op-1312",
+          "name": "poll-op-1421",
           "request": {
             "method": "GET",
             "header": [
@@ -7679,7 +7777,7 @@
           ]
         },
         {
-          "name": "poll-op-1313",
+          "name": "poll-op-1422",
           "request": {
             "method": "GET",
             "header": [
@@ -7778,7 +7876,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1155",
+          "name": "cleanup-rya1252",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7836,7 +7934,7 @@
           ]
         },
         {
-          "name": "poll-op-1314",
+          "name": "poll-op-1423",
           "request": {
             "method": "GET",
             "header": [
@@ -7955,7 +8053,7 @@
           ]
         },
         {
-          "name": "poll-op-1315",
+          "name": "poll-op-1424",
           "request": {
             "method": "GET",
             "header": [
@@ -8018,7 +8116,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst1117",
+          "name": "list-filtered-lst1214",
           "request": {
             "method": "GET",
             "header": [
@@ -8071,7 +8169,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1118",
+          "name": "cleanup-rya1215",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8129,7 +8227,7 @@
           ]
         },
         {
-          "name": "poll-op-1316",
+          "name": "poll-op-1425",
           "request": {
             "method": "GET",
             "header": [
@@ -8248,7 +8346,7 @@
           ]
         },
         {
-          "name": "poll-op-1317",
+          "name": "poll-op-1426",
           "request": {
             "method": "GET",
             "header": [
@@ -8311,7 +8409,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1119",
+          "name": "ecp-cleanup-rya1216",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8367,7 +8465,7 @@
           ]
         },
         {
-          "name": "poll-op-1318",
+          "name": "poll-op-1427",
           "request": {
             "method": "GET",
             "header": [
@@ -8790,7 +8888,7 @@
           ]
         },
         {
-          "name": "poll-op-1319",
+          "name": "poll-op-1428",
           "request": {
             "method": "GET",
             "header": [
@@ -8901,7 +8999,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya1156",
+          "name": "cleanup-first-rya1253",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8959,7 +9057,7 @@
           ]
         },
         {
-          "name": "poll-op-1320",
+          "name": "poll-op-1429",
           "request": {
             "method": "GET",
             "header": [
@@ -9078,7 +9176,7 @@
           ]
         },
         {
-          "name": "poll-op-1321",
+          "name": "poll-op-1430",
           "request": {
             "method": "GET",
             "header": [
@@ -9141,7 +9239,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya1120",
+          "name": "patch-name-only-rya1217",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9206,7 +9304,7 @@
           ]
         },
         {
-          "name": "poll-op-1322",
+          "name": "poll-op-1431",
           "request": {
             "method": "GET",
             "header": [
@@ -9261,7 +9359,7 @@
           ]
         },
         {
-          "name": "verify-rya1121",
+          "name": "verify-rya1218",
           "request": {
             "method": "GET",
             "header": [
@@ -9315,7 +9413,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1122",
+          "name": "cleanup-rya1219",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9373,7 +9471,7 @@
           ]
         },
         {
-          "name": "poll-op-1323",
+          "name": "poll-op-1432",
           "request": {
             "method": "GET",
             "header": [
@@ -9492,7 +9590,7 @@
           ]
         },
         {
-          "name": "poll-op-1324",
+          "name": "poll-op-1433",
           "request": {
             "method": "GET",
             "header": [
@@ -9555,7 +9653,7 @@
           ]
         },
         {
-          "name": "get-timed-rya1123",
+          "name": "get-timed-rya1220",
           "request": {
             "method": "GET",
             "header": [
@@ -9606,7 +9704,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1157",
+          "name": "cleanup-rya1254",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9664,7 +9762,7 @@
           ]
         },
         {
-          "name": "poll-op-1325",
+          "name": "poll-op-1434",
           "request": {
             "method": "GET",
             "header": [
@@ -9833,7 +9931,7 @@
           ]
         },
         {
-          "name": "poll-op-1326",
+          "name": "poll-op-1435",
           "request": {
             "method": "GET",
             "header": [
@@ -9896,7 +9994,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1124",
+          "name": "ecp-cleanup-rya1221",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9952,7 +10050,7 @@
           ]
         },
         {
-          "name": "poll-op-1327",
+          "name": "poll-op-1436",
           "request": {
             "method": "GET",
             "header": [
@@ -10366,7 +10464,7 @@
           ]
         },
         {
-          "name": "poll-op-1328",
+          "name": "poll-op-1437",
           "request": {
             "method": "GET",
             "header": [
@@ -10488,7 +10586,7 @@
           ]
         },
         {
-          "name": "poll-op-1329",
+          "name": "poll-op-1438",
           "request": {
             "method": "GET",
             "header": [
@@ -10556,7 +10654,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1125",
+          "name": "del-net-blocked-rya1222",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10604,14 +10702,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));"
+                  "pm.test('отказ перечисляет мешающее: subnets: 1', () => pm.expect(pm.response.json().message, pm.response.text()).to.eql('Network ' + pm.environment.get('netId') + ' is not empty (subnets: 1)'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-sub-rya1126",
+          "name": "cleanup-sub-rya1223",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10669,7 +10767,7 @@
           ]
         },
         {
-          "name": "poll-op-1330",
+          "name": "poll-op-1439",
           "request": {
             "method": "GET",
             "header": [
@@ -10733,7 +10831,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1127",
+          "name": "cleanup-net-rya1224",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10791,7 +10889,7 @@
           ]
         },
         {
-          "name": "poll-op-1331",
+          "name": "poll-op-1440",
           "request": {
             "method": "GET",
             "header": [
@@ -10915,7 +11013,7 @@
           ]
         },
         {
-          "name": "poll-op-1332",
+          "name": "poll-op-1441",
           "request": {
             "method": "GET",
             "header": [
@@ -11037,7 +11135,7 @@
           ]
         },
         {
-          "name": "poll-op-1333",
+          "name": "poll-op-1442",
           "request": {
             "method": "GET",
             "header": [
@@ -11105,7 +11203,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1128",
+          "name": "del-net-blocked-rya1225",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11153,14 +11251,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));"
+                  "pm.test('отказ перечисляет мешающее: route tables: 1', () => pm.expect(pm.response.json().message, pm.response.text()).to.eql('Network ' + pm.environment.get('netId') + ' is not empty (route tables: 1)'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-rt-rya1158",
+          "name": "cleanup-rt-rya1255",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11218,7 +11316,7 @@
           ]
         },
         {
-          "name": "poll-op-1334",
+          "name": "poll-op-1443",
           "request": {
             "method": "GET",
             "header": [
@@ -11282,7 +11380,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1129",
+          "name": "cleanup-net-rya1226",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11340,7 +11438,7 @@
           ]
         },
         {
-          "name": "poll-op-1335",
+          "name": "poll-op-1444",
           "request": {
             "method": "GET",
             "header": [
@@ -11464,7 +11562,7 @@
           ]
         },
         {
-          "name": "poll-op-1336",
+          "name": "poll-op-1445",
           "request": {
             "method": "GET",
             "header": [
@@ -11586,7 +11684,7 @@
           ]
         },
         {
-          "name": "poll-op-1337",
+          "name": "poll-op-1446",
           "request": {
             "method": "GET",
             "header": [
@@ -11654,7 +11752,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1130",
+          "name": "del-net-blocked-rya1227",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11702,14 +11800,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));"
+                  "pm.test('отказ перечисляет мешающее: security groups: 1', () => pm.expect(pm.response.json().message, pm.response.text()).to.eql('Network ' + pm.environment.get('netId') + ' is not empty (security groups: 1)'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-sg-rya1159",
+          "name": "cleanup-sg-rya1256",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11767,7 +11865,7 @@
           ]
         },
         {
-          "name": "poll-op-1338",
+          "name": "poll-op-1447",
           "request": {
             "method": "GET",
             "header": [
@@ -11831,7 +11929,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1131",
+          "name": "cleanup-net-rya1228",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11889,7 +11987,7 @@
           ]
         },
         {
-          "name": "poll-op-1339",
+          "name": "poll-op-1448",
           "request": {
             "method": "GET",
             "header": [
@@ -12013,7 +12111,7 @@
           ]
         },
         {
-          "name": "poll-op-1340",
+          "name": "poll-op-1449",
           "request": {
             "method": "GET",
             "header": [
@@ -12081,7 +12179,7 @@
           ]
         },
         {
-          "name": "check-default-sg-rya1160",
+          "name": "net-names-default-sg-rya1229",
           "request": {
             "method": "GET",
             "header": [
@@ -12091,7 +12189,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}/security_groups",
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -12099,8 +12197,7 @@
                 "vpc",
                 "v1",
                 "networks",
-                "{{netId}}",
-                "security_groups"
+                "{{netId}}"
               ]
             }
           },
@@ -12126,15 +12223,71 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const sgs = pm.response.json().securityGroups || [];",
-                  "pm.test('exactly 1 default SG present', () => pm.expect(sgs.filter(s => s.defaultForNetwork === true).length).to.eql(1));"
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.defaultSecurityGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('defSgId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
           ]
         },
         {
-          "name": "del-net-rya1132",
+          "name": "check-default-sg-lst1230",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "securityGroups?projectId={{_suiteProjectId}}&pageSize=1000&filter=network_id%3D%22{{netId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('defSgId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const sgs = pm.response.json().securityGroups || [];",
+                  "pm.test('exactly 1 default SG present', () => pm.expect(sgs.filter(s => s.defaultForNetwork === true).map(s => s.id), pm.response.text()).to.eql([pm.environment.get('defSgId')]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-net-rya1231",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12190,7 +12343,7 @@
           ]
         },
         {
-          "name": "poll-op-1341",
+          "name": "poll-op-1450",
           "request": {
             "method": "GET",
             "header": [
@@ -12245,7 +12398,7 @@
           ]
         },
         {
-          "name": "assert-success-rya1161",
+          "name": "assert-success-rya1257",
           "request": {
             "method": "GET",
             "header": [
@@ -12295,7 +12448,7 @@
           ]
         },
         {
-          "name": "get-after-del-rya1162",
+          "name": "get-after-del-rya1258",
           "request": {
             "method": "GET",
             "header": [
@@ -12409,7 +12562,7 @@
           ]
         },
         {
-          "name": "poll-op-1342",
+          "name": "poll-op-1451",
           "request": {
             "method": "GET",
             "header": [
@@ -12477,7 +12630,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya1133",
+          "name": "get-default-sg-id-rya1232",
           "request": {
             "method": "GET",
             "header": [
@@ -12534,7 +12687,7 @@
           ]
         },
         {
-          "name": "get-default-sg-alive-rya1134",
+          "name": "get-default-sg-alive-rya1233",
           "request": {
             "method": "GET",
             "header": [
@@ -12585,7 +12738,7 @@
           ]
         },
         {
-          "name": "del-net-rya1135",
+          "name": "del-net-rya1234",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12641,7 +12794,7 @@
           ]
         },
         {
-          "name": "poll-op-1343",
+          "name": "poll-op-1452",
           "request": {
             "method": "GET",
             "header": [
@@ -12696,7 +12849,7 @@
           ]
         },
         {
-          "name": "assert-net-deleted-rya1163",
+          "name": "assert-net-deleted-rya1259",
           "request": {
             "method": "GET",
             "header": [
@@ -12745,7 +12898,7 @@
           ]
         },
         {
-          "name": "get-default-sg-gone-rya1164",
+          "name": "get-default-sg-gone-rya1260",
           "request": {
             "method": "GET",
             "header": [
@@ -12860,7 +13013,7 @@
           ]
         },
         {
-          "name": "poll-op-1344",
+          "name": "poll-op-1453",
           "request": {
             "method": "GET",
             "header": [
@@ -12982,7 +13135,7 @@
           ]
         },
         {
-          "name": "poll-op-1345",
+          "name": "poll-op-1454",
           "request": {
             "method": "GET",
             "header": [
@@ -13104,7 +13257,7 @@
           ]
         },
         {
-          "name": "poll-op-1346",
+          "name": "poll-op-1455",
           "request": {
             "method": "GET",
             "header": [
@@ -13172,7 +13325,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya1136",
+          "name": "del-net-blocked-rya1235",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13220,14 +13373,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('not empty text', () => pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));"
+                  "pm.test('отказ перечисляет мешающее: subnets: 1', () => pm.expect(pm.response.json().message, pm.response.text()).to.eql('Network ' + pm.environment.get('netId') + ' is not empty (subnets: 1)'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-nic-rya1165",
+          "name": "cleanup-nic-rya1261",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13283,7 +13436,7 @@
           ]
         },
         {
-          "name": "poll-op-1347",
+          "name": "poll-op-1456",
           "request": {
             "method": "GET",
             "header": [
@@ -13347,7 +13500,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1137",
+          "name": "cleanup-sub-rya1236",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13403,7 +13556,7 @@
           ]
         },
         {
-          "name": "poll-op-1348",
+          "name": "poll-op-1457",
           "request": {
             "method": "GET",
             "header": [
@@ -13467,7 +13620,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1138",
+          "name": "cleanup-net-rya1237",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13523,7 +13676,7 @@
           ]
         },
         {
-          "name": "poll-op-1349",
+          "name": "poll-op-1458",
           "request": {
             "method": "GET",
             "header": [
@@ -13647,7 +13800,7 @@
           ]
         },
         {
-          "name": "poll-op-1350",
+          "name": "poll-op-1459",
           "request": {
             "method": "GET",
             "header": [
@@ -13715,7 +13868,7 @@
           ]
         },
         {
-          "name": "listops-before-rya1166",
+          "name": "listops-before-rya1262",
           "request": {
             "method": "GET",
             "header": [
@@ -13768,7 +13921,7 @@
           ]
         },
         {
-          "name": "del-net-rya1139",
+          "name": "del-net-rya1238",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13824,7 +13977,7 @@
           ]
         },
         {
-          "name": "poll-op-1351",
+          "name": "poll-op-1460",
           "request": {
             "method": "GET",
             "header": [
@@ -13888,7 +14041,7 @@
           ]
         },
         {
-          "name": "listops-after-delete-rya1167",
+          "name": "listops-after-delete-rya1263",
           "request": {
             "method": "GET",
             "header": [
@@ -14542,7 +14695,7 @@
           ]
         },
         {
-          "name": "poll-op-1352",
+          "name": "poll-op-1461",
           "request": {
             "method": "GET",
             "header": [
@@ -14605,7 +14758,7 @@
           ]
         },
         {
-          "name": "get-1-rya1140",
+          "name": "get-1-rya1239",
           "request": {
             "method": "GET",
             "header": [
@@ -14656,7 +14809,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst1141",
+          "name": "lst-includes-lst1240",
           "request": {
             "method": "GET",
             "header": [
@@ -14709,7 +14862,7 @@
           ]
         },
         {
-          "name": "upd-rya1168",
+          "name": "upd-rya1264",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14774,7 +14927,7 @@
           ]
         },
         {
-          "name": "poll-op-1353",
+          "name": "poll-op-1462",
           "request": {
             "method": "GET",
             "header": [
@@ -14829,7 +14982,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya1169",
+          "name": "get-after-upd-rya1265",
           "request": {
             "method": "GET",
             "header": [
@@ -14880,7 +15033,7 @@
           ]
         },
         {
-          "name": "del-rya1170",
+          "name": "del-rya1266",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14936,7 +15089,7 @@
           ]
         },
         {
-          "name": "poll-op-1354",
+          "name": "poll-op-1463",
           "request": {
             "method": "GET",
             "header": [
@@ -15036,7 +15189,7 @@
           ]
         },
         {
-          "name": "get-404-rya1171",
+          "name": "get-404-rya1267",
           "request": {
             "method": "GET",
             "header": [

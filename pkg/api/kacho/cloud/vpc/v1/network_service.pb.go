@@ -228,10 +228,6 @@ type CreateNetworkRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as “ key:value “ pairs.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Управление авто-созданием default security group.
-	// Не задано → fallback на env KACHO_VPC_DEFAULT_SG_INLINE (back-compat).
-	// true → создать default-SG для сети; false → сеть без default-SG.
-	CreateDefaultSecurityGroup *bool `protobuf:"varint,5,opt,name=create_default_security_group,json=createDefaultSecurityGroup,proto3,oneof" json:"create_default_security_group,omitempty"`
 	// Declared IPv4 supernet block(s). Optional here, but a network without them
 	// refuses IPv4 subnets until they are declared (:add-cidr-blocks) — the
 	// constraint is never skipped for an empty list.
@@ -301,13 +297,6 @@ func (x *CreateNetworkRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
-}
-
-func (x *CreateNetworkRequest) GetCreateDefaultSecurityGroup() bool {
-	if x != nil && x.CreateDefaultSecurityGroup != nil {
-		return *x.CreateDefaultSecurityGroup
-	}
-	return false
 }
 
 func (x *CreateNetworkRequest) GetIpv4CidrBlocks() []string {
@@ -1239,20 +1228,18 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x8a\xc81\x06<=1000R\x06filter\"w\n" +
 	"\x14ListNetworksResponse\x127\n" +
 	"\bnetworks\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.NetworkR\bnetworks\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb9\x04\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf4\x03\n" +
 	"\x14CreateNetworkRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
 	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12F\n" +
-	"\x1dcreate_default_security_group\x18\x05 \x01(\bH\x00R\x1acreateDefaultSecurityGroup\x88\x01\x01\x12(\n" +
+	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x06 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
 	"\x10ipv6_cidr_blocks\x18\a \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B \n" +
-	"\x1e_create_default_security_group\"6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x1dcreate_default_security_group\"6\n" +
 	"\x15CreateNetworkMetadata\x12\x1d\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tR\tnetworkId\"\xb8\x03\n" +
@@ -1327,12 +1314,12 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x8c\x15\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xef\x0e\n" +
 	"\x0eNetworkService\x12\xaf\x01\n" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetNetworkRequest\x1a\x1b.kacho.cloud.vpc.v1.Network\"d\x8a\xb5\x18\x10vpc.networks.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/networks/{network_id}\x12\xb2\x01\n" +
-	"\x04List\x12'.kacho.cloud.vpc.v1.ListNetworksRequest\x1a(.kacho.cloud.vpc.v1.ListNetworksResponse\"W\x8a\xb5\x18\x13vpc.networkses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/networks/{network_id}\x12\xb0\x01\n" +
+	"\x04List\x12'.kacho.cloud.vpc.v1.ListNetworksRequest\x1a(.kacho.cloud.vpc.v1.ListNetworksResponse\"U\x8a\xb5\x18\x11vpc.networks.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/networks\x12\xd4\x01\n" +
 	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateNetworkRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13vpc.networks.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
@@ -1346,25 +1333,16 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteNetworkRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x13vpc.networks.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
-	"\x15DeleteNetworkMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/networks/{network_id}\x12\x9a\x02\n" +
-	"\rAddCidrBlocks\x12/.kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb5\x01\x8a\xb5\x18'vpc.network_cidr_blockses.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\x15DeleteNetworkMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/networks/{network_id}\x12\x98\x02\n" +
+	"\rAddCidrBlocks\x12/.kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb3\x01\x8a\xb5\x18%vpc.network_cidr_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x022:\x01*\"-/vpc/v1/networks/{network_id}:add-cidr-blocks\x12\xa6\x02\n" +
-	"\x10RemoveCidrBlocks\x122.kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xbb\x01\x8a\xb5\x18*vpc.network_cidr_blockses.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x022:\x01*\"-/vpc/v1/networks/{network_id}:add-cidr-blocks\x12\xa4\x02\n" +
+	"\x10RemoveCidrBlocks\x122.kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb9\x01\x8a\xb5\x18(vpc.network_cidr_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}:remove-cidr-blocks\x12\xec\x01\n" +
-	"\vListSubnets\x12-.kacho.cloud.vpc.v1.ListNetworkSubnetsRequest\x1a..kacho.cloud.vpc.v1.ListNetworkSubnetsResponse\"~\x8a\xb5\x18!vpc.network_subnetses.listSubnets\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02'\x12%/vpc/v1/networks/{network_id}/subnets\x12\x99\x02\n" +
-	"\x12ListSecurityGroups\x124.kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest\x1a5.kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse\"\x95\x01\x8a\xb5\x180vpc.network_security_groupses.listSecurityGroups\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02/\x12-/vpc/v1/networks/{network_id}/security_groups\x12\x87\x02\n" +
-	"\x0fListRouteTables\x121.kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest\x1a2.kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse\"\x8c\x01\x8a\xb5\x18*vpc.network_route_tableses.listRouteTables\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
-	"\vvpc_network\x12\n" +
-	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/networks/{network_id}/route_tables\x12\xff\x01\n" +
-	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListNetworkOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkOperationsResponse\"\x87\x01\x8a\xb5\x18'vpc.network_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
+	"\x15UpdateNetworkMetadata\x12\aNetwork\x82\xd3\xe4\x93\x025:\x01*\"0/vpc/v1/networks/{network_id}:remove-cidr-blocks\x12\xfd\x01\n" +
+	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListNetworkOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListNetworkOperationsResponse\"\x85\x01\x8a\xb5\x18%vpc.network_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\vvpc_network\x12\n" +
 	"network_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/networks/{network_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
@@ -1426,23 +1404,17 @@ var file_kacho_cloud_vpc_v1_network_service_proto_depIdxs = []int32{
 	9,  // 12: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
 	7,  // 13: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
 	8,  // 14: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
-	11, // 15: kacho.cloud.vpc.v1.NetworkService.ListSubnets:input_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
-	13, // 16: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:input_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
-	15, // 17: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:input_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
-	17, // 18: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	21, // 19: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
-	2,  // 20: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
-	26, // 21: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
-	26, // 22: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
-	26, // 23: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
-	26, // 24: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	26, // 25: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	12, // 26: kacho.cloud.vpc.v1.NetworkService.ListSubnets:output_type -> kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
-	14, // 27: kacho.cloud.vpc.v1.NetworkService.ListSecurityGroups:output_type -> kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
-	16, // 28: kacho.cloud.vpc.v1.NetworkService.ListRouteTables:output_type -> kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
-	18, // 29: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	19, // [19:30] is the sub-list for method output_type
-	8,  // [8:19] is the sub-list for method input_type
+	17, // 15: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	21, // 16: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
+	2,  // 17: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
+	26, // 18: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
+	26, // 19: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
+	26, // 20: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
+	26, // 21: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	26, // 22: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	18, // 23: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1457,7 +1429,6 @@ func file_kacho_cloud_vpc_v1_network_service_proto_init() {
 	file_kacho_cloud_vpc_v1_subnet_proto_init()
 	file_kacho_cloud_vpc_v1_security_group_proto_init()
 	file_kacho_cloud_vpc_v1_route_table_proto_init()
-	file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -61,15 +61,15 @@ type securityGroupModel struct {
 // «Value Conversion Error… target type cannot handle unknown values» — отказом, из
 // которого не видно ни поля, ни причины.
 type sgRuleModel struct {
-	Description      types.String `tfsdk:"description"`
-	Labels           types.Map    `tfsdk:"labels"`
-	Direction        types.String `tfsdk:"direction"`
-	Ports            types.Object `tfsdk:"ports"`
-	ProtocolName     types.String `tfsdk:"protocol_name"`
-	ProtocolNumber   types.Int64  `tfsdk:"protocol_number"`
-	CidrBlocks       types.Object `tfsdk:"cidr_blocks"`
-	SecurityGroupID  types.String `tfsdk:"security_group_id"`
-	PredefinedTarget types.String `tfsdk:"predefined_target"`
+	Description     types.String `tfsdk:"description"`
+	Labels          types.Map    `tfsdk:"labels"`
+	Direction       types.String `tfsdk:"direction"`
+	Ports           types.Object `tfsdk:"ports"`
+	ProtocolName    types.String `tfsdk:"protocol_name"`
+	ProtocolNumber  types.Int64  `tfsdk:"protocol_number"`
+	CidrBlocks      types.Object `tfsdk:"cidr_blocks"`
+	SecurityGroupID types.String `tfsdk:"security_group_id"`
+	CidrGroupID     types.String `tfsdk:"cidr_group_id"`
 }
 
 type sgPortsModel struct {
@@ -142,7 +142,7 @@ func (r *securityGroupResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "Метки группы вида ключ-значение."},
 			"default_for_network": schema.BoolAttribute{Computed: true,
 				MarkdownDescription: "Является ли группа группой по умолчанию своей сети. " +
-					"Такую группу создаёт сама сеть (`create_default_security_group`), и край " +
+					"Такую группу сеть создаёт САМА и безусловно, и край " +
 					"ОТКАЗЫВАЕТСЯ её удалять. Значение только читается: сделать группу " +
 					"умолчанием или перестать ею быть край не позволяет."},
 			"created_at": schema.StringAttribute{Computed: true,
@@ -165,7 +165,7 @@ func (r *securityGroupResource) Schema(_ context.Context, _ resource.SchemaReque
 					"Идентификатора правила здесь нет намеренно: край присваивает его заново " +
 					"при каждой замене набора, и в состоянии он не удержится.\n\n" +
 					"У правила ровно одна цель из трёх — `cidr_blocks`, `security_group_id`, " +
-					"`predefined_target`; протокол задаётся ЛИБО именем, ЛИБО номером.",
+					"`cidr_group_id`; протокол задаётся ЛИБО именем, ЛИБО номером.",
 				// Ни одного Computed и ни одного значения по умолчанию ВНУТРИ элемента —
 				// намеренно. Элемент набора адресуется своим значением целиком, поэтому
 				// подстановка умолчания в один элемент меняет его ключ и ломает поиск
@@ -221,8 +221,16 @@ func (r *securityGroupResource) Schema(_ context.Context, _ resource.SchemaReque
 					"security_group_id": schema.StringAttribute{Optional: true,
 						MarkdownDescription: "Цель — другая группа безопасности. Обязана лежать " +
 							"в ТОЙ ЖЕ сети: группы разных сетей друг друга не видят."},
-					"predefined_target": schema.StringAttribute{Optional: true,
-						MarkdownDescription: "Цель — предопределённое имя края."},
+					"cidr_group_id": schema.StringAttribute{Optional: true,
+						MarkdownDescription: "Цель — именованный набор префиксов " +
+							"(`kacho_vpc_cidr_group`). Правило называет НАБОР, а не его состав: " +
+							"перечень правится один раз и действует во всех правилах, которые " +
+							"на него сослались.\n\nНабор обязан лежать в ТОМ ЖЕ проекте и не " +
+							"быть пустым: пустой набор край отвергает — правило иначе либо " +
+							"потеряло бы фильтр, либо перестало пропускать что-либо, и оба " +
+							"исхода молчаливы.\n\nСсылайтесь атрибутом `id` ресурса набора, а не " +
+							"строкой: тогда порядок уничтожения строит граф, и правило снимется " +
+							"раньше набора, который край не даёт удалить, пока на него ссылаются."},
 				}}},
 
 			// Поля `used_by` в схеме НЕТ, хотя контракт группы его несёт: сервер его не
@@ -291,7 +299,7 @@ func sgRuleObjectType() attr.Type {
 		"protocol_number":   types.Int64Type,
 		"cidr_blocks":       sgCidrObjectType(),
 		"security_group_id": types.StringType,
-		"predefined_target": types.StringType,
+		"cidr_group_id":     types.StringType,
 	}}
 }
 
@@ -339,7 +347,7 @@ func (m *sgRuleModel) sgTargetCount() int {
 	if isSet(m.SecurityGroupID) {
 		n++
 	}
-	if isSet(m.PredefinedTarget) {
+	if isSet(m.CidrGroupID) {
 		n++
 	}
 	return n
@@ -469,7 +477,7 @@ func validateSGRuleTarget(ctx context.Context, resp *resource.ValidateConfigResp
 	if n := rule.sgTargetCount(); n != 1 {
 		resp.Diagnostics.AddError("Цель правила задана не однозначно",
 			fmt.Sprintf("У правила %s задано целей: %d. Ровно одна из cidr_blocks, "+
-				"security_group_id, predefined_target обязана присутствовать.\n\n"+
+				"security_group_id, cidr_group_id обязана присутствовать.\n\n"+
 				"Правило без цели край принимает МОЛЧА, сохраняет и отдаёт обратно без цели — "+
 				"то есть как другое правило, чем вы написали. Поэтому отказ приходит здесь.", at, n))
 		return
@@ -550,11 +558,10 @@ func (m *sgRuleModel) toProto(ctx context.Context, at string) (*vpcv1.SecurityGr
 		}}
 	case isSet(m.SecurityGroupID):
 		spec.Target = &vpcv1.SecurityGroupRuleSpec_SecurityGroupId{SecurityGroupId: m.SecurityGroupID.ValueString()}
-	case isSet(m.PredefinedTarget):
-		spec.Target = &vpcv1.SecurityGroupRuleSpec_PredefinedTarget{PredefinedTarget: m.PredefinedTarget.ValueString()}
+	case isSet(m.CidrGroupID):
+		spec.Target = &vpcv1.SecurityGroupRuleSpec_CidrGroupId{CidrGroupId: m.CidrGroupID.ValueString()}
 	default:
-		return nil, fmt.Errorf("%s: не задана ни одна цель (cidr_blocks, security_group_id, "+
-			"predefined_target)", at)
+		return nil, fmt.Errorf("%s: не задана ни одна цель (cidr_blocks, security_group_id, cidr_group_id)", at)
 	}
 	return spec, nil
 }
@@ -627,8 +634,8 @@ type sgRuleWire struct {
 		V4CidrBlocks []string `json:"v4CidrBlocks"`
 		V6CidrBlocks []string `json:"v6CidrBlocks"`
 	} `json:"cidrBlocks"`
-	SecurityGroupID  string `json:"securityGroupId"`
-	PredefinedTarget string `json:"predefinedTarget"`
+	SecurityGroupID string `json:"securityGroupId"`
+	CidrGroupID     string `json:"cidrGroupId"`
 }
 
 // listOrNull / mapOrNull — пустое от края означает «поле не задано».
@@ -654,15 +661,15 @@ func mapOrNull(ctx context.Context, in map[string]string) types.Map {
 
 func (w *sgRuleWire) toModel(ctx context.Context) (sgRuleModel, error) {
 	m := sgRuleModel{
-		Description:      strOrNull(w.Description),
-		Labels:           mapOrNull(ctx, w.Labels),
-		Direction:        types.StringValue(w.Direction),
-		Ports:            types.ObjectNull(sgPortsObjectType().AttrTypes),
-		ProtocolName:     strOrNull(w.ProtocolName),
-		ProtocolNumber:   intOrNull(numOf(w.ProtocolNumber)),
-		CidrBlocks:       types.ObjectNull(sgCidrObjectType().AttrTypes),
-		SecurityGroupID:  strOrNull(w.SecurityGroupID),
-		PredefinedTarget: strOrNull(w.PredefinedTarget),
+		Description:     strOrNull(w.Description),
+		Labels:          mapOrNull(ctx, w.Labels),
+		Direction:       types.StringValue(w.Direction),
+		Ports:           types.ObjectNull(sgPortsObjectType().AttrTypes),
+		ProtocolName:    strOrNull(w.ProtocolName),
+		ProtocolNumber:  intOrNull(numOf(w.ProtocolNumber)),
+		CidrBlocks:      types.ObjectNull(sgCidrObjectType().AttrTypes),
+		SecurityGroupID: strOrNull(w.SecurityGroupID),
+		CidrGroupID:     strOrNull(w.CidrGroupID),
 	}
 	if w.Ports != nil {
 		obj, diags := types.ObjectValueFrom(ctx, sgPortsObjectType().AttrTypes, sgPortsModel{
@@ -745,7 +752,7 @@ func sgRuleKey(ctx context.Context, m sgRuleModel) string {
 		b.WriteString("|v6=" + strings.Join(stringsFromTF(ctx, c.V6CidrBlocks), ","))
 	}
 	b.WriteString("|sg=" + m.SecurityGroupID.ValueString())
-	b.WriteString("|pd=" + m.PredefinedTarget.ValueString())
+	b.WriteString("|cdg=" + m.CidrGroupID.ValueString())
 	return b.String()
 }
 

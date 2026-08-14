@@ -143,6 +143,11 @@ func (r *readerImpl) AddressPoolBindings() kacho.AddressPoolBindingReaderIface {
 	return &addressPoolBindingReader{tx: r.tx}
 }
 
+// CidrGroups возвращает CidrGroup-reader, привязанный к этой read-TX.
+func (r *readerImpl) CidrGroups() kacho.CidrGroupReaderIface {
+	return &cidrGroupReader{tx: r.tx}
+}
+
 // Close rollback'ит read-TX (read-only TX — rollback не имеет side-effects).
 // Идемпотентно. Игнорирует pgx.ErrTxClosed.
 func (r *readerImpl) Close() error {
@@ -234,6 +239,15 @@ func (w *writerImpl) AddressPools() kacho.AddressPoolWriterIface {
 func (w *writerImpl) AddressPoolBindings() kacho.AddressPoolBindingWriterIface {
 	return &addressPoolBindingWriter{
 		addressPoolBindingReader: addressPoolBindingReader{tx: w.tx},
+	}
+}
+
+// CidrGroups возвращает CidrGroup-writer, привязанный к этой write-TX. Writer
+// видит свои writes (reader-методы — поверх той же pgx.Tx), поэтому добавление
+// членов и чтение получившегося состава идут одной транзакцией.
+func (w *writerImpl) CidrGroups() kacho.CidrGroupWriterIface {
+	return &cidrGroupWriter{
+		cidrGroupReader: cidrGroupReader{tx: w.tx},
 	}
 }
 

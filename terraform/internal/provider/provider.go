@@ -160,6 +160,7 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		NewVPCAddressResource,
 		NewVPCRouteTableResource,
 		NewVPCSecurityGroupResource,
+		NewVPCCidrGroupResource,
 		// iam
 		NewIAMProjectResource,
 		NewIAMGroupResource,
@@ -177,12 +178,15 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 		// registry
 		newFlatResource(registryRegistrySpec),
 		NewRegistryRepositoryResource,
+		// compute
+		NewComputeInstanceResource,
 		// nlb
 		NewNLBTargetGroupResource,
 		NewNLBLoadBalancerResource,
 		NewNLBListenerResource,
-		// compute
-		NewInstanceResource,
+		// compute — ключ входа гостя и группа размещения (заведены стволом, #288).
+		// Ресурс самой машины здесь НЕ повторяется: он объявлен выше, полной
+		// реализацией; вторая, с тем же именем типа, снята как дубль.
 		NewGuestAccessKeyResource,
 		NewPlacementGroupResource,
 	}
@@ -191,15 +195,27 @@ func (p *kachoProvider) Resources(_ context.Context) []func() resource.Resource 
 // Data-sources появятся в TF-2 вместе с остальными ресурсами vpc: их путь чтения тот же,
 // и заводить их до того, как многошаговое чтение доказано на ресурсах, значило бы
 // размножить непроверенное.
-// DataSources — то, чем конфигурация ЧИТАЕТ облако, ничего в нём не заводя.
+// DataSources — чтение существующего БЕЗ взятия под управление.
 //
-// Сегодня здесь один источник — каталог размеров машин, и он не про удобство:
-// без него конфигурация обязана нести идентификатор типа машины, а
-// идентификаторы у разных установок разные. То есть конфигурация без источника
-// данных непереносима by construction.
+// Их отсутствие было второй слепой зоной покрытия: гейты спрашивали «каждый ли создаваемый
+// ресурс управляем» и молчали про «каждый ли читаемый читаем». Справочники создающих
+// глаголов не имеют вовсе, поэтому ресурсами быть не могут — и до появления источников
+// сослаться на зону, регион или тип диска было нечем.
 func (p *kachoProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		NewMachineTypeDataSource,
+		// geo — справочник оси размещения
+		NewGeoRegionDataSource,
+		NewGeoRegionsDataSource,
+		NewGeoZoneDataSource,
+		NewGeoZonesDataSource,
+		// storage / compute — справочники типов
+		NewStorageDiskTypeDataSource,
+		NewStorageDiskTypesDataSource,
+		NewComputeMachineTypeDataSource,
+		NewComputeMachineTypesDataSource,
+		// поиск уже существующего по имени — чтобы сослаться, не импортируя
+		NewVPCNetworkByNameDataSource,
+		NewVPCSubnetByNameDataSource,
 	}
 }
 

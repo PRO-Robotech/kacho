@@ -75,7 +75,7 @@ Table "kacho_vpc"."gateways" {
   "name" text [note: "partial UNIQUE WHERE name<>''"]
   "gateway_type" text
   "created_at" timestamptz [not null]
-  Note: 'Gateway — shared egress. Project-level, не привязан к Network.'
+  Note: 'Gateway — выход наружу. Вид (NAT / EGRESS_ONLY) и подсеть-якорь задаются при создании и неизменяемы; сеть и размещение наследуются от подсети.'
 }
 
 Table "kacho_vpc"."network_interfaces" {

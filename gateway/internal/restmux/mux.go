@@ -484,6 +484,12 @@ func NewMux(
 		if err := vpcpb.RegisterNetworkInterfaceServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
 			return nil, fmt.Errorf("register NetworkInterfaceService: %w", err)
 		}
+		// CidrGroup — именованный набор префиксов, на который ссылается правило
+		// группы безопасности. Публичный ресурс арендатора: инфра-полей у него
+		// нет, поверхность — та же, что у сети.
+		if err := vpcpb.RegisterCidrGroupServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+			return nil, fmt.Errorf("register CidrGroupService: %w", err)
+		}
 
 		// --- vpc admin (AddressPool) — kacho-only, internal-port (9091) ---
 		// Эти сервисы экспонируются через apiGW REST для UI/админ-tooling;

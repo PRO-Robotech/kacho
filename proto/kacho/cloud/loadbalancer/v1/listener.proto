@@ -15,9 +15,9 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 // allocation lifecycle, per-Listener operations history, hierarchy tuple
 // `nlb_listener#load_balancer@nlb_load_balancer:<lb_id>` (design §6.1).
 message Listener {
-  // Reserved for future Listener-level extensions (mirror policy, TLS opts,
-  // PROXY-protocol variants beyond v2). Numbers 50-59 are claimed up front to
-  // keep low numbers contiguous for hot-path fields.
+  // Reserved for future Listener-level extensions (mirror policy, TLS opts).
+  // Numbers 50-59 are claimed up front to keep low numbers contiguous for
+  // hot-path fields.
   //
   // VIP переехал Listener→LoadBalancer: листенер больше не несёт собственного
   // адреса (один anycast VIP на LB на семейство). Сняты ip_version=12,
@@ -25,8 +25,19 @@ message Listener {
   // region_id=4 уходит (region нативно на load_balancers); тег и имя
   // резервируются ради wire-safety — переиспользование тега 4 с несовместимой
   // семантикой запрещено (иначе buf breaking непоследователен).
-  reserved 4, 12, 13, 14, 15;
-  reserved "region_id", "ip_version", "address_id", "allocated_address", "subnet_id";
+  //
+  // proxy_protocol_v2=16 СНЯТ с контракта. Заголовок PROXY-протокола по его
+  // спецификации уходит ДО любых данных соединения, то есть вставить его может
+  // только владелец байтового потока к бекенду. Балансировщик четвёртого уровня
+  // потоком не владеет — он его пересылает; у рассмотренного программного
+  // датаплейна такого обрамления нет вовсе. Исполнителя не существует ни в одном
+  // из рассмотренных вариантов, значит поле принималось и не исполнялось —
+  // «принято-и-проигнорировано», что конвенция запрещает прямо. Если потребность
+  // реальна, обрамление приходит свойством слушателя НОВОГО ВИДА, владеющего
+  // соединением, со своей приёмкой и своей ценой по задержке, а не булевым полем
+  // на L4 (решение и предикат пересмотра — план датаплейна §7.11).
+  reserved 4, 12, 13, 14, 15, 16;
+  reserved "region_id", "ip_version", "address_id", "allocated_address", "subnet_id", "proxy_protocol_v2";
   reserved 50 to 59;
 
   // Lifecycle status (design §2.3). Distinct from NetworkLoadBalancer.Status —
@@ -89,9 +100,6 @@ message Listener {
 
   // Port on which targets receive forwarded traffic.
   int64 target_port = 11;
-
-  // Enables PROXY-protocol v2 framing on accepted connections.
-  bool proxy_protocol_v2 = 16;
 
   // Optional target group that receives traffic when no per-listener routing
   // rule matches. Soft reference to a target group attached to the parent LB.

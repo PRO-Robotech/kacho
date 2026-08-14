@@ -5,8 +5,11 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -72,10 +75,25 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 	if err := serviceerr.FromValidation(g.Validate()); err != nil {
 		return nil, err
 	}
-	// gateway-type oneof обязателен. Сейчас единственный тип — shared_egress
-	// (SharedEgressGatewaySpec).
-	if g.GatewayType != domain.GatewayTypeSharedEgress {
-		return nil, status.Error(codes.InvalidArgument, "Illegal argument gateway")
+	// Ветвь oneof `gateway` ОБЯЗАТЕЛЬНА и отвергается ИМЕНЕМ ПОЛЯ: шлюз без вида
+	// не несёт поведения, которое можно создать. Проверка идёт по набору
+	// известных видов, а не «не пусто»: неизвестное значение (например пришедшее
+	// из старого клиента) обязано получить отказ, а не уехать в CHECK базы
+	// фиксированным INTERNAL.
+	switch g.GatewayType {
+	case domain.GatewayTypeNat, domain.GatewayTypeEgressOnly:
+	default:
+		return nil, serviceerr.InvalidArg("gateway", "gateway: required")
+	}
+	// Якорь размещения обязателен и проверяется по формату СВОЕГО id первым
+	// стейтментом: подсеть принадлежит vpc, значит id own-owned. Существование и
+	// когерентность семейства решает оператор вставки (repo), не проверка здесь —
+	// иначе между проверкой и записью подсеть могла бы исчезнуть.
+	if g.SubnetID == "" {
+		return nil, serviceerr.InvalidArg("subnet_id", "subnet_id: required")
+	}
+	if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, g.SubnetID); err != nil {
+		return nil, err
 	}
 
 	// Sync project.Exists precheck тут не делаем — он race-prone: между sync-проверкой
@@ -122,12 +140,10 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 		return nil, status.Errorf(codes.NotFound, "Project %s not found", g.ProjectID)
 	}
 
-	gtype := g.GatewayType
-	if gtype == "" {
-		gtype = domain.GatewayTypeSharedEgress
-	}
+	// Вид шлюза уже проверен по закрытому набору в Execute — подстановки по
+	// умолчанию здесь НЕТ и быть не может: молчаливый выбор вида за вызывающего
+	// означал бы шлюз, делающий не то, о чём просили.
 	g.ID = gwID
-	g.GatewayType = gtype
 
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
@@ -135,9 +151,47 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 	}
 	defer w.Abort()
 
+	// Внешний адрес выделяется В ЭТОЙ ЖЕ транзакции и ДО вставки шлюза.
+	//
+	// «До» — потому что биусловие `gateways_nat_has_address_chk` (0038) связывает
+	// каждую записываемую строку: состояния «шлюз трансляции без адреса» не
+	// существует даже на один оператор, поэтому приписать адрес следом нельзя.
+	//
+	// «В этой же» — потому что предмет здесь within-service: и шлюз, и адрес, и
+	// учёт пула живут в ОДНОЙ базе. Аренда, взятая из пула, и строка шлюза
+	// коммитятся вместе либо не коммитятся вовсе, поэтому у сорвавшегося создания
+	// нет окна, в котором аренда уже занята, а шлюза ещё нет: откат возвращает её
+	// сам. Очередь компенсаций (B12) здесь не нужна и была бы хуже — она
+	// закрывает окно МЕЖДУ транзакциями, которого тут нет by construction, но
+	// платит за это доставкой «хотя бы раз» и временем, в течение которого пул
+	// считает аренду занятой.
+	if g.GatewayType == domain.GatewayTypeNat {
+		addrID, aerr := u.allocateExternalAddress(ctx, w, &g)
+		if aerr != nil {
+			return nil, aerr
+		}
+		g.ExternalAddressID = addrID
+	}
+
 	created, err := w.Gateways().Insert(ctx, &g)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
+	}
+
+	// Обратная сторона привязки — та, которую видит ВЛАДЕЛЕЦ адреса. Ставится
+	// после вставки, потому что ссылка обязана называть существующий шлюз.
+	// `Owned` — адрес заказан шлюзом, а не принесён вызывающим: его жизнь связана
+	// со шлюзом, и Delete снимает его целиком (см. delete.go).
+	if created.ExternalAddressID != "" {
+		if _, rerr := w.Addresses().SetReference(ctx, &domain.AddressReference{
+			AddressID:    created.ExternalAddressID,
+			ReferrerType: domain.GatewayReferrerType,
+			ReferrerID:   created.ID,
+			ReferrerName: string(created.Name),
+			Owned:        true,
+		}); rerr != nil {
+			return nil, serviceerr.MapRepoErr(rerr)
+		}
 	}
 	if oerr := w.Outbox().Emit(ctx, "Gateway", created.ID, "CREATED", helpers.DomainToMap(created)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
@@ -151,6 +205,14 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 	items := []fgaregister.Item{
 		fgaregister.ProjectHierarchyItem(string(g.ProjectID), "vpc_gateway", created.ID,
 			domain.LabelsToMap(created.Labels)),
+	}
+	// Адрес шлюза — самостоятельный ресурс, и его владелец обязан получить на
+	// него право ТЕМ ЖЕ порядком, что и на адрес, созданный напрямую. Без этого
+	// `NatGateway.address_id` был бы координатой, по которой вызывающему нечего
+	// прочитать: `AddressService.Get` гейтится по объекту адреса, а не шлюза.
+	if created.ExternalAddressID != "" {
+		items = append(items, fgaregister.ProjectHierarchyItem(
+			string(g.ProjectID), "vpc_address", created.ExternalAddressID, nil))
 	}
 	// Версия, которой БД проштамповала intent ВНУТРИ writer-TX: её же понесёт
 	// синхронная регистрация ниже, чтобы повторную доставку гасило монотонное
@@ -171,4 +233,104 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 	// Поэтому предупреждение, а не ошибка.
 	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "Gateway", created.ID)
 	return marshalGatewayRecord(created)
+}
+
+// allocateExternalAddress — внешний IPv4 шлюзу трансляции, внутри уже открытой
+// writer-TX вызывающего.
+//
+// РАЗМЕЩЕНИЕ НЕ ПРИНИМАЕТСЯ НА ВХОД, А ВЫВОДИТСЯ ИЗ ЯКОРЯ. Зона берётся у
+// подсети-якоря и только у неё, поэтому когерентность здесь — свойство
+// построения, а не проверка, которую можно забыть выполнить: второму написанию
+// зоны просто неоткуда взяться, а значит нечему разойтись с первым.
+//
+//   - зональный якорь → пул СВОЕЙ зоны. Провала в зоне-независимый пул нет
+//     намеренно: выкроить «адрес зоны A» из anycast-префикса значило бы выдать
+//     адрес, объявляющий зону, которой у его префикса нет;
+//   - REGIONAL (anycast) якорь зоны не несёт вовсе → зоне-независимый пул. Из
+//     зональной сверки такой шлюз исключён by construction — сравнивать не с чем.
+//
+// Подсеть читается через СОБСТВЕННУЮ TX writer'а (`GetForShare`), а не отдельным
+// Reader'ом: у writer'а уже держится соединение пула, и открытие второго под
+// held-writer'ом — nested-conn deadlock под нагрузкой (тот же инвариант, что у
+// аллокатора адресов). Share-lock сериализует чтение якоря против его правки и
+// совместим сам с собой — параллельные создания не выстраиваются в очередь.
+func (u *CreateGatewayUseCase) allocateExternalAddress(ctx context.Context, w Writer, g *domain.Gateway) (string, error) {
+	sub, err := w.Subnets().GetForShare(ctx, g.SubnetID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			// Байт-идентично настоящему промаху — тот же текст, что даёт вставка
+			// шлюза. Различимый ответ был бы оракулом существования подсети.
+			return "", status.Errorf(codes.NotFound, "Subnet %s not found", g.SubnetID)
+		}
+		return "", serviceerr.MapRepoErr(err)
+	}
+	if sub.ProjectID != g.ProjectID {
+		return "", status.Errorf(codes.NotFound, "Subnet %s not found", g.SubnetID)
+	}
+
+	pool, err := w.AddressPools().GetDefaultForZone(ctx, sub.ZoneID, domain.AddressPoolKindExternalPublic)
+	switch {
+	case errors.Is(err, repo.ErrNotFound):
+		return "", noExternalAddressForGateway(ctx, g.ID, sub.ZoneID, "no default external pool for this placement")
+	case err != nil:
+		return "", serviceerr.MapRepoErr(err)
+	case len(pool.V4CIDRBlocks) == 0:
+		return "", noExternalAddressForGateway(ctx, g.ID, sub.ZoneID, "resolved pool carries no IPv4 blocks")
+	}
+
+	addrID := ids.NewID(ids.PrefixAddress)
+	// `Reserved` остаётся ложью осознанно: адрес не заказан арендатором сам по
+	// себе, он возник как следствие создания шлюза, и его жизнь связана со
+	// шлюзом. Имя не задаётся — оно косметический project-scoped ярлык, а
+	// частичный UNIQUE по имени считает пустые имена различными, поэтому
+	// безымянные адреса шлюзов не коллизят между собой.
+	if _, err := w.Addresses().Insert(ctx, &domain.Address{
+		ID:           addrID,
+		ProjectID:    g.ProjectID,
+		Type:         domain.AddressTypeExternal,
+		IpVersion:    domain.IpVersionIPv4,
+		ExternalIpv4: &domain.ExternalIpv4Spec{ZoneID: sub.ZoneID},
+	}); err != nil {
+		return "", serviceerr.MapRepoErr(err)
+	}
+	if _, err := w.Addresses().AllocateIPFromFreelist(ctx, pool.ID, addrID); err != nil {
+		if errors.Is(err, repo.ErrPoolExhausted) {
+			return "", noExternalAddressForGateway(ctx, g.ID, sub.ZoneID, "freelist empty")
+		}
+		slog.ErrorContext(ctx, "gateway: external IPv4 allocate failed",
+			"gateway_id", g.ID, "pool_id", pool.ID, "err", err)
+		return "", serviceerr.MapRepoErr(fmt.Errorf("%w: allocate external address", repo.ErrInternal))
+	}
+	return addrID, nil
+}
+
+// reasonExternalUnavailable — машинный признак причины отказа, уезжающий
+// вызывающему в деталях ответа. Тот же токен, каким отвечает полоса выделения
+// адреса напрямую: у одной причины один признак, иначе клиент, ключующийся на
+// токен, обязан был бы знать, каким путём он к ней пришёл.
+//
+// #nosec G101 -- признак причины отказа в публичном контракте, а не секрет:
+// эвристика ключуется на форму литерала (заглавные с подчёркиваниями).
+const reasonExternalUnavailable = "EXTERNAL_ADDRESS_UNAVAILABLE"
+
+// noExternalAddressForGateway — ЕДИНСТВЕННЫЙ ответ вызывающему на любую причину,
+// по которой платформе нечего выдать шлюзу под трансляцию: пула для этого
+// размещения нет, у пула нет блоков IPv4, его учёт пуст.
+//
+// Одна причина — не упрощение, а требование: пул адресов живёт в `Internal*` на
+// :9091, то есть это ресурс АДМИНИСТРАТОРА, и различие перечисленных состояний
+// выводимо из его ёмкости и настройки. Оператору различие адресовано — оно
+// уходит в журнал вместе с зоной якоря.
+func noExternalAddressForGateway(ctx context.Context, gatewayID, zoneID, cause string) error {
+	slog.WarnContext(ctx, "gateway: no external IPv4 address available for translation",
+		"gateway_id", gatewayID, "anchor_zone_id", zoneID, "cause", cause)
+	st := status.New(codes.FailedPrecondition, "no external IPv4 address available")
+	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
+		Reason: reasonExternalUnavailable,
+		Domain: "vpc.kacho.cloud",
+	})
+	if derr != nil {
+		return st.Err()
+	}
+	return withDetails.Err()
 }

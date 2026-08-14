@@ -64,6 +64,16 @@ func (u *UpdateGatewayUseCase) Execute(ctx context.Context, in UpdateInput) (*op
 	if in.GatewayID == "" {
 		return nil, status.Error(codes.InvalidArgument, "gateway_id required")
 	}
+	// Immutable-switch ДО corevalidate.UpdateMask (api-conventions §gotcha'и):
+	// известный набор маски immutable-полей НЕ содержит, поэтому без этого switch
+	// они отверглись бы generic'ом «unknown field in update_mask» вместо
+	// конвенционного тона. Эталон формы — subnet/update.go.
+	for _, field := range in.UpdateMask {
+		switch field {
+		case gatewayVariantMaskNat, gatewayVariantMaskEgressOnly, "subnet_id":
+			return nil, serviceerr.InvalidArg(field, field+" is immutable after Gateway.Create")
+		}
+	}
 	if err := serviceerr.FromValidation(validateGatewayUpdate(in)); err != nil {
 		return nil, err
 	}
@@ -158,7 +168,13 @@ func labelsInMask(updateMask []string) bool {
 // валидируются через domain newtype.Validate(), name — через
 // corevalidate.NameGateway (strict-name).
 func validateGatewayUpdate(in UpdateInput) error {
-	known := map[string]struct{}{"name": {}, "description": {}, "labels": {}, "gateway_type": {}}
+	// Известный набор — ИМЕНА ПОЛЕЙ КОНТРАКТА, и только изменяемых. Здесь стояло
+	// `gateway_type` — имя СТОЛБЦА БД (`services/vpc/internal/migrations/0001_initial.sql`),
+	// которого нет ни в одном сообщении proto. Расхождение работало в обе стороны:
+	// имя столбца принималось и меняло вид шлюза, а законное имя поля контракта
+	// отвергалось как «unknown field». Вид шлюза выбирается на Create и
+	// неизменяем — его место в immutable-switch выше, а не здесь.
+	known := map[string]struct{}{"name": {}, "description": {}, "labels": {}}
 	if err := corevalidate.UpdateMask("update_mask", in.UpdateMask, known); err != nil {
 		return err
 	}
@@ -186,15 +202,14 @@ func validateGatewayUpdate(in UpdateInput) error {
 }
 
 // applyGatewayMask — применяет subset полей к существующему domain.Gateway.
-// Пустой mask = full-object PATCH.
+// Пустой mask = full-object PATCH по ИЗМЕНЯЕМЫМ полям; вид шлюза и его привязка
+// в набор не входят — они неизменяемы после Create, и присланное в теле без маски
+// по конвенции игнорируется молча (явное указание в маске отвергается выше).
 func applyGatewayMask(g *domain.Gateway, in UpdateInput) {
 	if len(in.UpdateMask) == 0 {
 		g.Name = in.Gateway.Name
 		g.Description = in.Gateway.Description
 		g.Labels = in.Gateway.Labels
-		if in.Gateway.GatewayType != "" {
-			g.GatewayType = in.Gateway.GatewayType
-		}
 		return
 	}
 	for _, field := range in.UpdateMask {
@@ -205,10 +220,6 @@ func applyGatewayMask(g *domain.Gateway, in UpdateInput) {
 			g.Description = in.Gateway.Description
 		case "labels":
 			g.Labels = in.Gateway.Labels
-		case "gateway_type":
-			if in.Gateway.GatewayType != "" {
-				g.GatewayType = in.Gateway.GatewayType
-			}
 		}
 	}
 }

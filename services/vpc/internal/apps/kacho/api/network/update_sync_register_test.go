@@ -126,7 +126,7 @@ func TestUpdateUseCase_SyncRegisterFailure_DoesNotFailTheMutation(t *testing.T) 
 // возвращает её id — общая преамбула трёх проб выше.
 func seedNetworkForUpdate(t *testing.T, kr *kachomock.Repository, or *repomock.OpsRepo) string {
 	t.Helper()
-	cuc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	cuc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	op, err := cuc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
 		Name:      domain.RcNameVPC("net-upd-sync"),

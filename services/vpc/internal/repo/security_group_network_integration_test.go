@@ -255,8 +255,12 @@ func TestIntegration_SGNet_CreateCrossNetworkRule_InvalidArgument(t *testing.T) 
 		Name:      domain.RcNameVPC("sg-7"),
 		Rules:     []domain.SecurityGroupRule{ingressSGTargetRule(sgB)},
 	})
+	// Единый текст на ОБА исхода резолва цели: «цели нет» и «цель в чужой сети»
+	// стали неразличимы намеренно — по двум разным текстам вызывающий
+	// устанавливал существование чужого объекта. Текст побайтово равен настоящему
+	// промаху владельца, поэтому скрытие не отличимо от отсутствия.
 	assertFieldViolation(t, err,
-		"security group rule can only reference a security group in the same network",
+		sgTargetUnusable(sgB),
 		"rule_specs[0].security_group_id")
 
 	rd, err := f.r.Reader(f.ctx)
@@ -302,7 +306,7 @@ func TestIntegration_SGNet_UpdateRulesCrossNetwork_InvalidArgument(t *testing.T)
 		AdditionRuleSpecs: []domain.SecurityGroupRule{ingressSGTargetRule(sgB)},
 	})
 	assertFieldViolation(t, err,
-		"security group rule can only reference a security group in the same network",
+		sgTargetUnusable(sgB),
 		"addition_rule_specs[0].security_group_id")
 
 	// Набор правил не изменился.
@@ -373,7 +377,7 @@ func TestIntegration_SGNet_UpdateRuleCrossNetworkTarget_InvalidArgument(t *testi
 		UpdateMask:      []string{"description"},
 	})
 	assertFieldViolation(t, err,
-		"security group rule can only reference a security group in the same network",
+		sgTargetUnusable(sgB),
 		"security_group_id")
 }
 
@@ -424,7 +428,7 @@ func TestIntegration_SGNet_UpdateRulesTargetNotFound_InvalidArgument(t *testing.
 		AdditionRuleSpecs: []domain.SecurityGroupRule{ingressSGTargetRule(missing)},
 	})
 	assertFieldViolation(t, err,
-		"security group rule references a non-existent security group",
+		sgTargetUnusable(missing),
 		"addition_rule_specs[0].security_group_id")
 }
 
@@ -510,12 +514,17 @@ func TestIntegration_SGNet_CidrAndPredefinedRulesUnaffected(t *testing.T) {
 		SecurityGroupID: sg2,
 		AdditionRuleSpecs: []domain.SecurityGroupRule{
 			{Direction: domain.SecurityGroupRuleDirectionIngress, FromPort: -1, ToPort: -1, V4CidrBlocks: []string{"10.0.0.0/24"}},
-			{Direction: domain.SecurityGroupRuleDirectionEgress, FromPort: -1, ToPort: -1, PredefinedTarget: "self_security_group"},
+			// Прежде здесь стояло правило с предопределённой целью — ветвь снята с
+			// контракта. Осталось правило с целью-группой: предмет пробы (правила с
+			// ЗАКОННОЙ целью не затрагиваются проверкой цели) сохранён, и он даже
+			// строже, потому что цель-группа проходит через резолв, а свободная
+			// строка не проходила ни через что.
+			{Direction: domain.SecurityGroupRuleDirectionEgress, FromPort: -1, ToPort: -1, SecurityGroupID: sg2},
 		},
 	})
 	require.NoError(t, err)
 	done := f.awaitOp(t, op.ID)
-	require.Nil(t, done.Error, "CIDR/predefined rules must be unaffected: %v", done.Error)
+	require.Nil(t, done.Error, "правила с законной целью не затрагиваются: %v", done.Error)
 }
 
 // ---------------------------------------------------------------------------
@@ -543,4 +552,18 @@ func TestIntegration_SGNet_UpdateMaskNetwork_InvalidArgument(t *testing.T) {
 
 	rec := f.getSG(t, sg2)
 	assert.Equal(t, netA, rec.NetworkID, "network_id must be unchanged")
+}
+
+// sgTargetUnusable — ЕДИНСТВЕННЫЙ текст, которым сервис отвечает на оба исхода
+// резолва цели правила: цели нет и цель в чужой сети. Форма совпадает с текстом
+// настоящего промаха владельца (`pkg/authz/hide_existence.go`), включая
+// типизированную обёртку идентификатора: скрытие обязано быть побайтово
+// неотличимым от отсутствия, иначе по различию текстов восстанавливается
+// существование чужого объекта.
+//
+// Помощник существует, чтобы утверждение не повторяло литерал по местам вызова:
+// четыре прежних утверждения несли ДВА разных текста, и именно это различие было
+// предметом починки.
+func sgTargetUnusable(id string) string {
+	return "Security group SecurityGroup.Id(value=" + id + ") not found"
 }

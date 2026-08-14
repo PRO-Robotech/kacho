@@ -21,7 +21,7 @@ service GatewayService {
   // To get the list of all available Gateway resources, make a [List] request.
   rpc Get (GetGatewayRequest) returns (Gateway) {
     option (google.api.http) = {get: "/vpc/v1/gateways/{gateway_id}"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.get";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.get";
     option (kacho.iam.authz.v1.required_relation) = "v_get";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -33,7 +33,7 @@ service GatewayService {
   // Retrieves the list of Gateway resources in the specified folder.
   rpc List (ListGatewaysRequest) returns (ListGatewaysResponse) {
     option (google.api.http) = {get: "/vpc/v1/gateways"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewayses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -57,7 +57,7 @@ service GatewayService {
       metadata: "CreateGatewayMetadata"
       response: "Gateway"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.create";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
@@ -73,7 +73,7 @@ service GatewayService {
       metadata: "UpdateGatewayMetadata"
       response: "Gateway"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.update";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -89,7 +89,7 @@ service GatewayService {
       metadata: "DeleteGatewayMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission)        = "vpc.gatewaies.delete";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateways.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -101,7 +101,7 @@ service GatewayService {
   // List operations for the specified gateway.
   rpc ListOperations (ListGatewayOperationsRequest) returns (ListGatewayOperationsResponse) {
     option (google.api.http) = {get: "/vpc/v1/gateways/{gateway_id}/operations"};
-    option (kacho.iam.authz.v1.permission)        = "vpc.gateway_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.gateway_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_gateway"
@@ -185,7 +185,21 @@ message ListGatewayOperationsResponse {
   string next_page_token = 2;
 }
 
-message SharedEgressGatewaySpec {
+// Specification of a public IPv4 egress-translation gateway. Carries no
+// parameter: choosing the arm IS the specification. See [NatGateway].
+//
+// In particular it carries no address: the external address is allocated by the
+// service from the pool of the anchor subnet's zone, and its ID comes back in
+// [NatGateway.address_id]. Naming an address of one's own is not accepted here —
+// an input the service does not read would be worse than its absence — and the
+// zone is not accepted either, since it is inherited from the anchor subnet and
+// a second way to state it could only disagree with the first.
+message NatGatewaySpec {
+}
+
+// Specification of an IPv6 egress-only gateway. Carries no parameter — no public
+// address is allocated, which is the point of the arm. See [EgressOnlyGateway].
+message EgressOnlyGatewaySpec {
 }
 
 message CreateGatewayRequest {
@@ -204,10 +218,32 @@ message CreateGatewayRequest {
   // Gateway labels as `key:value` pairs.
   map<string, string> labels = 4 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
-  // Gateway configuration specification
+  // ID of the subnet to attach the gateway to. Required — it is both the
+  // gateway's binding and its placement anchor (see [Gateway.subnet_id]).
+  // Immutable after creation.
+  //
+  // The subnet must belong to the same project as the gateway (a subnet of
+  // another project answers as absent) and must carry a CIDR block of the family
+  // the chosen arm serves.
+  string subnet_id = 6 [(required) = true, (length) = "<=50"];
+
+  // What the gateway does. Required — a gateway with no arm has no behaviour to
+  // create, and an omitted arm is refused synchronously with INVALID_ARGUMENT
+  // naming `gateway`. Immutable after creation.
   oneof gateway {
-    SharedEgressGatewaySpec shared_egress_gateway_spec = 5;
+    // Public egress translation for IPv4.
+    NatGatewaySpec nat_gateway_spec = 7;
+
+    // Egress-only reachability for IPv6.
+    EgressOnlyGatewaySpec egress_only_gateway_spec = 8;
   }
+
+  // 5 held `shared_egress_gateway_spec` — the single previous arm, whose message
+  // carried no field. Replaced by the two arms above, which are answerable for
+  // what they claim (family of the anchor subnet, family of the routes that may
+  // name the gateway).
+  reserved 5;
+  reserved "shared_egress_gateway_spec";
 }
 
 message CreateGatewayMetadata {
@@ -240,10 +276,15 @@ message UpdateGatewayRequest {
   // 3. Send the new set in this field.
   map<string, string> labels = 5 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
-  // New Gateway configuration specification
-  oneof gateway {
-    SharedEgressGatewaySpec shared_egress_gateway_spec = 6;
-  }
+  // 6 held `shared_egress_gateway_spec`, an arm of a `gateway` oneof on the
+  // UPDATE request. The kind of a gateway is chosen at creation time and is
+  // immutable, so nothing on the update path could ever read it — accepted and
+  // ignored is not a lawful outcome, and the number and the name are held here
+  // instead. Naming `nat_gateway` / `egress_only_gateway` / `subnet_id` in
+  // `update_mask` is refused with INVALID_ARGUMENT
+  // "<field> is immutable after Gateway.Create".
+  reserved 6;
+  reserved "shared_egress_gateway_spec";
 }
 
 message UpdateGatewayMetadata {

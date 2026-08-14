@@ -346,26 +346,35 @@ func (x *ListGatewayOperationsResponse) GetNextPageToken() string {
 	return ""
 }
 
-type SharedEgressGatewaySpec struct {
+// Specification of a public IPv4 egress-translation gateway. Carries no
+// parameter: choosing the arm IS the specification. See [NatGateway].
+//
+// In particular it carries no address: the external address is allocated by the
+// service from the pool of the anchor subnet's zone, and its ID comes back in
+// [NatGateway.address_id]. Naming an address of one's own is not accepted here —
+// an input the service does not read would be worse than its absence — and the
+// zone is not accepted either, since it is inherited from the anchor subnet and
+// a second way to state it could only disagree with the first.
+type NatGatewaySpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SharedEgressGatewaySpec) Reset() {
-	*x = SharedEgressGatewaySpec{}
+func (x *NatGatewaySpec) Reset() {
+	*x = NatGatewaySpec{}
 	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SharedEgressGatewaySpec) String() string {
+func (x *NatGatewaySpec) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SharedEgressGatewaySpec) ProtoMessage() {}
+func (*NatGatewaySpec) ProtoMessage() {}
 
-func (x *SharedEgressGatewaySpec) ProtoReflect() protoreflect.Message {
+func (x *NatGatewaySpec) ProtoReflect() protoreflect.Message {
 	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -377,9 +386,47 @@ func (x *SharedEgressGatewaySpec) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SharedEgressGatewaySpec.ProtoReflect.Descriptor instead.
-func (*SharedEgressGatewaySpec) Descriptor() ([]byte, []int) {
+// Deprecated: Use NatGatewaySpec.ProtoReflect.Descriptor instead.
+func (*NatGatewaySpec) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{5}
+}
+
+// Specification of an IPv6 egress-only gateway. Carries no parameter — no public
+// address is allocated, which is the point of the arm. See [EgressOnlyGateway].
+type EgressOnlyGatewaySpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EgressOnlyGatewaySpec) Reset() {
+	*x = EgressOnlyGatewaySpec{}
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EgressOnlyGatewaySpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EgressOnlyGatewaySpec) ProtoMessage() {}
+
+func (x *EgressOnlyGatewaySpec) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EgressOnlyGatewaySpec.ProtoReflect.Descriptor instead.
+func (*EgressOnlyGatewaySpec) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{6}
 }
 
 type CreateGatewayRequest struct {
@@ -395,11 +442,22 @@ type CreateGatewayRequest struct {
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Gateway labels as `key:value` pairs.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Gateway configuration specification
+	// ID of the subnet to attach the gateway to. Required — it is both the
+	// gateway's binding and its placement anchor (see [Gateway.subnet_id]).
+	// Immutable after creation.
+	//
+	// The subnet must belong to the same project as the gateway (a subnet of
+	// another project answers as absent) and must carry a CIDR block of the family
+	// the chosen arm serves.
+	SubnetId string `protobuf:"bytes,6,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	// What the gateway does. Required — a gateway with no arm has no behaviour to
+	// create, and an omitted arm is refused synchronously with INVALID_ARGUMENT
+	// naming `gateway`. Immutable after creation.
 	//
 	// Types that are valid to be assigned to Gateway:
 	//
-	//	*CreateGatewayRequest_SharedEgressGatewaySpec
+	//	*CreateGatewayRequest_NatGatewaySpec
+	//	*CreateGatewayRequest_EgressOnlyGatewaySpec
 	Gateway       isCreateGatewayRequest_Gateway `protobuf_oneof:"gateway"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -407,7 +465,7 @@ type CreateGatewayRequest struct {
 
 func (x *CreateGatewayRequest) Reset() {
 	*x = CreateGatewayRequest{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +477,7 @@ func (x *CreateGatewayRequest) String() string {
 func (*CreateGatewayRequest) ProtoMessage() {}
 
 func (x *CreateGatewayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +490,7 @@ func (x *CreateGatewayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayRequest.ProtoReflect.Descriptor instead.
 func (*CreateGatewayRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateGatewayRequest) GetProjectId() string {
@@ -463,6 +521,13 @@ func (x *CreateGatewayRequest) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *CreateGatewayRequest) GetSubnetId() string {
+	if x != nil {
+		return x.SubnetId
+	}
+	return ""
+}
+
 func (x *CreateGatewayRequest) GetGateway() isCreateGatewayRequest_Gateway {
 	if x != nil {
 		return x.Gateway
@@ -470,10 +535,19 @@ func (x *CreateGatewayRequest) GetGateway() isCreateGatewayRequest_Gateway {
 	return nil
 }
 
-func (x *CreateGatewayRequest) GetSharedEgressGatewaySpec() *SharedEgressGatewaySpec {
+func (x *CreateGatewayRequest) GetNatGatewaySpec() *NatGatewaySpec {
 	if x != nil {
-		if x, ok := x.Gateway.(*CreateGatewayRequest_SharedEgressGatewaySpec); ok {
-			return x.SharedEgressGatewaySpec
+		if x, ok := x.Gateway.(*CreateGatewayRequest_NatGatewaySpec); ok {
+			return x.NatGatewaySpec
+		}
+	}
+	return nil
+}
+
+func (x *CreateGatewayRequest) GetEgressOnlyGatewaySpec() *EgressOnlyGatewaySpec {
+	if x != nil {
+		if x, ok := x.Gateway.(*CreateGatewayRequest_EgressOnlyGatewaySpec); ok {
+			return x.EgressOnlyGatewaySpec
 		}
 	}
 	return nil
@@ -483,11 +557,19 @@ type isCreateGatewayRequest_Gateway interface {
 	isCreateGatewayRequest_Gateway()
 }
 
-type CreateGatewayRequest_SharedEgressGatewaySpec struct {
-	SharedEgressGatewaySpec *SharedEgressGatewaySpec `protobuf:"bytes,5,opt,name=shared_egress_gateway_spec,json=sharedEgressGatewaySpec,proto3,oneof"`
+type CreateGatewayRequest_NatGatewaySpec struct {
+	// Public egress translation for IPv4.
+	NatGatewaySpec *NatGatewaySpec `protobuf:"bytes,7,opt,name=nat_gateway_spec,json=natGatewaySpec,proto3,oneof"`
 }
 
-func (*CreateGatewayRequest_SharedEgressGatewaySpec) isCreateGatewayRequest_Gateway() {}
+type CreateGatewayRequest_EgressOnlyGatewaySpec struct {
+	// Egress-only reachability for IPv6.
+	EgressOnlyGatewaySpec *EgressOnlyGatewaySpec `protobuf:"bytes,8,opt,name=egress_only_gateway_spec,json=egressOnlyGatewaySpec,proto3,oneof"`
+}
+
+func (*CreateGatewayRequest_NatGatewaySpec) isCreateGatewayRequest_Gateway() {}
+
+func (*CreateGatewayRequest_EgressOnlyGatewaySpec) isCreateGatewayRequest_Gateway() {}
 
 type CreateGatewayMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -499,7 +581,7 @@ type CreateGatewayMetadata struct {
 
 func (x *CreateGatewayMetadata) Reset() {
 	*x = CreateGatewayMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -511,7 +593,7 @@ func (x *CreateGatewayMetadata) String() string {
 func (*CreateGatewayMetadata) ProtoMessage() {}
 
 func (x *CreateGatewayMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -524,7 +606,7 @@ func (x *CreateGatewayMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateGatewayMetadata.ProtoReflect.Descriptor instead.
 func (*CreateGatewayMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateGatewayMetadata) GetGatewayId() string {
@@ -554,20 +636,14 @@ type UpdateGatewayRequest struct {
 	// 1. Get the current set of labels with a [GatewayService.Get] request.
 	// 2. Add or remove a label in this set.
 	// 3. Send the new set in this field.
-	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// New Gateway configuration specification
-	//
-	// Types that are valid to be assigned to Gateway:
-	//
-	//	*UpdateGatewayRequest_SharedEgressGatewaySpec
-	Gateway       isUpdateGatewayRequest_Gateway `protobuf_oneof:"gateway"`
+	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateGatewayRequest) Reset() {
 	*x = UpdateGatewayRequest{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -579,7 +655,7 @@ func (x *UpdateGatewayRequest) String() string {
 func (*UpdateGatewayRequest) ProtoMessage() {}
 
 func (x *UpdateGatewayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -592,7 +668,7 @@ func (x *UpdateGatewayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGatewayRequest.ProtoReflect.Descriptor instead.
 func (*UpdateGatewayRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpdateGatewayRequest) GetGatewayId() string {
@@ -630,32 +706,6 @@ func (x *UpdateGatewayRequest) GetLabels() map[string]string {
 	return nil
 }
 
-func (x *UpdateGatewayRequest) GetGateway() isUpdateGatewayRequest_Gateway {
-	if x != nil {
-		return x.Gateway
-	}
-	return nil
-}
-
-func (x *UpdateGatewayRequest) GetSharedEgressGatewaySpec() *SharedEgressGatewaySpec {
-	if x != nil {
-		if x, ok := x.Gateway.(*UpdateGatewayRequest_SharedEgressGatewaySpec); ok {
-			return x.SharedEgressGatewaySpec
-		}
-	}
-	return nil
-}
-
-type isUpdateGatewayRequest_Gateway interface {
-	isUpdateGatewayRequest_Gateway()
-}
-
-type UpdateGatewayRequest_SharedEgressGatewaySpec struct {
-	SharedEgressGatewaySpec *SharedEgressGatewaySpec `protobuf:"bytes,6,opt,name=shared_egress_gateway_spec,json=sharedEgressGatewaySpec,proto3,oneof"`
-}
-
-func (*UpdateGatewayRequest_SharedEgressGatewaySpec) isUpdateGatewayRequest_Gateway() {}
-
 type UpdateGatewayMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Gateway that is being updated.
@@ -666,7 +716,7 @@ type UpdateGatewayMetadata struct {
 
 func (x *UpdateGatewayMetadata) Reset() {
 	*x = UpdateGatewayMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -678,7 +728,7 @@ func (x *UpdateGatewayMetadata) String() string {
 func (*UpdateGatewayMetadata) ProtoMessage() {}
 
 func (x *UpdateGatewayMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -691,7 +741,7 @@ func (x *UpdateGatewayMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateGatewayMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateGatewayMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateGatewayMetadata) GetGatewayId() string {
@@ -713,7 +763,7 @@ type DeleteGatewayRequest struct {
 
 func (x *DeleteGatewayRequest) Reset() {
 	*x = DeleteGatewayRequest{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +775,7 @@ func (x *DeleteGatewayRequest) String() string {
 func (*DeleteGatewayRequest) ProtoMessage() {}
 
 func (x *DeleteGatewayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +788,7 @@ func (x *DeleteGatewayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayRequest.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteGatewayRequest) GetGatewayId() string {
@@ -758,7 +808,7 @@ type DeleteGatewayMetadata struct {
 
 func (x *DeleteGatewayMetadata) Reset() {
 	*x = DeleteGatewayMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +820,7 @@ func (x *DeleteGatewayMetadata) String() string {
 func (*DeleteGatewayMetadata) ProtoMessage() {}
 
 func (x *DeleteGatewayMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +833,7 @@ func (x *DeleteGatewayMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteGatewayMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteGatewayMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteGatewayMetadata) GetGatewayId() string {
@@ -824,22 +874,25 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x19\n" +
-	"\x17SharedEgressGatewaySpec\"\xf0\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x10\n" +
+	"\x0eNatGatewaySpec\"\x17\n" +
+	"\x15EgressOnlyGatewaySpec\"\x87\x05\n" +
 	"\x14CreateGatewayRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x128\n" +
 	"\x04name\x18\x02 \x01(\tB$\xf2\xc71 |[a-z]([-a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
 	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x91\x01\n" +
-	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12j\n" +
-	"\x1ashared_egress_gateway_spec\x18\x05 \x01(\v2+.kacho.cloud.vpc.v1.SharedEgressGatewaySpecH\x00R\x17sharedEgressGatewaySpec\x1a9\n" +
+	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12)\n" +
+	"\tsubnet_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12N\n" +
+	"\x10nat_gateway_spec\x18\a \x01(\v2\".kacho.cloud.vpc.v1.NatGatewaySpecH\x00R\x0enatGatewaySpec\x12d\n" +
+	"\x18egress_only_gateway_spec\x18\b \x01(\v2).kacho.cloud.vpc.v1.EgressOnlyGatewaySpecH\x00R\x15egressOnlyGatewaySpec\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
-	"\agateway\"6\n" +
+	"\agatewayJ\x04\b\x05\x10\x06R\x1ashared_egress_gateway_spec\"6\n" +
 	"\x15CreateGatewayMetadata\x12\x1d\n" +
 	"\n" +
-	"gateway_id\x18\x01 \x01(\tR\tgatewayId\"\xad\x04\n" +
+	"gateway_id\x18\x01 \x01(\tR\tgatewayId\"\xd8\x03\n" +
 	"\x14UpdateGatewayRequest\x12+\n" +
 	"\n" +
 	"gateway_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tgatewayId\x12;\n" +
@@ -847,12 +900,10 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"updateMask\x128\n" +
 	"\x04name\x18\x03 \x01(\tB$\xf2\xc71 |[a-z]([-a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
 	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x91\x01\n" +
-	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12j\n" +
-	"\x1ashared_egress_gateway_spec\x18\x06 \x01(\v2+.kacho.cloud.vpc.v1.SharedEgressGatewaySpecH\x00R\x17sharedEgressGatewaySpec\x1a9\n" +
+	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
-	"\agateway\"6\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x1ashared_egress_gateway_spec\"6\n" +
 	"\x15UpdateGatewayMetadata\x12\x1d\n" +
 	"\n" +
 	"gateway_id\x18\x01 \x01(\tR\tgatewayId\"C\n" +
@@ -861,28 +912,28 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"gateway_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tgatewayId\"6\n" +
 	"\x15DeleteGatewayMetadata\x12\x1d\n" +
 	"\n" +
-	"gateway_id\x18\x01 \x01(\tR\tgatewayId2\xb5\n" +
+	"gateway_id\x18\x01 \x01(\tR\tgatewayId2\xad\n" +
 	"\n" +
-	"\x0eGatewayService\x12\xb0\x01\n" +
-	"\x03Get\x12%.kacho.cloud.vpc.v1.GetGatewayRequest\x1a\x1b.kacho.cloud.vpc.v1.Gateway\"e\x8a\xb5\x18\x11vpc.gatewaies.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
+	"\x0eGatewayService\x12\xaf\x01\n" +
+	"\x03Get\x12%.kacho.cloud.vpc.v1.GetGatewayRequest\x1a\x1b.kacho.cloud.vpc.v1.Gateway\"d\x8a\xb5\x18\x10vpc.gateways.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
-	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb2\x01\n" +
-	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"W\x8a\xb5\x18\x13vpc.gatewayses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb0\x01\n" +
+	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"U\x8a\xb5\x18\x11vpc.gateways.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd5\x01\n" +
-	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x7f\x8a\xb5\x18\x14vpc.gatewaies.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd4\x01\n" +
+	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13vpc.gateways.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15CreateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/vpc/v1/gateways\x12\xe9\x01\n" +
-	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x92\x01\x8a\xb5\x18\x14vpc.gatewaies.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
+	"\x15CreateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/vpc/v1/gateways\x12\xe8\x01\n" +
+	"\x06Update\x12(.kacho.cloud.vpc.v1.UpdateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x91\x01\x8a\xb5\x18\x13vpc.gateways.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
-	"\x15UpdateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\":\x01*2\x1d/vpc/v1/gateways/{gateway_id}\x12\xf4\x01\n" +
-	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x9d\x01\x8a\xb5\x18\x14vpc.gatewaies.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
+	"\x15UpdateGatewayMetadata\x12\aGateway\x82\xd3\xe4\x93\x02\":\x01*2\x1d/vpc/v1/gateways/{gateway_id}\x12\xf3\x01\n" +
+	"\x06Delete\x12(.kacho.cloud.vpc.v1.DeleteGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x13vpc.gateways.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
-	"\x15DeleteGatewayMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/gateways/{gateway_id}\x12\xff\x01\n" +
-	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListGatewayOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListGatewayOperationsResponse\"\x87\x01\x8a\xb5\x18'vpc.gateway_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
+	"\x15DeleteGatewayMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/vpc/v1/gateways/{gateway_id}\x12\xfd\x01\n" +
+	"\x0eListOperations\x120.kacho.cloud.vpc.v1.ListGatewayOperationsRequest\x1a1.kacho.cloud.vpc.v1.ListGatewayOperationsResponse\"\x85\x01\x8a\xb5\x18%vpc.gateway_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/vpc/v1/gateways/{gateway_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
@@ -898,45 +949,46 @@ func file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_gateway_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kacho_cloud_vpc_v1_gateway_service_proto_goTypes = []any{
 	(*GetGatewayRequest)(nil),             // 0: kacho.cloud.vpc.v1.GetGatewayRequest
 	(*ListGatewaysRequest)(nil),           // 1: kacho.cloud.vpc.v1.ListGatewaysRequest
 	(*ListGatewaysResponse)(nil),          // 2: kacho.cloud.vpc.v1.ListGatewaysResponse
 	(*ListGatewayOperationsRequest)(nil),  // 3: kacho.cloud.vpc.v1.ListGatewayOperationsRequest
 	(*ListGatewayOperationsResponse)(nil), // 4: kacho.cloud.vpc.v1.ListGatewayOperationsResponse
-	(*SharedEgressGatewaySpec)(nil),       // 5: kacho.cloud.vpc.v1.SharedEgressGatewaySpec
-	(*CreateGatewayRequest)(nil),          // 6: kacho.cloud.vpc.v1.CreateGatewayRequest
-	(*CreateGatewayMetadata)(nil),         // 7: kacho.cloud.vpc.v1.CreateGatewayMetadata
-	(*UpdateGatewayRequest)(nil),          // 8: kacho.cloud.vpc.v1.UpdateGatewayRequest
-	(*UpdateGatewayMetadata)(nil),         // 9: kacho.cloud.vpc.v1.UpdateGatewayMetadata
-	(*DeleteGatewayRequest)(nil),          // 10: kacho.cloud.vpc.v1.DeleteGatewayRequest
-	(*DeleteGatewayMetadata)(nil),         // 11: kacho.cloud.vpc.v1.DeleteGatewayMetadata
-	nil,                                   // 12: kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
-	nil,                                   // 13: kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntry
-	(*Gateway)(nil),                       // 14: kacho.cloud.vpc.v1.Gateway
-	(*operation.Operation)(nil),           // 15: kacho.cloud.operation.Operation
-	(*fieldmaskpb.FieldMask)(nil),         // 16: google.protobuf.FieldMask
+	(*NatGatewaySpec)(nil),                // 5: kacho.cloud.vpc.v1.NatGatewaySpec
+	(*EgressOnlyGatewaySpec)(nil),         // 6: kacho.cloud.vpc.v1.EgressOnlyGatewaySpec
+	(*CreateGatewayRequest)(nil),          // 7: kacho.cloud.vpc.v1.CreateGatewayRequest
+	(*CreateGatewayMetadata)(nil),         // 8: kacho.cloud.vpc.v1.CreateGatewayMetadata
+	(*UpdateGatewayRequest)(nil),          // 9: kacho.cloud.vpc.v1.UpdateGatewayRequest
+	(*UpdateGatewayMetadata)(nil),         // 10: kacho.cloud.vpc.v1.UpdateGatewayMetadata
+	(*DeleteGatewayRequest)(nil),          // 11: kacho.cloud.vpc.v1.DeleteGatewayRequest
+	(*DeleteGatewayMetadata)(nil),         // 12: kacho.cloud.vpc.v1.DeleteGatewayMetadata
+	nil,                                   // 13: kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
+	nil,                                   // 14: kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntry
+	(*Gateway)(nil),                       // 15: kacho.cloud.vpc.v1.Gateway
+	(*operation.Operation)(nil),           // 16: kacho.cloud.operation.Operation
+	(*fieldmaskpb.FieldMask)(nil),         // 17: google.protobuf.FieldMask
 }
 var file_kacho_cloud_vpc_v1_gateway_service_proto_depIdxs = []int32{
-	14, // 0: kacho.cloud.vpc.v1.ListGatewaysResponse.gateways:type_name -> kacho.cloud.vpc.v1.Gateway
-	15, // 1: kacho.cloud.vpc.v1.ListGatewayOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	12, // 2: kacho.cloud.vpc.v1.CreateGatewayRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
-	5,  // 3: kacho.cloud.vpc.v1.CreateGatewayRequest.shared_egress_gateway_spec:type_name -> kacho.cloud.vpc.v1.SharedEgressGatewaySpec
-	16, // 4: kacho.cloud.vpc.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
-	13, // 5: kacho.cloud.vpc.v1.UpdateGatewayRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntry
-	5,  // 6: kacho.cloud.vpc.v1.UpdateGatewayRequest.shared_egress_gateway_spec:type_name -> kacho.cloud.vpc.v1.SharedEgressGatewaySpec
+	15, // 0: kacho.cloud.vpc.v1.ListGatewaysResponse.gateways:type_name -> kacho.cloud.vpc.v1.Gateway
+	16, // 1: kacho.cloud.vpc.v1.ListGatewayOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	13, // 2: kacho.cloud.vpc.v1.CreateGatewayRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateGatewayRequest.LabelsEntry
+	5,  // 3: kacho.cloud.vpc.v1.CreateGatewayRequest.nat_gateway_spec:type_name -> kacho.cloud.vpc.v1.NatGatewaySpec
+	6,  // 4: kacho.cloud.vpc.v1.CreateGatewayRequest.egress_only_gateway_spec:type_name -> kacho.cloud.vpc.v1.EgressOnlyGatewaySpec
+	17, // 5: kacho.cloud.vpc.v1.UpdateGatewayRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 6: kacho.cloud.vpc.v1.UpdateGatewayRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateGatewayRequest.LabelsEntry
 	0,  // 7: kacho.cloud.vpc.v1.GatewayService.Get:input_type -> kacho.cloud.vpc.v1.GetGatewayRequest
 	1,  // 8: kacho.cloud.vpc.v1.GatewayService.List:input_type -> kacho.cloud.vpc.v1.ListGatewaysRequest
-	6,  // 9: kacho.cloud.vpc.v1.GatewayService.Create:input_type -> kacho.cloud.vpc.v1.CreateGatewayRequest
-	8,  // 10: kacho.cloud.vpc.v1.GatewayService.Update:input_type -> kacho.cloud.vpc.v1.UpdateGatewayRequest
-	10, // 11: kacho.cloud.vpc.v1.GatewayService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteGatewayRequest
+	7,  // 9: kacho.cloud.vpc.v1.GatewayService.Create:input_type -> kacho.cloud.vpc.v1.CreateGatewayRequest
+	9,  // 10: kacho.cloud.vpc.v1.GatewayService.Update:input_type -> kacho.cloud.vpc.v1.UpdateGatewayRequest
+	11, // 11: kacho.cloud.vpc.v1.GatewayService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteGatewayRequest
 	3,  // 12: kacho.cloud.vpc.v1.GatewayService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListGatewayOperationsRequest
-	14, // 13: kacho.cloud.vpc.v1.GatewayService.Get:output_type -> kacho.cloud.vpc.v1.Gateway
+	15, // 13: kacho.cloud.vpc.v1.GatewayService.Get:output_type -> kacho.cloud.vpc.v1.Gateway
 	2,  // 14: kacho.cloud.vpc.v1.GatewayService.List:output_type -> kacho.cloud.vpc.v1.ListGatewaysResponse
-	15, // 15: kacho.cloud.vpc.v1.GatewayService.Create:output_type -> kacho.cloud.operation.Operation
-	15, // 16: kacho.cloud.vpc.v1.GatewayService.Update:output_type -> kacho.cloud.operation.Operation
-	15, // 17: kacho.cloud.vpc.v1.GatewayService.Delete:output_type -> kacho.cloud.operation.Operation
+	16, // 15: kacho.cloud.vpc.v1.GatewayService.Create:output_type -> kacho.cloud.operation.Operation
+	16, // 16: kacho.cloud.vpc.v1.GatewayService.Update:output_type -> kacho.cloud.operation.Operation
+	16, // 17: kacho.cloud.vpc.v1.GatewayService.Delete:output_type -> kacho.cloud.operation.Operation
 	4,  // 18: kacho.cloud.vpc.v1.GatewayService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListGatewayOperationsResponse
 	13, // [13:19] is the sub-list for method output_type
 	7,  // [7:13] is the sub-list for method input_type
@@ -951,11 +1003,9 @@ func file_kacho_cloud_vpc_v1_gateway_service_proto_init() {
 		return
 	}
 	file_kacho_cloud_vpc_v1_gateway_proto_init()
-	file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[6].OneofWrappers = []any{
-		(*CreateGatewayRequest_SharedEgressGatewaySpec)(nil),
-	}
-	file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[8].OneofWrappers = []any{
-		(*UpdateGatewayRequest_SharedEgressGatewaySpec)(nil),
+	file_kacho_cloud_vpc_v1_gateway_service_proto_msgTypes[7].OneofWrappers = []any{
+		(*CreateGatewayRequest_NatGatewaySpec)(nil),
+		(*CreateGatewayRequest_EgressOnlyGatewaySpec)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -963,7 +1013,7 @@ func file_kacho_cloud_vpc_v1_gateway_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

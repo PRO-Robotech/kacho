@@ -4,60 +4,13 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"reflect"
-	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
-
-// flexInt64 — 64-битное целое, приходящее с края ЛИБО числом, ЛИБО строкой.
-//
-// Это не перестраховка. JSON не выражает 64-битное целое без потери точности,
-// поэтому кодировщик protobuf отдаёт такие поля СТРОКОЙ ("8192"), и объявленное
-// как int64 поле молча получило бы ноль на каждом размере: разбор упал бы, а
-// ошибку разбора страницы легко списать на пустой каталог.
-//
-// Обе формы принимаются намеренно: форма зависит от настройки кодировщика на
-// крае, а она — не наш контракт. Читать оба варианта стоит одной функции;
-// угадать неверно стоит всех значений сразу.
-type flexInt64 int64
-
-// UnmarshalJSON принимает число, строку и null (null — это ноль, а не отказ:
-// незаполненное краем поле означает «не объявлено»).
-func (v *flexInt64) UnmarshalJSON(b []byte) error {
-	b = bytes.TrimSpace(b)
-	if len(b) == 0 || string(b) == "null" {
-		*v = 0
-		return nil
-	}
-	if b[0] == '"' {
-		var s string
-		if err := json.Unmarshal(b, &s); err != nil {
-			return err
-		}
-		if s == "" {
-			*v = 0
-			return nil
-		}
-		n, err := strconv.ParseInt(s, 10, 64)
-		if err != nil {
-			return err
-		}
-		*v = flexInt64(n)
-		return nil
-	}
-	var n int64
-	if err := json.Unmarshal(b, &n); err != nil {
-		return err
-	}
-	*v = flexInt64(n)
-	return nil
-}
 
 // mapFromTF переводит карту меток в форму запроса. Неизвестное и пустое дают nil: край
 // отличает «поле не задано» от «задано пустым», и слать пустую карту вместо отсутствия
@@ -102,7 +55,7 @@ func mapToTF(ctx context.Context, in map[string]string) types.Map {
 
 // applyNetwork переносит ответ края в состояние.
 //
-// Значения, которых край не эхает (create_default_security_group), НЕ трогаются: их
+// Значения, которых край не эхает, НЕ трогаются: их
 // подстановка нулём означала бы «пользователь задал false» и приводила к пересозданию
 // ресурса на следующем же плане.
 func applyNetwork(ctx context.Context, m *networkModel, n *networkJSON) {

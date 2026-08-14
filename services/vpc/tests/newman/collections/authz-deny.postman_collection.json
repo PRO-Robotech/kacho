@@ -662,7 +662,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs857",
+          "name": "get-abs915",
           "request": {
             "method": "GET",
             "header": [
@@ -740,7 +740,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs858",
+          "name": "get-abs916",
           "request": {
             "method": "GET",
             "header": [
@@ -1210,7 +1210,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs859",
+          "name": "get-abs917",
           "request": {
             "method": "GET",
             "header": [
@@ -1680,7 +1680,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs860",
+          "name": "get-abs918",
           "request": {
             "method": "GET",
             "header": [
@@ -2090,7 +2090,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs861",
+          "name": "get-abs919",
           "request": {
             "method": "GET",
             "header": [
@@ -3406,7 +3406,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs862",
+          "name": "get-abs920",
           "request": {
             "method": "GET",
             "header": [
@@ -3484,7 +3484,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs863",
+          "name": "get-abs921",
           "request": {
             "method": "GET",
             "header": [
@@ -3954,7 +3954,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs864",
+          "name": "get-abs922",
           "request": {
             "method": "GET",
             "header": [
@@ -4424,7 +4424,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs865",
+          "name": "get-abs923",
           "request": {
             "method": "GET",
             "header": [
@@ -4834,7 +4834,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs866",
+          "name": "get-abs924",
           "request": {
             "method": "GET",
             "header": [
@@ -6150,7 +6150,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs867",
+          "name": "get-abs925",
           "request": {
             "method": "GET",
             "header": [
@@ -6228,7 +6228,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs868",
+          "name": "get-abs926",
           "request": {
             "method": "GET",
             "header": [
@@ -6698,7 +6698,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs869",
+          "name": "get-abs927",
           "request": {
             "method": "GET",
             "header": [
@@ -7168,7 +7168,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs870",
+          "name": "get-abs928",
           "request": {
             "method": "GET",
             "header": [
@@ -7578,7 +7578,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs871",
+          "name": "get-abs929",
           "request": {
             "method": "GET",
             "header": [
@@ -8894,7 +8894,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs872",
+          "name": "get-abs930",
           "request": {
             "method": "GET",
             "header": [
@@ -8972,7 +8972,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs873",
+          "name": "get-abs931",
           "request": {
             "method": "GET",
             "header": [
@@ -9442,7 +9442,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs874",
+          "name": "get-abs932",
           "request": {
             "method": "GET",
             "header": [
@@ -9912,7 +9912,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs875",
+          "name": "get-abs933",
           "request": {
             "method": "GET",
             "header": [
@@ -10322,7 +10322,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs876",
+          "name": "get-abs934",
           "request": {
             "method": "GET",
             "header": [
@@ -11638,7 +11638,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs877",
+          "name": "get-abs935",
           "request": {
             "method": "GET",
             "header": [
@@ -11716,7 +11716,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs878",
+          "name": "get-abs936",
           "request": {
             "method": "GET",
             "header": [
@@ -12186,7 +12186,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs879",
+          "name": "get-abs937",
           "request": {
             "method": "GET",
             "header": [
@@ -12656,7 +12656,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs880",
+          "name": "get-abs938",
           "request": {
             "method": "GET",
             "header": [
@@ -13066,7 +13066,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs881",
+          "name": "get-abs939",
           "request": {
             "method": "GET",
             "header": [
@@ -13870,7 +13870,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13931,7 +13931,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14264,7 +14264,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14334,7 +14334,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14382,7 +14382,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs882",
+          "name": "get-abs940",
           "request": {
             "method": "GET",
             "header": [
@@ -14460,7 +14460,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs883",
+          "name": "get-abs941",
           "request": {
             "method": "GET",
             "header": [
@@ -14754,7 +14754,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14822,7 +14822,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14930,7 +14930,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs884",
+          "name": "get-abs942",
           "request": {
             "method": "GET",
             "header": [
@@ -15224,7 +15224,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15292,7 +15292,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15400,7 +15400,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs885",
+          "name": "get-abs943",
           "request": {
             "method": "GET",
             "header": [
@@ -15694,7 +15694,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15764,7 +15764,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15810,7 +15810,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs886",
+          "name": "get-abs944",
           "request": {
             "method": "GET",
             "header": [
@@ -16164,7 +16164,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16232,7 +16232,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"subnonexistent000001\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17126,7 +17126,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs887",
+          "name": "get-abs945",
           "request": {
             "method": "GET",
             "header": [
@@ -17204,7 +17204,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs888",
+          "name": "get-abs946",
           "request": {
             "method": "GET",
             "header": [
@@ -17674,7 +17674,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs889",
+          "name": "get-abs947",
           "request": {
             "method": "GET",
             "header": [
@@ -18144,7 +18144,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs890",
+          "name": "get-abs948",
           "request": {
             "method": "GET",
             "header": [
@@ -18554,7 +18554,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get-abs891",
+          "name": "get-abs949",
           "request": {
             "method": "GET",
             "header": [

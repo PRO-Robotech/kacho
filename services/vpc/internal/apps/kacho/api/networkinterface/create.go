@@ -65,6 +65,24 @@ type CreateNetworkInterfaceUseCase struct {
 	projectClient ProjectClient
 	opsRepo       operations.Repo
 	registrar     fgaregister.Registrar
+	bandwidth     domain.BandwidthLimitPolicy
+}
+
+// WithBandwidthLimitPolicy подключает то, что ПОСАДКА объявила про полосу:
+// умеет ли исполнитель датаплейна ограничивать её на логическом порту и какую
+// величину он гарантирует интерфейсу.
+//
+// Нулевое значение (метод не звали) означает «умение не объявлено», и это
+// намеренно: композиционный корень, забывший провязку, обязан ОТВЕРГАТЬ поле, а
+// не принимать его молча. Обратная полярность была бы удобнее и неверна по
+// существу — она даёт «принято-и-проигнорировано» ровно там, где его нельзя
+// заметить.
+//
+// Значение читается ЗДЕСЬ же, на пути запроса, тем же предикатом, что и в
+// проверке при старте: «страж пропустил» ⟺ «поле принимается» — по построению.
+func (u *CreateNetworkInterfaceUseCase) WithBandwidthLimitPolicy(p domain.BandwidthLimitPolicy) *CreateNetworkInterfaceUseCase {
+	u.bandwidth = p
+	return u
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar (Decision 2): после
@@ -107,12 +125,27 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	if err := validateNICAddressCardinality(n.V4AddressIDs, n.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Форма ссылок на адреса — СИНХРОННО, до создания Operation и до любого чтения:
+	// идентификатор задаёт вызывающий, и его негодность видна без обращения к БД.
+	// Без этой ветки мусорный идентификатор доезжал до чтения и возвращался
+	// контракт-тоном ОТСУТСТВИЯ РЕСУРСА («address zzz not found») — то есть
+	// утверждением об объекте на строку, которая объектом быть не может.
+	if err := validateNICAddressRefIDs(n.V4AddressIDs, n.V6AddressIDs); err != nil {
+		return nil, err
+	}
 	// Потолок числа групп — СИНХРОННО, до создания Operation и до любого чтения:
 	// величину задаёт вызывающий, и она определяет стоимость запроса. Проверка
 	// принадлежности каждой группы идёт позже, в writer-TX (там она обязана быть
 	// сериализована с удалением группы), но она уже не может быть вызвана с
 	// массивом произвольной длины.
 	if err := validateNICSecurityGroupCardinality(n.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
+	// Ограничение полосы — СИНХРОННО, до создания Operation: величину задаёт
+	// вызывающий, и её негодность видна без обращения к БД и без вызова соседа.
+	// Отдав отказ в асинхронную часть, мы вернули бы вызывающему успешно созданную
+	// операцию на настройку, которая не принята.
+	if err := validateNICBandwidthLimit(u.bandwidth, n.BandwidthLimitMbps); err != nil {
 		return nil, err
 	}
 	// Привязка интерфейса к машине — НЕ исход публичного создания. Инвариант
@@ -183,16 +216,40 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		return nil, serviceerr.MapRepoErr(rerr)
 	}
 	parentSub, serr := rd.Subnets().Get(ctx, n.SubnetID)
+	var parentNetDefaultSG string
+	if serr == nil {
+		// НАСЛЕДОВАНИЕ ГРУППЫ ПО УМОЛЧАНИЮ (обещание контракта, у которого не было
+		// исполнителя).
+		//
+		// Комментарий поля `security_group_ids` обещает: «Дефолт при создании —
+		// default_security_group_id сети (наследуется); можно переопределить». Кода,
+		// который бы это делал, не существовало: интерфейс с пустым набором получал
+		// пустой набор, а по закрытой в обе стороны модели это означает «не
+		// разрешено ничего». То есть обещанное умолчание работало ПРОТИВОПОЛОЖНО
+		// обещанию — и обнаруживалось это не отказом, а тишиной на трафике.
+		//
+		// Сеть читается в ТОЙ ЖЕ Reader-TX, что и подсеть: отдельная транзакция
+		// давала бы второй снимок, и между ними сеть могла бы сменить группу.
+		if net, nerr := rd.Networks().Get(ctx, parentSub.NetworkID); nerr == nil {
+			parentNetDefaultSG = net.DefaultSecurityGroupID
+		}
+	}
 	_ = rd.Close()
 	if serr != nil {
 		return nil, serviceerr.MapRepoErr(serr)
 	}
 	// BOLA-guard: parent Subnet обязана принадлежать проекту вызывающего — иначе
 	// NIC создавался бы в чужой подсети (cross-project reference). Ответ — тот же
-	// NotFound, что для несуществующего subnet (без existence-oracle: mismatch
-	// неотличим от «нет такого» — `serviceerr.MapRepoErr(repo.ErrNotFound)`).
+	// NotFound, что для несуществующего subnet.
+	//
+	// Текст выписан по владельцу подсети (`repo/kacho/pg/subnet.go` — `"%w: Subnet %s
+	// not found"`), а не собран `serviceerr.MapRepoErr(repo.ErrNotFound)`, как стояло
+	// прежде: голый sentinel даёт «not found» БЕЗ имени и идентификатора, то есть
+	// отказ читался ОТЛИЧИМО от настоящего промаха — а различимый текст и есть тот
+	// оракул существования, который скрытие должно было закрыть. Прежний комментарий
+	// заявлял неотличимость, которой в коде не было.
 	if parentSub.ProjectID != n.ProjectID {
-		return nil, serviceerr.MapRepoErr(repo.ErrNotFound)
+		return nil, status.Errorf(codes.NotFound, "Subnet %s not found", n.SubnetID)
 	}
 	st := domain.NIStatusAvailable
 	usedByType, usedByID := "", ""
@@ -205,10 +262,12 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		SubnetID:         n.SubnetID,
 		V4AddressIDs:     n.V4AddressIDs,
 		V6AddressIDs:     n.V6AddressIDs,
-		SecurityGroupIDs: n.SecurityGroupIDs,
+		SecurityGroupIDs: inheritedSecurityGroups(n.SecurityGroupIDs, parentNetDefaultSG),
 		UsedByType:       usedByType,
 		UsedByID:         usedByID,
 		Status:           st,
+
+		BandwidthLimitMbps: n.BandwidthLimitMbps,
 	}
 	// MAC аллоцируется здесь и больше не меняется на протяжении жизни NIC.
 	// При cloud-wide UNIQUE-collision генерируем новый MAC и повторяем Insert.
@@ -245,7 +304,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		}
 		// Validate + attach address-refs в этой writer-TX (используем w.Addresses(),
 		// а не отдельный addressRepo). Ошибка attach — не MAC-collision → Abort + return.
-		if aerr := attachNICAddresses(ctx, w.Addresses(), niID, string(n.Name), n.SubnetID, n.V4AddressIDs, n.V6AddressIDs); aerr != nil {
+		if aerr := attachNICAddresses(ctx, w.Addresses(), niID, string(n.Name), n.ProjectID, n.SubnetID, n.V4AddressIDs, n.V6AddressIDs); aerr != nil {
 			w.Abort()
 			return nil, aerr
 		}
@@ -299,17 +358,56 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	return nil, status.Errorf(codes.Internal, "could not allocate unique MAC after %d attempts", niMacRetryAttempts)
 }
 
-// validateNICAddressRef проверяет, что Address id существует, имеет ожидаемую
-// IP-версию, (для internal) лежит в подсети nicSubnet и не занят. Свободная
-// функция поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX) — общая
-// для Create и Update. При нарушении возвращает gRPC-status.
-func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicSubnet string, want domain.IpVersion) error {
+// nicAddressMiss — ЕДИНСТВЕННЫЙ ответ на «названный адрес не резолвится как СВОЙ»:
+// строки нет вовсе либо она принадлежит другому проекту. Форма выписана здесь по
+// владельцу (`internal/repo/kacho/pg/address.go` — `"%w: Address %s not found"` под
+// `ErrNotFound`), а не собрана из внутренних имён: отказ обязан читаться ПОБАЙТОВО
+// как настоящий промах владельца, иначе по различию текстов устанавливают, что
+// чужой адрес существует.
+//
+// Код — NotFound: Address принадлежит vpc, значит это полоса direct-read
+// («не нашёл СВОЁ»), а не peer-validate (api-conventions.md §By-lane code-split).
+func nicAddressMiss(id string) error {
+	return status.Errorf(codes.NotFound, "Address %s not found", id)
+}
+
+// validateNICAddressRef — годна ли названная ссылка на адрес для ЭТОГО интерфейса.
+// Свободная функция поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX) —
+// общая для Create и Update. При нарушении возвращает gRPC-status.
+//
+// # Порядок проверок несущий, а не косметический
+//
+// форма → принадлежность проекту → существование → состояние.
+//
+//  1. **Форма** (`validateNICAddressRefID`) — до любого чтения. Иначе явный мусор
+//     («zzz») получает контракт-тон ОТСУТСТВИЯ РЕСУРСА на строку, которая адресом
+//     быть не может, а пустая строка — тот же тон с вырезанным id.
+//  2. **Принадлежность и существование — ОДНА полоса ответа.** Адрес чужого проекта
+//     и отсутствующий адрес отвечают одним и тем же `nicAddressMiss(id)`: различие
+//     между ними и есть оракул существования. Технически принадлежность узнаётся
+//     только чтением строки, поэтому в коде чтение стоит раньше сверки — но НАРУЖУ
+//     обе ветви неразличимы, и именно это утверждает проба.
+//  3. **Состояние** (семейство, подсеть, занятость) — только для адреса СВОЕГО
+//     проекта, и здесь различие исходов законно и полезно: это диагностика по
+//     собственному объекту. Прежняя редакция отвечала этими же четырьмя текстами
+//     на ЛЮБОЙ адрес облака, то есть сообщала посторонним семейство чужого адреса,
+//     идентификатор его подсети и его занятость. Текст «уже занят» сохранён именно
+//     потому, что теперь он касается только своего адреса: скрыть его значило бы
+//     заставить владельца гадать, почему его собственный свободный на вид адрес не
+//     привязывается.
+func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicProject, nicSubnet string, want domain.IpVersion) error {
+	if err := validateNICAddressRefID(want, id); err != nil {
+		return err
+	}
 	a, err := ar.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return status.Errorf(codes.InvalidArgument, "address %s not found", id)
+			return nicAddressMiss(id)
 		}
 		return serviceerr.MapRepoErr(err)
+	}
+	if a.ProjectID != nicProject {
+		return nicAddressMiss(id)
 	}
 	switch want {
 	case domain.IpVersionIPv4:
@@ -337,14 +435,18 @@ func validateNICAddressRef(ctx context.Context, ar AddressRepo, id, nicSubnet st
 // v4/v6 address id поверх любого AddressRepo (в т.ч. `w.Addresses()` writer-TX).
 // На ошибке НЕ компенсирует — это решает caller (writer-TX Abort у Update;
 // detachNICAddresses у Create). Общая для Create/Update (убрана дупликация).
-func attachNICAddresses(ctx context.Context, ar AddressRepo, nicID, nicName, nicSubnet string, v4IDs, v6IDs []string) error {
+//
+// `nicProject` — проект ИНТЕРФЕЙСА, а не присланное вызывающим значение: у Create
+// это проверенный проект запроса, у Update — проект уже существующей строки. Адрес
+// другого проекта отвергается как отсутствующий (см. `validateNICAddressRef`).
+func attachNICAddresses(ctx context.Context, ar AddressRepo, nicID, nicName, nicProject, nicSubnet string, v4IDs, v6IDs []string) error {
 	for _, id := range v4IDs {
-		if err := validateNICAddressRef(ctx, ar, id, nicSubnet, domain.IpVersionIPv4); err != nil {
+		if err := validateNICAddressRef(ctx, ar, id, nicProject, nicSubnet, domain.IpVersionIPv4); err != nil {
 			return err
 		}
 	}
 	for _, id := range v6IDs {
-		if err := validateNICAddressRef(ctx, ar, id, nicSubnet, domain.IpVersionIPv6); err != nil {
+		if err := validateNICAddressRef(ctx, ar, id, nicProject, nicSubnet, domain.IpVersionIPv6); err != nil {
 			return err
 		}
 	}
@@ -368,4 +470,25 @@ func detachNICAddresses(ctx context.Context, ar AddressRepo, ids []string) error
 		}
 	}
 	return nil
+}
+
+// inheritedSecurityGroups — набор групп интерфейса: явный выбор вызывающего сильнее,
+// пустой набор наследует группу по умолчанию своей сети.
+//
+// Почему помощник, а не выражение на месте: свойство «пустое означает наследование, а
+// не пустоту» — часть контракта, и оно обязано быть названо один раз. Выражение на
+// месте пришлось бы повторить в `Update`, где действует то же правило, и две копии
+// разошлись бы на первой же правке.
+//
+// Пустая группа по умолчанию (сеть заведена до того, как её создание стало
+// безусловным) наследования не даёт: подставлять пустую строку в набор ссылок значило
+// бы завести висячую ссылку вместо отсутствия.
+func inheritedSecurityGroups(explicit []string, networkDefault string) []string {
+	if len(explicit) > 0 {
+		return explicit
+	}
+	if networkDefault == "" {
+		return explicit
+	}
+	return []string{networkDefault}
 }

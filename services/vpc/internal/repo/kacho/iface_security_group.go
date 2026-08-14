@@ -30,6 +30,18 @@ type SecurityGroupReaderIface interface {
 	// обращение к БД на элемент массива, размер которого задаёт вызывающий.
 	GetMany(ctx context.Context, ids []string) (map[string]*SecurityGroupRecord, error)
 	List(ctx context.Context, f SecurityGroupFilter, p Pagination) ([]*SecurityGroupRecord, string, error)
+	// ReferrersFor — потребители групп («кем используется») ПАКЕТНО, по набору
+	// id: страница групп стоит одного запроса, а не одного на строку.
+	//
+	// Ответ по каждой группе ОГРАНИЧЕН `SecurityGroupUsedByFetch` записями —
+	// пределом плюс одной. Лишняя запись и есть признак «есть ещё» (см.
+	// `SecurityGroupUsedByLimit`); отдавать весь набор нельзя, число
+	// интерфейсов, держащих группу, ничем не ограничено.
+	//
+	// Границу проекта держит САМ ЗАПРОС: потребитель из другого проекта в ответ
+	// не попадает, поэтому группа с чужим потребителем неотличима от группы без
+	// потребителей вовсе. Группы без потребителей в карте отсутствуют.
+	ReferrersFor(ctx context.Context, sgIDs []string) (map[string][]SecurityGroupReferrer, error)
 }
 
 // SecurityGroupWriterIface — write-операции плюс read (writer видит свои writes).

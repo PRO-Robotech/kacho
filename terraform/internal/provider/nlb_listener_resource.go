@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -36,7 +35,6 @@ type listenerModel struct {
 	Protocol            types.String `tfsdk:"protocol"`
 	Port                types.Int64  `tfsdk:"port"`
 	TargetPort          types.Int64  `tfsdk:"target_port"`
-	ProxyProtocolV2     types.Bool   `tfsdk:"proxy_protocol_v2"`
 	TargetGroupID       types.String `tfsdk:"target_group_id"`
 	ResolvedBackendPort types.Int64  `tfsdk:"resolved_backend_port"`
 	Status              types.String `tfsdk:"status"`
@@ -109,9 +107,6 @@ func (r *listenerResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					"По контракту незаданный порт цели наследуется от группы целей. Край на " +
 					"сегодня так не делает и отвергает создание — вдобавок называя в отказе " +
 					"поле `port`, а не `target_port`. Задавайте явно.\n:::"},
-			"proxy_protocol_v2": schema.BoolAttribute{Optional: true, Computed: true,
-				Default:             booldefault.StaticBool(false),
-				MarkdownDescription: "Добавлять ли заголовок PROXY protocol v2."},
 			"target_group_id": schema.StringAttribute{Optional: true, Computed: true,
 				MarkdownDescription: "Группа целей. Обязана быть в том же регионе, что и " +
 					"балансировщик, — иначе край откажет."},
@@ -137,7 +132,6 @@ type listenerWire struct {
 	Protocol            string            `json:"protocol"`
 	Port                any               `json:"port"`
 	TargetPort          any               `json:"targetPort"`
-	ProxyProtocolV2     bool              `json:"proxyProtocolV2"`
 	TargetGroupID       string            `json:"targetGroupId"`
 	ResolvedBackendPort any               `json:"resolvedBackendPort"`
 	Status              string            `json:"status"`
@@ -159,7 +153,6 @@ func applyListener(ctx context.Context, m *listenerModel, raw []byte) error {
 	m.Protocol = types.StringValue(w.Protocol)
 	m.Port = types.Int64Value(numOf(w.Port))
 	m.TargetPort = types.Int64Value(numOf(w.TargetPort))
-	m.ProxyProtocolV2 = types.BoolValue(w.ProxyProtocolV2)
 	m.TargetGroupID = types.StringValue(w.TargetGroupID)
 	m.ResolvedBackendPort = types.Int64Value(numOf(w.ResolvedBackendPort))
 	m.Status = types.StringValue(w.Status)
@@ -176,15 +169,14 @@ func (r *listenerResource) Create(ctx context.Context, req resource.CreateReques
 	}
 
 	body := &nlbv1.CreateListenerRequest{
-		LoadBalancerId:  plan.LoadBalancerID.ValueString(),
-		Name:            plan.Name.ValueString(),
-		Description:     plan.Description.ValueString(),
-		Labels:          mapFromTF(ctx, plan.Labels),
-		Protocol:        nlbv1.Listener_Protocol(enumOf(plan.Protocol, nlbv1.Listener_Protocol_value)),
-		Port:            plan.Port.ValueInt64(),
-		TargetPort:      plan.TargetPort.ValueInt64(),
-		ProxyProtocolV2: plan.ProxyProtocolV2.ValueBool(),
-		TargetGroupId:   plan.TargetGroupID.ValueString(),
+		LoadBalancerId: plan.LoadBalancerID.ValueString(),
+		Name:           plan.Name.ValueString(),
+		Description:    plan.Description.ValueString(),
+		Labels:         mapFromTF(ctx, plan.Labels),
+		Protocol:       nlbv1.Listener_Protocol(enumOf(plan.Protocol, nlbv1.Listener_Protocol_value)),
+		Port:           plan.Port.ValueInt64(),
+		TargetPort:     plan.TargetPort.ValueInt64(),
+		TargetGroupId:  plan.TargetGroupID.ValueString(),
 	}
 
 	id, err := awaitCreate(ctx, r.c, listenersPath, "listenerId", "kacho_nlb_listener",
@@ -271,10 +263,6 @@ func (r *listenerResource) Update(ctx context.Context, req resource.UpdateReques
 	if !plan.Labels.Equal(state.Labels) {
 		body.Labels = mapFromTF(ctx, plan.Labels)
 		paths = append(paths, "labels")
-	}
-	if !plan.ProxyProtocolV2.Equal(state.ProxyProtocolV2) {
-		body.ProxyProtocolV2 = plan.ProxyProtocolV2.ValueBool()
-		paths = append(paths, "proxy_protocol_v2")
 	}
 	if !plan.TargetGroupID.Equal(state.TargetGroupID) {
 		body.TargetGroupId = plan.TargetGroupID.ValueString()

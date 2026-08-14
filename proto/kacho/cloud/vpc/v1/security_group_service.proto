@@ -34,7 +34,7 @@ service SecurityGroupService {
     // Retrieves the list of SecurityGroup resources in the specified folder.
     rpc List (ListSecurityGroupsRequest) returns (ListSecurityGroupsResponse) {
       option (google.api.http) = { get: "/vpc/v1/securityGroups" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_groupses.list";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_groups.list";
     // Top-level List is gated by the READ TIER on the parent project, not by the
     // project's own `v_list` verb. In the model those are independent sets, and
     // `project#v_list` means object-level access to the PROJECT ITSELF — the model
@@ -91,7 +91,7 @@ service SecurityGroupService {
             metadata: "UpdateSecurityGroupMetadata"
             response: "SecurityGroup"
         };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_ruleses.updateRules";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_rules.updateRules";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_security_group"
@@ -135,7 +135,7 @@ service SecurityGroupService {
     // Lists operations for the specified security groups.
     rpc ListOperations (ListSecurityGroupOperationsRequest) returns (ListSecurityGroupOperationsResponse) {
       option (google.api.http) = { get: "/vpc/v1/securityGroups/{security_group_id}/operations" };
-    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_operationses.listOperations";
+    option (kacho.iam.authz.v1.permission)        = "vpc.security_group_operations.listOperations";
     option (kacho.iam.authz.v1.required_relation) = "v_list";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "vpc_security_group"
@@ -215,6 +215,19 @@ message CreateSecurityGroupRequest {
 }
 
 message SecurityGroupRuleSpec {
+    // 9 — predefined_target, СНЯТО с контракта (ветвь `oneof target`).
+    //
+    // Свободная строка без словаря: платформа не называла ни одного значения,
+    // сервис не ветвился ни на одном, и вызывающий не мог узнать, что в ней
+    // написать. Ввести закрытый словарь значило бы завести подсистему именованных
+    // назначений — она заводится своим доменом со своей приёмкой, а не полем в
+    // чужом сообщении.
+    //
+    // Резервирование стоит НА СООБЩЕНИИ, а не в `oneof`: язык не допускает его
+    // внутри `oneof`, а нумерация полей у них общая — значит номер защищён.
+    reserved 9;
+    reserved "predefined_target";
+
     // Description of the security rule.
     string description = 1 [(length) = "<=256"];
 
@@ -246,10 +259,11 @@ message SecurityGroupRuleSpec {
 
         // ID of the security group to add rule to.
         string security_group_id = 8;
-        
-        // Predefined target. See [security groups rules](/docs/vpc/concepts/security-groups#security-groups-rules) for more information.
-        string predefined_target = 9;
-        // string subnet_id = .. ;
+
+        // ID of the CidrGroup whose members this rule allows traffic to or from.
+        // Same-project and non-empty are both required — see the field of the
+        // same name on SecurityGroupRule.
+        string cidr_group_id = 10;
     }
 }
 
@@ -284,6 +298,11 @@ message UpdateSecurityGroupRequest {
     map<string, string> labels = 5 [(size) = "<=64", (length) = "<=63", (pattern) = "[-_./\\@0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"];
 
     // Updated rule list. All existing rules will be replaced with given list.
+    //
+    // Замена целиком — это одновременное СНЯТИЕ каждого правила, которого в новом
+    // списке нет, поэтому она обрывает соединения, которые те правила разрешали
+    // (следствие описано целиком у `SecurityGroup.rules`). Неполный список стирает
+    // остальные правила молча: для дельт есть `SecurityGroupService.UpdateRules`.
     repeated SecurityGroupRuleSpec rule_specs = 6;
 }
 
@@ -300,6 +319,10 @@ message UpdateSecurityGroupRulesRequest {
     string security_group_id = 1 [(required) = true];
 
     // List of rules IDs to delete.
+    //
+    // Удаление правила обрывает соединения, которые оно разрешало (следствие описано
+    // целиком у `SecurityGroup.rules`): эффект наблюдается клиентами немедленно, а не
+    // начиная со следующего соединения.
     repeated string deletion_rule_ids = 2;
 
     // Security rules specifications.

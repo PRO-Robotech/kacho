@@ -24,7 +24,7 @@ import (
 func TestNetwork_VPC_1_14_OpInResponse(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, true)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 
 	op, err := uc.Execute(context.Background(), domain.Network{
 		ProjectID:      "prj-b3n7k1x9q2m5t8",
@@ -58,7 +58,7 @@ func TestNetwork_VPC_1_14_OpInResponse(t *testing.T) {
 func TestNetwork_VPC_1_15_Update_OpInResponse(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	update := NewUpdateNetworkUseCase(kr, or)
 
 	cOp, err := create.Execute(context.Background(), domain.Network{ProjectID: "f1", Name: domain.RcNameVPC("core-prod")})
@@ -89,7 +89,7 @@ func TestNetwork_VPC_1_15_Update_OpInResponse(t *testing.T) {
 func TestNetwork_VPC_1_19_Delete_OpInResponse(t *testing.T) {
 	kr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
-	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false)
+	create := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or)
 	del := NewDeleteNetworkUseCase(kr, repomock.NewSubnetRepo(), repomock.NewRouteTableRepo(), nil, or)
 
 	cOp, err := create.Execute(context.Background(), domain.Network{ProjectID: "f1", Name: domain.RcNameVPC("to-del")})

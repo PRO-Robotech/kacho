@@ -137,9 +137,6 @@ func TestRestRouter_Resolve_RegeneratedCoverage(t *testing.T) {
 		method, path, wantFQN string
 	}{
 		// VPC RouteTable mutation verbs (kebab-case suffix-actions).
-		{"POST", "/vpc/v1/routeTables/rtb0000000000000001:add-routes", "kacho.cloud.vpc.v1.RouteTableService/AddRoutes"},
-		{"POST", "/vpc/v1/routeTables/rtb0000000000000001:remove-routes", "kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes"},
-		{"POST", "/vpc/v1/routeTables/rtb0000000000000001:update-route", "kacho.cloud.vpc.v1.RouteTableService/UpdateRoute"},
 		// VPC InternalNetworkService read (internal-only `:internal` action).
 		{"GET", "/vpc/v1/networks/enp0000000000000001:internal", "kacho.cloud.vpc.v1.InternalNetworkService/GetNetwork"},
 		// IAM SAKeyService — service-account key subpaths under the SA item.

@@ -102,11 +102,6 @@ func newSubnet() domain.Subnet {
 		V4CidrBlocks:  []string{"10.0.0.0/24", "10.0.1.0/24"},
 		V6CidrBlocks:  []string{"2001:db8::/64"},
 		RouteTableID:  "enp3",
-		DhcpOptions: &domain.DhcpOptions{
-			DomainName:        "example.com",
-			DomainNameServers: []string{"8.8.8.8"},
-			NtpServers:        []string{"pool.ntp.org"},
-		},
 	}
 }
 
@@ -119,19 +114,10 @@ func TestSubnet_Equal(t *testing.T) {
 	swapped.V4CidrBlocks = []string{"10.0.1.0/24", "10.0.0.0/24"}
 	assert.False(t, base.Equal(swapped), "v4_cidr_blocks order-sensitive")
 
-	// nil DhcpOptions vs non-nil
-	noDhcp := newSubnet()
-	noDhcp.DhcpOptions = nil
-	assert.False(t, base.Equal(noDhcp))
-
-	// diff DhcpOptions.DomainName
-	diffDhcp := newSubnet()
-	diffDhcp.DhcpOptions = &domain.DhcpOptions{
-		DomainName:        "other.example.com",
-		DomainNameServers: []string{"8.8.8.8"},
-		NtpServers:        []string{"pool.ntp.org"},
-	}
-	assert.False(t, base.Equal(diffDhcp))
+	// diff RouteTableID → not equal
+	diffRT := newSubnet()
+	diffRT.RouteTableID = "enp4"
+	assert.False(t, base.Equal(diffRT), "route_table_id participates in equality")
 
 	// diff PlacementType (ZONAL vs REGIONAL) → not equal
 	diffPlacement := newSubnet()
@@ -144,25 +130,12 @@ func TestSubnet_Equal(t *testing.T) {
 	diffRegion := newSubnet()
 	diffRegion.RegionID = "region-2"
 	assert.False(t, base.Equal(diffRegion), "region_id participates in equality")
-
-	// both DhcpOptions nil → equal
-	a := newSubnet()
-	b := newSubnet()
-	a.DhcpOptions = nil
-	b.DhcpOptions = nil
-	assert.True(t, a.Equal(b))
 }
 
-func TestDhcpOptions_Equal(t *testing.T) {
-	a := &domain.DhcpOptions{DomainName: "x", DomainNameServers: []string{"1.1.1.1"}}
-	b := &domain.DhcpOptions{DomainName: "x", DomainNameServers: []string{"1.1.1.1"}}
-	assert.True(t, a.Equal(b))
-
-	var nilOpts *domain.DhcpOptions
-	assert.True(t, nilOpts.Equal(nil))
-	assert.False(t, a.Equal(nil))
-	assert.False(t, nilOpts.Equal(a))
-}
+// Здесь стояли ветви равенства по параметрам DHCP и TestDhcpOptions_Equal — сняты
+// вместе с типом (vpc-миграция 0029). Взамен добавлена ветвь по route_table_id:
+// прежде поле в отрицаниях этой пробы не участвовало, хотя в Equal входит, — то
+// есть снятие ветвей не должно было уменьшить число проверяемых полей.
 
 // ---- Address.Equal -------------------------------------------------------
 
@@ -182,51 +155,11 @@ func newAddress() domain.Address {
 			Address:       "203.0.113.5",
 			ZoneID:        "zone-a",
 			AddressPoolID: "apl1",
-			Requirements: &domain.AddressRequirements{
-				DdosProtectionProvider: "qrator",
-			},
 		},
 		UsedBy: []*domain.AddressReference{
 			{AddressID: "e9b2", ReferrerType: "compute_instance", ReferrerID: "ci1", AttachedAt: t0},
 		},
 	}
-}
-
-func TestAddress_Equal(t *testing.T) {
-	base := newAddress()
-	assert.True(t, base.Equal(newAddress()))
-
-	// diff ExternalIpv4.Address
-	diffIp := newAddress()
-	diffIp.ExternalIpv4.Address = "203.0.113.6"
-	assert.False(t, base.Equal(diffIp))
-
-	// diff Requirements
-	diffReq := newAddress()
-	diffReq.ExternalIpv4.Requirements = &domain.AddressRequirements{DdosProtectionProvider: "other"}
-	assert.False(t, base.Equal(diffReq))
-
-	// diff UsedBy referrer
-	diffUsed := newAddress()
-	diffUsed.UsedBy = []*domain.AddressReference{
-		{AddressID: "e9b2", ReferrerType: "compute_instance", ReferrerID: "ciOTHER"},
-	}
-	assert.False(t, base.Equal(diffUsed))
-
-	// diff UsedBy owned (единственное отличие — owned-флаг)
-	diffOwned := newAddress()
-	diffOwned.UsedBy[0].Owned = true
-	assert.False(t, base.Equal(diffOwned))
-
-	// empty UsedBy → not equal
-	emptyUsed := newAddress()
-	emptyUsed.UsedBy = nil
-	assert.False(t, base.Equal(emptyUsed))
-
-	// diff Reserved bool
-	diffRes := newAddress()
-	diffRes.Reserved = false
-	assert.False(t, base.Equal(diffRes))
 }
 
 func TestExternalIpv4Spec_Equal_Nil(t *testing.T) {
@@ -343,7 +276,7 @@ func TestGateway_Equal(t *testing.T) {
 	base := domain.Gateway{
 		ID: "enp6", ProjectID: "fld1", Name: "gw1", Description: "d",
 		Labels:      domain.LabelsFromMap(map[string]string{"env": "prod"}),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		GatewayType: domain.GatewayTypeNat,
 	}
 	assert.True(t, base.Equal(base))
 
@@ -418,3 +351,6 @@ func TestNetworkInterface_Equal(t *testing.T) {
 	b.Labels = domain.LabelsFromMap(map[string]string{"b": "2", "a": "1"})
 	assert.True(t, a.Equal(b))
 }
+
+// Проба равенства требований к внешнему адресу СНЯТА вместе с типом: оба его поля сняты
+// с контракта, и пустая структура сравнивать нечего.

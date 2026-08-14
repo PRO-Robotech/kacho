@@ -32,9 +32,11 @@ async) одинакова для gRPC и REST; примеры ниже — в RE
 
 ## Ресурсы и их назначение
 
-Kachō VPC управляет **8 типами ресурсов** (7 публичных + admin-only `AddressPool`). Все —
+Kachō VPC управляет **9 типами ресурсов** (8 публичных + admin-only `AddressPool`). Все —
 плоские (flat): domain-поля на верхнем уровне сообщения, без K8s-envelope. Каждый ресурс
-project-level (обязательный `projectId`), у каждого — свой 3-символьный ID-префикс.
+project-level (обязательный `projectId`), у каждого — свой ID-префикс: у ресурсов первой
+волны он трёхсимвольный и слитный (`net…`), у заводимых сейчас — отделён дефисом
+(`cdg-…`). Обе формы валидны; тип ресурса читается по префиксу в любой из них.
 
 <table>
   <thead><tr><th>Ресурс</th><th>Префикс</th><th>Бизнес-назначение</th><th>Поверхность</th></tr></thead>
@@ -44,7 +46,8 @@ project-level (обязательный `projectId`), у каждого — св
     <tr><td><strong>Address</strong></td><td><code>adr</code></td><td>Выделенный IP — внутренний (из подсети) или внешний (из пула); основа адресации нагрузок</td><td>public</td></tr>
     <tr><td><strong>RouteTable</strong></td><td><code>rtb</code></td><td>Набор маршрутов сети; ассоциируется с подсетями (явно или авто)</td><td>public</td></tr>
     <tr><td><strong>SecurityGroup</strong></td><td><code>sgr</code></td><td>Правила сетевого доступа (ingress/egress) к нагрузке; принадлежит сети</td><td>public</td></tr>
-    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Шлюз shared-egress на уровне проекта</td><td>public</td></tr>
+    <tr><td><strong>CidrGroup</strong></td><td><code>cdg-</code></td><td>Именованный набор префиксов: перечень сетей, на который ссылаются правила групп безопасности вместо своей копии</td><td>public</td></tr>
+    <tr><td><strong>Gateway</strong></td><td><code>gtw</code></td><td>Выход наружу: трансляция исходящего IPv4 либо «только исход» IPv6; привязан к подсети</td><td>public</td></tr>
     <tr><td><strong>NetworkInterface</strong></td><td><code>nic</code></td><td>Сетевой интерфейс нагрузки: связывает адрес(а), группы безопасности и MAC (≤1 IPv4 / ≤1 IPv6)</td><td>public</td></tr>
     <tr><td><strong>AddressPool</strong></td><td><code>apl</code></td><td>Глобальный пул CIDR для аллокации внешних адресов — администрирование IPAM</td><td><strong>internal</strong></td></tr>
   </tbody>
@@ -52,8 +55,9 @@ project-level (обязательный `projectId`), у каждого — св
 
 Постраничный справочник: [Network](/api/network), [Subnet](/api/subnet),
 [Address](/api/address), [RouteTable](/api/route-table),
-[SecurityGroup](/api/security-group), [Gateway](/api/gateway),
-[NetworkInterface](/api/network-interface), [AddressPool](/api/address-pool).
+[SecurityGroup](/api/security-group), [CidrGroup](/api/cidr-group),
+[Gateway](/api/gateway), [NetworkInterface](/api/network-interface),
+[AddressPool](/api/address-pool).
 
 ## Два порта: public (9090) и internal (9091)
 
@@ -63,7 +67,7 @@ project-level (обязательный `projectId`), у каждого — св
 <table>
   <thead><tr><th>Порт</th><th>Listener</th><th>Кто ходит</th><th>Что доступно</th></tr></thead>
   <tbody>
-    <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code> (TLS + JWT)</td><td>Публичные сервисы 7 ресурсов (CRUD + read). Tenant-facing «намерение и результат»</td></tr>
+    <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code> (TLS + JWT)</td><td>Публичные сервисы 8 ресурсов (CRUD + read). Tenant-facing «намерение и результат»</td></tr>
     <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы и admin-UI (cluster-internal)</td><td><code>Internal*</code>-сервисы: IPAM (allocate/free), <code>AddressPool</code>, internal-read; инфра-проекции</td></tr>
   </tbody>
 </table>
@@ -419,6 +423,28 @@ ephemeral Address по значению / подсети). REST использу
 при `Network.Create`.
 :::
 
+### CidrGroupService
+
+<table>
+  <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
+  <tbody>
+    <tr><td><code>Get</code></td><td><code>GET /vpc/v1/cidrGroups/&#123;id&#125;</code></td><td>sync</td></tr>
+    <tr><td><code>List</code></td><td><code>GET /vpc/v1/cidrGroups</code></td><td>sync</td></tr>
+    <tr><td><strong>Create</strong></td><td><code>POST /vpc/v1/cidrGroups</code></td><td>async</td></tr>
+    <tr><td><strong>Update</strong></td><td><code>PATCH /vpc/v1/cidrGroups/&#123;id&#125;</code></td><td>async</td></tr>
+    <tr><td><strong>AddCidrBlocks</strong></td><td><code>POST /vpc/v1/cidrGroups/&#123;id&#125;:add-cidr-blocks</code></td><td>async</td></tr>
+    <tr><td><strong>RemoveCidrBlocks</strong></td><td><code>POST /vpc/v1/cidrGroups/&#123;id&#125;:remove-cidr-blocks</code></td><td>async</td></tr>
+    <tr><td><strong>Delete</strong></td><td><code>DELETE /vpc/v1/cidrGroups/&#123;id&#125;</code></td><td>async</td></tr>
+    <tr><td><code>ListOperations</code></td><td><code>GET /vpc/v1/cidrGroups/&#123;id&#125;/operations</code></td><td>sync</td></tr>
+  </tbody>
+</table>
+
+:::note Состав набора — своими действиями, не через `Update`
+`Update` правит только косметику (`name` / `description` / `labels`); имя поля состава в
+`updateMask` отвергается с текстом, который называет нужное действие. Подробности и границы —
+[CidrGroup](/api/cidr-group).
+:::
+
 ### GatewayService
 
 <table>
@@ -476,6 +502,7 @@ ephemeral Address по значению / подсети). REST использу
 :::tip Дальше
 Конкретные поля, тела запросов, примеры и ресурс-специфичные коды ошибок — на страницах ресурсов:
 [Network](/api/network), [Subnet](/api/subnet), [Address](/api/address),
-[RouteTable](/api/route-table), [SecurityGroup](/api/security-group), [Gateway](/api/gateway),
+[RouteTable](/api/route-table), [SecurityGroup](/api/security-group),
+[CidrGroup](/api/cidr-group), [Gateway](/api/gateway),
 [NetworkInterface](/api/network-interface).
 :::

@@ -57,6 +57,12 @@ type NetworkInterface struct {
 	// internal/apps/kacho/shared/macutil/mac.go.
 	MAC    string
 	Status NetworkInterfaceStatus
+	// BandwidthLimitMbps — верхняя граница полосы, заданная АРЕНДАТОРОМ, Мбит/с.
+	// Ноль (`TenantBandwidthLimitUnset`) — ограничения нет; другого представления
+	// отсутствия у поля нет. Правило приёма (признак профиля исполнителя + оба
+	// края промежутка) живёт в `BandwidthLimitPolicy` — оно зависит от посадки,
+	// поэтому не выразимо в `Validate()` домена, который посадки не знает.
+	BandwidthLimitMbps int64
 }
 
 // macAddressRe — каноническая форма MAC-адреса: lowercase, colon-separated,

@@ -67,6 +67,52 @@ func IsNICIndexCollision(err error) bool {
 	return strings.Contains(err.Error(), NICUsedByIndexUniqueConstraint)
 }
 
+// GatewaySubnetFKConstraint — имя внешнего ключа `gateways.subnet_id →
+// subnets(id)` (миграция 0030). Ссылка own-owned, поэтому её нарушение читается
+// полосой direct-read: NOT_FOUND «Subnet <id> not found», а не generic
+// FailedPrecondition из WrapPgErr.
+const GatewaySubnetFKConstraint = "gateways_subnet_fk"
+
+// AddressSubnetProjectFKConstraint — имя составного внешнего ключа
+// `addresses (project_id, internal_subnet_id) → subnets (project_id, id)`
+// (миграция 0033). Ссылка own-owned, и её нарушение означает ровно одно из двух:
+// подсети нет ИЛИ подсеть принадлежит другому проекту. Оба читаются полосой
+// direct-read — `NOT_FOUND "Subnet <id> not found"`, дословно тем же текстом,
+// каким на отсутствующую подсеть отвечает синхронная проверка в use-case'е.
+//
+// Тон здесь не косметика, а анти-oracle: различимый текст позволял бы отличить
+// «подсеть есть, но чужая» от «подсети нет», то есть отвечал бы на вопрос о
+// чужом проекте (`security.md` §hardening, п.6). Generic-ветка `WrapPgErr` для
+// 23503 («<kind> has dependent resources», FailedPrecondition) здесь неверна
+// вдвойне: и полосой, и смыслом — зависимых ресурсов у вставляемого адреса нет.
+const AddressSubnetProjectFKConstraint = "addresses_subnet_project_fk"
+
+// RouteRefGatewayFKConstraint — имя внешнего ключа
+// `route_table_gateway_refs.gateway_id → gateways(id)` (миграция 0030,
+// автогенерируемое имя Postgres). Нарушение на пути ЗАПИСИ ссылки означает «шлюза
+// с таким id нет» → NOT_FOUND «Gateway <id> not found»; нарушение на пути
+// удаления шлюза означает обратное — «на шлюз ссылается живой маршрут», и его
+// ловит `IsFKViolation` в `gatewayWriter.Delete`.
+const RouteRefGatewayFKConstraint = "route_table_gateway_refs_gateway_id_fkey"
+
+// IsFKViolationOn — нарушение внешнего ключа ИМЕННО названного constraint'а.
+//
+// Отдельная функция, а не сравнение текста у вызывающего: у одного оператора
+// может быть несколько внешних ключей, и «какой-то FK не сошёлся» — это не тот
+// же факт, что «не сошёлся вот этот». Fallback по подстроке оставлен для случая,
+// когда ошибка пришла уже завёрнутой и типизированный pgconn.PgError из цепочки
+// не достаётся, — тот же приём, что у IsNICMacCollision.
+func IsFKViolationOn(err error, constraint string) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23503" && pgErr.ConstraintName == constraint
+	}
+	return IsFKViolation(err) && strings.Contains(err.Error(), constraint)
+}
+
 // IsFKViolation — Postgres foreign_key_violation (SQLSTATE 23503).
 // Возникает на Delete parent с зависимыми child-row (RESTRICT FK).
 // Маппится в gRPC FailedPrecondition ("Network is not empty").

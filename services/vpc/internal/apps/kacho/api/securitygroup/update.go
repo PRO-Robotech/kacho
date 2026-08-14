@@ -42,13 +42,17 @@ type UpdateInput struct {
 type UpdateSecurityGroupUseCase struct {
 	repo      Repo
 	opsRepo   operations.Repo
-	sgReader  SecurityGroupReader // optional; same-network-валидация SG-target rule_specs
+	sgReader  SecurityGroupReader // обязателен и не пуст; см. sgTargetReader
 	registrar fgaregister.Registrar
 }
 
 // NewUpdateSecurityGroupUseCase создает UpdateSecurityGroupUseCase.
+//
+// Порт чтения групп выводится здесь же из обязательного `Repo` — same-network
+// проверка SG-target-правил, приехавших через `rule_specs`, не имеет выключенного
+// состояния.
 func NewUpdateSecurityGroupUseCase(r Repo, opsRepo operations.Repo) *UpdateSecurityGroupUseCase {
-	return &UpdateSecurityGroupUseCase{repo: r, opsRepo: opsRepo}
+	return &UpdateSecurityGroupUseCase{repo: r, opsRepo: opsRepo, sgReader: sgTargetReader(nil, r)}
 }
 
 // WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
@@ -62,11 +66,11 @@ func (u *UpdateSecurityGroupUseCase) WithRegistrar(r fgaregister.Registrar) *Upd
 	return u
 }
 
-// WithSGReader включает same-network-валидацию SG-target правил, переданных
-// через rule_specs в Update (parity с UpdateRules/UpdateRule).
-// nil-reader → проверка пропускается (unit-тесты со scoped wiring).
+// WithSGReader уточняет ИСТОЧНИК чтения групп для same-network-валидации
+// SG-target правил, переданных через rule_specs (parity с UpdateRules/UpdateRule).
+// Проверку он не включает и не выключает — она уже включена конструктором.
 func (u *UpdateSecurityGroupUseCase) WithSGReader(r SecurityGroupReader) *UpdateSecurityGroupUseCase {
-	u.sgReader = r
+	u.sgReader = sgTargetReader(r, u.repo)
 	return u
 }
 
@@ -125,15 +129,19 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 	// Same-network-валидация SG-target правил (parity с UpdateRules): rule_specs,
 	// переданные через Update, не должны указывать на SG из другой сети. network_id
 	// берем у самой редактируемой SG (immutable).
-	if u.sgReader != nil {
-		if verr := validateSGTargetSameNetwork(ctx, u.sgReader, rec.NetworkID, rec.Rules,
-			func(i int) string { return fmt.Sprintf("rule_specs[%d].security_group_id", i) }); verr != nil {
-			return nil, verr
-		}
+	if verr := validateSGTargetSameNetwork(ctx, u.sgReader, rec.NetworkID, rec.Rules,
+		func(i int) string { return fmt.Sprintf("rule_specs[%d].security_group_id", i) }); verr != nil {
+		return nil, verr
 	}
 	updated, err := w.SecurityGroups().Update(ctx, &rec.SecurityGroup)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
+	}
+	// Ссылка правила на именованный набор — ПОСЛЕ записи правил и в этой же
+	// транзакции: см. validateSGTargetCidrGroup о том, почему порядок несущий.
+	if verr := validateSGTargetCidrGroup(ctx, w.CidrGroups(), string(updated.ProjectID), updated.Rules,
+		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); verr != nil {
+		return nil, verr
 	}
 	if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))

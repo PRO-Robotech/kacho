@@ -231,9 +231,22 @@ type CreateSubnetRequest struct {
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the network to create subnet in.
 	NetworkId string `protobuf:"bytes,5,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
-	// Placement discriminator (required; UNSPECIFIED → InvalidArgument). ZONAL →
-	// set zone_id; REGIONAL → set region_id (anycast prefix across the region).
-	// Enforced in the handler (enum-required + zone/region consistency).
+	// Placement discriminator — SERVER-DERIVED, НЕ ВХОД.
+	//
+	// Поле остаётся в запросе, но любое непустое значение ОТВЕРГАЕТСЯ синхронно:
+	// `INVALID_ARGUMENT "placement_type is server-derived; set zone_id or region_id
+	// instead"`. Дискриминатор выводится из того, ЧТО ИЗ ДВУХ задано: `zone_id` → ZONAL,
+	// `region_id` → REGIONAL; оба или ни одного — отказ.
+	//
+	// ПОЧЕМУ ПОЛЕ НЕ СНЯТО, хотя вход всегда отвергается. Снятие дало бы вызывающему,
+	// который его прислал, МОЛЧАЛИВЫЙ сброс: разбор тела на крае отбрасывает неизвестные
+	// ключи, и вместо «так нельзя, задайте зону» он получил бы успех с выведенным не тем
+	// размещением. Явный отказ по имени поля — исход лучше снятия ровно здесь, и это
+	// осознанный выбор из трёх, а не отсрочка.
+	//
+	// Прежний текст этого комментария утверждал ОБРАТНОЕ: «required; UNSPECIFIED →
+	// InvalidArgument… enforced in the handler». Он описывал замысел, которого код не
+	// исполняет ни в одной ветви, и читался чаще прочего — это авторитетное место.
 	PlacementType SubnetPlacementType `protobuf:"varint,13,opt,name=placement_type,json=placementType,proto3,enum=kacho.cloud.vpc.v1.SubnetPlacementType" json:"placement_type,omitempty"`
 	// ID of the availability zone (set iff placement_type == ZONAL).
 	// To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
@@ -1259,12 +1272,12 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"ip_version\x18\x02 \x01(\x0e2\x1d.kacho.cloud.vpc.v1.IpVersionR\tipVersion\x12@\n" +
 	"\n" +
 	"references\x18\x03 \x03(\v2 .kacho.cloud.reference.ReferenceR\n" +
-	"references2\xb7\x10\n" +
+	"references2\xac\x10\n" +
 	"\rSubnetService\x12\xa8\x01\n" +
 	"\x03Get\x12$.kacho.cloud.vpc.v1.GetSubnetRequest\x1a\x1a.kacho.cloud.vpc.v1.Subnet\"_\x8a\xb5\x18\x0fvpc.subnets.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
 	"\n" +
-	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/vpc/v1/subnets/{subnet_id}\x12\xae\x01\n" +
-	"\x04List\x12&.kacho.cloud.vpc.v1.ListSubnetsRequest\x1a'.kacho.cloud.vpc.v1.ListSubnetsResponse\"U\x8a\xb5\x18\x12vpc.subnetses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
+	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/vpc/v1/subnets/{subnet_id}\x12\xac\x01\n" +
+	"\x04List\x12&.kacho.cloud.vpc.v1.ListSubnetsRequest\x1a'.kacho.cloud.vpc.v1.ListSubnetsResponse\"S\x8a\xb5\x18\x10vpc.subnets.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x11\x12\x0f/vpc/v1/subnets\x12\xcf\x01\n" +
 	"\x06Create\x12'.kacho.cloud.vpc.v1.CreateSubnetRequest\x1a .kacho.cloud.operation.Operation\"z\x8a\xb5\x18\x12vpc.subnets.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
@@ -1274,23 +1287,23 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\x06Update\x12'.kacho.cloud.vpc.v1.UpdateSubnetRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x12vpc.subnets.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02 :\x01*2\x1b/vpc/v1/subnets/{subnet_id}\x12\x92\x02\n" +
-	"\rAddCidrBlocks\x12..kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xae\x01\x8a\xb5\x18&vpc.subnet_cidr_blockses.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
+	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x02 :\x01*2\x1b/vpc/v1/subnets/{subnet_id}\x12\x90\x02\n" +
+	"\rAddCidrBlocks\x12..kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xac\x01\x8a\xb5\x18$vpc.subnet_cidr_blocks.addCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
-	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x020:\x01*\"+/vpc/v1/subnets/{subnet_id}:add-cidr-blocks\x12\x9e\x02\n" +
-	"\x10RemoveCidrBlocks\x121.kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb4\x01\x8a\xb5\x18)vpc.subnet_cidr_blockses.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
+	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x020:\x01*\"+/vpc/v1/subnets/{subnet_id}:add-cidr-blocks\x12\x9c\x02\n" +
+	"\x10RemoveCidrBlocks\x121.kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest\x1a .kacho.cloud.operation.Operation\"\xb2\x01\x8a\xb5\x18'vpc.subnet_cidr_blocks.removeCidrBlocks\x92\xb5\x18\bv_update\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*\x1e\n" +
 	"\x14UpdateSubnetMetadata\x12\x06Subnet\x82\xd3\xe4\x93\x023:\x01*\"./vpc/v1/subnets/{subnet_id}:remove-cidr-blocks\x12\xec\x01\n" +
 	"\x06Delete\x12'.kacho.cloud.vpc.v1.DeleteSubnetRequest\x1a .kacho.cloud.operation.Operation\"\x96\x01\x8a\xb5\x18\x12vpc.subnets.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\xb2\xd2*-\n" +
-	"\x14DeleteSubnetMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1d*\x1b/vpc/v1/subnets/{subnet_id}\x12\xf8\x01\n" +
-	"\x0eListOperations\x12/.kacho.cloud.vpc.v1.ListSubnetOperationsRequest\x1a0.kacho.cloud.vpc.v1.ListSubnetOperationsResponse\"\x82\x01\x8a\xb5\x18&vpc.subnet_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
+	"\x14DeleteSubnetMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1d*\x1b/vpc/v1/subnets/{subnet_id}\x12\xf6\x01\n" +
+	"\x0eListOperations\x12/.kacho.cloud.vpc.v1.ListSubnetOperationsRequest\x1a0.kacho.cloud.vpc.v1.ListSubnetOperationsResponse\"\x80\x01\x8a\xb5\x18$vpc.subnet_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
 	"\n" +
-	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/vpc/v1/subnets/{subnet_id}/operations\x12\xf4\x01\n" +
-	"\x11ListUsedAddresses\x12,.kacho.cloud.vpc.v1.ListUsedAddressesRequest\x1a-.kacho.cloud.vpc.v1.ListUsedAddressesResponse\"\x81\x01\x8a\xb5\x18&vpc.used_addresseses.listUsedAddresses\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
+	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02(\x12&/vpc/v1/subnets/{subnet_id}/operations\x12\xf1\x01\n" +
+	"\x11ListUsedAddresses\x12,.kacho.cloud.vpc.v1.ListUsedAddressesRequest\x1a-.kacho.cloud.vpc.v1.ListUsedAddressesResponse\"\x7f\x8a\xb5\x18$vpc.used_addresses.listUsedAddresses\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02'\x12%/vpc/v1/subnets/{subnet_id}/addressesB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 

@@ -5,9 +5,12 @@ package securitygroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -15,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 
 	// Blank-import регистрирует трансферы SecurityGroup/time через init().
@@ -82,7 +86,60 @@ func validateSGRule(field string, r domain.SecurityGroupRule) error {
 			return err
 		}
 	}
+	// РОВНО ОДНА ЦЕЛЬ — перекрёстное требование, и оно стоит ПОСЛЕ проверок
+	// отдельных полей.
+	//
+	// Контракт обещает его аннотацией `exactly_one` на `oneof target`, но энфорсера у
+	// обещания не было: правило без цели принималось, сохранялось и возвращалось при
+	// чтении. Оно описывает «разрешить трафик... куда?» и по закрытой модели не
+	// разрешает ничего — то есть вызывающий получал успех на правиле, которое не
+	// делает написанного. Правило с двумя целями принималось тоже, а на проводе
+	// `oneof` держит одну: вторая молча терялась при обратном преобразовании.
+	//
+	// Почему проверка здесь, а не полагается на `oneof` формы передачи: use-case
+	// принимает domain-структуру, а у неё поля цели ПЛОСКИЕ — два непустых поля в ней
+	// представимы. Проверка обязана стоять там, где состояние представимо.
+	//
+	// Почему ПОСЛЕ полей: раньше них она перекрывала бы их собственные отказы, и
+	// правило с малформированным блоком адресов получало бы отказ «нет цели» вместо
+	// «блок неверен». Тот же порядок, что у якоря подсети, и по той же причине.
+	if err := validateSGRuleTarget(field, r); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateSGRuleTarget — ровно одна цель у правила.
+//
+// Ветвь `cidr_blocks` несёт ОБА семейства, поэтому «v4 и v6 вместе» — ОДНА цель, а не
+// две: проверка, считающая наборы по отдельности, отвергала бы законное
+// двухсемейное правило.
+//
+// Ветвей ТРИ, а не две: третья — ссылка на именованный набор префиксов
+// (`cidr_group_id`). Перечень в тексте отказа выводится из ТОГО ЖЕ списка, что и
+// счёт, поэтому появление четвёртой ветви не сможет разойтись с сообщением.
+func validateSGRuleTarget(field string, r domain.SecurityGroupRule) error {
+	kinds := 0
+	if len(r.V4CidrBlocks) > 0 || len(r.V6CidrBlocks) > 0 {
+		kinds++
+	}
+	if r.SecurityGroupID != "" {
+		kinds++
+	}
+	if r.CidrGroupID != "" {
+		kinds++
+	}
+	const branches = "cidr_blocks, security_group_id or cidr_group_id"
+	switch kinds {
+	case 1:
+		return nil
+	case 0:
+		return serviceerr.InvalidArg(field+".target",
+			"exactly one target is required: "+branches)
+	default:
+		return serviceerr.InvalidArg(field+".target",
+			"exactly one target is allowed: "+branches+", not several")
+	}
 }
 
 // validateSGRulePorts — диапазон портов правила.
@@ -141,11 +198,30 @@ func validateSGRuleProtocol(field, name string, number int64) error {
 	return nil
 }
 
-// Тексты ошибок для same-network-валидации SG-target-правил.
-const (
-	errRuleCrossNetwork  = "security group rule can only reference a security group in the same network"
-	errRuleTargetMissing = "security group rule references a non-existent security group"
-)
+// errRuleTargetUnusableFmt — ЕДИНСТВЕННЫЙ текст на оба исхода резолва цели
+// правила: цели нет вовсе и цель есть, но в чужой сети. Форма побайтово равна
+// настоящему промаху SecurityGroup, который производит слой хранения
+// (`repo/helpers`.`WrapSGErr`) и который же отдаёт край, скрывая отказ в доступе
+// (`gateway/internal/middleware`, таблица hide-existence).
+//
+// Два РАЗНЫХ текста здесь были существование-оракулом: по тексту отказа
+// вызывающий устанавливал, существует ли группа, которой он не владеет
+// («references a non-existent security group» ⇒ такой нет; «in the same
+// network» ⇒ есть, просто чужая). Скрытие обязано быть неотличимо от промаха
+// дословно, иначе оно не скрывает ничего (`security.md` §Hardening-инварианты,
+// п.6). Поэтому исход у обеих ветвей ОДИН и возвращается из одного места:
+// два литерала разошлись бы молча, одна точка возврата — нет.
+//
+// Что вызывающий всё же различает машинно — ПОЛЕ отказа
+// (`BadRequest.field_violations[].field`: `rule_specs[0].security_group_id` /
+// `addition_rule_specs[0].security_group_id`): оно называет его собственный
+// ввод и о существовании чужого объекта не сообщает ничего.
+//
+// Правка этого текста — правка контракта: он обязан оставаться равным форме
+// производителя, и это держит проба
+// `TestSGRuleTarget_MissingAndCrossNetworkAreIndistinguishable`, которая берёт
+// форму из `repo/helpers/sg.go` по AST, а не из литерала в тесте.
+const errRuleTargetUnusableFmt = "Security group SecurityGroup.Id(value=%s) not found"
 
 // validateSGTargetSameNetwork проверяет, что каждое SG-target-правило (`oneof
 // target = security_group_id`) ссылается на SecurityGroup из той же Network,
@@ -156,11 +232,18 @@ const (
 // `fieldFor(i)` строит имя поля для BadRequest.field_violations (напр.
 // `rule_specs[0].security_group_id` / `addition_rule_specs[0].security_group_id`).
 //
-// CIDR / predefined правила не затрагиваются (нет `SecurityGroupID`). Cross-network
-// → InvalidArgument; несуществующая target-SG (`repo.ErrNotFound`) →
-// InvalidArgument (единый класс с cross-network) — НЕ NotFound, НЕ wrapSGErr.
-// Проверка не TOCTOU-prone (network_id immutable); удаление target-SG —
-// грациозный dangling-ref либо negative InvalidArgument.
+// CIDR / predefined правила не затрагиваются (нет `SecurityGroupID`). Оба исхода
+// резолва цели — «цели нет» и «цель в чужой сети» — дают ОДИН код
+// (`InvalidArgument`, не NotFound и не wrapSGErr) и ОДИН текст
+// (`errRuleTargetUnusableFmt`): различимый текст сообщал бы вызывающему о
+// существовании чужого объекта. Проверка не TOCTOU-prone (network_id immutable);
+// удаление target-SG — грациозный dangling-ref либо этот же отказ на следующей
+// мутации.
+//
+// `reader` — ОБЯЗАТЕЛЕН и не может быть nil: ветки «порт не передан → ок» здесь
+// не существует, потому что она означала бы «защита не настроена = разрешено»,
+// неотличимое от «разрешила». Порт выводится из уже обязательного `Repo`
+// (`sgTargetReader`), поэтому у вызывающего нет способа его не иметь.
 func validateSGTargetSameNetwork(
 	ctx context.Context,
 	reader SecurityGroupReader,
@@ -168,9 +251,6 @@ func validateSGTargetSameNetwork(
 	rules []domain.SecurityGroupRule,
 	fieldFor func(i int) string,
 ) error {
-	if reader == nil {
-		return nil
-	}
 	// Цели резолвятся ОДНИМ запросом на весь набор и с дедупликацией: длину
 	// набора выбирает вызывающий, а одна и та же цель в тысяче правил — это
 	// одна строка, а не тысяча обращений к БД. Порядок сообщений сохраняется:
@@ -199,12 +279,14 @@ func validateSGTargetSameNetwork(
 		if r.SecurityGroupID == "" {
 			continue
 		}
+		// Одно условие и одна точка возврата на оба исхода — «цели нет» и «цель
+		// в чужой сети». Разводить их по двум return'ам значило бы держать два
+		// литерала, которые обязаны совпадать: совпадение, за которым никто не
+		// следит, перестаёт быть совпадением на первой же правке.
 		target, ok := found[r.SecurityGroupID]
-		if !ok {
-			return serviceerr.InvalidArg(fieldFor(i), errRuleTargetMissing)
-		}
-		if target.NetworkID != ownerNetworkID {
-			return serviceerr.InvalidArg(fieldFor(i), errRuleCrossNetwork)
+		if !ok || target.NetworkID != ownerNetworkID {
+			return serviceerr.InvalidArg(fieldFor(i),
+				fmt.Sprintf(errRuleTargetUnusableFmt, r.SecurityGroupID))
 		}
 	}
 	return nil
@@ -303,8 +385,8 @@ func ruleSpecFromProto(field string, rs *vpcv1.SecurityGroupRuleSpec) (domain.Se
 	if sgID := rs.GetSecurityGroupId(); sgID != "" {
 		r.SecurityGroupID = sgID
 	}
-	if pred := rs.GetPredefinedTarget(); pred != "" {
-		r.PredefinedTarget = pred
+	if cgID := rs.GetCidrGroupId(); cgID != "" {
+		r.CidrGroupID = cgID
 	}
 	return r, nil
 }
@@ -324,4 +406,94 @@ func ruleSpecsFromProto(field string, specs []*vpcv1.SecurityGroupRuleSpec) ([]d
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// cidrGroupTargetReader — что проверке ссылки на именованный набор нужно от
+// слоя хранения. Ровно одно чтение по идентификатору, поэтому порт узкий: его
+// удовлетворяет и адаптер поверх `Repo` (синхронный путь), и писатель ОТКРЫТОЙ
+// транзакции (`w.CidrGroups()`) — а это второе и есть несущее свойство, см.
+// validateSGTargetCidrGroup.
+type cidrGroupTargetReader interface {
+	Get(ctx context.Context, id string) (*kacho.CidrGroupRecord, error)
+}
+
+// errCidrGroupTargetUnusableFmt — ЕДИНСТВЕННЫЙ текст на оба исхода резолва
+// набора: набора нет вовсе и набор есть, но в чужом проекте.
+//
+// Форма побайтово равна настоящему промаху CidrGroup, который производит слой
+// хранения. Два разных текста здесь были бы существование-оракулом: по тексту
+// отказа вызывающий устанавливал бы, существует ли набор, которым он не владеет.
+// Ровно то же решение и по той же причине принято для соседней ветви цели
+// (`errRuleTargetUnusableFmt`).
+const errCidrGroupTargetUnusableFmt = "CidrGroup %s not found"
+
+// validateSGTargetCidrGroup — ссылка правила на именованный набор: набор ТОГО ЖЕ
+// проекта и НЕПУСТОЙ.
+//
+// Пустой набор в ссылке — отказ, а не молчаливое расширение. У исполнителя пустой
+// набор либо заставляет правило выпасть целиком (разрешение молча сужается), либо
+// заставляет фильтр исчезнуть из правила (разрешение молча расширяется). Оба
+// исхода — защита с формой и без содержания, поэтому состояние не допускается на
+// входе.
+//
+// # Где эта проверка обязана стоять и почему
+//
+// На пути ЗАПИСИ её зовут ИЗ ОТКРЫТОЙ writer-транзакции и ПОСЛЕ записи правил, а
+// не до неё. Причина не в удобстве: запись правил вставляет строки проекции
+// ссылок, а вставка берёт на строке набора блокировку KEY SHARE, конфликтующую с
+// `FOR UPDATE`, которую берёт опустошение набора. Значит после записи мы либо уже
+// видим опустошение (и отвергаем), либо держим набор и опустошение ждёт нашего
+// коммита. Проверка ДО записи отвечала бы по снимку, который конкурент
+// переписывает, — и оба пути разрешили бы себе продолжить.
+//
+// Синхронный вызов до создания операции остаётся: он даёт вызывающему быстрый
+// отказ с именем поля. Он не заменяет транзакционный — он его дополняет.
+func validateSGTargetCidrGroup(
+	ctx context.Context,
+	reader cidrGroupTargetReader,
+	ownerProjectID string,
+	rules []domain.SecurityGroupRule,
+	fieldFor func(i int) string,
+) error {
+	// Резолв идёт по ДЕДУПЛИЦИРОВАННОМУ набору: один и тот же набор в сотне
+	// правил — одна строка, а не сто чтений. Порядок сообщений сохраняется:
+	// решение по каждому правилу принимается в исходном порядке по уже
+	// полученной карте.
+	resolved := make(map[string]*kacho.CidrGroupRecord, len(rules))
+	for _, r := range rules {
+		if r.CidrGroupID == "" {
+			continue
+		}
+		if _, done := resolved[r.CidrGroupID]; done {
+			continue
+		}
+		rec, err := reader.Get(ctx, r.CidrGroupID)
+		if err != nil {
+			if errors.Is(err, repo.ErrNotFound) {
+				resolved[r.CidrGroupID] = nil
+				continue
+			}
+			return serviceerr.MapRepoErr(err)
+		}
+		resolved[r.CidrGroupID] = rec
+	}
+	for i, r := range rules {
+		if r.CidrGroupID == "" {
+			continue
+		}
+		rec := resolved[r.CidrGroupID]
+		// Одно условие и одна точка возврата на оба исхода — «набора нет» и
+		// «набор в чужом проекте». Разводить их по двум return'ам значило бы
+		// держать два литерала, обязанных совпадать: совпадение, за которым никто
+		// не следит, перестаёт быть совпадением на первой же правке.
+		if rec == nil || rec.ProjectID != ownerProjectID {
+			return serviceerr.InvalidArg(fieldFor(i),
+				fmt.Sprintf(errCidrGroupTargetUnusableFmt, r.CidrGroupID))
+		}
+		if rec.CidrGroupBlockCount() == 0 {
+			return status.Errorf(codes.FailedPrecondition,
+				"CidrGroup %s is empty; a rule cannot reference an empty set", r.CidrGroupID)
+		}
+	}
+	return nil
 }

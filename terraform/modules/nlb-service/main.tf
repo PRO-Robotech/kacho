@@ -89,12 +89,11 @@ resource "kacho_nlb_load_balancer" "this" {
 resource "kacho_nlb_listener" "this" {
   for_each = var.listeners
 
-  load_balancer_id  = kacho_nlb_load_balancer.this.id
-  name              = "${var.name}-${each.key}"
-  labels            = var.labels
-  protocol          = each.value.protocol
-  port              = each.value.port
-  target_port       = each.value.target_port
-  proxy_protocol_v2 = each.value.proxy_protocol_v2
-  target_group_id   = kacho_nlb_target_group.this.id
+  load_balancer_id = kacho_nlb_load_balancer.this.id
+  name             = "${var.name}-${each.key}"
+  labels           = var.labels
+  protocol         = each.value.protocol
+  port             = each.value.port
+  target_port      = each.value.target_port
+  target_group_id  = kacho_nlb_target_group.this.id
 }

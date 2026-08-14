@@ -23,7 +23,7 @@ import (
 // empty or dangling → substatus° MISCONFIGURED.
 const listenerCols = `
     id, load_balancer_id, project_id, region_id, created_at, updated_at,
-    name, description, labels, protocol, port, target_port, proxy_protocol_v2,
+    name, description, labels, protocol, port, target_port,
     default_target_group_id, status,
     (SELECT tg.port FROM kacho_nlb.target_groups tg
       WHERE tg.id = listeners.default_target_group_id) AS resolved_backend_port,
@@ -53,7 +53,7 @@ func scanListener(row pgx.Row) (*kacho.ListenerRecord, error) {
 	if err := row.Scan(
 		&idStr, &lbIDStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &protoStr, &port, &tgtPort,
-		&rec.ProxyProtocolV2, &dfltTGStr, &statusStr, &resolvedBP, &rec.Xmin,
+		&dfltTGStr, &statusStr, &resolvedBP, &rec.Xmin,
 	); err != nil {
 		return nil, err
 	}
@@ -187,19 +187,19 @@ func (w *listenerWriter) Insert(ctx context.Context, l *domain.Listener) (*kacho
 	q := fmt.Sprintf(`
         INSERT INTO kacho_nlb.listeners
             (id, load_balancer_id, project_id, region_id, name, description, labels,
-             protocol, port, target_port, proxy_protocol_v2,
+             protocol, port, target_port,
              default_target_group_id, status)
         SELECT $1, lb.id, lb.project_id, lb.region_id, $3, $4, $5::jsonb,
-               $6, $7, $8, $9, $10, $11
+               $6, $7, $8, $9, $10
           FROM kacho_nlb.load_balancers lb
-         WHERE lb.id = $2 AND lb.status <> $12
+         WHERE lb.id = $2 AND lb.status <> $11
            FOR NO KEY UPDATE OF lb
         RETURNING %s`, listenerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(l.ID), string(l.LoadBalancerID),
 		string(l.Name), string(l.Description), labelsJSON,
 		string(l.Protocol), int32(l.Port), int32(l.TargetPort),
-		l.ProxyProtocolV2, dto.OptString(l.DefaultTargetGroupID), string(l.Status),
+		dto.OptString(l.DefaultTargetGroupID), string(l.Status),
 		string(domain.LBStatusDeleting),
 	)
 	rec, err := scanListener(row)
@@ -226,15 +226,14 @@ func (w *listenerWriter) Update(ctx context.Context, l *domain.Listener, expecte
            SET name = $2,
                description = $3,
                labels = $4::jsonb,
-               proxy_protocol_v2 = $5,
-               default_target_group_id = $6,
+               default_target_group_id = $5,
                updated_at = now()
-         WHERE id = $1 AND xmin::text = $7
+         WHERE id = $1 AND xmin::text = $6
         RETURNING %s`, listenerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(l.ID),
 		string(l.Name), string(l.Description), labelsJSON,
-		l.ProxyProtocolV2, dto.OptString(l.DefaultTargetGroupID),
+		dto.OptString(l.DefaultTargetGroupID),
 		expectedXmin,
 	)
 	rec, err := scanListener(row)

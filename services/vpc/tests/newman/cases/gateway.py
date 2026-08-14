@@ -1,7 +1,26 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Case-set для GatewayService."""
+"""Case-set для GatewayService.
+
+ЯКОРЬ РАЗМЕЩЕНИЯ СУИТЫ — В ПОСЕВЕ, А НЕ В КЕЙСЕ. Шлюз без подсети не создаётся
+ВОВСЕ (`subnetId` обязателен, он же якорь размещения), а NAT-шлюз обязан стоять в
+подсети, несущей IPv4, поэтому почти каждый кейс ниже читает `{{gwAnchorSubId}}`.
+Заводит его setup-папка коллекции `_SETUP-GW-ANCHOR` (объявлена в
+`scripts/gen.py`, исполняется первой в полном прогоне) — не кейс.
+
+ПРОГОН ОДИНОЧНОГО КЕЙСА. `--folder <кейс>` исполняет только названную точку
+входа, поэтому окружение для него готовится заранее, ОДНОЙ командой:
+
+    ./setup.sh && newman run collections/gateway.postman_collection.json \\
+        -e environments/local.postman_environment.json --folder GW-CR-CRUD-OK
+
+`setup.sh` гоняет ту же самую setup-папку и выгружает id якоря в файл окружения,
+поэтому объявление якоря остаётся одно, а отладка одиночного кейса больше не
+упирается в фикстуру, которой в её точке входа нет. Без этого шага тело запроса
+уезжает с неразрешённым `{{gwAnchorSubId}}` и кейс падает, называя виновником
+невиновного.
+"""
 
 CASES = []
 
@@ -13,7 +32,7 @@ CASES.append(Case(
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-cr-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -33,7 +52,7 @@ CASES.append(Case(
     priority="P0",
     steps=[
         Step(name="cr", method="POST", path="/vpc/v1/gateways",
-             body={"name": "gw-nf-{{runId}}", "sharedEgressGatewaySpec": {}},
+             body={"name": "gw-nf-{{runId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_unscoped_rejected()]),
     ],
 ))
@@ -109,7 +128,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-gw", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-lop-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -134,7 +153,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-gw", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-upd-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -182,7 +201,7 @@ CASES.append(Case(
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{_suiteProjectId}}", "name": "gw-delok-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.gatewayId", "gwId")]),
         poll_operation_until_done(),
@@ -208,7 +227,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-bad-project", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{garbageRmId}}", "name": "gw-fnf-{{runId}}",
-                   "sharedEgressGatewaySpec": {}},
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
              test_script=[
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -237,51 +256,54 @@ CASES.append(Case(
 # (`corevalidate.NameGateway`: только строчные буквы, цифры и дефис, без
 # заглавных и подчёркиваний). Это by-design, объявленное независимо от прогона:
 # см. `services/vpc/docs/engineering/architecture/07-known-divergences.md` §22.
-CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}, strict_name=True))
-CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
-CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
+CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}, strict_name=True))
+CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(updatemask_decision_table("GW", "/vpc/v1/gateways"))
 CASES.extend(filter_syntax_block("GW", "/vpc/v1/gateways"))
 CASES.append(pagination_roundtrip("GW", "/vpc/v1/gateways"))
 
 CASES.extend(update_happy_per_field("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(perf_baseline_block("GW", "/vpc/v1/gateways"))
 CASES.extend(verbatim_text_pack("GW", "Gateway", "/vpc/v1/gateways"))
 CASES.extend(authz_caller_headers_block("GW", "/vpc/v1/gateways"))
 
 CASES.append(update_happy_multi_field("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
-CASES.append(cross_project_resource_block("GW", "/vpc/v1/gateways", {"sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+CASES.append(cross_project_resource_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(list_filter_match_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(neg_invalid_types_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(http_method_not_allowed_block("GW", "/vpc/v1/gateways"))
 CASES.extend(malformed_body_block("GW", "/vpc/v1/gateways"))
 
 # NB: имена Gateway НЕ уникальны — дубль-имя создается успешно;
 # поэтому generated alreadyexists_dup_name_for("GW", ...) здесь не применяется.
 CASES.extend(update_mask_partial_block("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(perf_baseline_get_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(list_total_size_check_block("GW", "/vpc/v1/gateways"))
 CASES.extend(headers_content_type_block("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 
 # v10 Gateway-specific
 CASES.append(Case(
     id="GW-CR-VAL-MISSING-TYPE",
-    title="Create Gateway без gateway-type oneof → 400 InvalidArgument 'Illegal argument gateway'",
+    title="Create Gateway без ветви вида → 400 InvalidArgument 'gateway: required'",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-notype", method="POST", path="/vpc/v1/gateways",
-                body={"projectId": "{{_suiteProjectId}}", "name": "gw-nt-{{runId}}"},
+                body={"projectId": "{{_suiteProjectId}}", "name": "gw-nt-{{runId}}",
+                      "subnetId": "{{gwAnchorSubId}}"},
                 test_script=[
-                    # без gateway-type oneof (или с нераспознанным телом)
-                    # → 400 InvalidArgument "Illegal argument gateway".
+                    # Ветвь вида обязательна и отвергается ИМЕНЕМ ПОЛЯ. Якорь в теле
+                    # ЕСТЬ — иначе кейс не отличал бы отказ по виду от отказа по якорю
+                    # и зеленел бы на любом из двух.
                     *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                    "pm.test('mentions gateway', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('gateway'));",
+                    "pm.test('отказ называет поле вида', () => "
+                    "pm.expect(String(pm.response.json().message || '')).to.eql('gateway: required'));",
                 ])],
 ))
 
@@ -382,12 +404,141 @@ CASES.append(Case(
 # `GW-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 CASES.extend(required_fields_matrix("GW", "/vpc/v1/gateways",
     {"projectId": "{{_suiteProjectId}}", "name": "gw-req-{{runId}}",
-     "sharedEgressGatewaySpec": {}},
+     "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
     ["projectId"]))
 CASES.extend(immutable_fields_matrix("GW", "/vpc/v1/gateways",
     ["project_id"]))
 
 CASES.extend(security_injection_block("GW", "/vpc/v1/gateways", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.append(conformance_lifecycle_pack("GW", "/vpc/v1/gateways",
-    {"projectId": "{{_suiteProjectId}}", "sharedEgressGatewaySpec": {}}))
+    {"projectId": "{{_suiteProjectId}}", "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
+
+CASES.append(Case(
+    id="GW-CR-VAL-MISSING-ANCHOR",
+    # index: GW-ANCHOR-01
+    title="Create Gateway без subnetId → 400 InvalidArgument 'subnet_id: required'",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[Step(name="cr-noanchor", method="POST", path="/vpc/v1/gateways",
+                body={"projectId": "{{_suiteProjectId}}", "name": "gw-na-{{runId}}",
+                      "natGatewaySpec": {}},
+                test_script=[
+                    # Ветвь вида в теле ЕСТЬ — отказ обязан быть про якорь, а не про вид.
+                    *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('отказ называет поле якоря', () => "
+                    "pm.expect(String(pm.response.json().message || '')).to.eql('subnet_id: required'));",
+                ])],
+))
+
+CASES.append(Case(
+    id="GW-CR-CONF-EGRESS-ONLY-NEEDS-V6",
+    # index: GW-ANCHOR-01
+    title="Шлюз «только исход» в подсети без IPv6 → отказ по состоянию якоря",
+    classes=["CONF", "NEG"], priority="P1",
+    steps=[
+        Step(name="cr-eo-on-v4", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-eo-{{runId}}",
+                   "subnetId": "{{gwAnchorSubId}}", "egressOnlyGatewaySpec": {}},
+             test_script=[*assert_refused_sync_or_async(
+                 "шлюз «только исход» в подсети без IPv6", sync_codes=(400, 403, 404))]),
+        poll_operation_until_done(must_fail=True),
+    ],
+))
+
+# ---------------------------------------------------------------------------
+# Внешний адрес шлюза трансляции
+# ---------------------------------------------------------------------------
+# Предусловие этих кейсов — пул по умолчанию для зоны якоря; его заводит посев
+# коллекции (`_SETUP-POOL`, `scripts/gen.py`), а не кейс. Без пула отказ был бы
+# «нет доступного внешнего адреса IPv4», и кейс винил бы невиновного.
+
+CASES.append(Case(
+    id="GW-CR-NAT-EXTERNAL-ADDRESS-OK",
+    title="Шлюз трансляции несёт внешний адрес, и адрес называет шлюз в ответ",
+    classes=["CRUD", "CONF"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-extaddr-{{runId}}",
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.gatewayId", "gwXaId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="get-gateway", method="GET", path="/vpc/v1/gateways/{{gwXaId}}",
+            test_script=[
+                *assert_status(200),
+                "const j = pm.response.json();",
+                "pm.test('ветвь трансляции присутствует', () => "
+                "pm.expect(j.natGateway, pm.response.text()).to.be.an('object'));",
+                "pm.test('шлюз трансляции несёт внешний адрес', () => "
+                "pm.expect(String((j.natGateway || {}).addressId || ''), pm.response.text())"
+                ".to.match(/^adr/));",
+                *save_from_response("(j.natGateway || {}).addressId", "gwXaAddrId"),
+            ])),
+        # Адрес — самостоятельный ресурс, и владельцу шлюза он ЧИТАЕМ: без права
+        # на него идентификатор в контракте был бы координатой в никуда.
+        retry_until_authorized(Step(
+            name="get-address", method="GET", path="/vpc/v1/addresses/{{gwXaAddrId}}",
+            test_script=[
+                *assert_status(200),
+                "const a = pm.response.json();",
+                "pm.test('внешний IPv4', () => {",
+                "  pm.expect(a.type, pm.response.text()).to.eql('EXTERNAL');",
+                "  pm.expect(a.ipVersion, pm.response.text()).to.eql('IPV4');",
+                "});",
+                "pm.test('адресу выдан IP', () => pm.expect("
+                "String(((a.externalIpv4Address || {}).address) || ''), pm.response.text())"
+                ".to.not.be.empty);",
+                "pm.test('адрес помечен занятым', () => "
+                "pm.expect(a.used, pm.response.text()).to.eql(true));",
+                # Обратная сторона привязки: владелец адреса называет ИМЕННО этот шлюз.
+                "pm.test('адрес называет свой шлюз', () => {",
+                "  const refs = (a.usedBy || []).map(u => (u.referrer || {}));",
+                "  pm.expect(refs.map(r => r.id), pm.response.text())"
+                ".to.include(pm.environment.get('gwXaId'));",
+                "  pm.expect(refs.map(r => r.type), pm.response.text())"
+                ".to.include('vpc_gateway');",
+                "});",
+            ])),
+        Step(name="cleanup", method="DELETE", path="/vpc/v1/gateways/{{gwXaId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        # Аренда возвращена: адрес, заказанный шлюзом, уходит вместе с ним.
+        Step(name="address-gone", method="GET", path="/vpc/v1/addresses/{{gwXaAddrId}}",
+             test_script=[*assert_absent_id_rejected()]),
+    ],
+))
+
+CASES.append(Case(
+    id="GW-NEG-EXTERNAL-ADDRESS-NOT-DELETABLE-WHILE-BOUND",
+    title="Адрес, занятый шлюзом, не удаляется — сначала снимите шлюз",
+    classes=["NEG", "CONF"], priority="P1",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/gateways",
+             body={"projectId": "{{_suiteProjectId}}", "name": "gw-bound-{{runId}}",
+                   "natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.gatewayId", "gwBdId")]),
+        poll_operation_until_done(),
+        retry_until_authorized(Step(
+            name="get-gateway", method="GET", path="/vpc/v1/gateways/{{gwBdId}}",
+            test_script=[*assert_status(200),
+                         *save_from_response("(pm.response.json().natGateway || {}).addressId",
+                                             "gwBdAddrId")])),
+        # ОТРИЦАНИЕ: пока шлюз жив, его адрес не отдать.
+        Step(name="delete-address-refused", method="DELETE",
+             path="/vpc/v1/addresses/{{gwBdAddrId}}",
+             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                          "pm.test('отказ называет занятость', () => "
+                          "pm.expect(String(pm.response.json().message || ''))"
+                          ".to.match(/in use/));"]),
+        # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к нему: сняв шлюз, тот же путь проходит —
+        # значит отказ выше был про привязку, а не про то, что удаление адреса
+        # не работает вовсе.
+        Step(name="delete-gateway", method="DELETE", path="/vpc/v1/gateways/{{gwBdId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="address-released", method="GET", path="/vpc/v1/addresses/{{gwBdAddrId}}",
+             test_script=[*assert_absent_id_rejected()]),
+    ],
+))

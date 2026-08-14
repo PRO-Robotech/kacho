@@ -23,17 +23,24 @@ import "strings"
 // блокируются HasInternalSuffix.
 var AllowedMethods = map[string]struct{}{
 	// vpc.v1 — NetworkService
-	"/kacho.cloud.vpc.v1.NetworkService/Get":                {},
-	"/kacho.cloud.vpc.v1.NetworkService/List":               {},
-	"/kacho.cloud.vpc.v1.NetworkService/Create":             {},
-	"/kacho.cloud.vpc.v1.NetworkService/Update":             {},
-	"/kacho.cloud.vpc.v1.NetworkService/Delete":             {},
-	"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks":      {}, // :verb supernet growth (redesign-2026)
-	"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks":   {}, // :verb supernet shrink (redesign-2026)
-	"/kacho.cloud.vpc.v1.NetworkService/ListSubnets":        {},
-	"/kacho.cloud.vpc.v1.NetworkService/ListSecurityGroups": {},
-	"/kacho.cloud.vpc.v1.NetworkService/ListRouteTables":    {},
-	"/kacho.cloud.vpc.v1.NetworkService/ListOperations":     {},
+	"/kacho.cloud.vpc.v1.NetworkService/Get":              {},
+	"/kacho.cloud.vpc.v1.NetworkService/List":             {},
+	"/kacho.cloud.vpc.v1.NetworkService/Create":           {},
+	"/kacho.cloud.vpc.v1.NetworkService/Update":           {},
+	"/kacho.cloud.vpc.v1.NetworkService/Delete":           {},
+	"/kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks":    {}, // :verb supernet growth (redesign-2026)
+	"/kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks": {}, // :verb supernet shrink (redesign-2026)
+	"/kacho.cloud.vpc.v1.NetworkService/ListOperations":   {},
+	// vpc.v1 — CidrGroupService (именованный набор префиксов; цель правила
+	// группы безопасности вместо копии перечня в каждом правиле)
+	"/kacho.cloud.vpc.v1.CidrGroupService/Get":              {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/List":             {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Create":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Update":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Delete":           {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":    {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks": {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":   {},
 	// vpc.v1 — SubnetService
 	"/kacho.cloud.vpc.v1.SubnetService/Get":               {},
 	"/kacho.cloud.vpc.v1.SubnetService/List":              {},
@@ -46,9 +53,7 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.SubnetService/ListUsedAddresses": {},
 	// vpc.v1 — AddressService
 	"/kacho.cloud.vpc.v1.AddressService/Get":            {},
-	"/kacho.cloud.vpc.v1.AddressService/GetByValue":     {},
 	"/kacho.cloud.vpc.v1.AddressService/List":           {},
-	"/kacho.cloud.vpc.v1.AddressService/ListBySubnet":   {},
 	"/kacho.cloud.vpc.v1.AddressService/Create":         {},
 	"/kacho.cloud.vpc.v1.AddressService/Update":         {},
 	"/kacho.cloud.vpc.v1.AddressService/Delete":         {},
@@ -66,9 +71,6 @@ var AllowedMethods = map[string]struct{}{
 	// именно по нему (vpc, 07-known-divergences.md, запись 26). В списке они
 	// остаются НАМЕРЕННО: снятие отсюда дало бы вызывающему отказ края вместо
 	// отказа владельца, то есть скрыло бы причину за общим «метод не разрешён».
-	"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes":    {},
-	"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes": {},
-	"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute":  {},
 	// vpc.v1 — NetworkInterfaceService (first-class ресурс домена, REST /vpc/v1/networkInterfaces).
 	// Проекция `/vpc/v1/networkInterfaces/{id}/internal` принадлежит
 	// InternalNetworkInterfaceService и здесь отсутствует — её несёт internal-листенер.

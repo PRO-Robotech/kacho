@@ -20,7 +20,7 @@ enum SubnetPlacementType {
   REGIONAL = 2;
 }
 
-// A Subnet resource. For more information, see [Subnets](/docs/vpc/concepts/network#subnet).
+// A Subnet resource. For more information, see [Subnet](https://vpc.kacho.cloud/api/subnet).
 message Subnet {
   // 9 — legacy route_table oneof slot (retired). 10/11 — legacy
   // v4_cidr_blocks/v6_cidr_blocks (retired in redesign VPC-1 F7: the flat

@@ -22,16 +22,16 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-// TestUpdateListener_GWT_LST_018_MutableFields_HappyPath — name + proxy_protocol_v2
+// TestUpdateListener_GWT_LST_018_MutableFields_HappyPath — name + description
 // in mask → applied + outbox UPDATED.
 func TestUpdateListener_GWT_LST_018_MutableFields(t *testing.T) {
 	t.Parallel()
 	suite := newUpdateSuite(t)
 	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
-		ListenerId:      string(suite.listener.ID),
-		UpdateMask:      &fieldmaskpb.FieldMask{Paths: []string{"name", "proxy_protocol_v2"}},
-		Name:            "https",
-		ProxyProtocolV2: true,
+		ListenerId:  string(suite.listener.ID),
+		UpdateMask:  &fieldmaskpb.FieldMask{Paths: []string{"name", "description"}},
+		Name:        "https",
+		Description: "edge listener",
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, suite.ops, op.ID, time.Second)
@@ -39,7 +39,7 @@ func TestUpdateListener_GWT_LST_018_MutableFields(t *testing.T) {
 
 	got := suite.getListener(string(suite.listener.ID))
 	require.Equal(t, domain.LbName("https"), got.Name)
-	require.True(t, got.ProxyProtocolV2)
+	require.Equal(t, domain.LbDescription("edge listener"), got.Description)
 
 	events := suite.repo.pendingOutbox()
 	require.Len(t, events, 1)
@@ -91,10 +91,10 @@ func TestUpdateListener_EmptyMask_FullPATCH(t *testing.T) {
 	t.Parallel()
 	suite := newUpdateSuite(t)
 	op, err := suite.uc.Run(context.Background(), &lbv1.UpdateListenerRequest{
-		ListenerId:      string(suite.listener.ID),
-		UpdateMask:      nil,
-		Name:            "https",
-		ProxyProtocolV2: true,
+		ListenerId:  string(suite.listener.ID),
+		UpdateMask:  nil,
+		Name:        "https",
+		Description: "edge listener",
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, suite.ops, op.ID, time.Second)
@@ -102,7 +102,7 @@ func TestUpdateListener_EmptyMask_FullPATCH(t *testing.T) {
 
 	got := suite.getListener(string(suite.listener.ID))
 	require.Equal(t, domain.LbName("https"), got.Name)
-	require.True(t, got.ProxyProtocolV2)
+	require.Equal(t, domain.LbDescription("edge listener"), got.Description)
 }
 
 // TestUpdateListener_UnknownMaskField — unknown path → InvalidArgument.

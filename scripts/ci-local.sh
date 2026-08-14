@@ -59,7 +59,26 @@ proto_group() {
     export PATH="$bin:$PATH"
 
     run "buf lint" bash -c "cd '$ROOT/proto' && buf lint"
-    run "buf breaking (с перечнем объявленных сломов)" bash "$ROOT/scripts/buf-breaking-declared.sh"
+    # Та же адъюдикация, что в конвейере, и ТЕМ ЖЕ инструментом — иначе локально и
+    # на чужой машине исполнялись бы две разные проверки одного предмета, и разошлись
+    # бы они молча: обе отвечают «зелено» на зелёном входе.
+    run "adjudicate breaking (перечень объявленных разрывов)" bash -c '
+        set -uo pipefail
+        go build -o "'"$WORK"'/adjudicate" ./tools/declaredbreak/cmd/adjudicate-declared-breaks
+        cd "'"$ROOT"'/proto"
+        set +e
+        buf breaking --against "'"$ROOT"'/.git#branch=main,subdir=proto"             --error-format=json > "'"$WORK"'/buf-breaking.jsonl" 2>"'"$WORK"'/buf-breaking.err"
+        rc=$?
+        set -e
+        case "$rc" in
+            0|100) ;;
+            *)  echo "buf breaking не сделал своей работы (код $rc) — это НЕ «разрывов нет»" >&2
+                cat "'"$WORK"'/buf-breaking.err" >&2 || true
+                exit 2 ;;
+        esac
+        cd "'"$ROOT"'"
+        "'"$WORK"'/adjudicate" proto/declared-breaks.yaml < "'"$WORK"'/buf-breaking.jsonl"
+    ' 
 
     ran=$((ran + 1))
     printf '\n== generate-diff (стабы в синхроне с .proto)\n'

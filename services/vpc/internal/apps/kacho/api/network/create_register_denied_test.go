@@ -28,7 +28,7 @@ func TestCreateUseCase_OwnerTupleRegisterDenied_OperationSucceedsAndNetworkExist
 	or := repomock.NewOpsRepo()
 	reg := &repomock.DenyingRegistrar{}
 
-	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or, false).WithRegistrar(reg)
+	uc := NewCreateNetworkUseCase(kr, &repomock.ProjectClient{OK: true}, or).WithRegistrar(reg)
 
 	op, err := uc.Execute(ctx, domain.Network{
 		ProjectID: "f1",

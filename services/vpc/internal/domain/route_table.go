@@ -4,9 +4,20 @@
 package domain
 
 // StaticRoute — статический маршрут.
+//
+// Следующий узел — РОВНО ОДИН из двух: адрес (`NextHopAddress`) либо шлюз
+// (`GatewayID`). Взаимоисключение — свойство контракта (oneof `next_hop`) и
+// проверяется в service-слое (`validateStaticRoutes`): маршрут без следующего
+// узла и маршрут с двумя одинаково не имеют смысла, и оба отвергаются с именем
+// поля.
+//
+// `omitempty` у `GatewayID` намеренно: маршруты уезжают в JSONB, и без него
+// каждая существующая строка получила бы ключ с пустым значением — то есть
+// «шлюз назван пустой строкой», неотличимое от «шлюза нет».
 type StaticRoute struct {
 	DestinationPrefix string            `json:"destination_prefix"`
 	NextHopAddress    string            `json:"next_hop_address"`
+	GatewayID         string            `json:"gateway_id,omitempty"`
 	Labels            map[string]string `json:"labels,omitempty"`
 }
 
@@ -14,6 +25,7 @@ type StaticRoute struct {
 func (r StaticRoute) Equal(other StaticRoute) bool {
 	return r.DestinationPrefix == other.DestinationPrefix &&
 		r.NextHopAddress == other.NextHopAddress &&
+		r.GatewayID == other.GatewayID &&
 		labelsMapEqual(r.Labels, other.Labels)
 }
 

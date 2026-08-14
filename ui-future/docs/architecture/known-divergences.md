@@ -55,16 +55,41 @@ lookup through a same-origin gateway endpoint rather than adding
 (измерение про рантайм-движок стилей той версии больше не относится к дереву).
 Обоснование ниже — про **v6**; пин и есть срок годности этого обоснования.
 
+> [!important] Перемерено дважды, и оба раза гейтом, а не памятью: одно из оснований УСТАРЕЛО
+> Пин уезжал в `^6.6.0` вместе с подъёмом сборочной цепочки и вернулся в `^6.3.7`, когда
+> подъём был откачен (сквозные пробы консоли краснели, см. #309). Гейт покраснел на ОБА
+> движения — как и задуман. Существо записи от этого не изменилось: утверждение ниже
+> перепроверено на разрешённой версии диапазона (`antd@6.5.4`, движок стилей
+> `@ant-design/cssinjs@2.1.2`) — интеграция nonce на месте.
+>
+> Перемер показал, что запись держалась
+> отчасти на утверждении, которого дерево больше не подтверждает. Прежняя редакция говорила:
+> «antd v6 не выставляет интеграцию nonce, которую nginx мог бы накормить через `sub_filter`».
+> **Выставляет:** `ConfigProvider` принимает `csp?: { nonce?: string }`
+> (`node_modules/antd/lib/config-provider/context.d.ts`, интерфейс `CSPConfig`), значение
+> доходит до движка стилей `@ant-design/cssinjs@^2.1.2`, где его применяет `injectCSPNonce`
+> (`lib/util/index.js`), а хуки регистрации стилей объявляют `nonce?: string | (() => string)`.
+>
+> Отступление тем не менее **остаётся принятым**, потому что не сделана НАША половина:
+> per-response nonce никто не выпускает и не подставляет — ни в заголовок политики, ни в
+> страницу. То есть препятствие переехало из чужой библиотеки в наш конвейер доставки, и
+> условие пересмотра ниже переписано под это. Само послабление в дереве не тронуто: правка
+> политики содержимого — предмет отдельного изменения со своей приёмкой, а не побочный
+> эффект бампа зависимости.
+
 The console's Content-Security-Policy (`deploy/values.yaml` → `security.contentSecurityPolicy`)
 is otherwise strict — `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`,
 `frame-ancestors 'none'`, `form-action 'self'`, `connect-src 'self'`. Only
 `style-src` is relaxed to `'self' 'unsafe-inline'`.
 
 **Why it is required:** antd v6 styles components through a runtime CSS-in-JS
-engine that injects `<style>` elements without a per-response nonce or a
-build-time-stable hash. A nonce/hash-based `style-src` would break antd's runtime
-styling. antd v6 does not currently expose a `StyleProvider` nonce integration
-that nginx could feed via `sub_filter`.
+engine that injects `<style>` elements at runtime, so a hash-based `style-src` is
+not available (the hashes are not build-time-stable). A *nonce*-based `style-src`
+is now technically reachable — `ConfigProvider csp={{ nonce }}` forwards a nonce to
+`@ant-design/cssinjs` — but nothing in this repository produces or propagates a
+per-response nonce: the CSP header in `deploy/values.yaml` is static, and the host
+nginx does not inject one into the served document. Until that plumbing exists,
+tightening `style-src` would break antd's runtime styling.
 
 **Why the risk is bounded:** `script-src` remains `'self'`, so no
 attacker-controlled JavaScript can execute regardless of the style relaxation.
@@ -72,9 +97,13 @@ The residual is limited to CSS-only vectors (restyle/overlay of controls) and is
 only reachable if a separate DOM-injection sink is introduced elsewhere — none is
 known. The DPoP token flow, auth ceremony and API calls are unaffected.
 
-**Revisit trigger:** drop `'unsafe-inline'` from `style-src` and adopt a
-per-response nonce injected by the host nginx once antd exposes nonce-capable
-style injection.
+**Revisit trigger:** the antd-side precondition is **already met** (see the
+re-measurement note above), so what remains is ours: have the host nginx mint a
+per-response nonce, emit it both in the `style-src` directive and into the served
+document, feed it to `ConfigProvider csp={{ nonce }}`, and only then drop
+`'unsafe-inline'`. That is a change to the delivery pipeline and to the security
+posture — it carries its own acceptance, and it is deliberately not folded into a
+dependency bump.
 
 ## Политика консоли применяется к проксируемой странице входа и блокирует встроенный скрипт провайдера
 
@@ -419,3 +448,57 @@ parse-after-redirect and the matching regression test.
 typed `ApiError` client, promote `auth.ts` + `api-client.ts` into
 `shared/src/utils` and extend the `@shared` alias to `host`/`dashboard`, deleting
 the private copies.
+
+## Server-side narrowing of the related-child tab lands in `@shared` only
+
+**Status:** accepted / bounded residual — measured per package, one live gap
+(nlb `listeners`), with a stated closure that is not "copy it four times".
+
+A resource card's related-child tab used to read the child's list **page** for
+the whole project and narrow it in the browser (`all.filter(…)` on
+`spec.related[].filterField`). What the tab then showed was the intersection
+«children of this parent» × «first page of the project's list», presented as the
+whole list: a network whose subnets did not make the first page rendered an
+incomplete tab and said nothing about it, while the child's own list page has had
+a cursor continuation all along — one question with two answers.
+
+Two things now close that in `@shared`:
+
+- `spec.related[].serverFilterField` (declared in `shared/src/lib/resource-spec.ts`)
+  names the field the child's **owner** accepts in its list `filter` expression;
+  `shared/src/components/organisms/ResourceShell/ResourceShell.tsx` sends it as
+  `filter=<field>="<parentId>"`, so the server narrows and the page is exact. The
+  declaration is held against the owner's whitelist — read out of the service's
+  production code — by `shared/src/lib/related-server-filter-parity.test.ts`; the
+  request shape is pinned by
+  `shared/src/components/organisms/ResourceShell/ResourceShell.related.test.tsx`.
+- Where no such field exists, the cursor continuation is rendered in the same form
+  the list page uses, and the "create the first one" invitation is withheld while a
+  cursor remains — an empty read page is not evidence of an empty child list.
+
+**What the other four copies do.** Five packages carry a `ResourceShell`
+(`git ls-files 'ui-future/*/src/components/organisms/ResourceShell/ResourceShell.tsx'`
+→ compute, nlb, registry, shared, storage); only the `@shared` one has the two
+behaviours above. Measured 2026-08-13, per package `related` edges:
+
+- **compute, storage** — zero related edges. Nothing to truncate.
+- **registry** — two edges, both **path-scoped** children (`apiPath` carries
+  `{registryId}` / `{repository}`), so the owner narrows by the path segment and no
+  foreign parent's rows are involved. `repositories` additionally declares
+  `loadAllPages` (every page is read); `tags` does not, so a repository with more
+  tags than one page still shows a truncated tab there.
+- **nlb** — one edge (`load-balancers` → `listeners`), project-scoped and narrowed
+  in the browser. Its owner's filter whitelist accepts `name` only
+  (`services/nlb/internal/apps/kacho/api/shared/namefilter.go`), so there is no
+  server field to declare: the fix for that tab is the continuation, and it is not
+  in this change.
+
+**Why the change was not copied into the forks.** The console rule for this class
+says the real closure is de-forking, not tiling: a fourth and fifth copy means the
+next edit again reaches exactly one of them, silently. The residual is written
+here with its predicate instead of being inherited unnoticed.
+
+**Revisit trigger:** when `nlb`'s `ResourceShell` is folded into `@shared` (or its
+listeners tab is touched for any other reason), the continuation arrives with it.
+If `ListListeners` ever accepts `load_balancer_id` in its filter whitelist, that
+edge should declare `serverFilterField` — the parity probe holds it from then on.

@@ -5,6 +5,7 @@ package securitygroup
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,29 +31,13 @@ import (
 
 // ---- builders ----
 
-// sgReaderMock — SecurityGroupReader adapter поверх kachomock.Repository:
-// резолвит SG-record через committed reader-snapshot мока.
-type sgReaderMock struct{ repo *kachomock.Repository }
-
-func newSGReaderMock(r *kachomock.Repository) *sgReaderMock { return &sgReaderMock{repo: r} }
-
-func (m *sgReaderMock) Get(ctx context.Context, id string) (*kacho.SecurityGroupRecord, error) {
-	rd, err := m.repo.Reader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rd.Close() }()
-	return rd.SecurityGroups().Get(ctx, id)
-}
-
-func (m *sgReaderMock) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
-	rd, err := m.repo.Reader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rd.Close() }()
-	return rd.SecurityGroups().GetMany(ctx, ids)
-}
+// newSGReaderMock — порт чтения групп для тестов. Здесь НЕ своя реализация: это
+// ровно тот порт, который собирает конструктор use-case'а (`sgTargetReader`
+// поверх `Repo`). Собственная копия была бы дублёром, способным оказаться
+// снисходительнее продукта именно там, где расхождение не видно, — а прод-порт
+// в тестовом окружении выразим как есть, потому что `kachomock.Repository`
+// реализует тот же `Repo`.
+func newSGReaderMock(r *kachomock.Repository) SecurityGroupReader { return sgTargetReader(nil, r) }
 
 func makeHandler(
 	t *testing.T,
@@ -316,6 +301,11 @@ func sgTargetRule(targetSGID string) domain.SecurityGroupRule {
 }
 
 // Create с правилом, ссылающимся на SG из другой сети → sync InvalidArgument.
+//
+// Текст отказа — контракт-тон промаха SecurityGroup, ОДИН и тот же, что у
+// «цели нет вовсе»: различимые тексты сообщали бы о существовании чужой группы.
+// Побайтовое равенство обоих исходов держит
+// `TestSGRuleTarget_MissingAndCrossNetworkAreIndistinguishable`.
 func TestCreateUseCase_CrossNetworkRule_InvalidArgument(t *testing.T) {
 	sgr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
@@ -334,7 +324,7 @@ func TestCreateUseCase_CrossNetworkRule_InvalidArgument(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Equal(t, "security group rule can only reference a security group in the same network", st.Message())
+	assert.Equal(t, fmt.Sprintf(sgTargetNotFoundForm(t), sgB), st.Message())
 }
 
 // Create с правилом, ссылающимся на SG из той же сети → OK (без sync-ошибки).
@@ -357,7 +347,8 @@ func TestCreateUseCase_SameNetworkRule_OK(t *testing.T) {
 	assert.Nil(t, saved.Error)
 }
 
-// Create с правилом на несуществующий SG-target → sync InvalidArgument.
+// Create с правилом на несуществующий SG-target → sync InvalidArgument, тем же
+// текстом, что и цель из чужой сети (см. пробу неотличимости).
 func TestCreateUseCase_TargetNotFound_InvalidArgument(t *testing.T) {
 	sgr := kachomock.NewRepository()
 	or := repomock.NewOpsRepo()
@@ -365,15 +356,16 @@ func TestCreateUseCase_TargetNotFound_InvalidArgument(t *testing.T) {
 	netA := ids.NewID(ids.PrefixNetwork)
 	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
 
+	const absentTarget = "enp11111111111111111"
 	uc := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, or).WithSGReader(newSGReaderMock(sgr))
 	_, err := uc.Execute(context.Background(), domain.SecurityGroup{
 		ProjectID: "P", NetworkID: netA, Name: domain.RcNameVPC("sg-x"),
-		Rules: []domain.SecurityGroupRule{sgTargetRule("enp11111111111111111")},
+		Rules: []domain.SecurityGroupRule{sgTargetRule(absentTarget)},
 	})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Equal(t, "security group rule references a non-existent security group", st.Message())
+	assert.Equal(t, fmt.Sprintf(sgTargetNotFoundForm(t), absentTarget), st.Message())
 }
 
 // UpdateRules с правилом на SG из другой сети → sync InvalidArgument.
@@ -393,7 +385,7 @@ func TestUpdateRulesUseCase_CrossNetworkRule_InvalidArgument(t *testing.T) {
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-	assert.Equal(t, "security group rule can only reference a security group in the same network", st.Message())
+	assert.Equal(t, fmt.Sprintf(sgTargetNotFoundForm(t), sgB), st.Message())
 }
 
 func TestUpdateRuleUseCase_InvalidArg(t *testing.T) {
@@ -489,15 +481,10 @@ func TestRuleSpecFromProto_ProtocolNumber(t *testing.T) {
 	assert.Equal(t, "sg-2", r.SecurityGroupID)
 }
 
-func TestRuleSpecFromProto_Predefined(t *testing.T) {
-	rs := &vpcv1.SecurityGroupRuleSpec{
-		Direction: vpcv1.SecurityGroupRule_INGRESS,
-		Target:    &vpcv1.SecurityGroupRuleSpec_PredefinedTarget{PredefinedTarget: "self_security_group"},
-	}
-	r, err := ruleSpecFromProto("rule_specs[0]", rs)
-	require.NoError(t, err)
-	assert.Equal(t, "self_security_group", r.PredefinedTarget)
-}
+// Прежде здесь стояла TestRuleSpecFromProto_Predefined — разбор ветви
+// предопределённой цели. Ветвь СНЯТА с контракта: свободная строка без словаря, на
+// которой сервис не ветвился, а вызывающий не мог узнать, что в неё написать.
+// Проба удалена, а не переписана: разбирать нечего.
 
 // Набор правил аддитивен: серия формально законных добавлений не имеет права
 // растить его без предела. Потолок на НАКОПЛЕННОМ наборе проверяет тот, кто

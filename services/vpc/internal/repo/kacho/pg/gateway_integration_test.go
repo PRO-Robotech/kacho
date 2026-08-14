@@ -24,14 +24,54 @@ import (
 //   - Abort() rollback'ит INSERT (запись не появляется в БД);
 //   - outbox.Emit транзакционен с DML (Abort → outbox-row не вставлена).
 
-func newGateway(projectID, name string) *domain.Gateway {
+// seedGatewayAnchor заводит сеть и ЗОНАЛЬНУЮ подсеть с блоком IPv4 — якорь
+// размещения, без которого шлюз не создаётся (`gateways.subnet_id` NOT NULL + FK,
+// миграция 0030) и без которого его вид нечем сверить: NAT-шлюз обязан стоять в
+// подсети, несущей IPv4.
+func seedGatewayAnchor(ctx context.Context, t *testing.T, r kacho.Repository, projectID, zone string) string {
+	t.Helper()
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	defer w.Abort()
+	net := newNetwork(projectID, "net-anchor-"+zone)
+	_, err = w.Networks().Insert(ctx, net)
+	require.NoError(t, err)
+	sub := newSubnet(projectID, "sub-anchor-"+zone, net.ID, zone, []string{"10.77.0.0/24"})
+	_, err = w.Subnets().Insert(ctx, sub)
+	require.NoError(t, err)
+	require.NoError(t, w.Commit())
+	return sub.ID
+}
+
+// externalAddressFor — внешний адрес под шлюз ТРАНСЛЯЦИИ.
+//
+// Вид и адрес связаны биусловием на уровне базы (`gateways_nat_has_address_chk`,
+// миграция 0038): шлюз трансляции без адреса — состояние незаписываемое. Фикстура
+// обязана выполнять тот же инвариант, что продукт; иначе она снисходительнее его и
+// прячет ровно то, ради чего ставится. Каждому шлюзу — свой адрес: один адрес двух
+// шлюзов не обслуживает.
+func externalAddressFor(ctx context.Context, t *testing.T, r kacho.Repository, projectID, name string) string {
+	t.Helper()
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	defer w.Abort()
+	a := newAddress(projectID, "addr-"+name, true)
+	_, err = w.Addresses().Insert(ctx, a)
+	require.NoError(t, err)
+	require.NoError(t, w.Commit())
+	return a.ID
+}
+
+func newGateway(projectID, name, subnetID, addressID string) *domain.Gateway {
 	return &domain.Gateway{
-		ID:          ids.NewID(ids.PrefixGateway),
-		ProjectID:   projectID,
-		Name:        domain.RcNameVPC(name),
-		Description: domain.RcDescription(""),
-		Labels:      domain.LabelsFromMap(nil),
-		GatewayType: domain.GatewayTypeSharedEgress,
+		ID:                ids.NewID(ids.PrefixGateway),
+		ProjectID:         projectID,
+		Name:              domain.RcNameVPC(name),
+		Description:       domain.RcDescription(""),
+		Labels:            domain.LabelsFromMap(nil),
+		GatewayType:       domain.GatewayTypeNat,
+		SubnetID:          subnetID,
+		ExternalAddressID: addressID,
 	}
 }
 
@@ -52,7 +92,8 @@ func TestCQRS_Gateway_WriterCommit_ReaderSees(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 
-	g := newGateway("project-1", "gw-1")
+	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
+	g := newGateway("project-1", "gw-1", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-1"))
 	created, err := w.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
 	assert.Equal(t, g.ID, created.ID)
@@ -68,7 +109,7 @@ func TestCQRS_Gateway_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, g.ID, got.ID)
 	assert.Equal(t, domain.RcNameVPC("gw-1"), got.Name)
-	assert.Equal(t, domain.GatewayTypeSharedEgress, got.GatewayType)
+	assert.Equal(t, domain.GatewayTypeNat, got.GatewayType)
 }
 
 // TestCQRS_Gateway_WriterAbort_RollbacksInsert — Abort() rollback'ит INSERT;
@@ -88,7 +129,8 @@ func TestCQRS_Gateway_WriterAbort_RollbacksInsert(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 
-	g := newGateway("project-1", "gw-abort")
+	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
+	g := newGateway("project-1", "gw-abort", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-abort"))
 	_, err = w.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
 	w.Abort() // rollback
@@ -118,7 +160,8 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	// 1) Insert + Emit + Commit → outbox-row есть.
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
-	g := newGateway("project-1", "gw-outbox-commit")
+	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
+	g := newGateway("project-1", "gw-outbox-commit", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-commit"))
 	_, err = w.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
 	require.NoError(t, w.Outbox().Emit(ctx, "Gateway", g.ID, "CREATED", map[string]any{"id": g.ID}))
@@ -132,7 +175,7 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	// 2) Insert + Emit + Abort → ни DML, ни outbox-row не должны остаться.
 	w2, err := r.Writer(ctx)
 	require.NoError(t, err)
-	g2 := newGateway("project-1", "gw-outbox-abort")
+	g2 := newGateway("project-1", "gw-outbox-abort", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-abort"))
 	_, err = w2.Gateways().Insert(ctx, g2)
 	require.NoError(t, err)
 	require.NoError(t, w2.Outbox().Emit(ctx, "Gateway", g2.ID, "CREATED", map[string]any{"id": g2.ID}))
@@ -166,7 +209,8 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	// Insert.
 	w1, err := r.Writer(ctx)
 	require.NoError(t, err)
-	g := newGateway("project-1", "gw-cycle")
+	anchor := seedGatewayAnchor(ctx, t, r, "project-1", "zone-a")
+	g := newGateway("project-1", "gw-cycle", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-cycle"))
 	created, err := w1.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
 	require.NoError(t, w1.Outbox().Emit(ctx, "Gateway", created.ID, "CREATED", map[string]any{"id": created.ID}))

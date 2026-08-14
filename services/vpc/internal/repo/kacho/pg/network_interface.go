@@ -21,8 +21,13 @@ import (
 // nicColsNI — helpers.NICCols с алиасом ni. Нужен в RETURNING у attach-CAS
 // (`UPDATE network_interfaces ni … FROM subnets s …`): без алиаса RETURNING id/
 // project_id/name/created_at был бы ambiguous (subnets несёт те же имена колонок).
-const nicColsNI = `ni.id, ni.project_id, ni.created_at, ni.name, ni.description, ni.labels, ni.subnet_id,
-	ni.v4_address_ids, ni.v6_address_ids, ni.security_group_ids, ni.used_by_type, ni.used_by_id, ni.used_by_name, ni.mac_address, ni.status`
+//
+// ВЫВОДИТСЯ из общего перечня, а не выписывается. Здесь стояла рукописная копия —
+// и она разошлась ровно тем способом, которым расходятся два места об одном
+// предмете: колонку добавили в перечень, копию не тронули, и запрос упал на
+// несовпадении числа колонок и приёмников. Вывод делает такое расхождение
+// невозможным by construction.
+var nicColsNI = helpers.NICColsAliased("ni")
 
 // networkInterfaceReader — Get/List/CountBySubnet поверх произвольной pgx.Tx
 // (read-only или RW). NIC ведется в CQRS-модели поверх единой writer-TX, чтобы
@@ -214,13 +219,15 @@ func (w *networkInterfaceWriter) Insert(ctx context.Context, n *domain.NetworkIn
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
 		INSERT INTO network_interfaces (id, project_id, created_at, name, description, labels, subnet_id,
-			v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+			v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status,
+			bandwidth_limit_mbps)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		RETURNING %s`, helpers.NICCols)
 	row := w.tx.QueryRow(ctx, q,
 		n.ID, n.ProjectID, now, string(n.Name), string(n.Description), labelsJSON, n.SubnetID,
 		v4IDsJSON, v6IDsJSON, sgJSON,
-		n.UsedByType, n.UsedByID, n.UsedByName, n.MAC, helpers.NIStatusName(n.Status))
+		n.UsedByType, n.UsedByID, n.UsedByName, n.MAC, helpers.NIStatusName(n.Status),
+		n.BandwidthLimitMbps)
 	rec, err := helpers.ScanNI(row)
 	if err != nil {
 		if helpers.IsNICMacCollision(err) {
@@ -245,7 +252,8 @@ func (w *networkInterfaceWriter) GetForUpdate(ctx context.Context, id string) (*
 	return n, nil
 }
 
-// UpdateMeta — UPDATE name/description/labels/security_group_ids/v4_address_ids/v6_address_ids.
+// UpdateMeta — UPDATE name/description/labels/security_group_ids/v4_address_ids/
+// v6_address_ids/bandwidth_limit_mbps.
 // outbox-write — в use-case'е.
 func (w *networkInterfaceWriter) UpdateMeta(ctx context.Context, n *domain.NetworkInterface) (*kacho.NetworkInterfaceRecord, error) {
 	labelsJSON, err := helpers.MarshalJSONB(domain.LabelsToMap(n.Labels), "NetworkInterface.labels")
@@ -265,10 +273,12 @@ func (w *networkInterfaceWriter) UpdateMeta(ctx context.Context, n *domain.Netwo
 		return nil, err
 	}
 	q := fmt.Sprintf(`
-		UPDATE network_interfaces SET name=$2, description=$3, labels=$4, security_group_ids=$5, v4_address_ids=$6, v6_address_ids=$7
+		UPDATE network_interfaces SET name=$2, description=$3, labels=$4, security_group_ids=$5, v4_address_ids=$6, v6_address_ids=$7,
+			bandwidth_limit_mbps=$8
 		WHERE id=$1
 		RETURNING %s`, helpers.NICCols)
-	row := w.tx.QueryRow(ctx, q, n.ID, string(n.Name), string(n.Description), labelsJSON, sgJSON, v4IDsJSON, v6IDsJSON)
+	row := w.tx.QueryRow(ctx, q, n.ID, string(n.Name), string(n.Description), labelsJSON, sgJSON, v4IDsJSON, v6IDsJSON,
+		n.BandwidthLimitMbps)
 	rec, err := helpers.ScanNI(row)
 	if err != nil {
 		return nil, helpers.WrapPgErr(err, "Network interface", n.ID)

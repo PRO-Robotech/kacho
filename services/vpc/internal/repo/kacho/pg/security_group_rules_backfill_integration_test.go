@@ -36,6 +36,20 @@ import (
 
 const beforeRulesDomainMigration = 26
 
+// rulesDomainMigration — сама 0027. Проба идёт ДО неё и РОВНО на неё, а не «до
+// конца цепочки», и это не оформление.
+//
+// Здесь стоял голый `goose.Up`, то есть проба закрепляла «0027 — вершина», а не
+// своё содержание. Она покраснела на первой же следующей миграции, тронувшей ту же
+// колонку: 0029 судит правило по ЕЩЁ ОДНОМУ измерению — по ЦЕЛИ, — и все правила
+// этой фикстуры цели не несут, поэтому к голове набор пуст. Это верный исход 0029
+// (правило без цели не разрешает ничего и блокирует правку группы), но под именем
+// «обратное заполнение области значений» он утверждал бы чужое.
+//
+// Предмет 0027 — область значений (порт, протокол); предмет 0029 — цель, и он
+// проверяется своей пробой в `services/vpc/internal/migrations/`.
+const rulesDomainMigration = 27
+
 // VPC-SGBF-1 — строки, записанные до правки, приводятся к выразимому виду, и
 // после этого ограничение к ним применимо.
 func TestSGRulesBackfill_LegacyRowsNormalised(t *testing.T) {
@@ -82,13 +96,15 @@ func TestSGRulesBackfill_LegacyRowsNormalised(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT rules::text FROM security_groups WHERE id = $1`, untouchedID).Scan(&before))
 
-	// Догоняем миграции до конца — обратное заполнение + ограничение.
+	// Догоняем РОВНО до 0027 — обратное заполнение + ограничение (см.
+	// rulesDomainMigration о том, почему не до конца цепочки).
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	goose.SetBaseFS(migrations.FS)
 	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."), "миграция обязана примениться на строках, записанных до правки")
+	require.NoError(t, goose.UpTo(db, ".", rulesDomainMigration),
+		"миграция обязана примениться на строках, записанных до правки")
 
 	var kept []string
 	rows, err := pool.Query(ctx,

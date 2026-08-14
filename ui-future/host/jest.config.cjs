@@ -12,7 +12,7 @@ module.exports = {
     // `import { XOutlined }` (HostRail, 20 иконок) висел вечно, ожидая binding. Мап на
     // реальный стаб → линкер резолвит. Заодно снимает исходную ESM/CJS-гонку antd↔icons
     // (antd тоже получает стаб, реальный @ant-design/icons не грузится).
-    "^@ant-design/icons$": "<rootDir>/src/test/antd-icons-stub.tsx",
+    "^@ant-design/icons$": "<rootDir>/../shared/src/test/antd-icons-stub.tsx",
     "^dashboard/DashboardPage$": "<rootDir>/src/test/dashboard-remote.tsx",
     "^dashboard/navigation$": "<rootDir>/src/test/dashboard-navigation.ts",
     "^vpc/VpcPage$": "<rootDir>/src/test/vpc-remote.tsx",

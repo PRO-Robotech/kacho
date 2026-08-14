@@ -107,9 +107,8 @@ func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// Update — name/labels/proxy_protocol_v2.
+	// Update — name/labels/default_target_group_id.
 	l.Name = "cov3-lst-updated"
-	l.ProxyProtocolV2 = true
 	l.DefaultTargetGroupID = option.MustNewOption(tg.ID)
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
 		cur, gerr := w.Listeners().Get(ctx, string(l.ID))
@@ -117,7 +116,6 @@ func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 		rec, err := w.Listeners().Update(ctx, l, cur.Xmin)
 		require.NoError(t, err)
 		assert.Equal(t, domain.LbName("cov3-lst-updated"), rec.Name)
-		assert.True(t, rec.ProxyProtocolV2)
 		v, ok := rec.DefaultTargetGroupID.Maybe()
 		require.True(t, ok)
 		assert.Equal(t, tg.ID, v)

@@ -194,17 +194,13 @@ pg-hydra:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
 
-# ── capacity trims: single OpenFGA replica + drop the dev MinIO ──
+# ── capacity trims: single OpenFGA replica ──
 openfga:
   replicaCount: 1
   ingress:
     enabled: false
 
-# minio-dev (compliance-report S3 sink) isn't needed for the core rollout — drop
 # it to free a pod's worth of CPU/mem on the 4-vCPU cluster.
-minioDev:
-  enabled: false
-
 # ── no ingress controller on this cluster ──
 ingress-nginx:
   enabled: false

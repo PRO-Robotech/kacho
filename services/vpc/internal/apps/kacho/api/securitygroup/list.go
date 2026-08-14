@@ -91,6 +91,13 @@ func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, f SecurityGroup
 	if ferr != nil {
 		return nil, "", ferr
 	}
+	// Обратная ссылка читается ПОСЛЕ сужения — только для строк, которые уедут
+	// вызывающему. До сужения запрос оплачивал бы потребителей тех групп, которых
+	// вызывающий не увидит: стоимость страницы обязана принадлежать ответу, а не
+	// прочитанному.
+	if uerr := loadUsedBy(ctx, rd.SecurityGroups(), visible); uerr != nil {
+		return nil, "", serviceerr.MapRepoErr(uerr)
+	}
 	return visible, next, nil
 }
 

@@ -416,7 +416,7 @@ CASES.append(Case(
 # verifies VPC-1-18
 CASES.append(Case(
     id="NET-DEL-V1-NONEMPTY-FP",
-    title="Network.Delete непустой сети (есть подсеть) → sync FAILED_PRECONDITION 'Network .. is not empty' (F5, DB-backstop)",
+    title="Network.Delete непустой сети (есть подсеть) → sync FAILED_PRECONDITION с перечнем мешающего (F5, DB-backstop)",
     classes=["NEG", "CONF", "STATE"], priority="P0",
     steps=[
         _net_create_step("delne", v4=[_SUPERNET_V4]),
@@ -424,10 +424,18 @@ CASES.append(Case(
         _subnet_create_step("delne", {"zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"}),
         poll_operation_until_done(),
         # DELETE своей сети — retry на transient 403; терминальный 400 (FAILED_PRECONDITION) — assert.
+        #
+        # Текст отказа ПЕРЕЧИСЛЯЕТ мешающее по видам и числам:
+        # `Network <id> is not empty (subnets: 1)`. Прежняя редакция локала
+        # `/^Network .* is not empty$/` — с якорем конца строки, то есть требовала
+        # текста БЕЗ перечисления и потому пережила свой предмет: перечень заведён
+        # осознанно, чтобы арендатор не выяснял радиус перебором. Сверяется вся
+        # строка целиком — это строже прежнего шаблона, а не мягче.
         retry_until_authorized(Step(name="del-nonempty", method="DELETE", path="/vpc/v1/networks/{{netId}}",
             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                         "pm.test('verbatim not-empty text', () => "
-                         "pm.expect(pm.response.json().message).to.match(/^Network .* is not empty$/));"]),
+                         "pm.test('отказ перечисляет мешающее: subnets: 1', () => "
+                         "pm.expect(pm.response.json().message, pm.response.text()).to.eql("
+                         "'Network ' + pm.environment.get('netId') + ' is not empty (subnets: 1)'));"]),
             retry_on=(403,)),
         _cleanup_subnet(),
         poll_operation_until_done(),

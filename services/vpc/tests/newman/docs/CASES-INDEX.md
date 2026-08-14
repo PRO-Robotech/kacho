@@ -137,8 +137,9 @@
 | `ADR-CR-EXT-FALLTHROUGH-V6` | CONF,NEG | P0 | 1 (add) | Split-shape: Address.Create v6 в zone с v4-only default pool → cascade family-skip → `FailedPrecondition` (код 9). После cascade использует `len(V4CIDRBlocks)>0`/`len(V6CIDRBlocks)>0` вместо runtime-парсинга CIDR. Verifies REQ-RESOLVE-01. |
 | `*-CR-CRUD-INT` | CRUD | P1 | 1 (add) | Create internal Address → IP в subnet |
 | `*-CR-CRUD-OK` | CRUD | P1 | 5 (gat,net,rou,sec,sub) | Create subnet → Operation → Subnet visible in GET |
-| `SUB-CR-NO-CIDR-OK` | CRUD | P1 | 1 (sub) | Create Subnet без `ipv4_cidr_primary` (только v6 или вообще без IPv4) → 200, CIDR-less Subnet. Verifies REQ-CIDR-08. |
-| `SUB-CR-NEG-ADDR-INTO-CIDRLESS` | NEG,CONF | P1 | 1 (sub) | Create internal Address в Subnet без IPv4-CIDR → `FailedPrecondition`/`InvalidArgument` (некуда аллоцировать v4-IP). Verifies REQ-CIDR-08. |
+| `SUB-CR-NEG-NO-ANCHOR` | NEG,VAL | P1 | 1 (sub) | Create Subnet без ОБОИХ адресных якорей → 400, отказ называет `ipv4_cidr_primary`; то же имя с законным якорем проходит. Verifies REQ-CIDR-08. |
+| `SUB-CR-V6ONLY-NO-V4-OK` | CRUD | P1 | 1 (sub) | Create v6-only Subnet → 200; набор IPv4-диапазонов пуст; `addCidrBlocks` добавляет первый. Положительный контроль к REQ-CIDR-08. |
+| `SUB-CR-NEG-ADDR-INTO-V6ONLY` | NEG,CONF | P1 | 1 (sub) | Create internal v4-Address в v6-only Subnet → `FailedPrecondition`/`InvalidArgument` (нет плана этого семейства). Verifies REQ-CIDR-08. |
 | `SUB-CR-V6-OK` | CRUD | P1 | 1 (sub) | Create Subnet с `ipv6_cidr_primary` (IPv6-only или dual-stack) → 200, якорь виден в GET. Verifies REQ-CIDR-09. |
 | `SG-CR-WITH-NETWORK-OK` | CRUD | P1 | 1 (sec) | Create SecurityGroup с валидным `network_id` → 200, network_id виден; SG привязан к сети. Verifies REQ-RES-07. |
 | `SG-NET-01-NEG-CREATE-NO-NETWORK` | VAL,NEG | P0 | 1 (sec) | Create SecurityGroup без `network_id` → sync 400 INVALID_ARGUMENT `network_id required` (Operation НЕ создается; network_id mandatory). Verifies REQ-RES-07. |
@@ -153,6 +154,8 @@
 | `NIC-CR-WITH-ADDR-OK` | CRUD | P1 | 1 (nic) | Create NIC с `v4_address_ids` (предсозданный internal Address) → 200, address привязан, `Address.used`=true. Verifies REQ-NIC-04. |
 | `NIC-CR-WITH-V6-ADDR-OK` | CRUD | P1 | 1 (nic) | Create NIC с `v6_address_ids` (предсозданный v6 internal Address) → 200, v6-address привязан. Verifies REQ-NIC-04. |
 | `NIC-CR-WITH-BOTH-ADDR-OK` | CRUD | P1 | 1 (nic) | Create NIC с `v4_address_ids` И `v6_address_ids` одновременно (dual-stack линковка при создании) → 200, оба address привязаны. Verifies REQ-NIC-04. |
+| `NIC-CR-VAL-BANDWIDTH-LIMIT-NOT-DECLARED` | VAL,NEG | P1 | 1 (nic) | Create NIC с `bandwidthLimitMbps` (величина ЗАКОННА по промежутку) на стенде, чей чарт объявляет `dataplane.executor.tenantSettableBandwidthLimit: false` → синхронный 400 INVALID_ARGUMENT, `field_violations[].field = bandwidth_limit_mbps`, причина в message. Предпосылка — объявление чарта; она читается `services/vpc/deploy/executor_profile_test.go`, и её смена обязана краснить этот кейс. Verifies REQ-NIC-BANDWIDTH-LIMIT. |
+| `NIC-CR-VAL-BANDWIDTH-LIMIT-UNSET-OK` | VAL,CRUD | P1 | 1 (nic) | Положительный контроль к предыдущему: `bandwidthLimitMbps: 0` на том же стенде → 200, интерфейс создан, ограничения нет. Без него «отвергнуто» неотличимо от «путь создания заглушен». Verifies REQ-NIC-BANDWIDTH-LIMIT. |
 | `NIC-CR-WITH-UNBOUND-SG-OK` | CRUD | P2 | 1 (nic) | Create NIC с `security_group_ids[]` на SG (bound к сети NIC'а) → 200; NIC ссылается на SG. (SG теперь mandatory-network — network-less SG больше нет; SG привязан к `{{netId}}`.) Verifies REQ-NIC-05. |
 | `RT-CR-STATE-SUBNET-NO-REBIND` | CRUD,STATE | P1 | 1 (rou) | Create ВТОРОЙ RouteTable в сети → уже существующая Subnet остаётся на `network.defaultRouteTableId°` и НЕ переклеивается на новую RT (привязка ставится один раз, на Subnet.Create — VPC-1 F8). DB-механизмы выбора RT сняты: `subnet_auto_pick_rt_trg` (0017), `rt_auto_assoc_subnets_trg` (0019). Verifies REQ-RT-SUBNET-NO-REBIND. |
 | `SUB-CR-STATE-DEFAULT-RT-NOT-ARBITRARY` | CRUD,STATE | P1 | 1 (sub) | Create Subnet без `routeTableId` в сети, где ЕСТЬ дополнительная tenant-RT → привязка = `network.defaultRouteTableId°` (объявленный дефолт), а НЕ произвольная/«самая ранняя» RT сети. Реализация: `Subnet.Create` (use-case), не DB-trigger. Verifies REQ-SUB-DEFAULT-RT-BINDING. |
@@ -185,12 +188,6 @@
 | `*-CR-VAL-CIDR-HOSTBITS` | VAL | P0 | 1 (sub) | Create с host-bits в CIDR (10.0.0.5/24) → InvalidArgument |
 | `*-CR-VAL-CIDR-REQUIRED` | VAL | P0 | 1 (sub) | Create без v4_cidr_blocks → InvalidArgument |
 | `*-CR-VAL-DESC-INT-TYPE` | NEG,VAL | P3 | 6 (add,gat,net,rou,sec,sub) | Create с description=число → 400 |
-| `*-CR-VAL-DHCP-DOMAIN-INVALID` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-DOMAIN-INVALID |
-| `*-CR-VAL-DHCP-DOMAIN-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-DOMAIN-OK |
-| `*-CR-VAL-DHCP-NS-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-INVALID-IP |
-| `*-CR-VAL-DHCP-NS-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-OK |
-| `*-CR-VAL-DHCP-NTP-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-INVALID-IP |
-| `*-CR-VAL-DHCP-NTP-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-OK |
 | `*-CR-VAL-EMPTY-BODY` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с пустым body → 400 |
 | `*-CR-VAL-EXT-WITH-SUBNET-FK` | NEG,VAL | P1 | 1 (add) | Create external + internal со заданным subnet_id → 400 oneof |
 | `*-CR-VAL-PROJECT-REQUIRED` | VAL | P0 | 2 (gat,net) | Create без project → InvalidArgument |
@@ -242,6 +239,7 @@
 | `*-DEL-NEG-HAS-SUBNETS` | CONF,NEG,STATE | P0 | 1 (net) | Delete Network c Subnet → FailedPrecondition (FK RESTRICT) |
 | `*-DEL-NEG-NF-INVALID-PREFIX` | NEG,STATE | P1 | 1 (net) | Delete с id без VPC-префикса → sync 404 |
 | `*-DEL-STATE-DEFAULT-SG` | NEG,STATE | P1 | 1 (sec) | Delete default-SG напрямую → должен fail (нельзя delete default SG в обход) |
+| `CDG-DEL-NEG-REFERENCED` | NEG,CONF,STATE | P0 | 1 (cdg) | Delete именованного набора префиксов, на который ссылается правило группы (`ruleSpecs[].cidrGroupId`) → 400 `FAILED_PRECONDITION`; отказ перечисляет мешающее ВИДАМИ И ЧИСЛАМИ (`security groups: 1, rules: 1`) и НЕ несёт идентификаторов правил. Держит внешний ключ RESTRICT с проекции ссылок (миграция 0035). Парный положительный контроль в том же кейсе: снятие группы правил освобождает набор, и тот же вызов его удаляет. |
 | `SG-DEL-NEG-NIC-ATTACHED` | NEG,STATE,CONF | P0 | 1 (sec) | Delete SG, прилинкованного к NIC через `security_group_ids[]` → `FailedPrecondition`. Объявление known-failing снято 2026-07-31 вместе с предметом: ref-check реализован в writer-TX репозитория, разбор — в docs/RESULTS.md. Verifies REQ-SG-DEL-NIC-REFCHECK. |
 
 ### Get
@@ -269,12 +267,12 @@
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER` | AUTHZ,CONF | P0 | 1 (add) | GetByValue: адрес подсети-1 не находится, когда областью названа подсеть-2 (область реально сужает выборку) |
-| `*-GBV-CRUD-OK` | CRUD | P1 | 1 (add) | GetByValue internal IP со scope subnetId → 200 + сам Address (единственный достижимый положительный путь) |
-| `*-GBV-AUTHZ-UNSCOPED-DENY` | AUTHZ,NEG | P1 | 1 (add) | GetByValue без scope subnetId → 403 fail-closed, ни id ни IP не раскрыты |
-| `*-GBV-CONF-EXT-BY-VALUE-REFUSED` | CONF,NEG | P1 | 1 (add) | GetByValue внешнего IP → 400 INVALID_ARGUMENT с именем поля: область у запроса одна (подсеть), внешний адрес в подсети не размещается, поэтому вопрос отвергается прямо, а не ложным «не найдено» |
-| `*-GBV-NEG-NF` | AUTHZ,NEG | P0 | 1 (add) | GetByValue несуществующего IP → NotFound (security: не должно leak'ать существование) |
-| `*-GBV-VAL-INVALID-IP` | NEG,VAL | P2 | 1 (add) | GetByValue с garbage IP → 400 или 404 |
+| `*-LBV-CONF-NOLEAK-CROSS-PROJECT` | AUTHZ,CONF | P0 | 1 (add) | Сужение по значению: адрес проекта-1 не находится, когда областью назван проект-2 (область реально сужает выборку); плечо-контроль — в своём проекте находится |
+| `*-LBV-CRUD-INT` | CRUD | P1 | 1 (add) | Сужение по значению находит ВНУТРЕННИЙ адрес в обоих семействах (v4/v6) в одной двухстековой подсети; страница несёт только спрошенное значение |
+| `*-LBV-CRUD-EXT` | CRUD,CONF | P1 | 1 (add) | Сужение по значению находит ВНЕШНИЙ адрес в обоих семействах (v4/v6) — вопрос, на который у снятого `GetByValue` не было области (issues/104) |
+| `*-LBV-AUTHZ-UNSCOPED-DENY` | AUTHZ,NEG | P1 | 1 (add) | Сужение по значению без `projectId` → отвергнуто fail-closed, ни id ни IP не раскрыты; плечо-контроль — с областью тот же вопрос отвечается |
+| `*-LBV-NEG-NF` | AUTHZ,NEG | P0 | 1 (add) | Сужение по значению, которого ни у кого нет → 200 с пустой страницей (существование не раскрыто); плечо-контроль — своё значение находится |
+| `*-LBV-VAL-INVALID` | NEG,VAL | P2 | 1 (add) | Негодное значение фильтра списка → 400 INVALID_ARGUMENT с именем поля `ip_address`, НЕ пустая страница (ложное утверждение об отсутствии) |
 
 ### Lifecycle
 
@@ -327,8 +325,8 @@
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LBS-CRUD-OK` | CRUD | P2 | 1 (add) | ListBySubnet → массив (возможно пустой) |
-| `*-LBS-NEG-PARENT-NF` | NEG | P2 | 1 (add) | ListBySubnet несуществующего subnet → 200 или 404 |
+| `*-LSN-CRUD-OK` | CRUD | P2 | 1 (add) | Сужение списка по подсети: адрес этой подсети присутствует, внесубнетный (внешний) отсутствует — обе стороны сужения на одной странице |
+| `*-LSN-NEG-PARENT-NF` | NEG | P2 | 1 (add) | Сужение по подсети: well-formed-но-отсутствующая → 200 пусто; малформед → 400 `invalid subnet id`; плюс положительный контроль без сужения |
 
 ### ListOperations
 
@@ -341,32 +339,33 @@
 | `NET-LISTOPS-AFTER-DELETE-OK` | CRUD,STATE | P1 | 1 (net) | После Delete ресурса его `<Resource>.ListOperations(<id>)` все еще содержит историю операций (create+delete) — операции переживают удаление ресурса. Verifies REQ-OPS-04. |
 | `OP-LIST-AFTER-DELETE-OK` | CRUD,STATE | P1 | 1 (ope) | `OperationService.Get(opId)` по операции удаленного ресурса → 200 (запись операции не удаляется вместе с ресурсом). Verifies REQ-OPS-04. |
 
-### ListRouteTables
+### Сужение списка по network_id — таблицы маршрутизации
 
-*Network: RT*
-
-| Pattern | Classes | P | Apps | Что проверяет |
-|---|---|---|---|---|
-| `*-LRT-CRUD-EMPTY` | CRUD | P2 | 1 (net) | ListRouteTables → 200 + empty |
-| `*-LRT-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List route_tables в несуществующей network → 404 NotFound |
-
-### ListSecurityGroups
-
-*Network: SG*
+*Замена снятому `NetworkService.ListRouteTables` (второй путь к одному ответу).
+Case-id сохранены: у них тот же предмет — «дочерние ЭТОЙ сети», — сменился адрес.*
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LSG-CRUD-DEFAULT-SG` | CRUD | P1 | 1 (net) | ListSecurityGroups → default SG присутствует (inline create в doCreate) |
-| `*-LSG-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List security_groups в несуществующей network → 404 NotFound |
+| `*-LRT-CRUD-EMPTY` | CRUD | P2 | 1 (net) | список, суженный по `network_id` → ровно системная таблица сети, арендаторских нет |
+| `*-LRT-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница (не отказ, не утечка) |
 
-### ListSubnets
+### Сужение списка по network_id — группы правил
 
-*Network: subnets*
+*Замена снятому `NetworkService.ListSecurityGroups`.*
 
 | Pattern | Classes | P | Apps | Что проверяет |
 |---|---|---|---|---|
-| `*-LSUB-CRUD-EMPTY` | CRUD | P2 | 1 (net) | ListSubnets для пустой network → 200 + empty array |
-| `*-LSUB-NEG-PARENT-NF` | NEG | P1 | 1 (net) | List subnets в несуществующей network → 404 NotFound |
+| `*-LSG-CRUD-DEFAULT-SG` | CRUD | P1 | 1 (net) | группа по умолчанию, названная самой сетью, в списке и помечена `defaultForNetwork` |
+| `*-LSG-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница |
+
+### Сужение списка по network_id — подсети
+
+*Замена снятому `NetworkService.ListSubnets`.*
+
+| Pattern | Classes | P | Apps | Что проверяет |
+|---|---|---|---|---|
+| `*-LSUB-CRUD-EMPTY` | CRUD | P2 | 1 (net) | список, суженный по `network_id`, для пустой сети → 200 + пустой массив |
+| `*-LSUB-NEG-PARENT-NF` | NEG | P1 | 1 (net) | сужение по несуществующей сети → 200 + пустая страница |
 
 ### ListUsedAddresses
 
@@ -412,6 +411,7 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-UPD-AUTHZ-NF-SYNC` | AUTHZ,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update несуществующего → sync 404 от AuthZ-Get |
 | `*-UPD-CONF-FULLTEXT` | CONF,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update garbage → точный текст 'Subnet .. not found' |
 | `*-UPD-CONF-NF-TEXT` | CONF,NEG | P1 | 6 (add,gat,net,rou,sec,sub) | Update несуществующего Subnet → точный текст 'Subnet .. not found' |
+| `CDG-UPD-NEG-COMPOSITION-VIA-MASK` | NEG,VAL,STATE | P1 | 1 (cdg) | Update именованного набора с маской состава (`v4CidrBlocks`) → 400 `INVALID_ARGUMENT`, и отказ ОТПРАВЛЯЕТ к глаголам (`AddCidrBlocks/RemoveCidrBlocks`), а не объявляет состав неизменяемым. Парный положительный контроль: косметическая правка тем же вызовом проходит, состав не тронут. |
 | `*-UPD-CRUD-DESC` | CRUD | P2 | 6 (add,gat,net,rou,sec,sub) | Update happy description |
 | `*-UPD-CRUD-DESCRIPTION` | CRUD | P1 | 1 (net) | Update description через mask → success + новое значение видно |
 | `*-UPD-CRUD-LABELS` | CRUD | P2 | 6 (add,gat,net,rou,sec,sub) | Update happy labels |
@@ -511,6 +511,19 @@ NIC-ресурс и `used_by`-колонки сохранены, но через
 | `SUB-LUA-CRUD-COUNT` | CRUD,STATE | P1 | 1 (sub) | Allocate 3 internal Address → `ListUsedAddresses` returns ≥3 entries. |
 | `SUB-LUA-STATE-FRAGMENT` | STATE | P2 | 1 (sub) | Allocate 5 → delete middle 3 → ListUsedAddresses count decreased by exactly 3 (fragmentation handling). |
 | `SUB-CR-NEG-ROLLBACK-NO-RESOURCE-IN-GET` | NEG,STATE | P1 | 1 (sub) | Failed Subnet.Create (parent network NF) → Get(<reserved-id>) → 404, List не включает. Async rollback verified. |
+
+### Диапазоны, зарезервированные платформой
+
+Оба кейса держат ПАРУ «отказ + положительный контроль» в одном кейсе и в одной сети:
+план сети покрывает и служебный диапазон, и законный префикс рядом с ним, поэтому
+отказ нельзя объяснить планом адресации. Текст отказа утверждается РАВЕНСТВОМ —
+это же утверждение о нераскрытии: в ответе нет ничего, кроме слота и присланного
+значения. Дословность цитаты держит `scripts/validate-cases.py` (проверка 3).
+
+| Pattern | Classes | P | Apps | Что проверяет |
+|---|---|---|---|---|
+| `SUB-CR-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | Create Subnet поверх диапазона, зарезервированного посадкой → sync `400 INVALID_ARGUMENT`, текст РАВЕН `"<slot> <value> overlaps an address range reserved by the platform"`, Operation не создаётся; законный префикс той же сети проходит и виден в GET. Verifies REQ-CIDR-11. |
+| `SUB-ACB-CONF-RESERVED-OVERLAP` | CONF,NEG,VAL | P0 | 1 (sub) | `:add-cidr-blocks` служебного диапазона к уже созданной подсети → тот же sync-отказ (второй и последний глагол, объявляющий диапазон); законный блок тем же глаголом проходит, служебного в наборе нет. Verifies REQ-CIDR-11. |
 
 ### Address release / idempotency
 
@@ -972,4 +985,13 @@ CIDR-октет), cleanup внутри кейса — `run.sh --service vpc1` с
 > `net…`/`sub…` (B3 hyphen ещё не мигрирован). default-RT-provision (VPC-1 F3/F8) **landed**: `Network.Create`
 > безусловно провижнит default-RT в writer-TX и заполняет `defaultRouteTableId°`, `Subnet.Create` привязывается
 > к нему — кейсы ассёртят это как контракт, а legacy DB-выбор RT (`subnet_auto_pick_rt_trg` 0017,
-> `rt_auto_assoc_subnets_trg` 0019) снят.
+> `rt_auto_assoc_subnets_trg` 0019) снят.| `SG-CR-VAL-RULE-NO-TARGET` | NEG,VAL | P1 | 2 (sg) | Create SG с правилом без цели → 400, отказ называет `rule_specs[0].target`; то же правило с целью проходит. Verifies SG-RULE-TARGET-01. |
+
+| `_SETUP-GW-ANCHOR` (GW-ANCHOR-01) | GW-ANCHOR-01 | fixture | P0 | **Не кейс, а посев** (setup-папка коллекции, объявлена в `scripts/gen.py`). Якорь размещения суиты шлюзов: сеть + зональная подсеть с IPv4. Шлюз без подсети не создаётся вовсе (`subnetId` обязателен и неизменяем, он же якорь размещения), а NAT-шлюз обязан стоять в подсети, несущей IPv4. Утверждает каждый свой шаг. Прежде заводился ПЕРВЫМ кейсом коллекции — тогда `--folder <кейс>` якоря не получал, и кейс, зелёный в полной суите, краснел в отладке, обвиняя невиновного; для одиночного прогона окружение готовит `./setup.sh` (гоняет эту же папку и выгружает id). |
+| `RT-GW-NEXTHOP-RESOLVES` | RT-GW-01 | CRUD,CONF | P0 | Статический маршрут через шлюз: ссылка РЕЗОЛВИТСЯ. Положительный контроль (когерентный шлюз проходит, `gatewayId` виден в чтении) плюс три отказа — отсутствующий шлюз → NOT_FOUND «Gateway … not found»; шлюз чужой сети → FAILED_PRECONDITION; семейство назначения не совпадает с видом шлюза → FAILED_PRECONDITION. |
+| `RT-GW-NEXTHOP-EXCLUSIVE` | RT-GW-02 | VAL,NEG | P1 | Следующий узел — ровно одна ветвь: маршрут без адреса и без шлюза отвергается, называя обе возможности; мусорный `gatewayId` — терминальный отказ формата «invalid gateway id …», а не полоса существования. |
+| `RT-GW-NAMED-NOT-DELETABLE` | RT-GW-03 | STATE,NEG | P1 | Шлюз, названный живым маршрутом, не удаляется (FAILED_PRECONDITION «gateway is in use»); после снятия маршрута — удаляется. Обратное направление того же внешнего ключа. |
+| `GW-CR-VAL-MISSING-ANCHOR` | GW-ANCHOR-02 | VAL,NEG | P1 | Create шлюза без `subnetId` → 400 «subnet_id: required». Ветвь вида в теле есть — отказ обязан быть про якорь, а не про вид. |
+| `GW-CR-CONF-EGRESS-ONLY-NEEDS-V6` | GW-ANCHOR-03 | CONF,NEG | P1 | Шлюз «только исход» (IPv6) в подсети без IPv6-блока → отказ по состоянию якоря. Вид сверяется с якорем ВНУТРИ вставки, а не проверкой до неё. |
+| `GW-CR-NAT-EXTERNAL-ADDRESS-OK` | GW-EXTADDR-01 | CRUD,CONF | P0 | Шлюз трансляции несёт внешний адрес, и адрес называет шлюз в ответ. `natGateway.addressId` непуст и адресуем; сам адрес читаем владельцем шлюза (EXTERNAL/IPV4, выдан IP, `used`), а его `usedBy` называет ИМЕННО этот шлюз (`referrer.type=vpc_gateway`) — то есть привязка видна ВЛАДЕЛЬЦУ адреса, а не только шлюзу. После снятия шлюза адрес уходит вместе с ним (аренда возвращена в пул). Предусловие — пул по умолчанию для зоны якоря, его заводит посев `_SETUP-POOL`. |
+| `GW-NEG-EXTERNAL-ADDRESS-NOT-DELETABLE-WHILE-BOUND` | GW-EXTADDR-02 | NEG,CONF | P1 | Адрес, занятый шлюзом, не удаляется: DELETE → FAILED_PRECONDITION «… in use …». Положительный контроль в том же кейсе — сняв шлюз, тот же путь проходит, значит отказ был про привязку, а не про неработающее удаление адреса. |

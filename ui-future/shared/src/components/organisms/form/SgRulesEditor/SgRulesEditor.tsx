@@ -7,7 +7,18 @@
 //   - description, labels
 //   - protocol_name | protocol_number  (либо name, либо number, либо ничего = any)
 //   - ports: PortRange { from_port, to_port }  (отсутствие = any)
-//   - oneof target { cidr_blocks | security_group_id | predefined_target }
+//   - oneof target { cidr_blocks | security_group_id } — РОВНО ОДНА цель
+//
+// Предустановленная цель СНЯТА с контракта (номер и имя зарезервированы, разрыв
+// объявлен в перечне `proto/declared-breaks.yaml`). Она была принимаемым, но
+// нечитаемым полем: край её сохранял, а правило не разрешало ничего. Держать её
+// выбором в форме значило бы предлагать арендатору исход, которого нет.
+//
+// «Ровно одна» — не пожелание формы, а проверка сервиса: правило без цели и
+// правило с двумя целями отвергаются с указанием поля `<путь>.target`. Поэтому
+// набор целей здесь СУЖЕН ТИПОМ, а не только скрыт из списка: непредставимый
+// выбор нельзя отправить, тогда как скрытый — можно, придя из уже сохранённого
+// правила.
 
 import { useState } from "react";
 import {
@@ -29,7 +40,7 @@ import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import { hasProtocolNumber } from "@shared/lib/resource-registry";
 
 type ProtocolMode = "any" | "name" | "number";
-type TargetKind = "cidr" | "sg" | "predefined";
+type TargetKind = "cidr" | "sg";
 
 export interface RuleExt {
   direction?: string;
@@ -43,7 +54,6 @@ export interface RuleExt {
   _target_kind?: TargetKind;
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
-  predefined_target?: string;
   id?: string;
 }
 
@@ -77,7 +87,6 @@ function inferTargetKind(r: RuleExt): TargetKind {
   if (r._target_kind) return r._target_kind;
   if (r.cidr_blocks) return "cidr";
   if (r.security_group_id) return "sg";
-  if (r.predefined_target) return "predefined";
   return "cidr";
 }
 
@@ -142,10 +151,8 @@ function ruleSummary(r: RuleExt): string {
     const v6 = r.cidr_blocks?.v6_cidr_blocks ?? [];
     const cs = [...v4, ...v6];
     parts.push(`CIDR ${cs[0] ?? "—"}${cs.length > 1 ? ` +${cs.length - 1}` : ""}`);
-  } else if (tk === "sg") {
-    parts.push(`SG ${r.security_group_id?.slice(0, 8) ?? "?"}`);
   } else {
-    parts.push(`predef ${r.predefined_target ?? "?"}`);
+    parts.push(`SG ${r.security_group_id?.slice(0, 8) ?? "?"}`);
   }
   return parts.join(" · ");
 }
@@ -429,13 +436,11 @@ export function RuleBody({
                 _target_kind: v,
                 cidr_blocks: v === "cidr" ? (rule.cidr_blocks ?? { v4_cidr_blocks: ["0.0.0.0/0"] }) : undefined,
                 security_group_id: v === "sg" ? (rule.security_group_id ?? "") : undefined,
-                predefined_target: v === "predefined" ? (rule.predefined_target ?? "self_security_group") : undefined,
               })
             }
             options={[
               { value: "cidr", label: "CIDR-блоки" },
               { value: "sg", label: "Security Group" },
-              { value: "predefined", label: "Предустановленный" },
             ]}
             style={{ width: "100%" }}
           />
@@ -463,20 +468,6 @@ export function RuleBody({
                 onChange={(e) => set({ security_group_id: e.target.value })}
               />
             ))}
-          {targetKind === "predefined" && (
-            <AntSelect
-              value={rule.predefined_target ?? "self_security_group"}
-              onChange={(v) => set({ predefined_target: v })}
-              options={[
-                { value: "self_security_group", label: "self_security_group" },
-                {
-                  value: "loadbalancer_healthchecks",
-                  label: "loadbalancer_healthchecks",
-                },
-              ]}
-              style={{ width: "100%" }}
-            />
-          )}
         </div>
       </div>
 

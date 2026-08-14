@@ -12,8 +12,9 @@ import (
 // ErrInternal при ошибке (json.Marshal failure).
 //
 // Для domain-типов VPC (map[string]string labels, []domain.SecurityGroupRule,
-// *domain.DhcpOptions, []domain.StaticRoute, ExternalIpv4Spec, InternalIpv4Spec,
-// *domain.DnsOptions) json.Marshal на практике не возвращает ошибку — типы
+// []domain.StaticRoute, ExternalIpv4Spec, InternalIpv4Spec — перечень сверен с
+// `services/vpc/internal/domain/`, прежняя редакция называла два типа, которых в
+// дереве нет) json.Marshal на практике не возвращает ошибку — типы
 // содержат только stdlib-типы без channel/func/cyclic-ref. Но мы все равно
 // пробрасываем ошибку наверх (а не паникуем): если в будущем добавится тип,
 // который теоретически может marshal-fail, сбой превращается в обычную

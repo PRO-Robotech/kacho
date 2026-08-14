@@ -882,16 +882,24 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // /vpc/v1/networks/{network_id}:internal (глагольный суффикс отличает её от
     // публичного GET). Регистрируется только на cluster-internal mux.
     internalGetPath: "/vpc/v1/networks/{id}:internal",
+    // Все трое детей сети сужаются по родителю НА СЕРВЕРЕ: `network_id` стоит в
+    // белом списке выражения `filter` у каждого из трёх владельцев (паритет
+    // держит `related-server-filter-parity.test.ts`, читающий эти списки из
+    // прод-кода сервиса). Клиентский `filterField` остаётся подстраховкой:
+    // сужение поверх курсорной страницы отфильтровало бы только то, что успело
+    // приехать, и выдало бы это за весь список.
     related: [
-      { childId: "subnets", filterField: "network_id", label: "Подсети" },
+      { childId: "subnets", filterField: "network_id", serverFilterField: "network_id", label: "Подсети" },
       {
         childId: "route-tables",
         filterField: "network_id",
+        serverFilterField: "network_id",
         label: "Таблицы маршрутов",
       },
       {
         childId: "security-groups",
         filterField: "network_id",
+        serverFilterField: "network_id",
         label: "Группы безопасности",
       },
     ],
@@ -1049,9 +1057,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "subnets",
     related: [
       {
-        // Под подсетью адреса всегда ВНУТРЕННИЕ (фильтр по internal_*.subnet_id).
+        // Под подсетью адреса всегда ВНУТРЕННИЕ (ссылка в internal_*.subnet_id).
+        //
+        // Сужает СЕРВЕР, и не выражением `filter`, а типизированным полем
+        // запроса: у адреса подсеть лежит внутри jsonb и в ДВУХ семьях, поэтому
+        // белым списком имён колонок она не выражается вовсе — владелец принимает
+        // её отдельным полем `subnet_id` и отбирает объединение по обеим семьям.
+        // Паритет с владельцем держит related-server-param-parity.test.ts.
+        //
+        // Клиентское сужение остаётся подстраховкой и здесь оно не косметика:
+        // путь к ссылке в строке ответа ВЛОЖЕННЫЙ и их два, то есть выражением
+        // фильтра эта же мысль не записывается.
         childId: "addresses",
         filterField: ["internal_ipv4_address.subnet_id", "internal_ipv6_address.subnet_id"],
+        serverParamField: "subnet_id",
         label: "IP-адреса",
       },
     ],
@@ -1890,6 +1909,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           },
         ],
       },
+      {
+        // Ограничение принимается НЕ НА КАЖДОМ СТЕНДЕ: полосу выдерживает
+        // исполнитель датаплейна, и умение ограничивать её объявляет посадка
+        // (`dataplane.executor.tenant-settable-bandwidth-limit`). Признак на
+        // публичной поверхности не виден, поэтому консоль поле предлагает, а край
+        // отвечает отказом с именем поля там, где умения нет. Описание об этом
+        // говорит прямо: пользователь должен узнать причину из формы, а не из
+        // отказа.
+        name: "bandwidth_limit_mbps",
+        label: "Ограничение полосы, Мбит/с",
+        type: "int",
+        required: false,
+        min: 0,
+        description:
+          "Опционально. Верхняя граница полосы интерфейса; 0 — без ограничения. Принимается только выше гарантированной полосы интерфейса и не выше того, что гарантирует стенд; на стендах, где исполнитель этого не умеет, край отвергает величину.",
+      },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       FIELD_PROJECT_ID,
@@ -1901,6 +1936,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       v4_address_ids: [],
       v6_address_ids: [],
       security_group_ids: [],
+      bandwidth_limit_mbps: 0,
       description: "",
       labels: {},
     }),
@@ -2075,19 +2111,54 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       FIELD_LABELS,
       FIELD_DESCRIPTION,
-      // gateway_type oneof — пока единственный вариант shared_egress_gateway_spec
-      // (proto: CreateGatewayRequest.shared_egress_gateway_spec). Backend
-      // отвергает с InvalidArgument "Illegal argument gateway" если oneof
-      // пустой или поле названо иначе (например прежнее shared_egress_gateway
-      // от response-сообщения Gateway, а не запроса). См. kacho-vpc gateway.go:91.
+      // Вид шлюза — ВЕТВЬ oneof, а не значение поля, поэтому в форме он enum, а на
+      // провод уходит ключом ветви (см. sanitize ниже). Подставлять вид молча
+      // нельзя: он решает, какое семейство назначения вправе идти через шлюз.
+      {
+        name: "_kind",
+        label: "Вид шлюза",
+        type: "enum",
+        immutable: true,
+        default: "nat",
+        options: [
+          { value: "nat", label: "Публичная трансляция исходящего IPv4 (NAT)" },
+          { value: "egress_only", label: "Только исход, IPv6 — входящие соединения не устанавливаются" },
+        ],
+        description:
+          "Выбирается при создании и неизменяем: смена вида — другой шлюз. Подсеть привязки обязана нести CIDR-блок того же семейства.",
+      },
+      {
+        name: "subnet_id",
+        label: "Подсеть",
+        type: "ref",
+        refResource: "subnets",
+        refProjectScoped: true,
+        required: true,
+        immutable: true,
+        description:
+          "Привязка шлюза и его якорь размещения: своей зоны шлюз не несёт, он наследует размещение подсети.",
+      },
       FIELD_PROJECT_ID,
     ],
     template: ({ projectId }) => ({
       project_id: projectId ?? "",
       name: "",
       description: "",
-      shared_egress_gateway_spec: {},
+      subnet_id: "",
+      _kind: "nat",
     }),
+    // Ветвь oneof не выражается значением поля: у неё нет значения, у неё есть имя.
+    // Поэтому выбранный вид уходит на провод КЛЮЧОМ ветви, а служебное поле формы
+    // снимается — иначе край получил бы лишний ключ, который молча выбрасывает, и
+    // шлюз создавался бы без вида.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const kind = (out._kind as string) || "nat";
+      delete out._kind;
+      if (kind === "egress_only") out.egress_only_gateway_spec = {};
+      else out.nat_gateway_spec = {};
+      return out;
+    },
   },
 
   // ====== compute (Instance) ======

@@ -127,7 +127,7 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateNetworkRequest) (
 	// «не прислано» / `false` обязано дойти до решения: поле объявляет, что явный
 	// выбор вызывающего сильнее конфига стенда, а молчание падает на конфиг.
 	// Прежде поле здесь просто не читалось, и решение всегда принимал конфиг.
-	op, err := h.create.Execute(ctx, n, WithDefaultSecurityGroup(req.CreateDefaultSecurityGroup))
+	op, err := h.create.Execute(ctx, n)
 	if err != nil {
 		return nil, err
 	}
@@ -198,87 +198,6 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveNetwork
 	return pbconv.OperationToProto(op), nil
 }
 
-// ListSubnets — child list; existence parent network'а (→ NotFound). Доступ к
-// parent'у гейтит per-RPC authz-interceptor прямым Check'ом.
-func (h *Handler) ListSubnets(ctx context.Context, req *vpcv1.ListNetworkSubnetsRequest) (*vpcv1.ListNetworkSubnetsResponse, error) {
-	if req.NetworkId == "" {
-		return nil, status.Error(codes.InvalidArgument, "network_id required")
-	}
-	if _, err := h.get.Execute(ctx, req.NetworkId); err != nil {
-		return nil, err
-	}
-	subs, nextToken, err := h.listSubnets.Execute(ctx, req.NetworkId, Pagination{
-		PageToken: req.PageToken,
-		PageSize:  req.PageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp := &vpcv1.ListNetworkSubnetsResponse{NextPageToken: nextToken}
-	for _, s := range subs {
-		pb, err := subnetToPb(s)
-		if err != nil {
-			return nil, err
-		}
-		resp.Subnets = append(resp.Subnets, pb)
-	}
-	return resp, nil
-}
-
-// ListSecurityGroups — child list; existence parent network'а (→ NotFound).
-// Доступ к parent'у гейтит per-RPC authz-interceptor прямым Check'ом.
-func (h *Handler) ListSecurityGroups(ctx context.Context, req *vpcv1.ListNetworkSecurityGroupsRequest) (*vpcv1.ListNetworkSecurityGroupsResponse, error) {
-	if req.NetworkId == "" {
-		return nil, status.Error(codes.InvalidArgument, "network_id required")
-	}
-	if _, err := h.get.Execute(ctx, req.NetworkId); err != nil {
-		return nil, err
-	}
-	sgs, nextToken, err := h.listSecurityGroup.Execute(ctx, req.NetworkId, Pagination{
-		PageToken: req.PageToken,
-		PageSize:  req.PageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp := &vpcv1.ListNetworkSecurityGroupsResponse{NextPageToken: nextToken}
-	for _, sg := range sgs {
-		pb, err := securityGroupToPb(sg)
-		if err != nil {
-			return nil, err
-		}
-		resp.SecurityGroups = append(resp.SecurityGroups, pb)
-	}
-	return resp, nil
-}
-
-// ListRouteTables — child list; existence parent network'а (→ NotFound). Доступ
-// к parent'у гейтит per-RPC authz-interceptor прямым Check'ом.
-func (h *Handler) ListRouteTables(ctx context.Context, req *vpcv1.ListNetworkRouteTablesRequest) (*vpcv1.ListNetworkRouteTablesResponse, error) {
-	if req.NetworkId == "" {
-		return nil, status.Error(codes.InvalidArgument, "network_id required")
-	}
-	if _, err := h.get.Execute(ctx, req.NetworkId); err != nil {
-		return nil, err
-	}
-	rts, nextToken, err := h.listRouteTables.Execute(ctx, req.NetworkId, Pagination{
-		PageToken: req.PageToken,
-		PageSize:  req.PageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp := &vpcv1.ListNetworkRouteTablesResponse{NextPageToken: nextToken}
-	for _, rt := range rts {
-		pb, err := routeTableToPb(rt)
-		if err != nil {
-			return nil, err
-		}
-		resp.RouteTables = append(resp.RouteTables, pb)
-	}
-	return resp, nil
-}
-
 // ListOperations — best-effort existence-probe: ресурс удален (NotFound от get)
 // → пропускаем (история операций должна оставаться доступной), прочая ошибка
 // возвращается. Per-object AuthZ энфорсит per-RPC authz-interceptor.
@@ -328,29 +247,12 @@ func networkToPb(rec *kachorepo.NetworkRecord) (*vpcv1.Network, error) {
 	return dst, nil
 }
 
-// subnetToPb / routeTableToPb / securityGroupToPb — repo-entity child-resource
-// → proto. Reuse уже зарегистрированных DTO-трансферов из `internal/dto/toproto`
-// (blank-import выше).
-func subnetToPb(rec *kachorepo.SubnetRecord) (*vpcv1.Subnet, error) {
-	var dst *vpcv1.Subnet
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer Subnet failed")
-	}
-	return dst, nil
-}
-
-func routeTableToPb(rec *kachorepo.RouteTableRecord) (*vpcv1.RouteTable, error) {
-	var dst *vpcv1.RouteTable
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer RouteTable failed")
-	}
-	return dst, nil
-}
-
-func securityGroupToPb(rec *kachorepo.SecurityGroupRecord) (*vpcv1.SecurityGroup, error) {
-	var dst *vpcv1.SecurityGroup
-	if err := dto.Transfer(dto.FromTo(*rec, &dst)); err != nil {
-		return nil, status.Error(codes.Internal, "dto.Transfer SecurityGroup failed")
-	}
-	return dst, nil
-}
+// Здесь стояли три преобразователя дочерних ресурсов — снят вместе со своим предметом.
+//
+// Они обслуживали под-перечисления сети, снятые с контракта: второй путь к ответу, который
+// уже даёт список самого ресурса с сужением по сети. Функции пережили снятие методов на
+// один заход и держались только тем, что компилятор их не проверяет на достижимость.
+//
+// Одноимённые преобразователи в пакетах САМИХ ресурсов живы и используются их списками —
+// это разные функции с совпадающими именами. Классифицировать совпадения по референту
+// обязательно: удаление «всех вхождений имени» вынесло бы отсюда мёртвое вместе с живым.

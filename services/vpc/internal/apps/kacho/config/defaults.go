@@ -29,7 +29,6 @@ import (
 //	KACHO_VPC_IAM_DNS_LB=false                        → extapi.iam.dns-lb
 //	KACHO_VPC_GEO_GRPC_ADDR=...                       → extapi.geo.endpoint
 //	KACHO_VPC_GEO_TLS=false                           → extapi.geo.tls.enable
-//	KACHO_VPC_DEFAULT_SG_INLINE=true                  → network.default-sg-inline
 //	KACHO_VPC_PROJECT_CACHE_TTL=30s                    → network.project-cache.positive-ttl
 //	KACHO_VPC_PROJECT_CACHE_NEGATIVE_TTL=5s            → network.project-cache.negative-ttl
 //	KACHO_VPC_PROJECT_CACHE_SIZE=10000                 → network.project-cache.max-size
@@ -47,6 +46,29 @@ func RegisterDefaults(v *viper.Viper) {
 	// request-timeout — server-side deadline на один RPC (защита от bounded-pool
 	// exhaustion / deadline-less запросов, CWE-770). 0 → без границы.
 	v.SetDefault("api-server.request-timeout", 30*time.Second)
+
+	// api-server.rate-limit — темп и одновременность запросов НА ВЫЗЫВАЮЩЕГО,
+	// отдельно для каждого листенера (см. ratelimit.go).
+	//
+	// Умолчание — НУЛИ, то есть «не объявлено», и полярность выбрана осознанно
+	// против «удобной»: величины, вписанные сюда, описывали бы один стенд (предел
+	// исполняется ведром В ПРОЦЕССЕ, поэтому при N репликах эффективная величина
+	// равна N × объявленного) и выглядели бы работающей защитой на всех
+	// остальных. Нулевые величины ничего не ограничивают, поэтому боевая посадка
+	// на них НЕ ПОДНИМАЕТСЯ (ValidateRequestRateLimits называет ручку в отказе), а
+	// значение объявляет чарт.
+	//
+	// Ключи объявлены здесь ещё и затем, чтобы их видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_API_SERVER__RATE_LIMIT__*` не доехал бы до поля вовсе.
+	v.SetDefault("api-server.rate-limit.public.read-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.public.mutation-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.public.burst-factor", 0.0)
+	v.SetDefault("api-server.rate-limit.public.in-flight", 0)
+	v.SetDefault("api-server.rate-limit.internal.read-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.mutation-per-sec", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.burst-factor", 0.0)
+	v.SetDefault("api-server.rate-limit.internal.in-flight", 0)
 
 	// metrics / healthcheck — cluster-internal diagnostic listener (/metrics +
 	// /healthz + /readyz). endpoint=:9095 зеркалит kacho-iam; enable=false ИЛИ
@@ -131,10 +153,10 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)
-	// breakglass — аварийный пропуск при отсутствующей модели прав. Умолчание
-	// false: «модели нет» само по себе разрешением не бывает, пропуск требуется
-	// объявить.
-	v.SetDefault("authz.list-filter.breakglass", false)
+	// Умолчания аварийного пропуска страницы здесь нет: ручка снята целиком (её
+	// имя — в `retired_knobs_test.go`). «Модели прав нет» разрешением не бывает, а
+	// посадка без модели не поднимается вовсе — отказ даёт `ValidateListFilter` на
+	// любой посадке, поэтому объявлять было нечего.
 
 	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:
 	// dev/Create разрешён, только Warn). register-drainer-enabled — default-on
@@ -144,8 +166,42 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("iam.register-drainer-enabled", true)
 
 	// network (VPC-domain)
-	v.SetDefault("network.default-sg-inline", true)
 	v.SetDefault("network.project-cache.positive-ttl", 30*time.Second)
 	v.SetDefault("network.project-cache.negative-ttl", 5*time.Second)
 	v.SetDefault("network.project-cache.max-size", 10000)
+
+	// dataplane.executor — что посадка ЗАЯВЛЯЕТ об исполнителе, которому контур
+	// отдаёт принятое от арендатора (см. dataplane.go).
+	//
+	// Умолчание — «НЕ объявлено» по каждому признаку, и полярность выбрана
+	// осознанно: незаявленный исполнитель не считается способным. Обратное
+	// умолчание было бы удобнее чарту и неверно по существу — посадка, забывшая
+	// объявить профиль, получала бы «умеет всё» молча. Боевая посадка на пустом
+	// профиле не поднимается (ValidateExecutorProfile), значение задаёт чарт.
+	//
+	// Ключи объявлены здесь ещё и для того, чтобы их видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_DATAPLANE__EXECUTOR__*` не доехал бы до поля вовсе.
+	v.SetDefault("dataplane.executor.overlapping-tenant-addresses", false)
+	v.SetDefault("dataplane.executor.state-tracking-families", []string{})
+	v.SetDefault("dataplane.executor.named-set-reference-in-rule", false)
+	v.SetDefault("dataplane.executor.guaranteed-payload-bytes", 0)
+	v.SetDefault("dataplane.executor.guaranteed-bandwidth-per-interface-mbps", 0)
+	v.SetDefault("dataplane.executor.connection-limit-per-interface", 0)
+	v.SetDefault("dataplane.executor.tenant-settable-bandwidth-limit", false)
+
+	// dataplane.reserved-prefixes — адресные диапазоны, которые платформа держит
+	// ЗА СОБОЙ (служебные адреса узлов, адреса служб внутри подсети, точка
+	// получения метаданных экземпляра).
+	//
+	// Умолчание — ПУСТО, и это осознанно противоположно «удобному»: перечень,
+	// вписанный сюда, описывал бы один стенд и выглядел бы работающей защитой на
+	// всех остальных. Пустой перечень при этом не резервирует ничего, поэтому
+	// боевая посадка на нём НЕ ПОДНИМАЕТСЯ (ValidateReservedPrefixes называет
+	// ручку в отказе), а значение объявляет чарт.
+	//
+	// Ключ объявлен здесь ещё и для того, чтобы его видел ENV-override: viper
+	// подхватывает переменную окружения только для ИЗВЕСТНОГО ключа, поэтому без
+	// SetDefault `KACHO_VPC_DATAPLANE__RESERVED_PREFIXES` не доехал бы до поля вовсе.
+	v.SetDefault("dataplane.reserved-prefixes", []string{})
 }

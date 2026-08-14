@@ -4704,7 +4704,8 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.listenerId);",
                   "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', () => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"
                 ]
               }
             }
@@ -6584,7 +6585,8 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.listenerId);",
                   "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "pm.test('слушатель создан и его id захвачен — иначе предмет кейса отсутствует', () => pm.expect(pm.environment.get('lstId') || '').to.not.equal(''));"
                 ]
               }
             }

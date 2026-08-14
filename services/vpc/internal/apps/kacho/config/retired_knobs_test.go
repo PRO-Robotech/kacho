@@ -17,17 +17,29 @@ import (
 // Поле запроса или настройки, которое сервис принимает и ни разу не читает, — это
 // обещание, за которое никто не отвечает: оператор задаёт значение, чарт его
 // доставляет, а поведение не меняется, и узнать об этом можно только по
-// последствиям. Три такие ручки у vpc сняты целиком:
+// последствиям. Четыре такие ручки у vpc сняты целиком:
 //
 //   - `authz.tuple-write.*` — прямой FGA-writer убран (регистрация владения идёт
 //     намерением в своей транзакции и очередью через iam), а ветка настройки,
 //     чарт и профили продолжали описывать снятое поведение;
 //   - `authz.list-filter.model-id` — версию модели авторизации закрепляет за собой
 //     iam (единственный, кто ходит в хранилище прав), и запрос BatchCheck поля под
-//     неё не имеет вовсе, поэтому доставить сюда было нечего.
+//     неё не имеет вовсе, поэтому доставить сюда было нечего;
+//   - `authz.breakglass` — носитель контура ставит звено решения о доступе
+//     безусловно, отменяющего поля в дескрипторе процесса нет;
+//   - `authz.list-filter.breakglass` — аварийный пропуск страницы. Его ПРЕДМЕТ
+//     («посадка без модели прав»: фильтр выключен либо соединение с iam не
+//     собрано) стал недостижим: `ValidateListFilter` отказывает в старте на
+//     выключенном фильтре и на нерезолвимом адресе — на ЛЮБОЙ посадке, не только
+//     боевой, — а адрес и там, и в проводке читается ОДНИМ методом
+//     (`ListFilterAuthorizeEndpoint`). Значит у поднявшегося процесса фильтр
+//     включён и соединение есть, и вооружённая ручка не меняет ни одного исхода.
+//     Сверх того у неё не было и пути доставки: шаблон чарта рендерил семь
+//     ключей фильтра и этот — нет, то есть задать её мог только сырой
+//     переменной окружения тот, кто и так правит окружение процесса.
 //
 // Проверка держит их снятыми: возвращаются такие ручки не заново продуманными, а
-// копированием у соседа, и тогда всё повторяется. Экземпляров три, поэтому и
+// копированием у соседа, и тогда всё повторяется. Экземпляров четыре, поэтому и
 // перечень закрытый — но осматривается ВСЁ дерево сервиса и ВСЕ профили стенда,
 // а не места, где ручки лежали.
 var retiredKnobs = []struct {
@@ -47,6 +59,11 @@ var retiredKnobs = []struct {
 	{"LIST_FILTER__MODEL_ID", "KACHO_VPC_AUTHZ__LIST_FILTER__MODEL_ID retired together with authz.list-filter.model-id"},
 	{"listFilter.modelId", "the chart key behind authz.list-filter.model-id is retired"},
 	{"ListFilter.ModelID", "the Go field behind authz.list-filter.model-id is retired"},
+	{"list-filter.breakglass", "authz.list-filter.breakglass retired: its subject is unreachable — ValidateListFilter refuses to start on a disabled filter and on an unresolvable authorize address on EVERY posture, so a booted process always has the filter on and the connection up; an armed knob changes no outcome, and the chart never rendered it at all"},
+	{"LIST_FILTER__BREAKGLASS", "KACHO_VPC_AUTHZ__LIST_FILTER__BREAKGLASS retired together with authz.list-filter.breakglass"},
+	{"listFilter.breakglass", "the chart key behind authz.list-filter.breakglass is retired (it was never rendered — the knob had no delivery path)"},
+	{"ListFilter.Breakglass", "the Go field read behind authz.list-filter.breakglass is retired"},
+	{`mapstructure:"breakglass"`, "the ListFilterConfig field behind authz.list-filter.breakglass is retired"},
 }
 
 // Что осматриваем: ВСЁ, что не двоичное. Перечня форматов здесь нет намеренно.

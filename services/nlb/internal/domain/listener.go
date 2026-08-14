@@ -16,6 +16,11 @@ import (
 // это (port, protocol) на этом VIP и ничего не аллоцирует. Address-поля
 // (ip_version/address_id/allocated_address/subnet_id/vip_origin) сняты и с
 // proto (reserved 12-15), и со схемы (миграция 0028).
+//
+// Обрамления PROXY-протокола у листенера тоже нет: заголовок уходит до любых
+// данных соединения, то есть его вставляет владелец байтового потока к бекенду, а
+// балансировщик четвёртого уровня потоком не владеет. Поле снято с контракта
+// (reserved 16 в `Listener`, 10 и 6 в запросах) и со схемы (миграция 0030).
 type Listener struct {
 	ID                   ResourceID
 	ProjectID            ProjectID
@@ -27,7 +32,6 @@ type Listener struct {
 	Protocol             LbProto
 	Port                 LbPort
 	TargetPort           LbPort
-	ProxyProtocolV2      bool
 	DefaultTargetGroupID option.ValueOf[ResourceID]
 	Status               ListenerStatus
 }
@@ -58,7 +62,6 @@ func (l Listener) Equal(other Listener) bool {
 		l.Protocol == other.Protocol &&
 		l.Port == other.Port &&
 		l.TargetPort == other.TargetPort &&
-		l.ProxyProtocolV2 == other.ProxyProtocolV2 &&
 		optEqual(l.DefaultTargetGroupID, other.DefaultTargetGroupID) &&
 		l.Status == other.Status
 }

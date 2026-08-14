@@ -4,6 +4,9 @@
 package helpers
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -31,7 +34,9 @@ type Scannable interface {
 const NetworkCols = `id, project_id, created_at, name, description, labels, COALESCE(default_security_group_id, '') AS default_security_group_id, COALESCE(vrf_id, 0) AS vrf_id, ipv4_cidr_blocks, ipv6_cidr_blocks, COALESCE(default_route_table_id, '') AS default_route_table_id`
 
 // SubnetCols — список колонок таблицы subnets в порядке, ожидаемом ScanSubnet.
-const SubnetCols = `id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, dhcp_options, placement_type, region_id`
+// Колонки `dhcp_options` нет: снята вместе с типом в миграции 0029 (контракта у
+// неё не было, значение никто не задавал и не читал).
+const SubnetCols = `id, project_id, created_at, name, description, labels, network_id, zone_id, v4_cidr_blocks, v6_cidr_blocks, route_table_id, placement_type, region_id`
 
 // AddressCols — список колонок таблицы addresses в порядке, ожидаемом ScanAddress.
 const AddressCols = `id, project_id, created_at, name, description, labels, addr_type, ip_version, reserved, used, deletion_protection, external_ipv4, internal_ipv4, internal_ipv6, external_ipv6`
@@ -44,11 +49,64 @@ const RouteTableCols = `id, project_id, created_at, name, description, labels, n
 const SGCols = `id, project_id, network_id, created_at, name, description, labels, default_for_network, rules`
 
 // GatewayCols — список колонок таблицы gateways в порядке, ожидаемом ScanGateway.
-const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type`
+// `subnet_id` — привязка шлюза и его якорь размещения (миграция 0030): NOT NULL,
+// поэтому сканируется в обычную строку, без Nullable-обёртки.
+// `external_address_id` — внешний адрес шлюза трансляции (миграция 0038):
+// nullable, поэтому сканируется через Nullable-обёртку, а пустая строка в
+// domain означает «адреса нет» (вид `EGRESS_ONLY`).
+const GatewayCols = `id, project_id, created_at, name, description, labels, gateway_type, subnet_id, external_address_id`
 
 // NICCols — список колонок таблицы network_interfaces в порядке, ожидаемом ScanNI.
 const NICCols = `id, project_id, created_at, name, description, labels, subnet_id,
-	v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status`
+	v4_address_ids, v6_address_ids, security_group_ids, used_by_type, used_by_id, used_by_name, mac_address, status,
+	bandwidth_limit_mbps`
+
+// NICColsAliased — тот же перечень, что NICCols, но с алиасом таблицы у каждой
+// колонки. Нужен там, где интерфейс читается в соединении с подсетью
+// (`UPDATE network_interfaces ni … FROM subnets s …`): без алиаса `id`/`name`/
+// `created_at` в RETURNING неоднозначны — подсеть несёт колонки тех же имён.
+//
+// # Почему ВЫВОДИТСЯ, а не выписывается второй раз
+//
+// Выписанная копия — второе место об одном предмете, и разошлась она молча:
+// колонка, добавленная в NICCols, в копию не попала, и запрос упал на
+// несовпадении числа колонок и приёмников уже на интеграционном прогоне. Вывод
+// делает расхождение невозможным by construction: перечень один, порядок один,
+// и добавление колонки доезжает в оба запроса одновременно.
+//
+// # Предпосылка проверяется здесь же
+//
+// Преобразование законно ровно пока каждая запись перечня — ГОЛЫЙ идентификатор
+// колонки: приписать алиас к выражению (`(SELECT …) AS x`, `count(*)`) нельзя, и
+// молчаливо испорченный запрос был бы хуже отсутствия функции. Такую запись
+// функция не пропускает — она паникует при сборке запроса, а не отдаёт негодный
+// SQL: предмет отказа виден в тесте и на старте, а не в отчёте о непонятной
+// ошибке базы.
+func NICColsAliased(alias string) string { return AliasColumns(alias, NICCols) }
+
+// AliasColumns приписывает алиас таблицы каждой записи перечня колонок.
+//
+// Отдельная экспортируемая функция, а не тело предыдущей, по одной причине: у
+// отрицательной половины её пробы должен быть ПРОИЗВОДИТЕЛЬ негодного входа.
+// Спрятав разбор внутри, проверить отказ на выражении было бы нечем — пришлось бы
+// портить действующий перечень, то есть проверять предикат на входе, которого в
+// дереве нет.
+func AliasColumns(alias, list string) string {
+	parts := strings.Split(list, ",")
+	out := make([]string, 0, len(parts))
+	for _, raw := range parts {
+		col := strings.TrimSpace(raw)
+		if col == "" {
+			continue
+		}
+		if strings.ContainsAny(col, " \t(){}*") {
+			panic(fmt.Sprintf("helpers.AliasColumns: запись %q не является голым именем колонки — "+
+				"приписать ей алиас нельзя; вынеси выражение из перечня либо строй такой запрос вручную", col))
+		}
+		out = append(out, alias+"."+col)
+	}
+	return strings.Join(out, ", ")
+}
 
 // AddressPoolCols — список колонок address_pools в порядке, ожидаемом ScanAddressPool.
 const AddressPoolCols = `id, name, description, labels, v4_cidr_blocks, v6_cidr_blocks, kind, zone_id, is_default, selector_labels, selector_priority, created_at, modified_at`
@@ -87,7 +145,7 @@ func ScanNetwork(row Scannable) (*kachorepo.NetworkRecord, error) {
 // ScanSubnet — row-scanner для SubnetRecord.
 func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 	var s kachorepo.SubnetRecord
-	var labelsJSON, dhcpJSON []byte
+	var labelsJSON []byte
 	var v4, v6 pgtype.Array[string]
 	var routeTableID *string
 	var name string
@@ -96,7 +154,7 @@ func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 
 	err := row.Scan(
 		&s.ID, &s.ProjectID, &s.CreatedAt, &name, &description, &labelsJSON,
-		&s.NetworkID, &s.ZoneID, &v4, &v6, &routeTableID, &dhcpJSON,
+		&s.NetworkID, &s.ZoneID, &v4, &v6, &routeTableID,
 		&placementType, &s.RegionID,
 	)
 	if err != nil {
@@ -118,13 +176,6 @@ func ScanSubnet(row Scannable) (*kachorepo.SubnetRecord, error) {
 	}
 	if routeTableID != nil {
 		s.RouteTableID = *routeTableID
-	}
-	if dhcpJSON != nil {
-		var dhcp domain.DhcpOptions
-		if err := UnmarshalJSONB(dhcpJSON, &dhcp, "Subnet.dhcp_options"); err != nil {
-			return nil, err
-		}
-		s.DhcpOptions = &dhcp
 	}
 	return &s, nil
 }
@@ -214,13 +265,29 @@ func ScanRouteTable(row Scannable) (*kachorepo.RouteTableRecord, error) {
 }
 
 // ScanSG — row-scanner для SecurityGroupRecord.
-// AddressesBySubnetWhere — предикат «адреса этой подсети». Вынесен в общий
-// артефакт, чтобы гейт плана (integration) читал ТУ ЖЕ строку, которую исполняет
-// репозиторий: проверка, EXPLAIN'ящая собственную копию запроса, ничего не
-// сказала бы о запросе продукта. Фильтр идёт по generated-колонке (индекс
-// addresses_internal_subnet_idx), а не по jsonb-выражениям — иначе цена страницы
-// равна размеру таблицы всех проектов.
-const AddressesBySubnetWhere = `internal_subnet_id = $1`
+// AddressesBySubnetWhereAt — предикат «адреса этой подсети» с параметром на
+// позиции n. Вынесен в общий артефакт, чтобы гейт плана (integration) читал ТУ ЖЕ
+// строку, которую исполняет репозиторий: проверка, EXPLAIN'ящая собственную копию
+// запроса, ничего не сказала бы о запросе продукта.
+//
+// Фильтр идёт по хранимой колонке internal_subnet_id (v4-подсеть, иначе
+// v6-подсеть, иначе NULL), а не по дизъюнкции jsonb-выражений: последнюю не
+// покрывает ни один индекс, то есть цена страницы равна размеру таблицы ВСЕХ
+// проектов. Колонка отбирает то же множество: «внутренний адрес несёт ровно одну
+// семью» закреплено проверкой addresses_single_internal_family (0025), поэтому
+// двух разных подсетей у одной строки не бывает by construction.
+//
+// Позиция параметра нужна публичному списку (`ListAddresses?subnet_id=`), где
+// предикат подсети стоит не первым; дочерний список подсети берёт ту же строку
+// через AddressesBySubnetWhere. Один вопрос — одна строка предиката.
+func AddressesBySubnetWhereAt(n int) string {
+	return fmt.Sprintf("internal_subnet_id = $%d", n)
+}
+
+// AddressesBySubnetWhere — тот же предикат с параметром на первой позиции
+// (дочерний список подсети). Не самостоятельный литерал: производится из
+// AddressesBySubnetWhereAt, иначе два места об одном предмете разошлись бы молча.
+var AddressesBySubnetWhere = AddressesBySubnetWhereAt(1)
 
 func ScanSG(row Scannable) (*kachorepo.SecurityGroupRecord, error) {
 	var sg kachorepo.SecurityGroupRecord
@@ -256,13 +323,21 @@ func ScanGateway(row Scannable) (*kachorepo.GatewayRecord, error) {
 	var g kachorepo.GatewayRecord
 	var labelsJSON []byte
 	var name, description, gatewayType string
+	// Отсутствие адреса представлено в базе как NULL, а не как пустая строка:
+	// частичный UNIQUE по `external_address_id` считал бы пустые строки
+	// РАВНЫМИ и допустил бы ровно один безадресный шлюз на всю таблицу.
+	// Наружу это едет пустой строкой — у domain нет второго состояния.
+	var externalAddressID *string
 
 	err := row.Scan(
 		&g.ID, &g.ProjectID, &g.CreatedAt, &name, &description, &labelsJSON,
-		&gatewayType,
+		&gatewayType, &g.SubnetID, &externalAddressID,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if externalAddressID != nil {
+		g.ExternalAddressID = *externalAddressID
 	}
 	g.Name = domain.RcNameVPC(name)
 	g.Description = domain.RcDescription(description)
@@ -283,6 +358,7 @@ func ScanNI(row Scannable) (*kachorepo.NetworkInterfaceRecord, error) {
 	if err := row.Scan(
 		&rec.ID, &rec.ProjectID, &rec.CreatedAt, &name, &description, &labelsJSON, &rec.SubnetID,
 		&v4IDsJSON, &v6IDsJSON, &sgJSON, &rec.UsedByType, &rec.UsedByID, &rec.UsedByName, &rec.MAC, &statusName,
+		&rec.BandwidthLimitMbps,
 	); err != nil {
 		return nil, err
 	}

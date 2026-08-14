@@ -317,7 +317,7 @@ def load_getters(domain):
     .pb.go», то есть попадало в слепую зону, где ему нечего делать: осматривать в
     нём нечего by construction. Три пустых сообщения дерева (`WhoAmIRequest`,
     `ListPermissionCatalogRequest`, `AccessTargetAllInScope`, плюс `PublicVip`,
-    `SharedEgressGatewaySpec`) держали порог слепой зоны непустым, и порог
+    `NatGatewaySpec`) держали порог слепой зоны непустым, и порог
     сторожил не то, что называл.
     """
     getters, declared = {}, set()

@@ -148,10 +148,19 @@ export async function loadDependents(
   const projectId = resource.project_id ?? "";
 
   if (resourceId === "networks") {
+    // Дети сети перечисляются ПЛОСКИМИ списками владельцев, сужёнными по родителю
+    // НА СЕРВЕРЕ: три под-перечисления сети сняты с контракта как вторые пути к
+    // одному ответу, а замена — `network_id` в белом списке выражения `filter`
+    // у каждого из трёх владельцев. Плоский список требует `project_id`, которого
+    // у под-перечисления не было (область бралась из сегмента пути): без проекта
+    // спрашивать нечем, и три отказа подряд деревом не станут. Авторитетный
+    // запрет остаётся за сервером — FK RESTRICT на самом удалении.
+    if (!projectId) return [];
+    const byNetwork = { project_id: projectId, filter: `network_id="${resource.id}"` };
     const [subnets, routeTables, sgs] = await Promise.all([
-      listAll(`/vpc/v1/networks/${resource.id}/subnets`, "subnets"),
-      listAll(`/vpc/v1/networks/${resource.id}/route_tables`, "route_tables"),
-      listAll(`/vpc/v1/networks/${resource.id}/security_groups`, "security_groups"),
+      listAll("/vpc/v1/subnets", "subnets", byNetwork),
+      listAll("/vpc/v1/routeTables", "route_tables", byNetwork),
+      listAll("/vpc/v1/securityGroups", "security_groups", byNetwork),
     ]);
     const out: DepNode[] = [];
     for (const s of subnets) {

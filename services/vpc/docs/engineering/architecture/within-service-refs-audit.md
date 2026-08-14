@@ -167,7 +167,8 @@
 | `id` PK | уникальный | `gateways_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `gateways_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
-| `gateway_type` (TEXT default 'shared_egress') | значение из enum | ❌ нет CHECK | sync (default-only сейчас) | **G5** (minor) |
+| `gateway_type` (TEXT, без DEFAULT) | значение из enum | ✅ CHECK `gateways_type_chk` (0030) | вид обязателен на Create, неизменяем | закрыто |
+| `subnet_id` (TEXT NOT NULL) | подсеть-якорь | ✅ FK `gateways_subnet_fk` ON DELETE RESTRICT (0030) | сверка семейства внутри INSERT-CAS | закрыто |
 
 ### 1.9 `address_pools`
 

@@ -31,6 +31,28 @@ data:
       # request-timeout — server-side deadline на один RPC (bounded-pool exhaustion
       # guard, CWE-770). 0 → без границы (нет long-lived server-streams в kacho-vpc).
       request-timeout: {{ default "30s" .Values.apiServer.requestTimeout | quote }}
+      # rate-limit — темп и одновременность запросов НА ВЫЗЫВАЮЩЕГО, по одному
+      # набору на листенер. Срок обработки выше ограничивает ОДИН запрос; здесь
+      # ограничивается их ПОТОК, и это разные защиты.
+      #
+      # Значения рендерятся НАПРЯМУЮ, без `default` — по той же причине, что у
+      # профиля исполнителя и перечня служебных диапазонов ниже: умолчание,
+      # вписанное здесь вторым местом, пережило бы удаление ключа из values.yaml,
+      # правка одного values.yaml не имела бы силы, и величина молча стала бы
+      # нулём. Ноль означает «не ограничиваем», а не «ограничивать нечего», и
+      # боевая посадка на нём НЕ СТАРТУЕТ (config.ValidateRequestRateLimits
+      # называет ручку в отказе).
+      rate-limit:
+        public:
+          read-per-sec: {{ .Values.apiServer.rateLimit.public.readPerSec }}
+          mutation-per-sec: {{ .Values.apiServer.rateLimit.public.mutationPerSec }}
+          burst-factor: {{ .Values.apiServer.rateLimit.public.burstFactor }}
+          in-flight: {{ .Values.apiServer.rateLimit.public.inFlight }}
+        internal:
+          read-per-sec: {{ .Values.apiServer.rateLimit.internal.readPerSec }}
+          mutation-per-sec: {{ .Values.apiServer.rateLimit.internal.mutationPerSec }}
+          burst-factor: {{ .Values.apiServer.rateLimit.internal.burstFactor }}
+          in-flight: {{ .Values.apiServer.rateLimit.internal.inFlight }}
 
     metrics:
       enable: {{ default true .Values.metrics.enable }}
@@ -133,8 +155,44 @@ data:
           enable: {{ default false .Values.extapi.geo.tls.enable }}
 
     network:
-      default-sg-inline: {{ default true .Values.network.defaultSgInline }}
       project-cache:
         positive-ttl: {{ default "30s" .Values.network.projectCache.positiveTtl | quote }}
         negative-ttl: {{ default "5s" .Values.network.projectCache.negativeTtl | quote }}
         max-size: {{ default 10000 .Values.network.projectCache.maxSize }}
+
+    # dataplane.executor — что посадка ЗАЯВЛЯЕТ об исполнителе, которому контур
+    # отдаёт принятое от арендатора (диапазоны, правила, ограничение полосы).
+    # Возможностей исполнителя контур не знает — их объявляет профиль; необъявленный
+    # исполнитель не считается способным, и боевая посадка на пустом профиле НЕ
+    # СТАРТУЕТ (config.ValidateExecutorProfile называет ручку в отказе).
+    #
+    # Значения рендерятся НАПРЯМУЮ, без `default`. Умолчание, вписанное здесь вторым
+    # местом, пережило бы удаление ключа из values.yaml: правка одного values.yaml не
+    # имела бы силы, а несущий признак молча стал бы «не объявлен». Так же и по той же
+    # причине рендерятся фильтр видимости и загрузочный гейт выше.
+    # dataplane.reserved-prefixes — адресные диапазоны, которые платформа держит ЗА
+    # СОБОЙ (служебные адреса узлов, адреса служб внутри подсети, точка получения
+    # метаданных экземпляра). Подсеть арендатора поверх такого диапазона
+    # принимается контуром и не работает, а симптом выглядит сетевым.
+    #
+    # Значения рендерятся НАПРЯМУЮ, без `default`: умолчание, вписанное здесь
+    # вторым местом, пережило бы удаление ключа из values.yaml — правка одного
+    # values.yaml не имела бы силы, и перечень молча стал бы пустым. Пустой
+    # перечень означает «не сужаем», а не «нечего сужать», и боевая посадка на нём
+    # НЕ СТАРТУЕТ (config.ValidateReservedPrefixes называет ручку в отказе).
+    dataplane:
+      reserved-prefixes:
+        {{- range .Values.dataplane.reservedPrefixes }}
+        - {{ . | quote }}
+        {{- end }}
+      executor:
+        overlapping-tenant-addresses: {{ .Values.dataplane.executor.overlappingTenantAddresses }}
+        state-tracking-families:
+          {{- range .Values.dataplane.executor.stateTrackingFamilies }}
+          - {{ . | quote }}
+          {{- end }}
+        named-set-reference-in-rule: {{ .Values.dataplane.executor.namedSetReferenceInRule }}
+        guaranteed-payload-bytes: {{ .Values.dataplane.executor.guaranteedPayloadBytes }}
+        guaranteed-bandwidth-per-interface-mbps: {{ .Values.dataplane.executor.guaranteedBandwidthPerInterfaceMbps }}
+        connection-limit-per-interface: {{ .Values.dataplane.executor.connectionLimitPerInterface }}
+        tenant-settable-bandwidth-limit: {{ .Values.dataplane.executor.tenantSettableBandwidthLimit }}

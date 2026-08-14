@@ -43,23 +43,11 @@ func (address) toPb(rec kachorepo.AddressRecord) (*vpcv1.Address, error) {
 			Address: rec.ExternalIpv4.Address,
 			ZoneId:  rec.ExternalIpv4.ZoneID,
 		}
-		if rec.ExternalIpv4.Requirements != nil {
-			ext.Requirements = &vpcv1.AddressRequirements{
-				DdosProtectionProvider: rec.ExternalIpv4.Requirements.DdosProtectionProvider,
-				OutgoingSmtpCapability: rec.ExternalIpv4.Requirements.OutgoingSmtpCapability,
-			}
-		}
 		p.Address = &vpcv1.Address_ExternalIpv4Address{ExternalIpv4Address: ext}
 	case rec.ExternalIpv6 != nil:
 		ext6 := &vpcv1.ExternalIpv6Address{
 			Address: rec.ExternalIpv6.Address,
 			ZoneId:  rec.ExternalIpv6.ZoneID,
-		}
-		if rec.ExternalIpv6.Requirements != nil {
-			ext6.Requirements = &vpcv1.AddressRequirements{
-				DdosProtectionProvider: rec.ExternalIpv6.Requirements.DdosProtectionProvider,
-				OutgoingSmtpCapability: rec.ExternalIpv6.Requirements.OutgoingSmtpCapability,
-			}
 		}
 		p.Address = &vpcv1.Address_ExternalIpv6Address{ExternalIpv6Address: ext6}
 	case rec.InternalIpv6 != nil:
