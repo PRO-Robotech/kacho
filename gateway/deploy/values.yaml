@@ -42,6 +42,21 @@ backends:
   # gateway-routed — docker push/pull go through the registry.kacho.local ingress.
   registry: kacho-registry.kacho.svc:9090
   registryInternal: kacho-registry.kacho.svc:9091
+  # kacho-storage public + internal endpoints (блочное хранение: Volume/Snapshot/
+  # Image/DiskType). Публичные RPC на /storage/v1/*, InternalVolumeService и
+  # InternalDiskTypeService — на внутреннем :9091 (ban #6).
+  #
+  # Имя Service — `kacho-storage`: чарт хранилища фиксирует его
+  # `fullnameOverride` (services/storage/deploy/values.yaml), а не выводит из
+  # имени релиза, поэтому оно НЕ зависит от того, как назван релиз.
+  #
+  # Ветка появилась вместе с #145: до неё адрес хранилища не объявлял НИ ОДИН
+  # чарт, и живым значением работало вкомпилированное умолчание — то есть адрес,
+  # которого не называл ни один профиль. Значение здесь БАЙТ-В-БАЙТ равно тому
+  # умолчанию: ветка делает адрес видимым профилю, а не меняет его.
+  # Пустое значение → storage-handlers не регистрируются вовсе (как у registry/geo/nlb).
+  storage: kacho-storage.kacho.svc:9090
+  storageInternal: kacho-storage.kacho.svc:9091
 
 # TLS termination на api-gateway pod. Включается автоматически когда tls.secretName указан.
 # Cert поставляется внешне через `kubectl create secret tls api-gateway-tls --cert=tls.crt --key=tls.key`.
@@ -61,6 +76,20 @@ ingress:
 # Production: api.kacho.local:443 (or whatever externally resolvable host:port).
 # Dev (kind + port-forward): override to localhost:18443.
 advertisedEndpoint: api.kacho.local:443
+
+# kratosPublicUrl — базовый адрес публичного API провайдера личности, по
+# которому край проверяет сессию SPA (cookie → /whoami).
+#
+# ПУСТО — не «выключено», а «вывести из релиза»: шаблон подставит
+# `http://<релиз>-kratos-public.<пространство-имён>.svc:80`. Выключает
+# сессионную аутентификацию целиком ТОЛЬКО значение `disabled` — это
+# сигнальное значение, которое читает config.go.
+#
+# Почему выводится, а не вписано литералом (#145): Service провайдера
+# называется по имени релиза, поэтому литерал верен ровно для одного релиза и
+# ломается молча при установке под другим именем — а профиль при этом не
+# меняется, потому что адреса он и не называл.
+kratosPublicUrl: ""
 
 # RESERVED — блок `oidc:` снят вместе с обработчиком церемонии.
 # Он питал маршруты интерактивного входа края, адресовавшие снятого провайдера
