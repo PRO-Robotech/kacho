@@ -220,6 +220,9 @@ RC
     run "формат .tf" tofu fmt -check -recursive terraform
     run "модульные пробы (tofu test)" tofu_modules
     run "примеры разбираются и сходятся по типам" tofu_examples
+    # Приёмка провайдера: полный цикл terraform против поддельного края в том же
+    # процессе. Исполнителя пробы находят сами — он выше положен в PATH.
+    run "приёмка провайдера (цикл terraform)" go test ./terraform/internal/provider -run Acceptance -count=1
 }
 
 # Перечень модулей ВЫВОДИТСЯ из дерева, а не выписывается: рукописный список разошёлся
