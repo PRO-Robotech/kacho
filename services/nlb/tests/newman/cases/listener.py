@@ -37,8 +37,8 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 #
 # SECOND HALF of the same root cause, fixed only later: seeding the hash with `runId`
 # ALONE separates RUNS but NOT the four collections INSIDE one run. `_cidrSeq` restarts
-# at 1 in every newman process (stated three paragraphs up) while `__oct2`/`__oct3`-base
-# are pinned by the shared runId — so listener / load-balancer / cross-resource /
+# at 1 in every newman process (stated three paragraphs up) while the octet base is
+# pinned by the shared runId — so listener / load-balancer / cross-resource /
 # authz-deny walked the IDENTICAL /24 sequence, and the only thing standing between them
 # was whether the earlier collection's best-effort subnet reclaim had already landed.
 # That is a race, not a separation: observed live on the third consecutive stand run
@@ -46,18 +46,18 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 # The seed is therefore salted with a per-collection literal, so each collection walks
 # its own band deterministically. The literal is baked at generation time on purpose —
 # newman exposes no collection identity to a sandbox script.
-_CIDR_ALLOC_PRE = [
-    "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-    "pm.environment.set('_cidrSeq', String(__seq));",
-    "var __run = (pm.environment.get('runId') || 'x0') + '/listener';",
-    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-    "__h = __h & 0x7fffffff;",
-    # oct2 ∈ [16,235] (220 run-scoped values); oct3 = run-random base (high bits) + seq
-    # (separates subnets within one run). ~56k distinct /24 vs the old 40×{1..30} band.
-    "var __oct2 = 16 + (__h % 220);",
-    "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-    "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
-]
+#
+# ТРЕТЬЯ ЧАСТЬ той же истории и причина, по которой формула отсюда УЕХАЛА. Всё
+# описанное выше решало РАЗВОДКУ адресов и ничего не говорило о том, откуда берётся
+# префикс: он был прошит (`10.` + октеты) и в объявленный сетью адресный план попадал
+# СОВПАДЕНИЕМ — держался на том, что посев объявляет `10.0.0.0/8`. Посевов у набора
+# два, и второй объявляет план у́же (`10.196.0.0/16`), мимо которого уходили ВСЕ
+# адреса всех копий этой формулы. Поэтому префикс теперь ВЫВОДИТСЯ из плана, который
+# посев публикует, а разводка (хеш runId + соль набора + порядковый номер) сохранена
+# помощником целиком. Копий формулы больше нет — она одна, в scripts/gen.py, раздел
+# «АДРЕС НАРЕЗАЕМОЙ ПОДСЕТИ»; ссылки соседних файлов сюда остаются верными: этот
+# абзац и есть разбор причины.
+_CIDR_ALLOC_PRE = carve_cidr_pre('listener')
 
 # NOTE (sub-phase 8.1 VIP model): the parent LoadBalancer now carries a per-family
 # VIP *source* on Create (v4Source public/subnet/address). This helper produces a

@@ -324,7 +324,12 @@ def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
 
 _NLB_ID_KEYS = ("existingNetworkId", "existingSubnetId", "existingInstanceId",
                 "existingNicId", "existingExternalAddressId", "existingAddressIPv6Id",
-                "existingZoneId", "existingRegionId")
+                "existingZoneId", "existingRegionId",
+                # Адресный план сети едет ВМЕСТЕ с её идентификатором: набор режет
+                # подсети внутри объявленного плана, а не выводит адрес сам. Ключ,
+                # не названный здесь, посев напишет, а этот перенос молча выбросит —
+                # и кейсы получат отказ фикстуры вместо адреса.
+                "existingNetworkV4Plan", "existingNetworkV6Plan")
 
 
 def seed_nlb_resources(boot: str, base_url: str, internal_url: str, project_id: str,

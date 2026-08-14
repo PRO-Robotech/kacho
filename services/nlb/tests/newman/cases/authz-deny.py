@@ -40,22 +40,16 @@ _LST = "/nlb/v1/listeners"
 _TGR = "/nlb/v1/targetGroups"
 _VPC_SUBNETS = "/vpc/v1/subnets"
 
-# Run-scoped HIGH-ENTROPY /24 CIDR allocator (mirrors load-balancer.py _cidr_alloc_pre) —
-# used only where a case needs a pool-INDEPENDENT INTERNAL LB (subnet-backed VIP) instead of
-# the shared external pool. ~56k distinct /24s (oct2 ∈ [16,235], oct3 = run-random base + seq)
-# replaces the old 40-value 10.200-239.x band that, with seq restarting at 1 each process and
-# subnets never reclaimed from the shared network, collided → `Subnet CIDRs can not overlap`
-# (the wandering e2e flake). See listener.py _CIDR_ALLOC_PRE for the full root-cause note.
-_CIDR_ALLOC_PRE = [
-    "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-    "pm.environment.set('_cidrSeq', String(__seq));",
-    "var __run = (pm.environment.get('runId') || 'x0') + '/authz-deny';",
-    "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-    "__h = __h & 0x7fffffff;",
-    "var __oct2 = 16 + (__h % 220);",
-    "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-    "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
-]
+# Run-scoped /24 из адресного плана сети — нужен там, где кейсу требуется INTERNAL LB,
+# НЕ зависящий от общего внешнего пула (VIP берётся из подсети).
+#
+# Здесь стояла своя копия формулы, прошивавшая префикс (`10.` + октеты): в объявленный
+# сетью план она попадала СОВПАДЕНИЕМ, а мимо плана второго посева (`10.196.0.0/16`)
+# уходила всегда. Теперь префикс выводится из опубликованного плана, а разводка
+# параллельных прогонов сохранена помощником целиком. Разбор причины (блуждающий флейк
+# «Subnet CIDRs can not overlap») — listener.py, шапка `_CIDR_ALLOC_PRE`; сама формула
+# и её гейт — scripts/gen.py, раздел «АДРЕС НАРЕЗАЕМОЙ ПОДСЕТИ».
+_CIDR_ALLOC_PRE = carve_cidr_pre('authz-deny')
 
 
 # ---------------------------------------------------------------------------

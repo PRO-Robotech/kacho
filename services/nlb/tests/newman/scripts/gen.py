@@ -164,6 +164,175 @@ PRE_GLOBAL = [
 
 
 # ---------------------------------------------------------------------------
+# АДРЕС НАРЕЗАЕМОЙ ПОДСЕТИ — ИЗ ПЛАНА СЕТИ, А НЕ ИЗ СОБСТВЕННОГО ХЕША
+# ---------------------------------------------------------------------------
+#
+# Сеть набора (`existingNetworkId`) приходит из посева, и посев объявляет ей
+# адресный план. Подсеть обязана лежать ВНУТРИ него: иначе синхронный отказ
+# `subnet CIDR <X> is not within any network CIDR block`.
+#
+# Здесь стояли ПЯТЬ почти одинаковых копий генератора адреса, собиравших его из
+# хеша прогона без всякой связи с планом (`'10.' + октет + '.' + октет + '.0/24'`,
+# `'fd' + число.toString(16) + …`). Попадание в план было СОВПАДЕНИЕМ: держалось
+# на том, что один из двух посевов набора объявляет `10.0.0.0/8` и `fd00::/8`.
+# Второй посев (`tests/authz-fixtures/prodseed_nlb_ext.py`, посадка prodrun)
+# объявляет план у́же — `10.196.0.0/16` и `fd00:196::/48`, — и мимо него уходили
+# ВСЕ адреса всех пяти копий, на всех хешах. Симптом при этом уезжал далеко от
+# причины: отказ получал шаг нарезки, а падали за ним шаги, которые ничего не
+# резали, — с сообщением «предусловие: {{…}} не было захвачено».
+#
+# Теперь адрес ВЫВОДИТСЯ из плана, который посев публикует переменными
+# `existingNetworkV4Plan` / `existingNetworkV6Plan`. Посев волен менять план —
+# кейсы следуют за ним сами, и второго места об одном предмете не заводится.
+#
+# Держит это гейт `internal/repohygiene`
+# `TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan`: шаг, режущий подсеть в сети
+# из посева и не прочитавший её плана, — находка. Гейт закрывает ту слепую зону,
+# которую соседний `newmansubnetsupernet_test.go` объявлял числом.
+
+_CARVE_HELPERS = [
+    # Энтропия позиции: хеш прогона + порядковый номер нарезки + соль позиции.
+    # Детерминирована по (runId, seq), поэтому повтор прогона воспроизводим, а
+    # параллельные прогоны расходятся.
+    #
+    # ПЕРЕМЕШИВАНИЕ ЗДЕСЬ — НЕ КОСМЕТИКА, и оно измерено, а не предположено:
+    # коллизия адресов и есть тот блуждающий флейк, разбор которого лежит в шапке
+    # `_CIDR_ALLOC_PRE` набора listener. Соседние позиции отличаются лишь
+    # постоянным слагаемым, поэтому БЕЗ перемешивания младшие байты двух позиций
+    # связаны намертво. Замер на 20000 различных runId при seq=1, план `10.0.0.0/8`
+    # (различных /24):
+    #     снятая формула              16857   (сетка 220×256)
+    #     без перемешивания             256   (обе позиции — один и тот же байт)
+    #     с перемешиванием (здесь)    17243   при потолке 17236 для 16 свободных
+    #                                         бит — то есть позиции независимы
+    # Потолок задаёт ШИРИНА ПЛАНА, а не помощник: под планом `/16` свободен один
+    # октет, и различных /24 достижимо ровно 256 — это свойство посева, и названо
+    # здесь, чтобы его не искали в генераторе.
+    #
+    # Множитель выбран так, чтобы произведение оставалось ТОЧНЫМ в double
+    # (65599 × 2³¹ < 2⁵³): `Math.imul` в песочнице newman'а недоступен, а молча
+    # потерянная точность дала бы смещённый разброс, который ничем не виден.
+    "function __mix(v) {",
+    "  v = (v ^ (v >>> 13)) & 0x7fffffff;",
+    "  v = (v * 65599) % 2147483647;",
+    "  return (v ^ (v >>> 11)) & 0x7fffffff;",
+    "}",
+    "function __ent(k) {",
+    "  return __mix(__h + (__seq + 1) * 7919 + k * 104729) & 0xffff;",
+    "}",
+    # Разбор плана и нарезка ВНУТРИ него. Позиция, целиком накрытая префиксом
+    # плана, сохраняется как есть; накрытая частично — по маске; свободная —
+    # энтропией. Так адрес лежит внутри плана ЛЮБОЙ ширины, а не только той, под
+    # которую его однажды подогнали.
+    "function __carve4(plan) {",
+    "  var m = /^\\s*(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)\\/(\\d+)\\s*$/.exec(plan || '');",
+    "  if (!m) { return ''; }",
+    "  var o = [+m[1], +m[2], +m[3], +m[4]], L = +m[5];",
+    "  if (L > 24) { return ''; }",
+    "  for (var k = 0; k < 3; k++) {",
+    "    var before = k * 8;",
+    "    if (L >= before + 8) { continue; }",
+    "    var keep = Math.max(0, L - before);",
+    "    var mask = keep === 0 ? 0 : ((0xff << (8 - keep)) & 0xff);",
+    "    o[k] = (o[k] & mask) | (__ent(k) & (~mask & 0xff));",
+    "  }",
+    "  return o[0] + '.' + o[1] + '.' + o[2] + '.0/24';",
+    "}",
+    "function __hextets(addr) {",
+    "  var parts = String(addr).split('::');",
+    "  var head = parts[0] ? parts[0].split(':') : [];",
+    "  var tail = (parts.length > 1 && parts[1]) ? parts[1].split(':') : [];",
+    "  var all;",
+    "  if (parts.length > 1) {",
+    "    var fill = 8 - head.length - tail.length;",
+    "    if (fill < 0) { return null; }",
+    # Развёртка `::` — явным циклом, а не `new Array(n).fill()`: песочница newman'а
+    # урезана (по той же причине здесь нет `Math.imul`), и цена отказа — каждая
+    # нарезка каждого набора.
+    "    var mid = [];",
+    "    for (var f = 0; f < fill; f++) { mid.push('0'); }",
+    "    all = head.concat(mid).concat(tail);",
+    "  } else { all = head; }",
+    "  if (all.length !== 8) { return null; }",
+    "  var v = [];",
+    "  for (var i = 0; i < 8; i++) {",
+    "    var n = parseInt(all[i] || '0', 16);",
+    "    if (isNaN(n)) { return null; }",
+    "    v.push(n & 0xffff);",
+    "  }",
+    "  return v;",
+    "}",
+    "function __carve6(plan) {",
+    "  var s = String(plan || '').split('/');",
+    "  if (s.length !== 2) { return ''; }",
+    "  var h = __hextets(s[0]), L = parseInt(s[1], 10);",
+    "  if (!h || isNaN(L) || L > 64) { return ''; }",
+    "  for (var k = 0; k < 4; k++) {",
+    "    var before = k * 16;",
+    "    if (L >= before + 16) { continue; }",
+    "    var keep = Math.max(0, L - before);",
+    "    var mask = keep === 0 ? 0 : ((0xffff << (16 - keep)) & 0xffff);",
+    "    h[k] = (h[k] & mask) | (__ent(k + 8) & (~mask & 0xffff));",
+    "  }",
+    "  return h[0].toString(16) + ':' + h[1].toString(16) + ':' + h[2].toString(16) +",
+    "    ':' + h[3].toString(16) + '::/64';",
+    "}",
+]
+
+
+def _carve_guard(plan_var: str, cidr_var: str) -> List[str]:
+    """Отсутствие/непригодность плана — ОТКАЗ с именем переменной, а не тихий адрес.
+
+    Подстановка запасного литерала здесь была бы тем же дефектом, от которого
+    помощник и заводится: адрес, не связанный с планом. Поэтому запрос НЕ уходит,
+    а падение называет переменную и путь её появления.
+    """
+    return [
+        f"if (!{cidr_var}) {{",
+        f"  pm.test('FIXTURE REQUIRED: {plan_var}', () => pm.expect.fail("
+        f"'{plan_var} is empty or not a CIDR the suite can carve a subnet from. "
+        f"The seeder that creates existingNetworkId publishes the address plan it "
+        f"declared (deploy/scripts/seed-nlb-fixtures.sh, tests/authz-fixtures/"
+        f"prodseed_nlb_ext.py). Hardcoding an address instead would restore the very "
+        f"defect this helper exists to kill: a CIDR unrelated to the plan, which lands "
+        f"inside it only by coincidence.'));",
+        "  pm.execution.skipRequest();",
+        "  return;",
+        "}",
+    ]
+
+
+def carve_cidr_pre(scope: str, v4_var: str = "_subnetCidr",
+                   v6_var: Optional[str] = None) -> List[str]:
+    """Pre-request: run-scoped адрес(а) подсети, вырезанные ИЗ ПЛАНА сети посева.
+
+    `scope` разводит наборы между собой (тот же runId — разные хеши), `__seq`
+    разводит нарезки внутри одного набора.
+    """
+    out = [
+        "(function () {",
+        "  var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+        "  pm.environment.set('_cidrSeq', String(__seq));",
+        f"  var __run = (pm.environment.get('runId') || 'x0') + '/{scope}';",
+        "  var __h = 0;",
+        "  for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+        "  __h = __h & 0x7fffffff;",
+        *["  " + ln for ln in _CARVE_HELPERS],
+        "  var __v4 = __carve4(pm.environment.get('existingNetworkV4Plan'));",
+        *["  " + ln for ln in _carve_guard("existingNetworkV4Plan", "__v4")],
+        f"  pm.environment.set('{v4_var}', __v4);",
+    ]
+    if v6_var:
+        out += [
+            "  var __v6 = __carve6(pm.environment.get('existingNetworkV6Plan'));",
+            *["  " + ln for ln in _carve_guard("existingNetworkV6Plan", "__v6")],
+            f"  pm.environment.set('{v6_var}', __v6);",
+        ]
+    out.append("})();")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Reusable assertion snippets (pm.*) — same names as kacho-vpc
 # ---------------------------------------------------------------------------
 
@@ -1714,6 +1883,11 @@ def load_cases_module(path: Path):
     mod.retry_delete_until_released = retry_delete_until_released
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
+    # Адрес нарезаемой подсети — только через этот помощник: он единственный
+    # читает объявленный сетью план. Своя копия генератора в кейсе — тот самый
+    # класс, ради которого помощник и заведён (см. раздел «АДРЕС НАРЕЗАЕМОЙ
+    # ПОДСЕТИ» выше и гейт TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan).
+    mod.carve_cidr_pre = carve_cidr_pre
     spec.loader.exec_module(mod)
     return mod
 
