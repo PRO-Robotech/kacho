@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -53,7 +55,7 @@ func TestGate_EveryMappedConstraintNameExistsInSchema(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	ctx := context.Background()
 
 	// Сервер называет в 23505 ИМЯ ИНДЕКСА, а в 23503/23514 — имя ограничения,

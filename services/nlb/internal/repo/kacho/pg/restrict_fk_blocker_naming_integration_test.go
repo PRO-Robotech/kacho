@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	"github.com/H-BF/corlib/pkg/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,7 +166,7 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 	ctx := context.Background()
 
@@ -274,7 +276,7 @@ func TestGate_EveryRestrictFKHasBlockerNamingContract(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	ctx := context.Background()
 
 	rows, err := pool.Query(ctx, `
