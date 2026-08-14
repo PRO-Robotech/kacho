@@ -69,3 +69,13 @@ var ErrNICRegionUnverifiable = helpers.ErrNICRegionUnverifiable
 // инстанса (placement-coherence). Несёт обе зоны для точного contract-текста
 // "NetworkInterface subnet is in zone %s, instance zone is %s".
 type NICZoneMismatchError = helpers.NICZoneMismatchError
+
+// ErrQuotaExceeded — потолок на число ресурсов вида у проекта достигнут.
+// Service-слой маппит в gRPC RESOURCE_EXHAUSTED (край → HTTP 429).
+var ErrQuotaExceeded = helpers.ErrQuotaExceeded
+
+// ErrQuotaNotProvisioned — потолок не назван ни на одной области видимости.
+// Service-слой маппит в gRPC FAILED_PRECONDITION (край → HTTP 400) — отдельным
+// кодом от исчерпания, потому что это разные требования к администратору:
+// завести потолок против поднять его.
+var ErrQuotaNotProvisioned = helpers.ErrQuotaNotProvisioned

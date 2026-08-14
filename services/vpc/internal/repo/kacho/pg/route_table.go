@@ -168,13 +168,16 @@ func (w *routeTableWriter) Insert(ctx context.Context, rt *domain.RouteTable) (*
 
 	now := time.Now().UTC()
 	q := fmt.Sprintf(`
-		INSERT INTO route_tables (id, project_id, created_at, name, description, labels, network_id, static_routes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO route_tables (id, project_id, created_at, name, description, labels, network_id, static_routes, system_owned)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING %s`, helpers.RouteTableCols)
 
 	row := w.tx.QueryRow(ctx, q,
 		rt.ID, rt.ProjectID, now, string(rt.Name), string(rt.Description), labelsJSON,
-		rt.NetworkID, routesJSON,
+		// system_owned — признак происхождения, читаемый учётом квоты в момент
+		// вставки: ссылка на родителе (`networks.default_route_table_id`) в этот
+		// момент ещё не проставлена. Задаётся вызывающим, не выводится здесь.
+		rt.NetworkID, routesJSON, rt.SystemOwned,
 	)
 	result, err := helpers.ScanRouteTable(row)
 	if err != nil {

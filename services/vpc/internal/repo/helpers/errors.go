@@ -93,6 +93,27 @@ var ErrNICRegionMismatch = errors.New("network interface subnet region differs f
 // Мутация с непроверяемым предусловием — fail-closed.
 var ErrNICRegionUnverifiable = errors.New("network interface subnet region unverifiable")
 
+// ErrQuotaExceeded — потолок на число ресурсов этого вида у проекта достигнут.
+//
+// Отдельная ошибка, а не общий отказ хранилища: вызывающий обязан отличить
+// исчерпание предела от сбоя. Первое — штатный ответ, который клиент понимает и
+// на который реагирует (`RESOURCE_EXHAUSTED` → 429); второе требует внимания
+// оператора. Текст приходит из триггера и является частью контракта: он называет
+// носителя, предел и вид, поэтому здесь не переписывается.
+var ErrQuotaExceeded = errors.New("resource count quota exceeded")
+
+// ErrQuotaNotProvisioned — потолок не назван НИ НА ОДНОЙ области видимости.
+//
+// Это отказ, а не разрешение, и он НАМЕРЕННО отличим от ErrQuotaExceeded. Свести
+// их к одному коду значило бы послать администратора искать, что понизить, там,
+// где ничего не назначено. Обратная трактовка («нет строки ⇒ без предела») уже
+// живёт в дереве у прецедента compute и измерена как механизм, не отказавший ни
+// разу за всю свою жизнь: строку предела там не пишет ни один путь прод-кода.
+// Маппится в `FAILED_PRECONDITION` (400) — ввод арендатора корректен, не
+// выполнено предусловие ПЛАТФОРМЫ, поэтому `INVALID_ARGUMENT` обвинил бы
+// вызывающего в том, чего он не присылал.
+var ErrQuotaNotProvisioned = errors.New("resource count quota not provisioned")
+
 type NICZoneMismatchError struct {
 	SubnetZone   string
 	InstanceZone string
