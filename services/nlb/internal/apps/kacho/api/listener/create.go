@@ -44,6 +44,15 @@ import (
 //	Триггер lb_status_recompute переводит LB INACTIVE→ACTIVE, если теперь есть
 //	листенер И attached TG.
 type CreateUseCase struct {
+	// quota — совещательная полоса учёта числа ресурсов.
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции),
+	// поэтому провязка обязательна на любом поднятом стенде; отсутствие
+	// допустимо только там, где нет и соседа, у которого спрашивать величины.
+	quota QuotaGuard
+
 	repo    RepoFactory
 	opsRepo OperationsRepo
 	// registrar — sync-primary owner-tuple registrar (kacho-iam RegisterResource),
@@ -157,6 +166,22 @@ func (u *CreateUseCase) Run(ctx context.Context, req *lbv1.CreateListenerRequest
 
 	if err := listener.Validate(); err != nil {
 		return nil, err
+	}
+
+	// Учёт числа ресурсов: слушатель считается ДВАЖДЫ — в своём балансировщике
+	// и в проекте. Порядок вопросов тот же, что порядок списания (V2-6:
+	// сначала носитель-родитель), иначе ранний отказ называл бы не ту ось, по
+	// которой откажет триггер.
+	if u.quota != nil {
+		if err := u.quota.AdmitCarrier(ctx,
+			"loadbalancer.networkLoadBalancers.listeners",
+			string(listener.LoadBalancerID),
+			"loadbalancer.networkLoadBalancers.listeners"); err != nil {
+			return nil, mapDomainErr(err)
+		}
+		if err := u.quota.Admit(ctx, string(listener.ProjectID), "loadbalancer.listeners"); err != nil {
+			return nil, mapDomainErr(err)
+		}
 	}
 
 	op, err := operations.NewFromContext(ctx,
@@ -395,4 +420,14 @@ func listenerUnregisterIntent(listenerID, projectID string) domain.FGARegisterIn
 			domain.FGAProjectTuple(domain.FGAObjectTypeListener, listenerID, projectID),
 		},
 	}
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateUseCase) WithQuotaGuard(g QuotaGuard) *CreateUseCase {
+	u.quota = g
+	return u
 }

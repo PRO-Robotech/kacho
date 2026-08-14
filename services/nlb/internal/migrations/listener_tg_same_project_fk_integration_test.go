@@ -48,6 +48,42 @@ func TestMigration_ListenerTargetGroup_SameProjectFK(t *testing.T) {
 		victimProject = "prj0victim0000000001"
 		region        = "ru-central1"
 	)
+	// Учёт числа ресурсов (миграция 0032): вставка строки ресурса СПИСЫВАЕТ место,
+	// и списать его не с чего, пока у проекта нет строки учёта — «не сказано» это
+	// отказ, а не «без предела». Проба проигрывает цепочку сама и вставляет строки
+	// напрямую, поэтому строки учёта заводит тоже сама.
+	//
+	// Это НЕ послабление: механизм продолжает работать на каждой вставке ниже —
+	// триггер списывает, отказ на исчерпании возможен. Меняется ровно то, что у
+	// этих двух проектов предел заведомо больше, чем им нужно, потому что предмет
+	// пробы — ссылочная целостность, а не учёт.
+	for _, proj := range []string{ownProject, victimProject} {
+		for _, kind := range []string{
+			"loadbalancer.networkLoadBalancers",
+			"loadbalancer.targetGroups",
+			"loadbalancer.listeners",
+		} {
+			_, err = db.Exec(`
+				INSERT INTO kacho_nlb.project_resource_quotas
+					(carrier_type, carrier_id, kind, used, limit_value,
+					 source_scope, source_scope_id, limit_revision, account_id)
+				VALUES ('project', $1, $2, 0, 1000000, 'DEFAULT', '', 0, 'acc-mig')`,
+				proj, kind)
+			require.NoError(t, err)
+		}
+		// Проектный резолв ВЛОЖЕННОГО вида: из него триггер берёт снимок, заводя
+		// строку учёта нового балансировщика. Без него балансировщик заводится без
+		// строки учёта, и первый же слушатель получает «потолок не назван» — громко,
+		// но неверно: потолок назван, просто не доехал.
+		_, err = db.Exec(`
+			INSERT INTO kacho_nlb.nested_quota_defaults
+				(project_id, kind, limit_value, source_scope, source_scope_id,
+				 limit_revision, account_id)
+			VALUES ($1, 'loadbalancer.networkLoadBalancers.listeners',
+				1000000, 'DEFAULT', '', 0, 'acc-mig')`, proj)
+		require.NoError(t, err)
+	}
+
 	_, err = db.Exec(`
 		INSERT INTO kacho_nlb.target_groups (id, project_id, region_id, name, port)
 		VALUES ('tgr-own00000000000001', $1, $3, 'own-tg', 8080),

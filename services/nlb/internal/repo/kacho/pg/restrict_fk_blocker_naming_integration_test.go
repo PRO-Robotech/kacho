@@ -173,8 +173,17 @@ func TestRestrictFK_TGDeleteVsListenerWire_Race(t *testing.T) {
 	const rounds = 12
 	deleteWon, wireWon := 0, 0
 
+	// Идентичности этой пробы собираются в рантайме, поэтому перечень фикстуры,
+	// снятый с дерева литералами, их не видит — он забрал бы форматную строку.
+	// Проба называет их сама: посев идёт тем же оператором продукта.
+	raceProjects := make([]string, 0, rounds)
 	for i := 0; i < rounds; i++ {
-		project := fmt.Sprintf("prj01RACE%011d", i)
+		raceProjects = append(raceProjects, fmt.Sprintf("prj01RACE%011d", i))
+	}
+	seedQuotasForProjects(t, dsn, raceProjects)
+
+	for i := 0; i < rounds; i++ {
+		project := raceProjects[i]
 		lb := newLB(project, "")
 		tg := newTG(project, "")
 		commitWriter(t, repo, func(w kacho.RepositoryWriter) {

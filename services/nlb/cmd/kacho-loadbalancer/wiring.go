@@ -35,6 +35,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/jobs"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/quota"
 	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -61,6 +62,37 @@ type grpcWiring struct {
 	// отказать, а регистратор носителя возврата ошибки не имеет — и не должен,
 	// отказ обязан случиться раньше первого принятого соединения.
 	syncRegistrar iamclient.Registrar
+	// quotaGuard — совещательная полоса учёта числа ресурсов.
+	//
+	// Собирается в композиционном корне: ей нужны и репозиторий, и оба соседа —
+	// владелец величин (резолв) и владелец проектов (зеркало аккаунта). nil
+	// означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции.
+	quotaGuard *quota.Guard
+}
+
+// buildQuotaGuard собирает совещательную полосу учёта.
+//
+// Typed-nil здесь важен так же, как у регистратора: конкретный `*quota.Guard`
+// строится ТОЛЬКО когда есть у кого спрашивать величины, иначе в интерфейсном
+// поле лежал бы non-nil интерфейс с nil внутри — и вызывающий, проверяющий
+// `!= nil`, дошёл бы до вызова.
+//
+// Отсутствие соседа НЕ означает «пределов нет»: списание остаётся за триггером,
+// и исчерпание приезжает отказом операции. Теряется ровно ранний синхронный
+// отказ.
+func buildQuotaGuard(repo *kachopg.Repository, peers *peerClients) *quota.Guard {
+	if peers.Limit == nil || peers.Project == nil {
+		return nil
+	}
+	accounts, ok := peers.Project.(quota.AccountLocator)
+	if !ok {
+		return nil
+	}
+	// `loadbalancer` — имя ДОМЕНА в каталоге видов, а не имя каталога сервиса:
+	// токены каталога начинаются с него (`loadbalancer.listeners`), и резолв
+	// спрашивается по нему же.
+	return quota.NewGuard(repo, peers.Limit, accounts, "loadbalancer")
 }
 
 // buildSyncRegistrar собирает синхронный регистратор owner-tuple поверх того же
@@ -106,7 +138,8 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 		w.peers.Subnet, w.peers.Address, w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(w.syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup)
+	).WithRegistrar(w.syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup).
+		WithQuotaGuard(w.quotaGuard)
 	lbv1.RegisterNetworkLoadBalancerServiceServer(reg, lbHandler)
 
 	// ListenerService. InternalAddress нужен только для release legacy-VIP в
@@ -119,7 +152,8 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 		w.opsRepo,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(w.syncRegistrar).WithCheckClient(w.peers.Check)
+	).WithRegistrar(w.syncRegistrar).WithCheckClient(w.peers.Check).
+		WithQuotaGuard(w.quotaGuard)
 	lbv1.RegisterListenerServiceServer(reg, listenerHandler)
 
 	// TargetGroupService. Фаза B drain — отдельный фоновый runner.
@@ -130,7 +164,7 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 		tgZoneRegion(w.peers.ZoneRegion),
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(w.syncRegistrar)
+	).WithRegistrar(w.syncRegistrar).WithQuotaGuard(w.quotaGuard)
 	lbv1.RegisterTargetGroupServiceServer(reg, tgHandler)
 }
 

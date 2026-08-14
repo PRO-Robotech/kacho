@@ -74,6 +74,10 @@ type peerClients struct {
 	Project  iamclient.ProjectClient
 	Check    iamclient.CheckClient
 	Register iamclient.RegisterResourceClient // FGA-proxy (register-drainer)
+	// Limit — резолв разрешённых величин учёта (InternalLimitService.Resolve).
+	// nil → совещательная полоса не собирается, и ранний отказ по квоте не
+	// производится; место при этом по-прежнему занимает триггер.
+	Limit *iamclient.LimitClient
 	// Geo (Region/Zone-валидация — ребро nlb→geo, kacho-geo)
 	Region geoclient.RegionClient
 	Zone   geoclient.ZoneClient
@@ -285,7 +289,11 @@ func runServe(configPath string) error {
 		cfg:           cfg,
 		logger:        logger,
 		syncRegistrar: syncRegistrar,
+		// Учёт числа ресурсов: совещательная полоса. Собирается ЗДЕСЬ, до подъёма
+		// слушателей, потому что ей нужны репозиторий и оба соседа сразу.
+		quotaGuard: buildQuotaGuard(repo, peers),
 	}
+	logger.Info("quota_guard", "wired", wiring.quotaGuard != nil)
 
 	// Dependency-aware readiness: /readyz отражает здоровье database / register-
 	// drainer (= IAM-достижимость в nlb) / lro-worker; /healthz — только живость
@@ -628,6 +636,10 @@ func dialPeers(
 		// InternalIAMService.RegisterResource / UnregisterResource (Internal-only
 		// :9091). Replaces the former direct WriteCreatorTuple (Issue N5).
 		peers.Register = iamclient.NewRegisterResourceClient(iamInternalConn)
+		// Учёт числа ресурсов: резолв разрешённых величин у владельца величин.
+		// ВНУТРЕННИЙ слушатель — величины админская поверхность, на внешнем их
+		// нет и быть не должно (`security.md` §Internal-vs-external).
+		peers.Limit = iamclient.NewLimitClient(iamInternalConn)
 	}
 	// report the per-listener mTLS state of the iam read/authz edges
 	// (mirror of the register-drainer fga_register_drainer_started "mtls" log).

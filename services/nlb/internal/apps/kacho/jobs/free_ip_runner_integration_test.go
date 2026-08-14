@@ -132,6 +132,9 @@ func insertStuckLB(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 	t.Helper()
 	id = ids.NewID(ids.PrefixLoadBalancer)
 	projectID = "prj01" + ids.NewUID()[:15]
+	// Учёт числа ресурсов: строка учёта заводится ЗДЕСЬ, потому что здесь
+	// придумана идентичность проекта (см. `quota_fixture_test.go`).
+	seedQuotaForProject(t, ctx, pool, projectID)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers
 			(id, project_id, region_id, type, status, placement_type,

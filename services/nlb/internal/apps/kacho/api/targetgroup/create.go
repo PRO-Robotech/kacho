@@ -46,6 +46,15 @@ import (
 // gRPC-вызовов (long IO внутри открытой DB-TX) — peer-validate делаем ДО открытия
 // Writer-TX, а сам Insert (включая targets) — в single Writer-TX.
 type CreateTargetGroupUseCase struct {
+	// quota — совещательная полоса учёта числа ресурсов.
+	//
+	// nil означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
+	// занимает триггер в writer-транзакции, и исчерпание приезжает отказом
+	// операции. Различие наблюдаемо (429 синхронно против отказа в операции),
+	// поэтому провязка обязательна на любом поднятом стенде; отсутствие
+	// допустимо только там, где нет и соседа, у которого спрашивать величины.
+	quota QuotaGuard
+
 	repo          Repo
 	opsRepo       OpsRepo
 	projectClient ProjectClient
@@ -133,6 +142,14 @@ func (u *CreateTargetGroupUseCase) Execute(
 	if string(tg.Name) != "" {
 		if err := u.assertNameUnique(ctx, string(tg.ProjectID), string(tg.Name)); err != nil {
 			return nil, err
+		}
+	}
+
+	// Учёт числа ресурсов: ранний отказ ДО создания операции (см. разбор в
+	// пакете `apps/kacho/quota`).
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, string(tg.ProjectID), "loadbalancer.targetGroups"); err != nil {
+			return nil, mapDomainErr(err)
 		}
 	}
 
@@ -318,4 +335,14 @@ func tgUnregisterIntent(id, projectID string) domain.FGARegisterIntent {
 			domain.FGAProjectTuple(domain.FGAObjectTypeTargetGroup, id, projectID),
 		},
 	}
+}
+
+// WithQuotaGuard подключает совещательную полосу учёта.
+//
+// Отдельным глаголом, а не аргументом конструктора: полоса появилась позже
+// вызывающих, и обязательный аргумент заставил бы править каждую сборку — в том
+// числе те, где соседа с величинами нет вовсе.
+func (u *CreateTargetGroupUseCase) WithQuotaGuard(g QuotaGuard) *CreateTargetGroupUseCase {
+	u.quota = g
+	return u
 }

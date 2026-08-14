@@ -31,3 +31,24 @@ var (
 	ErrInternal           = errors.New("internal database error")
 	ErrUnavailable        = errors.New("service unavailable")
 )
+
+// Учёт числа ресурсов — два исхода, и они РАЗНЫЕ.
+//
+// Приёмка `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
+// (APPROVED, раунд 2), V2-3 и DoD S4 п.1.
+//
+// Оба ведут наружу разными кодами, и это несущее различие, а не оттенок:
+//
+//	ErrQuotaExceeded        → codes.ResourceExhausted   (429) — ПОДНЯТЬ предел
+//	ErrQuotaNotProvisioned  → codes.FailedPrecondition  (400) — ЗАВЕСТИ предел
+//
+// Свести их в один код значило бы послать администратора искать, что понизить,
+// там, где ничего не назначено. Обратная трактовка отсутствия потолка («без
+// предела») здесь запрещена прямо: она уже существовала в дереве у другого
+// владельца и была измерена как механизм, не отказавший ни разу за свою жизнь.
+var (
+	// ErrQuotaExceeded — потолок назван и выбран.
+	ErrQuotaExceeded = errors.New("resource count quota exceeded")
+	// ErrQuotaNotProvisioned — потолок не назван ни на одной области.
+	ErrQuotaNotProvisioned = errors.New("resource count quota not provisioned")
+)

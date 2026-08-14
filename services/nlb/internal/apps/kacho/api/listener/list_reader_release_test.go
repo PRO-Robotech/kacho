@@ -106,3 +106,11 @@ func TestListListeners_ReleasesReaderBeforeAuthz(t *testing.T) {
 		"the read-TX was still open while iam was asked: a pooled connection is held "+
 			"across a peer round-trip, so concurrent Lists starve every other reader and writer")
 }
+
+// Quotas — совещательная полоса учёта. В пробах этого пакета полоса НЕ
+// провязана, поэтому дублёр обязан не «разрешать», а доказывать, что до него не
+// доходят: разрешающий дублёр скрыл бы ровно тот вызов, ради которого его
+// подставляют.
+func (r *releaseTrackingReader) Quotas() kachorepo.QuotaReaderIface {
+	panic("quota band must not be reached: this package's probes do not wire it")
+}

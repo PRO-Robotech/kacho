@@ -36,6 +36,12 @@ func wrapPgErr(err error, resource, id string) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: %s %s not found", regerrors.ErrNotFound, resource, id)
 	}
+	// Учёт числа ресурсов классифицируется ПЕРВЫМ и отдельно от общей таблицы
+	// SQLSTATE'ов: клиенту мало кода — он обязан различать полосы машинно, по
+	// признаку, а не разбором прозы. Подробности — в classifyQuotaErr.
+	if qerr := classifyQuotaErr(err); qerr != nil {
+		return qerr
+	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {

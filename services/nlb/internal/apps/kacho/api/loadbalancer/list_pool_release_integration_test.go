@@ -70,6 +70,11 @@ func setupCappedPoolDB(t *testing.T, maxConns int) *kachopg.Repository {
 	require.Equal(t, int32(maxConns), pool.Config().MaxConns,
 		"the cap must actually reach the pool, otherwise this test models nothing")
 	t.Cleanup(pool.Close)
+
+	// Учёт числа ресурсов: вставка строки ресурса СПИСЫВАЕТ место, и списать его
+	// не с чего, пока у проекта нет строки учёта. Разбор и перечень
+	// идентичностей — `quota_fixture_test.go`.
+	seedQuotaFixture(t, pool)
 	return kachopg.New(pool, nil)
 }
 

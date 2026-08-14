@@ -68,6 +68,17 @@ func (u *UseCase) Create(ctx context.Context, spec CreateSpec) (*operations.Oper
 		return nil, projectExistsErr(spec.ProjectID, err)
 	}
 
+	// Учёт числа ресурсов: ранний отказ ДО создания операции.
+	//
+	// Стоит ПОСЛЕ проверки существования проекта: материализация берёт из неё
+	// зеркало аккаунта, и спрашивать величины для несуществующего проекта
+	// незачем.
+	if u.quota != nil {
+		if err := u.quota.Admit(ctx, spec.ProjectID, "registry.registries"); err != nil {
+			return nil, err
+		}
+	}
+
 	// Cross-domain existence region'а через geo.RegionService.Get (peer-validate lane,
 	// REG-1 F4). Отсутствует у владельца → FAILED_PRECONDITION (PEER_RESOURCE_MISSING,
 	// REG-1-12); geo недоступен → UNAVAILABLE (fail-closed мутации, REG-1-13). Ребро

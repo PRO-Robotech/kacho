@@ -27,4 +27,8 @@ var (
 	ErrInvalidArg         = domain.ErrInvalidArg
 	ErrInternal           = domain.ErrInternal
 	ErrUnavailable        = domain.ErrUnavailable
+
+	// Учёт числа ресурсов — те же два исхода, тем же live-aliasing.
+	ErrQuotaExceeded       = domain.ErrQuotaExceeded
+	ErrQuotaNotProvisioned = domain.ErrQuotaNotProvisioned
 )

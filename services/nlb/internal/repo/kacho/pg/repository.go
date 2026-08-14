@@ -91,6 +91,11 @@ func (r *readerImpl) TargetGroups() kacho.TargetGroupReaderIface {
 	return &targetGroupReader{tx: r.tx}
 }
 
+// Quotas — совещательная полоса учёта числа ресурсов поверх той же read-TX.
+func (r *readerImpl) Quotas() kacho.QuotaReaderIface {
+	return &quotaReader{tx: r.tx}
+}
+
 // Close rollback'ит read-TX (read-only TX — rollback не имеет side-effects).
 // Идемпотентно. Игнорирует pgx.ErrTxClosed.
 func (r *readerImpl) Close() error {
@@ -133,6 +138,14 @@ func (w *writerImpl) Listeners() kacho.ListenerWriterIface {
 func (w *writerImpl) TargetGroups() kacho.TargetGroupWriterIface {
 	return &targetGroupWriter{
 		targetGroupReader: targetGroupReader{tx: w.tx},
+	}
+}
+
+// Quotas — материализация строк учёта в той же tx-области writer'а.
+func (w *writerImpl) Quotas() kacho.QuotaWriterIface {
+	return &quotaWriter{
+		quotaReader: quotaReader{tx: w.tx},
+		tx:          w.tx,
 	}
 }
 

@@ -44,6 +44,14 @@ func setupTestDB(t testing.TB) *pgxpool.Pool {
 	pool, err := coredb.NewPool(context.Background(), withSearchPath(dsn))
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
+
+	// Учёт числа ресурсов: вставка строки ресурса СПИСЫВАЕТ место, и списать его
+	// не с чего, пока у проекта нет строки учёта. На живом пути её заводит
+	// материализация ПЕРЕД writer-транзакцией; проба идёт мимо use-case'а, прямо
+	// в репозиторий, поэтому базу в то же состояние приводит фикстура. Разбор,
+	// перечень идентичностей и что делать новой пробе — `quota_fixture_test.go`.
+	seedFixtureQuotas(t, pool)
+
 	return pool
 }
 
