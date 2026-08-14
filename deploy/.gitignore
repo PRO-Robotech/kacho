@@ -31,3 +31,7 @@ ci/.seeded-ids.env
 # карта идентификаторов содержимого локальных образов — генерируется `make build-services`,
 # значения машинно-локальны (id образов конкретного docker-демона).
 helm/umbrella/values.image-ids.yaml
+
+# отпечаток последней материализации зависимостей умбреллы (scripts/helm-umbrella-deps.sh):
+# машинно-локальный результат, как и сами charts/*.tgz выше.
+helm/umbrella/.kacho-deps-fingerprint
