@@ -26,6 +26,22 @@
 # путям — значит у любого коммита main есть образы обеих семей.
 #
 # ─────────────────────────────────────────────────────────────────────────────
+# КАКИЕ ПРОФИЛИ ОН ОБСЛУЖИВАЕТ
+#
+# Любой, названный через `--profile`. Сегодня запись о выводе несут четыре, и
+# каждый из них называет этот скрипт своим порождающим:
+#
+#   helm/umbrella/values.a8f60d.yaml        (умолчание)
+#   helm/umbrella/values.fe3455.yaml
+#   helm/umbrella/values.fe3455-prod.yaml
+#   helm/umbrella/values.prorobotech.yaml
+#
+# Перечень двусторонний по построению: профиль обязан назвать порождающего, а
+# порождающий — знать про профиль (TestProfileClaimingGenerationNamesAProducerThatExists).
+# Пятый профиль с записью, забытый здесь, роняет прогон — «ссылка есть,
+# отношения нет» ловится с обеих сторон.
+#
+# ─────────────────────────────────────────────────────────────────────────────
 # РЕЖИМЫ
 #
 #   (без аргументов)   переписать пины профиля от --ref (умолчание HEAD)
@@ -82,6 +98,27 @@ record_of() {
   sed -nE 's/^#[[:space:]]*порождено-от:[[:space:]]*([A-Za-z0-9._-]+)[[:space:]]+([0-9a-f]{40})[[:space:]]*$/\1 \2/p' "$1" | head -1
 }
 
+# exempt_of <файл> — образы, объявленные НЕВЫВОДИМЫМИ, по одному на строку.
+#
+#     # без-вывода: <образ> [<образ>…] — <причина>
+#
+# Директива существует потому, что часть профилей запинена коммитами прежних
+# полирепозиториев: в этом дереве таких объектов нет, вывести их нельзя, и
+# записать им «порождено-от» значило бы объявить вывод из несуществующего
+# коммита. Порождающий такие образы НЕ ТРОГАЕТ и НЕ СУДИТ — иначе он либо
+# переписал бы чужой стенд, либо вечно краснел на том, что починить не в его
+# власти. Самоистечение записи (коммит стал разрешаться, образа больше нет в
+# профиле) держит deploy/managed_cluster_profile_test.go — там есть git и
+# разобранное дерево значений.
+exempt_of() {
+  sed -nE 's/^#[[:space:]]*без-вывода:[[:space:]]*([^—]+)—.*$/\1/p' "$1" | tr ' \t' '\n\n' | sed '/^$/d'
+}
+
+# is_exempt <образ> <файл>
+is_exempt() {
+  exempt_of "$2" | grep -qxF "$1"
+}
+
 # pins_of <файл> — печатает «<образ> <тег>» по каждому пину образа продукта,
 # который ТЯНЕТСЯ из реестра. Образ стенда (`kacho-vpc:dev`, без пространства
 # имён) сюда не попадает: его грузит `kind load`, а не kubelet, и коммита он не
@@ -125,7 +162,7 @@ want_tag() {
 # check_profile <файл> — печатает находки, возвращает их число кодом (1),
 # 2 — исчезнувшая предпосылка (нет записи или нет ни одного пина).
 check_profile() {
-  local file="$1" rec branch sha findings=0 seen=0
+  local file="$1" rec branch sha findings=0 seen=0 skipped=0
   rec="$(record_of "$file")"
   if [ -z "$rec" ]; then
     echo "ОТКАЗ: $file не несёт записи «# порождено-от: <ветка> <коммит>» — выводить пины не из чего"
@@ -134,6 +171,10 @@ check_profile() {
   branch="${rec%% *}"; sha="${rec##* }"
   while read -r img tag; do
     [ -n "$img" ] || continue
+    if is_exempt "$img" "$file"; then
+      skipped=$((skipped + 1))
+      continue
+    fi
     seen=$((seen + 1))
     local want; want="$(want_tag "$img" "$branch" "$sha")"
     if [ "$tag" != "$want" ]; then
@@ -142,19 +183,24 @@ check_profile() {
     fi
   done < <(pins_of "$file")
   if [ "$seen" -eq 0 ]; then
-    echo "ОТКАЗ: $file — ни одного пина образа продукта не найдено; «пины сходятся» здесь означало бы «ни один не прочитан»"
+    echo "ОТКАЗ: $file — ни одного ВЫВОДИМОГО пина не найдено (объявлено невыводимыми: $skipped); «пины сходятся» здесь означало бы «ни один не прочитан»"
     return 2
   fi
-  echo "осмотрено: $file — пинов образов продукта $seen, запись ($branch $sha), находок $findings"
+  echo "осмотрено: $file — пинов образов продукта $seen, объявлено невыводимыми $skipped, запись ($branch $sha), находок $findings"
   [ "$findings" -eq 0 ] || return 1
   return 0
 }
 
 # rewrite_profile <файл> <ветка> <коммит40> — переписывает пины и запись.
+#
+# Образы, объявленные невыводимыми, не трогаются: их тег назначает оператор
+# стенда, и переписать его отсюда значило бы развернуть не то, что он выбрал.
 rewrite_profile() {
-  local file="$1" branch="$2" sha="$3" tmp
+  local file="$1" branch="$2" sha="$3" tmp exempt
+  exempt="$(exempt_of "$file" | tr '\n' ' ')"
   tmp="$(mktemp)"
-  awk -v branch="$branch" -v sha="$sha" '
+  awk -v branch="$branch" -v sha="$sha" -v exempt=" $exempt " '
+    function is_exempt(img) { return index(exempt, " " img " ") > 0 }
     function tag_for(img,   short) {
       if (img ~ /^kacho-ui-future-/) return branch "-" sha
       short = substr(sha, 1, 8)
@@ -170,6 +216,7 @@ rewrite_profile() {
       v = $0; sub(/^[[:space:]]*image:[[:space:]]*/, "", v); sub(/[[:space:]]*(#.*)?$/, "", v)
       if (v ~ /\/kacho-[a-z0-9-]+:/) {
         n = split(v, part, ":"); img = part[1]; base = img; sub(/^.*\//, "", base)
+        if (is_exempt(base)) { print; next }
         indent = $0; sub(/[^[:space:]].*$/, "", indent)
         print indent "image: " img ":" tag_for(base)
         next
@@ -179,6 +226,7 @@ rewrite_profile() {
     match($0, /^[[:space:]]*tag:[[:space:]]*/) {
       if (repo ~ /\/kacho-[a-z0-9-]+$/) {
         base = repo; sub(/^.*\//, "", base)
+        if (is_exempt(base)) { print; next }
         indent = $0; sub(/[^[:space:]].*$/, "", indent)
         print indent "tag: " tag_for(base)
         next
@@ -293,6 +341,49 @@ EOF
   rewrite_profile "$f" main "$sha2"
   grep -q "tag: 16.4.0-debian-12-r0" "$f" && ok "тег стороннего чарта не тронут" \
                                           || bad "тег стороннего чарта переписан"
+
+  say "9. объявленный невыводимым образ НЕ судится по записи"
+  write_fixture
+  sed -i "s|kacho-ui-future-host:main-$sha40|kacho-ui-future-host:master-deadbeef|" "$f"
+  printf '# без-вывода: kacho-ui-future-host — коммит прежнего репозитория консоли\n' >> "$f"
+  out="$(check_profile "$f")"; rc=$?
+  if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "невыводимыми 1"; then
+    ok "код 0, невыводимый пересчитан отдельно"
+  else
+    bad "код $rc, вывод: $out"
+  fi
+
+  say "10. законный близнец: НЕ объявленный образ с тем же дефектом — по-прежнему находка"
+  write_fixture
+  sed -i "s|kacho-ui-future-host:main-$sha40|kacho-ui-future-host:master-deadbeef|" "$f"
+  sed -i 's|kacho-vpc:main-01234567|kacho-vpc:main-deadbeef|' "$f"
+  printf '# без-вывода: kacho-ui-future-host — коммит прежнего репозитория консоли\n' >> "$f"
+  out="$(check_profile "$f")"; rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "kacho-vpc" \
+     && ! printf '%s' "$out" | grep -q "НАХОДКА.*kacho-ui-future-host"; then
+    ok "объявление сужает ровно до названного образа"
+  else
+    bad "код $rc, вывод: $out"
+  fi
+
+  say "11. порождение НЕ переписывает объявленный невыводимым тег"
+  write_fixture
+  sed -i "s|kacho-ui-future-host:main-$sha40|kacho-ui-future-host:master-e6001c77|" "$f"
+  printf '# без-вывода: kacho-ui-future-host — коммит прежнего репозитория консоли\n' >> "$f"
+  rewrite_profile "$f" main "$sha2"
+  if grep -q "kacho-ui-future-host:master-e6001c77" "$f" && grep -q "kacho-vpc:main-89abcdef" "$f"; then
+    ok "чужой стенд не переписан, выводимый — переписан"
+  else
+    bad "файл: $(cat "$f")"
+  fi
+
+  say "12. все пины объявлены невыводимыми — это ОТКАЗ, а не чистота"
+  write_fixture
+  {
+    printf '# без-вывода: kacho-vpc kacho-storage kacho-ui-future-host — все три\n'
+  } >> "$f"
+  out="$(check_profile "$f")"; rc=$?
+  [ "$rc" -eq 2 ] && ok "код 2: сверять оказалось нечего" || bad "код $rc, вывод: $out"
 
   say "итог самопроверки: прошло $pass, провалено $fail"
   [ "$fail" -eq 0 ]
