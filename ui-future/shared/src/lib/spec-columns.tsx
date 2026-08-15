@@ -31,6 +31,12 @@ const REFERRER_SPEC: Record<string, string> = {
   // (`compute.instance`) минует эту карту и линкуется прямым маршрутом
   // (`referrerHref`), потому что в СВОЁМ реестре того ресурса у него нет.
   "vpc.securityGroup": "security-groups",
+  // Сеть-потребитель группы безопасности: та, для которой группа назначена
+  // группой по умолчанию. Без этой записи она уходила в запасную ветку и
+  // рисовалась сырым `network net-…` — при том что строкой выше на той же
+  // карточке она же стоит нормальной ссылкой. Один предмет, два вида подряд:
+  // со стороны это читается как задвоенный раздел (#446).
+  network: "networks",
   compute_instance: "compute-instances",
   nlb_target_group: "target-groups",
   network_interface: "network-interfaces",
