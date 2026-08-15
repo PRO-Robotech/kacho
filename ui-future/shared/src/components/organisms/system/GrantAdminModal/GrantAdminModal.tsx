@@ -18,6 +18,7 @@ import { clusterApi } from "@shared/api/cluster";
 import { iamApi, type User } from "@shared/api/iam";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 
 interface Props {
   open: boolean;
@@ -145,16 +146,19 @@ export function GrantAdminModal({ open, onClose }: Props) {
     setSubmitting(true);
     try {
       const resp = await clusterApi.grantAdmin(selectedUser.id);
-      const id = resp.operation?.id;
-      if (id) {
-        setOpId(id);
+      // Исход читается общим разбором: край отдаёт Operation ВЕРХНИМ уровнем,
+      // поэтому вложенный ключ был пуст всегда и ветка «нет операции» работала
+      // на каждой выдаче. Здесь стоял и честный комментарий автора про
+      // «корректность сомнительная» — сомнение было обоснованным.
+      //
+      // `GrantAdmin` объявлен `returns (operation.Operation)`, поэтому ответ без
+      // операции — нарушение контракта, а не синхронный успех.
+      const resolved = resolveMutationResponse(resp, true);
+      if (resolved.kind === "operation") {
+        setOpId(resolved.opId);
       } else {
-        // sync success (no operation envelope) — корректность сомнительная, но
-        // покрываем по аналогии с другими IAM-мутациями.
-        toast.success("Admin granted");
-        void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+        toast.error(resolved.kind === "violation" ? resolved.message : "Ответ без операции");
         setSubmitting(false);
-        handleClose();
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Ошибка";

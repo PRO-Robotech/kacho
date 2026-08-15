@@ -45,6 +45,7 @@ import { CopyableMonoId, fmtTs } from "@shared/components/organisms/iam/IamCommo
 import { useAuth } from "@shared/contexts/AuthContext";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 
 /** Унифицированная строка credential'а (общая форма SAKey и UserToken). */
 export interface CredentialRow {
@@ -147,11 +148,15 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   const issueMut = useMutation({
     mutationFn: (body: IssueTokenBody) => config.issue(subjectId, body),
     onSuccess: (resp) => {
-      const opId = resp.operation?.id;
-      if (opId) {
-        setIssueOpId(opId);
+      // Единственная из четырёх точек, что уже отказывалась считать «нет
+      // операции» успехом; общий разбор нужен ей ради ВТОРОЙ формы конверта —
+      // край отдаёт Operation верхним уровнем, и по вложенному ключу выпуск
+      // валился в ложный отказ.
+      const resolved = resolveMutationResponse(resp, true);
+      if (resolved.kind === "operation") {
+        setIssueOpId(resolved.opId);
       } else {
-        toast.error("Backend не вернул operation id");
+        toast.error(resolved.kind === "violation" ? resolved.message : "Ответ без операции");
       }
     },
     onError: (err) => {
@@ -208,10 +213,11 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
     setRevokingId(row.id);
     try {
       const resp = await config.revoke(subjectId, row.id);
-      const opId = resp.operation?.id;
-      if (opId) setRevokeOpId(opId);
-      else {
-        void invalidateCreds();
+      const resolved = resolveMutationResponse(resp, true);
+      if (resolved.kind === "operation") {
+        setRevokeOpId(resolved.opId);
+      } else {
+        toast.error(resolved.kind === "violation" ? resolved.message : "Ответ без операции");
         setRevokingId(null);
       }
     } catch (e) {
