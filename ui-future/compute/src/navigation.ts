@@ -51,6 +51,16 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
         path: "compute/machine-types",
         requiresProject: true,
       },
+      // Ключи входа в гостевую систему — ресурс проекта со своим жизненным
+      // циклом (завести / переименовать / отозвать), а не поле формы машины.
+      // Без пункта в навигации ресурс есть, а дойти до него нельзя.
+      {
+        key: "compute-guest-access-keys",
+        icon: "layers",
+        label: "Ключи доступа",
+        path: "compute/guest-access-keys",
+        requiresProject: true,
+      },
     ],
   },
 ];

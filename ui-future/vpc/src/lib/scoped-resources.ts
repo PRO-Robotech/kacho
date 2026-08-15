@@ -23,11 +23,20 @@ export const VPC_SCOPED_IDS = [
 /**
  * Compute-ресурсы под /projects/:projectId/compute/<route>.
  *
- * Только инстанс: блочное хранение — домен storage (Volume/Image/Snapshot/
- * DiskType на /storage/v1/*), у него свой remote и свой раздел консоли.
- * Маршрутов /compute/v1/{disks,images,snapshots} в стволе нет.
+ * Инстанс и ключ входа в гостевую систему. Блочное хранение сюда не входит —
+ * это домен storage (Volume/Image/Snapshot/DiskType на /storage/v1/*), у него
+ * свой remote и свой раздел консоли; маршрутов /compute/v1/{disks,images,
+ * snapshots} в стволе нет.
+ *
+ * Ключ добавлен вместе с цепочкой загрузки (#377): при заказе машины ключи
+ * выбираются списком, а список надо где-то завести — раздела для этого не было
+ * вовсе, при живом сервере и живом ресурсе в провайдере инфраструктуры.
  */
-export const COMPUTE_SCOPED_IDS = ["compute-instances", "placement-groups"] as const;
+// Все три ресурса compute, монтируемые разделом сетей: машина плюс два, заведённые
+// параллельными линиями волны правок консоли (ключ доступа — #377, группа
+// размещения — #368). Объединение, а не выбор: обе линии добавляли СВОЙ ресурс к
+// одному перечню, и потеря любого оставила бы раздел без него молча.
+export const COMPUTE_SCOPED_IDS = ["compute-instances", "guest-access-keys", "placement-groups"] as const;
 
 /** NLB-ресурсы под /projects/:projectId/nlb/<route>. */
 export const NLB_SCOPED_IDS = ["load-balancers", "listeners", "target-groups"] as const;

@@ -36,6 +36,12 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import { flatIdList } from "@shared/lib/id-list";
+import {
+  GUEST_ACCESS_KEY_EMPTY_STATE,
+  GUEST_ACCESS_KEY_FIELDS,
+  guestAccessKeyTemplate,
+} from "@shared/lib/guest-access-key-form";
 import { resourceListPath as resourceListPathImpl } from "@shared/lib/service-prefix";
 import type { ResourceColumn, ResourceSpec } from "./resource-spec";
 
@@ -2579,15 +2585,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "(OCI-артефакт kacho-registry, для CONTAINER).",
       },
       {
+        // Образ — списком, а не строкой.
+        //
+        // Сервер принимает здесь РОВНО `img-<base32>`: `validateBootSource`
+        // (services/compute) зовёт `corevalidate.ResourceID("Image", "img", …)`.
+        // Прежняя подсказка предлагала форму с тегом и OCI-ссылку, и обе сервер
+        // отвергает: у образа хранилища нет ни поля тега, ни поля дайджеста, а
+        // ветка registry.image отвергается целиком. То есть форма предлагала
+        // набрать руками идентификатор, который она же могла показать списком.
         name: "boot_source.id",
         label: "Образ",
-        type: "string",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
         required: true,
         createOnly: true,
-        placeholder: "img-9k2m4x7q1n8p:22.04-lts   |   ml/bert-trainer:cu121",
+        visibleWhen: { field: "boot_source.type", equals: "storage.image" },
         description:
-          "Ссылка на образ с тегом/дайджестом внутри id: «img-<base32>:<tag>» / «img-<base32>@sha256:<hex>» " +
-          "(storage.image) либо «repo/name:tag» (registry.image).",
+          "Образ ОС, из которого материализуется загрузочный том машины. Список — образы текущего проекта; " +
+          "нет ни одного — создайте образ в разделе Storage.",
       },
       {
         name: "cpu_guarantee_percent",
@@ -2606,6 +2622,36 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         placeholder: "sva… (опционально)",
         description: "Сервисный аккаунт (iam), доступный внутри инстанса. Для публичных образов можно не задавать.",
+      },
+      {
+        // Ключи входа — ССЫЛКАМИ на ресурс, а не материалом в теле запроса.
+        // Контракт объясняет это прямым текстом: ключ, переданный полем, живёт
+        // ровно столько, сколько машина, и его нельзя ни отозвать, ни заменить,
+        // ни узнать, где ещё он используется. Отсюда же и отказ сервера на
+        // `sshPublicKeys` — он называет заменой именно это поле.
+        name: "guest_access_key_ids",
+        label: "Ключи доступа",
+        type: "array",
+        itemLabel: "ключ",
+        createOnly: true,
+        maxItems: 32,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description:
+          "Публичные ключи, с которыми вы войдёте в гостевую систему. Ключ — отдельный ресурс проекта: его " +
+          "можно отозвать, заменить и увидеть, где ещё он используется. Нет ни одного — создайте прямо здесь.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Ключ доступа",
+            type: "ref",
+            refResource: "guest-access-keys",
+            refProjectScoped: true,
+            required: true,
+            createResource: "guest-access-keys",
+            createTitle: "Создать ключ доступа",
+          },
+        ],
       },
       // --- VM-only (instance_kind = VM) ---
       {
@@ -2770,9 +2816,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       acknowledge_unreachable: false,
       use_default_network: true,
       network_interface_specs: [],
+      guest_access_key_ids: [],
       labels: {},
     }),
     sanitize: (obj) => sanitizeInstanceCreate(obj),
+    // Клиент-валидация ДО submit — ровно тем же тоном, каким откажет сервер.
+    //
+    // Ветка `registry.image` объявлена в контракте и ОТВЕРГАЕТСЯ явно: у образа
+    // из реестра сегодня нет durable-адреса (репозиторий адресуется парой
+    // «реестр + имя», а имя переименовывается отдельным глаголом). Форма обязана
+    // сказать это словами, а не отправлять запрос, который не может пройти:
+    // подборщика образов у этой ветки нет by construction, и без пояснения
+    // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
+    validate: (obj) => {
+      const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
+      if (bs.type === "registry.image") {
+        return (
+          "Источник registry.image пока не принимается: у образа из реестра нет неизменяемого адреса, " +
+          "поэтому ссылка в машине сломалась бы после чужого переименования. Выберите storage.image."
+        );
+      }
+      return null;
+    },
     // wire → UI-форма (edit). service_account (Referrer) → service_account_id.
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
@@ -2818,6 +2883,81 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     template: () => ({}),
+  },
+
+  // ====== storage: Image (ref target) ======
+  // proto: kacho.cloud.storage.v1.ImageService (/storage/v1/images). Образ — вход
+  // в цепочку «образ → том → машина»: без него из пустого проекта загрузочный том
+  // не получить вовсе (том делается пустым или из снимка, снимок — из тома).
+  // Здесь ТОЛЬКО цель ссылки для подборщика образа в форме машины; CRUD живёт в
+  // разделе Storage.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: "Образ",
+    plural: "Образы",
+    genitive: "Образа",
+    accusative: "образ",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      { header: "Статус", path: "status", format: "status" },
+    ],
+    template: () => ({}),
+  },
+
+  // ====== compute: GuestAccessKey ======
+  // proto: kacho.cloud.compute.v1.GuestAccessKeyService (/compute/v1/guestAccessKeys).
+  // Мутации async → Operation. Mutable: name/labels; публичный ключ задаётся при
+  // создании и не правится — заменить ключ значит завести другой.
+  //
+  // Почему это ресурс, а не поле машины, сказано в самом контракте: ключ,
+  // переданный полем, живёт ровно столько, сколько машина, и его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Отсюда же и отказ
+  // сервера на `sshPublicKeys` в запросе машины — он называет этот ресурс заменой.
+  //
+  // Поля формы — из общего объявления, см. `@shared/lib/guest-access-key-form`:
+  // ресурс живёт и во втором реестре, и выписанные дважды поля разошлись бы молча.
+  "guest-access-keys": {
+    id: "guest-access-keys",
+    route: "guest-access-keys",
+    apiPath: "/compute/v1/guestAccessKeys",
+    payloadKey: "guest_access_keys",
+    singular: "Ключ доступа",
+    plural: "Ключи доступа",
+    genitive: "Ключа доступа",
+    accusative: "ключ доступа",
+    serviceTitle: "Compute Cloud",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Отпечаток считаем МЫ — по нему арендатор сверяет, тот ли ключ доехал.
+      { header: "Отпечаток", path: "fingerprint", format: "code" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: GUEST_ACCESS_KEY_FIELDS,
+    template: guestAccessKeyTemplate,
+    emptyState: GUEST_ACCESS_KEY_EMPTY_STATE,
   },
 
   // ====== compute: MachineType (read-only sizing catalog) ======
@@ -4014,6 +4154,14 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
   const bs = (o["boot_source"] as Record<string, unknown> | undefined) ?? {};
   o["boot_source"] = { type: bs["type"], id: bs["id"] };
 
+  // guest_access_key_ids: контракт ждёт ПЛОСКИЙ список идентификаторов, а
+  // generic ArrayField хранит элемент объектом {value}. Пустой список не шлём
+  // вовсе: пустое поле в теле утверждало бы «ключей нет», тогда как арендатор
+  // просто не дошёл до него.
+  const keys = flatIdList(o["guest_access_key_ids"]);
+  if (keys) o["guest_access_key_ids"] = keys;
+  else delete o["guest_access_key_ids"];
+
   if (kind === "CONTAINER") {
     delete o["vm_spec"];
     delete o["assign_external_address"];
@@ -4041,13 +4189,10 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
   const specs = nics
     .map((nic) => {
       const out: Record<string, unknown> = {};
-      const sgs = Array.isArray(nic["security_group_ids"])
-        ? (nic["security_group_ids"] as unknown[])
-            .map((it) =>
-              typeof it === "object" && it !== null && "value" in it ? (it as Record<string, unknown>)["value"] : it,
-            )
-            .filter((v) => typeof v === "string" && v)
-        : [];
+      // Тот же перевод «элемент-объект формы → плоский список», что и у ключей
+      // доступа. Он живёт одним объявлением (`@shared/lib/id-list`): выписанный
+      // здесь второй раз, он разошёлся бы с первым молча.
+      const sgs = flatIdList(nic["security_group_ids"]) ?? [];
       // Существующий NetworkInterface (nic_id) — отдаём только nic_id (+ SG, если заданы);
       // подсеть/адрес берутся из самого NIC (см. compute.v1.NetworkInterfaceSpec.nic_id).
       if (nic["_use_existing_nic"] === true && nic["nic_id"]) {

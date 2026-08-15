@@ -26,6 +26,14 @@ import { REGISTRY } from "./resource-registry";
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // compute.v1 — an instance is project-scoped and placed in a zone.
   "/compute/v1/instances": ["project_id", "zone_id"],
+  // compute.v1 — CreateGuestAccessKeyRequest carries NO `(required) = true`
+  // annotation on any field. The ground truth for this row is therefore the
+  // use-case that refuses the call, not the descriptor: services/compute
+  // `guestaccesskey` rejects an absent project_id ("projectId is required"), a
+  // name outside 1..63 ("name must be 1..63 characters") and an absent or
+  // unparsable public_key ("publicKey is required …"). Citing the weaker source
+  // would have let the form ship a create that cannot succeed.
+  "/compute/v1/guestAccessKeys": ["project_id", "name", "public_key"],
   // CreatePlacementGroupRequest marks no field `(required) = true`: the use-case
   // refuses an empty name, an unset strategy and an unset anchor itself, with a
   // named field each time. The empty list is the contract as declared, not an
@@ -65,7 +73,13 @@ const createCapable = Object.entries(REGISTRY)
 describe("every create-capable spec can express what Create requires", () => {
   it("offers Create for at least the resources this registry is meant to create", () => {
     // Guards the sweep against silently measuring nothing.
-    expect(createCapable.length).toBe(2);
+    // Instance + GuestAccessKey. Второй заведён вместе с цепочкой загрузки
+    // (#377): ключ входа в гостя — ресурс со своим жизненным циклом, полем
+    // машины его нельзя ни отозвать, ни заменить.
+    // Третий — группа размещения (#368), заведена параллельной линией той же волны.
+    // Число не «сколько получилось», а сколько раздел ОБЯЗАН предлагать: меньше —
+    // значит один ресурс молча выпал из создания.
+    expect(createCapable.length).toBe(3);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {
