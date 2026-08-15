@@ -30,6 +30,9 @@ export interface InstancesPageProps {
 // DETAIL_EXTENSIONS поверх generic ResourceShell.
 const INSTANCES = REGISTRY["compute-instances"];
 const MACHINE_TYPES = REGISTRY["machine-types"];
+// Ключ входа в гостя — полноценный ресурс проекта (список / карточка / создание),
+// а не поле формы машины: полем его нельзя ни отозвать, ни заменить.
+const GUEST_ACCESS_KEYS = REGISTRY["guest-access-keys"];
 
 export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
   const queryClient = useMemo(
@@ -80,6 +83,32 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
                 <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} panelForms />} />
                 <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
                 <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
+                <Route
+                  path={GUEST_ACCESS_KEYS.route}
+                  element={
+                    <ResourceListPage
+                      spec={GUEST_ACCESS_KEYS}
+                      parentField="project_id"
+                      parentParam="projectId"
+                      panelForms
+                    />
+                  }
+                />
+                <Route
+                  path={`${GUEST_ACCESS_KEYS.route}/create`}
+                  element={
+                    <ResourceCreatePage spec={GUEST_ACCESS_KEYS} parentField="project_id" parentParam="projectId" />
+                  }
+                />
+                <Route path={`${GUEST_ACCESS_KEYS.route}/:uid`} element={<ResourceShell spec={GUEST_ACCESS_KEYS} />} />
+                <Route
+                  path={`${GUEST_ACCESS_KEYS.route}/:uid/edit`}
+                  element={<ResourceShell spec={GUEST_ACCESS_KEYS} mode="edit" />}
+                />
+                <Route
+                  path={`${GUEST_ACCESS_KEYS.route}/:uid/:tab`}
+                  element={<ResourceShell spec={GUEST_ACCESS_KEYS} />}
+                />
                 <Route path="*" element={<ProjectComputeDefaultRedirect />} />
               </Routes>
             </ComputeFrame>

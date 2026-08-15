@@ -15,6 +15,12 @@
 import type { ReactNode } from "react";
 import { Typography } from "antd";
 import type { FormField } from "@shared/lib/form-schema";
+import { flatIdList } from "@shared/lib/id-list";
+import {
+  GUEST_ACCESS_KEY_EMPTY_STATE,
+  GUEST_ACCESS_KEY_FIELDS,
+  guestAccessKeyTemplate,
+} from "@shared/lib/guest-access-key-form";
 import { setByPath } from "./path";
 import { formatBytes } from "./bytes";
 import { CopyableId } from "@/components/atoms/CopyableId";
@@ -163,14 +169,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Владелец образа: storage.image (диск-образ kacho-storage, для VM) или registry.image (OCI-артефакт kacho-registry, для CONTAINER).",
       },
       {
+        // Образ — списком, а не строкой.
+        //
+        // Сервер принимает здесь РОВНО `img-<base32>`: `validateBootSource`
+        // (services/compute) зовёт `corevalidate.ResourceID("Image", "img", …)`.
+        // Прежняя подсказка предлагала две формы — с тегом и OCI-ссылку, — и обе
+        // сервер отвергает: у образа хранилища нет ни поля тега, ни поля
+        // дайджеста, а ветка registry.image отвергается целиком («у образа из
+        // реестра сегодня нет durable-адреса»). То есть форма предлагала набрать
+        // руками идентификатор, который она же могла показать списком.
         name: "boot_source.id",
         label: "Образ",
-        type: "string",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
         required: true,
         createOnly: true,
-        placeholder: "img-9k2m4x7q1n8p:22.04-lts   |   ml/bert-trainer:cu121",
+        visibleWhen: { field: "boot_source.type", equals: "storage.image" },
         description:
-          "Ссылка на образ с тегом/дайджестом внутри id: «img-<base32>:<tag>» / «img-<base32>@sha256:<hex>» (storage.image) либо «repo/name:tag» (registry.image).",
+          "Образ ОС, из которого материализуется загрузочный том машины. Список — образы текущего проекта; нет ни одного — создайте образ в разделе Storage.",
       },
       {
         name: "cpu_guarantee_percent",
@@ -189,6 +206,34 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         placeholder: "sva…",
         description:
           "Опционально: сервисный аккаунт (iam), доступный внутри инстанса. Для публичных образов можно не задавать.",
+      },
+      {
+        // Ключи входа — ССЫЛКАМИ на ресурс, а не материалом в теле запроса.
+        // Контракт это объясняет прямым текстом: ключ, переданный полем, живёт
+        // ровно столько, сколько машина, и его нельзя ни отозвать, ни заменить,
+        // ни узнать, где ещё он используется.
+        name: "guest_access_key_ids",
+        label: "Ключи доступа",
+        type: "array",
+        itemLabel: "ключ",
+        createOnly: true,
+        maxItems: 32,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description:
+          "Публичные ключи, с которыми вы войдёте в гостевую систему. Ключ — отдельный ресурс проекта: его можно отозвать, заменить и увидеть, где ещё он используется. Нет ни одного — создайте прямо здесь.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Ключ доступа",
+            type: "ref",
+            refResource: "guest-access-keys",
+            refProjectScoped: true,
+            required: true,
+            createResource: "guest-access-keys",
+            createTitle: "Создать ключ доступа",
+          },
+        ],
       },
       // --- VM-specific (instanceKind = VM) ---
       {
@@ -284,6 +329,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       assign_external_address: false,
       acknowledge_unreachable: false,
       use_default_network: true,
+      guest_access_key_ids: [],
       labels: {},
     }),
     // UI-форма → wire. Оставляем ровно одну ветку oneof spec по instance_kind;
@@ -291,6 +337,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const kind = out.instance_kind;
+
+      // guest_access_key_ids: контракт ждёт ПЛОСКИЙ список идентификаторов, а
+      // generic ArrayField хранит элемент объектом {value}. Пустой список не
+      // шлём вовсе: пустое поле в теле означало бы «ключей нет», тогда как
+      // арендатор просто не дошёл до него.
+      out.guest_access_key_ids = flatIdList(out.guest_access_key_ids);
+      if (!out.guest_access_key_ids) delete out.guest_access_key_ids;
 
       // boot_source: на вход только {type,id} (output-only/form-only поля срезаем).
       const bs = (out.boot_source as Record<string, unknown> | undefined) ?? {};
@@ -312,6 +365,21 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
       if (!out.service_account_id) delete out.service_account_id;
       return out;
+    },
+    // Клиент-валидация ДО submit — ровно тем же тоном, каким откажет сервер.
+    //
+    // Ветка `registry.image` объявлена в контракте и ОТВЕРГАЕТСЯ явно: у образа
+    // из реестра сегодня нет durable-адреса (репозиторий адресуется парой
+    // «реестр + имя», а имя переименовывается отдельным глаголом). Форма обязана
+    // сказать это словами, а не отправлять запрос, который не может пройти:
+    // подборщика образов у этой ветки нет by construction, и без пояснения
+    // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
+    validate: (obj) => {
+      const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
+      if (bs.type === "registry.image") {
+        return "Источник registry.image пока не принимается: у образа из реестра нет неизменяемого адреса, поэтому ссылка в машине сломалась бы после чужого переименования. Выберите storage.image.";
+      }
+      return null;
     },
     // wire → UI-форма (edit). service_account (Referrer) → service_account_id.
     hydrate: (obj) => {
@@ -383,6 +451,72 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
+    template: () => ({}),
+  },
+
+  // ====== compute: GuestAccessKey ======
+  // proto: kacho.cloud.compute.v1.GuestAccessKeyService (/compute/v1/guestAccessKeys).
+  // Мутации async → Operation. Mutable: name/labels; public_key задаётся при
+  // создании и не правится — заменить ключ значит завести другой.
+  //
+  // Почему это ресурс, а не поле машины, сказано в самом контракте: ключ,
+  // переданный полем, живёт ровно столько, сколько машина, и его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Отсюда же и
+  // отказ сервера на `sshPublicKeys` в запросе машины — он называет этот ресурс
+  // заменой.
+  //
+  // Закрытая половина ключа здесь не хранится НИКОГДА и полем формы не является.
+  "guest-access-keys": {
+    id: "guest-access-keys",
+    route: "guest-access-keys",
+    apiPath: "/compute/v1/guestAccessKeys",
+    payloadKey: "guest_access_keys",
+    singular: "Ключ доступа",
+    plural: "Ключи доступа",
+    genitive: "Ключа доступа",
+    serviceTitle: "Compute Cloud",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Отпечаток считаем МЫ — по нему арендатор сверяет, тот ли ключ доехал.
+      { header: "Отпечаток", path: "fingerprint", format: "code" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    // Поля формы и шаблон — из ОДНОГО объявления (`@shared/lib/guest-access-key-form`):
+    // тот же ресурс есть во втором реестре, и выписанные дважды поля разошлись бы
+    // молча. Колонки остаются здесь — они несут разметку и берут атомы этого модуля.
+    fields: GUEST_ACCESS_KEY_FIELDS,
+    template: guestAccessKeyTemplate,
+    emptyState: GUEST_ACCESS_KEY_EMPTY_STATE,
+  },
+
+  // storage.Image — источник загрузочного тома (project-scoped picker).
+  // Здесь ТОЛЬКО цель ссылки: CRUD образа живёт в разделе Storage.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: "Образ",
+    plural: "Образы",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      { header: "Имя", path: "name", format: "text" },
+      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+    ],
     template: () => ({}),
   },
 
