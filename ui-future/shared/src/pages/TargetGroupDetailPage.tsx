@@ -16,11 +16,12 @@ import type { ColumnsType } from "antd/es/table";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
-import { api, ApiError } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 const SPEC = REGISTRY["target-groups"];
 
@@ -129,7 +130,7 @@ export function TargetGroupDetailPage() {
         invalidate("target-groups", project?.id);
       }
     },
-    onError: (e) => toast.error(`Добавить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
+    onError: (e) => toast.error(`Добавить target: ${errorText(e)}`),
   });
 
   const removeMut = useMutation({
@@ -144,78 +145,79 @@ export function TargetGroupDetailPage() {
         invalidate("target-groups", project?.id);
       }
     },
-    onError: (e) => toast.error(`Удалить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
+    onError: (e) => toast.error(`Удалить target: ${errorText(e)}`),
   });
 
   const targetsSection = useMemo(
-    () => function TargetGroupTargetsSection(data: Record<string, unknown>) {
-      const targets = getByPath<Target[]>(data, "targets") ?? [];
-      const columns: ColumnsType<Target> = [
-        { title: "Тип", key: "kind", width: 120, render: (_v, t) => <Tag>{targetIdentity(t).label}</Tag> },
-        {
-          title: "Эндпоинт",
-          key: "endpoint",
-          render: (_v, t) => (
-            <Typography.Text style={{ fontFamily: "monospace", fontSize: 12 }}>
-              {targetIdentity(t).value}
-            </Typography.Text>
-          ),
-        },
-        { title: "Вес", dataIndex: "weight", key: "weight", width: 90, render: (v) => v ?? 1 },
-        {
-          title: "",
-          key: "actions",
-          width: 60,
-          render: (_v, t) => (
-            <Popconfirm
-              title="Удалить target?"
-              okText="Удалить"
-              okButtonProps={{ danger: true }}
-              cancelText="Отмена"
-              onConfirm={() => removeMut.mutate(t)}
-            >
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          ),
-        },
-      ];
-      return (
-        <Card
-          size="small"
-          title={
-            <Space>
-              <span>Targets</span>
-              <Tag color="blue">{targets.length}</Tag>
-            </Space>
-          }
-          extra={
-            <Button
-              size="small"
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                resetForm();
-                setAddOpen(true);
-              }}
-            >
-              Добавить target
-            </Button>
-          }
-        >
-          {targets.length === 0 ? (
-            <Typography.Text type="secondary">Targets ещё не добавлены — нажмите «Добавить target».</Typography.Text>
-          ) : (
-            <Table<Target>
-              rowKey={(t) => JSON.stringify(targetIdentityOnly(t))}
-              size="small"
-              pagination={false}
-              dataSource={targets}
-              columns={columns}
-            />
-          )}
-        </Card>
-      );
-    },
+    () =>
+      function TargetGroupTargetsSection(data: Record<string, unknown>) {
+        const targets = getByPath<Target[]>(data, "targets") ?? [];
+        const columns: ColumnsType<Target> = [
+          { title: "Тип", key: "kind", width: 120, render: (_v, t) => <Tag>{targetIdentity(t).label}</Tag> },
+          {
+            title: "Эндпоинт",
+            key: "endpoint",
+            render: (_v, t) => (
+              <Typography.Text style={{ fontFamily: "monospace", fontSize: 12 }}>
+                {targetIdentity(t).value}
+              </Typography.Text>
+            ),
+          },
+          { title: "Вес", dataIndex: "weight", key: "weight", width: 90, render: (v) => v ?? 1 },
+          {
+            title: "",
+            key: "actions",
+            width: 60,
+            render: (_v, t) => (
+              <Popconfirm
+                title="Удалить target?"
+                okText="Удалить"
+                okButtonProps={{ danger: true }}
+                cancelText="Отмена"
+                onConfirm={() => removeMut.mutate(t)}
+              >
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            ),
+          },
+        ];
+        return (
+          <Card
+            size="small"
+            title={
+              <Space>
+                <span>Targets</span>
+                <Tag color="blue">{targets.length}</Tag>
+              </Space>
+            }
+            extra={
+              <Button
+                size="small"
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  resetForm();
+                  setAddOpen(true);
+                }}
+              >
+                Добавить target
+              </Button>
+            }
+          >
+            {targets.length === 0 ? (
+              <Typography.Text type="secondary">Targets ещё не добавлены — нажмите «Добавить target».</Typography.Text>
+            ) : (
+              <Table<Target>
+                rowKey={(t) => JSON.stringify(targetIdentityOnly(t))}
+                size="small"
+                pagination={false}
+                dataSource={targets}
+                columns={columns}
+              />
+            )}
+          </Card>
+        );
+      },
     [removeMut],
   );
 

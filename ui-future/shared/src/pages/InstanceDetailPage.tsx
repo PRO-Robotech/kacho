@@ -22,11 +22,12 @@ import { PlusOutlined, MinusOutlined } from "@ant-design/icons";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
-import { api, ApiError } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 const SPEC = REGISTRY["compute-instances"];
 
@@ -67,7 +68,7 @@ export function InstanceDetailPage() {
         invalidate("volumes", project?.id);
       }
     },
-    onError: (e) => toast.error(`Подключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
+    onError: (e) => toast.error(`Подключить том: ${errorText(e)}`),
   });
 
   const detachMut = useMutation({
@@ -84,47 +85,49 @@ export function InstanceDetailPage() {
         invalidate("volumes", project?.id);
       }
     },
-    onError: (e) => toast.error(`Отключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
+    onError: (e) => toast.error(`Отключить том: ${errorText(e)}`),
   });
 
   const secondaryActions = useMemo(
-    () => function InstanceSecondaryActions(data: Record<string, unknown>) {
-      // AttachedDisk carries `volume_id` — there is no `disk_id` on it, so reading
-      // that name yielded an empty id for every attachment and the detach hint
-      // below listed nothing.
-      const bootDiskId = (getByPath<Record<string, unknown>>(data, "boot_disk")?.volume_id as string | undefined) ?? "";
-      const secondary = getByPath<Array<Record<string, unknown>>>(data, "secondary_disks") ?? [];
-      const secondaryIds = secondary.map((d) => d.volume_id as string).filter(Boolean);
-      return (
-        <Space size={8} wrap>
-          <Button
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setAttachVolumeId(undefined);
-              setAutoDelete(false);
-              setAttachOpen(true);
-            }}
-          >
-            Подключить том
-          </Button>
-          <Button
-            icon={<MinusOutlined />}
-            disabled={secondaryIds.length === 0}
-            onClick={() => {
-              setDetachVolumeId(secondaryIds[0]);
-              setDetachOpen(true);
-            }}
-          >
-            Отключить том
-          </Button>
-          {bootDiskId && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Загрузочный диск: <Tag>{bootDiskId}</Tag>
-            </Typography.Text>
-          )}
-        </Space>
-      );
-    },
+    () =>
+      function InstanceSecondaryActions(data: Record<string, unknown>) {
+        // AttachedDisk carries `volume_id` — there is no `disk_id` on it, so reading
+        // that name yielded an empty id for every attachment and the detach hint
+        // below listed nothing.
+        const bootDiskId =
+          (getByPath<Record<string, unknown>>(data, "boot_disk")?.volume_id as string | undefined) ?? "";
+        const secondary = getByPath<Array<Record<string, unknown>>>(data, "secondary_disks") ?? [];
+        const secondaryIds = secondary.map((d) => d.volume_id as string).filter(Boolean);
+        return (
+          <Space size={8} wrap>
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setAttachVolumeId(undefined);
+                setAutoDelete(false);
+                setAttachOpen(true);
+              }}
+            >
+              Подключить том
+            </Button>
+            <Button
+              icon={<MinusOutlined />}
+              disabled={secondaryIds.length === 0}
+              onClick={() => {
+                setDetachVolumeId(secondaryIds[0]);
+                setDetachOpen(true);
+              }}
+            >
+              Отключить том
+            </Button>
+            {bootDiskId && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Загрузочный диск: <Tag>{bootDiskId}</Tag>
+              </Typography.Text>
+            )}
+          </Space>
+        );
+      },
     [],
   );
 

@@ -41,7 +41,7 @@ describe("ImmutableField", () => {
 
   it("несёт признак блокировки", () => {
     render(<ImmutableField value="net-1" reason="Неизменяемо после создания" />);
-    expect(screen.getByLabelText("immutable-lock")).toBeInTheDocument();
+    expect(screen.getByLabelText("неизменяемое поле")).toBeInTheDocument();
   });
 
   it("пустое значение показывает прочерком, а не пустотой", () => {
@@ -56,7 +56,7 @@ describe("ImmutableField", () => {
     render(<ImmutableField value={<a href="/vpc/v1/networks/net-1">core</a>} reason="Неизменяемо после создания" />);
 
     expect(screen.getByRole("link", { name: "core" })).toBeInTheDocument();
-    expect(screen.getByLabelText("immutable-lock")).toBeInTheDocument();
+    expect(screen.getByLabelText("неизменяемое поле")).toBeInTheDocument();
     // Это не поле ввода: править нечего, и вводить туда нельзя вовсе.
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });

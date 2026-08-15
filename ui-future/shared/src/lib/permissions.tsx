@@ -24,6 +24,7 @@ import { useAuth } from "@shared/contexts/AuthContext";
 import { extractDenyReasons, type AccountMembership, type WhoAmIResponse } from "@shared/api/auth";
 import { ApiError } from "@shared/api/client";
 import { displayText } from "@shared/lib/display-text";
+import { GrpcCode, grpcCodeOf } from "@shared/lib/grpc-status";
 
 /** Аггрегированный permission-snapshot для текущего user'а. */
 export interface PermissionSnapshot {
@@ -161,7 +162,7 @@ function withDisabled(el: ReactElement): ReactElement {
 /**
  * Извлекает человеческое сообщение из ApiError для 403-ответов:
  *   - если есть `details[].metadata.deny_reasons` (KAC item #4) — join'ит их messages;
- *   - иначе — fallback на `error.message` или generic "Permission denied".
+ *   - иначе — fallback на `error.message` или generic "Недостаточно прав".
  *
  * Используется в toast-error / inline Alert.
  */
@@ -171,19 +172,27 @@ export function mapApiErrorToMessage(err: unknown): string {
     if (reasons.length > 0) {
       return reasons.map((r) => r.message).join("; ");
     }
-    return err.message || (err.status === 403 ? "Permission denied" : "Ошибка");
+    return err.message || (err.status === 403 ? "Недостаточно прав" : "Ошибка");
   }
   if (err instanceof Error) return err.message;
   return displayText(err) || "Ошибка";
 }
 
-/** True если err — ApiError со status=403/code=PERMISSION_DENIED. */
+/**
+ * Отказ в правах — по КОДУ края, а не по одному лишь HTTP-статусу.
+ *
+ * Принимается и `ApiError` (путь чтения: статус 403), и `Operation.error`
+ * (мутация: HTTP-ответ 200, отказ лежит внутри операции — там код единственное,
+ * что говорит о причине). Прежняя редакция сравнивала `err.code === "7"` со
+ * строкой, тогда как край присылает число, и ветка не срабатывала никогда.
+ */
 export function isPermissionDeniedError(err: unknown): boolean {
-  return err instanceof ApiError && (err.status === 403 || err.code === "7");
+  if (err instanceof ApiError && err.status === 403) return true;
+  return grpcCodeOf(err) === GrpcCode.PermissionDenied;
 }
 
-/** True если err — ApiError со status=409 / code=ALREADY_EXISTS (gRPC code 6). */
+/** True когда отказ означает «такое имя уже занято» (gRPC ALREADY_EXISTS / HTTP 409). */
 export function isAlreadyExistsError(err: unknown): boolean {
-  if (!(err instanceof ApiError)) return false;
-  return err.status === 409 || err.code === "6" || err.code === "ALREADY_EXISTS";
+  if (err instanceof ApiError && err.status === 409) return true;
+  return grpcCodeOf(err) === GrpcCode.AlreadyExists;
 }

@@ -40,7 +40,12 @@ const optionLabels = () => [...picker().querySelectorAll("option")].map((o) => o
 beforeEach(() => {
   jest.clearAllMocks();
   project = { id: "prj-1" };
-  list.mockResolvedValue({ networks: [{ id: "net-1", name: "frontend" }, { id: "net-2", name: "backend" }] });
+  list.mockResolvedValue({
+    networks: [
+      { id: "net-1", name: "frontend" },
+      { id: "net-2", name: "backend" },
+    ],
+  });
 });
 
 describe("RefSelect", () => {
@@ -72,7 +77,7 @@ describe("RefSelect", () => {
     show({ refQueryFromField: { param: "subnet_id", field: "subnet_id" }, formValue: {} });
 
     expect(list).not.toHaveBeenCalled();
-    expect(screen.getByText('Сначала выберите «subnet_id» выше.')).toBeInTheDocument();
+    expect(screen.getByText("Сначала выберите «subnet_id» выше.")).toBeInTheDocument();
   });
 
   it("заполненное поле-источник уезжает в запрос параметром", async () => {
@@ -113,7 +118,7 @@ describe("RefSelect", () => {
   });
 
   it("отказ края показан, а не превращён в пустой список", async () => {
-    list.mockRejectedValue(new ApiError(403, "PERMISSION_DENIED", null, "no access"));
+    list.mockRejectedValue(new ApiError(403, 7, null, "no access"));
     show();
 
     expect(await screen.findByText(/no access/)).toBeInTheDocument();

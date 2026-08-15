@@ -15,7 +15,7 @@ const {
 
 describe("NlbVipSourceField helpers", () => {
   it("effectiveVipMode — нормализует режим под схему", () => {
-    // INTERNAL: {subnet, address}, default subnet.
+    // {subnet, address}, default subnet.
     expect(effectiveVipMode("INTERNAL", undefined)).toBe("subnet");
     expect(effectiveVipMode("INTERNAL", "public")).toBe("subnet"); // невалидный → default
     expect(effectiveVipMode("INTERNAL", "address")).toBe("address");

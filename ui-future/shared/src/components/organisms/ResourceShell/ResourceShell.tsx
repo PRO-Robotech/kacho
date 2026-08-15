@@ -56,6 +56,7 @@ import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { DetailOverviewActions } from "@shared/components/molecules/DetailOverviewActions";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 export type ResourceShellMode = "edit" | "child-create";
 
@@ -96,10 +97,7 @@ function RelatedTable({
   // страницы списка проекта, в которой они могли и не оказаться. Чем именно
   // просить — решает одна функция (`relatedListQuery`), а не эта разметка:
   // механизмов два, и выбор между ними принадлежит владельцу ребёнка.
-  const extraQuery = useMemo(
-    () => relatedListQuery(narrowBy, parentId),
-    [narrowBy, parentId],
-  );
+  const extraQuery = useMemo(() => relatedListQuery(narrowBy, parentId), [narrowBy, parentId]);
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     childSpec,
     accountScoped ? "account_id" : "project_id",
@@ -136,7 +134,7 @@ function RelatedTable({
     resourceServicePrefix(childSpec.id) === "iam"
       ? `/iam/${childSpec.route}`
       : (resourceProjectPath(childSpec.id, projectId) ?? `${detailBase}/${childSpec.route}`);
-  const createLabel = `Создать ${childSpec.singular.toLowerCase()}`;
+  const createLabel = createActionLabel(childSpec);
 
   // Колонки: spec.columns без столбцов-ссылок на родителя (filterFields).
   const specNoParent: ResourceSpec = {
@@ -331,9 +329,9 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     // Активный extra-таб (напр. «Привилегии») может нести собственный header-CTA
     // («Выдать доступ») — рендерим его в шапке страницы, как у related-табов.
     if (data) {
-      const activeExtra = (ext?.extraTabs?.({ data, projectId: projectId ?? null, detailBase, navigate: go }) ?? []).find(
-        (t) => t.id === headerTabId,
-      );
+      const activeExtra = (
+        ext?.extraTabs?.({ data, projectId: projectId ?? null, detailBase, navigate: go }) ?? []
+      ).find((t) => t.id === headerTabId);
       if (activeExtra?.headerAction) return activeExtra.headerAction;
     }
     return null;
