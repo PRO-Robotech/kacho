@@ -34,68 +34,6 @@
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
         {
-          "file": "compute/src/components/atoms/BoolFact/BoolFact.tsx",
-          "symbols": [
-            "BoolFact"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/ContextBadge/ContextBadge.tsx",
-          "symbols": [
-            "ContextBadge"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/CopyableId/CopyableId.tsx",
-          "symbols": [
-            "CopyableId"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/CopyableName/CopyableName.tsx",
-          "symbols": [
-            "CopyableName"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/LabelsCell/LabelsCell.tsx",
-          "symbols": [
-            "LabelsCell"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/StatusBadge/StatusBadge.tsx",
-          "symbols": [
-            "StatusBadge"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/ui/Button/Button.tsx",
-          "symbols": [
-            "Button"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/ui/Dialog/Dialog.tsx",
-          "symbols": [
-            "Dialog",
-            "DialogContent",
-            "DialogDescription",
-            "DialogFooter",
-            "DialogHeader",
-            "DialogTitle",
-            "DialogTrigger"
-          ]
-        },
-        {
-          "file": "compute/src/components/atoms/ui/Input/Input.tsx",
-          "symbols": [
-            "Input",
-            "Label",
-            "Textarea"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
           "symbols": [
             "DeleteDialog",
@@ -110,39 +48,15 @@
           ]
         },
         {
-          "file": "compute/src/components/molecules/DopplerButton/DopplerButton.tsx",
-          "symbols": [
-            "DopplerButton"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/EditableKVTable/EditableKVTable.tsx",
-          "symbols": [
-            "EditableKVTable"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/ErrorResult/ErrorResult.tsx",
           "symbols": [
             "ErrorResult"
           ]
         },
         {
-          "file": "compute/src/components/molecules/JsonEditor/JsonEditor.tsx",
-          "symbols": [
-            "JsonEditor"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
           "symbols": [
             "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/MoveStubDialog/MoveStubDialog.tsx",
-          "symbols": [
-            "MoveStubDialog"
           ]
         },
         {
@@ -174,20 +88,6 @@
           ]
         },
         {
-          "file": "compute/src/components/molecules/PanelHeader/PanelHeader.tsx",
-          "symbols": [
-            "DetailHeaderProvider",
-            "PanelHeader",
-            "useDetailHeaderIcon"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/ProjectRequiredEmpty/ProjectRequiredEmpty.tsx",
-          "symbols": [
-            "ProjectRequiredEmpty"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -214,14 +114,6 @@
           ]
         },
         {
-          "file": "compute/src/components/molecules/TableToolbar/TableToolbar.tsx",
-          "symbols": [
-            "ColumnSettings",
-            "TableSearch",
-            "useHiddenColumns"
-          ]
-        },
-        {
           "file": "compute/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
           "symbols": [
             "DependencyTreePanel"
@@ -232,12 +124,6 @@
           "symbols": [
             "DetailShell",
             "HeaderSlotPortal"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/GlobalResourceFormModal/GlobalResourceFormModal.tsx",
-          "symbols": [
-            "GlobalResourceFormModal"
           ]
         },
         {
@@ -256,16 +142,6 @@
           "file": "compute/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
           "symbols": [
             "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor",
-            "labelsFromEntries",
-            "labelsFromMap",
-            "labelsToEntries",
-            "labelsToMap"
           ]
         },
         {
@@ -307,38 +183,6 @@
           "file": "compute/src/components/organisms/ResourceTable/ResourceTable.tsx",
           "symbols": [
             "ResourceTable"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/FieldLabel/FieldLabel.tsx",
-          "symbols": [
-            "FieldLabel"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/FormFooter/FormFooter.tsx",
-          "symbols": [
-            "FormFooter"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/FormShell/FormShell.tsx",
-          "symbols": [
-            "FORM_WIDTH",
-            "FormBareProvider",
-            "FormShell"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/ImmutableField/ImmutableField.tsx",
-          "symbols": [
-            "ImmutableField"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor"
           ]
         },
         {
@@ -518,10 +362,16 @@
     },
     {
       "id": "dashboard:pages",
-      "reason": "Страница витрины: одноимённый символ, разные предметы (страница модуля против страницы оболочки). Совпадение имени, а не копия реализации.",
+      "reason": "Два РАЗНЫХ предмета, оба не копии реализации. `DashboardPage.tsx` — страница витрины: одноимённый символ, разные предметы (страница модуля против страницы оболочки), совпадение имени. `index.ts` — та же страница, обёрнутая границей отказа СВОЕГО модуля (#371): файл переэкспортирует единственную реализацию, добавив `withModuleBoundary` с именем раздела — тем самым, которым сломанный модуль называет себя на экране «раздел недоступен». Обёртка обязана жить в модуле: имя раздела знает он, а не общий код, и граница, заведённая в shared, называла бы все разделы одинаково. Прежде это была отдельная запись БЕЗ поля `id`, поэтому пересбор ведомости слил её сюда; причина сохранена здесь, а не потеряна вместе с группой.",
       "entries": [
         {
           "file": "dashboard/src/pages/DashboardPage/DashboardPage.tsx",
+          "symbols": [
+            "DashboardPage"
+          ]
+        },
+        {
+          "file": "dashboard/src/pages/DashboardPage/index.ts",
           "symbols": [
             "DashboardPage"
           ]
@@ -598,62 +448,6 @@
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
         {
-          "file": "nlb/src/components/atoms/ContextBadge/ContextBadge.tsx",
-          "symbols": [
-            "ContextBadge"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/CopyableId/CopyableId.tsx",
-          "symbols": [
-            "CopyableId"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/CopyableName/CopyableName.tsx",
-          "symbols": [
-            "CopyableName"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/LabelsCell/LabelsCell.tsx",
-          "symbols": [
-            "LabelsCell"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/StatusBadge/StatusBadge.tsx",
-          "symbols": [
-            "StatusBadge"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/ui/Button/Button.tsx",
-          "symbols": [
-            "Button"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/ui/Dialog/Dialog.tsx",
-          "symbols": [
-            "Dialog",
-            "DialogContent",
-            "DialogDescription",
-            "DialogFooter",
-            "DialogHeader",
-            "DialogTitle",
-            "DialogTrigger"
-          ]
-        },
-        {
-          "file": "nlb/src/components/atoms/ui/Input/Input.tsx",
-          "symbols": [
-            "Input",
-            "Label",
-            "Textarea"
-          ]
-        },
-        {
           "file": "nlb/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
           "symbols": [
             "DeleteDialog",
@@ -668,45 +462,9 @@
           ]
         },
         {
-          "file": "nlb/src/components/molecules/DopplerButton/DopplerButton.tsx",
-          "symbols": [
-            "DopplerButton"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/EditableKVTable/EditableKVTable.tsx",
-          "symbols": [
-            "EditableKVTable"
-          ]
-        },
-        {
           "file": "nlb/src/components/molecules/ErrorResult/ErrorResult.tsx",
           "symbols": [
             "ErrorResult"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/JsonEditor/JsonEditor.tsx",
-          "symbols": [
-            "JsonEditor"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/JsonMonacoView/LazyJsonMonacoView.tsx",
-          "symbols": [
-            "LazyJsonMonacoView"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/MoveStubDialog/MoveStubDialog.tsx",
-          "symbols": [
-            "MoveStubDialog"
           ]
         },
         {
@@ -743,20 +501,6 @@
           ]
         },
         {
-          "file": "nlb/src/components/molecules/PanelHeader/PanelHeader.tsx",
-          "symbols": [
-            "DetailHeaderProvider",
-            "PanelHeader",
-            "useDetailHeaderIcon"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/ProjectRequiredEmpty/ProjectRequiredEmpty.tsx",
-          "symbols": [
-            "ProjectRequiredEmpty"
-          ]
-        },
-        {
           "file": "nlb/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -782,14 +526,6 @@
           ]
         },
         {
-          "file": "nlb/src/components/molecules/TableToolbar/TableToolbar.tsx",
-          "symbols": [
-            "ColumnSettings",
-            "TableSearch",
-            "useHiddenColumns"
-          ]
-        },
-        {
           "file": "nlb/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
           "symbols": [
             "DependencyTreePanel"
@@ -800,12 +536,6 @@
           "symbols": [
             "DetailShell",
             "HeaderSlotPortal"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/GlobalResourceFormModal/GlobalResourceFormModal.tsx",
-          "symbols": [
-            "GlobalResourceFormModal"
           ]
         },
         {
@@ -824,16 +554,6 @@
           "file": "nlb/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
           "symbols": [
             "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor",
-            "labelsFromEntries",
-            "labelsFromMap",
-            "labelsToEntries",
-            "labelsToMap"
           ]
         },
         {
@@ -883,38 +603,6 @@
             "buildTargetPayload",
             "targetIdentity",
             "targetIdentityOnly"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/FieldLabel/FieldLabel.tsx",
-          "symbols": [
-            "FieldLabel"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/FormFooter/FormFooter.tsx",
-          "symbols": [
-            "FormFooter"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/FormShell/FormShell.tsx",
-          "symbols": [
-            "FORM_WIDTH",
-            "FormBareProvider",
-            "FormShell"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/ImmutableField/ImmutableField.tsx",
-          "symbols": [
-            "ImmutableField"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor"
           ]
         },
         {
@@ -1120,65 +808,9 @@
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
         {
-          "file": "registry/src/components/atoms/ContextBadge/ContextBadge.tsx",
-          "symbols": [
-            "ContextBadge"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/CopyableId/CopyableId.tsx",
-          "symbols": [
-            "CopyableId"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/CopyableName/CopyableName.tsx",
-          "symbols": [
-            "CopyableName"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/LabelsCell/LabelsCell.tsx",
-          "symbols": [
-            "LabelsCell"
-          ]
-        },
-        {
           "file": "registry/src/components/atoms/LifecycleTag/LifecycleTag.tsx",
           "symbols": [
             "lifecycleLabel"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/StatusBadge/StatusBadge.tsx",
-          "symbols": [
-            "StatusBadge"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/ui/Button/Button.tsx",
-          "symbols": [
-            "Button"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/ui/Dialog/Dialog.tsx",
-          "symbols": [
-            "Dialog",
-            "DialogContent",
-            "DialogDescription",
-            "DialogFooter",
-            "DialogHeader",
-            "DialogTitle",
-            "DialogTrigger"
-          ]
-        },
-        {
-          "file": "registry/src/components/atoms/ui/Input/Input.tsx",
-          "symbols": [
-            "Input",
-            "Label",
-            "Textarea"
           ]
         },
         {
@@ -1196,27 +828,9 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/DopplerButton/DopplerButton.tsx",
-          "symbols": [
-            "DopplerButton"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/EditableKVTable/EditableKVTable.tsx",
-          "symbols": [
-            "EditableKVTable"
-          ]
-        },
-        {
           "file": "registry/src/components/molecules/ErrorResult/ErrorResult.tsx",
           "symbols": [
             "ErrorResult"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/JsonEditor/JsonEditor.tsx",
-          "symbols": [
-            "JsonEditor"
           ]
         },
         {
@@ -1229,12 +843,6 @@
           "file": "registry/src/components/molecules/JsonMonacoView/LazyJsonMonacoView.tsx",
           "symbols": [
             "LazyJsonMonacoView"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/MoveStubDialog/MoveStubDialog.tsx",
-          "symbols": [
-            "MoveStubDialog"
           ]
         },
         {
@@ -1271,20 +879,6 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/PanelHeader/PanelHeader.tsx",
-          "symbols": [
-            "DetailHeaderProvider",
-            "PanelHeader",
-            "useDetailHeaderIcon"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/ProjectRequiredEmpty/ProjectRequiredEmpty.tsx",
-          "symbols": [
-            "ProjectRequiredEmpty"
-          ]
-        },
-        {
           "file": "registry/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -1311,14 +905,6 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/TableToolbar/TableToolbar.tsx",
-          "symbols": [
-            "ColumnSettings",
-            "TableSearch",
-            "useHiddenColumns"
-          ]
-        },
-        {
           "file": "registry/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
           "symbols": [
             "DependencyTreePanel"
@@ -1329,12 +915,6 @@
           "symbols": [
             "DetailShell",
             "HeaderSlotPortal"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/GlobalResourceFormModal/GlobalResourceFormModal.tsx",
-          "symbols": [
-            "GlobalResourceFormModal"
           ]
         },
         {
@@ -1353,16 +933,6 @@
           "file": "registry/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
           "symbols": [
             "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor",
-            "labelsFromEntries",
-            "labelsFromMap",
-            "labelsToEntries",
-            "labelsToMap"
           ]
         },
         {
@@ -1404,38 +974,6 @@
           "file": "registry/src/components/organisms/ResourceTable/ResourceTable.tsx",
           "symbols": [
             "ResourceTable"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/FieldLabel/FieldLabel.tsx",
-          "symbols": [
-            "FieldLabel"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/FormFooter/FormFooter.tsx",
-          "symbols": [
-            "FormFooter"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/FormShell/FormShell.tsx",
-          "symbols": [
-            "FORM_WIDTH",
-            "FormBareProvider",
-            "FormShell"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/ImmutableField/ImmutableField.tsx",
-          "symbols": [
-            "ImmutableField"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor"
           ]
         },
         {
@@ -1634,62 +1172,6 @@
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
         {
-          "file": "storage/src/components/atoms/ContextBadge/ContextBadge.tsx",
-          "symbols": [
-            "ContextBadge"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/CopyableId/CopyableId.tsx",
-          "symbols": [
-            "CopyableId"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/CopyableName/CopyableName.tsx",
-          "symbols": [
-            "CopyableName"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/LabelsCell/LabelsCell.tsx",
-          "symbols": [
-            "LabelsCell"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/StatusBadge/StatusBadge.tsx",
-          "symbols": [
-            "StatusBadge"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/ui/Button/Button.tsx",
-          "symbols": [
-            "Button"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/ui/Dialog/Dialog.tsx",
-          "symbols": [
-            "Dialog",
-            "DialogContent",
-            "DialogDescription",
-            "DialogFooter",
-            "DialogHeader",
-            "DialogTitle",
-            "DialogTrigger"
-          ]
-        },
-        {
-          "file": "storage/src/components/atoms/ui/Input/Input.tsx",
-          "symbols": [
-            "Input",
-            "Label",
-            "Textarea"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
           "symbols": [
             "DeleteDialog",
@@ -1704,39 +1186,15 @@
           ]
         },
         {
-          "file": "storage/src/components/molecules/DopplerButton/DopplerButton.tsx",
-          "symbols": [
-            "DopplerButton"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/EditableKVTable/EditableKVTable.tsx",
-          "symbols": [
-            "EditableKVTable"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/ErrorResult/ErrorResult.tsx",
           "symbols": [
             "ErrorResult"
           ]
         },
         {
-          "file": "storage/src/components/molecules/JsonEditor/JsonEditor.tsx",
-          "symbols": [
-            "JsonEditor"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
           "symbols": [
             "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/MoveStubDialog/MoveStubDialog.tsx",
-          "symbols": [
-            "MoveStubDialog"
           ]
         },
         {
@@ -1768,20 +1226,6 @@
           ]
         },
         {
-          "file": "storage/src/components/molecules/PanelHeader/PanelHeader.tsx",
-          "symbols": [
-            "DetailHeaderProvider",
-            "PanelHeader",
-            "useDetailHeaderIcon"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/ProjectRequiredEmpty/ProjectRequiredEmpty.tsx",
-          "symbols": [
-            "ProjectRequiredEmpty"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -1808,14 +1252,6 @@
           ]
         },
         {
-          "file": "storage/src/components/molecules/TableToolbar/TableToolbar.tsx",
-          "symbols": [
-            "ColumnSettings",
-            "TableSearch",
-            "useHiddenColumns"
-          ]
-        },
-        {
           "file": "storage/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
           "symbols": [
             "DependencyTreePanel"
@@ -1826,12 +1262,6 @@
           "symbols": [
             "DetailShell",
             "HeaderSlotPortal"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/GlobalResourceFormModal/GlobalResourceFormModal.tsx",
-          "symbols": [
-            "GlobalResourceFormModal"
           ]
         },
         {
@@ -1850,16 +1280,6 @@
           "file": "storage/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
           "symbols": [
             "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor",
-            "labelsFromEntries",
-            "labelsFromMap",
-            "labelsToEntries",
-            "labelsToMap"
           ]
         },
         {
@@ -1901,38 +1321,6 @@
           "file": "storage/src/components/organisms/ResourceTable/ResourceTable.tsx",
           "symbols": [
             "ResourceTable"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/FieldLabel/FieldLabel.tsx",
-          "symbols": [
-            "FieldLabel"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/FormFooter/FormFooter.tsx",
-          "symbols": [
-            "FormFooter"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/FormShell/FormShell.tsx",
-          "symbols": [
-            "FORM_WIDTH",
-            "FormBareProvider",
-            "FormShell"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/ImmutableField/ImmutableField.tsx",
-          "symbols": [
-            "ImmutableField"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/LabelsEditor/LabelsEditor.tsx",
-          "symbols": [
-            "LabelsEditor"
           ]
         },
         {
@@ -2123,17 +1511,6 @@
             "referrerHref",
             "referrerMeta",
             "reorderNameIdFirst"
-          ]
-        }
-      ]
-    },
-    {
-      "reason": "Страница модуля, обёрнутая границей отказа СВОЕГО модуля (#371). Это не вторая реализация: файл переэкспортирует единственную реализацию, добавив к ней `withModuleBoundary` с именем раздела — то самое имя, которым сломанный модуль называет себя на экране «раздел недоступен». Обёртка обязана жить в модуле: имя раздела знает он, а не общий код, и граница, заведённая в shared, называла бы все разделы одинаково. Запись истекает вместе с файлом обёртки.",
-      "entries": [
-        {
-          "file": "dashboard/src/pages/DashboardPage/index.ts",
-          "symbols": [
-            "DashboardPage"
           ]
         }
       ]

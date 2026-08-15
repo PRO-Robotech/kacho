@@ -146,11 +146,26 @@ const SUBJECTS = apps()
       app,
       "src/lib/resource-registry.tsx",
     );
-    const badge = path.join(
+    // Читается ТОТ значок, который приложение реально рисует, а не файл, который
+    // оно случайно держит. Модуль, сведённый к общей реализации (#405), несёт
+    // вместо копии прослойку `export * from "@shared/…"` — таблица тонов у него
+    // ОБЩАЯ, и требовать от него собственной значило бы требовать вернуть форк:
+    // гейт судил бы раскладку файлов вместо словаря, который видит оператор.
+    const ownBadge = path.join(
       consoleRoot,
       app,
       "src/components/atoms/StatusBadge/StatusBadge.tsx",
     );
+    const sharedBadge = path.join(
+      consoleRoot,
+      "shared/src/components/atoms/StatusBadge/StatusBadge.tsx",
+    );
+    const barrel =
+      readIfPresent(
+        path.join(consoleRoot, app, "src/components/atoms/StatusBadge/index.ts"),
+      ) ?? "";
+    const delegates = /@shared\/components\/atoms\/StatusBadge/.test(barrel);
+    const badge = delegates ? sharedBadge : ownBadge;
     // Реестра нет — приложение не описывает ресурсы и под сверку не попадает.
     const registrySource = readIfPresent(registry);
     if (registrySource === null) return null;
