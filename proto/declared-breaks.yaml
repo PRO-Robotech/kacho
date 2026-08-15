@@ -23,6 +23,20 @@
 #   issue   — РАЗРЕШИМАЯ ссылка (`kacho#244` либо полный URL): по голому `#71` объявление
 #             не может истечь даже в принципе.
 #
+# СНЯТИЕ ФАЙЛА ЦЕЛИКОМ (`FILE_NO_DELETE`) объявляется так же, как всё прочее, но `path` и
+# `symbol` у него СОВПАДАЮТ — и это не описка:
+#
+#   - rule: FILE_NO_DELETE
+#     path: kacho/cloud/vpc/v1/internal_dataplane_service.proto
+#     symbol: kacho/cloud/vpc/v1/internal_dataplane_service.proto
+#
+# Причина в предмете: у снятия файла предмет ровно один — сам файл, и buf называет в
+# сообщении в кавычках именно путь (`Previously present file "kacho/…/x.proto" was
+# deleted.`), а поля `path` у такой находки не печатает вовсе — указывать не на что.
+# Короткое имя файла в `symbol` не подойдёт: сопоставление ищет символ В КАВЫЧКАХ, а в
+# кавычках стоит полный путь. Ошибиться не страшно — исход называется отдельно
+# («символ не совпал») и печатает фактическое сообщение buf, где предмет и виден.
+#
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
