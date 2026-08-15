@@ -20,6 +20,9 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 
 /**
  * Ячейка логического поля контракта — словом, а не литералом `false`.
@@ -93,7 +96,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "regions",
     singular: "Регион",
     plural: "Регионы",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -121,7 +124,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "instances",
     singular: "Виртуальная машина",
     plural: "Виртуальные машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -135,9 +138,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    singular: "Сетевой интерфейс",
-    plural: "Сетевые интерфейсы",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES["network-interfaces"].singular,
+    plural: ENTITIES["network-interfaces"].plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -146,14 +149,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     template: () => ({}),
   },
-  "zones": {
+  zones: {
     id: "zones",
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
-    serviceTitle: "Администрирование",
+    singular: ENTITIES.zones.singular,
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.system.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -169,9 +172,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "subnets",
     apiPath: "/vpc/v1/subnets",
     payloadKey: "subnets",
-    singular: "Подсеть",
-    plural: "Подсети",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES.subnets.singular,
+    plural: ENTITIES.subnets.plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -186,9 +189,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "addresses",
     apiPath: "/vpc/v1/addresses",
     payloadKey: "addresses",
-    singular: "Адрес",
-    plural: "Адреса",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES.addresses.singular,
+    plural: ENTITIES.addresses.plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -212,14 +215,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/networkLoadBalancers",
     // proto ListNetworkLoadBalancersResponse repeated-поле — `network_load_balancers`.
     payloadKey: "network_load_balancers",
-    singular: "Балансировщик нагрузки",
-    plural: "Балансировщики нагрузки",
+    singular: ENTITIES["load-balancers"].singular,
+    plural: ENTITIES["load-balancers"].plural,
     genitive: "Балансировщика нагрузки",
     docs: [
       { label: "Балансировщики нагрузки", href: "#" },
       { label: "Обработчики и целевые группы", href: "#" },
     ],
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
     // административное включение/выключение выражается полем admin_state.
@@ -366,8 +369,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     validate: (obj) => {
       const type = lbTypeFromPlacement(obj.placement as string | undefined);
       const vs = (obj.vip_source as Record<string, unknown> | undefined) ?? {};
-      const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
-      const v6 = buildVipSourceOrNull(type, vs._v6_mode as string | undefined, vs.v6 as Record<string, unknown> | undefined);
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (!v4 && !v6) {
         return "Укажите источник VIP хотя бы для одного семейства (IPv4 или IPv6).";
       }
@@ -388,8 +399,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       const type = lbTypeFromPlacement(placement);
 
       const vs = (out.vip_source as Record<string, unknown> | undefined) ?? {};
-      const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
-      const v6 = buildVipSourceOrNull(type, vs._v6_mode as string | undefined, vs.v6 as Record<string, unknown> | undefined);
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (v4) out.v4_source = v4;
       if (v6) out.v6_source = v6;
       delete out.vip_source;
@@ -406,13 +425,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "listeners",
     apiPath: "/nlb/v1/listeners",
     payloadKey: "listeners",
-    singular: "Обработчик",
-    plural: "Listeners",
+    singular: ENTITIES.listeners.singular,
+    plural: ENTITIES.listeners.plural,
     docs: [
       { label: "Обработчики (Listeners)", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -506,14 +525,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "target-groups",
     apiPath: "/nlb/v1/targetGroups",
     payloadKey: "target_groups",
-    singular: "Целевая группа",
-    plural: "Target Groups",
+    singular: ENTITIES["target-groups"].singular,
+    plural: ENTITIES["target-groups"].plural,
     docs: [
       { label: "Целевые группы (Target Groups)", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     genitive: "Целевой группы",
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [

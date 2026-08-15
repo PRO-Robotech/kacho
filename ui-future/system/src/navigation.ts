@@ -1,3 +1,7 @@
+// Подписи разделов и ресурсов — из единственного источника: литерал рядом
+// с местом показа расходится молча, ссылка — нет (см. entity-names.ts).
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+
 export type RemoteIconName =
   | "activity"
   | "cable"
@@ -42,12 +46,17 @@ export const SYSTEM_NAVIGATION: RemoteNavSection[] = [
     key: "system",
     segment: "system",
     icon: "globe",
-    label: "Администрирование",
+    label: SERVICES.system.menuTitle,
     landingPath: "/system/regions",
     items: [
-      { key: "system-regions", icon: "globe", label: "Регионы", path: "/system/regions" },
-      { key: "system-zones", icon: "route", label: "Зоны", path: "/system/zones" },
-      { key: "system-address-pools", icon: "network", label: "Пулы адресов", path: "/system/address-pools" },
+      { key: "system-regions", icon: "globe", label: ENTITIES.regions.plural, path: "/system/regions" },
+      { key: "system-zones", icon: "route", label: ENTITIES.zones.plural, path: "/system/zones" },
+      {
+        key: "system-address-pools",
+        icon: "network",
+        label: ENTITIES["address-pools"].plural,
+        path: "/system/address-pools",
+      },
       { key: "system-cluster-admins", icon: "shield", label: "Cluster admins", path: "/system/cluster/admins" },
     ],
   },

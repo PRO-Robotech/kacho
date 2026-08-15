@@ -21,6 +21,9 @@ import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -78,7 +81,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Виртуальная машина",
     plural: "Виртуальные машины",
     genitive: "Виртуальной машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "project",
     // Start/Stop/Restart — доменные действия на detail (InstanceActions), не в ops.
     ops: { create: true, update: true, delete: true },
@@ -336,10 +339,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "machine-types",
     apiPath: "/compute/v1/machineTypes",
     payloadKey: "machine_types",
-    singular: "Тип машины",
-    plural: "Типы машин",
+    singular: ENTITIES["machine-types"].singular,
+    plural: ENTITIES["machine-types"].plural,
     genitive: "Типа машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -377,9 +380,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
-    serviceTitle: "Geography",
+    singular: ENTITIES.zones.singular,
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -392,9 +395,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "volumes",
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
-    singular: "Том",
-    plural: "Тома",
-    serviceTitle: "Storage",
+    singular: ENTITIES.volumes.singular,
+    plural: ENTITIES.volumes.plural,
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -410,9 +413,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    singular: "Сетевой интерфейс",
-    plural: "Сетевые интерфейсы",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES["network-interfaces"].singular,
+    plural: ENTITIES["network-interfaces"].plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [

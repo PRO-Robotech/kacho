@@ -1,7 +1,7 @@
 import type { RemoteNavSection } from "dashboard/navigation";
 
 // Тест-фикстура nlb-навигации для host-jest. Метка/иконка секции совпадают с
-// агрегатной dashboard-навигацией ("Network Load Balancer" / "scale"), чтобы
+// агрегатной dashboard-навигацией ("Load Balancer" / "scale"), чтобы
 // существующие rail-ассерты оставались зелёными; реальный remote
 // (nlb/src/navigation.ts) несёт продуктовую метку "Network Load Balancing".
 export const NLB_NAVIGATION: RemoteNavSection[] = [
@@ -9,7 +9,7 @@ export const NLB_NAVIGATION: RemoteNavSection[] = [
     key: "nlb",
     segment: "nlb",
     icon: "scale",
-    label: "Network Load Balancer",
+    label: "Load Balancer",
     landingPath: "nlb/load-balancers",
     requiresProject: true,
     items: [

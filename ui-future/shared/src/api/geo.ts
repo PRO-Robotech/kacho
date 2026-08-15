@@ -46,7 +46,7 @@ export type PlacementBlockedReason = "PLACEMENT_BLOCKED_REASON_UNSPECIFIED" | "N
 // ── Public projections ───────────────────────────────────────────────────────
 
 export interface Region {
-  /** Admin-assigned immutable slug PK, e.g. "ru-central1". */
+  /** Admin-assigned immutable slug PK, e.g. "region-1". */
   id: string;
   name: string;
   created_at?: string;
@@ -132,9 +132,9 @@ export type GeoMutationResponse = Partial<Operation> | { operation?: Operation }
  * and must not become, a way to work out which region a zone is in: that answer
  * only ever comes from resolving the zone at its owner.
  *
- * The strictness matters — "ru-central10-a" is not a zone of "ru-central1",
- * because the character after the prefix is '0', not '-'. A bare separator with
- * no suffix ("ru-central1-") is rejected too: it is not a valid slug.
+ * The strictness matters — "region-10-a" is not a zone of "region-1", because
+ * the character after the prefix is '0', not '-'. A bare separator with no
+ * suffix ("region-1-") is rejected too: it is not a valid slug.
  */
 export function zoneBelongsToRegion(zoneId: string, regionId: string): boolean {
   if (!zoneId || !regionId) return false;

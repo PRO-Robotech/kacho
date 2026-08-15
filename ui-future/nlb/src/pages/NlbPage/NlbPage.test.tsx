@@ -62,8 +62,8 @@ describe("NlbPage — маршруты раздела разрешаются в 
   // покраснеет здесь, что и требуется.
   it.each([
     ["load-balancers", "Балансировщики нагрузки", "Создать балансировщик нагрузки"],
-    ["listeners", "Listeners", "Создать обработчик"],
-    ["target-groups", "Target Groups", "Создать целевая группа"],
+    ["listeners", "Обработчики", "Создать обработчик"],
+    ["target-groups", "Целевые группы", "Создать целевая группа"],
   ])("%s открывает свой список и свой призыв к созданию", async (route, plural, cta) => {
     mountAt(`/projects/prj-1/nlb/${route}`);
 
@@ -79,8 +79,8 @@ describe("NlbPage — маршруты раздела разрешаются в 
     // тривиально верно на странице, которая не показала вообще ничего.
     mountAt("/projects/prj-1/nlb/listeners");
 
-    expect(await screen.findByText("Listeners")).toBeInTheDocument();
-    expect(screen.queryByText("Target Groups")).toBeNull();
+    expect(await screen.findByText("Обработчики")).toBeInTheDocument();
+    expect(screen.queryByText("Целевые группы")).toBeNull();
     expect(screen.queryByText("Балансировщики нагрузки")).toBeNull();
   });
 });

@@ -13,7 +13,7 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
     key: "compute",
     segment: "compute",
     icon: "cloud",
-    label: "Compute Cloud",
+    label: "Compute",
     landingPath: "compute/instances",
     requiresProject: true,
     items: [

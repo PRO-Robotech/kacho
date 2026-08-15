@@ -16,6 +16,9 @@ import { ArtifactTypesTag } from "@/components/atoms/ArtifactTypeTag";
 import { LifecycleTag } from "@/components/atoms/LifecycleTag";
 import { VisibilityTag } from "@/components/atoms/VisibilityTag";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -78,10 +81,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "registries",
     apiPath: "/registry/v1/registries",
     payloadKey: "registries",
-    singular: "Реестр",
-    plural: "Реестры",
+    singular: ENTITIES.registries.singular,
+    plural: ENTITIES.registries.plural,
     genitive: "Реестра",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -183,7 +186,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Репозиторий",
     plural: "Репозитории",
     genitive: "Репозитория",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     // Read-only: репозиторий появляется через docker push, а не через UI.
     ops: { create: false, update: false, delete: false },
@@ -252,7 +255,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Тег",
     plural: "Теги",
     genitive: "Тега",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     // DeleteTag — единственная мутация (create/update нет: теги пишет docker push).
     ops: { create: false, update: false, delete: true },
@@ -276,9 +279,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
-    singular: "Регион",
-    plural: "Регионы",
-    serviceTitle: "Geography",
+    singular: ENTITIES.regions.singular,
+    plural: ENTITIES.regions.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],

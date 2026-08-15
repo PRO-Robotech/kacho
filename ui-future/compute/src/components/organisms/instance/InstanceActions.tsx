@@ -12,6 +12,9 @@ import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+// Имя ресурса в тексте отказа — из единственного источника: «Инстанс» было
+// вторым именем машины в продукте (везде остальное — «Виртуальная машина»).
+import { ENTITIES } from "@shared/lib/entity-names";
 
 type Verb = "start" | "stop" | "restart";
 
@@ -36,7 +39,9 @@ export function InstanceActions({
       else invalidate("compute-instances", projectId);
     },
     onError: (e) =>
-      toast.error(`Инстанс: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+      toast.error(
+        `${ENTITIES.instances.singular}: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`,
+      ),
   });
   const busy = mut.isPending || opId !== null;
 
@@ -58,7 +63,11 @@ export function InstanceActions({
       >
         Запустить
       </Button>
-      <Button icon={<PoweroffOutlined />} onClick={() => run("stop", "Остановка инстанса")} disabled={busy || !isRunning}>
+      <Button
+        icon={<PoweroffOutlined />}
+        onClick={() => run("stop", "Остановка инстанса")}
+        disabled={busy || !isRunning}
+      >
         Остановить
       </Button>
       <Button

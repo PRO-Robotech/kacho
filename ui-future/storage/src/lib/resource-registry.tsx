@@ -16,6 +16,9 @@ import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -105,10 +108,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "volumes",
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
-    singular: "Том",
-    plural: "Тома",
+    singular: ENTITIES.volumes.singular,
+    plural: ENTITIES.volumes.plural,
     genitive: "Тома",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -246,10 +249,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "snapshots",
     apiPath: "/storage/v1/snapshots",
     payloadKey: "snapshots",
-    singular: "Снимок",
-    plural: "Снимки",
+    singular: ENTITIES.snapshots.singular,
+    plural: ENTITIES.snapshots.plural,
     genitive: "Снимка",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -320,10 +323,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "images",
     apiPath: "/storage/v1/images",
     payloadKey: "images",
-    singular: "Образ",
-    plural: "Образы",
+    singular: ENTITIES.images.singular,
+    plural: ENTITIES.images.plural,
     genitive: "Образа",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -473,12 +476,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "disk-types",
     apiPath: "/storage/v1/diskTypes",
     payloadKey: "disk_types",
-    singular: "Тип диска",
-    plural: "Типы дисков",
+    singular: ENTITIES["disk-types"].singular,
+    plural: ENTITIES["disk-types"].plural,
     genitive: "Типа диска",
     description:
       "Класс хранилища, на котором создаётся том: ярус, состояние обращения, границы размера и способности. Каталог заводит администратор кластера; пустой каталог — законное состояние, пока класс не зарегистрирован, том не создаётся.",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -515,9 +518,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
-    serviceTitle: "Geography",
+    singular: ENTITIES.zones.singular,
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -530,9 +533,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
-    singular: "Регион",
-    plural: "Регионы",
-    serviceTitle: "Geography",
+    singular: ENTITIES.regions.singular,
+    plural: ENTITIES.regions.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
