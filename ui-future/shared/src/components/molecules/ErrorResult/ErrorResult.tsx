@@ -39,15 +39,21 @@ export function ErrorResult({ error, status: statusOverride, title, subTitle, ex
   // получили: под подставленным сверху статусом или чужим текстом она была бы
   // утверждением не о том ответе.
   const showNote = p.note !== null && statusOverride === undefined && subTitle === undefined;
+  // Код протокола в ЧИТАЕМЫЙ текст не идёт: он адресован тому, кто чинит, а не
+  // тому, кто смотрит на экран. Место ему — подсказка при наведении, откуда его
+  // достанет поддержка и разработчик; текст сообщения остаётся текстом сервера.
+  const devDetail = statusOverride === undefined && subTitle === undefined ? p.devDetail : null;
   const finalSubTitle =
     subTitle ??
     (p.subTitle === null ? null : (
-      <span>
+      <span title={devDetail ?? undefined}>
         {p.subTitle}
         {showNote && (
           <>
             <br />
-            <Typography.Text type="secondary">{p.note}</Typography.Text>
+            <Typography.Text type="secondary" data-testid="note">
+              {p.note}
+            </Typography.Text>
           </>
         )}
       </span>

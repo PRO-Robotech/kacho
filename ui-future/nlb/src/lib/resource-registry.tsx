@@ -92,6 +92,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
     singular: "Регион",
+    accusative: "регион",
     plural: "Регионы",
     serviceTitle: "Compute Cloud",
     scope: "global",
@@ -120,6 +121,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
     singular: "Виртуальная машина",
+    accusative: "виртуальную машину",
     plural: "Виртуальные машины",
     serviceTitle: "Compute Cloud",
     scope: "project",
@@ -136,6 +138,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
     singular: "Сетевой интерфейс",
+    accusative: "сетевой интерфейс",
     plural: "Сетевые интерфейсы",
     serviceTitle: "Virtual Private Cloud",
     scope: "project",
@@ -146,12 +149,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     template: () => ({}),
   },
-  "zones": {
+  zones: {
     id: "zones",
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
     singular: "Зона",
+    accusative: "зону",
     plural: "Зоны",
     serviceTitle: "Администрирование",
     scope: "global",
@@ -170,6 +174,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/subnets",
     payloadKey: "subnets",
     singular: "Подсеть",
+    accusative: "подсеть",
     plural: "Подсети",
     serviceTitle: "Virtual Private Cloud",
     scope: "project",
@@ -187,6 +192,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/addresses",
     payloadKey: "addresses",
     singular: "Адрес",
+    accusative: "адрес",
     plural: "Адреса",
     serviceTitle: "Virtual Private Cloud",
     scope: "project",
@@ -213,6 +219,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // proto ListNetworkLoadBalancersResponse repeated-поле — `network_load_balancers`.
     payloadKey: "network_load_balancers",
     singular: "Балансировщик нагрузки",
+    accusative: "балансировщик нагрузки",
     plural: "Балансировщики нагрузки",
     genitive: "Балансировщика нагрузки",
     docs: [
@@ -277,8 +284,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "INTERNAL_REGIONAL", label: "INTERNAL_REGIONAL — внутренний, региональный" },
           { value: "INTERNAL_ZONAL", label: "INTERNAL_ZONAL — внутренний, в одной зоне" },
         ],
-        description:
-          "Режим балансировщика (immutable после Create). Пара «external + zonal» невыразима by construction — её в наборе нет.",
+        description: "Режим балансировщика. Неизменяем после создания; сочетания «внешний + зональный» в наборе нет.",
       },
       FIELD_NAME_COMPUTE,
       FIELD_DESCRIPTION,
@@ -289,7 +295,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения балансировщика (immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения балансировщика. Неизменяем после создания.",
       },
       {
         // Источник VIP-адреса (per-family oneof v4_source/v6_source) — интерактивный
@@ -366,8 +372,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     validate: (obj) => {
       const type = lbTypeFromPlacement(obj.placement as string | undefined);
       const vs = (obj.vip_source as Record<string, unknown> | undefined) ?? {};
-      const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
-      const v6 = buildVipSourceOrNull(type, vs._v6_mode as string | undefined, vs.v6 as Record<string, unknown> | undefined);
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (!v4 && !v6) {
         return "Укажите источник VIP хотя бы для одного семейства (IPv4 или IPv6).";
       }
@@ -388,8 +402,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       const type = lbTypeFromPlacement(placement);
 
       const vs = (out.vip_source as Record<string, unknown> | undefined) ?? {};
-      const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
-      const v6 = buildVipSourceOrNull(type, vs._v6_mode as string | undefined, vs.v6 as Record<string, unknown> | undefined);
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (v4) out.v4_source = v4;
       if (v6) out.v6_source = v6;
       delete out.vip_source;
@@ -407,6 +429,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/listeners",
     payloadKey: "listeners",
     singular: "Обработчик",
+    accusative: "обработчик",
     plural: "Listeners",
     docs: [
       { label: "Обработчики (Listeners)", href: "#" },
@@ -450,7 +473,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description: "Балансировщик-родитель (immutable после Create). Within-service FK → load_balancers.",
+        description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания.",
       },
       {
         name: "protocol",
@@ -462,7 +485,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "TCP", label: "TCP" },
           { value: "UDP", label: "UDP" },
         ],
-        description: "L4 транспорт (immutable после Create).",
+        description: "Транспортный протокол. Неизменяем после создания.",
       },
       {
         name: "port",
@@ -472,7 +495,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         immutable: true,
         min: 1,
         max: 65535,
-        description: "Порт, на котором listener принимает входящий трафик (1..65535, immutable после Create).",
+        description: "Порт, на котором слушатель принимает входящий трафик (1..65535). Неизменяем после создания.",
       },
       {
         name: "default_target_group_id",
@@ -507,6 +530,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/targetGroups",
     payloadKey: "target_groups",
     singular: "Целевая группа",
+    accusative: "целевую группу",
     plural: "Target Groups",
     docs: [
       { label: "Целевые группы (Target Groups)", href: "#" },
@@ -558,7 +582,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения target-group (immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения группы целей. Неизменяем после создания.",
       },
       {
         // NLB-1c (B8): на проводе google.protobuf.Duration ("300s"); прежнее

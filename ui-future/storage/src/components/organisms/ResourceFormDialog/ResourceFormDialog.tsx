@@ -11,12 +11,13 @@ import { JsonEditor } from "@/components/molecules/JsonEditor";
 import { FormFieldRenderer } from "@/components/organisms/form/FormField";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { ApiError, api } from "@/api/client";
+import { api } from "@/api/client";
 import { applyFieldDefaults } from "@/lib/resource-registry";
 import { getByPath, setByPath } from "@/lib/path";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import type { FormField } from "@shared/lib/form-schema";
+import { errorText } from "@shared/lib/error-presentation";
 
 type Mode = "create" | "edit";
 
@@ -96,7 +97,7 @@ export function ResourceFormDialog({
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = errorText(err);
       toast.error(`${title}: ${m}`);
     },
   });

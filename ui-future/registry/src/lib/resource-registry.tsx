@@ -79,6 +79,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/registry/v1/registries",
     payloadKey: "registries",
     singular: "Реестр",
+    accusative: "реестр",
     plural: "Реестры",
     genitive: "Реестра",
     serviceTitle: "Container Registry",
@@ -127,8 +128,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "regions",
         required: true,
         immutable: true,
-        description:
-          "Регион размещения реестра (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения реестра. Реестр доступен из всего региона; неизменяем после создания.",
       },
       // REG-1 F5: defaultRepositoryVisibility — видимость по умолчанию для новых
       // репозиториев реестра. PUBLIC требует прав администратора реестра (проверяется
@@ -181,6 +181,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/registry/v1/registries/{registryId}/repositories",
     payloadKey: "repositories",
     singular: "Репозиторий",
+    accusative: "репозиторий",
     plural: "Репозитории",
     genitive: "Репозитория",
     serviceTitle: "Container Registry",
@@ -250,6 +251,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/registry/v1/registries/{registryId}/repositories/{repository}/tags",
     payloadKey: "tags",
     singular: "Тег",
+    accusative: "тег",
     plural: "Теги",
     genitive: "Тега",
     serviceTitle: "Container Registry",
@@ -277,6 +279,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
     singular: "Регион",
+    accusative: "регион",
     plural: "Регионы",
     serviceTitle: "Geography",
     scope: "global",

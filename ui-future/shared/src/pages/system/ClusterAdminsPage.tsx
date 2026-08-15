@@ -188,11 +188,7 @@ export default function ClusterAdminsPage() {
   if (isForbidden) {
     return (
       <div data-testid="cluster-admins-forbidden">
-        <ErrorResult
-          status="403"
-          title="403"
-          subTitle="Недостаточно прав для просмотра cluster admin'ов. Требуется FGA-relation admin@cluster:cluster_kacho_root."
-        />
+        <ErrorResult status="403" title="403" subTitle="Недостаточно прав для просмотра администраторов облака." />
       </div>
     );
   }
@@ -256,11 +252,11 @@ export default function ClusterAdminsPage() {
       <Alert
         type="info"
         showIcon
-        message="Unified flow: cluster admin = AccessBinding"
+        message="Администратор облака — это выданный доступ"
         description={
           <>
-            Cluster admin grants теперь видны и через страницу{" "}
-            <Link to="/iam/access-bindings">Access Bindings</Link> (фильтр
+            Cluster admin grants теперь видны и через страницу <Link to="/iam/access-bindings">Access Bindings</Link>{" "}
+            (фильтр
             <code> resource_type=cluster, resource_id=cluster_kacho_root</code>). Создавать новый grant можно как через
             &quot;Добавить admin (legacy)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), так и через
             &quot;Выдать через AccessBinding&quot; — оба flow идемпотентны.

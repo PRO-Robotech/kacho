@@ -6,12 +6,12 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Space } from "antd";
 import { CaretRightOutlined, PoweroffOutlined, ReloadOutlined } from "@ant-design/icons";
-import { ApiError } from "@/api/client";
 import { instancesApi } from "@/api/resources";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 type Verb = "start" | "stop" | "restart";
 
@@ -35,8 +35,7 @@ export function InstanceActions({
       if (id) setOpId(id);
       else invalidate("compute-instances", projectId);
     },
-    onError: (e) =>
-      toast.error(`Инстанс: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Инстанс: ${errorText(e)}`),
   });
   const busy = mut.isPending || opId !== null;
 
@@ -58,7 +57,11 @@ export function InstanceActions({
       >
         Запустить
       </Button>
-      <Button icon={<PoweroffOutlined />} onClick={() => run("stop", "Остановка инстанса")} disabled={busy || !isRunning}>
+      <Button
+        icon={<PoweroffOutlined />}
+        onClick={() => run("stop", "Остановка инстанса")}
+        disabled={busy || !isRunning}
+      >
         Остановить
       </Button>
       <Button

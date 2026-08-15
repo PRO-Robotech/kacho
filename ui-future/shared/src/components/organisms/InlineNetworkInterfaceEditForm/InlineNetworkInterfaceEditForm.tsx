@@ -6,7 +6,7 @@ import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Space, Tooltip, Typography } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { ResourceRefChips } from "@shared/components/molecules/ResourceRefChips";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -15,6 +15,7 @@ import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   projectId: string;
@@ -98,7 +99,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`Сохранить NIC: ${m}`);
     },
   });

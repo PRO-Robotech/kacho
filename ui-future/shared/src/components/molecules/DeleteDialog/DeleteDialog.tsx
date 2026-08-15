@@ -7,13 +7,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Modal, Typography, Input, theme } from "antd";
 import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { DopplerButton } from "@shared/components/molecules/DopplerButton";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { DependencyTreePanel } from "@shared/components/organisms/DependencyTreePanel";
 import { hasDependencyResolver, loadDependents } from "@shared/lib/dependency-graph";
+import { errorText } from "@shared/lib/error-presentation";
 
 /**
  * High-risk ресурсы — удаление требует ввода имени для подтверждения
@@ -95,7 +96,7 @@ export function DeleteDialog({
       onSuccess?.();
     },
     onError: (e) => {
-      const m = e instanceof ApiError ? `${e.code}: ${e.message}` : e.message;
+      const m = errorText(e);
       toast.error(`Удалить ${resourceLabel} ${name}: ${m}`);
     },
   });
