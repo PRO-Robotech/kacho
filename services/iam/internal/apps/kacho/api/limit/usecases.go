@@ -414,31 +414,19 @@ func (uc *ListChangedUseCase) Execute(ctx context.Context, cursor string, pageSi
 	return ChangedResult{Changes: rows, NextCursor: uc.cursors.Encode(next)}, nil
 }
 
-// quotaReaderSubject — КТО спрашивает пределы.
-//
-// Право читать величины принадлежит МОДУЛЮ, а не арендатору, от чьего имени
-// модуль сейчас работает: членство в группе читателей заведено служебным учётным
-// записям модулей, и ни один арендатор его не имеет и иметь не должен.
-//
-// Клиенты пределов пробрасывают личность инициатора (`auth.PropagateOutgoing`),
-// иначе внутренний листенер увидел бы безымянный вызов. Поэтому в контексте
-// присутствуют ОБЕ личности, и выбрать надо ту, о которой заведено право.
-//
-// Порядок: сначала личность СЕРТИФИКАТА (её нельзя подделать и она называет
-// модуль), затем — принципал. Второй путь оставлен не для послабления, а потому
-// что в процессных фикстурах сертификата нет вовсе; на развёрнутом стенде
-// production-mode требует mTLS, значит первый путь там есть всегда.
-//
-// Тот же способ вывода учётной записи из сертификата, что у пола чтения на этом
-// же листенере (`SANToServiceAccountID`) — общий, а не своя копия: две копии
-// разошлись бы молча и разошлись бы именно на форме имени.
-func quotaReaderSubject(ctx context.Context) (string, bool) {
-	if san, verified := grpcsrv.CertIdentityFromContext(ctx); verified && san != "" {
-		if sva, ok := authzguard.SANToServiceAccountID(san); ok {
-			return "service_account:" + sva, true
-		}
+// moduleSubject — личность МОДУЛЯ: учётная запись, выведенная из проверенного
+// сертификата пира. Пусто, когда сертификата нет (процессная фикстура) либо он
+// не принадлежит модулю платформы.
+func moduleSubject(ctx context.Context) string {
+	san, verified := grpcsrv.CertIdentityFromContext(ctx)
+	if !verified || san == "" {
+		return ""
 	}
-	return authzguard.PrincipalSubject(ctx)
+	sva, ok := authzguard.SANToServiceAccountID(san)
+	if !ok {
+		return ""
+	}
+	return "service_account:" + sva
 }
 
 // requireQuotaReader — the narrow gate, shared by both service-facing reads.
@@ -447,18 +435,40 @@ func quotaReaderSubject(ctx context.Context) (string, bool) {
 // anonymous principal, unwired checker, checker backend error, explicit deny. A
 // checker that cannot answer is not an answer of "yes".
 func requireQuotaReader(ctx context.Context, checker authzguard.RelationChecker) error {
-	subject, ok := quotaReaderSubject(ctx)
-	if !ok {
-		return authzguard.PermissionDenied()
-	}
 	if checker == nil {
 		return authzguard.PermissionDenied()
 	}
-	allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID)
-	if err != nil || !allowed {
-		return authzguard.PermissionDenied()
+	// ЛИЧНОСТЕЙ РОВНО ДВЕ, и обе законны — поэтому они спрашиваются по одной, а
+	// не циклом по списку.
+	//
+	// Величины читают два разных вызывающих: МОДУЛЬ на пути мутации (доказывает
+	// себя сертификатом; членство в группе читателей заведено его служебной
+	// учётной записи) и ЧЕЛОВЕК через край (его личность приезжает переданным
+	// принципалом, а сертификат в этом случае принадлежит КРАЮ, который
+	// читателем не является и быть не должен).
+	//
+	// ПОЧЕМУ НЕ ЦИКЛ. Их две по построению, и это свойство, а не коллекция: цикл
+	// объявил бы стоимость вопроса растущей и был бы прав только если бы список
+	// зависел от входа. Гейт стоимости страницы (`internal/authzfilter`) это и
+	// заметил — справедливо.
+	//
+	// ЧТО СТОИЛА ОДНА ЛИЧНОСТЬ. Сперва гейт смотрел ТОЛЬКО принципала: модуль
+	// работает от имени арендатора, тот читателем не является, и резолв отказывал
+	// каждой мутации домена. Потом — ТОЛЬКО сертификат: администратор через край
+	// потерял доступ, которым пользуется. Обе проверки нужны вместе.
+	if subject := moduleSubject(ctx); subject != "" {
+		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+			return nil
+		}
 	}
-	return nil
+	if subject, ok := authzguard.PrincipalSubject(ctx); ok {
+		// Ошибка хранилища ответом «да» не является: она просто не даёт
+		// разрешения, а разрешения не дала ни одна личность — значит отказ.
+		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+			return nil
+		}
+	}
+	return authzguard.PermissionDenied()
 }
 
 // finish — terminal Operation of a Create. Method form kept so the Create path
