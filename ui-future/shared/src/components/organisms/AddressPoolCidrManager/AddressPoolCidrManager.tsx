@@ -23,8 +23,9 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Input, Space, Spin, Tag, Typography } from "antd";
 import { CloseOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 type CidrKind = "v4" | "v6";
 
@@ -75,7 +76,7 @@ function CidrSection({ poolId, kind, blocks }: SectionProps) {
       setPendingCidr(null);
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`${family} CIDR ${vars.verb === "add" ? "добавление" : "удаление"}: ${m}`);
       setPendingCidr(null);
     },

@@ -22,7 +22,12 @@ interface Node {
 
 function renderNodes(nodes: Node[] = []): React.ReactNode {
   return nodes.map((n) =>
-    React.createElement("li", { key: n.key }, n.title, n.children ? React.createElement("ul", null, renderNodes(n.children)) : null),
+    React.createElement(
+      "li",
+      { key: n.key },
+      n.title,
+      n.children ? React.createElement("ul", null, renderNodes(n.children)) : null,
+    ),
   );
 }
 
@@ -81,9 +86,9 @@ describe("DependencyTreePanel", () => {
 
   it("отказ загрузки отличим от «связей нет»", () => {
     // Это разные факты: во втором случае удалять можно, в первом — неизвестно.
-    renderPanel([], { error: "PERMISSION_DENIED: no path" });
+    renderPanel([], { error: "no path" });
     expect(screen.getByRole("alert")).toHaveTextContent("Не удалось загрузить связи");
-    expect(screen.getByRole("alert")).toHaveTextContent("PERMISSION_DENIED: no path");
+    expect(screen.getByRole("alert")).toHaveTextContent("no path");
     expect(screen.queryByText("Зависимых ресурсов нет — можно удалять.")).not.toBeInTheDocument();
   });
 

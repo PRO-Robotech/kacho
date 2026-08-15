@@ -23,6 +23,12 @@ import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 /**
  * Ячейка логического поля контракта — словом, а не литералом `false`.
@@ -95,6 +101,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
     singular: "Регион",
+    accusative: "регион",
     plural: "Регионы",
     serviceTitle: SERVICES.compute.title,
     scope: "global",
@@ -123,6 +130,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
     singular: "Виртуальная машина",
+    accusative: "виртуальную машину",
     plural: "Виртуальные машины",
     serviceTitle: SERVICES.compute.title,
     scope: "project",
@@ -139,6 +147,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
     singular: ENTITIES["network-interfaces"].singular,
+    accusative: "сетевой интерфейс",
     plural: ENTITIES["network-interfaces"].plural,
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
@@ -155,6 +164,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
     singular: ENTITIES.zones.singular,
+    accusative: "зону",
     plural: ENTITIES.zones.plural,
     serviceTitle: SERVICES.system.title,
     scope: "global",
@@ -173,6 +183,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/subnets",
     payloadKey: "subnets",
     singular: ENTITIES.subnets.singular,
+    accusative: "подсеть",
     plural: ENTITIES.subnets.plural,
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
@@ -190,6 +201,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/addresses",
     payloadKey: "addresses",
     singular: ENTITIES.addresses.singular,
+    // Винительный падеж — от ИМЕНИ сущности, а не от прежней подписи: здесь
+    // стояло «адрес», написанное под старое «Адрес», а имя сведено к «IP-адрес»
+    // (@shared/lib/entity-names). Тот же ресурс в shared-реестре уже так и назван.
+    accusative: "IP-адрес",
     plural: ENTITIES.addresses.plural,
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
@@ -216,6 +231,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // proto ListNetworkLoadBalancersResponse repeated-поле — `network_load_balancers`.
     payloadKey: "network_load_balancers",
     singular: ENTITIES["load-balancers"].singular,
+    accusative: "балансировщик нагрузки",
     plural: ENTITIES["load-balancers"].plural,
     genitive: "Балансировщика нагрузки",
     docs: [
@@ -280,8 +296,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "INTERNAL_REGIONAL", label: "INTERNAL_REGIONAL — внутренний, региональный" },
           { value: "INTERNAL_ZONAL", label: "INTERNAL_ZONAL — внутренний, в одной зоне" },
         ],
-        description:
-          "Режим балансировщика (immutable после Create). Пара «external + zonal» невыразима by construction — её в наборе нет.",
+        description: "Режим балансировщика. Неизменяем после создания; сочетания «внешний + зональный» в наборе нет.",
       },
       FIELD_NAME_COMPUTE,
       FIELD_DESCRIPTION,
@@ -292,7 +307,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения балансировщика (immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения балансировщика. Неизменяем после создания.",
       },
       {
         // Источник VIP-адреса (per-family oneof v4_source/v6_source) — интерактивный
@@ -426,6 +441,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/listeners",
     payloadKey: "listeners",
     singular: ENTITIES.listeners.singular,
+    accusative: "обработчик",
     plural: ENTITIES.listeners.plural,
     docs: [
       { label: "Обработчики (Listeners)", href: "#" },
@@ -469,7 +485,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description: "Балансировщик-родитель (immutable после Create). Within-service FK → load_balancers.",
+        description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания.",
       },
       {
         name: "protocol",
@@ -481,7 +497,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "TCP", label: "TCP" },
           { value: "UDP", label: "UDP" },
         ],
-        description: "L4 транспорт (immutable после Create).",
+        description: "Транспортный протокол. Неизменяем после создания.",
       },
       {
         name: "port",
@@ -491,7 +507,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         immutable: true,
         min: 1,
         max: 65535,
-        description: "Порт, на котором listener принимает входящий трафик (1..65535, immutable после Create).",
+        description: "Порт, на котором слушатель принимает входящий трафик (1..65535). Неизменяем после создания.",
       },
       {
         name: "default_target_group_id",
@@ -526,6 +542,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/targetGroups",
     payloadKey: "target_groups",
     singular: ENTITIES["target-groups"].singular,
+    accusative: "целевую группу",
     plural: ENTITIES["target-groups"].plural,
     docs: [
       { label: "Целевые группы (Target Groups)", href: "#" },
@@ -577,7 +594,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения target-group (immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения группы целей. Неизменяем после создания.",
       },
       {
         // NLB-1c (B8): на проводе google.protobuf.Duration ("300s"); прежнее
@@ -691,26 +708,19 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-export function resourceServicePrefix(specId: string): "nlb" | "compute" {
-  if (specId.startsWith("compute-")) return "compute";
-  switch (specId) {
-    case "regions":
-    case "zones":
-      return "compute";
-    default:
-      // NLB ресурсы: load-balancers, listeners, target-groups
-      return "nlb";
-  }
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

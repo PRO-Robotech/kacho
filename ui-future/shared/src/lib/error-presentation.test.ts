@@ -11,13 +11,14 @@ import { NOT_FOUND_IS_AMBIGUOUS, presentError } from "./error-presentation";
 
 describe("presentError", () => {
   it("keeps the backend message verbatim (it is the contract tone)", () => {
-    const p = presentError(new ApiError(404, "NOT_FOUND", null, "Region ru-central1 not found"));
-    expect(p.subTitle).toContain("Region ru-central1 not found");
-    expect(p.subTitle).toContain("NOT_FOUND");
+    const p = presentError(new ApiError(404, 5, null, "Region ru-central1 not found"));
+    expect(p.subTitle).toBe("Region ru-central1 not found");
+    // Код протокола адресован не читателю экрана — он уходит в подробности.
+    expect(p.devDetail).toBe("NOT_FOUND (5) · HTTP 404");
   });
 
   it("marks a 404 as ambiguous and never claims the resource is absent", () => {
-    const p = presentError(new ApiError(404, "NOT_FOUND", null, "Zone ru-central1-a not found"));
+    const p = presentError(new ApiError(404, 5, null, "Zone ru-central1-a not found"));
     expect(p.status).toBe("404");
     expect(p.ambiguousNotFound).toBe(true);
     expect(p.note).toBe(NOT_FOUND_IS_AMBIGUOUS);
@@ -27,20 +28,20 @@ describe("presentError", () => {
   });
 
   it("does not soften a 403 into a 404, nor add the 404 caveat to it", () => {
-    const p = presentError(new ApiError(403, "PERMISSION_DENIED", null, "no path"));
+    const p = presentError(new ApiError(403, 7, null, "no path"));
     expect(p.status).toBe("403");
     expect(p.ambiguousNotFound).toBe(false);
     expect(p.note).toBeNull();
   });
 
   it("does not promise access for a 401 either", () => {
-    const p = presentError(new ApiError(401, "UNAUTHENTICATED", null, "missing token"));
+    const p = presentError(new ApiError(401, 16, null, "missing token"));
     expect(p.status).toBe("warning");
     expect(p.ambiguousNotFound).toBe(false);
   });
 
   it("maps server failures and transport failures apart", () => {
-    expect(presentError(new ApiError(503, "UNAVAILABLE", null, "peer down")).status).toBe("500");
+    expect(presentError(new ApiError(503, 14, null, "peer down")).status).toBe("500");
 
     const netErr = new TypeError("Failed to fetch");
     const net = presentError(netErr);

@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Typography } from "antd";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
@@ -18,6 +18,7 @@ import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   projectId: string;
@@ -83,7 +84,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
       invalidate(sgSpec.id, projectId);
       onCancel();
     } catch (err) {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = errorText(err);
       toast.error(`Сохранить группу безопасности: ${m}`);
     }
   };

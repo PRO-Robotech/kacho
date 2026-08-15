@@ -19,6 +19,12 @@ import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -109,6 +115,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
     singular: ENTITIES.volumes.singular,
+    accusative: "том",
     plural: ENTITIES.volumes.plural,
     genitive: "Тома",
     serviceTitle: SERVICES.storage.title,
@@ -163,7 +170,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "zones",
         required: true,
         immutable: true,
-        description: "Зона размещения тома (ZONAL placement, immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения тома. Неизменяема после создания.",
       },
       {
         name: "disk_type_id",
@@ -198,7 +205,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: false,
         immutable: true,
-        description: "Необязательно: восстановить том из снимка (immutable после Create). Пусто — чистый том.",
+        description: "Необязательно: восстановить том из снимка. Неизменяемо после создания; пусто — пустой том.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -250,6 +257,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/storage/v1/snapshots",
     payloadKey: "snapshots",
     singular: ENTITIES.snapshots.singular,
+    accusative: "снимок",
     plural: ENTITIES.snapshots.plural,
     genitive: "Снимка",
     serviceTitle: SERVICES.storage.title,
@@ -292,8 +300,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description:
-          "Том, с которого снимается point-in-time копия (immutable после Create). Within-service ref → Volume.",
+        description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
       },
       FIELD_NAME,
       FIELD_DESCRIPTION,
@@ -324,6 +331,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/storage/v1/images",
     payloadKey: "images",
     singular: ENTITIES.images.singular,
+    accusative: "образ",
     plural: ENTITIES.images.plural,
     genitive: "Образа",
     serviceTitle: SERVICES.storage.title,
@@ -377,8 +385,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "regions",
         required: true,
         immutable: true,
-        description:
-          "Регион размещения образа (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения образа. Образ доступен из всего региона; неизменяем после создания.",
       },
       {
         // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
@@ -404,7 +411,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         createOnly: true,
         visibleWhen: { field: "_source_kind", equals: "snapshot" },
-        description: "Снимок, из которого создаётся образ (immutable). Same-DB ref → Snapshot.",
+        description: "Снимок, из которого создаётся образ. Неизменяем после создания.",
       },
       {
         name: "source_volume_id",
@@ -415,7 +422,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         createOnly: true,
         visibleWhen: { field: "_source_kind", equals: "volume" },
-        description: "Том, из которого создаётся образ (immutable). Same-DB ref → Volume.",
+        description: "Том, из которого создаётся образ. Неизменяем после создания.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -477,6 +484,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/storage/v1/diskTypes",
     payloadKey: "disk_types",
     singular: ENTITIES["disk-types"].singular,
+    accusative: "тип диска",
     plural: ENTITIES["disk-types"].plural,
     genitive: "Типа диска",
     description:
@@ -519,6 +527,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
     singular: ENTITIES.zones.singular,
+    accusative: "зону",
     plural: ENTITIES.zones.plural,
     serviceTitle: SERVICES.geo.title,
     scope: "global",
@@ -534,6 +543,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
     singular: ENTITIES.regions.singular,
+    accusative: "регион",
     plural: ENTITIES.regions.plural,
     serviceTitle: SERVICES.geo.title,
     scope: "global",
@@ -547,32 +557,19 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Все навигируемые ресурсы этого remote принадлежат домену Storage → префикс
-// маршрута `storage`. `zones` — ref-цель (не навигируется), но prefix задаём для
-// полноты.
-export function resourceServicePrefix(_specId: string): "storage" {
-  return "storage";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-/** Cluster-scoped каталог размещения: смонтирован под `/system/*`, а не внутри
- *  проекта. Тот же перечень, что в реестре shared, — и по той же причине: прогон
- *  этих ресурсов через project-scoped ветку даёт путь, которого нет, и ссылка
- *  ведёт в никуда. Storage ссылается на них с карточек тома, снимка и образа
- *  (зона, регион), поэтому ветка нужна и здесь. */
-const SYSTEM_SCOPED = new Set(["regions", "zones"]);
-
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  // Проверка ДО требования projectId: у глобального каталога измерения «проект»
-  // нет вовсе, и требовать его значило бы не строить ссылку там, где проекта в
-  // контексте нет.
-  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
-  if (!projectId) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

@@ -15,7 +15,7 @@ export function ImmutableField({ value, reason }: Props) {
   const empty = value === "" || value === null || value === undefined;
   const lock = (
     <Tooltip title={reason}>
-      <LockOutlined aria-label="immutable-lock" style={{ color: "var(--kc-text-tertiary)" }} />
+      <LockOutlined aria-label="неизменяемое поле" style={{ color: "var(--kc-text-tertiary)" }} />
     </Tooltip>
   );
 

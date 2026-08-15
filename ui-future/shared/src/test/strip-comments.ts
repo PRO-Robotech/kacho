@@ -17,8 +17,18 @@
 // начало комментария он распознаёт первым символом. В Go одиночная кавычка
 // открывает рунный литерал и всегда закрыта — то есть тем же правилом.
 
-/** Исходник без комментариев; строковые литералы сохранены дословно. */
-export function stripComments(src: string): string {
+/**
+ * Исходник без комментариев; строковые литералы сохранены дословно.
+ *
+ * `keepLines` сохраняет НУМЕРАЦИЮ строк: вместо снятого комментария остаются те
+ * же переводы строк. Нужен пробе, которая называет координату находки, — иначе
+ * многострочная шапка файла сдвигает номер, и гейт указывает не на ту строку
+ * (поймано инъекцией: находка в строке 156 печаталась как 150). Разбор при этом
+ * остаётся ОДИН: две редакции одного разборщика разошлись бы молча.
+ */
+export function stripComments(src: string, opts?: { keepLines?: boolean }): string {
+  const keepLines = opts?.keepLines === true;
+  const blank = (s: string) => (keepLines ? s.replace(/[^\n]/g, "") : "");
   let out = "";
   let i = 0;
   while (i < src.length) {
@@ -47,9 +57,11 @@ export function stripComments(src: string): string {
       continue;
     }
     if (c === "/" && src[i + 1] === "*") {
+      const start = i;
       i += 2;
       while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
       i += 2;
+      out += blank(src.slice(start, Math.min(i, src.length)));
       continue;
     }
     out += c;

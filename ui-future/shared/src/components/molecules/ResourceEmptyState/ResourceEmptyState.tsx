@@ -8,6 +8,7 @@ import { Button, Typography } from "antd";
 import { PlusOutlined, ReadOutlined, RightOutlined } from "@ant-design/icons";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -18,7 +19,7 @@ interface Props {
 
 export function ResourceEmptyState({ spec, onCreate, createLabel }: Props) {
   const copy = spec.emptyState;
-  const label = createLabel ?? `Создать ${spec.singular.toLowerCase()}`;
+  const label = createLabel ?? createActionLabel(spec);
   return (
     <div
       style={{

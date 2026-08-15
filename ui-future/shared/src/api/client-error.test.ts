@@ -1,15 +1,20 @@
 import { api, ApiError, apiErrorFromBody } from "./client";
 
+// Тела здесь — той формы, какую край действительно производит: он собирает ответ
+// протоджейсоном из `google.rpc.Status`, где `code` объявлен `int32`, то есть в
+// JSON это ЧИСЛО. Прежняя редакция подавала `{"code":"ALREADY_EXISTS"}` — форму,
+// которой не бывает, — и потому не могла упасть на сравнении `code === "6"`,
+// ложном при любом настоящем ответе.
 describe("apiErrorFromBody preserves backend detail", () => {
   it("uses code/message/details from a JSON error envelope", () => {
     const e = apiErrorFromBody(
       409,
       "Conflict",
-      JSON.stringify({ code: "ALREADY_EXISTS", message: "network exists", details: [{ x: 1 }] }),
+      JSON.stringify({ code: 6, message: "network exists", details: [{ x: 1 }] }),
     );
     expect(e).toBeInstanceOf(ApiError);
     expect(e.status).toBe(409);
-    expect(e.code).toBe("ALREADY_EXISTS");
+    expect(e.code).toBe(6);
     expect(e.message).toBe("network exists");
     expect(e.details).toEqual([{ x: 1 }]);
   });
@@ -62,10 +67,10 @@ describe("api client preserves non-JSON error bodies", () => {
   });
 
   it("unwraps a JSON error envelope as before", async () => {
-    mockFetch(404, "Not Found", JSON.stringify({ code: "NOT_FOUND", message: "Network x not found" }));
+    mockFetch(404, "Not Found", JSON.stringify({ code: 5, message: "Network x not found" }));
     const err = (await api.get("/vpc/v1/networks/x").catch((e) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.code).toBe("NOT_FOUND");
+    expect(err.code).toBe(5);
     expect(err.message).toBe("Network x not found");
   });
 });
