@@ -62,11 +62,35 @@ interface Organism {
 }
 
 const COMPONENTS: readonly Organism[] = [
-  { dir: "ResourceListPage", file: "ResourceListPage", symbol: "ResourceListPage" },
-  { dir: "ResourceCreatePage", file: "ResourceCreatePage", symbol: "ResourceCreatePage" },
-  { dir: "ResourceEditPage", file: "ResourceEditPage", symbol: "ResourceEditPage" },
-  { dir: "form/ResourceFormBody", file: "ResourceFormBody", symbol: "ResourceFormBody" },
+  {
+    dir: "ResourceListPage",
+    file: "ResourceListPage",
+    symbol: "ResourceListPage",
+  },
+  {
+    dir: "ResourceCreatePage",
+    file: "ResourceCreatePage",
+    symbol: "ResourceCreatePage",
+  },
+  {
+    dir: "ResourceEditPage",
+    file: "ResourceEditPage",
+    symbol: "ResourceEditPage",
+  },
+  {
+    dir: "form/ResourceFormBody",
+    file: "ResourceFormBody",
+    symbol: "ResourceFormBody",
+  },
   { dir: "form/FormField", file: "FormField", symbol: "FormFieldRenderer" },
+  // Граница отказа модуля (#371). Символ — HOC `withModuleBoundary`, а не класс
+  // `ModuleErrorBoundary`: у обёртки один вид на всё дерево, и копия в модуле
+  // означала бы, что правка экрана отказа доезжает не всюду.
+  {
+    dir: "ModuleErrorBoundary",
+    file: "ModuleErrorBoundary",
+    symbol: "withModuleBoundary",
+  },
 ] as const;
 
 /** Top-level directories that are not apps of this tree. */
@@ -178,12 +202,20 @@ describe("shared resource CRUD organisms are single-source", () => {
       it(`${app}/${comp.dir}: only a thin @shared re-export may live in the app`, () => {
         if (!existsSync(appDir)) return; // this app does not surface the component at all
         const indexFile = path.join(appDir, "index.ts");
-        expect({ app, comp: comp.dir, hasIndex: existsSync(indexFile) }).toEqual({ app, comp: comp.dir, hasIndex: true });
+        expect({
+          app,
+          comp: comp.dir,
+          hasIndex: existsSync(indexFile),
+        }).toEqual({ app, comp: comp.dir, hasIndex: true });
         const idx = readFileSync(indexFile, "utf8");
         expect(idx).toContain("@shared/components/organisms/" + comp.dir);
         // Anything besides the shim is a fork in disguise.
         const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
-        expect({ app, comp: comp.dir, stray }).toEqual({ app, comp: comp.dir, stray: [] });
+        expect({ app, comp: comp.dir, stray }).toEqual({
+          app,
+          comp: comp.dir,
+          stray: [],
+        });
       });
     }
   }

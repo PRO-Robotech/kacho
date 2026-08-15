@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Dispatch, FC, SetStateAction } from "react";
 import { ConfigProvider, theme } from "antd";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
 import { HostShell } from "./components";
 import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
 import {
@@ -52,9 +53,14 @@ const App: FC = () => {
         },
       }}
     >
-      <BrowserRouter>
-        <AppRoutes dark={dark} setDark={setDark} />
-      </BrowserRouter>
+      {/* Корневая граница отказа (#371): последний рубеж для того, что не поймала
+          граница модуля — отказ самого каркаса host'а. Без неё непойманная ошибка
+          доходит до корня, и React снимает с экрана ВСЁ дерево (белый экран). */}
+      <ModuleErrorBoundary moduleLabel="Консоль Kachō">
+        <BrowserRouter>
+          <AppRoutes dark={dark} setDark={setDark} />
+        </BrowserRouter>
+      </ModuleErrorBoundary>
     </ConfigProvider>
   );
 };
