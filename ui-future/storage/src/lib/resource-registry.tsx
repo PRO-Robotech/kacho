@@ -16,6 +16,15 @@ import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -105,10 +114,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "volumes",
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
-    singular: "Том",
-    plural: "Тома",
+    singular: ENTITIES.volumes.singular,
+    accusative: "том",
+    plural: ENTITIES.volumes.plural,
     genitive: "Тома",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -160,7 +170,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "zones",
         required: true,
         immutable: true,
-        description: "Зона размещения тома (ZONAL placement, immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения тома. Неизменяема после создания.",
       },
       {
         name: "disk_type_id",
@@ -188,14 +198,54 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Размер тома в гибибайтах (ГиБ), задаётся при создании.",
       },
       {
+        // Дискриминатор источника (form-only). У контракта источников РОВНО три
+        // (`source_snapshot_id` и `source_image_id` взаимоисключающи, пусто в
+        // обоих = чистый том), поэтому форма выражает выбор, а не предлагает
+        // заполнить два поля, из которых сервер примет одно.
+        //
+        // Умолчание — «пустой том»: единственная ветка, которой не нужен предмет
+        // в проекте. Открывать форму на ветке, требующей уже существующий
+        // снимок, значит встречать свежий проект пустым списком.
+        name: "_source_kind",
+        label: "Источник данных",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "empty",
+        options: [
+          { value: "empty", label: "Пустой том — без данных" },
+          { value: "snapshot", label: "Из снимка (Snapshot)" },
+          { value: "image", label: "Из образа (Image) — загрузочный том" },
+        ],
+        description:
+          "Чем наполняется том при создании: ничем (пустой), снимком другого тома или образом. Загрузочный том машины делается ИЗ ОБРАЗА — это и есть первый шаг из пустого проекта. Источник неизменяем после создания.",
+      },
+      {
         name: "source_snapshot_id",
-        label: "Из снимка",
+        label: "Снимок-источник",
         type: "ref",
         refResource: "snapshots",
         refProjectScoped: true,
-        required: false,
+        required: true,
+        createOnly: true,
         immutable: true,
-        description: "Необязательно: восстановить том из снимка (immutable после Create). Пусто — чистый том.",
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого восстанавливается том. Задаётся при создании и потом не меняется.",
+      },
+      {
+        // Образ — вход в цепочку «образ → том → машина». Без него из свежего
+        // проекта загрузочный том не получить вовсе: снимок делается из тома, а
+        // образ — из тома или снимка, то есть круг замкнут сам на себя.
+        name: "source_image_id",
+        label: "Образ-источник",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "image" },
+          description: "Образ, из которого создаётся загрузочный том. Задаётся при создании и потом не меняется.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -207,17 +257,46 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       zone_id: "",
       disk_type_id: "",
       size_gib: 10,
+      _source_kind: "empty",
       source_snapshot_id: "",
+      source_image_id: "",
       labels: {},
     }),
-    // size_gib (UI) → size_bytes (wire). Пустой source_snapshot_id не шлём.
+    // size_gib (UI) → size_bytes (wire); ровно одна ветка источника по
+    // `_source_kind`, form-only дискриминатор срезаем.
+    //
+    // Неактивная ветка режется ПО ДИСКРИМИНАТОРУ, а не по пустоте значения:
+    // пользователь мог выбрать образ и затем переключиться на снимок, и тогда
+    // непустой `source_image_id` уехал бы вместе со снимком — сервер отверг бы
+    // взаимоисключающую пару, назвав поле, которого в форме уже не видно.
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const gib = Number(out.size_gib);
       if (Number.isFinite(gib) && gib > 0) out.size_bytes = String(Math.round(gib) * GIB);
       delete out.size_gib;
-      if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "snapshot") {
+        delete out.source_image_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      } else if (kind === "image") {
+        delete out.source_snapshot_id;
+        if (!out.source_image_id) delete out.source_image_id;
+      } else {
+        delete out.source_snapshot_id;
+        delete out.source_image_id;
+      }
       return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран. Ветка
+    // «пустой том» предмета не имеет и проходит без выбора — иначе проверка
+    // отказывала бы всегда и её отрицание зеленело бы на чём угодно.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      if (kind === "image" && !obj.source_image_id) return "Выберите образ, из которого создаётся том.";
+      if (kind === "snapshot" && !obj.source_snapshot_id)
+        return "Выберите снимок, из которого восстанавливается том.";
+      return null;
     },
     // size_bytes (wire) → size_gib (UI) для edit-формы.
     hydrate: (obj) => {
@@ -246,10 +325,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "snapshots",
     apiPath: "/storage/v1/snapshots",
     payloadKey: "snapshots",
-    singular: "Снимок",
-    plural: "Снимки",
+    singular: ENTITIES.snapshots.singular,
+    accusative: "снимок",
+    plural: ENTITIES.snapshots.plural,
     genitive: "Снимка",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -289,8 +369,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: true,
         immutable: true,
-        description:
-          "Том, с которого снимается point-in-time копия (immutable после Create). Within-service ref → Volume.",
+        description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
       },
       FIELD_NAME,
       FIELD_DESCRIPTION,
@@ -320,10 +399,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "images",
     apiPath: "/storage/v1/images",
     payloadKey: "images",
-    singular: "Образ",
-    plural: "Образы",
+    singular: ENTITIES.images.singular,
+    accusative: "образ",
+    plural: ENTITIES.images.plural,
     genitive: "Образа",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -374,8 +454,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "regions",
         required: true,
         immutable: true,
-        description:
-          "Регион размещения образа (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения образа. Образ доступен из всего региона; неизменяем после создания.",
       },
       {
         // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
@@ -401,7 +480,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         createOnly: true,
         visibleWhen: { field: "_source_kind", equals: "snapshot" },
-        description: "Снимок, из которого создаётся образ (immutable). Same-DB ref → Snapshot.",
+        description: "Снимок, из которого создаётся образ. Неизменяем после создания.",
       },
       {
         name: "source_volume_id",
@@ -412,7 +491,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         createOnly: true,
         visibleWhen: { field: "_source_kind", equals: "volume" },
-        description: "Том, из которого создаётся образ (immutable). Same-DB ref → Volume.",
+        description: "Том, из которого создаётся образ. Неизменяем после создания.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -477,12 +556,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // `DeleteDiskTypeResponse`). Второй и последний такой путь в дереве.
     mutationsReturnOperation: false,
     payloadKey: "disk_types",
-    singular: "Тип диска",
-    plural: "Типы дисков",
+    singular: ENTITIES["disk-types"].singular,
+    accusative: "тип диска",
+    plural: ENTITIES["disk-types"].plural,
     genitive: "Типа диска",
     description:
       "Класс хранилища, на котором создаётся том: ярус, состояние обращения, границы размера и способности. Каталог заводит администратор кластера; пустой каталог — законное состояние, пока класс не зарегистрирован, том не создаётся.",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -519,9 +599,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
-    serviceTitle: "Geography",
+    singular: ENTITIES.zones.singular,
+    accusative: "зону",
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -534,9 +615,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
-    singular: "Регион",
-    plural: "Регионы",
-    serviceTitle: "Geography",
+    singular: ENTITIES.regions.singular,
+    accusative: "регион",
+    plural: ENTITIES.regions.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -548,32 +630,19 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Все навигируемые ресурсы этого remote принадлежат домену Storage → префикс
-// маршрута `storage`. `zones` — ref-цель (не навигируется), но prefix задаём для
-// полноты.
-export function resourceServicePrefix(_specId: string): "storage" {
-  return "storage";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-/** Cluster-scoped каталог размещения: смонтирован под `/system/*`, а не внутри
- *  проекта. Тот же перечень, что в реестре shared, — и по той же причине: прогон
- *  этих ресурсов через project-scoped ветку даёт путь, которого нет, и ссылка
- *  ведёт в никуда. Storage ссылается на них с карточек тома, снимка и образа
- *  (зона, регион), поэтому ветка нужна и здесь. */
-const SYSTEM_SCOPED = new Set(["regions", "zones"]);
-
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  // Проверка ДО требования projectId: у глобального каталога измерения «проект»
-  // нет вовсе, и требовать его значило бы не строить ссылку там, где проекта в
-  // контексте нет.
-  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
-  if (!projectId) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

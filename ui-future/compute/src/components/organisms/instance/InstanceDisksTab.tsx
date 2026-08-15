@@ -13,12 +13,12 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
-import { ApiError } from "@/api/client";
 import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { BoolFact } from "@/components/atoms/BoolFact";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface DiskRow {
   volume_id?: string;
@@ -53,10 +53,7 @@ export function InstanceDisksTab({
     list.push(...secondary);
     return list;
   }, [data]);
-  const attachedIds = useMemo(
-    () => new Set(rows.map((r) => r.volume_id).filter((x): x is string => !!x)),
-    [rows],
-  );
+  const attachedIds = useMemo(() => new Set(rows.map((r) => r.volume_id).filter((x): x is string => !!x)), [rows]);
 
   const mut = useMutation({
     mutationFn: (params: { verb: "attach" | "detach"; volumeId: string }) =>
@@ -72,7 +69,7 @@ export function InstanceDisksTab({
       }
     },
     onError: (e) => {
-      toast.error(`Диск: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`);
+      toast.error(`Диск: ${errorText(e)}`);
       setPendingId(null);
     },
   });
@@ -149,7 +146,7 @@ export function InstanceDisksTab({
           />
         </div>
         <Input
-          placeholder="device_name (опц.)"
+          placeholder="имя устройства (необязательно)"
           value={deviceName}
           onChange={(e) => setDeviceName(e.target.value)}
           style={{ width: 180 }}
@@ -167,7 +164,11 @@ export function InstanceDisksTab({
           Тома ещё не подключены.
         </div>
       ) : (
-        <ResourceTable rows={rows} columns={columns} rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()} />
+        <ResourceTable
+          rows={rows}
+          columns={columns}
+          rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()}
+        />
       )}
       <OperationToastWatcher
         opId={opId}

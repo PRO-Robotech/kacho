@@ -65,7 +65,7 @@ function defaultTitle(err: unknown, status: ResultStatusType): ReactNode {
 function defaultSubTitle(err: unknown): ReactNode {
   if (!err) return null;
   if (isNetworkFailure(err)) return "Не удалось связаться с сервером. Проверьте подключение или повторите позже.";
-  if (err instanceof ApiError) return `${err.code}: ${err.message}`;
+  if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return String(err);
 }

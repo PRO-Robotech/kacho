@@ -16,6 +16,7 @@ import { OperationsPage } from "@/pages/OperationsPage";
 import { SubnetCreatePage } from "@/pages/SubnetCreatePage";
 import { contextApi } from "@shared/lib/context-store";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { VPC_SCOPED_IDS } from "@/lib/scoped-resources";
 import "@shared/typography.css";
 import "@shared/index.css";
 
@@ -27,17 +28,11 @@ export interface VpcPageProps {
   navigate?: (path: string) => void | Promise<void>;
 }
 
-const VPC_SCOPED = [
-  "networks",
-  "subnets",
-  "addresses",
-  "route-tables",
-  "security-groups",
-  "network-interfaces",
-  "gateways",
-]
-  .map((id) => REGISTRY[id])
-  .filter(Boolean);
+// Перечень берётся из `lib/scoped-resources`, а не выписывается здесь второй
+// раз: это ТОТ ЖЕ список, что монтирует роутер приложения, и две его копии
+// разошлись бы молча — раздел появился бы в маршрутах и не появился на странице
+// (или наоборот), а `filter(Boolean)` не сказал бы об этом ни слова.
+const VPC_SCOPED = VPC_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
 
 export const VpcPage: FC<VpcPageProps> = ({ context }) => {
   const queryClient = useMemo(

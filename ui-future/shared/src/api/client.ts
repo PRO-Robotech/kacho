@@ -20,10 +20,25 @@ import type { Operation } from "./types";
 
 const API_BASE = ""; // относительный путь, ingress/proxy сделают остальное
 
+/**
+ * Код ошибки в том виде, в каком его прислал отправитель.
+ *
+ * Край собирает тело из `google.rpc.Status`, где `code` объявлен `int32`, —
+ * в JSON это ЧИСЛО (`{"code":5,"message":"Not Found"}`). Строка остаётся
+ * законной формой для отправителей, пишущих имя кода, и для запасного значения
+ * `String(status)`, когда тела нет вовсе.
+ *
+ * Объявлять это поле одной лишь строкой значило солгать компилятору: тип он
+ * принимает на веру, а тело приходит из `JSON.parse`, то есть как `unknown`, —
+ * и сравнение `code === "7"` было ложным ВСЕГДА, оставаясь на вид исправным.
+ * Разбор кода — `@shared/lib/grpc-status`.
+ */
+export type ApiErrorCode = number | string;
+
 export class ApiError extends Error {
   constructor(
     public status: number,
-    public code: string,
+    public code: ApiErrorCode,
     public details: unknown,
     message: string,
   ) {

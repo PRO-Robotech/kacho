@@ -16,6 +16,15 @@ import { ArtifactTypesTag } from "@/components/atoms/ArtifactTypeTag";
 import { LifecycleTag } from "@/components/atoms/LifecycleTag";
 import { VisibilityTag } from "@/components/atoms/VisibilityTag";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -78,10 +87,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "registries",
     apiPath: "/registry/v1/registries",
     payloadKey: "registries",
-    singular: "Реестр",
-    plural: "Реестры",
+    singular: ENTITIES.registries.singular,
+    accusative: "реестр",
+    plural: ENTITIES.registries.plural,
     genitive: "Реестра",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
@@ -127,8 +137,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "regions",
         required: true,
         immutable: true,
-        description:
-          "Регион размещения реестра (REGIONAL/anycast, immutable после Create). Cross-service ref → geo.Region.",
+        description: "Регион размещения реестра. Реестр доступен из всего региона; неизменяем после создания.",
       },
       // REG-1 F5: defaultRepositoryVisibility — видимость по умолчанию для новых
       // репозиториев реестра. PUBLIC требует прав администратора реестра (проверяется
@@ -181,9 +190,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/registry/v1/registries/{registryId}/repositories",
     payloadKey: "repositories",
     singular: "Репозиторий",
+    accusative: "репозиторий",
     plural: "Репозитории",
     genitive: "Репозитория",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     // Read-only: репозиторий появляется через docker push, а не через UI.
     ops: { create: false, update: false, delete: false },
@@ -250,9 +260,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/registry/v1/registries/{registryId}/repositories/{repository}/tags",
     payloadKey: "tags",
     singular: "Тег",
+    accusative: "тег",
     plural: "Теги",
     genitive: "Тега",
-    serviceTitle: "Container Registry",
+    serviceTitle: SERVICES.registry.title,
     scope: "project",
     // DeleteTag — единственная мутация (create/update нет: теги пишет docker push).
     ops: { create: false, update: false, delete: true },
@@ -276,9 +287,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
-    singular: "Регион",
-    plural: "Регионы",
-    serviceTitle: "Geography",
+    singular: ENTITIES.regions.singular,
+    accusative: "регион",
+    plural: ENTITIES.regions.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -295,27 +307,19 @@ export function getResource(id: string): ResourceSpec | undefined {
 // маршрута `registry`. Явные ветки (а не fallback) — иначе cross-module ссылки
 // уходили бы в чужой сегмент (/nlb/... → 404). `compute-*` оставлен как
 // forward-compat для будущих cross-service ref-целей.
-export function resourceServicePrefix(specId: string): "registry" | "compute" {
-  if (specId.startsWith("compute-")) return "compute";
-  switch (specId) {
-    case "regions":
-    case "zones":
-      return "compute";
-    case "registries":
-    case "repositories":
-    case "tags":
-    default:
-      return "registry";
-  }
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

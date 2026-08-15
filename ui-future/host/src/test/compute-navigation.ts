@@ -13,7 +13,7 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
     key: "compute",
     segment: "compute",
     icon: "cloud",
-    label: "Compute Cloud",
+    label: "Compute",
     landingPath: "compute/instances",
     requiresProject: true,
     items: [
@@ -29,6 +29,13 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
         icon: "layers",
         label: "Типы машин",
         path: "compute/machine-types",
+        requiresProject: true,
+      },
+      {
+        key: "compute-guest-access-keys",
+        icon: "layers",
+        label: "Ключи доступа",
+        path: "compute/guest-access-keys",
         requiresProject: true,
       },
     ],

@@ -20,6 +20,7 @@ describe("makeRemote", () => {
     const Remote = makeRemote(
       () => Promise.resolve({ default: Page }),
       (mod) => mod.default as never,
+      "Virtual Private Cloud",
     );
 
     renderRemote(Remote);
@@ -31,6 +32,7 @@ describe("makeRemote", () => {
     const Remote = makeRemote(
       () => Promise.resolve({ VpcPage: Page }),
       (mod) => (mod.default ?? mod.VpcPage) as never,
+      "Virtual Private Cloud",
     );
 
     renderRemote(Remote);

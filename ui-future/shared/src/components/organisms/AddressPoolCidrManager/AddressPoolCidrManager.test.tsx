@@ -144,14 +144,12 @@ describe("AddressPoolCidrManager", () => {
     );
   });
 
-  it("отказ края показывается кодом и текстом", async () => {
-    post.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "CIDR has allocated addresses"));
+  it("отказ края показывается текстом сервера, без кода протокола", async () => {
+    post.mockRejectedValue(new ApiError(400, 9, null, "CIDR has allocated addresses"));
     show(["198.51.100.0/24"]);
 
     fireEvent.click(within(v4card()).getAllByRole("button", { name: "close" })[0]);
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("IPv4 CIDR удаление: FAILED_PRECONDITION: CIDR has allocated addresses"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("IPv4 CIDR удаление: CIDR has allocated addresses"));
   });
 });

@@ -5,9 +5,10 @@
 // Эндпоинты, которые адресует исходник ЭТОГО приложения. Перечень утверждается
 // против src (client.endpoints.test.ts): лишняя строка здесь — находка ровно так
 // же, как недостающая. URL-ы verbatim из proto google.api.http annotations:
-//   compute:    /compute/v1/instances, /compute/v1/machineTypes
+//   compute:    /compute/v1/instances, /compute/v1/machineTypes,
+//               /compute/v1/guestAccessKeys
 //   geo:        /geo/v1/zones
-//   storage:    /storage/v1/volumes
+//   storage:    /storage/v1/volumes, /storage/v1/images
 //   vpc:        /vpc/v1/addresses, /vpc/v1/networkInterfaces,
 //               /vpc/v1/networks/{id}/subnets, /vpc/v1/networks/{id}/route_tables,
 //               /vpc/v1/networks/{id}/security_groups

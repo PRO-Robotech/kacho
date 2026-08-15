@@ -1,3 +1,7 @@
+// Подписи разделов и ресурсов — из единственного источника: литерал рядом
+// с местом показа расходится молча, ссылка — нет (см. entity-names.ts).
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+
 export type RemoteIconName =
   | "activity"
   | "cable"
@@ -40,17 +44,27 @@ export const IAM_NAVIGATION: RemoteNavSection[] = [
     key: "iam",
     segment: "iam",
     icon: "key",
-    label: "Identity and Access Management",
+    label: SERVICES.iam.menuTitle,
     landingPath: "/iam/accounts",
     items: [
-      { key: "iam-accounts", icon: "layers", label: "Аккаунты", path: "/iam/accounts" },
-      { key: "iam-projects", icon: "folder", label: "Проекты", path: "/iam/projects" },
-      { key: "iam-users", icon: "users", label: "Пользователи", path: "/iam/users" },
-      { key: "iam-service-accounts", icon: "key", label: "Сервисные аккаунты", path: "/iam/service-accounts" },
-      { key: "iam-groups", icon: "git-branch", label: "Группы", path: "/iam/groups" },
-      { key: "iam-roles", icon: "lock", label: "Роли", path: "/iam/roles" },
-      { key: "iam-access-bindings", icon: "shield", label: "Связки прав", path: "/iam/access-bindings" },
-      { key: "iam-operations", icon: "activity", label: "Операции", path: "/iam/operations" },
+      { key: "iam-accounts", icon: "layers", label: ENTITIES.accounts.plural, path: "/iam/accounts" },
+      { key: "iam-projects", icon: "folder", label: ENTITIES.projects.plural, path: "/iam/projects" },
+      { key: "iam-users", icon: "users", label: ENTITIES.users.plural, path: "/iam/users" },
+      {
+        key: "iam-service-accounts",
+        icon: "key",
+        label: ENTITIES["service-accounts"].plural,
+        path: "/iam/service-accounts",
+      },
+      { key: "iam-groups", icon: "git-branch", label: ENTITIES.groups.plural, path: "/iam/groups" },
+      { key: "iam-roles", icon: "lock", label: ENTITIES.roles.plural, path: "/iam/roles" },
+      {
+        key: "iam-access-bindings",
+        icon: "shield",
+        label: ENTITIES["access-bindings"].plural,
+        path: "/iam/access-bindings",
+      },
+      { key: "iam-operations", icon: "activity", label: ENTITIES.operations.plural, path: "/iam/operations" },
     ],
   },
 ];

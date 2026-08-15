@@ -11,13 +11,15 @@ import { ResourceFormBody } from "@shared/components/organisms/form/ResourceForm
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
 import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
+import { errorText } from "@shared/lib/error-presentation";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -130,21 +132,21 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
         return;
       }
       if (resolved.kind === "violation") {
-        toast.error(`Сохранить ${spec.singular}: ${resolved.message}`);
+        toast.error(`${createActionLabel(spec, "Сохранить")}: ${resolved.message}`);
         return;
       }
       invalidate(spec.id, project?.id ?? null);
       void navigate(backHref);
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
-      toast.error(`Сохранить ${spec.singular}: ${m}`);
+      const m = errorText(err);
+      toast.error(`${createActionLabel(spec, "Сохранить")}: ${m}`);
     },
   });
 
   useEffect(() => {
     if (outcome.kind === "failed") {
-      toast.error(`Сохранить ${spec.singular}: ${outcome.message}`);
+      toast.error(`${createActionLabel(spec, "Сохранить")}: ${outcome.message}`);
       setPendingOpId(null);
       return;
     }

@@ -36,7 +36,17 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import { flatIdList } from "@shared/lib/id-list";
+import {
+  GUEST_ACCESS_KEY_EMPTY_STATE,
+  GUEST_ACCESS_KEY_FIELDS,
+  guestAccessKeyTemplate,
+} from "@shared/lib/guest-access-key-form";
+import { resourceListPath as resourceListPathImpl } from "@shared/lib/service-prefix";
 import type { ResourceColumn, ResourceSpec } from "./resource-spec";
+// Подписи сущностей и разделов — из единственного источника (см. entity-names.ts):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "./entity-names";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -108,6 +118,15 @@ function BlockedReasonCell({
 // RESERVED_INTERNAL из proto enum kacho.cloud.vpc.v1.AddressPoolKind
 // (`reserved 2, 100`).
 const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "External" }];
+
+// Правило группы размещения названо СЛЕДСТВИЕМ, а не машинным значением: «SPREAD»
+// не говорит ни что группа разнесена, ни зачем. Словарь один и тот же в списке и
+// на карточке — иначе один предмет читался бы двумя именами.
+const PLACEMENT_STRATEGY_TEXT: Record<string, string> = {
+  SPREAD: "Разнести по разным доменам отказа",
+  PACK: "Сблизить в одном домене",
+};
+const placementDash = <span className="text-muted-foreground">—</span>;
 
 // Общие колонки
 const COL_NAME: ResourceColumn = {
@@ -265,7 +284,8 @@ function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
       refProjectScoped: true,
       immutable: true,
       visibleWhen: { field: mode, equals: "subnet" },
-      description: "Подсеть, из которой выделяется VIP (INTERNAL-размещение). Placement подсети обязан совпадать.",
+      description:
+        "Подсеть, из которой выделяется адрес балансировщика при внутреннем размещении. Размещение подсети обязано совпадать с размещением балансировщика.",
     },
     {
       name: `${family}_source.address_id`,
@@ -431,6 +451,24 @@ function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
   );
 }
 
+/**
+ * Поле-список, чьи элементы приходят с сервера строками, а форма ведёт объектами
+ * `{ value }`.
+ *
+ * Вынесено из ТРЁХ дословных копий (блоки сети, ссылки интерфейса, блоки
+ * подсети): третью добавила волна правок консоли, и линт справедливо назвал её
+ * ростом — `Array.isArray` сужает до `any[]`, поэтому возврат элемента был
+ * небезопасным. Тип элемента здесь назван явно, и правило снимается не
+ * подавлением, а тем, что утверждение стало верным.
+ */
+function hydrateStringListFields(out: Record<string, unknown>, keys: string[]): void {
+  for (const key of keys) {
+    const raw = out[key];
+    if (!Array.isArray(raw)) continue;
+    out[key] = (raw as unknown[]).map((item: unknown) => (typeof item === "string" ? { value: item } : item));
+  }
+}
+
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== iam ======
   // proto: kacho.cloud.iam.v1.AccountService / ProjectService.
@@ -441,10 +479,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "accounts",
     apiPath: "/iam/v1/accounts",
     payloadKey: "accounts",
-    singular: "Аккаунт",
-    plural: "Аккаунты",
+    singular: ENTITIES.accounts.singular,
+    accusative: "аккаунт",
+    plural: ENTITIES.accounts.plural,
     genitive: "Аккаунта",
-    serviceTitle: "IAM",
+    serviceTitle: SERVICES.iam.title,
     scope: "global",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -503,10 +542,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "projects",
     apiPath: "/iam/v1/projects",
     payloadKey: "projects",
-    singular: "Проект",
-    plural: "Проекты",
+    singular: ENTITIES.projects.singular,
+    accusative: "проект",
+    plural: ENTITIES.projects.plural,
     genitive: "Проекта",
-    serviceTitle: "IAM",
+    serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -553,9 +593,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "service-accounts",
     apiPath: "/iam/v1/serviceAccounts",
     payloadKey: "service_accounts",
-    singular: "Сервисный аккаунт",
-    plural: "Сервисные аккаунты",
-    serviceTitle: "IAM",
+    singular: ENTITIES["service-accounts"].singular,
+    accusative: "сервисный аккаунт",
+    plural: ENTITIES["service-accounts"].plural,
+    serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -588,9 +629,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "users",
     apiPath: "/iam/v1/users",
     payloadKey: "users",
-    singular: "Пользователь",
-    plural: "Пользователи",
-    serviceTitle: "IAM",
+    singular: ENTITIES.users.singular,
+    accusative: "пользователя",
+    plural: ENTITIES.users.plural,
+    serviceTitle: SERVICES.iam.title,
     scope: "global",
     ops: { create: false, update: false, delete: true },
     columns: [
@@ -621,10 +663,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "groups",
     apiPath: "/iam/v1/groups",
     payloadKey: "groups",
-    singular: "Группа",
-    plural: "Группы",
+    singular: ENTITIES.groups.singular,
+    accusative: "группу",
+    plural: ENTITIES.groups.plural,
     genitive: "Группы",
-    serviceTitle: "IAM",
+    serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -671,10 +714,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "roles",
     apiPath: "/iam/v1/roles",
     payloadKey: "roles",
-    singular: "Роль",
-    plural: "Роли",
+    singular: ENTITIES.roles.singular,
+    accusative: "роль",
+    plural: ENTITIES.roles.plural,
     genitive: "Роли",
-    serviceTitle: "IAM",
+    serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -771,10 +815,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "access-bindings",
     apiPath: "/iam/v1/accessBindings",
     payloadKey: "access_bindings",
-    singular: "Привязка доступа",
-    plural: "Привязки доступа",
+    singular: ENTITIES["access-bindings"].singular,
+    accusative: "привязку доступа",
+    plural: ENTITIES["access-bindings"].plural,
     genitive: "привязки доступа",
-    serviceTitle: "IAM",
+    serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: false, update: false, delete: true },
     columns: [
@@ -917,10 +962,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "и публичные адреса.",
       docs: ["Облачные сети и подсети"],
     },
-    singular: "Облачная сеть",
-    plural: "Облачные сети",
+    singular: ENTITIES.networks.singular,
+    accusative: "облачную сеть",
+    plural: ENTITIES.networks.plural,
     genitive: "Облачной сети",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -1038,12 +1084,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      hydrateStringListFields(out, ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]);
       return out;
     },
   },
@@ -1087,10 +1128,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "из их CIDR-блоков.",
       docs: ["Облачные сети и подсети"],
     },
-    singular: "Подсеть",
-    plural: "Подсети",
+    singular: ENTITIES.subnets.singular,
+    accusative: "подсеть",
+    plural: ENTITIES.subnets.plural,
     genitive: "Подсети",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -1283,13 +1325,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "к ресурсам Kachō извне. Зарезервированный адрес сохраняется за вами, пока вы его не освободите.",
       docs: ["Адреса облачных ресурсов"],
     },
-    singular: "IP-адрес",
+    singular: ENTITIES.addresses.singular,
+    accusative: "IP-адрес",
     // Нейтральный plural — список содержит и внешние (Публичные), и внутренние
     // адреса; вид различается колонкой «Вид» (Публичный/Внутренний). Раньше было
     // «Публичные IP-адреса», что вводило в заблуждение для внутренних.
-    plural: "IP-адреса",
+    plural: ENTITIES.addresses.plural,
     genitive: "IP-адреса",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -1349,7 +1392,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Защита от удаления",
         path: "deletion_protection",
-        render: (row) => <BoolFact value={row.deletion_protection} yes="Удаление запрещено" no="Удаление разрешено" accent />,
+        render: (row) => (
+          <BoolFact value={row.deletion_protection} yes="Удаление запрещено" no="Удаление разрешено" accent />
+        ),
       },
       {
         // `used_by` — output-only список kacho.cloud.reference.Reference
@@ -1553,10 +1598,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "маршрутами в нескольких зонах доступности.",
       docs: ["Статическая маршрутизация", "Маршрутизация через NAT-инстанс"],
     },
-    singular: "Таблица маршрутов",
-    plural: "Таблицы маршрутов",
+    singular: ENTITIES["route-tables"].singular,
+    accusative: "таблицу маршрутов",
+    plural: ENTITIES["route-tables"].plural,
     genitive: "Таблицы маршрутов",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -1700,10 +1746,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    singular: "Сетевой интерфейс",
-    plural: "Сетевые интерфейсы",
+    singular: ENTITIES["network-interfaces"].singular,
+    accusative: "сетевой интерфейс",
+    plural: ENTITIES["network-interfaces"].plural,
     genitive: "Сетевого интерфейса",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -1963,12 +2010,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // edit-режиме RefSelect получает массив строк и не показывает имена.
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_address_ids", "v6_address_ids", "security_group_ids"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      hydrateStringListFields(out, ["v4_address_ids", "v6_address_ids", "security_group_ids"]);
       return out;
     },
   },
@@ -1991,10 +2033,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "ресурсов облачной сети Kachō (виртуальных машин, балансировщиков, сетевых интерфейсов).",
       docs: ["Группы безопасности"],
     },
-    singular: "Группа безопасности",
-    plural: "Группы безопасности",
+    singular: ENTITIES["security-groups"].singular,
+    accusative: "группу безопасности",
+    plural: ENTITIES["security-groups"].plural,
     genitive: "Группы безопасности",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -2042,7 +2085,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "rule_specs",
         label: "Rules",
         type: "sg-rules",
-        description: "Direction + protocol/ports + target (cidr | другая SG | predefined). Без правил — default-deny.",
+        description:
+          "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или предустановленный набор. Без правил трафик запрещён.",
         // В edit-форме скрываем — правила меняются через спец-RPC UpdateRules /
         // UpdateRule на отдельной вкладке.
         editHidden: true,
@@ -2078,10 +2122,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "gateways",
     apiPath: "/vpc/v1/gateways",
     payloadKey: "gateways",
-    singular: "Шлюз",
-    plural: "Шлюзы",
+    singular: ENTITIES.gateways.singular,
+    accusative: "шлюз",
+    plural: ENTITIES.gateways.plural,
     genitive: "Шлюза",
-    serviceTitle: "Virtual Private Cloud",
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -2161,6 +2206,141 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
+  // proto: GET /vpc/v1/cidrGroups (kacho.cloud.vpc.v1.CidrGroupService).
+  //
+  // Набор префиксов — ИМЕНОВАННЫЙ список CIDR, на который правило группы
+  // безопасности ссылается вместо собственной копии списка. Ради этого он и
+  // заведён: диапазоны, встречающиеся в двадцати правилах, правятся в одном
+  // месте, а не в двадцати (и, рано или поздно, не во всех двадцати).
+  //
+  // Состав НЕ меняется правкой: `UpdateCidrGroupRequest` полей состава не несёт
+  // вовсе — только `:add-cidr-blocks` / `:remove-cidr-blocks`. Поэтому оба поля
+  // объявлены `editHidden`, а на карточке их правит та же секция набора блоков,
+  // что у подсети и у сети.
+  "cidr-groups": {
+    id: "cidr-groups",
+    route: "cidr-groups",
+    apiPath: "/vpc/v1/cidrGroups",
+    payloadKey: "cidr_groups",
+    singular: "Набор префиксов",
+    plural: "Наборы префиксов",
+    genitive: "Набора префиксов",
+    accusative: "набор префиксов",
+    serviceTitle: "Virtual Private Cloud",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Мутации отвечают Operation (ban #9): ответ без operation-id — нарушение
+    // контракта, а не синхронный успех.
+    mutationsReturnOperation: true,
+    docs: [
+      { label: "Наборы префиксов", href: "#" },
+      { label: "Правила групп безопасности", href: "#" },
+    ],
+    emptyState: {
+      title: "Создайте ваш первый набор префиксов",
+      body:
+        "Набор префиксов — именованный список CIDR, на который ссылаются правила групп безопасности. " +
+        "Список правится один раз, и каждое правило, которое на него ссылается, следует за ним.",
+      docs: ["Наборы префиксов"],
+    },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      {
+        header: "IPv4",
+        path: "v4_cidr_blocks",
+        render: (row) => <CidrListCell items={[row.v4_cidr_blocks]} />,
+      },
+      {
+        header: "IPv6",
+        path: "v6_cidr_blocks",
+        render: (row) => <CidrListCell items={[row.v6_cidr_blocks]} />,
+      },
+      { header: "Членов", path: "cidr_block_count", format: "text" },
+      {
+        // `used_by` — output-only kacho.cloud.reference.Reference: группы правил,
+        // чьи правила ссылаются на этот набор. Сервер его ЗАПОЛНЯЕТ (выводит на
+        // чтении из проекции ссылок), поэтому поле показывается — правило «поле
+        // без источника не показывается» здесь выполнено.
+        header: "Кем используется",
+        path: "used_by",
+        format: "references",
+      },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+      COL_CREATED,
+    ],
+    fields: [
+      FIELD_NAME_VPC,
+      FIELD_LABELS,
+      FIELD_DESCRIPTION,
+      {
+        name: "v4_cidr_blocks",
+        label: "IPv4-префиксы",
+        type: "array",
+        itemLabel: "CIDR",
+        description:
+          "Начальный состав набора (IPv4). Меняется не правкой, а действиями на странице набора — до 64 членов на семейство.",
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "10.20.0.0/16" }],
+      },
+      {
+        name: "v6_cidr_blocks",
+        label: "IPv6-префиксы",
+        type: "array",
+        itemLabel: "CIDR",
+        description: "Начальный состав набора (IPv6). Меняется действиями на странице набора.",
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "fd00:20::/48" }],
+      },
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      labels: {},
+      v4_cidr_blocks: [],
+      v6_cidr_blocks: [],
+    }),
+    // {value:"…"} формы ↔ string[] провода. Пустая строка не уезжает: край
+    // получил бы члена, которого оператор не вводил, и отверг бы весь запрос.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
+        const raw = out[key];
+        if (Array.isArray(raw)) {
+          out[key] = raw
+            .map((item: unknown) =>
+              typeof item === "object" && item !== null && "value" in item
+                ? (item as Record<string, unknown>)["value"]
+                : item,
+            )
+            .filter((v) => typeof v === "string" && v);
+        }
+      }
+      return out;
+    },
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      hydrateStringListFields(out, ["v4_cidr_blocks", "v6_cidr_blocks"]);
+      return out;
+    },
+  },
+
   // ====== compute (Instance) ======
   // proto: GET /compute/v1/instances. Name-regex lowercase-only
   // (kacho-compute/CLAUDE.md §5: `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`).
@@ -2176,9 +2356,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // `DeleteDiskTypeResponse`). Второй и последний такой путь в дереве.
     mutationsReturnOperation: false,
     payloadKey: "disk_types",
-    singular: "Тип диска",
-    plural: "Типы дисков",
-    serviceTitle: "Compute Cloud",
+    singular: ENTITIES["disk-types"].singular,
+    accusative: "тип диска",
+    plural: ENTITIES["disk-types"].plural,
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -2214,8 +2395,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
     singular: "Зона",
+    accusative: "зону",
     plural: "Зоны (Compute)",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -2250,8 +2432,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
     singular: "Регион",
+    accusative: "регион",
     plural: "Регионы (Compute)",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -2277,9 +2460,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
     singular: "Виртуальная машина",
+    accusative: "виртуальную машину",
     plural: "Виртуальные машины",
     genitive: "Виртуальной машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "project",
     ops: {
       create: true,
@@ -2368,7 +2552,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-zones",
         required: true,
         immutable: true,
-        description: "Зона размещения инстанса (immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения машины. Неизменяема после создания.",
       },
       {
         name: "instance_kind",
@@ -2382,8 +2566,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "CONTAINER", label: "CONTAINER — контейнер-джоба (образ из registry.image)" },
         ],
         description:
-          "Сильный первый дискриминатор (immutable после Create): VM запускает ОС из storage.image; " +
-          "CONTAINER — эфемерный rootfs из OCI registry.image.",
+          "Вид машины; неизменяем после создания. Виртуальная машина запускает операционную " +
+          "систему из образа диска, контейнер — из образа реестра.",
       },
       {
         name: "machine_type_id",
@@ -2411,15 +2595,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "(OCI-артефакт kacho-registry, для CONTAINER).",
       },
       {
+        // Образ — списком, а не строкой.
+        //
+        // Сервер принимает здесь РОВНО `img-<base32>`: `validateBootSource`
+        // (services/compute) зовёт `corevalidate.ResourceID("Image", "img", …)`.
+        // Прежняя подсказка предлагала форму с тегом и OCI-ссылку, и обе сервер
+        // отвергает: у образа хранилища нет ни поля тега, ни поля дайджеста, а
+        // ветка registry.image отвергается целиком. То есть форма предлагала
+        // набрать руками идентификатор, который она же могла показать списком.
         name: "boot_source.id",
         label: "Образ",
-        type: "string",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
         required: true,
         createOnly: true,
-        placeholder: "img-9k2m4x7q1n8p:22.04-lts   |   ml/bert-trainer:cu121",
+        visibleWhen: { field: "boot_source.type", equals: "storage.image" },
         description:
-          "Ссылка на образ с тегом/дайджестом внутри id: «img-<base32>:<tag>» / «img-<base32>@sha256:<hex>» " +
-          "(storage.image) либо «repo/name:tag» (registry.image).",
+          "Образ ОС, из которого материализуется загрузочный том машины. Список — образы текущего проекта; " +
+          "нет ни одного — создайте образ в разделе Storage.",
       },
       {
         name: "cpu_guarantee_percent",
@@ -2438,6 +2632,36 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         placeholder: "sva… (опционально)",
         description: "Сервисный аккаунт (iam), доступный внутри инстанса. Для публичных образов можно не задавать.",
+      },
+      {
+        // Ключи входа — ССЫЛКАМИ на ресурс, а не материалом в теле запроса.
+        // Контракт объясняет это прямым текстом: ключ, переданный полем, живёт
+        // ровно столько, сколько машина, и его нельзя ни отозвать, ни заменить,
+        // ни узнать, где ещё он используется. Отсюда же и отказ сервера на
+        // `sshPublicKeys` — он называет заменой именно это поле.
+        name: "guest_access_key_ids",
+        label: "Ключи доступа",
+        type: "array",
+        itemLabel: "ключ",
+        createOnly: true,
+        maxItems: 32,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description:
+          "Публичные ключи, с которыми вы войдёте в гостевую систему. Ключ — отдельный ресурс проекта: его " +
+          "можно отозвать, заменить и увидеть, где ещё он используется. Нет ни одного — создайте прямо здесь.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Ключ доступа",
+            type: "ref",
+            refResource: "guest-access-keys",
+            refProjectScoped: true,
+            required: true,
+            createResource: "guest-access-keys",
+            createTitle: "Создать ключ доступа",
+          },
+        ],
       },
       // --- VM-only (instance_kind = VM) ---
       {
@@ -2602,9 +2826,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       acknowledge_unreachable: false,
       use_default_network: true,
       network_interface_specs: [],
+      guest_access_key_ids: [],
       labels: {},
     }),
     sanitize: (obj) => sanitizeInstanceCreate(obj),
+    // Клиент-валидация ДО submit — ровно тем же тоном, каким откажет сервер.
+    //
+    // Ветка `registry.image` объявлена в контракте и ОТВЕРГАЕТСЯ явно: у образа
+    // из реестра сегодня нет durable-адреса (репозиторий адресуется парой
+    // «реестр + имя», а имя переименовывается отдельным глаголом). Форма обязана
+    // сказать это словами, а не отправлять запрос, который не может пройти:
+    // подборщика образов у этой ветки нет by construction, и без пояснения
+    // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
+    validate: (obj) => {
+      const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
+      if (bs.type === "registry.image") {
+        return (
+          "Источник registry.image пока не принимается: у образа из реестра нет неизменяемого адреса, " +
+          "поэтому ссылка в машине сломалась бы после чужого переименования. Выберите storage.image."
+        );
+      }
+      return null;
+    },
     // wire → UI-форма (edit). service_account (Referrer) → service_account_id.
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
@@ -2624,10 +2867,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "volumes",
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
-    singular: "Том",
-    plural: "Тома",
+    singular: ENTITIES.volumes.singular,
+    accusative: "том",
+    plural: ENTITIES.volumes.plural,
     genitive: "Тома",
-    serviceTitle: "Storage",
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -2651,6 +2895,81 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     template: () => ({}),
   },
 
+  // ====== storage: Image (ref target) ======
+  // proto: kacho.cloud.storage.v1.ImageService (/storage/v1/images). Образ — вход
+  // в цепочку «образ → том → машина»: без него из пустого проекта загрузочный том
+  // не получить вовсе (том делается пустым или из снимка, снимок — из тома).
+  // Здесь ТОЛЬКО цель ссылки для подборщика образа в форме машины; CRUD живёт в
+  // разделе Storage.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: "Образ",
+    plural: "Образы",
+    genitive: "Образа",
+    accusative: "образ",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      { header: "Статус", path: "status", format: "status" },
+    ],
+    template: () => ({}),
+  },
+
+  // ====== compute: GuestAccessKey ======
+  // proto: kacho.cloud.compute.v1.GuestAccessKeyService (/compute/v1/guestAccessKeys).
+  // Мутации async → Operation. Mutable: name/labels; публичный ключ задаётся при
+  // создании и не правится — заменить ключ значит завести другой.
+  //
+  // Почему это ресурс, а не поле машины, сказано в самом контракте: ключ,
+  // переданный полем, живёт ровно столько, сколько машина, и его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Отсюда же и отказ
+  // сервера на `sshPublicKeys` в запросе машины — он называет этот ресурс заменой.
+  //
+  // Поля формы — из общего объявления, см. `@shared/lib/guest-access-key-form`:
+  // ресурс живёт и во втором реестре, и выписанные дважды поля разошлись бы молча.
+  "guest-access-keys": {
+    id: "guest-access-keys",
+    route: "guest-access-keys",
+    apiPath: "/compute/v1/guestAccessKeys",
+    payloadKey: "guest_access_keys",
+    singular: "Ключ доступа",
+    plural: "Ключи доступа",
+    genitive: "Ключа доступа",
+    accusative: "ключ доступа",
+    serviceTitle: SERVICES.compute.menuTitle,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Отпечаток считаем МЫ — по нему арендатор сверяет, тот ли ключ доехал.
+      { header: "Отпечаток", path: "fingerprint", format: "code" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: GUEST_ACCESS_KEY_FIELDS,
+    template: guestAccessKeyTemplate,
+    emptyState: GUEST_ACCESS_KEY_EMPTY_STATE,
+  },
+
   // ====== compute: MachineType (read-only sizing catalog) ======
   // proto: kacho.cloud.compute.v1.MachineTypeService (/compute/v1/machineTypes).
   // Public read-only; admin-CRUD — InternalMachineTypeService (:9091, ban #6).
@@ -2660,10 +2979,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "machine-types",
     apiPath: "/compute/v1/machineTypes",
     payloadKey: "machine_types",
-    singular: "Тип машины",
-    plural: "Типы машин",
+    singular: ENTITIES["machine-types"].singular,
+    accusative: "тип машины",
+    plural: ENTITIES["machine-types"].plural,
     genitive: "Типа машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -2693,6 +3013,152 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Статус", path: "status", format: "status" },
     ],
     template: () => ({}),
+  },
+
+  // proto: GET /compute/v1/placementGroups (kacho.cloud.compute.v1.PlacementGroupService).
+  //
+  // Группа размещения — правило ВЗАИМНОГО размещения машин: разнести (чтобы отказ
+  // одного куска железа не унёс всю группу) либо сблизить (чтобы машины видели
+  // друг друга коротким путём). Ровно два намерения, и оба выражаются без единого
+  // числа: «разнести на N доменов отказа» описывало бы НАШУ раскладку железа, а не
+  // намерение арендатора, — опубликовав число, мы обязались бы держать раскладку.
+  //
+  // Якорь размещения ВЗАИМОИСКЛЮЧАЮЩИЙ: группа либо зональная, либо региональная.
+  // Это дискриминатор, а не пара необязательных полей: строка с обоими описывает
+  // размещение, которого не бывает, и сервис отвергает её словами «a group is
+  // anchored by exactly one coordinate». Поэтому форма показывает ровно одну
+  // координату, а sanitize снимает вторую — иначе оператор заполнил бы обе и
+  // получил отказ на поле, которого он не выбирал.
+  //
+  // Спека объявлена ЗДЕСЬ, а реестр compute на неё ССЫЛАЕТСЯ (второй копии нет):
+  // раздел монтируют оба приложения — compute-remote своим маршрутом и vpc в
+  // standalone-сборке.
+  "placement-groups": {
+    id: "placement-groups",
+    route: "placement-groups",
+    apiPath: "/compute/v1/placementGroups",
+    payloadKey: "placement_groups",
+    singular: "Группа размещения",
+    plural: "Группы размещения",
+    genitive: "Группы размещения",
+    accusative: "группу размещения",
+    serviceTitle: SERVICES.compute.menuTitle,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    mutationsReturnOperation: true,
+    docs: [{ label: "Группы размещения", href: "#" }],
+    emptyState: {
+      title: "Создайте вашу первую группу размещения",
+      body:
+        "Группа размещения — правило взаимного размещения машин: разнести их по разным доменам отказа " +
+        "или, наоборот, сблизить. Машина входит в группу при создании.",
+      docs: ["Группы размещения"],
+    },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      {
+        header: "Правило",
+        path: "strategy",
+        render: (row) => <>{PLACEMENT_STRATEGY_TEXT[displayText(row.strategy)] ?? placementDash}</>,
+      },
+      {
+        // Якорь — ресурс каталога geo, поэтому ссылка, а не идентификатор. Ветку
+        // ZONAL/REGIONAL рисует единственный `PlacementAnchor`.
+        header: "Размещение",
+        path: "placement_type",
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
+      },
+      {
+        header: "Описание",
+        path: "description",
+        format: "text",
+      },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+      COL_CREATED,
+    ],
+    fields: [
+      FIELD_NAME_COMPUTE,
+      FIELD_DESCRIPTION,
+      FIELD_LABELS,
+      {
+        name: "strategy",
+        label: "Правило размещения",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "SPREAD",
+        options: [
+          { value: "SPREAD", label: "Разнести — отказ одного куска железа не унесёт всю группу" },
+          { value: "PACK", label: "Сблизить — машины видят друг друга коротким путём" },
+        ],
+        description: "Выбирается при создании и неизменяемо: смена правила — другая группа.",
+      },
+      {
+        name: "placement_type",
+        label: "Якорь размещения",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "ZONAL",
+        options: [
+          { value: "ZONAL", label: "Зона — машины в одной зоне" },
+          { value: "REGIONAL", label: "Регион — машины в одном регионе, зоны разные" },
+        ],
+        description: "Ровно одна координата: зональная группа региона не несёт, региональная — зоны.",
+      },
+      {
+        name: "zone_id",
+        label: "Зона",
+        type: "ref",
+        refResource: "zones",
+        required: true,
+        immutable: true,
+        visibleWhen: { field: "placement_type", equals: "ZONAL" },
+        placeholder: "Выберите зону",
+      },
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        visibleWhen: { field: "placement_type", equals: "REGIONAL" },
+        placeholder: "Выберите регион",
+      },
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      labels: {},
+      strategy: "SPREAD",
+      placement_type: "ZONAL",
+      zone_id: "",
+      region_id: "",
+    }),
+    // Неактивная координата снимается ПЕРЕД отправкой: сервис отвергает запрос,
+    // в котором заполнены обе, и отвергает по полю, которое оператор не выбирал.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      if (out.placement_type === "REGIONAL") delete out.zone_id;
+      else delete out.region_id;
+      return out;
+    },
   },
 
   // ====== Geography (kacho-geo): Region / Zone ====== + System AddressPool ======
@@ -2729,12 +3195,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     mutationsReturnOperation: true,
     internalGetPath: `${GEO_INTERNAL_REGIONS_PATH}/{id}`,
     payloadKey: "regions",
-    singular: "Регион",
-    plural: "Регионы",
+    singular: ENTITIES.regions.singular,
+    accusative: "регион",
+    plural: ENTITIES.regions.plural,
     genitive: "Региона",
     description:
       "Региональная координата размещения. Регионы заводит администратор кластера; тенанты читают каталог, чтобы выбрать, где разместить ресурс.",
-    serviceTitle: "Geography",
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: true, update: true, delete: true },
     listFilters: [
@@ -2769,7 +3236,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         required: true,
         immutable: true,
-        placeholder: "ru-central1",
+        placeholder: "region-1",
         description:
           "Назначается администратором и неизменяем: он попадает в каждый размещаемый ресурс как координата. Строчные буквы и цифры, сегменты через дефис.",
         pattern: REGION_ZONE_ID_PATTERN,
@@ -2827,12 +3294,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     mutationsReturnOperation: true,
     internalGetPath: `${GEO_INTERNAL_ZONES_PATH}/{id}`,
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
+    singular: ENTITIES.zones.singular,
+    accusative: "зону",
+    plural: ENTITIES.zones.plural,
     genitive: "Зоны",
     description:
       "Зональная координата размещения внутри региона. Зона открыта, только когда открыты и она сама, и её регион.",
-    serviceTitle: "Geography",
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: true, update: true, delete: true },
     listFilters: [
@@ -2887,7 +3355,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "string",
         required: true,
         immutable: true,
-        placeholder: "ru-central1-a",
+        placeholder: "region-1-a",
         description:
           "Назначается администратором и неизменяем. Обязан начинаться с идентификатора своего региона и дефиса.",
         pattern: REGION_ZONE_ID_PATTERN,
@@ -3028,10 +3496,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // читался бы как нарушение контракта и показывал отказ на исправной правке.
     mutationsReturnOperation: false,
     payloadKey: "pools",
-    singular: "Пул адресов",
-    plural: "Пулы адресов",
+    singular: ENTITIES["address-pools"].singular,
+    accusative: "пул адресов",
+    plural: ENTITIES["address-pools"].plural,
     genitive: "Пула адресов",
-    serviceTitle: "Администрирование",
+    serviceTitle: SERVICES.system.title,
     scope: "global",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -3165,7 +3634,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Default for zone+kind",
         type: "bool",
         default: false,
-        description: "Один is_default=true на (zone, kind).",
+        description: "Пул по умолчанию — один на пару «зона + семейство адресов».",
       },
       {
         name: "selector_priority",
@@ -3228,10 +3697,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // `network_load_balancers` (на проводе networkLoadBalancers → camelToSnake).
     // Было "load_balancers" → ResourceListPage читал data[undefined] → список пуст.
     payloadKey: "network_load_balancers",
-    singular: "Балансировщик нагрузки",
-    plural: "Балансировщики нагрузки",
+    singular: ENTITIES["load-balancers"].singular,
+    accusative: "балансировщик нагрузки",
+    plural: ENTITIES["load-balancers"].plural,
     genitive: "Балансировщика нагрузки",
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -3275,8 +3745,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "INTERNAL_REGIONAL", label: "INTERNAL_REGIONAL — внутренний, региональный" },
           { value: "INTERNAL_ZONAL", label: "INTERNAL_ZONAL — внутренний, в одной зоне" },
         ],
-        description:
-          "Режим балансировщика (immutable после Create). Пара «external + zonal» невыразима by construction — её в наборе нет.",
+        description: "Режим балансировщика. Неизменяем после создания; сочетания «внешний + зональный» в наборе нет.",
       },
       FIELD_NAME_COMPUTE, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
       FIELD_DESCRIPTION,
@@ -3288,7 +3757,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "ref",
         refResource: "compute-regions",
         required: true,
-        description: "Регион размещения балансировщика. Cross-service ref → compute.Region; verified на request-path.",
+        description: "Регион размещения балансировщика.",
       },
       ...vipSourceFields("v4", "IPv4"),
       ...vipSourceFields("v6", "IPv6"),
@@ -3340,9 +3809,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "listeners",
     apiPath: "/nlb/v1/listeners",
     payloadKey: "listeners",
-    singular: "Обработчик",
-    plural: "Listeners",
-    serviceTitle: "Network Load Balancer",
+    singular: ENTITIES.listeners.singular,
+    accusative: "обработчик",
+    plural: ENTITIES.listeners.plural,
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -3378,7 +3848,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Балансировщик",
         type: "string",
         required: true,
-        description: "ID балансировщика-родителя (immutable после Create). Within-service FK → load_balancers.",
+        description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания.",
       },
       {
         name: "protocol",
@@ -3391,7 +3861,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "TCP", label: "TCP" },
           { value: "UDP", label: "UDP" },
         ],
-        description: "L4 транспорт (immutable после Create).",
+        description: "Транспортный протокол. Неизменяем после создания.",
       },
       {
         name: "port",
@@ -3400,7 +3870,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Порт",
         type: "int",
         required: true,
-        description: "Внешний порт 1..65535 (immutable после Create).",
+        description: "Внешний порт (1..65535). Неизменяем после создания.",
       },
       FIELD_LABELS,
     ],
@@ -3422,10 +3892,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "target-groups",
     apiPath: "/nlb/v1/targetGroups",
     payloadKey: "target_groups",
-    singular: "Целевая группа",
-    plural: "Target Groups",
+    singular: ENTITIES["target-groups"].singular,
+    accusative: "целевую группу",
+    plural: ENTITIES["target-groups"].plural,
     genitive: "Целевой группы",
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -3474,7 +3945,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "compute-regions",
         required: true,
         immutable: true,
-        description: "Регион размещения target-group (immutable после Create). Cross-service ref → compute.Region.",
+        description: "Регион размещения группы целей. Неизменяем после создания.",
       },
       {
         // NLB-1c (B8): на проводе google.protobuf.Duration ("300s"); прежнее
@@ -3596,9 +4067,21 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
     (r._protocol_mode as string | undefined) ??
     (r.protocol_name ? "name" : hasProtocolNumber(r.protocol_number) ? "number" : "any");
   const portsAny = typeof r._ports_any === "boolean" ? r._ports_any : !r.ports;
+  // Ветвь цели: та, что названа формой, иначе та, что заполнена в самом правиле.
+  // `cidr_group_id` стоит в этой цепочке наравне с двумя прежними ветвями —
+  // иначе правило, приехавшее с сервера со ссылкой на набор, вычищалось бы как
+  // «CIDR-блоки» и теряло цель при первом же сохранении.
   const targetKind =
     (r._target_kind as string | undefined) ??
-    (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.predefined_target ? "predefined" : "cidr");
+    (r.cidr_blocks
+      ? "cidr"
+      : r.security_group_id
+        ? "sg"
+        : r.cidr_group_id
+          ? "cidr-group"
+          : r.predefined_target
+            ? "predefined"
+            : "cidr");
 
   // Copy the persistent fields, dropping the form-only discriminators at EVERY
   // depth: the caller spreads a fetched SecurityGroupRule into this, and
@@ -3618,16 +4101,18 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
   if (portsAny) {
     delete out.ports;
   }
-  // target oneof — оставляем только нужный
-  if (targetKind === "cidr") {
-    delete out.security_group_id;
-    delete out.predefined_target;
-  } else if (targetKind === "sg") {
-    delete out.cidr_blocks;
-    delete out.predefined_target;
-  } else if (targetKind === "predefined") {
-    delete out.cidr_blocks;
-    delete out.security_group_id;
+  // target oneof — оставляем ровно одну ветвь. Список ветвей ведётся ОДНИМ
+  // перечнем, а не тремя ветками `if`: ветвь, забытая в одной из веток, уезжает
+  // вместе с выбранной, и сервис отвергает правило целиком («ровно одна цель»).
+  const TARGET_FIELD: Record<string, string> = {
+    cidr: "cidr_blocks",
+    sg: "security_group_id",
+    "cidr-group": "cidr_group_id",
+    predefined: "predefined_target",
+  };
+  const keep = TARGET_FIELD[targetKind];
+  for (const [kind, field] of Object.entries(TARGET_FIELD)) {
+    if (kind !== targetKind || keep === undefined) delete out[field];
   }
   return out;
 }
@@ -3685,6 +4170,14 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
   const bs = (o["boot_source"] as Record<string, unknown> | undefined) ?? {};
   o["boot_source"] = { type: bs["type"], id: bs["id"] };
 
+  // guest_access_key_ids: контракт ждёт ПЛОСКИЙ список идентификаторов, а
+  // generic ArrayField хранит элемент объектом {value}. Пустой список не шлём
+  // вовсе: пустое поле в теле утверждало бы «ключей нет», тогда как арендатор
+  // просто не дошёл до него.
+  const keys = flatIdList(o["guest_access_key_ids"]);
+  if (keys) o["guest_access_key_ids"] = keys;
+  else delete o["guest_access_key_ids"];
+
   if (kind === "CONTAINER") {
     delete o["vm_spec"];
     delete o["assign_external_address"];
@@ -3712,13 +4205,10 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
   const specs = nics
     .map((nic) => {
       const out: Record<string, unknown> = {};
-      const sgs = Array.isArray(nic["security_group_ids"])
-        ? (nic["security_group_ids"] as unknown[])
-            .map((it) =>
-              typeof it === "object" && it !== null && "value" in it ? (it as Record<string, unknown>)["value"] : it,
-            )
-            .filter((v) => typeof v === "string" && v)
-        : [];
+      // Тот же перевод «элемент-объект формы → плоский список», что и у ключей
+      // доступа. Он живёт одним объявлением (`@shared/lib/id-list`): выписанный
+      // здесь второй раз, он разошёлся бы с первым молча.
+      const sgs = flatIdList(nic["security_group_ids"]) ?? [];
       // Существующий NetworkInterface (nic_id) — отдаём только nic_id (+ SG, если заданы);
       // подсеть/адрес берутся из самого NIC (см. compute.v1.NetworkInterfaceSpec.nic_id).
       if (nic["_use_existing_nic"] === true && nic["nic_id"]) {
@@ -3791,57 +4281,25 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ (или
-// /iam/ для IAM-scoped) per spec.id. Соответствует routes в App.tsx
-// (KAC-198 fix: некоторые компоненты строили `/projects/<pid>/<route>` без
-// этого сегмента — детальная страница 404'илась).
-export function resourceServicePrefix(specId: string): "vpc" | "compute" | "nlb" | "iam" {
-  if (specId.startsWith("compute-")) return "compute";
-  switch (specId) {
-    // NLB domain
-    case "network-load-balancers":
-    case "load-balancers":
-    case "listeners":
-    case "target-groups":
-      return "nlb";
-    // IAM domain — пути под /iam/<route>, не под /projects/
-    case "accounts":
-    case "projects":
-    case "users":
-    case "service-accounts":
-    case "groups":
-    case "roles":
-    case "access-bindings":
-      return "iam";
-    // Compute admin (без compute- префикса)
-    case "regions":
-    case "zones":
-    case "address-pools":
-      return "compute";
-    default:
-      // VPC ресурсы: networks, subnets, addresses, route-tables,
-      // security-groups, network-interfaces, gateways
-      return "vpc";
-  }
-}
+// Домен-владелец и правило сборки адреса живут в `@shared/lib/service-prefix` —
+// чистом файле без React, чтобы модуль мог взять их, не таща за собой чужой
+// реестр. Здесь только ре-экспорт: у него нет тела, поэтому разойтись с
+// источником он не может, а вызывающие не меняют импортов.
+export {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // resourceProjectPath — полный SPA-путь до listing данного ресурса в
 // контексте project'а. Возвращает null для IAM-ресурсов (они не scoped to
-// project) и когда projectId не известен.
-/** Cluster-scoped админ-ресурсы, живущие под /system/*, а не внутри проекта. */
-const SYSTEM_SCOPED = new Set(["regions", "zones", "address-pools"]);
-
+// project), для cluster-scoped каталога отдаёт /system/*, и null когда
+// projectId не известен.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  // Каталог размещения и пулы адресов — cluster-scoped, смонтированы под
-  // /system/*. Прогон их через project-scoped ветку давал несуществующий путь,
-  // и «назад» с региона (как и переход после его удаления) уводил в проекты IAM.
-  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
-  const prefix = resourceServicePrefix(specId);
-  if (prefix === "iam") return null;
-  if (!projectId) return null;
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPathImpl(specId, spec.route, projectId);
 }
 
 // Thin generic wrapper over the single lib/path implementation (superset that

@@ -24,13 +24,13 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert, Button, Modal, Space, Typography } from "antd";
 import { SwapOutlined } from "@ant-design/icons";
 
-import { ApiError } from "@/api/client";
 import { volumesApi } from "@/api/resources";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 /** Состояния тома, из которых край принимает смену типа диска. Перечень —
  *  предусловие RPC, а не догадка: из прочих состояний он отвечает
@@ -66,8 +66,7 @@ export function ChangeDiskTypeDialog({
       if (id) setOpId(id);
       else invalidate("volumes", projectId);
     },
-    onError: (e) =>
-      toast.error(`Смена типа диска: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Смена типа диска: ${errorText(e)}`),
   });
 
   const allowed = changeDiskTypeAllowed(status);

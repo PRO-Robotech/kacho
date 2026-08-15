@@ -39,6 +39,7 @@ import { operationsListPath } from "@shared/lib/operations-subroute";
 import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   spec: ResourceSpec;
@@ -171,7 +172,7 @@ export function ResourceDetailPage({
       else invalidate(spec.id, project?.id);
     },
     onError: (e) => {
-      setActionErr(e instanceof ApiError ? `${e.code}: ${e.message}` : e.message);
+      setActionErr(errorText(e));
     },
   });
 
@@ -417,7 +418,9 @@ export function ResourceDetailPage({
     typeof getByPath<boolean>(data, "reserved") === "boolean"
       ? {
           label: "Зарезервирован",
-          value: <BoolFact value={getByPath<boolean>(data, "reserved")} yes="Зарезервирован" no="Не зарезервирован" accent />,
+          value: (
+            <BoolFact value={getByPath<boolean>(data, "reserved")} yes="Зарезервирован" no="Не зарезервирован" accent />
+          ),
         }
       : null,
     typeof getByPath<boolean>(data, "used") === "boolean"

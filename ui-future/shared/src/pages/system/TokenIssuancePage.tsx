@@ -93,7 +93,7 @@ export interface TokenKindConfig {
 function isStepUpError(err: unknown): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.status === 401 || err.status === 403) return true;
-  const hay = `${err.code} ${err.message}`.toLowerCase();
+  const hay = err.message.toLowerCase();
   return ["acr", "step-up", "step up", "stepup", "mfa", "assurance", "aal2"].some((n) => hay.includes(n));
 }
 
@@ -156,14 +156,22 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
       if (resolved.kind === "operation") {
         setIssueOpId(resolved.opId);
       } else {
-        toast.error(resolved.kind === "violation" ? resolved.message : "Ответ без операции");
+        // Объединение обеих линий: общий разбор из ствола (он знает обе формы
+        // конверта) плюс конкретика этой ветки — «выпуск», а не безличное
+        // «ответ». Выбрать одну сторону значило бы потерять либо разбор, либо
+        // то, что сообщение называет ДЕЙСТВИЕ, о котором говорит.
+        toast.error(
+          resolved.kind === "violation"
+            ? "Сервер не вернул операцию — подтвердить выпуск невозможно"
+            : "Ответ без операции",
+        );
       }
     },
     onError: (err) => {
       if (isStepUpError(err)) {
         setStepUpNotice(STEP_UP_MESSAGE);
       } else {
-        toast.error(err instanceof Error ? err.message : "Не удалось выпустить credential");
+        toast.error(err instanceof Error ? err.message : "Не удалось выпустить");
       }
     },
   });
@@ -374,7 +382,7 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
           type="warning"
           showIcon
           message="Не определён текущий пользователь"
-          description="Выпуск требует авторизованной сессии (created_by_user_id). Войдите, чтобы выпускать credential'ы."
+          description="Выпуск требует выполненного входа. Войдите и повторите."
         />
       )}
 

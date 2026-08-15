@@ -7,7 +7,7 @@ import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { presetFieldsForSpec } from "@shared/lib/preset-fields";
@@ -15,6 +15,8 @@ import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { operationOutcome, operationWarnings, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -164,7 +166,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
       if (resolved.kind === "violation") {
         // Ресурс объявил, что мутации отвечают Operation. Ответа без операции
         // достаточно, чтобы НЕ утверждать успех: подтверждать нечем.
-        toast.error(`Создать ${spec.singular}: ${resolved.message}`);
+        toast.error(`${createActionLabel(spec)}: ${resolved.message}`);
         return;
       }
       // Синхронный ответ самим ресурсом (vpc AddressPool).
@@ -172,14 +174,14 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
       void navigate(backHref);
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
-      toast.error(`Создать ${spec.singular}: ${m}`);
+      const m = errorText(err);
+      toast.error(`${createActionLabel(spec)}: ${m}`);
     },
   });
 
   useEffect(() => {
     if (outcome.kind === "failed") {
-      toast.error(`Создать ${spec.singular}: ${outcome.message}`);
+      toast.error(`${createActionLabel(spec)}: ${outcome.message}`);
       setPendingOpId(null);
       return;
     }
@@ -231,7 +233,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
         onChange={setObj}
         lockedPaths={lockedPathsRef.current}
         fieldOptionsFilter={fieldOptionsFilter}
-        submitLabel={`Создать ${spec.singular.toLowerCase()}`}
+        submitLabel={createActionLabel(spec)}
         submitting={mutation.isPending || pendingOpId !== null}
         onSubmit={submit}
         onCancel={() => navigate(backHref)}

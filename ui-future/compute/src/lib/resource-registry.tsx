@@ -15,12 +15,28 @@
 import type { ReactNode } from "react";
 import { Typography } from "antd";
 import type { FormField } from "@shared/lib/form-schema";
+import { flatIdList } from "@shared/lib/id-list";
+import {
+  GUEST_ACCESS_KEY_EMPTY_STATE,
+  GUEST_ACCESS_KEY_FIELDS,
+  guestAccessKeyTemplate,
+} from "@shared/lib/guest-access-key-form";
 import { setByPath } from "./path";
 import { formatBytes } from "./bytes";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import { REGISTRY as SHARED_REGISTRY } from "@shared/lib/resource-registry";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -76,9 +92,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
     singular: "Виртуальная машина",
+    accusative: "виртуальную машину",
     plural: "Виртуальные машины",
     genitive: "Виртуальной машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "project",
     // Start/Stop/Restart — доменные действия на detail (InstanceActions), не в ops.
     ops: { create: true, update: true, delete: true },
@@ -123,7 +140,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "zones",
         required: true,
         immutable: true,
-        description: "Зона размещения инстанса (immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения машины. Неизменяема после создания.",
       },
       {
         name: "instance_kind",
@@ -137,7 +154,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "CONTAINER", label: "CONTAINER — контейнер-джоба (образ из registry.image)" },
         ],
         description:
-          "Сильный первый дискриминатор (immutable после Create): VM запускает ОС из storage.image; CONTAINER — эфемерный rootfs из OCI registry.image.",
+          "Вид машины; неизменяем после создания. Виртуальная машина запускает операционную систему из образа диска, контейнер — из образа реестра.",
       },
       {
         name: "machine_type_id",
@@ -163,14 +180,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Владелец образа: storage.image (диск-образ kacho-storage, для VM) или registry.image (OCI-артефакт kacho-registry, для CONTAINER).",
       },
       {
+        // Образ — списком, а не строкой.
+        //
+        // Сервер принимает здесь РОВНО `img-<base32>`: `validateBootSource`
+        // (services/compute) зовёт `corevalidate.ResourceID("Image", "img", …)`.
+        // Прежняя подсказка предлагала две формы — с тегом и OCI-ссылку, — и обе
+        // сервер отвергает: у образа хранилища нет ни поля тега, ни поля
+        // дайджеста, а ветка registry.image отвергается целиком («у образа из
+        // реестра сегодня нет durable-адреса»). То есть форма предлагала набрать
+        // руками идентификатор, который она же могла показать списком.
         name: "boot_source.id",
         label: "Образ",
-        type: "string",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
         required: true,
         createOnly: true,
-        placeholder: "img-9k2m4x7q1n8p:22.04-lts   |   ml/bert-trainer:cu121",
+        visibleWhen: { field: "boot_source.type", equals: "storage.image" },
         description:
-          "Ссылка на образ с тегом/дайджестом внутри id: «img-<base32>:<tag>» / «img-<base32>@sha256:<hex>» (storage.image) либо «repo/name:tag» (registry.image).",
+          "Образ ОС, из которого материализуется загрузочный том машины. Список — образы текущего проекта; нет ни одного — создайте образ в разделе Storage.",
       },
       {
         name: "cpu_guarantee_percent",
@@ -189,6 +217,34 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         placeholder: "sva…",
         description:
           "Опционально: сервисный аккаунт (iam), доступный внутри инстанса. Для публичных образов можно не задавать.",
+      },
+      {
+        // Ключи входа — ССЫЛКАМИ на ресурс, а не материалом в теле запроса.
+        // Контракт это объясняет прямым текстом: ключ, переданный полем, живёт
+        // ровно столько, сколько машина, и его нельзя ни отозвать, ни заменить,
+        // ни узнать, где ещё он используется.
+        name: "guest_access_key_ids",
+        label: "Ключи доступа",
+        type: "array",
+        itemLabel: "ключ",
+        createOnly: true,
+        maxItems: 32,
+        visibleWhen: { field: "instance_kind", equals: "VM" },
+        description:
+          "Публичные ключи, с которыми вы войдёте в гостевую систему. Ключ — отдельный ресурс проекта: его можно отозвать, заменить и увидеть, где ещё он используется. Нет ни одного — создайте прямо здесь.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Ключ доступа",
+            type: "ref",
+            refResource: "guest-access-keys",
+            refProjectScoped: true,
+            required: true,
+            createResource: "guest-access-keys",
+            createTitle: "Создать ключ доступа",
+          },
+        ],
       },
       // --- VM-specific (instanceKind = VM) ---
       {
@@ -284,6 +340,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       assign_external_address: false,
       acknowledge_unreachable: false,
       use_default_network: true,
+      guest_access_key_ids: [],
       labels: {},
     }),
     // UI-форма → wire. Оставляем ровно одну ветку oneof spec по instance_kind;
@@ -291,6 +348,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const kind = out.instance_kind;
+
+      // guest_access_key_ids: контракт ждёт ПЛОСКИЙ список идентификаторов, а
+      // generic ArrayField хранит элемент объектом {value}. Пустой список не
+      // шлём вовсе: пустое поле в теле означало бы «ключей нет», тогда как
+      // арендатор просто не дошёл до него.
+      out.guest_access_key_ids = flatIdList(out.guest_access_key_ids);
+      if (!out.guest_access_key_ids) delete out.guest_access_key_ids;
 
       // boot_source: на вход только {type,id} (output-only/form-only поля срезаем).
       const bs = (out.boot_source as Record<string, unknown> | undefined) ?? {};
@@ -312,6 +376,21 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
       if (!out.service_account_id) delete out.service_account_id;
       return out;
+    },
+    // Клиент-валидация ДО submit — ровно тем же тоном, каким откажет сервер.
+    //
+    // Ветка `registry.image` объявлена в контракте и ОТВЕРГАЕТСЯ явно: у образа
+    // из реестра сегодня нет durable-адреса (репозиторий адресуется парой
+    // «реестр + имя», а имя переименовывается отдельным глаголом). Форма обязана
+    // сказать это словами, а не отправлять запрос, который не может пройти:
+    // подборщика образов у этой ветки нет by construction, и без пояснения
+    // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
+    validate: (obj) => {
+      const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
+      if (bs.type === "registry.image") {
+        return "Источник registry.image пока не принимается: у образа из реестра нет неизменяемого адреса, поэтому ссылка в машине сломалась бы после чужого переименования. Выберите storage.image.";
+      }
+      return null;
     },
     // wire → UI-форма (edit). service_account (Referrer) → service_account_id.
     hydrate: (obj) => {
@@ -336,10 +415,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "machine-types",
     apiPath: "/compute/v1/machineTypes",
     payloadKey: "machine_types",
-    singular: "Тип машины",
-    plural: "Типы машин",
+    singular: ENTITIES["machine-types"].singular,
+    accusative: "тип машины",
+    plural: ENTITIES["machine-types"].plural,
     genitive: "Типа машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -370,6 +450,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
+  // Группа размещения — правило взаимного размещения машин. Спека объявлена ОДИН
+  // раз, в общем реестре, и здесь стоит ССЫЛКА на то же объявление: раздел
+  // монтируют оба приложения (compute-remote и standalone-сборка vpc), а вторая
+  // копия разошлась бы с первой молча — как уже разошлись копии формы ресурса.
+  "placement-groups": SHARED_REGISTRY["placement-groups"],
+
   // ====== cross-service ref-цели (read-only, для RefSelect) ======
   // geo.Zone — zone_id при Create.
   zones: {
@@ -377,12 +463,80 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
-    plural: "Зоны",
-    serviceTitle: "Geography",
+    singular: ENTITIES.zones.singular,
+    accusative: "зону",
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.geo.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
+    template: () => ({}),
+  },
+
+  // ====== compute: GuestAccessKey ======
+  // proto: kacho.cloud.compute.v1.GuestAccessKeyService (/compute/v1/guestAccessKeys).
+  // Мутации async → Operation. Mutable: name/labels; public_key задаётся при
+  // создании и не правится — заменить ключ значит завести другой.
+  //
+  // Почему это ресурс, а не поле машины, сказано в самом контракте: ключ,
+  // переданный полем, живёт ровно столько, сколько машина, и его нельзя ни
+  // отозвать, ни заменить, ни узнать, где ещё он используется. Отсюда же и
+  // отказ сервера на `sshPublicKeys` в запросе машины — он называет этот ресурс
+  // заменой.
+  //
+  // Закрытая половина ключа здесь не хранится НИКОГДА и полем формы не является.
+  "guest-access-keys": {
+    id: "guest-access-keys",
+    route: "guest-access-keys",
+    apiPath: "/compute/v1/guestAccessKeys",
+    payloadKey: "guest_access_keys",
+    singular: "Ключ доступа",
+    plural: "Ключи доступа",
+    genitive: "Ключа доступа",
+    accusative: "ключ доступа",
+    serviceTitle: SERVICES.compute.menuTitle,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Отпечаток считаем МЫ — по нему арендатор сверяет, тот ли ключ доехал.
+      { header: "Отпечаток", path: "fingerprint", format: "code" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    // Поля формы и шаблон — из ОДНОГО объявления (`@shared/lib/guest-access-key-form`):
+    // тот же ресурс есть во втором реестре, и выписанные дважды поля разошлись бы
+    // молча. Колонки остаются здесь — они несут разметку и берут атомы этого модуля.
+    fields: GUEST_ACCESS_KEY_FIELDS,
+    template: guestAccessKeyTemplate,
+    emptyState: GUEST_ACCESS_KEY_EMPTY_STATE,
+  },
+
+  // storage.Image — источник загрузочного тома (project-scoped picker).
+  // Здесь ТОЛЬКО цель ссылки: CRUD образа живёт в разделе Storage.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: "Образ",
+    plural: "Образы",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      { header: "Имя", path: "name", format: "text" },
+      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+    ],
     template: () => ({}),
   },
 
@@ -392,9 +546,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "volumes",
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
-    singular: "Том",
-    plural: "Тома",
-    serviceTitle: "Storage",
+    singular: ENTITIES.volumes.singular,
+    accusative: "том",
+    plural: ENTITIES.volumes.plural,
+    serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -410,9 +565,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    singular: "Сетевой интерфейс",
-    plural: "Сетевые интерфейсы",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES["network-interfaces"].singular,
+    accusative: "сетевой интерфейс",
+    plural: ENTITIES["network-interfaces"].plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -427,19 +583,21 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Навигируемые ресурсы remote'а — инстанс + каталог типов машин (сегмент `compute`).
-// Ref-цели (zones/volumes/network-interfaces) не навигируются в этом remote.
-export function resourceServicePrefix(_specId: string): "compute" {
-  return "compute";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в @shared.
+// Здесь стояла своя: она возвращала `compute` на любой идентификатор, поэтому
+// ссылка на сетевой интерфейс (vpc), том (storage) и зону (глобальный каталог)
+// с карточки машины адресовалась сегментом compute-remote'а, маршрута такого у
+// него нет, и catch-all выбрасывал человека обратно на список машин.
+//
+// Реестр остаётся модульным (в нём ровно те ресурсы, что показывает модуль), а
+// правило сборки адреса — общее: `resourceListPath` принимает маршрут спеки.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

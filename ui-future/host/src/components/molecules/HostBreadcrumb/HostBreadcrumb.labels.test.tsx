@@ -65,9 +65,9 @@ describe("HostBreadcrumb — крошка на живых адресах", () =>
     return render(<HostBreadcrumb context={emptyContext} onChange={jest.fn()} />);
   };
 
-  it("на странице томов показывает «Хранилище / Тома», а не «STORAGE / Раздел»", () => {
+  it("на странице томов показывает «Storage / Тома», а не «STORAGE / Раздел»", () => {
     at("/projects/prj-1/storage/volumes");
-    expect(screen.getByText("Хранилище")).toBeInTheDocument();
+    expect(screen.getByText("Storage")).toBeInTheDocument();
     expect(screen.getByText("Тома")).toBeInTheDocument();
     expect(screen.queryByText("Раздел")).not.toBeInTheDocument();
   });

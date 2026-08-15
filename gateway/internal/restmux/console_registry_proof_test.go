@@ -55,7 +55,7 @@ const cleanNetworkSpec = `
 // findingsOf разбирает синтетический реестр и возвращает находки по нему.
 func findingsOf(t *testing.T, src string) []consoleFinding {
 	t.Helper()
-	parsed, err := parseConsoleRegistry("probe.tsx", src, nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", src, nil, nil)
 	if err != nil {
 		t.Fatalf("parse probe registry: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestConsoleScannerRefusesWhatItCannotRead(t *testing.T) {
   },`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseConsoleRegistry("probe.tsx", probeRegistry(spec), nil); err == nil {
+			if _, err := parseConsoleRegistry("probe.tsx", probeRegistry(spec), nil, nil); err == nil {
 				t.Fatal("the scanner accepted a construct it does not model: it would then check nothing and say nothing")
 			}
 		})
@@ -227,13 +227,17 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect exported string consts: %v", err)
 	}
+	externVals, err := consoleExportedValueConsts(filepath.Join(root, "ui-future"))
+	if err != nil {
+		t.Fatalf("collect exported value consts: %v", err)
+	}
 	for _, file := range files {
 		rel := mustRel(root, file)
 		blob, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
-		parsed, err := parseConsoleRegistry(rel, string(blob), extern)
+		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
@@ -319,7 +323,7 @@ const composedSpec = `
 // полей с неразрешёнными именами, прошло бы проверку на количество и не
 // проверило бы ни одного настоящего ключа.
 func TestConsoleScannerExpandsComposedFieldSets(t *testing.T) {
-	parsed, err := parseConsoleRegistry("probe.tsx", composedRegistry(composedHelper, composedSpec), nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", composedRegistry(composedHelper, composedSpec), nil, nil)
 	if err != nil {
 		t.Fatalf("parse composed registry: %v", err)
 	}
@@ -354,7 +358,7 @@ func TestConsoleScannerExpandsComposedFieldSets(t *testing.T) {
 // куда его только что расширили.
 func TestConsoleScannerChecksInsideAComposedFieldSet(t *testing.T) {
 	clean := composedRegistry(composedHelper, composedSpec)
-	parsed, err := parseConsoleRegistry("probe.tsx", clean, nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", clean, nil, nil)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -366,7 +370,7 @@ func TestConsoleScannerChecksInsideAComposedFieldSet(t *testing.T) {
 		"    { name: `${family}_source.address_id`,",
 		"    { name: `${family}_source.bogus_ref`, label: \"x\", type: \"string\", immutable: true },\n"+
 			"    { name: `${family}_source.address_id`,", 1)
-	parsed, err = parseConsoleRegistry("probe.tsx", composedRegistry(injected, composedSpec), nil)
+	parsed, err = parseConsoleRegistry("probe.tsx", composedRegistry(injected, composedSpec), nil, nil)
 	if err != nil {
 		t.Fatalf("parse injected: %v", err)
 	}
@@ -430,7 +434,7 @@ func TestConsoleScannerRefusesCompositionItCannotRead(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseConsoleRegistry("probe.tsx", composedRegistry(tc.helper, tc.spec), nil); err == nil {
+			if _, err := parseConsoleRegistry("probe.tsx", composedRegistry(tc.helper, tc.spec), nil, nil); err == nil {
 				t.Fatal("the scanner accepted a composition it cannot read: it would then check nothing and say nothing")
 			}
 		})
@@ -456,6 +460,10 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect exported string consts: %v", err)
 	}
+	externVals, err := consoleExportedValueConsts(consoleRoot)
+	if err != nil {
+		t.Fatalf("collect exported value consts: %v", err)
+	}
 
 	expanded := 0
 	var where []string
@@ -465,7 +473,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 			t.Fatalf("%s: %v", file, err)
 		}
 		rel := mustRel(root, file)
-		parsed, err := parseConsoleRegistry(rel, string(blob), extern)
+		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
@@ -541,4 +549,67 @@ func TestSanitizeReshapeIsNotRemoval(t *testing.T) {
 	if _, ok := body["form_only_leftover"]; ok {
 		t.Error("a genuinely removed key must not reach the check")
 	}
+}
+
+// TestConsoleSharedRefsResolve — ссылка на общее объявление обязана КУДА-ТО вести.
+//
+// ПРЕДМЕТ. Раздел, который монтируют два приложения, объявляет спеку один раз, а
+// второй реестр ссылается на неё (`SHARED_REGISTRY["<id>"]`). Сканер такую запись
+// пропускает без разбора — спеку проверяют там, где она объявлена. Без этой пробы
+// пропуск был бы безусловным: ссылка на несуществующий идентификатор прошла бы
+// молча, и раздел остался бы непроверенным ВООБЩЕ — ни здесь, ни там.
+//
+// Доказано инъекцией: подмена идентификатора на отсутствующий в общем реестре
+// роняет пробу с координатой; на исправном дереве она молчит и печатает перепись.
+func TestConsoleSharedRefsResolve(t *testing.T) {
+	root := repoRoot(t)
+	consoleRoot := filepath.Join(root, "ui-future")
+	files, err := consoleRegistryFiles(consoleRoot)
+	if err != nil {
+		t.Fatalf("walk ui-future: %v", err)
+	}
+	extern, err := consoleExportedStringConsts(consoleRoot)
+	if err != nil {
+		t.Fatalf("collect exported string consts: %v", err)
+	}
+	externVals, err := consoleExportedValueConsts(consoleRoot)
+	if err != nil {
+		t.Fatalf("collect exported value consts: %v", err)
+	}
+
+	// Что объявляет ОБЩИЙ реестр — цель всех ссылок.
+	sharedIDs := make(map[string]bool)
+	refs := 0
+	type ref struct{ file, id string }
+	var found []ref
+
+	for _, file := range files {
+		rel := mustRel(root, file)
+		blob, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
+		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
+		if err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
+		shared := strings.Contains(rel, "/shared/")
+		for _, spec := range parsed.Specs {
+			if shared {
+				sharedIDs[spec.ID] = true
+			}
+			if spec.SharedRef != "" {
+				refs++
+				found = append(found, ref{rel, spec.SharedRef})
+			}
+		}
+	}
+
+	for _, r := range found {
+		if !sharedIDs[r.id] {
+			t.Errorf("%s: ссылка на %q, которого в общем реестре нет — раздел остался бы непроверенным ни здесь, ни там", r.file, r.id)
+		}
+	}
+	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+	t.Logf("перепись: реестров %d, записей общего реестра %d, ссылок на них %d", len(files), len(sharedIDs), refs)
 }

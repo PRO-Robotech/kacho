@@ -13,11 +13,11 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
-import { ApiError } from "@/api/client";
 import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface NicRow {
   index?: string;
@@ -42,10 +42,7 @@ export function InstanceNicsTab({
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const rows = useMemo<NicRow[]>(() => (getByPath<NicRow[]>(data, "network_interfaces") ?? []) as NicRow[], [data]);
-  const attachedIds = useMemo(
-    () => new Set(rows.map((r) => r.nic_id).filter((x): x is string => !!x)),
-    [rows],
-  );
+  const attachedIds = useMemo(() => new Set(rows.map((r) => r.nic_id).filter((x): x is string => !!x)), [rows]);
 
   const mut = useMutation({
     mutationFn: (params: { verb: "attach" | "detach"; nicId: string }) =>
@@ -61,7 +58,7 @@ export function InstanceNicsTab({
       }
     },
     onError: (e) => {
-      toast.error(`Интерфейс: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`);
+      toast.error(`Интерфейс: ${errorText(e)}`);
       setPendingId(null);
     },
   });

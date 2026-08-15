@@ -11,12 +11,13 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Input, InputNumber, Select, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@/api/client";
+import { api } from "@/api/client";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 const TARGET_GROUPS_API = "/nlb/v1/targetGroups";
 const MONO_FONT = "ui-monospace, monospace";
@@ -120,7 +121,7 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
       }
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = errorText(err);
       toast.error(`${vars.verb === "add" ? "Добавить" : "Удалить"} target: ${m}`);
       setPendingKey(null);
     },

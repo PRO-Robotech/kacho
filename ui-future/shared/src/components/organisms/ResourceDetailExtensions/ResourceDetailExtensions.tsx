@@ -25,6 +25,7 @@ import { SgRulesPanel, type SgRule } from "@shared/components/organisms/SgRulesP
 import { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
 import { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";
 import { NetworkCidrManager } from "@shared/components/organisms/NetworkCidrManager";
+import { CidrGroupBlocksManager } from "@shared/components/organisms/CidrGroupBlocksManager";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { ConsumersFact } from "@shared/components/molecules/ConsumersFact";
 import { SECURITY_GROUP_USED_BY_LIMIT } from "@shared/lib/used-by-limits";
@@ -389,6 +390,37 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     overviewExtra: ({ data }) => [
       { label: "Тип", value: txt(getByPath<string>(data, "type") || "SHARED_EGRESS_GATEWAY") },
     ],
+  },
+
+  "cidr-groups": {
+    overviewExtra: ({ data, projectId }) => [
+      { label: "Членов", value: txt(getByPath<number>(data, "cidr_block_count")) },
+      {
+        // Тот же вид, что у адреса и у группы правил, — и БЕЗ потолка: сервер
+        // отдаёт потребителей набора целиком (усечения на этом поле у него нет),
+        // поэтому подпись «показаны первые N» была бы утверждением, которого
+        // никто не делал.
+        label: "Кем используется",
+        value: (
+          <ConsumersFact
+            usedBy={getByPath<UsedByEntry[]>(data, "used_by") ?? []}
+            projectId={projectId}
+          />
+        ),
+      },
+    ],
+    // Состав набора — глаголы `:add-cidr-blocks` / `:remove-cidr-blocks`, как у
+    // подсети и сети; правкой он не меняется (Update таких полей не несёт).
+    overviewBelow: ({ data }) => {
+      const id = getByPath<string>(data, "id") ?? "";
+      const v4 = getByPath<string[]>(data, "v4_cidr_blocks") ?? [];
+      const v6 = getByPath<string[]>(data, "v6_cidr_blocks") ?? [];
+      return (
+        <div style={{ marginTop: 24, maxWidth: 760 }}>
+          <CidrGroupBlocksManager cidrGroupId={id} v4Blocks={v4} v6Blocks={v6} />
+        </div>
+      );
+    },
   },
 
   "network-interfaces": {
