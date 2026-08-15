@@ -42,6 +42,7 @@ import (
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	niapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/networkinterface"
+	quotaapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/quota"
 	routetableapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/routetable"
 	sgapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/securitygroup"
 	subnetapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
@@ -161,6 +162,11 @@ type services struct {
 	// cidrGroupHandler — именованные наборы префиксов: предмет, на который
 	// ссылается правило группы безопасности вместо своей копии перечня.
 	cidrGroupHandler *cidrgroupapp.Handler
+	// quotaHandler — арендаторское чтение квот. ТОЛЬКО чтение: величины
+	// назначает администратор облака на внутреннем слушателе iam. nil означает
+	// «внутреннего адреса соседа нет», и тогда сервис этого RPC не выставляет —
+	// а не выставляет отвечающий пустотой (см. регистрацию ниже).
+	quotaHandler *quotaapp.Handler
 	// dataplaneHandler — шов с исполнителем датаплейна: поток намерения и приём
 	// подтверждения применения (:9091, запрет #6). На публичный слушатель НЕ
 	// регистрируется: поток несёт намерение по всем арендаторам сразу и
@@ -1227,9 +1233,24 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
 		cidrGroupHandler:   cgHandler,
+		quotaHandler:       quotaHandlerOrNil(quotaGuard),
 		dataplaneHandler:   dataplaneHandler,
 		dataplaneCompactor: dataplaneapp.NewCompactor(dataplaneStore, logger.With("component", "dataplane-compaction")),
 	}
+}
+
+// quotaHandlerOrNil возвращает обработчик чтения квот ЛИБО настоящий nil.
+//
+// Возврат `*quotaapp.Handler(nil)` в поле структуры был бы не тем же самым:
+// проверка `svcs.quotaHandler != nil` на типизированном nil ИСТИННА, и метод
+// зарегистрировался бы, чтобы упасть на первом же вызове. Тот же класс уже
+// стоил паники на пути создания ресурса, поэтому решение принимается здесь, где
+// тип ещё конкретен.
+func quotaHandlerOrNil(g *quota.Guard) *quotaapp.Handler {
+	if g == nil {
+		return nil
+	}
+	return quotaapp.NewHandler(g)
 }
 
 // registerPublicServices — публичные RPC + OperationService на внешний listener.
@@ -1242,6 +1263,15 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	vpcv1.RegisterGatewayServiceServer(srv, svcs.gatewayHandler)
 	vpcv1.RegisterNetworkInterfaceServiceServer(srv, svcs.networkInterfaceHandler)
 	vpcv1.RegisterCidrGroupServiceServer(srv, svcs.cidrGroupHandler)
+	// Чтение квот выставляется, ТОЛЬКО когда полоса учёта собрана. Иначе метод
+	// отвечал бы пустым набором на каждый запрос — то есть «квот нет», ровно то
+	// утверждение, которое контракт запрещает делать (`ListQuotasResponse`:
+	// пустой массив зарезервирован за состоянием, которого этот сервис не
+	// сообщает). Незарегистрированный метод отвечает `Unimplemented`, и это
+	// честно: возможности здесь действительно нет.
+	if svcs.quotaHandler != nil {
+		vpcv1.RegisterQuotaServiceServer(srv, svcs.quotaHandler)
+	}
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
