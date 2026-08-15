@@ -490,6 +490,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Ключ доступа",
     plural: "Ключи доступа",
     genitive: "Ключа доступа",
+    accusative: "ключ доступа",
     serviceTitle: "Compute Cloud",
     scope: "project",
     ops: { create: true, update: true, delete: true },

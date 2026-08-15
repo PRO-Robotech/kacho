@@ -227,7 +227,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         createOnly: true,
         immutable: true,
         visibleWhen: { field: "_source_kind", equals: "snapshot" },
-        description: "Снимок, из которого восстанавливается том (immutable после Create). Same-DB ref → Snapshot.",
+        description: "Снимок, из которого восстанавливается том. Задаётся при создании и потом не меняется.",
       },
       {
         // Образ — вход в цепочку «образ → том → машина». Без него из свежего

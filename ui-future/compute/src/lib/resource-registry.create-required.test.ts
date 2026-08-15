@@ -76,7 +76,10 @@ describe("every create-capable spec can express what Create requires", () => {
     // Instance + GuestAccessKey. Второй заведён вместе с цепочкой загрузки
     // (#377): ключ входа в гостя — ресурс со своим жизненным циклом, полем
     // машины его нельзя ни отозвать, ни заменить.
-    expect(createCapable.length).toBe(2);
+    // Третий — группа размещения (#368), заведена параллельной линией той же волны.
+    // Число не «сколько получилось», а сколько раздел ОБЯЗАН предлагать: меньше —
+    // значит один ресурс молча выпал из создания.
+    expect(createCapable.length).toBe(3);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {
