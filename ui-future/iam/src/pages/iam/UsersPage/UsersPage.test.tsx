@@ -6,6 +6,7 @@ import type { User } from "@shared/api/iam";
 import type { AuthContextValue } from "@shared/contexts/AuthContext";
 import { contextApi } from "@shared/lib/context-store";
 import type { UsersPage as UsersPageExport } from "./UsersPage";
+import { antdDouble } from "@/test/antd-double";
 
 interface MutationOpts {
   method: string;
@@ -19,7 +20,7 @@ const runs: { method: string; body: unknown }[] = [];
 
 // Свой дублёр antd — общий бросает на `rowKey="id"`, не подставляет значение
 // ячейки и теряет подписи подтверждений; разбор — в шапке @/test/antd-double.
-jest.unstable_mockModule("antd", async () => (await import("@/test/antd-double")).antdDouble);
+jest.unstable_mockModule("antd", () => antdDouble);
 
 jest.unstable_mockModule("@shared/api/iam", () => ({
   IAM: { users: "/iam/v1/users" },
