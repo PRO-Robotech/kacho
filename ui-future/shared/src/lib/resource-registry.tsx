@@ -2171,6 +2171,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     id: "disk-types",
     route: "disk-types",
     apiPath: "/storage/v1/diskTypes",
+    // То же послабление и по той же причине: административный CRUD типа диска
+    // синхронен (`rpc Create/Update/SetLifecycle` → `DiskType`, `rpc Delete` →
+    // `DeleteDiskTypeResponse`). Второй и последний такой путь в дереве.
+    mutationsReturnOperation: false,
     payloadKey: "disk_types",
     singular: "Тип диска",
     plural: "Типы дисков",
@@ -3017,6 +3021,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     id: "address-pools",
     route: "address-pools",
     apiPath: "/vpc/v1/addressPools",
+    // ПОСЛАБЛЕНИЕ, НАЗВАННОЕ ПО ПРИЧИНЕ: административный CRUD пула отвечает самим
+    // ресурсом, а не операцией (`rpc Create/Update/AddCidrBlocks/RemoveCidrBlocks`
+    // → `AddressPool`, `rpc Delete` → `DeleteAddressPoolResponse`). Умолчание
+    // спеки строгое (ban #9), поэтому без этой строки успешный ответ пула
+    // читался бы как нарушение контракта и показывал отказ на исправной правке.
+    mutationsReturnOperation: false,
     payloadKey: "pools",
     singular: "Пул адресов",
     plural: "Пулы адресов",

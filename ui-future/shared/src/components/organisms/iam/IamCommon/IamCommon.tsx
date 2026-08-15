@@ -8,6 +8,7 @@ import { CopyOutlined } from "@ant-design/icons";
 import { api, ApiError } from "@shared/api/client";
 import { formatDateTime } from "@shared/lib/datetime";
 import { useOperation } from "@shared/lib/use-operation";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import type { Operation } from "@shared/api/types";
 import type { Role } from "@shared/api/iam";
@@ -115,7 +116,11 @@ export function useIamMutation(opts: {
       setSubmitting(true);
       try {
         const path = typeof opts.path === "function" ? opts.path(body) : opts.path;
-        let resp: { operation: Operation };
+        // Форма ответа — то, что предстоит выяснить, а не то, что можно
+        // объявить. Тип `{ operation: Operation }` здесь и был корнем: он
+        // утверждал вложенный конверт, которого край не отдаёт, и заставлял
+        // читать пустой ключ.
+        let resp: unknown;
         switch (opts.method) {
           case "POST":
             resp = await api.create(path, body ?? {});
@@ -130,16 +135,41 @@ export function useIamMutation(opts: {
             resp = await api.action(path, body ?? {});
             break;
         }
-        const id = resp?.operation?.id ?? null;
-        if (id) {
-          setOpId(id);
+        // ИСХОД ЧИТАЕТСЯ ОБЩИМ РАЗБОРОМ, а не своим ключом.
+        //
+        // Здесь стояло `resp?.operation?.id ?? null`. Край отдаёт Operation
+        // ВЕРХНИМ уровнем — это записано в `operation-outcome.ts`, который знает
+        // обе формы конверта, — поэтому вложенный ключ был пуст ВСЕГДА, ветка
+        // «операции нет, считаем успех» срабатывала на каждой мутации, а опрос
+        // ниже (он написан верно и читает `error`) не запускался ни разу.
+        //
+        // Через этот путь идут выдача ролей, приглашение пользователя и членство
+        // в группах — действия, где «применилось или нет» важнее всего. Отказ
+        // операции показывался пользователю зелёным тостом.
+        //
+        // `expectOperation` здесь безусловно true, и это не допущение: все
+        // мутации iam объявлены `returns (operation.Operation)` — предикат
+        // (разбор контрактов `proto/kacho/cloud/iam/v1/*`) не нашёл ни одного
+        // синхронного мутирующего RPC этого домена.
+        const resolved = resolveMutationResponse(resp, true);
+        if (resolved.kind === "operation") {
+          setOpId(resolved.opId);
+        } else if (resolved.kind === "violation") {
+          // Не успех и не отказ сервера — ответ не той формы, какую обещает
+          // контракт. Подтвердить выполнение нечем, поэтому говорим об этом, а
+          // не рапортуем «готово».
+          toast.error(resolved.message);
+          setSubmitting(false);
         } else {
-          // sync — нет operation; считаем успех
           invalidateRef.current.forEach((k) => void qc.invalidateQueries({ queryKey: k }));
           if (successTextRef.current) toast.success(successTextRef.current);
           setSubmitting(false);
         }
-        return resp.operation;
+        // Ответ отдаётся как есть: его ФОРМА — как раз то, что выясняет разбор
+        // выше, и сузить её здесь значило бы повторить исходную ошибку в типе.
+        // Читателей у этого значения в дереве нет (`run(...)` зовут ради
+        // побочного действия), поэтому оно ничего не обещает вызывающему.
+        return resp;
       } catch (e) {
         const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Ошибка";
         toast.error(msg);

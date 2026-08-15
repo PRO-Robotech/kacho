@@ -57,7 +57,7 @@ export function DetailOverviewActions({ spec, data, projectId, detailBase, extAc
           name={name}
           projectId={projectId}
           requireNameConfirm={requiresNameConfirm(spec.id)}
-          expectOperation={spec.mutationsReturnOperation === true}
+          expectOperation={spec.mutationsReturnOperation !== false}
           onSuccess={() => navigate(listPath)}
         />
       )}

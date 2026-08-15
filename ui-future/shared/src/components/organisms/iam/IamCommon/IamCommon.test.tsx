@@ -13,7 +13,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 import type { Operation } from "@shared/api/types";
 
-const create = jest.fn<(path: string, body: unknown) => Promise<{ operation: Operation }>>();
+// Подставной край отдаёт `unknown`, и это не небрежность: ФОРМА ответа —
+// ровно то, что проверяется. Прежний тип `{ operation: Operation }` объявлял
+// вложенный конверт, которого настоящий край не отдаёт, поэтому все фикстуры
+// ниже кормили обёртку формой, которой не бывает, — и дефект был невидим.
+const create = jest.fn<(path: string, body: unknown) => Promise<unknown>>();
 const toastError = jest.fn();
 const toastSuccess = jest.fn();
 let operation: Operation | undefined;
@@ -179,18 +183,56 @@ describe("useIamMutation", () => {
     expect(screen.getByText("свободно")).toBeInTheDocument();
   });
 
-  it("синхронный ответ без операции сразу отпускает форму и говорит об успехе", async () => {
-    create.mockResolvedValue({ operation: undefined as unknown as Operation });
+  it("ответ без операции — нарушение контракта, а не успех", async () => {
+    // Здесь стояло обратное утверждение: «синхронный ответ без операции сразу
+    // отпускает форму и говорит об успехе». Оно ЗАКРЕПЛЯЛО дефект: все мутации
+    // iam объявлены `returns (operation.Operation)`, поэтому ответ без операции
+    // означает, что подтвердить выполнение нечем.
+    create.mockResolvedValue({});
     show();
 
     start();
 
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Готово"));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringContaining("не вернул операцию")));
+    expect(toastSuccess).not.toHaveBeenCalled();
     expect(screen.getByText("свободно")).toBeInTheDocument();
   });
 
+  it("операция ВЕРХНИМ уровнем — та форма, которую отдаёт край, — читается", async () => {
+    // ПРЕДМЕТ ЗАДАЧИ. Обёртка читала `resp.operation.id`; край отдаёт операцию
+    // верхним уровнем, поэтому ключ был пуст ВСЕГДА, опрос не запускался ни разу,
+    // и зелёный тост печатался по коду ответа.
+    //
+    // Прежние фикстуры этого не показывали, потому что кормили обёртку вложенным
+    // конвертом — формой, которой у настоящего края нет.
+    create.mockResolvedValue({ id: "opr-top", done: false });
+    show();
+
+    start();
+
+    await waitFor(() => expect(screen.getByText("занято")).toBeInTheDocument());
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("операция ВЕРХНИМ уровнем, завершившаяся отказом, показывает отказ", async () => {
+    // То же, доведённое до исхода: именно здесь пользователь видел успех при
+    // отказе — на выдаче ролей, приглашении и членстве в группах.
+    create.mockResolvedValue({ id: "opr-top-err", done: false });
+    show();
+
+    start();
+    await waitFor(() => expect(screen.getByText("занято")).toBeInTheDocument());
+
+    operation = { id: "opr-top-err", done: true, error: { code: 7, message: "permission denied" } };
+    fireEvent.click(screen.getByRole("button", { name: "перечитать" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("permission denied"));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
   it("пока операция не завершилась, форма занята и успеха не объявляет", async () => {
-    create.mockResolvedValue({ operation: { id: "opr-1", done: false } });
+    // Вложенный конверт остаётся понятным: старые точки вызова типизированы так.
+      create.mockResolvedValue({ operation: { id: "opr-1", done: false } });
     show();
 
     start();
