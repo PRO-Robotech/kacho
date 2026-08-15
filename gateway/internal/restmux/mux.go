@@ -665,7 +665,7 @@ func NewMux(
 		// Public surface: все 7 сервисов под /iam/v1/*.
 		// User не имеет публичного Create — User'ы создаются через
 		// InternalUserService.UpsertFromIdentity (OIDC-callback в api-gateway);
-		// display_name/email берется из Zitadel при следующем UpsertFromIdentity.
+		// display_name/email берётся от поставщика личности при следующем UpsertFromIdentity.
 		if iamAddr != "" {
 			if err := iampb.RegisterAccountServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccountService: %w", err)

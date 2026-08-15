@@ -23,7 +23,7 @@ export type SubjectType = "user" | "service_account" | "system";
 export interface AuthUser {
   /** Внутренний User.id (`usr-...`) либо ServiceAccount.id (`sva-...`). */
   id: string;
-  /** Display name из Zitadel (email или ФИО). */
+  /** Отображаемое имя от поставщика личности (email либо ФИО). */
   display_name?: string;
   email?: string;
   subject_type: SubjectType;
