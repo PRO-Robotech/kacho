@@ -712,16 +712,39 @@ func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, lbID s
 	}
 	logger = logger.With("load_balancer_id", lbID)
 
+	releaseFailed := false
 	if u.addressClient != nil {
 		for family, alloc := range allocated {
 			if alloc.addressID == "" {
 				continue
 			}
 			if rerr := u.releaseAddress(ctx, alloc.addressID, alloc.origin); rerr != nil {
+				releaseFailed = true
 				logger.Warn("LoadBalancer.Create compensation release failed",
 					"err", rerr, "address_id", alloc.addressID, "family", string(family))
 			}
 		}
+	}
+	// HANDLE СНОСИТСЯ ТОЛЬКО ПОСЛЕ ПОДТВЕРЖДЁННОГО ОСВОБОЖДЕНИЯ.
+	//
+	// Строка балансировщика — единственная координата, по которой реконсайлер
+	// вообще способен найти аренду: он выбирает `load_balancers` в состояниях
+	// DELETING/CREATING и идёт от них к `address_id`. Обратной развёртки со
+	// стороны vpc («освободить всё, чем владеет этот владелец») в системе нет.
+	// Значит снос handle при НЕосвобождённом адресе превращает временный отказ
+	// соседа в ВЕЧНУЮ утечку: адрес остаётся жить, его подсеть больше никогда не
+	// удаляется, а найти его некому — прежняя редакция при этом писала в журнал
+	// «free_ip_runner will reconcile», то есть обещала ровно то, что сама и
+	// делала невозможным.
+	//
+	// Оставленный handle не «мусор»: он в CREATING, его подберёт free_ip_runner
+	// по возрасту и доведёт освобождение под системной личностью. Это дороже на
+	// один цикл реконсиляции и дешевле на одну безвозвратно потерянную аренду.
+	if releaseFailed {
+		logger.Warn("LoadBalancer.Create compensation kept the durable handle: "+
+			"a released-but-unconfirmed address is only reachable through it",
+			"load_balancer_id", lbID)
+		return
 	}
 	if err := u.deleteHandle(ctx, lbID); err != nil {
 		logger.Warn("LoadBalancer.Create compensation delete handle failed; free_ip_runner will reconcile", "err", err)

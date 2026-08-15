@@ -239,13 +239,33 @@ func (u *DeleteLoadBalancerUseCase) releaseVIP(ctx context.Context, addressID st
 	if u.addressClient == nil {
 		return status.Error(codes.Unavailable, "vpc internal address client not configured")
 	}
-	if origin == domain.VipOriginAuto {
-		// owned: снять собственный owned-референс, затем удалить адрес.
-		if err := u.addressClient.ClearReference(ctx, addressID); err != nil {
-			return err
-		}
-		return u.addressClient.FreeIP(ctx, addressID)
+	// Снять референс обязаны В ЛЮБОМ случае — и owned, и linked.
+	if err := u.addressClient.ClearReference(ctx, addressID); err != nil {
+		return err
 	}
-	// linked (tenant-owned): снять только референс.
-	return u.addressClient.ClearReference(ctx, addressID)
+	// УДЕРЖИВАЕТ адрес только ЯВНО названный linked (адрес арендатора, он его
+	// переживает). Всё остальное — включая НЕЗАПОЛНЕННЫЙ дискриминатор —
+	// освобождается.
+	//
+	// Направление сравнения здесь и есть предмет. Колонка допускает пустое
+	// значение (`vip_origin_v4 text NOT NULL DEFAULT ''`), и ни одно ограничение
+	// не связывает непустой `address_id_v4` с непустым `vip_origin_v4`. Прежняя
+	// редакция спрашивала «это auto?» — и на пустом значении уходила в ветку
+	// linked, то есть НЕ ОСВОБОЖДАЛА адрес вовсе. Два других места, принимающих
+	// РОВНО ЭТО решение, спрашивают наоборот, «это linked?»
+	// (`create.go` compensateCreate → releaseAddress и
+	// `jobs/free_ip_runner.go` releaseFamily), поэтому неизвестное значение у них
+	// освобождается. Три места об одном предмете, из которых верным было два.
+	//
+	// Цена ошибки несимметрична, и поэтому у неё есть безопасная сторона.
+	// Неосвобождённый адрес держит свою подсеть ВЕЧНО: как только строка
+	// балансировщика удалена (шаг 3 ниже), реконсайлер её больше не видит — он
+	// выбирает только `load_balancers` в состояниях DELETING/CREATING, — и
+	// освободить аренду в системе уже некому. Адрес арендатора при этом защищён
+	// не догадкой, а записью: полоса привязки существующего адреса пишет
+	// `linked` ЯВНО (`create.go` acquireFamilyVIP, ветка srcAddressLink).
+	if origin == domain.VipOriginLinked {
+		return nil
+	}
+	return u.addressClient.FreeIP(ctx, addressID)
 }
