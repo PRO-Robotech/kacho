@@ -551,6 +551,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     id: "disk-types",
     route: "disk-types",
     apiPath: "/storage/v1/diskTypes",
+    // То же послабление и по той же причине: административный CRUD типа диска
+    // синхронен (`rpc Create/Update/SetLifecycle` → `DiskType`, `rpc Delete` →
+    // `DeleteDiskTypeResponse`). Второй и последний такой путь в дереве.
+    mutationsReturnOperation: false,
     payloadKey: "disk_types",
     singular: ENTITIES["disk-types"].singular,
     accusative: "тип диска",

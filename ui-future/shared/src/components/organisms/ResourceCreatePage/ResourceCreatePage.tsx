@@ -158,7 +158,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
     // смаршрутизирован никем).
     mutationFn: (item: unknown) => api.create(mutationBasePath(spec), item),
     onSuccess: (resp) => {
-      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation === true);
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
       if (resolved.kind === "operation") {
         setPendingOpId(resolved.opId);
         return;

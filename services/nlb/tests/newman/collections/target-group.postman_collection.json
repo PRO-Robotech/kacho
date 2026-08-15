@@ -230,7 +230,7 @@
           ]
         },
         {
-          "name": "cleanup-drain-targets-rya22",
+          "name": "cleanup-drain-targets-rya23",
           "request": {
             "method": "POST",
             "header": [
@@ -349,7 +349,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya23",
+          "name": "cleanup-tg-rya24",
           "request": {
             "method": "DELETE",
             "header": [
@@ -597,7 +597,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya24",
+          "name": "cleanup-tg-rya25",
           "request": {
             "method": "DELETE",
             "header": [
@@ -936,7 +936,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya25",
+          "name": "cleanup-tg-rya26",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1426,7 +1426,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya26",
+          "name": "cleanup-tg-rya27",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1793,7 +1793,7 @@
           ]
         },
         {
-          "name": "get-404-rya27",
+          "name": "get-404-rya28",
           "request": {
             "method": "GET",
             "header": [
@@ -2156,7 +2156,7 @@
           ]
         },
         {
-          "name": "move-back-rya28",
+          "name": "move-back-rya29",
           "request": {
             "method": "POST",
             "header": [
@@ -2276,7 +2276,56 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya29",
+          "name": "post-move-materialize-tg-rya9",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg-rya30",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2515,7 +2564,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya9",
+          "name": "setup-materialize-tg-rya10",
           "request": {
             "method": "GET",
             "header": [
@@ -2564,7 +2613,7 @@
           ]
         },
         {
-          "name": "lops-rya10",
+          "name": "lops-rya11",
           "request": {
             "method": "GET",
             "header": [
@@ -2617,7 +2666,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya30",
+          "name": "cleanup-tg-rya31",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4026,7 +4075,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya31",
+          "name": "cleanup-first-rya32",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4433,7 +4482,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya11",
+          "name": "setup-materialize-tg-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -4594,7 +4643,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya12",
+          "name": "setup-materialize-lb-rya13",
           "request": {
             "method": "GET",
             "header": [
@@ -4643,7 +4692,7 @@
           ]
         },
         {
-          "name": "wire-listener-rya13",
+          "name": "wire-listener-rya14",
           "request": {
             "method": "POST",
             "header": [
@@ -4780,7 +4829,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya14",
+          "name": "del-blocked-rya15",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4836,7 +4885,7 @@
           ]
         },
         {
-          "name": "del-lst-rya32",
+          "name": "del-lst-rya33",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4957,7 +5006,7 @@
           ]
         },
         {
-          "name": "del-lb-rya33",
+          "name": "del-lb-rya34",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5078,7 +5127,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya34",
+          "name": "cleanup-tg-rya35",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5326,7 +5375,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya15",
+          "name": "del-blocked-rya16",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5382,7 +5431,7 @@
           ]
         },
         {
-          "name": "rm-targets-rya35",
+          "name": "rm-targets-rya36",
           "request": {
             "method": "POST",
             "header": [
@@ -5501,7 +5550,7 @@
           ]
         },
         {
-          "name": "cleanup-best-effort-rya36",
+          "name": "cleanup-best-effort-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5740,7 +5789,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya16",
+          "name": "setup-materialize-tg-rya17",
           "request": {
             "method": "GET",
             "header": [
@@ -5789,7 +5838,7 @@
           ]
         },
         {
-          "name": "add-t-rya37",
+          "name": "add-t-rya38",
           "request": {
             "method": "POST",
             "header": [
@@ -5908,7 +5957,7 @@
           ]
         },
         {
-          "name": "del-race-rya38",
+          "name": "del-race-rya39",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5959,7 +6008,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya39",
+          "name": "rm-cleanup-rya40",
           "request": {
             "method": "POST",
             "header": [
@@ -6078,7 +6127,7 @@
           ]
         },
         {
-          "name": "cleanup-best-effort-rya40",
+          "name": "cleanup-best-effort-rya41",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6317,7 +6366,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya17",
+          "name": "setup-materialize-tg-rya18",
           "request": {
             "method": "GET",
             "header": [
@@ -6478,7 +6527,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya18",
+          "name": "setup-materialize-lb-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -6527,7 +6576,7 @@
           ]
         },
         {
-          "name": "wire-listener-rya19",
+          "name": "wire-listener-rya20",
           "request": {
             "method": "POST",
             "header": [
@@ -6664,7 +6713,7 @@
           ]
         },
         {
-          "name": "mv-blocked-rya41",
+          "name": "mv-blocked-rya42",
           "request": {
             "method": "POST",
             "header": [
@@ -6729,7 +6778,7 @@
           ]
         },
         {
-          "name": "del-lst-rya42",
+          "name": "del-lst-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6850,7 +6899,7 @@
           ]
         },
         {
-          "name": "del-lb-rya43",
+          "name": "del-lb-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6971,7 +7020,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya44",
+          "name": "cleanup-tg-rya45",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7710,7 +7759,7 @@
           ]
         },
         {
-          "name": "cleanup-rya45",
+          "name": "cleanup-rya46",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8258,7 +8307,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya46",
+          "name": "cleanup-tg-rya47",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8559,7 +8608,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya47",
+          "name": "cleanup-tg-rya48",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8847,7 +8896,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya48",
+          "name": "cleanup-tg-rya49",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9095,7 +9144,7 @@
           ]
         },
         {
-          "name": "get-https-rya49",
+          "name": "get-https-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -9147,7 +9196,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya50",
+          "name": "cleanup-tg-rya51",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9395,7 +9444,7 @@
           ]
         },
         {
-          "name": "get-grpc-rya51",
+          "name": "get-grpc-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -9447,7 +9496,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya52",
+          "name": "cleanup-tg-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9695,7 +9744,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya53",
+          "name": "cleanup-tg-rya54",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9943,7 +9992,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya54",
+          "name": "cleanup-tg-rya55",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10191,7 +10240,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya55",
+          "name": "cleanup-tg-rya56",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10439,7 +10488,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya56",
+          "name": "cleanup-tg-rya57",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10678,7 +10727,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya20",
+          "name": "setup-materialize-tg-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -10727,7 +10776,7 @@
           ]
         },
         {
-          "name": "lst-filt-lst21",
+          "name": "lst-filt-lst22",
           "request": {
             "method": "GET",
             "header": [
@@ -10780,7 +10829,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya57",
+          "name": "cleanup-tg-rya58",
           "request": {
             "method": "DELETE",
             "header": [

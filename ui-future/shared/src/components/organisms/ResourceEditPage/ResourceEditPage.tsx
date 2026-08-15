@@ -126,7 +126,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
     onSuccess: (resp) => {
-      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation === true);
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
       if (resolved.kind === "operation") {
         setPendingOpId(resolved.opId);
         return;

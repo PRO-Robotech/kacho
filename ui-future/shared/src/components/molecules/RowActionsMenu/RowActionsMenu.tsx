@@ -187,7 +187,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           name={name}
           projectId={projectId}
           requireNameConfirm={requiresNameConfirm(spec.id)}
-          expectOperation={spec.mutationsReturnOperation === true}
+          expectOperation={spec.mutationsReturnOperation !== false}
         />
       )}
 

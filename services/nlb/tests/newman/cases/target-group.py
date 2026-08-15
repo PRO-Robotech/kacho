@@ -271,6 +271,14 @@ CASES.append(Case(
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
+        # Прогрев после переезда — тот же класс, что у балансировщика (разбор там,
+        # в `load-balancer.py`): переезд меняет проект ресурса, а цель проверки
+        # прав резолвится через зеркало проекта, и на время его переклейки ответ
+        # приходит скрытым промахом, неотличимым от настоящего.
+        #
+        # Прогрев молчалив; уборка после него требует своего честного 200.
+        retry_until_authorized(Step(name="post-move-materialize-tg", method="GET",
+             path=f"{_TG_BASE}/{{{{tgId}}}}", test_script=[])),
         *_cleanup_tg(),
     ],
 ))

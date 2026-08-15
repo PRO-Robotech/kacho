@@ -659,7 +659,7 @@ export function ResourceDetailPage({
           resourceLabel={spec.singular}
           name={name || resourceId}
           projectId={project?.id ?? null}
-          expectOperation={spec.mutationsReturnOperation === true}
+          expectOperation={spec.mutationsReturnOperation !== false}
           onSuccess={() => navigate(backHref)}
         />
       )}

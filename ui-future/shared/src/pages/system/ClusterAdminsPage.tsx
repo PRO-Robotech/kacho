@@ -28,6 +28,7 @@ import { GrantAdminModal } from "@shared/components/organisms/system/GrantAdminM
 import { useAuth } from "@shared/contexts/AuthContext";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 
 export default function ClusterAdminsPage() {
   const qc = useQueryClient();
@@ -83,12 +84,14 @@ export default function ClusterAdminsPage() {
     setRevokingId(row.subject_id);
     try {
       const resp = await clusterApi.revokeAdmin(row.subject_id);
-      const id = resp.operation?.id;
-      if (id) {
-        setRevokeOpId(id);
+      // Отзыв админа — `RevokeAdmin` объявлен `returns (operation.Operation)`.
+      // Зелёный тост без чтения операции сообщал бы «отозван» и тогда, когда
+      // отзыв не применился: у отзыва прав «не применилось» опаснее всего.
+      const resolved = resolveMutationResponse(resp, true);
+      if (resolved.kind === "operation") {
+        setRevokeOpId(resolved.opId);
       } else {
-        toast.success("Admin отозван");
-        void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+        toast.error(resolved.kind === "violation" ? resolved.message : "Ответ без операции");
         setRevokingId(null);
       }
     } catch (e) {
