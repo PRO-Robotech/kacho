@@ -1,0 +1,137 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package repohygiene_test
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+)
+
+// Владелец считаемого вида ОБЯЗАН быть читателем пределов.
+//
+// ПРЕДМЕТ. Списание квоты живёт у владельца типа, а величина — у iam. Значит на
+// первой мутации владелец идёт к соседу за потолком, и если права звать резолв у
+// него нет, отказ приходит fail-closed: НИ ОДНА его мутация не проходит.
+//
+// ЧТО ЭТО СТОИЛО. Волна дала списание четырём доменам и не выдала им членства в
+// группе читателей: сквозной прогон одного из них дал 748 упавших утверждений из
+// 1806 — каскад от ОДНОГО отказа в правах. Собственные пробы каждого домена были
+// зелёными: у них резолв подставной и прав не спрашивает, а право живёт в третьем
+// месте — в посеве модели прав iam.
+//
+// ПОЧЕМУ ГЕЙТ, А НЕ ВНИМАНИЕ. Разрыв невидим с обеих сторон: сборка цела, пробы
+// владельца зелёные, пробы iam о чужом домене не знают. Единственное место, где
+// два факта встречаются, — это дерево, и спрашивать его должен предикат.
+//
+// ЧТО ИМЕННО УТВЕРЖДАЕТСЯ: множество доменов, у которых есть списание (триггер
+// `kacho_quota_count` в их миграциях), совпадает с множеством доменов, чья
+// служебная учётка названа членом группы читателей пределов в миграциях iam.
+func TestEveryQuotaChargingOwnerIsAQuotaReader(t *testing.T) {
+	t.Parallel()
+
+	root := repoRootFor(t)
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".sql")
+	require.NoError(t, err, "перечень миграций берётся у индекса дерева, а не обходом диска")
+
+	// Кто списывает: домен, чья миграция ставит триггер счётчика.
+	charging := map[string]string{} // домен → файл, где найдено
+	// Кто назван читателем: домен, чья служебная учётка попала в группу.
+	readers := map[string]string{}
+
+	chargeRe := regexp.MustCompile(`kacho_quota_count\(`)
+	// Членство ищется по ИМЕНИ СЛУЖБЫ в файле, который упоминает группу читателей,
+	// а НЕ по форме выражения вокруг него.
+	//
+	// Первая редакция искала `md5('kacho-<домен>')` — и не увидела собственную
+	// миграцию этой правки, где имена приходят переменной из перечня, а `md5`
+	// применяется к ней. Предикат мерил бы форму записи (как автор выразил вывод
+	// идентичности), а не предмет (назван ли домен читателем). Форма — свободный
+	// выбор автора и меняется; предмет — нет.
+	readerRe := regexp.MustCompile(`'kacho-([a-z]+)'`)
+
+	migrationsSeen := 0
+	for _, path := range files {
+		if !strings.Contains(path, "/internal/migrations/") {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		require.NoError(t, err, "чтение %s", path)
+		migrationsSeen++
+		body := string(raw)
+
+		// Путь абсолютный; домен читается из части ПОСЛЕ `services/`.
+		rel := path
+		if i := strings.Index(path, "/services/"); i >= 0 {
+			rel = path[i+1:]
+		}
+
+		if strings.HasPrefix(rel, "services/iam/") {
+			if !strings.Contains(body, "module.quota_readers") {
+				continue
+			}
+			for _, m := range readerRe.FindAllStringSubmatch(body, -1) {
+				if m[1] == "system" {
+					continue // владелец группы, не читатель
+				}
+				readers[m[1]] = rel
+			}
+			continue
+		}
+
+		if chargeRe.MatchString(body) {
+			// services/<домен>/internal/migrations/…
+			parts := strings.Split(rel, "/")
+			if len(parts) > 1 {
+				charging[parts[1]] = rel
+			}
+		}
+	}
+
+	require.NotZero(t, migrationsSeen,
+		"гейт не прочитал НИ ОДНОЙ миграции — он объявил бы «ноль находок», ничего не осмотрев")
+	require.NotEmpty(t, charging,
+		"гейт не нашёл ни одного домена со списанием: либо имя триггера сменилось, "+
+			"либо предикат перестал его ловить. Осмотрено миграций: %d", migrationsSeen)
+
+	var missing []string
+	for domain, where := range charging {
+		if _, ok := readers[domain]; !ok {
+			missing = append(missing, domain+" — списывает квоту ("+where+"), но не назван читателем пределов")
+		}
+	}
+	sort.Strings(missing)
+
+	t.Logf("перепись: миграций осмотрено %d; доменов со списанием %d (%s); читателей пределов %d (%s)",
+		migrationsSeen, len(charging), joinKeys(charging), len(readers), joinKeys(readers))
+
+	require.Empty(t, missing,
+		"владелец считаемого вида обязан быть читателем пределов — иначе КАЖДАЯ его мутация "+
+			"отвергается fail-closed на пути материализации, и это не видно ни одной его собственной пробе:\n%s",
+		strings.Join(missing, "\n"))
+}
+
+// repoRootFor — корень репозитория; пути перечня относительны ему.
+func repoRootFor(t testing.TB) string {
+	t.Helper()
+	root, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	return root
+}
+
+func joinKeys(m map[string]string) string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return strings.Join(out, ", ")
+}
