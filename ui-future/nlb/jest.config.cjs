@@ -4,7 +4,7 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
-  setupFilesAfterEnv: ["<rootDir>/src/test/setup.ts"],
+  setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
   // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
   // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для

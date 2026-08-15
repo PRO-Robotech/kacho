@@ -54,11 +54,20 @@ describe("VIP source picker follows the chosen placement", () => {
     expect(screen.queryByText(/Публичный VIP выделяется платформой автоматически/)).toBeNull();
     // The subnet candidate list is narrowed by the placement of the load balancer;
     // the placeholder names it, so a wrong derivation is visible here.
-    expect(screen.getAllByPlaceholderText(/Подсеть \(ZONAL\)/).length).toBeGreaterThan(0);
+    //
+    // Queried as TEXT, not as a `placeholder` attribute (#418). The module used to
+    // carry its own antd double whose `Select` spread every prop onto the DOM
+    // `<select>`, so `placeholder` became an attribute — something the real antd
+    // never produces: it renders the placeholder as visible text in the selector.
+    // The assertion was therefore pinned to the shape of the double. The shared
+    // double renders it as the leading option, i.e. as the operator sees it, so
+    // this reads the product instead. Same discriminating power — ZONAL still
+    // fails a REGIONAL derivation — on a fact that survives the double.
+    expect(screen.getAllByText(/Подсеть \(ZONAL\)/).length).toBeGreaterThan(0);
   });
 
   it("narrows subnet candidates to REGIONAL on a regional internal placement", () => {
     withProviders(<NlbVipSourceField value={formValue("INTERNAL_REGIONAL")} onChange={() => {}} />);
-    expect(screen.getAllByPlaceholderText(/Подсеть \(REGIONAL\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Подсеть \(REGIONAL\)/).length).toBeGreaterThan(0);
   });
 });
