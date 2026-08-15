@@ -21,9 +21,18 @@ import { toast } from "@shared/lib/toast";
 
 export type CidrKind = "v4" | "v6";
 
-// Глаголы обоих ресурсов ключуют семейство одинаково — ipv4_cidr_blocks /
-// ipv6_cidr_blocks.
-const FIELD_BY_KIND: Record<CidrKind, "ipv4_cidr_blocks" | "ipv6_cidr_blocks"> = {
+// Имена полей семейства задаёт ВЛАДЕЛЕЦ ресурса, а не эта секция.
+//
+// Здесь стояла общая пара `ipv4_cidr_blocks`/`ipv6_cidr_blocks` — верная для
+// подсети и сети и НЕВЕРНАЯ для набора префиксов, чьи глаголы принимают
+// `v4_cidr_blocks`/`v6_cidr_blocks`. Умолчание в таком месте — худший из
+// исходов: край разбирает тело, отбрасывая неизвестные ключи МОЛЧА, поэтому
+// действие вернуло бы успех, ничего не изменив. Поэтому пара обязательна и
+// объявляется у ресурса, рядом с его же путём глагола.
+export type CidrBlockFields = Record<CidrKind, string>;
+
+/** Пара имён для ресурсов, чьи глаголы ключуют семейство полным словом. */
+export const IP_PREFIXED_BLOCK_FIELDS: CidrBlockFields = {
   v4: "ipv4_cidr_blocks",
   v6: "ipv6_cidr_blocks",
 };
@@ -49,6 +58,9 @@ export interface CidrTableSectionProps {
    *  (`lib/api-path-surface`), которая резолвит её в константу файла. Спрятав
    *  путь за проп, секция вывела бы оба ресурса из-под её наблюдения. */
   actionPath: (verb: "add" | "remove") => string;
+  /** Как ВЛАДЕЛЕЦ называет поля семейства в теле глагола. Обязателен: умолчание
+   *  здесь дало бы успешный ответ на действие, ничего не изменившее. */
+  blockFields: CidrBlockFields;
   /** Префикс ключа кэша владельца: обновляется и карточка, и список. */
   invalidateKey: string;
   kind: CidrKind;
@@ -72,6 +84,7 @@ export interface CidrTableSectionProps {
 
 export function CidrTableSection({
   actionPath,
+  blockFields,
   invalidateKey,
   kind,
   blocks,
@@ -91,7 +104,7 @@ export function CidrTableSection({
   const [pendingCidr, setPendingCidr] = useState<string | null>(null);
 
   const family = kind === "v4" ? "IPv4" : "IPv6";
-  const field = FIELD_BY_KIND[kind];
+  const field = blockFields[kind];
 
   const mutate = useMutation({
     mutationFn: (params: { verb: "add" | "remove"; cidr: string }) =>

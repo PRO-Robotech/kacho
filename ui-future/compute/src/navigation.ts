@@ -38,6 +38,13 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
         requiresProject: true,
       },
       {
+        key: "compute-placement-groups",
+        icon: "layers",
+        label: "Группы размещения",
+        path: "compute/placement-groups",
+        requiresProject: true,
+      },
+      {
         key: "compute-machine-types",
         icon: "layers",
         label: "Типы машин",

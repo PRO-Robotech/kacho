@@ -130,6 +130,17 @@ describe("маршруты приложения против того, что п
     expect(dead).toEqual([]);
   });
 
+  it("набор префиксов открывается: список, создание, карточка, правка, вкладки", () => {
+    // Ресурс заведён в стволе 13 августа; в консоли его не было вовсе, при том
+    // что перечень подмаршрутов операций его адрес уже называл.
+    const base = "/projects/prj-1/vpc/cidr-groups";
+    expect(routed(base)).toBe(true);
+    expect(routed(`${base}/create`)).toBe(true);
+    expect(routed(`${base}/cdg-1`)).toBe(true);
+    expect(routed(`${base}/cdg-1/edit`)).toBe(true);
+    expect(routed(`${base}/cdg-1/operations`)).toBe(true);
+  });
+
   it("«Профиль» пользовательского меню ведёт в объявленный маршрут", () => {
     // Меню сайдбара и шапки уводит сюда; прежде оно вело в /iam/users, которого
     // в standalone-сборке vpc нет вовсе.

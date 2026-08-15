@@ -10,6 +10,7 @@ import {
   CameraOutlined,
   CloudServerOutlined,
   ClusterOutlined,
+  ContainerOutlined,
   DeploymentUnitOutlined,
   DesktopOutlined,
   FileImageOutlined,
@@ -22,6 +23,7 @@ import {
   RobotOutlined,
   SafetyCertificateOutlined,
   SafetyOutlined,
+  TagsOutlined,
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -46,6 +48,9 @@ const ICONS: Record<string, ReactNode> = {
   "security-groups": <SafetyOutlined />,
   "network-interfaces": <ApiOutlined />,
   gateways: <GatewayOutlined />,
+  // Набор префиксов — именованный список, на который ссылаются правила: глиф
+  // ярлыков, а не сети. Отличен от всех соседних по домену.
+  "cidr-groups": <TagsOutlined />,
   // compute / storage (сайдбар: DesktopOutlined / HddOutlined / FileImageOutlined
   // / CameraOutlined). Ключ — идентификатор спеки, а не название раздела: здесь
   // стояли `instances` (спека называется `compute-instances`, поэтому машина
@@ -53,6 +58,9 @@ const ICONS: Record<string, ReactNode> = {
   // спеки ни в одном реестре консоли, а публичного `/compute/v1/disks` в стволе
   // нет вовсе. Соответствие держит ResourceIcon.registry.test.ts.
   "compute-instances": <DesktopOutlined />,
+  // Группа размещения — правило взаимного размещения машин, а не сама машина:
+  // глиф контейнера отличает её от инстанса и от каталога типов.
+  "placement-groups": <ContainerOutlined />,
   volumes: <HddOutlined />,
   images: <FileImageOutlined />,
   snapshots: <CameraOutlined />,

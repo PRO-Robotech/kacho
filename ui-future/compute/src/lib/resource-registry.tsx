@@ -21,6 +21,7 @@ import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+import { REGISTRY as SHARED_REGISTRY } from "@shared/lib/resource-registry";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -369,6 +370,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       body: "Типы машин задаёт администратор кластера (InternalMachineTypeService). Тип машины — единый канал размера инстанса (vCPU/память/GPU): выберите его при создании виртуальной машины.",
     },
   },
+
+  // Группа размещения — правило взаимного размещения машин. Спека объявлена ОДИН
+  // раз, в общем реестре, и здесь стоит ССЫЛКА на то же объявление: раздел
+  // монтируют оба приложения (compute-remote и standalone-сборка vpc), а вторая
+  // копия разошлась бы с первой молча — как уже разошлись копии формы ресурса.
+  "placement-groups": SHARED_REGISTRY["placement-groups"],
 
   // ====== cross-service ref-цели (read-only, для RefSelect) ======
   // geo.Zone — zone_id при Create.

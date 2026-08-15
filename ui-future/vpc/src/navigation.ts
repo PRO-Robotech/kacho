@@ -52,6 +52,13 @@ export const VPC_NAVIGATION: RemoteNavSection[] = [
         requiresProject: true,
       },
       { key: "vpc-gateways", icon: "layers", label: "Шлюзы", path: "vpc/gateways", requiresProject: true },
+      {
+        key: "vpc-cidr-groups",
+        icon: "route",
+        label: "Наборы префиксов",
+        path: "vpc/cidr-groups",
+        requiresProject: true,
+      },
       { key: "vpc-operations", icon: "activity", label: "Операции", path: "vpc/operations", requiresProject: true },
     ],
   },

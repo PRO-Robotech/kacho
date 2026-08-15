@@ -7,7 +7,13 @@
 //   - description, labels
 //   - protocol_name | protocol_number  (либо name, либо number, либо ничего = any)
 //   - ports: PortRange { from_port, to_port }  (отсутствие = any)
-//   - oneof target { cidr_blocks | security_group_id } — РОВНО ОДНА цель
+//   - oneof target { cidr_blocks | security_group_id | cidr_group_id } — РОВНО ОДНА цель
+//
+// Третья ветвь — ссылка на ИМЕНОВАННЫЙ набор префиксов (`CidrGroup`). Она
+// существует ради того, чтобы список, повторяющийся во многих правилах, перестал
+// в них копироваться: правило называет набор, набор правится один раз. Пока
+// редактор знал две ветви из трёх, эта возможность была объявлена контрактом и
+// невыразима из консоли.
 //
 // Предустановленная цель СНЯТА с контракта (номер и имя зарезервированы, разрыв
 // объявлен в перечне `proto/declared-breaks.yaml`). Она была принимаемым, но
@@ -40,7 +46,7 @@ import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import { hasProtocolNumber } from "@shared/lib/resource-registry";
 
 type ProtocolMode = "any" | "name" | "number";
-type TargetKind = "cidr" | "sg";
+type TargetKind = "cidr" | "sg" | "cidr-group";
 
 export interface RuleExt {
   direction?: string;
@@ -54,6 +60,7 @@ export interface RuleExt {
   _target_kind?: TargetKind;
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
+  cidr_group_id?: string;
   id?: string;
 }
 
@@ -87,6 +94,11 @@ function inferTargetKind(r: RuleExt): TargetKind {
   if (r._target_kind) return r._target_kind;
   if (r.cidr_blocks) return "cidr";
   if (r.security_group_id) return "sg";
+  // Правило приезжает с сервера без служебных ключей формы, поэтому ветвь
+  // выводится по заполненной цели. Без этой строки правило, ссылающееся на
+  // набор, открывалось бы как «CIDR-блоки», и первое же сохранение сменило бы
+  // цель на другую — молча.
+  if (r.cidr_group_id) return "cidr-group";
   return "cidr";
 }
 
@@ -151,6 +163,8 @@ function ruleSummary(r: RuleExt): string {
     const v6 = r.cidr_blocks?.v6_cidr_blocks ?? [];
     const cs = [...v4, ...v6];
     parts.push(`CIDR ${cs[0] ?? "—"}${cs.length > 1 ? ` +${cs.length - 1}` : ""}`);
+  } else if (tk === "cidr-group") {
+    parts.push(`Набор ${r.cidr_group_id?.slice(0, 8) ?? "?"}`);
   } else {
     parts.push(`SG ${r.security_group_id?.slice(0, 8) ?? "?"}`);
   }
@@ -436,16 +450,30 @@ export function RuleBody({
                 _target_kind: v,
                 cidr_blocks: v === "cidr" ? (rule.cidr_blocks ?? { v4_cidr_blocks: ["0.0.0.0/0"] }) : undefined,
                 security_group_id: v === "sg" ? (rule.security_group_id ?? "") : undefined,
+                cidr_group_id: v === "cidr-group" ? (rule.cidr_group_id ?? "") : undefined,
               })
             }
             options={[
               { value: "cidr", label: "CIDR-блоки" },
               { value: "sg", label: "Security Group" },
+              { value: "cidr-group", label: "Набор префиксов" },
             ]}
             style={{ width: "100%" }}
           />
         </Field>
         <div>
+          {targetKind === "cidr-group" && (
+            // Набор — ресурс ТОГО ЖЕ проекта (край отвергает чужой), поэтому
+            // выбор идёт списком проекта, а не свободной строкой: оператор не
+            // обязан помнить идентификатор набора наизусть.
+            <RefSelect
+              refResource="cidr-groups"
+              refProjectScoped
+              value={rule.cidr_group_id ?? ""}
+              onChange={(uid) => set({ cidr_group_id: uid })}
+              placeholder="Выберите набор префиксов"
+            />
+          )}
           {targetKind === "sg" &&
             // KAC-243 (scenario 18): выбор target-SG только из ТОЙ ЖЕ сети.
             // refFilter оставляет лишь SG с networkId === editingNetworkId —

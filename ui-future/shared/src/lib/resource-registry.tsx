@@ -109,6 +109,15 @@ function BlockedReasonCell({
 // (`reserved 2, 100`).
 const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "External" }];
 
+// Правило группы размещения названо СЛЕДСТВИЕМ, а не машинным значением: «SPREAD»
+// не говорит ни что группа разнесена, ни зачем. Словарь один и тот же в списке и
+// на карточке — иначе один предмет читался бы двумя именами.
+const PLACEMENT_STRATEGY_TEXT: Record<string, string> = {
+  SPREAD: "Разнести по разным доменам отказа",
+  PACK: "Сблизить в одном домене",
+};
+const placementDash = <span className="text-muted-foreground">—</span>;
+
 // Общие колонки
 const COL_NAME: ResourceColumn = {
   header: "Имя",
@@ -2161,6 +2170,145 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
+  // proto: GET /vpc/v1/cidrGroups (kacho.cloud.vpc.v1.CidrGroupService).
+  //
+  // Набор префиксов — ИМЕНОВАННЫЙ список CIDR, на который правило группы
+  // безопасности ссылается вместо собственной копии списка. Ради этого он и
+  // заведён: диапазоны, встречающиеся в двадцати правилах, правятся в одном
+  // месте, а не в двадцати (и, рано или поздно, не во всех двадцати).
+  //
+  // Состав НЕ меняется правкой: `UpdateCidrGroupRequest` полей состава не несёт
+  // вовсе — только `:add-cidr-blocks` / `:remove-cidr-blocks`. Поэтому оба поля
+  // объявлены `editHidden`, а на карточке их правит та же секция набора блоков,
+  // что у подсети и у сети.
+  "cidr-groups": {
+    id: "cidr-groups",
+    route: "cidr-groups",
+    apiPath: "/vpc/v1/cidrGroups",
+    payloadKey: "cidr_groups",
+    singular: "Набор префиксов",
+    plural: "Наборы префиксов",
+    genitive: "Набора префиксов",
+    serviceTitle: "Virtual Private Cloud",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Мутации отвечают Operation (ban #9): ответ без operation-id — нарушение
+    // контракта, а не синхронный успех.
+    mutationsReturnOperation: true,
+    docs: [
+      { label: "Наборы префиксов", href: "#" },
+      { label: "Правила групп безопасности", href: "#" },
+    ],
+    emptyState: {
+      title: "Создайте ваш первый набор префиксов",
+      body:
+        "Набор префиксов — именованный список CIDR, на который ссылаются правила групп безопасности. " +
+        "Список правится один раз, и каждое правило, которое на него ссылается, следует за ним.",
+      docs: ["Наборы префиксов"],
+    },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      {
+        header: "IPv4",
+        path: "v4_cidr_blocks",
+        render: (row) => <CidrListCell items={[row.v4_cidr_blocks]} />,
+      },
+      {
+        header: "IPv6",
+        path: "v6_cidr_blocks",
+        render: (row) => <CidrListCell items={[row.v6_cidr_blocks]} />,
+      },
+      { header: "Членов", path: "cidr_block_count", format: "text" },
+      {
+        // `used_by` — output-only kacho.cloud.reference.Reference: группы правил,
+        // чьи правила ссылаются на этот набор. Сервер его ЗАПОЛНЯЕТ (выводит на
+        // чтении из проекции ссылок), поэтому поле показывается — правило «поле
+        // без источника не показывается» здесь выполнено.
+        header: "Кем используется",
+        path: "used_by",
+        format: "references",
+      },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+      COL_CREATED,
+    ],
+    fields: [
+      FIELD_NAME_VPC,
+      FIELD_LABELS,
+      FIELD_DESCRIPTION,
+      {
+        name: "v4_cidr_blocks",
+        label: "IPv4-префиксы",
+        type: "array",
+        itemLabel: "CIDR",
+        description:
+          "Начальный состав набора (IPv4). Меняется не правкой, а действиями на странице набора — до 64 членов на семейство.",
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "10.20.0.0/16" }],
+      },
+      {
+        name: "v6_cidr_blocks",
+        label: "IPv6-префиксы",
+        type: "array",
+        itemLabel: "CIDR",
+        description: "Начальный состав набора (IPv6). Меняется действиями на странице набора.",
+        editHidden: true,
+        newItem: () => ({ value: "" }),
+        itemFields: [{ name: "value", label: "CIDR", type: "string", required: true, placeholder: "fd00:20::/48" }],
+      },
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      labels: {},
+      v4_cidr_blocks: [],
+      v6_cidr_blocks: [],
+    }),
+    // {value:"…"} формы ↔ string[] провода. Пустая строка не уезжает: край
+    // получил бы члена, которого оператор не вводил, и отверг бы весь запрос.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
+        const raw = out[key];
+        if (Array.isArray(raw)) {
+          out[key] = raw
+            .map((item: unknown) =>
+              typeof item === "object" && item !== null && "value" in item
+                ? (item as Record<string, unknown>)["value"]
+                : item,
+            )
+            .filter((v) => typeof v === "string" && v);
+        }
+      }
+      return out;
+    },
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
+        const raw = out[key];
+        if (Array.isArray(raw)) {
+          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
+        }
+      }
+      return out;
+    },
+  },
+
   // ====== compute (Instance) ======
   // proto: GET /compute/v1/instances. Name-regex lowercase-only
   // (kacho-compute/CLAUDE.md §5: `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`).
@@ -2689,6 +2837,151 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Статус", path: "status", format: "status" },
     ],
     template: () => ({}),
+  },
+
+  // proto: GET /compute/v1/placementGroups (kacho.cloud.compute.v1.PlacementGroupService).
+  //
+  // Группа размещения — правило ВЗАИМНОГО размещения машин: разнести (чтобы отказ
+  // одного куска железа не унёс всю группу) либо сблизить (чтобы машины видели
+  // друг друга коротким путём). Ровно два намерения, и оба выражаются без единого
+  // числа: «разнести на N доменов отказа» описывало бы НАШУ раскладку железа, а не
+  // намерение арендатора, — опубликовав число, мы обязались бы держать раскладку.
+  //
+  // Якорь размещения ВЗАИМОИСКЛЮЧАЮЩИЙ: группа либо зональная, либо региональная.
+  // Это дискриминатор, а не пара необязательных полей: строка с обоими описывает
+  // размещение, которого не бывает, и сервис отвергает её словами «a group is
+  // anchored by exactly one coordinate». Поэтому форма показывает ровно одну
+  // координату, а sanitize снимает вторую — иначе оператор заполнил бы обе и
+  // получил отказ на поле, которого он не выбирал.
+  //
+  // Спека объявлена ЗДЕСЬ, а реестр compute на неё ССЫЛАЕТСЯ (второй копии нет):
+  // раздел монтируют оба приложения — compute-remote своим маршрутом и vpc в
+  // standalone-сборке.
+  "placement-groups": {
+    id: "placement-groups",
+    route: "placement-groups",
+    apiPath: "/compute/v1/placementGroups",
+    payloadKey: "placement_groups",
+    singular: "Группа размещения",
+    plural: "Группы размещения",
+    genitive: "Группы размещения",
+    serviceTitle: "Compute Cloud",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    mutationsReturnOperation: true,
+    docs: [{ label: "Группы размещения", href: "#" }],
+    emptyState: {
+      title: "Создайте вашу первую группу размещения",
+      body:
+        "Группа размещения — правило взаимного размещения машин: разнести их по разным доменам отказа " +
+        "или, наоборот, сблизить. Машина входит в группу при создании.",
+      docs: ["Группы размещения"],
+    },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      {
+        header: "Правило",
+        path: "strategy",
+        render: (row) => <>{PLACEMENT_STRATEGY_TEXT[String(row.strategy ?? "")] ?? placementDash}</>,
+      },
+      {
+        // Якорь — ресурс каталога geo, поэтому ссылка, а не идентификатор. Ветку
+        // ZONAL/REGIONAL рисует единственный `PlacementAnchor`.
+        header: "Размещение",
+        path: "placement_type",
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
+      },
+      {
+        header: "Описание",
+        path: "description",
+        format: "text",
+      },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+      COL_CREATED,
+    ],
+    fields: [
+      FIELD_NAME_COMPUTE,
+      FIELD_DESCRIPTION,
+      FIELD_LABELS,
+      {
+        name: "strategy",
+        label: "Правило размещения",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "SPREAD",
+        options: [
+          { value: "SPREAD", label: "Разнести — отказ одного куска железа не унесёт всю группу" },
+          { value: "PACK", label: "Сблизить — машины видят друг друга коротким путём" },
+        ],
+        description: "Выбирается при создании и неизменяемо: смена правила — другая группа.",
+      },
+      {
+        name: "placement_type",
+        label: "Якорь размещения",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "ZONAL",
+        options: [
+          { value: "ZONAL", label: "Зона — машины в одной зоне" },
+          { value: "REGIONAL", label: "Регион — машины в одном регионе, зоны разные" },
+        ],
+        description: "Ровно одна координата: зональная группа региона не несёт, региональная — зоны.",
+      },
+      {
+        name: "zone_id",
+        label: "Зона",
+        type: "ref",
+        refResource: "zones",
+        required: true,
+        immutable: true,
+        visibleWhen: { field: "placement_type", equals: "ZONAL" },
+        placeholder: "Выберите зону",
+      },
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        visibleWhen: { field: "placement_type", equals: "REGIONAL" },
+        placeholder: "Выберите регион",
+      },
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      labels: {},
+      strategy: "SPREAD",
+      placement_type: "ZONAL",
+      zone_id: "",
+      region_id: "",
+    }),
+    // Неактивная координата снимается ПЕРЕД отправкой: сервис отвергает запрос,
+    // в котором заполнены обе, и отвергает по полю, которое оператор не выбирал.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      if (out.placement_type === "REGIONAL") delete out.zone_id;
+      else delete out.region_id;
+      return out;
+    },
   },
 
   // ====== Geography (kacho-geo): Region / Zone ====== + System AddressPool ======
@@ -3586,9 +3879,21 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
     (r._protocol_mode as string | undefined) ??
     (r.protocol_name ? "name" : hasProtocolNumber(r.protocol_number) ? "number" : "any");
   const portsAny = typeof r._ports_any === "boolean" ? r._ports_any : !r.ports;
+  // Ветвь цели: та, что названа формой, иначе та, что заполнена в самом правиле.
+  // `cidr_group_id` стоит в этой цепочке наравне с двумя прежними ветвями —
+  // иначе правило, приехавшее с сервера со ссылкой на набор, вычищалось бы как
+  // «CIDR-блоки» и теряло цель при первом же сохранении.
   const targetKind =
     (r._target_kind as string | undefined) ??
-    (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.predefined_target ? "predefined" : "cidr");
+    (r.cidr_blocks
+      ? "cidr"
+      : r.security_group_id
+        ? "sg"
+        : r.cidr_group_id
+          ? "cidr-group"
+          : r.predefined_target
+            ? "predefined"
+            : "cidr");
 
   // Copy the persistent fields, dropping the form-only discriminators at EVERY
   // depth: the caller spreads a fetched SecurityGroupRule into this, and
@@ -3608,16 +3913,18 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
   if (portsAny) {
     delete out.ports;
   }
-  // target oneof — оставляем только нужный
-  if (targetKind === "cidr") {
-    delete out.security_group_id;
-    delete out.predefined_target;
-  } else if (targetKind === "sg") {
-    delete out.cidr_blocks;
-    delete out.predefined_target;
-  } else if (targetKind === "predefined") {
-    delete out.cidr_blocks;
-    delete out.security_group_id;
+  // target oneof — оставляем ровно одну ветвь. Список ветвей ведётся ОДНИМ
+  // перечнем, а не тремя ветками `if`: ветвь, забытая в одной из веток, уезжает
+  // вместе с выбранной, и сервис отвергает правило целиком («ровно одна цель»).
+  const TARGET_FIELD: Record<string, string> = {
+    cidr: "cidr_blocks",
+    sg: "security_group_id",
+    "cidr-group": "cidr_group_id",
+    predefined: "predefined_target",
+  };
+  const keep = TARGET_FIELD[targetKind];
+  for (const [kind, field] of Object.entries(TARGET_FIELD)) {
+    if (kind !== targetKind || keep === undefined) delete out[field];
   }
   return out;
 }
@@ -3803,6 +4110,10 @@ export function resourceServicePrefix(specId: string): "vpc" | "compute" | "nlb"
     case "roles":
     case "access-bindings":
       return "iam";
+    // Группа размещения — ресурс compute, но её идентификатор спеки префикса
+    // `compute-` не несёт: раздел монтируют оба приложения по одному адресу.
+    case "placement-groups":
+      return "compute";
     // Compute admin (без compute- префикса)
     case "regions":
     case "zones":
