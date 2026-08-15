@@ -27,14 +27,18 @@ if (!("ResizeObserver" in globalThis)) {
 // вложенных ошибок React 19 в отчёт jest не выводит, и падение читается как
 // «страница не монтируется», хотя не хватает ровно этих заглушек.
 //
-// Приехали сюда из окружений nlb и registry при сведении (#418): они их несли,
-// общее окружение — нет. Заглушки НЕ подменяют поведение продукта — они дают
-// среде ответ той же ФОРМЫ, какой даёт браузер: медиазапрос, который не совпал,
-// и вычисленный стиль без псевдоэлемента (jsdom умеет только его). Проба,
-// которой понадобится настоящий замер, обязана это назвать, а не молча
+// Приехало сюда из окружений nlb и registry при сведении (#418): они это несли,
+// общее окружение — нет. Заглушка НЕ подменяет поведение продукта — она даёт
+// среде ответ той же ФОРМЫ, какую даёт браузер: медиазапрос, который не совпал.
+// Проба, которой понадобится настоящий замер, обязана это назвать, а не молча
 // получить нули.
+//
+// Обёртки над `getComputedStyle` рядом НЕ переехало намеренно. В исходных копиях
+// она подменяла метод функцией, которая зовёт его же и ТЕРЯЕТ второй аргумент
+// (псевдоэлемент). Прогон всех семи модулей одинаково зелёный без неё, поэтому
+// сюда приехала бы не заглушка, а сужение чужого API без предмета.
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
-  window.matchMedia = ((query: string) => ({
+  window.matchMedia = (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -43,11 +47,7 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     addEventListener: () => {},
     removeEventListener: () => {},
     dispatchEvent: () => false,
-  })) as typeof window.matchMedia;
-}
-if (typeof window !== "undefined") {
-  const computed = window.getComputedStyle.bind(window);
-  window.getComputedStyle = ((elt: Element) => computed(elt)) as typeof window.getComputedStyle;
+  });
 }
 
 // @ant-design/icons мокается через moduleNameMapper (стаб ./antd-icons-stub.tsx
