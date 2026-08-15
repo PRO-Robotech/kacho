@@ -439,13 +439,25 @@ func runServe(cfg config.Config) error {
 	// Различие наблюдаемо, и на любом поднятом стенде адрес обязан быть задан.
 	var quotaLimits quota.LimitResolver
 	if authzConn != nil {
-		quotaLimits = clients.NewLimitClient(authzConn)
+		limitClient := clients.NewLimitClient(authzConn)
+		quotaLimits = limitClient
 		logger.Info("resource-count quota: limits resolver wired",
 			"endpoint", cfg.AuthZ.IAMEndpoint, "service", "vpc")
+
+		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
+		// заведённая один раз, живёт со своей величиной вечно, и смена предела
+		// администратором не доезжает до проекта никогда.
+		stopQuotaSync, qerr := startQuotaLimitSyncer(ctx, pool, limitClient, "kacho_vpc", logger)
+		if qerr != nil {
+			return fmt.Errorf("start quota limit syncer: %w", qerr)
+		}
+		defer stopQuotaSync()
 	} else {
-		logger.Warn("resource-count quota: no internal kacho-iam endpoint, advisory band is OFF. " +
+		logger.Warn("resource-count quota: no internal kacho-iam endpoint, advisory band is OFF " +
+			"and the limit snapshot will NEVER catch up with the authority. " +
 			"Limits are still enforced by the charging trigger, but the tenant learns of " +
-			"exhaustion from the operation instead of a synchronous refusal")
+			"exhaustion from the operation instead of a synchronous refusal, and an " +
+			"administrator raising or lowering a ceiling has no effect on this process")
 	}
 
 	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger,
