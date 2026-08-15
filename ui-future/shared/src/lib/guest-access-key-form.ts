@@ -48,14 +48,16 @@ export const GUEST_ACCESS_KEY_FIELDS: FormField[] = [
   { name: "project_id", label: "Project", type: "string", hidden: true },
 ];
 
-export function guestAccessKeyTemplate(ctx: { projectId?: string | null }): Record<string, unknown> {
-  return {
-    project_id: ctx.projectId ?? "",
-    name: "",
-    public_key: "",
-    labels: {},
-  };
-}
+// Стрелкой, а не объявлением функции: тело формы читает не только человек. Гейт
+// состава тела (`gateway/internal/restmux`) разбирает шаблон, чтобы сверить
+// набор ключей с контрактом, и понимает форму «стрелка возвращает литерал» —
+// функцию с телом он не читает вовсе, а значит перестал бы проверять ресурс.
+export const guestAccessKeyTemplate = (ctx: { projectId?: string | null }) => ({
+  project_id: ctx.projectId ?? "",
+  name: "",
+  public_key: "",
+  labels: {},
+});
 
 export const GUEST_ACCESS_KEY_EMPTY_STATE = {
   title: "Создайте первый ключ доступа",

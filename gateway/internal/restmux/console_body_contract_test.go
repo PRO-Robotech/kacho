@@ -28,6 +28,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // consoleFinding — расхождение между тем, что кладёт в тело форма, и контрактом
@@ -71,6 +73,11 @@ var (
 	// exportedStringConst — `export const NAME = "…";` любого модуля консоли.
 	// Реестр импортирует такие константы (пути geo-ресурсов), а разбор одного
 	// файла о них знать не может.
+	// exportedConstName — имя экспортированной константы, без её значения.
+	// Нужно затем, чтобы сбор ЗНАЧЕНИЙ брал только импортируемое: внутренние
+	// константы компонентов совпадают между файлами сплошь и рядом.
+	exportedConstName = regexp.MustCompile(`(?m)^export const ([A-Za-z_$][\w$]*)`)
+
 	exportedStringConst = regexp.MustCompile(`(?m)^export const ([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)";`)
 
 	// sanitizeCarrier — переменная, в которую `sanitize` копирует тело
@@ -189,6 +196,10 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collect exported string consts: %v", err)
 	}
+	externVals, err := consoleExportedValueConsts(consoleRoot)
+	if err != nil {
+		t.Fatalf("collect exported value consts: %v", err)
+	}
 
 	var findings []consoleFinding
 	specs, mutable, createBodies, updateBodies := 0, 0, 0, 0
@@ -202,7 +213,7 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		text := string(blob)
 		rel := mustRel(root, file)
 
-		parsed, err := parseConsoleRegistry(rel, text, extern)
+		parsed, err := parseConsoleRegistry(rel, text, extern, externVals)
 		if err != nil {
 			// Непонятая конструкция — отказ, а не пропуск: разбор, который
 			// «не смог» и промолчал, и есть тот самый ноль без содержания.
@@ -210,13 +221,21 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		}
 
 		// Сверка с независимым счётом — до любых выводов о находках.
-		if want := len(apiPathLiteral.FindAllString(text, -1)); want != len(parsed.Specs) {
-			t.Errorf("%s: scanner sees %d resources, the raw text declares %d — the scanner is losing resources, and every body in them would go unchecked",
-				rel, len(parsed.Specs), want)
+		// Из счёта вычитается пришедшее ИЗВНЕ: ресурс, ссылающийся на общее
+		// объявление, и набор полей, импортированный из общего модуля, в сыром
+		// тексте своего файла не видны by construction. Без вычитания сверка
+		// объявила бы находкой единый источник — то есть ровно то, ради чего он
+		// и заводится.
+		if want := len(apiPathLiteral.FindAllString(text, -1)); want != len(parsed.Specs)-parsed.ExternSpecs {
+			t.Errorf("%s: scanner sees %d own resources (%d in all, %d by reference), the raw text declares %d — the scanner is losing resources, and every body in them would go unchecked",
+				rel, len(parsed.Specs)-parsed.ExternSpecs, len(parsed.Specs), parsed.ExternSpecs, want)
 		}
+		// `FieldDecls` уже считается ТОЛЬКО по своим константам файла, поэтому
+		// вычитать импортированное второй раз не нужно: это дало бы недосчёт
+		// ровно на его размер.
 		if want := len(fieldNameLiteral.FindAllString(text, -1)); want != parsed.FieldDecls {
-			t.Errorf("%s: scanner sees %d field declarations, the raw text declares %d — the scanner is losing fields, and every one of them would go unchecked",
-				rel, parsed.FieldDecls, want)
+			t.Errorf("%s: scanner sees %d own field declarations (%d imported from a shared module and counted where they are declared), the raw text declares %d — the scanner is losing fields, and every one of them would go unchecked",
+				rel, parsed.FieldDecls, parsed.ExternFieldDecls, want)
 		}
 
 		for _, spec := range parsed.Specs {
@@ -308,6 +327,102 @@ func consoleRegistryFiles(root string) ([]string, error) {
 // жёстким условием: одно имя, объявленное с РАЗНЫМИ значениями, — ошибка. Тогда
 // подстановка не может оказаться тихо неправильной: она либо однозначна, либо
 // гейт падает.
+// consoleExportedValueConsts — экспортированные ЗНАЧЕНИЯ модулей консоли
+// (массивы полей, объекты пустого состояния), а не только строки.
+//
+// ЗАЧЕМ. Ресурс, который монтируют два приложения, обязан объявлять свои поля
+// ОДИН раз: выписанные дважды, они расходятся молча — так уже разошлись копии
+// формы ресурса. Реестр тогда ссылается на импортированное имя, и разбор одного
+// файла увидел бы идентификатор без значения. Прежде это было отказом читать
+// ВЕСЬ файл, то есть гейт переставал проверять реестр целиком, а «не прочитал»
+// выглядело как «нет находок».
+//
+// ГРАНИЦА НАЗВАНА ЧЕСТНО: собираются только те константы, чьё значение сканер
+// понимает; непонятое не подставляется, и ссылка на него остаётся громким
+// отказом — гейт, который начал бы принимать что угодно, ничего бы не находил.
+//
+// Расхождение одного имени между модулями — ошибка по той же причине, что и у
+// строк: сканер не может знать, какой из двух реестр импортирует, а догадка
+// сделала бы его тихо неверным.
+func consoleExportedValueConsts(root string) (map[string]jsValue, error) {
+	out := make(map[string]jsValue)
+	origin := make(map[string]string)
+	clashing := make(map[string]bool)
+	// ОБЛАСТЬ СБОРА — только `shared`, и это не сужение ради зелёного.
+	//
+	// Единый источник живёт там by construction: значение, на которое ссылаются
+	// два реестра, обязано быть объявлено один раз и в общем месте. Сбор по
+	// всему дереву ловил бы одноимённые константы РАЗНЫХ приложений (их там
+	// десятки — каждое приложение объявляет свою навигацию, свои умолчания) и
+	// объявлял бы расхождением то, что расхождением не является: они и не
+	// должны совпадать, потому что никто их друг у друга не импортирует.
+	//
+	// Следствие названо честно: ссылка реестра на значение из НЕ-`shared`
+	// модуля останется громким отказом. Это верно — такая ссылка и есть форк.
+	shared := filepath.Join(root, "shared", "src")
+	// Состав берётся у ИНДЕКСА дерева, а не обходом диска: обход видел бы
+	// невыгруженные артефакты сборки и чужие рабочие копии, а гейт обходчиков
+	// (`internal/repohygiene`) справедливо требует единого источника состава.
+	files, err := treecorpus.UnderWithSuffix(shared, ".ts", ".tsx")
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range files {
+		blob, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil, rerr
+		}
+		// Сами реестры пропускаем: их `REGISTRY` разбирается своим путём, и
+		// подмешивать его в область видимости соседа значило бы разрешать
+		// ссылку туда, куда импорта нет.
+		if filepath.Base(path) == "resource-registry.tsx" {
+			continue
+		}
+		text := string(blob)
+		consts, perr := jsTopLevelConsts(text)
+		if perr != nil {
+			// Файл вне понимаемого подмножества — не находка: большинство
+			// модулей консоли им и не являются. Значения из него просто не
+			// собираются, и ссылка на них останется отказом.
+			continue
+		}
+		// Только ЭКСПОРТИРОВАННЫЕ имена: импортировать можно ровно их, а
+		// внутренние константы компонентов совпадают между файлами сплошь и
+		// рядом (`rows`, `ROW_H`) — считать это расхождением значило бы объявить
+		// находкой то, что никого не касается.
+		exported := make(map[string]bool)
+		for _, m := range exportedConstName.FindAllStringSubmatch(text, -1) {
+			exported[m[1]] = true
+		}
+		for name, v := range consts {
+			if !exported[name] {
+				continue
+			}
+			// Непонятое значение собирается ТОЖЕ, и это не послабление: стрелка,
+			// возвращающая литерал (`template`), для разбора значений именно
+			// непонятое выражение — её читает отдельный разбор по сырому тексту.
+			// Ссылка на действительно непонятное всё равно останется отказом:
+			// его выдаст тот, кто эту ссылку разворачивает.
+			if prev, ok := origin[name]; ok && prev != path {
+				clashing[name] = true
+			}
+			out[name], origin[name] = v, path
+		}
+	}
+	// Имя, объявленное в `shared` дважды, из таблицы ВЫВОДИТСЯ, а не роняет сбор.
+	//
+	// Причина не в снисходительности: сканер действительно не может знать, какое
+	// из двух объявлений импортирует реестр, — но большинство таких имён ни один
+	// реестр и не спрашивает. Уронив сбор целиком, гейт перестал бы проверять
+	// ВСЕ реестры из-за константы, к делу не относящейся. Выведенное имя
+	// остаётся неразрешимым: ссылка на него даёт громкий отказ с координатой,
+	// то есть ровно тогда, когда двусмысленность действительно мешает.
+	for n := range clashing {
+		delete(out, n)
+	}
+	return out, nil
+}
+
 func consoleExportedStringConsts(root string) (map[string]string, error) {
 	out := make(map[string]string)
 	clashing := make(map[string]bool)
