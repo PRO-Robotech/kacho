@@ -14,10 +14,12 @@ import { Alert } from "antd";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@/components/organisms/form/ResourceFormBody";
 import { buildUpdateBody, computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
-import { ApiError, api } from "@/api/client";
+import { api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -73,15 +75,15 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
-      toast.error(`Сохранить ${spec.singular}: ${m}`);
+      const m = errorText(err);
+      toast.error(`${createActionLabel(spec, "Сохранить")}: ${m}`);
     },
   });
 
   useEffect(() => {
     if (!pendingOpId || !op?.done) return;
     if (op.error) {
-      toast.error(`Сохранить ${spec.singular}: ${op.error.message ?? "ошибка"}`);
+      toast.error(`${createActionLabel(spec, "Сохранить")}: ${op.error.message ?? "ошибка"}`);
     } else {
       invalidate(spec.id, projectId);
       toast.success(`${spec.singular} сохранён`);

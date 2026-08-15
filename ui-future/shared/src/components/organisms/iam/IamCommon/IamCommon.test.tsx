@@ -200,7 +200,7 @@ describe("useIamMutation", () => {
   });
 
   it("отказ края показан и форма отпущена", async () => {
-    create.mockRejectedValue(new ApiError(409, "ALREADY_EXISTS", null, "user already exists"));
+    create.mockRejectedValue(new ApiError(409, 6, null, "user already exists"));
     show();
 
     start();

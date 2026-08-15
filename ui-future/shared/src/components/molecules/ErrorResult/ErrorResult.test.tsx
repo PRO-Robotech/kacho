@@ -18,8 +18,11 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 
 jest.unstable_mockModule("antd", () => {
-  const Text = ({ children }: React.PropsWithChildren<Record<string, unknown>>) =>
-    React.createElement("span", { "data-testid": "note" }, children);
+  // Пропсы прокидываются: без этого КАЖДЫЙ приглушённый текст получал бы один и
+  // тот же признак, и проба не отличала бы оговорку о неоднозначности от чего-то
+  // другого, стоящего рядом.
+  const Text = ({ children, ...rest }: React.PropsWithChildren<Record<string, unknown>>) =>
+    React.createElement("span", { "data-testid": "note", ...rest }, children);
   return {
     __esModule: true,
     Typography: Object.assign(({ children }: React.PropsWithChildren) => React.createElement("div", null, children), {
@@ -56,32 +59,32 @@ function statusOf(): string | null {
 
 describe("ErrorResult", () => {
   it("на 404 показывает текст сервера дословно и оговорку о неоднозначности", () => {
-    render(<ErrorResult error={new ApiError(404, "NOT_FOUND", null, "Subnet sub-1 not found")} />);
+    render(<ErrorResult error={new ApiError(404, 5, null, "Subnet sub-1 not found")} />);
 
     expect(statusOf()).toBe("404");
-    expect(screen.getByTestId("subtitle")).toHaveTextContent("NOT_FOUND: Subnet sub-1 not found");
+    expect(screen.getByTestId("subtitle")).toHaveTextContent("Subnet sub-1 not found");
     expect(screen.getByTestId("note")).toHaveTextContent(NOT_FOUND_IS_AMBIGUOUS);
   });
 
   it("на 403 оговорки нет — там неоднозначности не возникает", () => {
-    render(<ErrorResult error={new ApiError(403, "PERMISSION_DENIED", null, "no path")} />);
+    render(<ErrorResult error={new ApiError(403, 7, null, "no path")} />);
 
     expect(statusOf()).toBe("403");
     expect(screen.queryByTestId("note")).not.toBeInTheDocument();
   });
 
   it("на 5xx показывает отказ сервера без оговорки", () => {
-    render(<ErrorResult error={new ApiError(503, "UNAVAILABLE", null, "peer unavailable")} />);
+    render(<ErrorResult error={new ApiError(503, 14, null, "peer unavailable")} />);
 
     expect(statusOf()).toBe("500");
-    expect(screen.getByTestId("subtitle")).toHaveTextContent("UNAVAILABLE: peer unavailable");
+    expect(screen.getByTestId("subtitle")).toHaveTextContent("peer unavailable");
     expect(screen.queryByTestId("note")).not.toBeInTheDocument();
   });
 
   it("подставленный сверху статус снимает оговорку", () => {
     // Оговорка относится к ОТВЕТУ; под чужим статусом она была бы утверждением
     // не о нём.
-    render(<ErrorResult error={new ApiError(404, "NOT_FOUND", null, "Subnet sub-1 not found")} status="warning" />);
+    render(<ErrorResult error={new ApiError(404, 5, null, "Subnet sub-1 not found")} status="warning" />);
 
     expect(statusOf()).toBe("warning");
     expect(screen.queryByTestId("note")).not.toBeInTheDocument();
@@ -89,18 +92,31 @@ describe("ErrorResult", () => {
 
   it("подставленный сверху текст снимает оговорку", () => {
     render(
-      <ErrorResult
-        error={new ApiError(404, "NOT_FOUND", null, "Subnet sub-1 not found")}
-        subTitle="Раздел ещё не реализован"
-      />,
+      <ErrorResult error={new ApiError(404, 5, null, "Subnet sub-1 not found")} subTitle="Раздел ещё не реализован" />,
     );
 
     expect(screen.getByTestId("subtitle")).toHaveTextContent("Раздел ещё не реализован");
     expect(screen.queryByTestId("note")).not.toBeInTheDocument();
   });
 
+  it("код протокола не читается в тексте — он лежит в подсказке при наведении", () => {
+    render(<ErrorResult error={new ApiError(404, 5, null, "Subnet sub-1 not found")} />);
+
+    const subtitle = screen.getByTestId("subtitle");
+    expect(subtitle).toHaveTextContent("Subnet sub-1 not found");
+    expect(subtitle.textContent ?? "").not.toMatch(/\bNOT_FOUND\b|\b5\b/);
+    expect(subtitle.querySelector("span[title]")?.getAttribute("title")).toBe("NOT_FOUND (5) · HTTP 404");
+  });
+
+  // Положительный контроль к предыдущей: под подставленным сверху текстом
+  // подсказки нет — она относилась бы не к этому ответу.
+  it("подставленный сверху текст снимает и подсказку", () => {
+    render(<ErrorResult error={new ApiError(404, 5, null, "x")} subTitle="Раздел ещё не реализован" />);
+    expect(screen.getByTestId("subtitle").querySelector("span[title]")).toBeNull();
+  });
+
   it("заголовок вызывающего перебивает вычисленный", () => {
-    render(<ErrorResult error={new ApiError(404, "NOT_FOUND", null, "x")} title="Нет такой страницы" />);
+    render(<ErrorResult error={new ApiError(404, 5, null, "x")} title="Нет такой страницы" />);
     expect(screen.getByRole("heading", { name: "Нет такой страницы" })).toBeInTheDocument();
   });
 
@@ -113,19 +129,16 @@ describe("ErrorResult", () => {
   });
 
   it("центрирует по умолчанию и не центрирует по просьбе", () => {
-    const centered = render(<ErrorResult error={new ApiError(404, "NOT_FOUND", null, "x")} />);
+    const centered = render(<ErrorResult error={new ApiError(404, 5, null, "x")} />);
     expect((centered.container.firstElementChild as HTMLElement).style.display).toBe("flex");
 
-    const plain = render(<ErrorResult error={new ApiError(404, "NOT_FOUND", null, "x")} centered={false} />);
+    const plain = render(<ErrorResult error={new ApiError(404, 5, null, "x")} centered={false} />);
     expect(plain.container.firstElementChild).toHaveAttribute("role", "alert");
   });
 
   it("показывает действия, переданные вызывающим", () => {
     render(
-      <ErrorResult
-        error={new ApiError(403, "PERMISSION_DENIED", null, "no path")}
-        extra={<button type="button">К списку</button>}
-      />,
+      <ErrorResult error={new ApiError(403, 7, null, "no path")} extra={<button type="button">К списку</button>} />,
     );
     expect(screen.getByRole("button", { name: "К списку" })).toBeInTheDocument();
   });

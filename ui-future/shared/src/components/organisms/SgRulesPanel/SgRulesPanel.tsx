@@ -12,7 +12,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Checkbox, Dropdown, Modal, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -24,6 +24,7 @@ import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/
 import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 export interface SgRule {
   id?: string;
@@ -116,15 +117,15 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   // означала бы новый узел на каждом рендере.
   const runOp = useCallback(
     async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
-    try {
-      const resp = await mutateAsync(payload);
-      const opId = extractOperationId(resp);
-      if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
-      void refresh();
-    } catch (err) {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
-      toast.error(`Правило группы безопасности: ${m}`);
-    }
+      try {
+        const resp = await mutateAsync(payload);
+        const opId = extractOperationId(resp);
+        if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
+        void refresh();
+      } catch (err) {
+        const m = errorText(err);
+        toast.error(`Правило группы безопасности: ${m}`);
+      }
     },
     [mutateAsync, projectId, refresh, sgSpec.id],
   );
@@ -213,26 +214,30 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   // useMemo здесь ОБЯЗАТЕЛЕН, а не «для скорости»: слот кладёт узел в состояние
   // эффектом с зависимостью от самого узла. Новый JSX на каждом рендере даёт
   // бесконечный цикл — прогон проб на этом просто съел память и умер.
-  const listActions = useMemo(() => (editObj ? null : (
-    <>
-      {/* «Выбрать все» — рядом с действиями: заголовок колонки общей таблицы
+  const listActions = useMemo(
+    () =>
+      editObj ? null : (
+        <>
+          {/* «Выбрать все» — рядом с действиями: заголовок колонки общей таблицы
           принимает только текст, и чекбокс в него не поставить. */}
-      <Checkbox
-        checked={allSelected}
-        indeterminate={someSelected && !allSelected}
-        onChange={(e) => toggleAll(e.target.checked)}
-        disabled={selectableIds.length === 0}
-      >
-        Выбрать все
-      </Checkbox>
-      <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
-        Добавить правило
-      </Button>
-      <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
-        Удалить{selCount > 0 ? ` (${selCount})` : ""}
-      </Button>
-    </>
-  )), [editObj, allSelected, someSelected, selectableIds.length, selCount, toggleAll, confirmDeleteSelected]);
+          <Checkbox
+            checked={allSelected}
+            indeterminate={someSelected && !allSelected}
+            onChange={(e) => toggleAll(e.target.checked)}
+            disabled={selectableIds.length === 0}
+          >
+            Выбрать все
+          </Checkbox>
+          <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
+            Добавить правило
+          </Button>
+          <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
+            Удалить{selCount > 0 ? ` (${selCount})` : ""}
+          </Button>
+        </>
+      ),
+    [editObj, allSelected, someSelected, selectableIds.length, selCount, toggleAll, confirmDeleteSelected],
+  );
   useHeaderRight(listActions);
 
   if (editObj) {

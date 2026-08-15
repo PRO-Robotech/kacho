@@ -155,15 +155,13 @@ describe("InlineResourceCreateForm", () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
-  it("отказ края показан кодом и текстом, форма остаётся открытой", async () => {
-    create.mockRejectedValue(new ApiError(409, "ALREADY_EXISTS", null, "subnet already exists"));
+  it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {
+    create.mockRejectedValue(new ApiError(409, 6, null, "subnet already exists"));
     const { onCancel } = show();
 
     submit();
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Создать Подсеть: ALREADY_EXISTS: subnet already exists"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Создать подсеть: subnet already exists"));
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

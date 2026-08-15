@@ -224,7 +224,7 @@ export function formatCellByFormat(
                   whiteSpace: "nowrap",
                 }}
               >
-                {String(item)}
+                {displayText(item)}
               </span>
             ))}
           </div>

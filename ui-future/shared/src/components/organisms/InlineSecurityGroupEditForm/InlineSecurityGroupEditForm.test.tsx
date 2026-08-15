@@ -17,7 +17,14 @@ const invalidate = jest.fn();
 jest.unstable_mockModule("@shared/api/client", () => ({
   // `list` возвращает промис по контракту порта, но ждать заменителю нечего —
   // `Promise.resolve` говорит это прямо, `async` без `await` обещало ожидание.
-  api: { get, update, list: jest.fn(() => Promise.resolve({})), create: jest.fn(), delete: jest.fn(), action: jest.fn() },
+  api: {
+    get,
+    update,
+    list: jest.fn(() => Promise.resolve({})),
+    create: jest.fn(),
+    delete: jest.fn(),
+    action: jest.fn(),
+  },
   ApiError,
 }));
 
@@ -50,7 +57,6 @@ function show() {
   );
   return { onCancel };
 }
-
 
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 const body = () => update.mock.calls[0][1] as Record<string, unknown>;
@@ -127,17 +133,16 @@ describe("InlineSecurityGroupEditForm", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("отказ края показан кодом и текстом, форма остаётся открытой", async () => {
-    update.mockRejectedValue(new ApiError(409, "ALREADY_EXISTS", null, "security group name taken"));
+  it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {
+    update.mockRejectedValue(new ApiError(409, 6, null, "security group name taken"));
     const { onCancel } = show();
 
     fireEvent.change(await screen.findByDisplayValue("web"), { target: { value: "web-2" } });
     save();
 
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Сохранить группу безопасности: ALREADY_EXISTS: security group name taken"),
+      expect(toastError).toHaveBeenCalledWith("Сохранить группу безопасности: security group name taken"),
     );
     expect(onCancel).not.toHaveBeenCalled();
   });
-
 });

@@ -13,11 +13,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, LockOutlined, PlusOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 export type CidrKind = "v4" | "v6";
 
@@ -124,7 +125,7 @@ export function CidrTableSection({
       }
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`${family} ${errNoun} ${vars.verb === "add" ? "добавление" : "удаление"}: ${m}`);
       setPendingCidr(null);
     },

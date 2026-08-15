@@ -233,16 +233,14 @@ describe("SgRulesPanel — удаление", () => {
     expect(update).toHaveBeenCalledWith("/vpc/v1/securityGroups/sg-1/rules", { deletion_rule_ids: ["sgr-2"] });
   });
 
-  it("отказ края показан кодом и текстом", async () => {
-    update.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "rule is referenced"));
+  it("отказ края показан текстом сервера, без кода протокола", async () => {
+    update.mockRejectedValue(new ApiError(400, 9, null, "rule is referenced"));
     show();
 
     fireEvent.click(within(rowOf("proto 47")).getByRole("button", { name: "Удалить" }));
     await confirms[0].onOk!();
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Правило группы безопасности: FAILED_PRECONDITION: rule is referenced"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Правило группы безопасности: rule is referenced"));
   });
 });
 

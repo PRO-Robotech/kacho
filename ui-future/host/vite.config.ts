@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import federation from "@originjs/vite-plugin-federation";
@@ -35,6 +36,17 @@ export default defineConfig({
       shared: ["antd", "lucide-react", "react", "react-dom", "react-router"],
     }),
   ],
+  resolve: {
+    // Граница отказа модуля (#371) — общий организм @shared, а не копия в host:
+    // копия разошлась бы с оригиналом молча, как это уже было с телом формы.
+    alias: {
+      "@shared": path.resolve(__dirname, "../shared/src"),
+    },
+    // Исходники @shared лежат вне дерева host, поэтому у резолвера появляется
+    // второй кандидат на react/antd; одна копия каждой библиотеки с внутренним
+    // состоянием на бандл.
+    dedupe: ["react", "react-dom", "antd"],
+  },
   server: {
     proxy: {
       "/vpc": {

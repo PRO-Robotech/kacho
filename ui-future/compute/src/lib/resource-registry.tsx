@@ -22,6 +22,12 @@ import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 import { REGISTRY as SHARED_REGISTRY } from "@shared/lib/resource-registry";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -77,6 +83,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
     singular: "Виртуальная машина",
+    accusative: "виртуальную машину",
     plural: "Виртуальные машины",
     genitive: "Виртуальной машины",
     serviceTitle: "Compute Cloud",
@@ -124,7 +131,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "zones",
         required: true,
         immutable: true,
-        description: "Зона размещения инстанса (immutable после Create). Cross-service ref → geo.Zone.",
+        description: "Зона размещения машины. Неизменяема после создания.",
       },
       {
         name: "instance_kind",
@@ -138,7 +145,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "CONTAINER", label: "CONTAINER — контейнер-джоба (образ из registry.image)" },
         ],
         description:
-          "Сильный первый дискриминатор (immutable после Create): VM запускает ОС из storage.image; CONTAINER — эфемерный rootfs из OCI registry.image.",
+          "Вид машины; неизменяем после создания. Виртуальная машина запускает операционную систему из образа диска, контейнер — из образа реестра.",
       },
       {
         name: "machine_type_id",
@@ -338,6 +345,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/compute/v1/machineTypes",
     payloadKey: "machine_types",
     singular: "Тип машины",
+    accusative: "тип машины",
     plural: "Типы машин",
     genitive: "Типа машины",
     serviceTitle: "Compute Cloud",
@@ -385,6 +393,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
     singular: "Зона",
+    accusative: "зону",
     plural: "Зоны",
     serviceTitle: "Geography",
     scope: "global",
@@ -400,6 +409,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/storage/v1/volumes",
     payloadKey: "volumes",
     singular: "Том",
+    accusative: "том",
     plural: "Тома",
     serviceTitle: "Storage",
     scope: "project",
@@ -418,6 +428,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
     singular: "Сетевой интерфейс",
+    accusative: "сетевой интерфейс",
     plural: "Сетевые интерфейсы",
     serviceTitle: "Virtual Private Cloud",
     scope: "project",
@@ -434,19 +445,21 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Навигируемые ресурсы remote'а — инстанс + каталог типов машин (сегмент `compute`).
-// Ref-цели (zones/volumes/network-interfaces) не навигируются в этом remote.
-export function resourceServicePrefix(_specId: string): "compute" {
-  return "compute";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в @shared.
+// Здесь стояла своя: она возвращала `compute` на любой идентификатор, поэтому
+// ссылка на сетевой интерфейс (vpc), том (storage) и зону (глобальный каталог)
+// с карточки машины адресовалась сегментом compute-remote'а, маршрута такого у
+// него нет, и catch-all выбрасывал человека обратно на список машин.
+//
+// Реестр остаётся модульным (в нём ровно те ресурсы, что показывает модуль), а
+// правило сборки адреса — общее: `resourceListPath` принимает маршрут спеки.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

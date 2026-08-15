@@ -19,7 +19,6 @@ import {
   HddOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { ApiError } from "@/api/client";
 import { registriesApi } from "@/api/resources";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
@@ -30,6 +29,7 @@ import { shortDigest } from "@/lib/short-digest";
 import { formatDateTime } from "@/lib/datetime";
 import { formatBytes } from "@/lib/bytes";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 // fmtLastPull — время последнего pull тега. Zero-time («1970-01-01T00:00:00Z»,
 // нулевой timestamp) / пусто → «не скачивался»; иначе — дата-время.
@@ -337,7 +337,7 @@ function TagDeleteAction({
       }
     },
     onError: (e) => {
-      const m = e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message;
+      const m = errorText(e);
       toast.error(`Удалить тег ${tag}: ${m}`);
     },
   });

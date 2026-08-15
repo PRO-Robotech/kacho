@@ -20,12 +20,13 @@ import { Button, Input, Space, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 export interface StaticRoute {
   destination_prefix?: string;
@@ -152,7 +153,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
       await mutation.mutateAsync();
       cancel();
     } catch (err) {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = errorText(err);
       toast.error(`Статические маршруты: ${m}`);
     }
   }
