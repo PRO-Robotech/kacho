@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -42,7 +43,45 @@ type MoveTargetGroupUseCase struct {
 	opsRepo       OpsRepo
 	projectClient ProjectClient
 	checkClient   CheckClient
+	registrar     Registrar
 	logger        *slog.Logger
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. Возвращает self
+// для chaining. nil-безопасно (sync-путь пропускается).
+//
+// ПОЧЕМУ MOVE НУЖДАЕТСЯ В ЭТОМ БОЛЬШЕ, ЧЕМ CREATE. Create только ДОБАВЛЯЕТ
+// проекцию: пока она не материализовалась, терять нечего. Move СНАЧАЛА СНОСИТ
+// действующую проекцию (unregister источника) и лишь потом ставит новую
+// (register назначения) — то есть это единственная мутация, после которой у
+// ресурса в окне материализации нет проекции ВООБЩЕ. Всё это время край не
+// резолвит цель проверки прав в проект и отвечает вызывающему hide-existence
+// `NotFound` — побайтово тем же текстом, что и настоящее «не найдено»
+// (`security.md` §6). Владелец видит собственный ресурс исчезнувшим.
+//
+// Ускоритель безопасен ПО ПОСТРОЕНИЮ: register(dst) эмитится ПОСЛЕ
+// unregister(src) и несёт строго БОЛЬШИЙ `source_version` (ординал эмиттера),
+// а отзыв в IAM гейтован `source_version <= tombstone` — поэтому unregister,
+// доехавший дренажем позже, снять раньше применённый register не может.
+func (u *MoveTargetGroupUseCase) WithRegistrar(r Registrar) *MoveTargetGroupUseCase {
+	u.registrar = r
+	return u
+}
+
+// syncRegister — BEST-EFFORT sync-регистрация проекции назначения после durable
+// commit. Ошибка ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable intent в `fga_register_outbox`
+// + register-drainer остаются at-least-once backstop'ом, а `Operation.done` не
+// гейтится на видимость (ban #9).
+func (u *MoveTargetGroupUseCase) syncRegister(
+	ctx context.Context, intent domain.FGARegisterIntent, intentVersion time.Time,
+) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent, intentVersion); err != nil {
+		u.logger.Warn("TargetGroup.Move sync owner-tuple registration incomplete; register-drainer will reconcile",
+			"err", err, "target_group_id", intent.ResourceID)
+	}
 }
 
 // NewMoveTargetGroupUseCase конструктор. checkClient авторизует caller'а на
@@ -196,12 +235,19 @@ func (u *MoveTargetGroupUseCase) doMove(ctx context.Context, id, srcProject, dst
 		tgUnregisterIntent(id, srcProject)); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	if _, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		tgMirrorIntent(moved)); err != nil {
+	registerIntent := tgMirrorIntent(moved)
+	registerVersion, err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister, registerIntent)
+	if err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Commit(); err != nil {
 		return nil, mapDomainErr(err)
 	}
+	// Проекция назначения ставится синхронно СРАЗУ ПОСЛЕ commit'а — тем же
+	// `source_version`, что уехал в outbox, поэтому повторное применение
+	// дренажем идемпотентно. Без этого окно между сносом проекции источника и
+	// её восстановлением дренажем вызывающий видит как исчезновение своего
+	// ресурса (см. WithRegistrar выше).
+	u.syncRegister(ctx, registerIntent, registerVersion)
 	return marshalTargetGroup(moved)
 }

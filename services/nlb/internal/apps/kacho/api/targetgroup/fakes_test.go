@@ -134,9 +134,14 @@ type fakeWriter struct {
 }
 
 // fgaIntentEvent records one FGARegisterOutbox.Emit  for assertions.
+// StampedAt — версия, выданная эмиттером ЭТОМУ намерению. Порядок версий и
+// есть контракт переписи проекции: снятие обязано нести версию МЕНЬШЕ, чем
+// последующая регистрация, иначе отзыв, применённый дренажем позже, снимет уже
+// поставленную проекцию.
 type fgaIntentEvent struct {
 	EventType string
 	Intent    domain.FGARegisterIntent
+	StampedAt time.Time
 }
 
 type pendingAddTarget struct {
@@ -818,9 +823,11 @@ func (o *fakeFGARegisterOutbox) Emit(_ context.Context, eventType string, intent
 	if o.w.r.failOnOutbox != nil {
 		return time.Time{}, o.w.r.failOnOutbox
 	}
-	o.w.pendingFGA = append(o.w.pendingFGA, fgaIntentEvent{EventType: eventType, Intent: intent})
 	seq := atomic.AddInt64(&fakeFGAStampSeq, 1)
-	return fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond), nil
+	stamped := fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond)
+	o.w.pendingFGA = append(o.w.pendingFGA,
+		fgaIntentEvent{EventType: eventType, Intent: intent, StampedAt: stamped})
+	return stamped, nil
 }
 
 // Счётчик атомарный: рабочий очередей исполняет операции ПАРАЛЛЕЛЬНО, и две
