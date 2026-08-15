@@ -84,8 +84,16 @@ type ListUsersRequest struct {
 	PageSize int64 `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
 	// Page token.
 	PageToken string `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// A filter expression. Supports filtering by [User.email] / [User.external_id] /
-	// [User.invite_status].
+	// A filter expression. Exactly one term, in the form `field="value"`.
+	//
+	//	email="a@b.io"          exact match, case-insensitive
+	//	external_id="..."       exact match
+	//	invite_status="ACTIVE"  exact match
+	//	search="min.ops"        case-insensitive SUBSTRING over email AND id
+	//
+	// `search` is the term a console types into: a User has no `name`, and the
+	// exact-match terms above only answer someone who already knows the whole
+	// value. `%` and `_` in its value are matched literally, not as wildcards.
 	Filter        string `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
