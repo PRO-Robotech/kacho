@@ -9,12 +9,14 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -100,8 +102,8 @@ export function InlineResourceCreateForm({
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
-      toast.error(`Создать ${spec.singular}: ${m}`);
+      const m = errorText(err);
+      toast.error(`${createActionLabel(spec)}: ${m}`);
     },
   });
 
@@ -109,7 +111,7 @@ export function InlineResourceCreateForm({
     if (!pendingOpId || !op?.done) return;
     if (op.error) {
       const msg = op.error.message ?? "ошибка";
-      toast.error(`Создать ${spec.singular}: ${msg}`);
+      toast.error(`${createActionLabel(spec)}: ${msg}`);
     } else {
       invalidate(spec.id, projectId);
       toast.success(`${spec.singular} создан`);
@@ -153,7 +155,7 @@ export function InlineResourceCreateForm({
       lockedPaths={lockedPathsRef.current}
       fieldOptionsFilter={fieldOptionsFilter}
       title={title}
-      submitLabel={`Создать ${spec.singular.toLowerCase()}`}
+      submitLabel={createActionLabel(spec)}
       submitting={mutation.isPending || pendingOpId !== null}
       onSubmit={submit}
       onCancel={onCancel}

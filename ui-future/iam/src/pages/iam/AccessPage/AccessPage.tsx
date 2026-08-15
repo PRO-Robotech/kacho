@@ -13,21 +13,15 @@ import { toast } from "@shared/lib/toast";
 import { PlusOutlined, MailOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
-import {
-  buildCreateAccessBindingBody,
-  iamApi,
-  IAM,
-  SUBJECT_TYPE_ENUM,
-  type User,
-  type Role,
-} from "@shared/api/iam";
-import { ApiError, api } from "@shared/api/client";
+import { buildCreateAccessBindingBody, iamApi, IAM, SUBJECT_TYPE_ENUM, type User, type Role } from "@shared/api/iam";
+import { api } from "@shared/api/client";
 import { CopyableMonoId } from "@shared/components/organisms/iam/IamCommon";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
+import { errorText } from "@shared/lib/error-presentation";
 
 type ScopeTab = "cloud" | "folder";
 
@@ -345,7 +339,7 @@ export function AccessGrantPage() {
     } catch (err) {
       // Отказ обязан быть виден. Сообщение сервера показывается пользователю (как
       // во всех остальных формах); в консоль браузера конверт ApiError не пишется.
-      const detail = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error)?.message;
+      const detail = errorText(err);
       toast.error(detail ? `Ошибка выдачи доступа: ${detail}` : "Ошибка выдачи доступа");
     }
   }

@@ -13,6 +13,7 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { ResourceLink } from "@/components/molecules/ResourceLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
+import { displayText } from "@shared/lib/display-text";
 
 // Маппинг kacho.cloud.reference.Reference.referrer.type → registry specId, чтобы
 // рендерить потребителя как единую ссылку «иконка + имя» (RefNameLink) и иметь
@@ -237,7 +238,7 @@ export function formatCellByFormat(
                   whiteSpace: "nowrap",
                 }}
               >
-                {String(item)}
+                {displayText(item)}
               </span>
             ))}
           </div>
@@ -278,6 +279,6 @@ export function formatCellByFormat(
     case "text":
     default:
       if (v == null || v === "") return <Typography.Text type="secondary">—</Typography.Text>;
-      return String(v);
+      return displayText(v);
   }
 }

@@ -20,6 +20,7 @@ import { ErrorResult } from "@/components/molecules/ErrorResult";
 import { InlineResourceCreateForm } from "@/components/organisms/InlineResourceCreateForm";
 import { FormBareProvider } from "@/components/organisms/form/FormShell";
 import { refOptionExtra, refOptionHead } from "./refOptionLabel";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   refResource: string;
@@ -124,7 +125,7 @@ export function RefSelect({
             value: o.uid as string,
             label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
           })),
-          ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }] : []),
+          ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ ${createActionLabel(createSpec)}…` }] : []),
         ]}
       />
       {refProjectScoped && !project && <p className="text-xs text-amber-600">Выберите проект в шапке для загрузки.</p>}
@@ -179,4 +180,3 @@ export function RefSelect({
     </div>
   );
 }
-

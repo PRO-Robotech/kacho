@@ -157,16 +157,14 @@ describe("NetworkCidrManager", () => {
     );
   });
 
-  it("отказ края показывается кодом и текстом, а не проглатывается", async () => {
-    action.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "network CIDR block still contains subnets"));
+  it("отказ края показывается текстом сервера, без кода протокола, а не проглатывается", async () => {
+    action.mockRejectedValue(new ApiError(400, 9, null, "network CIDR block still contains subnets"));
     show(["10.30.0.0/16"]);
 
     fireEvent.click(within(v4card()).getAllByRole("button", { name: "Удалить CIDR" })[0]);
 
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "IPv4 CIDR удаление: FAILED_PRECONDITION: network CIDR block still contains subnets",
-      ),
+      expect(toastError).toHaveBeenCalledWith("IPv4 CIDR удаление: network CIDR block still contains subnets"),
     );
   });
 });

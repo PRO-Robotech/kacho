@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Select, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -25,6 +25,7 @@ import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   projectId: string;
@@ -167,7 +168,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`Создать подсеть: ${m}`);
     },
   });

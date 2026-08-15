@@ -143,16 +143,14 @@ describe("InlineAddressPoolCreateForm", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("отказ края показан кодом и текстом, форма не закрывается", async () => {
-    create.mockRejectedValue(new ApiError(400, "INVALID_ARGUMENT", null, "cidr overlaps existing pool"));
+  it("отказ края показан текстом сервера, без кода протокола, форма не закрывается", async () => {
+    create.mockRejectedValue(new ApiError(400, 3, null, "cidr overlaps existing pool"));
     const { onCancel } = show();
 
     addCidr(0, "198.51.100.0/24");
     submit();
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Создать пул адресов: INVALID_ARGUMENT: cidr overlaps existing pool"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Создать пул адресов: cidr overlaps existing pool"));
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

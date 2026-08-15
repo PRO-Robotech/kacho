@@ -43,6 +43,7 @@ import { buildSpecColumns } from "@/lib/spec-columns";
 import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-list";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 export type ResourceShellMode = "edit" | "child-create";
 
@@ -116,7 +117,7 @@ function RelatedTable({
   const createPath = `${detailBase}/${childSpec.route}/create`;
   // drill в ребёнка — на его собственный flat-URL (родитель → в хлебных крошках).
   const flatChildBase = resourceProjectPath(childSpec.id, projectId) ?? `${detailBase}/${childSpec.route}`;
-  const createLabel = `Создать ${childSpec.singular.toLowerCase()}`;
+  const createLabel = createActionLabel(childSpec);
 
   // Колонки: spec.columns без столбцов-ссылок на родителя (filterFields).
   const specNoParent: ResourceSpec = {

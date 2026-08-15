@@ -171,16 +171,14 @@ describe("InlineAddressPoolEditForm", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("отказ края показан кодом и текстом, форма остаётся открытой", async () => {
-    update.mockRejectedValue(new ApiError(409, "FAILED_PRECONDITION", null, "default pool already exists"));
+  it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {
+    update.mockRejectedValue(new ApiError(409, 9, null, "default pool already exists"));
     const { onCancel } = show();
 
     fireEvent.change(await screen.findByDisplayValue("было"), { target: { value: "стало" } });
     save();
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Сохранить пул адресов: FAILED_PRECONDITION: default pool already exists"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Сохранить пул адресов: default pool already exists"));
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

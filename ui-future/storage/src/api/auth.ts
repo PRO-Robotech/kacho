@@ -216,7 +216,7 @@ export function extractDenyReasons(details: unknown): DenyReason[] {
       const rr = r as Record<string, unknown>;
       out.push({
         reason: String(rr.reason ?? ""),
-        message: String(rr.message ?? rr.reason ?? "Permission denied"),
+        message: String(rr.message ?? rr.reason ?? "Недостаточно прав"),
         required_relation: (rr.required_relation as string | undefined) ?? (rr.requiredRelation as string | undefined),
         resource: rr.resource as string | undefined,
       });
