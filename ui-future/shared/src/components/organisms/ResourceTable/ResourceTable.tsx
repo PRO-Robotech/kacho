@@ -27,6 +27,16 @@ interface Props<T> {
   /** Если задан — клик по строке вызывает callback (для drill-down в detail).
    *  Cells, у которых внутри есть button/link с stopPropagation, не триггерят. */
   onRowClick?: (row: T) => void;
+  /**
+   * Можно ли вообще предлагать сортировку. По умолчанию — да.
+   *
+   * Сортируется МАССИВ переданных строк, поэтому вызывающий, у которого за
+   * курсором остались непрочитанные страницы, обязан объявить `false`: иначе
+   * таблица упорядочит случайную часть списка и будет молча переупорядочивать её
+   * при каждой догрузке. Верхняя строка такой таблицы первая среди прочитанных,
+   * а читается как первая вообще.
+   */
+  sortable?: boolean;
 }
 
 export function ResourceTable<T extends object>({
@@ -37,6 +47,7 @@ export function ResourceTable<T extends object>({
   loading,
   defaultSort,
   onRowClick,
+  sortable = true,
 }: Props<T>) {
   const antColumns: ColumnType<T>[] = useMemo(
     () =>
@@ -47,7 +58,7 @@ export function ResourceTable<T extends object>({
           className: c.className,
           render: (_value, row) => c.cell(row),
         };
-        if (c.sortKey) {
+        if (c.sortKey && sortable) {
           col.sorter = (a: T, b: T) => {
             const av = getByPath(a, c.sortKey!);
             const bv = getByPath(b, c.sortKey!);
@@ -63,7 +74,7 @@ export function ResourceTable<T extends object>({
         }
         return col;
       }),
-    [columns, defaultSort],
+    [columns, defaultSort, sortable],
   );
 
   // Края таблицы закрепляются, потому что широкая таблица прокручивается вбок:

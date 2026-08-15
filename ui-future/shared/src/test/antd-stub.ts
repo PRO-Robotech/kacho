@@ -30,6 +30,8 @@ interface MockColumn {
   /** Ширина. Настоящая таблица ИГНОРИРУЕТ `fixed` без неё. */
   width?: number | string;
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
+  /** Сравнение для сортировки. Настоящая таблица рисует стрелку ровно при нём. */
+  sorter?: unknown;
 }
 
 interface SelectOption {
@@ -219,7 +221,21 @@ export function antdStub(): Record<string, unknown> {
         React.createElement(
           "tr",
           null,
-          columns.map((c, i) => React.createElement("th", { key: i, "data-fixed": c.fixed, "data-width": c.width }, c.title)),
+          columns.map((c, i) =>
+            React.createElement(
+              "th",
+              {
+                key: i,
+                "data-fixed": c.fixed,
+                "data-width": c.width,
+                // Стрелка сортировки — наблюдаемое следствие `sorter`. Без неё
+                // проба о сортировке утверждала бы о разметке, которой у
+                // заменителя нет вовсе, и зеленела бы при любом поведении.
+                "data-sortable": c.sorter ? "yes" : undefined,
+              },
+              c.title,
+            ),
+          ),
         ),
       ),
       React.createElement(

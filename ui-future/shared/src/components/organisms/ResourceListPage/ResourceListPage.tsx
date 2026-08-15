@@ -2,7 +2,7 @@
 //
 // Polling 3 сек (через useResourceList).
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Checkbox, Input, Segmented, Select, Typography, Tag } from "antd";
@@ -22,6 +22,7 @@ import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
+import { searchFilterExpression } from "@shared/lib/list-search-filter";
 
 interface Props {
   spec: ResourceSpec;
@@ -75,12 +76,29 @@ export function ResourceListPage({
   // загруженную страницу: клиентский фильтр поверх курсорной страницы отфильтровал
   // бы только то, что успело приехать, и выдал бы это за весь список.
   const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
+
+  // Строка поиска: у владельца, разбирающего выражение, она уходит ЗАПРОСОМ и
+  // спрашивает про весь список; у остальных остаётся клиентским срезом по
+  // прочитанным страницам — и тогда обязана называть это сама (placeholder ниже).
+  const serverSearch = spec.serverSearchField;
+  // Пауза перед запросом: без неё каждое нажатие клавиши — отдельный запрос к
+  // владельцу, и «поиск ушёл на сервер» оплачивался бы очередью запросов на
+  // каждое слово. Пауза короче человеческой паузы между словами, поэтому
+  // задержки ответа не создаёт.
+  const debouncedQuery = useDebounced(query, 250);
+  const searchExpr = serverSearch ? searchFilterExpression(serverSearch, debouncedQuery) : null;
+  // Выражение — ЧАСТЬ серверных фильтров, а не отдельный механизм: оба уезжают
+  // одним запросом, и ключ кэша обязан различать их оба.
+  const listQuery = useMemo(
+    () => (searchExpr ? { ...serverFilters, filter: searchExpr } : serverFilters),
+    [serverFilters, searchExpr],
+  );
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     spec,
     parentField ?? null,
     filterValue,
     pageSize,
-    serverFilters,
+    listQuery,
   );
   const setServerFilter = (param: string, value: string) =>
     setServerFilters((prev) => {
@@ -170,7 +188,11 @@ export function ResourceListPage({
   }
 
   const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    // Когда сузил сервер — клиент НЕ пересевает: он судил бы по своему правилу
+    // сравнения о строках, которые владелец уже признал подходящими, и отбросил
+    // бы часть ответа. Это вернуло бы исходный дефект этажом выше и незаметно:
+    // список выглядел бы отфильтрованным, просто короче настоящего.
+    const q = serverSearch ? "" : query.trim().toLowerCase();
     return items.filter((row) => {
       // "Публичные IP" — это external addresses; internal IPs показываются
       // только в subnet detail (IP-адреса tab). Фильтруем по наличию
@@ -192,7 +214,7 @@ export function ResourceListPage({
       return name.includes(q) || id.includes(q);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, query, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
+  }, [items, query, serverSearch, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
 
   // Заглушка «проект не выбран» — НИЖЕ всех хуков страницы, а не выше.
   // Scope приходит из context-store (аккаунтные списки IAM) или из параметра
@@ -312,8 +334,20 @@ export function ResourceListPage({
       <div style={{ flexShrink: 0, marginBottom: 12 }}>
         {listHeader(
           <>
+            {/* Одна и та же строка ввода означает на разных страницах разное —
+                значит она обязана об этом СКАЗАТЬ. Серверный поиск спрашивает
+                весь список; клиентский судит о прочитанных страницах, и молча
+                выдавать второе за первое нельзя: пользователь читает «ничего не
+                найдено» как утверждение об отсутствии ресурса. */}
             <Input.Search
-              placeholder="Фильтр по имени или идентификатору"
+              placeholder={
+                serverSearch ? "Поиск по имени — по всему списку" : "Фильтр по имени или идентификатору среди загруженных"
+              }
+              title={
+                serverSearch
+                  ? "Запрос уходит на сервер: ищется по всему списку, а не по загруженным строкам."
+                  : "Этот ресурс не умеет искать на сервере: сужаются только уже загруженные строки. Нажмите «Показать ещё», чтобы расширить набор."
+              }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{ width: 320 }}
@@ -366,6 +400,12 @@ export function ResourceListPage({
             loading={isLoading && items.length === 0}
             rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
             columns={columns}
+            // Сортировать можно только прочитанный целиком список. Пока за
+            // курсором есть страницы, стрелка упорядочивала бы случайную его
+            // часть и переставляла бы её при каждой догрузке — читатель принял
+            // бы первую строку прочитанного за первую вообще. Порядок серверу
+            // не заказывается: поле порядка снято с контракта осознанно.
+            sortable={!hasMore}
           />
         )}
       </div>
@@ -381,6 +421,25 @@ export function ResourceListPage({
       )}
     </div>
   );
+}
+
+/**
+ * Значение, отставшее от ввода на `ms` спокойных миллисекунд.
+ *
+ * Нужно ровно там, где значение становится ЧАСТЬЮ ЗАПРОСА: без паузы каждое
+ * нажатие клавиши — отдельный запрос к владельцу. Возвращает исходное значение
+ * первым же рендером, поэтому пустая строка не «догоняет» позже и не отменяет
+ * только что введённый поиск.
+ */
+function useDebounced(value: string, ms: number): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (value === settled) return;
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, ms]);
+  return settled;
 }
 
 // ServerRefFilter — выпадающий выбор значения серверного фильтра из другого
