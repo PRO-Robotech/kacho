@@ -82,7 +82,7 @@ func (a *stubAccounts) AccountOf(_ context.Context, _ string) (string, error) {
 func TestGuard_MissMaterialisesThenAsksAgain(t *testing.T) {
 	store := &stubStore{admitErrs: []error{regerrors.ErrQuotaNotProvisioned, nil}}
 	res := &stubResolver{limits: []ResolvedLimit{
-		{Kind: "registry.registries", Value: 8, SourceScope: "DEFAULT"},
+		{Kind: "registry.registries", Value: 8, Carrier: "project", SourceScope: "DEFAULT"},
 	}}
 	g := NewGuard(store, res, &stubAccounts{id: "acc-1"}, "registry")
 
@@ -109,7 +109,7 @@ func TestGuard_SecondMissIsRefusalNotPermission(t *testing.T) {
 	}}
 	// Сосед называет ДРУГОЙ вид — тот, о котором спрашивают, остаётся без потолка.
 	res := &stubResolver{limits: []ResolvedLimit{
-		{Kind: "registry.repositories", Value: 256, SourceScope: "DEFAULT"},
+		{Kind: "registry.repositories", Value: 256, Carrier: "project", SourceScope: "DEFAULT"},
 	}}
 	g := NewGuard(store, res, &stubAccounts{id: "acc-1"}, "registry")
 
@@ -122,14 +122,20 @@ func TestGuard_SecondMissIsRefusalNotPermission(t *testing.T) {
 // TestGuard_NestedKindsGoToTheirOwnTable — вложенный вид кладётся в проектный
 // резолв, плоский — в учёт.
 //
+// Носитель проставлен у КАЖДОЙ строки дублёра, потому что настоящий резолв
+// проставляет его всегда: запись каталога есть пара «вид и носитель». Дублёр без
+// носителя был бы снисходительнее настоящего — и раскладка, которая теперь
+// решается носителем, а не числом точек в имени, проверялась бы на входе,
+// которого не бывает.
+//
 // Положительный контроль здесь несущий: без него «в учёт не попало» было бы
 // неотличимо от «не попало никуда».
 func TestGuard_NestedKindsGoToTheirOwnTable(t *testing.T) {
 	store := &stubStore{admitErrs: []error{regerrors.ErrQuotaNotProvisioned, nil}}
 	res := &stubResolver{limits: []ResolvedLimit{
-		{Kind: "registry.registries", Value: 8, SourceScope: "DEFAULT"},
-		{Kind: "registry.repositories", Value: 256, SourceScope: "DEFAULT"},
-		{Kind: "registry.registries.repositories", Value: 64, SourceScope: "DEFAULT"},
+		{Kind: "registry.registries", Value: 8, Carrier: "project", SourceScope: "DEFAULT"},
+		{Kind: "registry.repositories", Value: 256, Carrier: "project", SourceScope: "DEFAULT"},
+		{Kind: "registry.registries.repositories", Value: 64, Carrier: "registry.registries", SourceScope: "DEFAULT"},
 	}}
 	g := NewGuard(store, res, &stubAccounts{id: "acc-1"}, "registry")
 
