@@ -17,6 +17,7 @@ export const VPC_SCOPED_IDS = [
   "security-groups",
   "network-interfaces",
   "gateways",
+  "cidr-groups",
 ] as const;
 
 /**
@@ -26,7 +27,7 @@ export const VPC_SCOPED_IDS = [
  * DiskType на /storage/v1/*), у него свой remote и свой раздел консоли.
  * Маршрутов /compute/v1/{disks,images,snapshots} в стволе нет.
  */
-export const COMPUTE_SCOPED_IDS = ["compute-instances"] as const;
+export const COMPUTE_SCOPED_IDS = ["compute-instances", "placement-groups"] as const;
 
 /** NLB-ресурсы под /projects/:projectId/nlb/<route>. */
 export const NLB_SCOPED_IDS = ["load-balancers", "listeners", "target-groups"] as const;

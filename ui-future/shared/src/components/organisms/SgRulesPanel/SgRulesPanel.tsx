@@ -8,7 +8,7 @@
 //   • edit   → { deletion_rule_ids: [id], addition_rule_specs: [spec] }
 //   • delete → { deletion_rule_ids: [...] }
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Checkbox, Dropdown, Modal, Typography } from "antd";
 import { MoreOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ExclamationCircleFilled } from "@ant-design/icons";
@@ -17,6 +17,7 @@ import { extractOperationId } from "@shared/components/molecules/OperationDialog
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { DirectionFact } from "@shared/components/atoms/DirectionFact";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
@@ -35,6 +36,8 @@ export interface SgRule {
   ports?: { from_port?: number | string; to_port?: number | string };
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
+  /** Третья ветвь `oneof target` — ссылка на именованный набор префиксов. */
+  cidr_group_id?: string;
   [k: string]: unknown;
 }
 
@@ -70,12 +73,28 @@ function targetParts(r: SgRule): { kind: string; value: string } {
     const v6 = r.cidr_blocks.v6_cidr_blocks ?? [];
     return { kind: "CIDR", value: [...v4, ...v6].join(", ") || "—" };
   }
-  if (r.security_group_id) return { kind: "SG", value: r.security_group_id };
+  if (r.security_group_id) return { kind: "Группа безопасности", value: r.security_group_id };
+  if (r.cidr_group_id) return { kind: "Набор префиксов", value: r.cidr_group_id };
   // Прочерк здесь означает правило БЕЗ цели — по закрытой модели оно не разрешает
   // ничего. Такое правило край больше не принимает (сервис отвергает с указанием
   // поля `<путь>.target`), поэтому прочерк остался ровно для строк, сохранённых
   // прежним контрактом; миграция 0029 приводит их к выразимому виду.
   return { kind: "—", value: "—" };
+}
+
+// Цель-ССЫЛКА показывается ссылкой (канон консоли, правило 2): иконка типа, имя,
+// переход. Обе ссылочные ветви — группа безопасности и набор префиксов — рисуются
+// ОДИНАКОВО: оставить одну ссылкой, а другую моноширинным идентификатором значило
+// бы показать один предмет двумя видами. Набор блоков ссылкой не становится —
+// ссылаться там не на что.
+function targetCell(r: SgRule, projectId: string | null): ReactNode {
+  if (r.security_group_id) {
+    return <RefNameLink specId="security-groups" refId={r.security_group_id} projectId={projectId ?? undefined} />;
+  }
+  if (r.cidr_group_id) {
+    return <RefNameLink specId="cidr-groups" refId={r.cidr_group_id} projectId={projectId ?? undefined} />;
+  }
+  return targetParts(r).value;
 }
 
 export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
@@ -292,8 +311,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
             },
             {
               header: "Источник",
-              className: "font-mono text-xs",
-              cell: (row) => targetParts(row).value,
+              // Моноширинный класс снят: он был осмыслен, пока в ячейке стоял
+              // идентификатор. Набор блоков остаётся моноширинным сам по себе.
+              cell: (row) => targetCell(row, projectId),
             },
             {
               header: "Описание",

@@ -44,9 +44,18 @@ export function resourceServicePrefix(specId: string): ServicePrefix | null {
     case "security-groups":
     case "network-interfaces":
     case "gateways":
+    // Именованный набор префиксов — ресурс vpc; на него ссылается правило
+    // группы безопасности третьей ветвью цели.
+    case "cidr-groups":
       return "vpc";
     // Compute
     case "machine-types":
+    // Группа размещения — ресурс compute, но её идентификатор спеки префикса
+    // `compute-` не несёт: раздел монтируют оба приложения по одному адресу,
+    // и переименование спеки ради предиката сломало бы ссылки на карточку.
+    case "placement-groups":
+    // Ключ доступа в гостевую систему — тот же случай.
+    case "guest-access-keys":
       return "compute";
     // Storage — блочное хранение
     case "volumes":

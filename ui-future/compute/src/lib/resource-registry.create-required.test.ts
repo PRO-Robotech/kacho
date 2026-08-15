@@ -26,6 +26,11 @@ import { REGISTRY } from "./resource-registry";
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // compute.v1 — an instance is project-scoped and placed in a zone.
   "/compute/v1/instances": ["project_id", "zone_id"],
+  // CreatePlacementGroupRequest marks no field `(required) = true`: the use-case
+  // refuses an empty name, an unset strategy and an unset anchor itself, with a
+  // named field each time. The empty list is the contract as declared, not an
+  // omission — and the form still offers all four inputs.
+  "/compute/v1/placementGroups": [],
 };
 
 /**
@@ -60,7 +65,7 @@ const createCapable = Object.entries(REGISTRY)
 describe("every create-capable spec can express what Create requires", () => {
   it("offers Create for at least the resources this registry is meant to create", () => {
     // Guards the sweep against silently measuring nothing.
-    expect(createCapable.length).toBe(1);
+    expect(createCapable.length).toBe(2);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {
