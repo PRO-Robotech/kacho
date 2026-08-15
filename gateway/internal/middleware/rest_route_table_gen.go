@@ -284,6 +284,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/vpc/v1/networks/{network_id}:add-cidr-blocks", FQN: "kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks"},
 	{Method: "GET", Template: "/vpc/v1/networks/{network_id}:internal", FQN: "kacho.cloud.vpc.v1.InternalNetworkService/GetNetwork"},
 	{Method: "POST", Template: "/vpc/v1/networks/{network_id}:remove-cidr-blocks", FQN: "kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks"},
+	{Method: "GET", Template: "/vpc/v1/quotas", FQN: "kacho.cloud.vpc.v1.QuotaService/List"},
 	{Method: "GET", Template: "/vpc/v1/routeTables", FQN: "kacho.cloud.vpc.v1.RouteTableService/List"},
 	{Method: "POST", Template: "/vpc/v1/routeTables", FQN: "kacho.cloud.vpc.v1.RouteTableService/Create"},
 	{Method: "DELETE", Template: "/vpc/v1/routeTables/{route_table_id}", FQN: "kacho.cloud.vpc.v1.RouteTableService/Delete"},

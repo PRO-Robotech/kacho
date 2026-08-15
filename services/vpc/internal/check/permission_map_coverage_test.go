@@ -40,6 +40,9 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 	vpcv1.GatewayService_ServiceDesc,
 	vpcv1.NetworkInterfaceService_ServiceDesc,
 	vpcv1.CidrGroupService_ServiceDesc,
+	// Чтение квот арендатором (#365). Публичный слушатель, только чтение:
+	// величины назначает администратор облака на внутреннем слушателе iam.
+	vpcv1.QuotaService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 

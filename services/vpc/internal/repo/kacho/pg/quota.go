@@ -50,6 +50,46 @@ func (q *quotaReader) Admit(ctx context.Context, carrierType, carrierID, kind st
 	return nil
 }
 
+// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+// квоты.
+//
+// `ORDER BY kind` — по КОЛОНКЕ ПОРЯДКА, а не по времени вставки. Строки заводит
+// материализация одной транзакцией, поэтому метка времени у них совпадает, и
+// сортировка по ней разрешалась бы идентификатором, то есть случайной строкой:
+// ответ переставлял бы виды от прогона к прогону, а клиент, ведущий состояние по
+// индексу, читал бы перестановку как изменение (`api-conventions.md` §«Порядок
+// повторяющегося поля — часть контракта либо его нет»).
+//
+// Пустой срез здесь означает «строк учёта ещё нет» и НИЧЕГО не говорит о
+// пределах: различать это состояние и отвечать арендатору полным набором обязан
+// вызывающий. Репозиторий сообщает только то, что видит в своей таблице.
+func (q *quotaReader) ListStates(ctx context.Context, carrierType, carrierID string) ([]kacho.QuotaState, error) {
+	const stmt = `
+		SELECT kind, limit_value, used, source_scope, source_scope_id
+		  FROM kacho_vpc.project_resource_quotas
+		 WHERE carrier_type = $1 AND carrier_id = $2
+		 ORDER BY kind`
+
+	rows, err := q.tx.Query(ctx, stmt, carrierType, carrierID)
+	if err != nil {
+		return nil, helpers.WrapPgErr(err, "Quota", "")
+	}
+	defer rows.Close()
+
+	out := make([]kacho.QuotaState, 0, 8)
+	for rows.Next() {
+		st := kacho.QuotaState{CarrierType: carrierType, CarrierID: carrierID}
+		if err := rows.Scan(&st.Kind, &st.Limit, &st.Used, &st.SourceScope, &st.SourceScopeID); err != nil {
+			return nil, helpers.WrapPgErr(err, "Quota", "")
+		}
+		out = append(out, st)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapPgErr(err, "Quota", "")
+	}
+	return out, nil
+}
+
 // quotaWriter — материализация поверх write-TX.
 type quotaWriter struct {
 	quotaReader

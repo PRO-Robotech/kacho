@@ -6,6 +6,7 @@ package kachomock
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
@@ -49,6 +50,11 @@ type quotaKey struct {
 type quotaRecord struct {
 	limit int64
 	used  int64
+	// Область, на которой величина победила, и её объект. Заполняются
+	// материализацией из ответа владельца величин; `SeedQuota` их не назначает —
+	// проба, которой они важны, заводит строку тем же путём, что продукт.
+	sourceScope   string
+	sourceScopeID string
 }
 
 func newQuotaStore() *quotaStore {
@@ -117,8 +123,43 @@ func (q *quotaMock) Materialize(_ context.Context, rows []kacho.QuotaRow) (int64
 		if _, exists := q.store.rows[k]; exists {
 			continue
 		}
-		q.store.rows[k] = &quotaRecord{limit: r.Limit}
+		q.store.rows[k] = &quotaRecord{
+			limit:         r.Limit,
+			sourceScope:   r.SourceScope,
+			sourceScopeID: r.SourceScopeID,
+		}
 		n++
 	}
 	return n, nil
+}
+
+// ListStates отдаёт строки носителя, отсортированные ПО ВИДУ — тем же порядком,
+// каким их отдаёт настоящий (`ORDER BY kind`).
+//
+// Порядок здесь не косметика и не совпадение: карта Go обходится в случайном
+// порядке by design, поэтому дублёр без явной сортировки отдавал бы виды
+// вперемешку и проба на порядок зеленела бы через раз — то есть проверяла бы
+// не продукт, а удачу. Дублёр обязан выполнять контракт настоящего, включая
+// объявленный порядок.
+func (q *quotaMock) ListStates(_ context.Context, carrierType, carrierID string) ([]kacho.QuotaState, error) {
+	q.store.mu.Lock()
+	defer q.store.mu.Unlock()
+
+	out := make([]kacho.QuotaState, 0, len(q.store.rows))
+	for k, rec := range q.store.rows {
+		if k.carrierType != carrierType || k.carrierID != carrierID {
+			continue
+		}
+		out = append(out, kacho.QuotaState{
+			Kind:          k.kind,
+			Limit:         rec.limit,
+			Used:          rec.used,
+			SourceScope:   rec.sourceScope,
+			SourceScopeID: rec.sourceScopeID,
+			CarrierType:   k.carrierType,
+			CarrierID:     k.carrierID,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
+	return out, nil
 }

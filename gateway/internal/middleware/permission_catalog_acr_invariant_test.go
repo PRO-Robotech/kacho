@@ -480,10 +480,18 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// освобождена от проверки — у двух служебных чтений отношение УЖЕ своё
 	// (`quota_reader`), потому что кластерный ярус чтения был бы для них выдачей
 	// много шире самой способности. Итог 319→326, замер по дереву.
+	//
+	// #365 — арендаторское чтение квот: ОДНА запись, `vpc.v1.QuotaService/List`,
+	// рутинная. Рутинная потому, что это чтение и ничего не решает: величины
+	// по-прежнему меняет только администратор облака, на внутреннем слушателе.
+	// Ярус — `viewer` НА ПРОЕКТЕ, а не на кластере: кластерное отношение чтения
+	// выполнимо подстановочным кортежем глобальных справочников и ответило бы
+	// «да» каждому аутентифицированному, а эти числа принадлежат одному
+	// арендатору. 264→265 routine, итог 326→327; sensitive и exempt не тронуты.
 	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 264, n1, "routine count")
+	assert.Equal(t, 265, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 326, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 327, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -56,26 +56,12 @@ command -v buf >/dev/null || { echo "ERR: buf не установлен" >&2; ex
 STAGE="$(mktemp -d)/catalog-proto"
 BIN="$(mktemp -d)"
 trap 'rm -rf "${STAGE%/*}" "${BIN}"' EXIT
-mkdir -p "${STAGE}/kacho/cloud" "${STAGE}/kacho/iam/authz"
-
-# --- общая инфраструктура (БЕЗ apigateway — у gateway свой служебный сервис,
-#     не входящий в публичный/доменный каталог) ---
-cp -R "${PROTO_ROOT}/google"                       "${STAGE}/google"
-cp -R "${PROTO_ROOT}/kacho/cloud/operation"        "${STAGE}/kacho/cloud/operation"
-cp    "${PROTO_ROOT}/kacho/cloud/validation.proto" "${STAGE}/kacho/cloud/validation.proto"
-cp -R "${PROTO_ROOT}/kacho/cloud/api"              "${STAGE}/kacho/cloud/api"
-cp -R "${PROTO_ROOT}/kacho/iam/authz/v1"           "${STAGE}/kacho/iam/authz/v1"
-
-# --- доменные деревья (монорепо: единый proto/) ---
-cp -R "${PROTO_ROOT}/kacho/cloud/iam"             "${STAGE}/kacho/cloud/iam"
-cp -R "${PROTO_ROOT}/kacho/cloud/vpc"             "${STAGE}/kacho/cloud/vpc"
-cp -R "${PROTO_ROOT}/kacho/cloud/reference"       "${STAGE}/kacho/cloud/reference"
-cp -R "${PROTO_ROOT}/kacho/cloud/compute"         "${STAGE}/kacho/cloud/compute"
-cp -R "${PROTO_ROOT}/kacho/cloud/access"          "${STAGE}/kacho/cloud/access"
-cp -R "${PROTO_ROOT}/kacho/cloud/geo"             "${STAGE}/kacho/cloud/geo"
-cp -R "${PROTO_ROOT}/kacho/cloud/loadbalancer"    "${STAGE}/kacho/cloud/loadbalancer"
-cp -R "${PROTO_ROOT}/kacho/cloud/registry"        "${STAGE}/kacho/cloud/registry"
-cp -R "${PROTO_ROOT}/kacho/cloud/storage"         "${STAGE}/kacho/cloud/storage"
+# Раскладка стадии — ОДНА на оба генератора края (см. lib/stage-proto-tree.sh).
+# Здесь стояла её рукописная копия; копии старели порознь, и заведение общего
+# пакета роняло оба генератора по очереди одинаковым сообщением компилятора.
+# shellcheck source=lib/stage-proto-tree.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/stage-proto-tree.sh"
+stage_proto_tree "${PROTO_ROOT}" "${STAGE}" "permission-catalog"
 
 # --- anchor-файл плагина (primary file) ---
 mkdir -p "${STAGE}/kacho/iam/authz/catalog/v1"

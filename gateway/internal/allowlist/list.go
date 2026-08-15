@@ -41,6 +41,9 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":    {},
 	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks": {},
 	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":   {},
+	// vpc.v1 — QuotaService (только чтение: величины администрируются на
+	// внутреннем слушателе через iam.v1.InternalLimitService)
+	"/kacho.cloud.vpc.v1.QuotaService/List": {},
 	// vpc.v1 — SubnetService
 	"/kacho.cloud.vpc.v1.SubnetService/Get":               {},
 	"/kacho.cloud.vpc.v1.SubnetService/List":              {},
