@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FC, ReactElement } from "react";
 import {
   Activity,
@@ -47,6 +47,7 @@ import {
   UserOutlined,
 } from "@ant-design/icons";
 import { KachoLogo, RailButton } from "../../atoms";
+import { REMOTE_MODULES } from "../../../remotes/moduleCatalog";
 import { loginUrl } from "../../../utils/auth";
 import type { HostContext } from "../../../utils";
 import type { RemoteIconName, RemoteNavItem, RemoteNavSection } from "dashboard/navigation";
@@ -58,7 +59,28 @@ type ShellNavItem = {
   to: (projectId: string | null) => string;
   matches: (pathname: string) => boolean;
   requiresProject?: boolean;
+  /** Модуль раздела не загрузился: кнопка остаётся, переход закрыт (#371). */
+  unavailable?: boolean;
 };
+
+/** Раздел рейла с пометкой недоступности его модуля. */
+type RailSection = RemoteNavSection & { unavailable?: boolean };
+
+// Загрузчики навигации — по одному literal-спецификатору на remote, иначе
+// @originjs/vite-plugin-federation перестанет резолвить их статически.
+const REMOTE_NAV_LOADERS: Record<string, () => Promise<unknown>> = {
+  dashboard: () => import("dashboard/navigation"),
+  vpc: () => import("vpc/navigation"),
+  compute: () => import("compute/navigation"),
+  storage: () => import("storage/navigation"),
+  nlb: () => import("nlb/navigation"),
+  registry: () => import("registry/navigation"),
+  iam: () => import("iam/navigation"),
+};
+const NAV_REMOTES = Object.keys(REMOTE_NAV_LOADERS);
+const UNAVAILABLE_REASON = "Раздел недоступен: модуль не загрузился";
+
+const loadRemoteNavigation = (remote: string): Promise<unknown> => REMOTE_NAV_LOADERS[remote]();
 
 const iconSize = 18;
 const iconByName: Record<RemoteIconName, ReactElement> = {
@@ -155,41 +177,47 @@ export const HostRail: FC<{
   currentPath?: string;
   showReachability: boolean;
   navigate?: (path: string) => void | Promise<void>;
+  /**
+   * Порт загрузки навигации модуля. Существует ради пробы: неразрешимый адрес
+   * точки входа подаётся сюда ровно тем, чем он приходит в браузере — отказом
+   * промиса. Умолчание — настоящие federation-импорты.
+   */
+  loadNavigation?: (remote: string) => Promise<unknown>;
 }> = ({
   context,
   currentPath = window.location.pathname,
   showReachability,
   navigate = (path) => window.location.assign(path),
+  loadNavigation = loadRemoteNavigation,
 }) => {
   const projectId = context?.project?.id ?? null;
-  const [sections, setSections] = useState<RemoteNavSection[]>([]);
+  const [sections, setSections] = useState<RailSection[]>([]);
+  // Навигация грузится ОДИН раз, на монтировании, — как и прежде, когда
+  // импорты стояли прямо в эффекте. Порт снимается при монтировании и дальше не
+  // перечитывается намеренно: зависимость эффекта от него перезапускала бы
+  // загрузку после каждого setSections (обёртка, созданная на рендере, каждый
+  // раз новая) — бесконечный цикл рендера, который выглядит как «прогон завис»,
+  // а не как падение.
+  const loadNavigationRef = useRef(loadNavigation);
 
   useEffect(() => {
     let cancelled = false;
 
-    void Promise.allSettled([
-      import("dashboard/navigation"),
-      import("vpc/navigation"),
-      import("compute/navigation"),
-      import("storage/navigation"),
-      import("nlb/navigation"),
-      import("registry/navigation"),
-      import("iam/navigation"),
-    ])
+    void Promise.allSettled(NAV_REMOTES.map((remote) => loadNavigationRef.current(remote)))
       .then((results) => {
-        if (!cancelled) {
-          setSections(
-            dedupeSections(
-              results.flatMap((result) =>
-                result.status === "fulfilled" ? normalizeRemoteNavigation(result.value) : [],
-              ),
-            ),
-          );
-        }
+        if (cancelled) return;
+        const loaded = results.flatMap((result) =>
+          result.status === "fulfilled" ? normalizeRemoteNavigation(result.value) : [],
+        );
+        const down = NAV_REMOTES.filter((_, index) => results[index].status === "rejected");
+        // Раздел упавшего модуля НЕ выпадает из меню: он остаётся под своим
+        // именем с пометкой недоступности. Пропавший раздел неотличим от
+        // «такого сервиса нет» — это и есть тихая форма отказа (#371).
+        setSections(withUnavailable(dedupeSections(loaded), down));
       })
       .catch(() => {
         if (!cancelled) {
-          setSections([]);
+          setSections(withUnavailable([], NAV_REMOTES));
         }
       });
 
@@ -198,8 +226,12 @@ export const HostRail: FC<{
     };
   }, []);
 
-  const section = activeSection(sections, currentPath);
-  const sectionItems = section
+  const current = activeSection(sections, currentPath);
+  // Внутри недоступного раздела показываем ПОЛНЫЙ перечень разделов: своих
+  // пунктов у него нет, и без этого пользователь остался бы в пустом рейле,
+  // без единого способа уйти из отказавшего модуля.
+  const section = current && !current.unavailable ? current : null;
+  const sectionItems: ShellNavItem[] = section
     ? section.items.map(toShellItem)
     : sections.map((remoteSection) => ({
         key: `section-${remoteSection.key}`,
@@ -208,6 +240,7 @@ export const HostRail: FC<{
         to: (nextProjectId: string | null) => remotePath(nextProjectId, remoteSection.landingPath),
         matches: () => false,
         requiresProject: remoteSection.requiresProject,
+        unavailable: remoteSection.unavailable,
       }));
 
   const renderItem = (item: ShellNavItem) => {
@@ -218,10 +251,12 @@ export const HostRail: FC<{
         active={item.matches(currentPath)}
         disabled={disabled}
         disabledLabel="Выберите проект"
+        unavailable={item.unavailable}
+        unavailableReason={UNAVAILABLE_REASON}
         label={item.label}
         icon={item.icon}
         onClick={() => {
-          if (!disabled) void navigate(item.to(projectId));
+          if (!disabled && !item.unavailable) void navigate(item.to(projectId));
         }}
       />
     );
@@ -252,7 +287,7 @@ export const HostRail: FC<{
   );
 };
 
-function activeSection(sections: RemoteNavSection[], pathname: string) {
+function activeSection(sections: RailSection[], pathname: string): RailSection | null {
   if (pathname.startsWith("/iam")) {
     return sections.find((section) => section.segment === "iam") ?? null;
   }
@@ -275,7 +310,7 @@ function toShellItem(item: RemoteNavItem): ShellNavItem {
   };
 }
 
-function normalizeRemoteNavigation(remote: unknown): RemoteNavSection[] {
+function normalizeRemoteNavigation(remote: unknown): RailSection[] {
   const maybeModule = remote as {
     DASHBOARD_NAVIGATION?: unknown;
     default?: unknown;
@@ -311,12 +346,41 @@ function normalizeRemoteNavigation(remote: unknown): RemoteNavSection[] {
     .filter((section) => section.key && section.segment && section.label && section.landingPath);
 }
 
-function dedupeSections(sections: RemoteNavSection[]): RemoteNavSection[] {
-  const byKey = new Map<string, RemoteNavSection>();
+function dedupeSections(sections: RailSection[]): RailSection[] {
+  const byKey = new Map<string, RailSection>();
   for (const section of sections) {
     byKey.set(section.key, section);
   }
   return [...byKey.values()];
+}
+
+/**
+ * Проставляет пометку недоступности разделам модулей, чья навигация не приехала,
+ * и ДОБАВЛЯЕТ раздел, если его не дал никто (агрегат `dashboard` мог упасть
+ * вместе с ним). Запасное описание раздела берётся из каталога модулей —
+ * единственного места, где живёт имя раздела.
+ */
+function withUnavailable(sections: RailSection[], downRemotes: string[]): RailSection[] {
+  if (downRemotes.length === 0) return sections;
+  const down = new Set(downRemotes);
+  const out = sections.map((section) => (down.has(section.key) ? { ...section, unavailable: true } : section));
+  const present = new Set(out.map((section) => section.key));
+
+  for (const module of REMOTE_MODULES) {
+    if (!module.section || !down.has(module.remote) || present.has(module.section.key)) continue;
+    out.push({
+      key: module.section.key,
+      segment: module.section.segment,
+      icon: module.section.icon,
+      label: module.label,
+      landingPath: module.section.landingPath,
+      requiresProject: module.section.requiresProject,
+      items: [],
+      unavailable: true,
+    });
+  }
+
+  return out;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

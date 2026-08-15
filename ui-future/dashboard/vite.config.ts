@@ -1,3 +1,4 @@
+import path from "node:path";
 import federation from "@originjs/vite-plugin-federation";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -31,6 +32,15 @@ export default defineConfig({
       shared: ["antd", "lucide-react", "react", "react-dom"],
     }),
   ],
+  resolve: {
+    // Граница отказа модуля (#371) — общий организм @shared, а не копия.
+    alias: {
+      "@shared": path.resolve(__dirname, "../shared/src"),
+    },
+    // Исходники @shared лежат вне дерева пакета: одна копия каждой библиотеки
+    // с внутренним состоянием на бандл.
+    dedupe: ["react", "react-dom", "antd"],
+  },
   server: {
     proxy: {
       "/vpc": {

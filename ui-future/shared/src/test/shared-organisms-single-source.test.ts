@@ -75,11 +75,35 @@ interface Organism {
 }
 
 const COMPONENTS: readonly Organism[] = [
-  { dir: "ResourceListPage", file: "ResourceListPage", symbol: "ResourceListPage" },
-  { dir: "ResourceCreatePage", file: "ResourceCreatePage", symbol: "ResourceCreatePage" },
-  { dir: "ResourceEditPage", file: "ResourceEditPage", symbol: "ResourceEditPage" },
-  { dir: "form/ResourceFormBody", file: "ResourceFormBody", symbol: "ResourceFormBody" },
+  {
+    dir: "ResourceListPage",
+    file: "ResourceListPage",
+    symbol: "ResourceListPage",
+  },
+  {
+    dir: "ResourceCreatePage",
+    file: "ResourceCreatePage",
+    symbol: "ResourceCreatePage",
+  },
+  {
+    dir: "ResourceEditPage",
+    file: "ResourceEditPage",
+    symbol: "ResourceEditPage",
+  },
+  {
+    dir: "form/ResourceFormBody",
+    file: "ResourceFormBody",
+    symbol: "ResourceFormBody",
+  },
   { dir: "form/FormField", file: "FormField", symbol: "FormFieldRenderer" },
+  // Граница отказа модуля (#371). Символ — HOC `withModuleBoundary`, а не класс
+  // `ModuleErrorBoundary`: у обёртки один вид на всё дерево, и копия в модуле
+  // означала бы, что правка экрана отказа доезжает не всюду.
+  {
+    dir: "ModuleErrorBoundary",
+    file: "ModuleErrorBoundary",
+    symbol: "withModuleBoundary",
+  },
 ] as const;
 
 const SWEEP = sweep(repoRoot);
@@ -210,14 +234,20 @@ describe("организмы CRUD: в приложении допустима т
       it(`${app}/${comp.dir}: только прослойка @shared`, () => {
         if (!existsSync(appDir)) return; // приложение этот компонент не показывает
         const indexFile = path.join(appDir, "index.ts");
+
         expect({ app, comp: comp.dir, hasIndex: existsSync(indexFile) }).toEqual({
           app,
           comp: comp.dir,
           hasIndex: true,
         });
         expect(readFileSync(indexFile, "utf8")).toContain("@shared/components/organisms/" + comp.dir);
+        // Anything besides the shim is a fork in disguise.
         const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
-        expect({ app, comp: comp.dir, stray }).toEqual({ app, comp: comp.dir, stray: [] });
+        expect({ app, comp: comp.dir, stray }).toEqual({
+          app,
+          comp: comp.dir,
+          stray: [],
+        });
       });
     }
   }
