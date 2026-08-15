@@ -198,13 +198,55 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Размер тома в гибибайтах (ГиБ), задаётся при создании.",
       },
       {
+        // Дискриминатор источника (form-only). У контракта источников РОВНО три
+        // (`source_snapshot_id` и `source_image_id` взаимоисключающи, пусто в
+        // обоих = чистый том), поэтому форма выражает выбор, а не предлагает
+        // заполнить два поля, из которых сервер примет одно.
+        //
+        // Умолчание — «пустой том»: единственная ветка, которой не нужен предмет
+        // в проекте. Открывать форму на ветке, требующей уже существующий
+        // снимок, значит встречать свежий проект пустым списком.
+        name: "_source_kind",
+        label: "Источник данных",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "empty",
+        options: [
+          { value: "empty", label: "Пустой том — без данных" },
+          { value: "snapshot", label: "Из снимка (Snapshot)" },
+          { value: "image", label: "Из образа (Image) — загрузочный том" },
+        ],
+        description:
+          "Чем наполняется том при создании: ничем (пустой), снимком другого тома или образом. Загрузочный том машины делается ИЗ ОБРАЗА — это и есть первый шаг из пустого проекта. Источник неизменяем после создания.",
+      },
+      {
         name: "source_snapshot_id",
-        label: "Из снимка",
+        label: "Снимок-источник",
         type: "ref",
         refResource: "snapshots",
         refProjectScoped: true,
-        required: false,
+        required: true,
+        createOnly: true,
         immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого восстанавливается том. Задаётся при создании и потом не меняется.",
+      },
+      {
+        // Образ — вход в цепочку «образ → том → машина». Без него из свежего
+        // проекта загрузочный том не получить вовсе: снимок делается из тома, а
+        // образ — из тома или снимка, то есть круг замкнут сам на себя.
+        name: "source_image_id",
+        label: "Образ-источник",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "image" },
+        description:
+          "Образ, из которого материализуется загрузочный том (immutable после Create). Same-DB ref → Image.",
         description: "Необязательно: восстановить том из снимка. Неизменяемо после создания; пусто — пустой том.",
       },
       FIELD_LABELS,
@@ -217,17 +259,46 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       zone_id: "",
       disk_type_id: "",
       size_gib: 10,
+      _source_kind: "empty",
       source_snapshot_id: "",
+      source_image_id: "",
       labels: {},
     }),
-    // size_gib (UI) → size_bytes (wire). Пустой source_snapshot_id не шлём.
+    // size_gib (UI) → size_bytes (wire); ровно одна ветка источника по
+    // `_source_kind`, form-only дискриминатор срезаем.
+    //
+    // Неактивная ветка режется ПО ДИСКРИМИНАТОРУ, а не по пустоте значения:
+    // пользователь мог выбрать образ и затем переключиться на снимок, и тогда
+    // непустой `source_image_id` уехал бы вместе со снимком — сервер отверг бы
+    // взаимоисключающую пару, назвав поле, которого в форме уже не видно.
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const gib = Number(out.size_gib);
       if (Number.isFinite(gib) && gib > 0) out.size_bytes = String(Math.round(gib) * GIB);
       delete out.size_gib;
-      if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "snapshot") {
+        delete out.source_image_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      } else if (kind === "image") {
+        delete out.source_snapshot_id;
+        if (!out.source_image_id) delete out.source_image_id;
+      } else {
+        delete out.source_snapshot_id;
+        delete out.source_image_id;
+      }
       return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран. Ветка
+    // «пустой том» предмета не имеет и проходит без выбора — иначе проверка
+    // отказывала бы всегда и её отрицание зеленело бы на чём угодно.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      if (kind === "image" && !obj.source_image_id) return "Выберите образ, из которого создаётся том.";
+      if (kind === "snapshot" && !obj.source_snapshot_id)
+        return "Выберите снимок, из которого восстанавливается том.";
+      return null;
     },
     // size_bytes (wire) → size_gib (UI) для edit-формы.
     hydrate: (obj) => {

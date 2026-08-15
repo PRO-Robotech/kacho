@@ -34,12 +34,27 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   "/vpc/v1/networkInterfaces": ["project_id", "subnet_id"],
   "/vpc/v1/securityGroups": ["project_id", "network_id"],
   "/vpc/v1/gateways": ["project_id"],
+  // CreateCidrGroupRequest marks only project_id; the membership fields are
+  // optional at Create and are grown afterwards through the two verbs.
+  "/vpc/v1/cidrGroups": ["project_id"],
   // InternalAddressPoolService.Create marks no field required.
   "/vpc/v1/addressPools": [],
   // compute.v1 — CreateDiskRequest{project_id,zone_id,size};
   // CreateImageRequest{project_id} (region_id is the STORAGE image, not this one);
   // CreateSnapshotRequest{project_id,disk_id}; CreateInstanceRequest{project_id,zone_id}.
   "/compute/v1/instances": ["project_id", "zone_id"],
+  // compute.v1 — CreateGuestAccessKeyRequest carries NO `(required) = true`
+  // annotation on any field. The ground truth for this row is therefore the
+  // use-case that refuses the call, not the descriptor: services/compute
+  // `guestaccesskey` rejects an absent project_id ("projectId is required"), a
+  // name outside 1..63 ("name must be 1..63 characters") and an absent or
+  // unparsable public_key ("publicKey is required …"). Citing the weaker source
+  // would have let the form ship a create that cannot succeed.
+  "/compute/v1/guestAccessKeys": ["project_id", "name", "public_key"],
+  // CreatePlacementGroupRequest marks no field `(required) = true`: the use-case
+  // refuses an empty name, an unset strategy and an unset anchor itself, naming
+  // the field each time. The empty list is the contract as declared.
+  "/compute/v1/placementGroups": [],
   // geo.v1 InternalCatalogService — Create{Region,Zone}Request mark no field required.
   "/geo/v1/regions": [],
   "/geo/v1/zones": [],

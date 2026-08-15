@@ -107,9 +107,12 @@ export const ENTITIES = {
   },
   gateways: { singular: "Шлюз", plural: "Шлюзы" },
   "address-pools": { singular: "Пул адресов", plural: "Пулы адресов" },
+  "cidr-groups": { singular: "Набор префиксов", plural: "Наборы префиксов" },
   // compute
   instances: { singular: "Виртуальная машина", plural: "Виртуальные машины" },
   "machine-types": { singular: "Тип машины", plural: "Типы машин" },
+  "placement-groups": { singular: "Группа размещения", plural: "Группы размещения" },
+  "guest-access-keys": { singular: "Ключ доступа", plural: "Ключи доступа" },
   // storage
   volumes: { singular: "Том", plural: "Тома" },
   snapshots: { singular: "Снимок", plural: "Снимки" },

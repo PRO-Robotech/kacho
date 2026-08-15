@@ -30,6 +30,7 @@ import {
   BankOutlined,
   CameraOutlined,
   ClusterOutlined,
+  ContainerOutlined,
   DesktopOutlined,
   FileImageOutlined,
   GatewayOutlined,
@@ -43,6 +44,7 @@ import {
   RobotOutlined,
   SafetyCertificateOutlined,
   SafetyOutlined,
+  TagsOutlined,
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -118,6 +120,7 @@ const antdIconBySpec: Record<string, ReactElement> = {
   "security-groups": <SafetyOutlined style={antdSize} />,
   "network-interfaces": <ApiOutlined style={antdSize} />,
   gateways: <GatewayOutlined style={antdSize} />,
+  "cidr-groups": <TagsOutlined style={antdSize} />,
   // nlb
   "load-balancers": <ApartmentOutlined style={antdSize} />,
   listeners: <ApiOutlined style={antdSize} />,
@@ -133,6 +136,7 @@ const antdIconBySpec: Record<string, ReactElement> = {
   operations: <HistoryOutlined style={antdSize} />,
   // compute
   instances: <DesktopOutlined style={antdSize} />,
+  "placement-groups": <ContainerOutlined style={antdSize} />,
   // MachineType (read-only sizing-каталог, compute-remote). iconByName не несёт
   // cpu/machine-глифа → host-валидный RemoteIconName fallback `layers`, а точную
   // ресурс-иконку даёт этот specId-маппинг (как images/volumes/disk-types).

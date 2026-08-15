@@ -26,7 +26,9 @@ import {
   SettingOutlined,
   UserOutlined,
   CloudServerOutlined,
+  ContainerOutlined,
   LockOutlined,
+  TagsOutlined,
 } from "@ant-design/icons";
 
 export interface NavLeaf {
@@ -149,6 +151,14 @@ export const SERVICE_MODULES: ServiceModule[] = [
         requiresProject: true,
       },
       {
+        key: "cidr-groups",
+        icon: <TagsOutlined />,
+        label: "Наборы префиксов",
+        to: (f) => seg(f, "vpc/cidr-groups"),
+        matches: (p) => projectRe("vpc/cidr-groups").test(p),
+        requiresProject: true,
+      },
+      {
         key: "operations",
         icon: <HistoryOutlined />,
         label: ENTITIES.operations.plural,
@@ -178,6 +188,14 @@ export const SERVICE_MODULES: ServiceModule[] = [
         label: ENTITIES.instances.plural,
         to: (f) => seg(f, "compute/instances"),
         matches: (p) => projectRe("compute/instances").test(p),
+        requiresProject: true,
+      },
+      {
+        key: "placement-groups",
+        icon: <ContainerOutlined />,
+        label: "Группы размещения",
+        to: (f) => seg(f, "compute/placement-groups"),
+        matches: (p) => projectRe("compute/placement-groups").test(p),
         requiresProject: true,
       },
     ],

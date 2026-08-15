@@ -97,6 +97,12 @@ jest.unstable_mockModule("antd", () => {
     Checkbox: Input,
     Col: Component,
     Collapse: Component,
+    // Провайдер темы — сквозной узел, а не заглушка-`div`: он обёртка над
+    // деревом, и `div` посреди раскладки менял бы разметку страницы. Его
+    // отсутствие роняло СУИТУ ЦЕЛИКОМ («does not provide an export named
+    // ConfigProvider»), то есть ноль исполненных проб читался как ошибка сборки,
+    // а не как «этой иконки нет в наборе».
+    ConfigProvider: ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children),
     Descriptions: Component,
     Divider: Component,
     Dropdown: Component,

@@ -31,6 +31,13 @@ export const COMPUTE_NAVIGATION: RemoteNavSection[] = [
         path: "compute/machine-types",
         requiresProject: true,
       },
+      {
+        key: "compute-guest-access-keys",
+        icon: "layers",
+        label: "Ключи доступа",
+        path: "compute/guest-access-keys",
+        requiresProject: true,
+      },
     ],
   },
 ];

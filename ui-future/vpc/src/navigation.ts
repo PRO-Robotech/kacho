@@ -81,6 +81,13 @@ export const VPC_NAVIGATION: RemoteNavSection[] = [
         requiresProject: true,
       },
       {
+        key: "vpc-cidr-groups",
+        icon: "route",
+        label: ENTITIES["cidr-groups"].plural,
+        path: "vpc/cidr-groups",
+        requiresProject: true,
+      },
+      {
         key: "vpc-operations",
         icon: "activity",
         label: ENTITIES.operations.plural,

@@ -8,7 +8,7 @@
 //
 // Край (services/vpc) запрещает менять CIDR через PATCH (immutable after
 // Subnet.Create) — только `:add-cidr-blocks` / `:remove-cidr-blocks`.
-import { CidrTableSection } from "@shared/components/organisms/CidrTableSection";
+import { CidrTableSection, IP_PREFIXED_BLOCK_FIELDS } from "@shared/components/organisms/CidrTableSection";
 
 const SUBNETS_API = "/vpc/v1/subnets";
 
@@ -29,6 +29,7 @@ export function CidrSection({ subnetId, kind, blocks, primary }: SectionProps) {
   return (
     <CidrTableSection
       actionPath={(verb) => `${SUBNETS_API}/${subnetId}:${verb}-cidr-blocks`}
+      blockFields={IP_PREFIXED_BLOCK_FIELDS}
       invalidateKey="subnets"
       kind={kind}
       blocks={blocks}

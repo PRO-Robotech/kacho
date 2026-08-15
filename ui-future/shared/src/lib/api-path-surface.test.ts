@@ -357,10 +357,15 @@ describe("составные пути — объём осмотренного", 
     // Вид секции CIDR общий (`CidrTableSection`), но ПУТЬ строит владелец
     // ресурса — иначе голова литерала стала бы пропом, статически не
     // резолвимым, и оба ресурса ушли бы из-под наблюдения этой пробы вовсе.
-    // У сети таких мест два: секции v4 и v6 адресуются каждая своей.
+    // У сети и у набора префиксов таких мест по два: секции v4 и v6 адресуются
+    // каждая своей.
     expect(dynamicVerb.map((c) => `${c.file} ${c.literal}`).sort()).toEqual([
       "components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx " +
         "${POOLS_API}/${poolId}:${params.verb}CidrBlocks",
+      "components/organisms/CidrGroupBlocksManager/CidrGroupBlocksManager.tsx " +
+        "${CIDR_GROUPS_API}/${cidrGroupId}:${verb}-cidr-blocks",
+      "components/organisms/CidrGroupBlocksManager/CidrGroupBlocksManager.tsx " +
+        "${CIDR_GROUPS_API}/${cidrGroupId}:${verb}-cidr-blocks",
       "components/organisms/NetworkCidrManager/NetworkCidrManager.tsx " +
         "${NETWORKS_API}/${networkId}:${verb}-cidr-blocks",
       "components/organisms/NetworkCidrManager/NetworkCidrManager.tsx " +
