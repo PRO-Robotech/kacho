@@ -41,6 +41,11 @@ func ToStatus(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
 	}
+	// Учёт числа ресурсов разбирается ПЕРВЫМ и отдельно: клиенту мало кода — он
+	// обязан различать полосы машинно, по `reason`-токену, а не разбором прозы.
+	if st, ok := quotaRefusal(err); ok {
+		return st
+	}
 	switch {
 	case errors.Is(err, regerrors.ErrNotFound):
 		return status.Error(codes.NotFound, strip(err, regerrors.ErrNotFound))

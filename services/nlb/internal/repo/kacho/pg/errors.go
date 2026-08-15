@@ -49,6 +49,12 @@ func mapPgErr(err error, kind, id string) error {
 		}
 		return kacho.ErrNotFound
 	}
+	// Учёт числа ресурсов классифицируется ПЕРВЫМ и отдельно от общей таблицы
+	// SQLSTATE'ов: клиенту мало кода — он обязан различать полосы машинно, по
+	// признаку, а не разбором прозы. Подробности — в classifyQuotaErr.
+	if qerr := classifyQuotaErr(err); qerr != nil {
+		return qerr
+	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {

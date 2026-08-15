@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
@@ -413,24 +414,61 @@ func (uc *ListChangedUseCase) Execute(ctx context.Context, cursor string, pageSi
 	return ChangedResult{Changes: rows, NextCursor: uc.cursors.Encode(next)}, nil
 }
 
+// moduleSubject — личность МОДУЛЯ: учётная запись, выведенная из проверенного
+// сертификата пира. Пусто, когда сертификата нет (процессная фикстура) либо он
+// не принадлежит модулю платформы.
+func moduleSubject(ctx context.Context) string {
+	san, verified := grpcsrv.CertIdentityFromContext(ctx)
+	if !verified || san == "" {
+		return ""
+	}
+	sva, ok := authzguard.SANToServiceAccountID(san)
+	if !ok {
+		return ""
+	}
+	return "service_account:" + sva
+}
+
 // requireQuotaReader — the narrow gate, shared by both service-facing reads.
 //
 // Returns PermissionDenied (verbatim, non-leaking) on every failure mode:
 // anonymous principal, unwired checker, checker backend error, explicit deny. A
 // checker that cannot answer is not an answer of "yes".
 func requireQuotaReader(ctx context.Context, checker authzguard.RelationChecker) error {
-	subject, ok := authzguard.PrincipalSubject(ctx)
-	if !ok {
-		return authzguard.PermissionDenied()
-	}
 	if checker == nil {
 		return authzguard.PermissionDenied()
 	}
-	allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID)
-	if err != nil || !allowed {
-		return authzguard.PermissionDenied()
+	// ЛИЧНОСТЕЙ РОВНО ДВЕ, и обе законны — поэтому они спрашиваются по одной, а
+	// не циклом по списку.
+	//
+	// Величины читают два разных вызывающих: МОДУЛЬ на пути мутации (доказывает
+	// себя сертификатом; членство в группе читателей заведено его служебной
+	// учётной записи) и ЧЕЛОВЕК через край (его личность приезжает переданным
+	// принципалом, а сертификат в этом случае принадлежит КРАЮ, который
+	// читателем не является и быть не должен).
+	//
+	// ПОЧЕМУ НЕ ЦИКЛ. Их две по построению, и это свойство, а не коллекция: цикл
+	// объявил бы стоимость вопроса растущей и был бы прав только если бы список
+	// зависел от входа. Гейт стоимости страницы (`internal/authzfilter`) это и
+	// заметил — справедливо.
+	//
+	// ЧТО СТОИЛА ОДНА ЛИЧНОСТЬ. Сперва гейт смотрел ТОЛЬКО принципала: модуль
+	// работает от имени арендатора, тот читателем не является, и резолв отказывал
+	// каждой мутации домена. Потом — ТОЛЬКО сертификат: администратор через край
+	// потерял доступ, которым пользуется. Обе проверки нужны вместе.
+	if subject := moduleSubject(ctx); subject != "" {
+		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+			return nil
+		}
 	}
-	return nil
+	if subject, ok := authzguard.PrincipalSubject(ctx); ok {
+		// Ошибка хранилища ответом «да» не является: она просто не даёт
+		// разрешения, а разрешения не дала ни одна личность — значит отказ.
+		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+			return nil
+		}
+	}
+	return authzguard.PermissionDenied()
 }
 
 // finish — terminal Operation of a Create. Method form kept so the Create path

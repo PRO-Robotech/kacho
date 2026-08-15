@@ -88,6 +88,25 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 		Lifecycle: domain.LifecycleDurable,
 	}
 
+	// Учёт числа ресурсов: репозиторий считается ДВАЖДЫ — в своём реестре и в
+	// проекте. Порядок вопросов тот же, что порядок списания (V2-6: сначала
+	// носитель-родитель), иначе ранний отказ называл бы не ту ось, по которой
+	// откажет триггер.
+	//
+	// Проект берётся у УЖЕ прочитанного реестра: строка репозитория его не
+	// несёт, и лишнего чтения здесь нет.
+	if u.quota != nil {
+		if err := u.quota.AdmitCarrier(ctx,
+			"registry.registries.repositories",
+			spec.RegistryID,
+			"registry.registries.repositories"); err != nil {
+			return nil, err
+		}
+		if err := u.quota.Admit(ctx, reg.ProjectID, "registry.repositories"); err != nil {
+			return nil, err
+		}
+	}
+
 	principal := operations.PrincipalFromContext(ctx)
 	op, err := operations.NewFromContext(ctx,
 		ids.PrefixOperationReg,

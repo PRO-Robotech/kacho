@@ -85,3 +85,18 @@ type ZoneRegistry interface {
 type PoolService interface {
 	ResolvePoolForAddressObjFamily(ctx context.Context, addr *kachorepo.AddressRecord, family addresspool.AddressFamily) (*addresspool.ResolvedPool, error)
 }
+
+// QuotaGuard — совещательная полоса учёта числа ресурсов.
+//
+// Приёмка `docs/specs/sub-phase-quota-v2-materialised-usage-acceptance.md`
+// (APPROVED, раунд 2), DoD S2 п.3 и п.5. Порт объявлен здесь, у вызывающего;
+// реализация — `apps/kacho/shared/quota`.
+//
+// Полоса НЕ ПРИНИМАЕТ решения: между её ответом и вставкой помещается чужая
+// запись, и место занимает атомарное списание триггера в writer-транзакции
+// (ban #10). Она существует ради РАННЕГО отказа — иначе исчерпание предела
+// наблюдается как «200 и операция, упавшая через секунду», — и ради
+// материализации строк учёта на промахе: без неё триггеру нечего списывать.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
+}

@@ -126,7 +126,10 @@ type AttachDiskReq struct {
 // НОЛЬ local attach-state: том↔Instance-привязка живёт в kacho-storage
 // (storageClient → InternalVolumeService), NIC↔Instance — в kacho-vpc (nicClient).
 type InstanceService struct {
-	repo InstanceRepo
+	// quota — полоса учёта числа ресурсов (порт QuotaGuard). Материализация
+	// строк учёта висит на ней, поэтому на поднятом стенде провязка обязательна.
+	quota QuotaGuard
+	repo  InstanceRepo
 	// machineTypes — sync-каталог sizing (COMP-1 F2/F7). Резолвит machineTypeId
 	// (mt-slug ИЛИ стабильное имя) в effectiveResources + family + status.
 	machineTypes MachineTypeRepo
@@ -360,6 +363,21 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req CreateInstanceReq) (*anypb.Any, error) {
 	if err := peercheck.Project(ctx, s.projectClient, req.ProjectID); err != nil {
 		return nil, err
+	}
+
+	// Учёт числа ресурсов. Здесь же материализуются строки учёта, если проект их
+	// ещё не имеет, — момент, когда владелец типа впервые узнаёт о проекте.
+	//
+	// ПОЧЕМУ ВНУТРИ ОПЕРАЦИИ, А НЕ ДО НЕЁ, как у остальных двух видов. Проверка
+	// проекта у машины живёт в асинхронной половине, а резолв величин обязан
+	// идти ПОСЛЕ неё: на несуществующем проекте отказ обязан называть проект, а
+	// не пределы. Значит отказ учёта приезжает в `Operation.error` —
+	// авторитетной полосой, которую приёмка и называет несущей; синхронная
+	// совещательная полоса у машины отсутствует осознанно, а не забыта.
+	if s.quota != nil {
+		if err := s.quota.Admit(ctx, req.ProjectID, "compute.instance"); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
 		return nil, serviceerr.MapZoneRefErr(err, req.ZoneID)
@@ -1289,4 +1307,23 @@ func mapSubnetRefErr(err error, subnetID string) error {
 		return status.Errorf(codes.FailedPrecondition, "Subnet %s not found", subnetID)
 	}
 	return status.Error(codes.Unavailable, "subnet lookup unavailable")
+}
+
+// QuotaGuard — полоса учёта числа ресурсов.
+//
+// Порт объявлен здесь, у вызывающего; реализация — `apps/kacho/shared/quota`.
+//
+// Полоса НЕ ПРИНИМАЕТ решения: между её ответом и вставкой помещается чужая
+// запись, и место занимает атомарное списание триггера в writer-транзакции
+// — чтение с последующим сравнением не даёт
+// блокировки строки. Она существует ради материализации строк учёта на промахе — без неё
+// триггеру нечего списывать.
+type QuotaGuard interface {
+	Admit(ctx context.Context, projectID, kind string) error
+}
+
+// WithQuotaGuard подключает полосу учёта.
+func (s *InstanceService) WithQuotaGuard(g QuotaGuard) *InstanceService {
+	s.quota = g
+	return s
 }

@@ -30,5 +30,10 @@ func NewDefaultRouteTable(id string, net Network) RouteTable {
 		NetworkID:   net.ID,
 		Name:        RcNameVPC(DefaultRTName(net.ID)),
 		Description: RcDescription(DefaultRTDescription),
+		// Признак происхождения ставится ЗДЕСЬ, в единственном месте, которое
+		// решает завести системного ребёнка, — а не у вызывающего. Решение и его
+		// следствие тогда неразделимы: нельзя завести системную таблицу и забыть
+		// пометить её, потому что это одно и то же действие.
+		SystemOwned: true,
 	}
 }

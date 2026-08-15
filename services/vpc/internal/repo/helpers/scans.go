@@ -42,7 +42,7 @@ const SubnetCols = `id, project_id, created_at, name, description, labels, netwo
 const AddressCols = `id, project_id, created_at, name, description, labels, addr_type, ip_version, reserved, used, deletion_protection, external_ipv4, internal_ipv4, internal_ipv6, external_ipv6`
 
 // RouteTableCols — список колонок таблицы route_tables в порядке, ожидаемом ScanRouteTable.
-const RouteTableCols = `id, project_id, created_at, name, description, labels, network_id, static_routes`
+const RouteTableCols = `id, project_id, created_at, name, description, labels, network_id, static_routes, system_owned`
 
 // SGCols — список колонок таблицы security_groups в порядке, ожидаемом ScanSG.
 // Колонки `status` нет: она удалена из контракта (DROP COLUMN в миграции 0003).
@@ -246,7 +246,7 @@ func ScanRouteTable(row Scannable) (*kachorepo.RouteTableRecord, error) {
 
 	err := row.Scan(
 		&rt.ID, &rt.ProjectID, &rt.CreatedAt, &name, &description, &labelsJSON,
-		&rt.NetworkID, &routesJSON,
+		&rt.NetworkID, &routesJSON, &rt.SystemOwned,
 	)
 	if err != nil {
 		return nil, err

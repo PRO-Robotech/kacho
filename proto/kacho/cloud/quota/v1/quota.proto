@@ -1,0 +1,74 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.quota.v1;
+
+import "kacho/cloud/iam/v1/limit.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1";
+
+// Quota — one ceiling as the tenant sees it: the limit, what is already spent
+// against it, and WHERE the limit came from.
+//
+// WHY THIS MESSAGE IS SHARED AND THE SERVICE IS NOT. The value lives in iam and
+// the counting lives with the owner of the resource type (`iam.v1.Limit`). A
+// single summary endpoint at iam would need `iam -> owner` calls to learn what is
+// spent, and iam is a leaf domain every service already calls — that edge would
+// close a cycle. So each owner answers about ITS OWN kinds, from its own database,
+// and the SHAPE of the answer is stated once, here, so eight domains cannot drift
+// into eight dialects of the same three numbers.
+//
+// WHY `source_scope` IS IMPORTED AND NOT RESTATED. A tenant who hits a ceiling
+// needs to know whose ceiling it is before they know who can raise it. That is
+// exactly what `iam.v1.Limit.Scope` already says, and a second enumeration about
+// one subject drifts silently — one side gains an arm, the other keeps compiling.
+// All contracts live in one tree under one `buf`, so the import costs nothing by
+// construction.
+//
+// READ-ONLY BY CONSTRUCTION. This message never appears in a request body. The
+// tenant reads; only the cloud administrator changes a value, through
+// `iam.v1.InternalLimitService` on the internal listener. The split is a
+// permission boundary, not a convenience: a tenant able to raise their own
+// ceiling has no ceiling.
+message Quota {
+  // The kind this row governs — a dotted `domain.resource` token from the
+  // platform's closed catalogue (`vpc.network`, `vpc.subnet`, …). The same token
+  // the administrator states a `Limit` on, so the two are joinable without a
+  // translation table.
+  string kind = 1;
+
+  // The effective ceiling: how many of this kind the carrier may hold. Zero is a
+  // legal, meaningful value — "none of this kind may be created" — and is NOT to
+  // be read as "unset".
+  int64 limit = 2;
+
+  // How many are held right now. Counted by the owner in the very statement that
+  // inserts or deletes the row, so it cannot drift from the rows it counts.
+  int64 used = 3;
+
+  // Scope the winning value was stated at — PROJECT beats ACCOUNT beats DEFAULT.
+  //
+  // Without it "you are at 16 of 16" does not tell the tenant whether the number
+  // is their own override, their account's, or the platform's, and therefore does
+  // not tell them who can change it.
+  kacho.cloud.iam.v1.Limit.Scope source_scope = 4;
+
+  // Id of the object the winning scope names: an account id for ACCOUNT, a
+  // project id for PROJECT. Empty when the winner is DEFAULT, and empty ONLY
+  // then — the pairing mirrors `iam.v1.Limit`, where a DB CHECK enforces it.
+  string source_scope_id = 5;
+
+  // What the count is kept against. Today `project` for every kind of every
+  // domain; a kind whose ceiling belongs to a PARENT resource rather than to the
+  // project (children of one object) carries that parent's type here.
+  //
+  // Stated rather than assumed, because "quota is per project" is true of the
+  // present catalogue and not of the mechanism: reading it off the request would
+  // make the response describe the question instead of the resource.
+  string carrier_type = 6;
+
+  // Id of the carrier — the project id when `carrier_type` is `project`.
+  string carrier_id = 7;
+}

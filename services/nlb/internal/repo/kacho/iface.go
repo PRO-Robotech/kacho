@@ -50,6 +50,8 @@ type RepositoryReader interface {
 	LoadBalancers() LoadBalancerReaderIface
 	Listeners() ListenerReaderIface
 	TargetGroups() TargetGroupReaderIface
+	// Quotas — совещательная полоса учёта числа ресурсов.
+	Quotas() QuotaReaderIface
 	// Close завершает read-TX (rollback). Идемпотентно.
 	Close() error
 }
@@ -66,6 +68,8 @@ type RepositoryWriter interface {
 	// FGARegisterOutbox — emit FGA-register-intent в `fga_register_outbox` в
 	// той же tx-области writer'а (transactional-outbox).
 	FGARegisterOutbox() FGARegisterEmitter
+	// Quotas — материализация строк учёта в той же tx-области writer'а.
+	Quotas() QuotaWriterIface
 	// Commit финализирует tx. После Commit вызов Abort — no-op.
 	Commit() error
 	// Abort откатывает tx. Идемпотентен — безопасно через `defer w.Abort`

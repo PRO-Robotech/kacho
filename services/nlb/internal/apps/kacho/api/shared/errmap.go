@@ -42,6 +42,11 @@ func MapDomainErr(err error) error {
 		// already gRPC-shaped with a meaningful code
 		return err
 	}
+	// Учёт числа ресурсов разбирается ПЕРВЫМ и отдельно: клиенту мало кода — он
+	// обязан различать полосы машинно, по `reason`-токену, а не разбором прозы.
+	if st, ok := quotaRefusal(err); ok {
+		return st
+	}
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		return status.Error(codes.NotFound, StripSentinel(err, "not found"))

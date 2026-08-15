@@ -78,6 +78,13 @@ func MapRepoErr(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
 	}
+	// Отказ учёта разбирается ДО общей классификации: ему мало кода, он обязан
+	// нести машинный признак полосы (`quota.go`). Общая ветка признака не даёт,
+	// и попав в неё первым, отказ учёта уехал бы к арендатору неотличимым от
+	// любого другого предусловия.
+	if refusal, ok := quotaRefusal(err); ok {
+		return refusal
+	}
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {
 			return status.Error(codes.Internal, "internal database error")
@@ -114,6 +121,15 @@ func MapRepoErrLeakSafe(err error, fallback string) error {
 	}
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
+	}
+	// Тот же разбор, что и у публичного отображения, и намеренно тот же ТЕКСТ.
+	// Строгая политика этой обёртки существует против утечки pgx-хвоста; текст
+	// отказа учёта хвостом не является — его производит наша же функция базы, он
+	// назван контрактом и обязан читаться одинаково на обоих слушателях. Полоса,
+	// теряющая код или признак на одном из портов, давала бы один отказ,
+	// читаемый по-разному в зависимости от того, куда постучались.
+	if refusal, ok := quotaRefusal(err); ok {
+		return refusal
 	}
 	if code, sentinel, ok := classifyRepoSentinel(err); ok {
 		if sentinel == ErrInternal {

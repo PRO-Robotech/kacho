@@ -218,6 +218,16 @@ func WrapPgErr(err error, kind, id string) error {
 	if err == nil {
 		return nil
 	}
+	// Отказ учёта классифицируется ПЕРВЫМ, до общих классов.
+	//
+	// Порядок здесь несущий, а не косметический: собственные SQLSTATE триггера
+	// учёта не входят ни в один из классов ниже, поэтому без этой ветки они
+	// доехали бы до `ErrInternal` — то есть арендатор, упёршийся в предел, видел
+	// бы «что-то сломалось» вместо «место кончилось», и ровно тот отказ, ради
+	// которого механизм существует, стал бы неотличим от сбоя хранилища.
+	if quotaErr := classifyQuotaErr(err); quotaErr != nil {
+		return quotaErr
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if id != "" {
 			return fmt.Errorf("%w: %s %s not found", ErrNotFound, kind, id)
@@ -254,4 +264,45 @@ func WrapPgErr(err error, kind, id string) error {
 	// безвозвратно на границе repo (CWE-778). Тот же `%w: %v`-паттерн, что и в
 	// helpers/jsonb.go.
 	return fmt.Errorf("%w: %v", ErrInternal, err)
+}
+
+// SQLSTATE'ы, которыми триггер учёта сообщает СВОЙ исход.
+//
+// Классы, начинающиеся с буквы за пределами зарезервированных Postgres'ом,
+// свободны для приложения — поэтому эти три не могут совпасть ни с одним кодом
+// сервера и ни с одним кодом расширения. Они объявлены здесь и в шапке
+// миграции 0040; оба места называют один предмет, и второе — то, где они
+// производятся.
+const (
+	// sqlstateQuotaExceeded — место кончилось: строка учёта есть, used >= limit.
+	sqlstateQuotaExceeded = "KQ001"
+	// sqlstateQuotaNotProvisioned — потолок не назван ни на одной области.
+	sqlstateQuotaNotProvisioned = "KQ002"
+	// sqlstateQuotaNoProjectID — строка ресурса не несёт проекта. Дефект схемы,
+	// а не арендатора: наружу уходит фиксированным внутренним отказом.
+	sqlstateQuotaNoProjectID = "KQ003"
+)
+
+// classifyQuotaErr отличает исход учёта от всего остального; nil означает «это
+// не отказ учёта».
+//
+// Текст триггера сохраняется ДОСЛОВНО для двух первых исходов: он и есть
+// контракт («project <P> has reached its limit of <N> <kind>»), а не диагностика
+// хранилища, поэтому пересказывать его здесь значило бы завести второе место об
+// одном предмете. Для третьего исхода текст НЕ сохраняется — он про нашу схему,
+// и арендатору о ней знать нечего.
+func classifyQuotaErr(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return nil
+	}
+	switch pgErr.Code {
+	case sqlstateQuotaExceeded:
+		return fmt.Errorf("%w: %s", ErrQuotaExceeded, pgErr.Message)
+	case sqlstateQuotaNotProvisioned:
+		return fmt.Errorf("%w: %s", ErrQuotaNotProvisioned, pgErr.Message)
+	case sqlstateQuotaNoProjectID:
+		return fmt.Errorf("%w: quota accounting: %v", ErrInternal, err)
+	}
+	return nil
 }

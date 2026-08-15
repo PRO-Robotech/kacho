@@ -148,6 +148,11 @@ func (r *readerImpl) CidrGroups() kacho.CidrGroupReaderIface {
 	return &cidrGroupReader{tx: r.tx}
 }
 
+// Quotas возвращает совещательную полосу учёта, привязанную к этой read-TX.
+func (r *readerImpl) Quotas() kacho.QuotaReaderIface {
+	return &quotaReader{tx: r.tx}
+}
+
 // Close rollback'ит read-TX (read-only TX — rollback не имеет side-effects).
 // Идемпотентно. Игнорирует pgx.ErrTxClosed.
 func (r *readerImpl) Close() error {
@@ -248,6 +253,16 @@ func (w *writerImpl) AddressPoolBindings() kacho.AddressPoolBindingWriterIface {
 func (w *writerImpl) CidrGroups() kacho.CidrGroupWriterIface {
 	return &cidrGroupWriter{
 		cidrGroupReader: cidrGroupReader{tx: w.tx},
+	}
+}
+
+// Quotas возвращает материализацию учёта, привязанную к этой write-TX. Writer
+// видит свои writes, поэтому заведённые строки немедленно доступны совещательной
+// полосе того же writer'а.
+func (w *writerImpl) Quotas() kacho.QuotaWriterIface {
+	return &quotaWriter{
+		quotaReader: quotaReader{tx: w.tx},
+		tx:          w.tx,
 	}
 }
 

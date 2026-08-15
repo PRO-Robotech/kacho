@@ -219,6 +219,18 @@ type ProjectClient interface {
 	Exists(ctx context.Context, projectID string) (bool, error)
 }
 
+// ProjectAccountClient — тот же клиент проекта, умеющий вдобавок назвать аккаунт.
+//
+// Отдельный, более широкий порт, а не расширение `ProjectClient`: существование
+// проекта спрашивают все пути мутации, а аккаунт — только материализация строк
+// учёта квоты. Расширив узкий порт, пришлось бы учить `AccountOf` каждую
+// подставную реализацию в пробах, где предмет проверки другой, — и `AccountOf`
+// появился бы там заглушкой, которая ничего не значит.
+type ProjectAccountClient interface {
+	ProjectClient
+	AccountOf(ctx context.Context, projectID string) (string, error)
+}
+
 // NicAttachSpec — self-describing NIC-attach payload for compute→kacho-vpc
 // InternalNetworkInterfaceService.Attach. compute forwards the instance's
 // zone/name/project so kacho-vpc can validate zone-coherence (anycast/REGIONAL

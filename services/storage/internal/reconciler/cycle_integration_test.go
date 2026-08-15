@@ -15,11 +15,13 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend/fake"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
 // Полный цикл «создаваемый → готовый» на дублёре плоскости данных.
@@ -51,7 +53,42 @@ func newPool(t *testing.T) *pgxpool.Pool {
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
+	seedQuotaFor(t, pool, "prj-cycle")
 	return pool
+}
+
+// seedQuotaFor приводит базу пробы в состояние «проект материализован».
+//
+// Пробы этого пакета заводят тома напрямую, а вставка строки ресурса СПИСЫВАЕТ
+// место (миграция 0023): «потолок не назван» — отказ, а не «без предела». На
+// живом пути строку заводит материализация; здесь её нет, поэтому проба обязана
+// привести базу в то же состояние, в каком её видит репозиторий в бою.
+//
+// Идёт через `pg.MaterializeQuotas` — тот же и ЕДИНСТВЕННЫЙ оператор заведения
+// строк учёта, а не через свой INSERT: копия разошлась бы с настоящим молча, и
+// разошлась бы на составе столбцов, то есть там, где расхождение не видно
+// глазом. Величина заведомо больше, чем нужно пробам: предел здесь не предмет
+// утверждения, а условие достижимости предмета.
+func seedQuotaFor(t *testing.T, pool *pgxpool.Pool, project string) {
+	t.Helper()
+	rows := make([]quota.Row, 0, 3)
+	for _, kind := range []string{"storage.volumes", "storage.snapshots", "storage.images"} {
+		rows = append(rows, quota.Row{
+			CarrierType:   quota.CarrierProject,
+			CarrierID:     project,
+			Kind:          kind,
+			Limit:         1_000_000,
+			SourceScope:   "DEFAULT",
+			LimitRevision: 0,
+			// Зеркало аккаунта непусто: схема отвергает пустое, и отвергает
+			// правильно — строка без зеркала невидима аккаунтной дельте.
+			AccountID: "acc-fixture",
+		})
+	}
+	n, err := pg.MaterializeQuotas(context.Background(), pool, rows)
+	require.NoError(t, err, "фикстура учёта: заведение строк")
+	require.Equal(t, int64(len(rows)), n,
+		"перепись: заведено строк — столько же, сколько объявлено")
 }
 
 // openerFor отдаёт один и тот же дублёр на любую ревизию привязки.

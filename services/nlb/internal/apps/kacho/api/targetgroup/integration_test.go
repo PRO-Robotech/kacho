@@ -53,6 +53,11 @@ func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	pool, err := coredb.NewPool(context.Background(), dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
+
+	// Учёт числа ресурсов: вставка строки ресурса СПИСЫВАЕТ место, и списать его
+	// не с чего, пока у проекта нет строки учёта. Разбор и перечень идентичностей
+	// — `quota_fixture_test.go`.
+	seedQuotaFixture(t, pool)
 	return pool, kachopg.New(pool, nil)
 }
 
