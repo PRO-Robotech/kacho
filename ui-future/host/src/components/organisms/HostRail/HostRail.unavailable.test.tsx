@@ -1,6 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
 import { HostRail } from ".";
+// Имя недоступного раздела берётся ОТТУДА ЖЕ, откуда его берёт рейл: предмет
+// пробы — пометка недоступности, а не подпись. Литерал здесь означал бы третье
+// место, где написано имя раздела, и краснел бы на правке подписи, не имеющей
+// к отказу модуля никакого отношения.
+import { moduleLabelOf } from "../../../remotes/moduleCatalog";
 
 /**
  * Тихая форма отказа модуля (#371, п.3).
@@ -99,7 +104,7 @@ describe("HostRail: раздел упавшего модуля остаётся 
       />,
     );
 
-    const broken = await screen.findByRole("button", { name: "Network Load Balancer" });
+    const broken = await screen.findByRole("button", { name: moduleLabelOf("nlb") });
     expect(broken).toHaveAttribute("title", "Раздел недоступен: модуль не загрузился");
   });
 });
