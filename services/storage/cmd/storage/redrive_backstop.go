@@ -42,8 +42,9 @@ const redriveInterval = 5 * time.Minute
 // NewRedriveOnly — без доменных адаптеров, которых здесь не будет.
 func startRedriveBackstop(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
-		Table:   fgaRegisterOutboxTable,
-		Channel: fgaRegisterOutboxChannel,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           fgaRegisterOutboxTable,
+		Channel:         fgaRegisterOutboxChannel,
 	}, logger)
 	if err != nil {
 		return err

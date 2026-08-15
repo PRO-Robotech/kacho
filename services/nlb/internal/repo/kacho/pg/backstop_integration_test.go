@@ -60,9 +60,10 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 
 	ad := kachopg.NewFGAReconcileAdapter(tc.Pool, nlbOutboxTbl)
 	rc, err := reconciler.New(tc.Pool, reconciler.Config{
-		Table:       nlbOutboxTbl,
-		Channel:     "kacho_nlb_fga_register_outbox",
-		MaxAttempts: 10,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           nlbOutboxTbl,
+		Channel:         "kacho_nlb_fga_register_outbox",
+		MaxAttempts:     10,
 	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
 	require.NoError(t, err)
 

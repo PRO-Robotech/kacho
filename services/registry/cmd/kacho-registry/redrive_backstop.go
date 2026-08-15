@@ -49,8 +49,9 @@ const (
 // NewRedriveOnly — без доменных адаптеров, которых здесь не будет.
 func startRedriveBackstop(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
-		Table:   registerOutboxTable,
-		Channel: registerOutboxChannel,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           registerOutboxTable,
+		Channel:         registerOutboxChannel,
 	}, logger)
 	if err != nil {
 		return err

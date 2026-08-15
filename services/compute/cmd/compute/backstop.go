@@ -42,9 +42,10 @@ const (
 func startBackstop(_ context.Context, pool *pgxpool.Pool, rec metrics.Recorder, logger *slog.Logger) (reconRun, colRun func(context.Context) error, err error) {
 	ad := clients.NewFGAReconcileAdapter(pool, computeFGAOutboxTable)
 	rc, rerr := reconciler.New(pool, reconciler.Config{
-		Table:       computeFGAOutboxTable,
-		Channel:     computeFGAOutboxChannel,
-		GraceWindow: time.Minute, // anti-race deferral
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           computeFGAOutboxTable,
+		Channel:         computeFGAOutboxChannel,
+		GraceWindow:     time.Minute, // anti-race deferral
 	}, reconciler.Adapters{Enumerator: ad, Registry: ad},
 		logger.With(slog.String("component", "fga-register-reconciler")))
 	if rerr != nil {

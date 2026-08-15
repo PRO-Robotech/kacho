@@ -21,6 +21,6 @@ import (
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
 		Name:    "reconciler",
-		Migrate: pgtest.SQL(reconcilerSchema, registerOutboxSchema),
+		Migrate: pgtest.SQL(reconcilerSchema, registerOutboxSchema, tupleOutboxSchema),
 	}))
 }
