@@ -108,9 +108,10 @@ type Adapters struct {
 
 // Config parameterises a Reconciler.
 type Config struct {
-	// Table — full register-outbox table name (`<schema>.<table>`). Must be the
-	// SAME table the drainer drains (intents are re-emitted here so the CAS-claim
-	// path governs delivery).
+	// Table — full outbox table name (`<schema>.<table>`). Must be the SAME table
+	// the drainer drains: RedrivePoisoned hands rows back to that claim path, and
+	// BackfillFromState re-emits into it, so a second table here would repair a
+	// queue nobody delivers.
 	Table string
 	// Channel — LISTEN/NOTIFY channel of the table (for parity / future use).
 	Channel string
@@ -153,7 +154,9 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Reconciler orchestrates the backstop passes over one register-outbox table.
+// Reconciler orchestrates the backstop passes over one outbox table. All three
+// passes serve a register-outbox; RedrivePoisoned alone is shape-agnostic and is
+// what a non-register queue takes (NewRedriveOnly).
 type Reconciler struct {
 	pool *pgxpool.Pool
 	cfg  Config
