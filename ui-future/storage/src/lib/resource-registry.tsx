@@ -16,6 +16,12 @@ import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -544,32 +550,19 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Все навигируемые ресурсы этого remote принадлежат домену Storage → префикс
-// маршрута `storage`. `zones` — ref-цель (не навигируется), но prefix задаём для
-// полноты.
-export function resourceServicePrefix(_specId: string): "storage" {
-  return "storage";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-/** Cluster-scoped каталог размещения: смонтирован под `/system/*`, а не внутри
- *  проекта. Тот же перечень, что в реестре shared, — и по той же причине: прогон
- *  этих ресурсов через project-scoped ветку даёт путь, которого нет, и ссылка
- *  ведёт в никуда. Storage ссылается на них с карточек тома, снимка и образа
- *  (зона, регион), поэтому ветка нужна и здесь. */
-const SYSTEM_SCOPED = new Set(["regions", "zones"]);
-
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  // Проверка ДО требования projectId: у глобального каталога измерения «проект»
-  // нет вовсе, и требовать его значило бы не строить ссылку там, где проекта в
-  // контексте нет.
-  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
-  if (!projectId) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

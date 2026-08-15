@@ -21,6 +21,12 @@ import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -427,19 +433,21 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-// Навигируемые ресурсы remote'а — инстанс + каталог типов машин (сегмент `compute`).
-// Ref-цели (zones/volumes/network-interfaces) не навигируются в этом remote.
-export function resourceServicePrefix(_specId: string): "compute" {
-  return "compute";
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в @shared.
+// Здесь стояла своя: она возвращала `compute` на любой идентификатор, поэтому
+// ссылка на сетевой интерфейс (vpc), том (storage) и зону (глобальный каталог)
+// с карточки машины адресовалась сегментом compute-remote'а, маршрута такого у
+// него нет, и catch-all выбрасывал человека обратно на список машин.
+//
+// Реестр остаётся модульным (в нём ровно те ресурсы, что показывает модуль), а
+// правило сборки адреса — общее: `resourceListPath` принимает маршрут спеки.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {

@@ -14,6 +14,7 @@ import { ResourceLink } from "@/components/molecules/ResourceLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@/lib/resource-registry";
 import { formatDateTime } from "@/lib/datetime";
 import { referrerHref, referrerMeta } from "@/lib/referrer";
+import { displayText } from "@shared/lib/display-text";
 
 // Ре-экспорт для стабильности публичного API @/lib/spec-columns (route/label
 // логика вынесена в чистый ./referrer для unit-тестируемости без antd-графа).
@@ -205,7 +206,7 @@ export function formatCellByFormat(
                   whiteSpace: "nowrap",
                 }}
               >
-                {String(item)}
+                {displayText(item)}
               </span>
             ))}
           </div>
@@ -246,6 +247,6 @@ export function formatCellByFormat(
     case "text":
     default:
       if (v == null || v === "") return <Typography.Text type="secondary">—</Typography.Text>;
-      return String(v);
+      return displayText(v);
   }
 }
