@@ -36,6 +36,7 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import { resourceListPath as resourceListPathImpl } from "@shared/lib/service-prefix";
 import type { ResourceColumn, ResourceSpec } from "./resource-spec";
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
@@ -3781,57 +3782,25 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ (или
-// /iam/ для IAM-scoped) per spec.id. Соответствует routes в App.tsx
-// (KAC-198 fix: некоторые компоненты строили `/projects/<pid>/<route>` без
-// этого сегмента — детальная страница 404'илась).
-export function resourceServicePrefix(specId: string): "vpc" | "compute" | "nlb" | "iam" {
-  if (specId.startsWith("compute-")) return "compute";
-  switch (specId) {
-    // NLB domain
-    case "network-load-balancers":
-    case "load-balancers":
-    case "listeners":
-    case "target-groups":
-      return "nlb";
-    // IAM domain — пути под /iam/<route>, не под /projects/
-    case "accounts":
-    case "projects":
-    case "users":
-    case "service-accounts":
-    case "groups":
-    case "roles":
-    case "access-bindings":
-      return "iam";
-    // Compute admin (без compute- префикса)
-    case "regions":
-    case "zones":
-    case "address-pools":
-      return "compute";
-    default:
-      // VPC ресурсы: networks, subnets, addresses, route-tables,
-      // security-groups, network-interfaces, gateways
-      return "vpc";
-  }
-}
+// Домен-владелец и правило сборки адреса живут в `@shared/lib/service-prefix` —
+// чистом файле без React, чтобы модуль мог взять их, не таща за собой чужой
+// реестр. Здесь только ре-экспорт: у него нет тела, поэтому разойтись с
+// источником он не может, а вызывающие не меняют импортов.
+export {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 // resourceProjectPath — полный SPA-путь до listing данного ресурса в
 // контексте project'а. Возвращает null для IAM-ресурсов (они не scoped to
-// project) и когда projectId не известен.
-/** Cluster-scoped админ-ресурсы, живущие под /system/*, а не внутри проекта. */
-const SYSTEM_SCOPED = new Set(["regions", "zones", "address-pools"]);
-
+// project), для cluster-scoped каталога отдаёт /system/*, и null когда
+// projectId не известен.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  // Каталог размещения и пулы адресов — cluster-scoped, смонтированы под
-  // /system/*. Прогон их через project-scoped ветку давал несуществующий путь,
-  // и «назад» с региона (как и переход после его удаления) уводил в проекты IAM.
-  if (SYSTEM_SCOPED.has(specId)) return `/system/${spec.route}`;
-  const prefix = resourceServicePrefix(specId);
-  if (prefix === "iam") return null;
-  if (!projectId) return null;
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPathImpl(specId, spec.route, projectId);
 }
 
 // Thin generic wrapper over the single lib/path implementation (superset that

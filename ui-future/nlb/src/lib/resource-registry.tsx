@@ -20,6 +20,12 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+import {
+  isSystemScopedResource,
+  resourceListPath,
+  resourceServicePrefix,
+  type ServicePrefix,
+} from "@shared/lib/service-prefix";
 
 /**
  * Ячейка логического поля контракта — словом, а не литералом `false`.
@@ -672,26 +678,19 @@ export function getResource(id: string): ResourceSpec | undefined {
   return REGISTRY[id];
 }
 
-// resourceServicePrefix — service-segment под /projects/:projectId/ per spec.id.
-export function resourceServicePrefix(specId: string): "nlb" | "compute" {
-  if (specId.startsWith("compute-")) return "compute";
-  switch (specId) {
-    case "regions":
-    case "zones":
-      return "compute";
-    default:
-      // NLB ресурсы: load-balancers, listeners, target-groups
-      return "nlb";
-  }
-}
+// Домен-владелец и сборка SPA-адреса — ОДНА реализация на дерево, в
+// `@shared/lib/service-prefix`. Здесь стояла своя копия правила: она называла
+// доменом ссылки СВОЙ модуль, поэтому ссылка на чужой ресурс адресовалась
+// сегментом, которого у владельца нет, — маршрут не находился, и catch-all
+// уводил человека с карточки. Реестр остаётся модульным (в нём ровно те
+// ресурсы, что показывает модуль), а правило сборки адреса — общее.
+export { resourceServicePrefix, resourceListPath, isSystemScopedResource };
+export type { ServicePrefix };
 
-// resourceProjectPath — полный SPA-путь до listing ресурса в контексте project'а.
 export function resourceProjectPath(specId: string, projectId: string | null | undefined): string | null {
-  if (!projectId) return null;
   const spec = REGISTRY[specId];
   if (!spec) return null;
-  const prefix = resourceServicePrefix(specId);
-  return `/projects/${projectId}/${prefix}/${spec.route}`;
+  return resourceListPath(specId, spec.route, projectId);
 }
 
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
