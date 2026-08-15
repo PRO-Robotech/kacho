@@ -49,6 +49,7 @@ package restmux
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -91,6 +92,27 @@ type consoleSpec struct {
 	// Это последнее, что видит тело перед отправкой, и без него набор ключей
 	// формы — не набор ключей провода.
 	SanitizeSource string
+	// TemplateExtern — шаблон пришёл из общего модуля: его ключи в сыром тексте
+	// этого файла не видны, поэтому в независимый счёт они не идут.
+	TemplateExtern bool
+	// ExternFields — сколько объявлений поля пришло из ДРУГОГО файла (общий
+	// модуль). Провенанс нужен сверке с сырым текстом: этих объявлений в тексте
+	// своего файла нет, и без вычитания сверка краснела бы на единственном
+	// источнике.
+	ExternFields int
+	// SharedRef — идентификатор в ОБЩЕМ реестре, если запись не объявляет спеку,
+	// а ссылается на уже объявленную (`SHARED_REGISTRY["<id>"]`).
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ВИД. Раздел, который монтируют два приложения, обязан иметь
+	// ОДНО объявление: вторая копия разошлась бы с первой молча — так уже
+	// разошлись копии формы ресурса. Но для сканера такая запись — выражение, и
+	// прежде он отказывался читать ВЕСЬ файл, то есть переставал проверять
+	// реестр целиком. «Не прочитал» выглядело как «нет находок».
+	//
+	// Свойство при этом не теряется: спеку проверяют там, где она объявлена, а
+	// здесь проверяется, что ссылка ведёт в существующую запись общего реестра
+	// (см. TestConsoleSharedRefsResolve). Пустая строка означает обычную спеку.
+	SharedRef string
 }
 
 // consoleParse — результат разбора одного файла реестра вместе с числами, по
@@ -102,6 +124,15 @@ type consoleParse struct {
 	// объявленные константой и не использованные ни одним ресурсом). Сверяется с
 	// независимым подсчётом по сырому тексту.
 	FieldDecls int
+	// ExternSpecs / ExternFieldDecls — сколько пришло НЕ из этого файла.
+	//
+	// Сверка разбора с независимым счётом по сырому тексту — второй слой защиты
+	// от недосчёта, и он верен ровно пока всё объявлено здесь. Ресурс, ссылающийся
+	// на общее объявление (`SHARED_REGISTRY["…"]`, импортированный набор полей),
+	// в сыром тексте своего файла не виден — без этих счётчиков сверка объявила
+	// бы находкой ровно то, ради чего единый источник и заводился.
+	ExternSpecs      int
+	ExternFieldDecls int
 }
 
 // consoleScope — что видно в точке разбора значения.
@@ -142,18 +173,34 @@ func (s consoleScope) with(local map[string]jsValue) consoleScope {
 // extern — строковые константы, экспортированные другими модулями консоли
 // (`GEO_REGIONS_PATH` и родня). Реестр импортирует их, а разбор одного файла о
 // них знать не может; неразрешённое имя остаётся ошибкой, а не пропуском.
-func parseConsoleRegistry(file, src string, extern map[string]string) (consoleParse, error) {
+func parseConsoleRegistry(file, src string, extern map[string]string, externVals map[string]jsValue) (consoleParse, error) {
 	out := consoleParse{File: file}
 
 	consts, err := jsTopLevelConsts(src)
 	if err != nil {
 		return out, err
 	}
+	// Имена, объявленные ЗДЕСЬ, — до подмешивания внешних. По ним считается
+	// независимый счётчик объявлений поля: внешние значения в сыром тексте этого
+	// файла не видны, и их учёт разошёлся бы со сверкой ровно на их размер.
+	own := make(map[string]bool, len(consts))
+	for name := range consts {
+		own[name] = true
+	}
 	for name, v := range extern {
 		if _, local := consts[name]; local {
 			continue
 		}
 		consts[name] = jsValue{kind: jsString, str: v}
+	}
+	// Значения, экспортированные другими модулями (набор полей формы, объект
+	// пустого состояния). Своё объявление файла всегда сильнее внешнего: имя,
+	// объявленное здесь, здесь и разрешается.
+	for name, v := range externVals {
+		if _, local := consts[name]; local {
+			continue
+		}
+		consts[name] = v
 	}
 	scope := consoleScope{consts: consts, funcs: jsTopLevelArrayFuncs(src)}
 
@@ -168,7 +215,10 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 	// Объявления полей считаются по ВСЕМ константам файла, а не только по
 	// достижимым из REGISTRY: независимый счётчик по сырому тексту тоже не знает
 	// про достижимость, и сравнивать надо сравнимое.
-	for _, c := range consts {
+	for name, c := range consts {
+		if !own[name] {
+			continue
+		}
 		out.FieldDecls += countFieldDecls(c)
 	}
 	// То же и для помощников: набор, вынесенный в функцию, объявлен ОДИН раз,
@@ -186,7 +236,13 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 		// Объект, который возвращает `template`, живёт внутри стрелки, а стрелка
 		// для разбора — непонятое выражение; в обход константного дерева его
 		// ключи в счёт не попали бы, и счётчики разошлись бы на ровном месте.
-		out.FieldDecls += countFieldDecls(tmpl)
+		if !spec.TemplateExtern {
+			out.FieldDecls += countFieldDecls(tmpl)
+		}
+		if spec.SharedRef != "" {
+			out.ExternSpecs++
+		}
+		out.ExternFieldDecls += spec.ExternFields
 		out.Specs = append(out.Specs, spec)
 	}
 	// Сверка по мощности — второй слой защиты от недосчёта, и он ловит другое,
@@ -200,9 +256,33 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 	return out, nil
 }
 
+// sharedRegistryRefPattern — единственная форма ссылки, которую сканер признаёт.
+//
+// Форма НАМЕРЕННО узкая: она распознаётся текстом, а не разбором произвольного
+// выражения, поэтому любое отступление от неё остаётся громким отказом. Гейт,
+// который начал бы «понимать» всё подряд, перестал бы что-либо находить.
+var sharedRegistryRefPattern = regexp.MustCompile(`^SHARED_REGISTRY\[\s*"([A-Za-z0-9._-]+)"\s*\]$`)
+
+// sharedRegistryRef — идентификатор общей записи, на которую ссылается значение.
+func sharedRegistryRef(v jsValue) (string, bool) {
+	if v.kind != jsOpaque {
+		return "", false
+	}
+	m := sharedRegistryRefPattern.FindStringSubmatch(strings.TrimSpace(v.raw))
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
 // parseConsoleSpec вытаскивает из одного ресурса реестра то, что решает состав
 // тела: путь мутации, поддерживаемые операции, поля и шаблон.
 func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSpec, jsValue, error) {
+	if ref, ok := sharedRegistryRef(v); ok {
+		// Ссылка на общее объявление — не спека, а указатель на неё. Полей у
+		// записи нет by construction, поэтому дальше её вести некуда.
+		return consoleSpec{File: file, Line: v.line, ID: id, SharedRef: ref}, jsValue{}, nil
+	}
 	if v.kind != jsObject {
 		return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q is %s, expected an object literal", file, v.line, id, v.kind)
 	}
@@ -249,9 +329,15 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 	}
 
 	if fieldsV, ok := v.prop("fields"); ok {
-		s.Fields, s.ExpandedFields, err = parseConsoleFields(file, id, fieldsV, scope)
+		var fieldsExtern bool
+		s.Fields, s.ExpandedFields, fieldsExtern, err = parseConsoleFields(file, id, fieldsV, scope)
 		if err != nil {
 			return consoleSpec{}, jsValue{}, err
+		}
+		if fieldsExtern {
+			// Набор пришёл из общего модуля: в сыром тексте ЭТОГО файла его
+			// объявлений нет, и сверка счётчиков обязана это знать.
+			s.ExternFields = len(s.Fields)
 		}
 	}
 
@@ -259,11 +345,20 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 	if !ok {
 		return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q has no `template`: the create body starts from it", file, v.line, id)
 	}
+	// Шаблон, объявленный ОДИН раз в общем модуле: тот же ресурс монтируют два
+	// приложения. Резолв тот же, что у полей; неразрешимое имя остаётся отказом.
+	templateExtern := false
+	if tmplV.kind == jsIdent {
+		if resolved, ok := scope.lookup(tmplV.str); ok {
+			tmplV, templateExtern = resolved, true
+		}
+	}
 	obj, err := arrowReturnedObject(tmplV)
 	if err != nil {
 		return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `template`: %w", file, tmplV.line, id, err)
 	}
 	s.TemplateKeys = objectKeyPaths(obj, "")
+	s.TemplateExtern = templateExtern
 
 	if sanV, ok := v.prop("sanitize"); ok {
 		if sanV.kind != jsOpaque {
@@ -278,9 +373,19 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 // ссылка на константу того же файла либо развёрнутый набор от помощника этого же
 // файла. Всё прочее — ошибка: молча пропущенный элемент это ровно то «ничего не
 // нашли», ради невозможности которого гейт и пишется.
-func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]consoleField, int, error) {
+func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]consoleField, int, bool, error) {
+	// Набор полей, объявленный ОДИН раз в общем модуле и импортированный сюда:
+	// тот же ресурс монтируют два приложения, и выписанные дважды поля разошлись
+	// бы молча. Резолв — тот же, что у прочих ссылок на константы; неразрешимое
+	// имя остаётся громким отказом строкой ниже.
+	extern := false
+	if v.kind == jsIdent {
+		if resolved, ok := scope.lookup(v.str); ok {
+			v, extern = resolved, true
+		}
+	}
 	if v.kind != jsArray {
-		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
+		return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
 	}
 	// want считается ОТДЕЛЬНО от построения out и по другому источнику: длина
 	// литерала (для развёрнутого набора — длина массива, который возвращает
@@ -293,7 +398,7 @@ func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]conso
 		if elem.kind == jsSpread {
 			fields, n, err := expandConsoleFieldSpread(file, id, elem, scope)
 			if err != nil {
-				return nil, 0, err
+				return nil, 0, false, err
 			}
 			want += n
 			expanded += n
@@ -303,21 +408,21 @@ func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]conso
 		want++
 		resolved, err := resolveConst(elem, scope)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
+			return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
 		}
 		if resolved.kind != jsObject {
-			return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object, a const naming one, or a spread of a helper of this file", file, resolved.line, id, resolved.kind)
+			return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object, a const naming one, or a spread of a helper of this file", file, resolved.line, id, resolved.kind)
 		}
 		f, err := parseConsoleField(file, id, resolved, scope)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, false, err
 		}
 		out = append(out, f)
 	}
 	if len(out) != want {
-		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` declares %d field(s), extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, want, len(out))
+		return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` declares %d field(s), extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, want, len(out))
 	}
-	return out, expanded, nil
+	return out, expanded, extern, nil
 }
 
 // expandConsoleFieldSpread раскрывает `...helper(args)` в набор полей.
@@ -370,7 +475,7 @@ func expandConsoleFieldSpread(file, id string, elem jsValue, scope consoleScope)
 		local[l.name] = v
 	}
 
-	fields, _, err := parseConsoleFields(file, id, fn.body, inner)
+	fields, _, _, err := parseConsoleFields(file, id, fn.body, inner)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -407,7 +512,7 @@ func parseConsoleField(file, id string, v jsValue, scope consoleScope) (consoleF
 		*flag.dst = fv.boolV
 	}
 	if itemsV, ok := v.prop("itemFields"); ok {
-		f.ItemFields, _, err = parseConsoleFields(file, id, itemsV, scope)
+		f.ItemFields, _, _, err = parseConsoleFields(file, id, itemsV, scope)
 		if err != nil {
 			return consoleField{}, err
 		}

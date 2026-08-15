@@ -1,22 +1,30 @@
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
 
 /**
  * Корневая граница консоли (#371, п.1 — «на корне приложения»).
  *
- * Утверждение декларативное: `App.tsx` обязан ОБЪЯВЛЯТЬ корневую границу. Проба,
- * которая роняла бы сам `App`, здесь невозможна честно — уронить его можно только
- * подменив один из его же узлов, и тогда она проверяла бы подмену, а не корень.
- * Поэтому объявление читается из дерева, а СПОСОБНОСТЬ границы поймать отказ
- * доказывается рядом настоящим рендером — иначе «объявлено» было бы неотличимо
- * от «работает».
+ * ПРОВЕРЯЕТСЯ ПОВЕДЕНИЕ, А НЕ ТЕКСТ. Прежняя редакция читала `App.tsx` с диска и
+ * искала в нём подстроку с именем границы. Это проверка ФОРМЫ: она зеленела бы на
+ * закомментированной границе и краснела бы на переносе строки — и гейт дерева
+ * (`internal/repohygiene`, «проба не читает свой модуль как текст») справедливо
+ * её отверг.
+ *
+ * Настоящая проверка: каркас подменён бросающим, и рендерится сам `App`. Граница
+ * обязана поймать отказ и показать свой экран — тогда «объявлено» и «работает»
+ * это одно утверждение, а не два разных.
  */
 
-const appSource = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "App.tsx"), "utf8");
+// Каркас host'а — то, что рендерится ВНУТРИ корневой границы. Подменяя его на
+// бросающий, мы роняем именно то, ради чего граница стоит: отказ самого каркаса.
+jest.unstable_mockModule("./components", () => ({
+  HostShell: () => {
+    throw new Error("отказ каркаса консоли");
+  },
+}));
+
+const { default: App } = await import("./App");
 
 beforeEach(() => {
   jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -26,12 +34,13 @@ afterEach(() => {
 });
 
 describe("корневая граница отказа консоли", () => {
-  it("App объявляет ModuleErrorBoundary на корне", () => {
-    expect(appSource).toContain("ModuleErrorBoundary");
-    expect(appSource).toMatch(/<ModuleErrorBoundary moduleLabel="Консоль Kachō">/);
+  it("отказ каркаса пойман границей App, а не снёс экран", () => {
+    render(<App />);
+
+    expect(screen.getByTestId("module-unavailable")).toHaveAttribute("data-module-label", "Консоль Kachō");
   });
 
-  it("граница, которую объявляет App, действительно ловит отказ", () => {
+  it("граница ловит отказ и называет модуль", () => {
     const Boom = () => {
       throw new Error("корневой отказ");
     };
