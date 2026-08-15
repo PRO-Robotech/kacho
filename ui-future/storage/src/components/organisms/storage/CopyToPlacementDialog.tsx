@@ -32,7 +32,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Input, Modal, Space, Typography } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
 
-import { ApiError } from "@/api/client";
 import type { Operation } from "@/api/types";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
@@ -40,6 +39,7 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@/components/organisms/LabelsEditor";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 export interface CopyToPlacementDialogProps {
   /** Ключ ресурса в реестре — что инвалидировать после успеха. */
@@ -107,8 +107,7 @@ export function CopyToPlacementDialog({
       if (id) setOpId(id);
       else invalidate(specId, projectId);
     },
-    onError: (e) =>
-      toast.error(`${title}: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`${title}: ${errorText(e)}`),
   });
 
   // Проект — объект вопроса о правах: «создать» спрашивают у него, поэтому без

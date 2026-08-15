@@ -12,6 +12,7 @@ import { api } from "@shared/api/client";
 import { getResource } from "@shared/lib/resource-registry";
 import { useContext } from "@shared/lib/context-store";
 import { InlineResourceCreateForm } from "@shared/components/organisms/InlineResourceCreateForm";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   title: string;
@@ -128,7 +129,7 @@ export function ResourceRefChips({
     if (createSpec) {
       base.push({
         value: CREATE_SENTINEL,
-        label: `+ Создать ${createSpec.singular.toLowerCase()}…`,
+        label: `+ ${createActionLabel(createSpec)}…`,
       });
     }
     return base;
@@ -165,52 +166,50 @@ export function ResourceRefChips({
   // выбирать пока нечего, и об этом говорит плейсхолдер списка.
   const body = (
     <Space direction="vertical" size={8} style={{ width: "100%" }}>
-        <div style={titleHidden && value.length === 0 ? undefined : { minHeight: 24 }}>
-          {value.length === 0 ? (
-            titleHidden ? null : (
+      <div style={titleHidden && value.length === 0 ? undefined : { minHeight: 24 }}>
+        {value.length === 0 ? (
+          titleHidden ? null : (
             <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
               — пусто —
             </Typography.Text>
-            )
-          ) : (
-            <Space size={[6, 6]} wrap>
-              {value.map((id) => {
-                const row = byId.get(id);
-                const name = labelFor(row, id);
-                return (
-                  <Tag
-                    key={id}
-                    color={tagColor}
-                    closable
-                    closeIcon={<CloseOutlined style={{ fontSize: 10 }} />}
-                    onClose={(e) => {
-                      e.preventDefault();
-                      onRemove(id);
-                    }}
-                    style={{ fontFamily: "monospace", fontSize: 12, margin: 0 }}
-                  >
-                    {name}
-                  </Tag>
-                );
-              })}
-            </Space>
-          )}
-        </div>
-        <Space.Compact style={{ width: "100%" }}>
-          <Select
-            key={selKey}
-            showSearch
-            value={draft}
-            onChange={onDraftChange}
-            options={options}
-            placeholder={
-              disabled ? (disabledHint ?? "Недоступно") : atCap ? `Максимум ${maxItems}` : `Выбрать ${title}`
-            }
-            optionFilterProp="label"
-            disabled={disabled || atCap}
-            style={{ flex: 1 }}
-          />
-        </Space.Compact>
+          )
+        ) : (
+          <Space size={[6, 6]} wrap>
+            {value.map((id) => {
+              const row = byId.get(id);
+              const name = labelFor(row, id);
+              return (
+                <Tag
+                  key={id}
+                  color={tagColor}
+                  closable
+                  closeIcon={<CloseOutlined style={{ fontSize: 10 }} />}
+                  onClose={(e) => {
+                    e.preventDefault();
+                    onRemove(id);
+                  }}
+                  style={{ fontFamily: "monospace", fontSize: 12, margin: 0 }}
+                >
+                  {name}
+                </Tag>
+              );
+            })}
+          </Space>
+        )}
+      </div>
+      <Space.Compact style={{ width: "100%" }}>
+        <Select
+          key={selKey}
+          showSearch
+          value={draft}
+          onChange={onDraftChange}
+          options={options}
+          placeholder={disabled ? (disabledHint ?? "Недоступно") : atCap ? `Максимум ${maxItems}` : `Выбрать ${title}`}
+          optionFilterProp="label"
+          disabled={disabled || atCap}
+          style={{ flex: 1 }}
+        />
+      </Space.Compact>
     </Space>
   );
 

@@ -15,13 +15,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, InputNumber, Select, Space, Switch, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { SubnetCidrChips } from "@shared/components/molecules/SubnetCidrChips";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   onCancel: () => void;
@@ -81,7 +82,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
       onCancel();
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`Создать пул адресов: ${m}`);
     },
   });
@@ -148,7 +149,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
           label={
             <Space size={4}>
               Default
-              <Tooltip title="Один is_default=true на (zone, kind). Default-пул используется когда явный pool не задан.">
+              <Tooltip title="Пул по умолчанию — один на пару «зона + семейство адресов». Он используется, когда пул не указан явно.">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>

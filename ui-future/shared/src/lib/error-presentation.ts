@@ -12,6 +12,7 @@
 
 import { ApiError } from "@shared/api/client";
 import { displayText } from "@shared/lib/display-text";
+import { grpcCodeLabel } from "@shared/lib/grpc-status";
 
 export type ErrorStatus = "403" | "404" | "500" | "warning" | "error";
 
@@ -22,6 +23,12 @@ export interface ErrorPresentation {
   subTitle: string | null;
   /** Extra line shown under the message; null when there is nothing to add. */
   note: string | null;
+  /**
+   * Числовой код протокола и HTTP-статус — для того, кто чинит, а не для того,
+   * кто читает экран. `«5: Region not found»` начиналось с величины, которая
+   * ничего не сообщает арендатору, и занимало место, куда смотрят первым.
+   */
+  devDetail: string | null;
   ambiguousNotFound: boolean;
 }
 
@@ -55,9 +62,37 @@ export function isNetworkFailure(err: unknown): boolean {
   );
 }
 
+/**
+ * Что показать разработчику: имя и число кода протокола плюс HTTP-статус.
+ * Код, который край не прислал (не-JSON тело шлюза, пустой ответ), не выдумывается —
+ * остаётся один статус.
+ */
+function devDetailOf(err: ApiError): string {
+  const code = grpcCodeLabel(err.code);
+  return code === null ? `HTTP ${err.status}` : `${code} · HTTP ${err.status}`;
+}
+
+/**
+ * Текст отказа для пользователя — одной строкой, для тоста и inline-подписи.
+ *
+ * Единственная реализация на всю консоль: прежде каждое место складывало свою
+ * («`${err.code}: ${err.message}`» в 52 местах), и числовой код протокола уезжал
+ * на экран арендатора. Код теперь живёт в `presentError().devDetail`.
+ */
+export function errorText(err: unknown): string {
+  return presentError(err).subTitle ?? "Ошибка";
+}
+
 export function presentError(err: unknown): ErrorPresentation {
   if (err === null || err === undefined) {
-    return { status: "error", title: TITLES.error, subTitle: null, note: null, ambiguousNotFound: false };
+    return {
+      status: "error",
+      title: TITLES.error,
+      subTitle: null,
+      note: null,
+      devDetail: null,
+      ambiguousNotFound: false,
+    };
   }
 
   if (isNetworkFailure(err)) {
@@ -66,6 +101,7 @@ export function presentError(err: unknown): ErrorPresentation {
       title: "Сеть недоступна",
       subTitle: "Не удалось связаться с сервером. Проверьте подключение или повторите позже.",
       note: null,
+      devDetail: null,
       ambiguousNotFound: false,
     };
   }
@@ -76,8 +112,9 @@ export function presentError(err: unknown): ErrorPresentation {
     return {
       status,
       title: TITLES[status],
-      subTitle: `${err.code}: ${err.message}`,
+      subTitle: err.message,
       note: ambiguousNotFound ? NOT_FOUND_IS_AMBIGUOUS : null,
+      devDetail: devDetailOf(err),
       ambiguousNotFound,
     };
   }
@@ -87,6 +124,7 @@ export function presentError(err: unknown): ErrorPresentation {
     title: TITLES.error,
     subTitle: err instanceof Error ? err.message : displayText(err),
     note: null,
+    devDetail: null,
     ambiguousNotFound: false,
   };
 }

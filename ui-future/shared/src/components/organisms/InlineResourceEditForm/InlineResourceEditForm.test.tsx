@@ -162,14 +162,14 @@ describe("InlineResourceEditForm", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("отказ края показан кодом и текстом, форма остаётся открытой", async () => {
-    update.mockRejectedValue(new ApiError(400, "INVALID_ARGUMENT", null, "name is too long"));
+  it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {
+    update.mockRejectedValue(new ApiError(400, 3, null, "name is too long"));
     const { onCancel } = show();
 
     fireEvent.change(field("было"), { target: { value: "стало" } });
     save();
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Сохранить Сеть: INVALID_ARGUMENT: name is too long"));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Сохранить сеть: name is too long"));
     expect(onCancel).not.toHaveBeenCalled();
   });
 });

@@ -15,13 +15,14 @@ import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { AddressPoolCidrManager } from "@shared/components/organisms/AddressPoolCidrManager";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   poolId: string;
@@ -82,7 +83,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
       onCancel();
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
+      const m = errorText(err);
       toast.error(`Сохранить пул адресов: ${m}`);
     },
   });
@@ -169,7 +170,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
           label={
             <Space size={4}>
               Default
-              <Tooltip title="Один is_default=true на (zone, kind).">
+              <Tooltip title="Пул по умолчанию — один на пару «зона + семейство адресов».">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
             </Space>

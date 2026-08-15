@@ -34,6 +34,11 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // unparsable public_key ("publicKey is required …"). Citing the weaker source
   // would have let the form ship a create that cannot succeed.
   "/compute/v1/guestAccessKeys": ["project_id", "name", "public_key"],
+  // CreatePlacementGroupRequest marks no field `(required) = true`: the use-case
+  // refuses an empty name, an unset strategy and an unset anchor itself, with a
+  // named field each time. The empty list is the contract as declared, not an
+  // omission — and the form still offers all four inputs.
+  "/compute/v1/placementGroups": [],
 };
 
 /**

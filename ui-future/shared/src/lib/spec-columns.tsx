@@ -24,6 +24,13 @@ export { referrerHref, referrerMeta } from "@shared/lib/referrer";
 // рендерить потребителя как единую ссылку «иконка + имя» (RefNameLink) и иметь
 // корректный detail-роут (включая network_interface → kacho-vpc).
 const REFERRER_SPEC: Record<string, string> = {
+  // Ключ — тип ссылки ТАК, КАК ЕГО ОТДАЁТ сервис: сервисы называют его в двух
+  // формах — legacy underscore (`compute_instance`) и канонической dotted
+  // `domain.resource` (`vpc.securityGroup` у потребителей набора префиксов).
+  // Нормализация здесь НЕ применяется намеренно: dotted-тип storage-remote
+  // (`compute.instance`) минует эту карту и линкуется прямым маршрутом
+  // (`referrerHref`), потому что в СВОЁМ реестре того ресурса у него нет.
+  "vpc.securityGroup": "security-groups",
   compute_instance: "compute-instances",
   nlb_target_group: "target-groups",
   network_interface: "network-interfaces",
@@ -217,7 +224,7 @@ export function formatCellByFormat(
                   whiteSpace: "nowrap",
                 }}
               >
-                {String(item)}
+                {displayText(item)}
               </span>
             ))}
           </div>

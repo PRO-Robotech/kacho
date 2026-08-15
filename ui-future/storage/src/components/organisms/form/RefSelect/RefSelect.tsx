@@ -20,6 +20,7 @@ import { ErrorResult } from "@/components/molecules/ErrorResult";
 import { InlineResourceCreateForm } from "@/components/organisms/InlineResourceCreateForm";
 import { FormBareProvider } from "@/components/organisms/form/FormShell";
 import { refOptionExtra, refOptionHead } from "./refOptionLabel";
+import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   refResource: string;
@@ -124,9 +125,7 @@ export function RefSelect({
             value: o.uid as string,
             label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
           })),
-          ...(createSpec
-            ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }]
-            : []),
+          ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ ${createActionLabel(createSpec)}…` }] : []),
         ]}
       />
       {refProjectScoped && !project && <p className="text-xs text-amber-600">Выберите проект в шапке для загрузки.</p>}
@@ -152,28 +151,28 @@ export function RefSelect({
         >
           <FormBareProvider>
             <InlineResourceCreateForm
-            spec={createSpec}
-            ctx={{
-              projectId: project?.id,
-              accountId: project?.accountId,
-            }}
-            presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
-            projectId={project?.id ?? null}
-            title={createTitle}
-            onCancel={() => setCreating(false)}
-            onSuccess={() => {
-              // refetch candidate-list — новый ресурс должен появиться;
-              // затем подхватываем последний созданный по имени-эвристике
-              // (InlineResourceCreateForm не отдаёт id наверх — после refetch
-              // diff'им список). Простой best-effort: перезапрашиваем и
-              // оставляем выбор пользователю, если не смогли определить.
-              void refetch().then((r) => {
-                const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
-                const before = new Set(options.map((o) => o.uid));
-                const fresh = after.find((it) => !before.has(it.id));
-                if (fresh) onChange(fresh.id);
-              });
-            }}
+              spec={createSpec}
+              ctx={{
+                projectId: project?.id,
+                accountId: project?.accountId,
+              }}
+              presetFields={createPresetFields && formValue ? createPresetFields(formValue) : undefined}
+              projectId={project?.id ?? null}
+              title={createTitle}
+              onCancel={() => setCreating(false)}
+              onSuccess={() => {
+                // refetch candidate-list — новый ресурс должен появиться;
+                // затем подхватываем последний созданный по имени-эвристике
+                // (InlineResourceCreateForm не отдаёт id наверх — после refetch
+                // diff'им список). Простой best-effort: перезапрашиваем и
+                // оставляем выбор пользователю, если не смогли определить.
+                void refetch().then((r) => {
+                  const after = (r.data?.[spec.payloadKey] ?? []) as Array<{ id: string }>;
+                  const before = new Set(options.map((o) => o.uid));
+                  const fresh = after.find((it) => !before.has(it.id));
+                  if (fresh) onChange(fresh.id);
+                });
+              }}
             />
           </FormBareProvider>
         </Modal>
@@ -181,4 +180,3 @@ export function RefSelect({
     </div>
   );
 }
-

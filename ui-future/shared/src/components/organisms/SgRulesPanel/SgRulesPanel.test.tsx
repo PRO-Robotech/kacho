@@ -83,6 +83,10 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
 const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
+// Роутер здесь НЕ декорация: столбец «Источник» показывает ссылочные цели
+// ссылками (канон консоли, правило 2), а `<Link>` без роутера роняет рендер
+// целиком — то есть без него проба судила бы о панели, которой на странице нет.
+const { MemoryRouter } = await import("react-router");
 type Rule = Parameters<typeof SgRulesPanel>[0]["rules"][number];
 
 const RULES: Rule[] = [
@@ -106,12 +110,14 @@ function show(rules: Rule[] = RULES) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <PageHeaderSlotProvider>
-        <div data-testid="header-slot">
-          <HeaderRightSlot />
-        </div>
-        <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
-      </PageHeaderSlotProvider>
+      <MemoryRouter initialEntries={["/projects/prj-1/vpc/security-groups/sg-1"]}>
+        <PageHeaderSlotProvider>
+          <div data-testid="header-slot">
+            <HeaderRightSlot />
+          </div>
+          <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+        </PageHeaderSlotProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -162,8 +168,14 @@ describe("SgRulesPanel — список", () => {
 
     expect(within(rowOf("http")).getByText("CIDR")).toBeInTheDocument();
     expect(within(rowOf("http")).getByText("0.0.0.0/0")).toBeInTheDocument();
-    expect(within(rowOf("proto 47")).getByText("SG")).toBeInTheDocument();
-    expect(within(rowOf("proto 47")).getByText("sg-9")).toBeInTheDocument();
+    // Тип назван словом предмета, а не аббревиатурой; сама цель — ссылка на
+    // группу, а не моноширинный идентификатор. Имя резолвится списком проекта,
+    // и пока он не приехал, ссылка подписана усечённым идентификатором.
+    expect(within(rowOf("proto 47")).getByText("Группа безопасности")).toBeInTheDocument();
+    expect(within(rowOf("proto 47")).getByRole("link")).toHaveAttribute(
+      "href",
+      "/projects/prj-1/vpc/security-groups/sg-9",
+    );
   });
 
   it("массовое удаление закрыто, пока ничего не выбрано", () => {
@@ -221,16 +233,14 @@ describe("SgRulesPanel — удаление", () => {
     expect(update).toHaveBeenCalledWith("/vpc/v1/securityGroups/sg-1/rules", { deletion_rule_ids: ["sgr-2"] });
   });
 
-  it("отказ края показан кодом и текстом", async () => {
-    update.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "rule is referenced"));
+  it("отказ края показан текстом сервера, без кода протокола", async () => {
+    update.mockRejectedValue(new ApiError(400, 9, null, "rule is referenced"));
     show();
 
     fireEvent.click(within(rowOf("proto 47")).getByRole("button", { name: "Удалить" }));
     await confirms[0].onOk!();
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Правило группы безопасности: FAILED_PRECONDITION: rule is referenced"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Правило группы безопасности: rule is referenced"));
   });
 });
 

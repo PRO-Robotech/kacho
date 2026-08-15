@@ -145,15 +145,15 @@ describe("DeleteButton", () => {
   });
 
   it("отказ сервера показывает код и текст прямо в окне и не закрывает его", async () => {
-    del.mockRejectedValue(new ApiError(409, "FAILED_PRECONDITION", null, "network is not empty"));
+    del.mockRejectedValue(new ApiError(409, 9, null, "network is not empty"));
     renderButton();
     openDialog();
 
     confirm();
 
-    expect(await screen.findByText("FAILED_PRECONDITION: network is not empty")).toBeInTheDocument();
+    expect(await screen.findByText("network is not empty")).toBeInTheDocument();
     expect(screen.getByText("Удалить Network?")).toBeInTheDocument();
-    expect(toastError).toHaveBeenCalledWith("Delete Network frontend: FAILED_PRECONDITION: network is not empty");
+    expect(toastError).toHaveBeenCalledWith("Delete Network frontend: network is not empty");
     expect(navigateTo).not.toHaveBeenCalled();
   });
 });

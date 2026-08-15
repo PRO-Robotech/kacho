@@ -16,7 +16,7 @@ describe("listViewState", () => {
   });
 
   it("shows the failure over everything else — an error is not an empty list", () => {
-    const denied = new ApiError(403, "PERMISSION_DENIED", null, "no path");
+    const denied = new ApiError(403, 7, null, "no path");
     expect(listViewState({ isLoading: false, error: denied, rowCount: 0, filtered: false, canCreate: true })).toBe(
       "error",
     );

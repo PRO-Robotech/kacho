@@ -50,7 +50,9 @@ describe("RoutesPanel — режим чтения", () => {
   it("пустой список объясняет, как добавить маршрут, и таблицы не рисует", () => {
     show([]);
 
-    expect(screen.getByText("Статических маршрутов нет — нажмите «Редактировать», чтобы добавить.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Статических маршрутов нет — нажмите «Редактировать», чтобы добавить."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -181,15 +183,15 @@ describe("RoutesPanel — правка", () => {
     expect(screen.queryByText("10.0.0.9")).not.toBeInTheDocument();
   });
 
-  it("отказ края показан кодом и текстом, правка не теряется", async () => {
-    update.mockRejectedValue(new ApiError(400, "INVALID_ARGUMENT", null, "destination_prefix is not a CIDR"));
+  it("отказ края показан текстом сервера, без кода протокола, правка не теряется", async () => {
+    update.mockRejectedValue(new ApiError(400, 3, null, "destination_prefix is not a CIDR"));
     show([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
 
     startEdit();
     save();
 
     await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Статические маршруты: INVALID_ARGUMENT: destination_prefix is not a CIDR"),
+      expect(toastError).toHaveBeenCalledWith("Статические маршруты: destination_prefix is not a CIDR"),
     );
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeInTheDocument();
   });

@@ -33,6 +33,57 @@ const MACHINE_TYPES = REGISTRY["machine-types"];
 // Ключ входа в гостя — полноценный ресурс проекта (список / карточка / создание),
 // а не поле формы машины: полем его нельзя ни отозвать, ни заменить.
 const GUEST_ACCESS_KEYS = REGISTRY["guest-access-keys"];
+const PLACEMENT_GROUPS = REGISTRY["placement-groups"];
+
+/**
+ * Таблица маршрутов раздела — ОТДЕЛЬНАЯ функция, а не вложенный узел страницы.
+ *
+ * Раздел, которого нет в таблице, не отличим от раздела, которого не задумывали:
+ * сайдбар предлагает переход, роутер отвечает ловушкой «всё остальное», и
+ * оператор возвращается на список машин без единого признака, что раздел
+ * существует. Вынесенная функция даёт пробе НАСТОЯЩИЙ сопоставитель роутера
+ * вместо поиска строки в исходнике.
+ */
+export function ComputeRoutes() {
+  return (
+    <Routes>
+      <Route index element={<ProjectComputeDefaultRedirect />} />
+      <Route
+        path={INSTANCES.route}
+        element={<ResourceListPage spec={INSTANCES} parentField="project_id" parentParam="projectId" panelForms />}
+      />
+      <Route
+        path={`${INSTANCES.route}/create`}
+        element={<ResourceCreatePage spec={INSTANCES} parentField="project_id" parentParam="projectId" />}
+      />
+      <Route path={`${INSTANCES.route}/:uid`} element={<ResourceShell spec={INSTANCES} />} />
+      <Route path={`${INSTANCES.route}/:uid/edit`} element={<ResourceShell spec={INSTANCES} mode="edit" />} />
+      <Route path={`${INSTANCES.route}/:uid/:tab`} element={<ResourceShell spec={INSTANCES} />} />
+      {/* MachineType — read-only cluster-scoped каталог sizing (без create/edit). */}
+      <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} panelForms />} />
+      <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
+      <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
+      {/* PlacementGroup — правило взаимного размещения машин (CRUD + операции). */}
+      <Route
+        path={PLACEMENT_GROUPS.route}
+        element={
+          <ResourceListPage spec={PLACEMENT_GROUPS} parentField="project_id" parentParam="projectId" panelForms />
+        }
+      />
+      <Route
+        path={`${PLACEMENT_GROUPS.route}/create`}
+        element={<ResourceCreatePage spec={PLACEMENT_GROUPS} parentField="project_id" parentParam="projectId" />}
+      />
+      <Route path={`${PLACEMENT_GROUPS.route}/:uid`} element={<ResourceShell spec={PLACEMENT_GROUPS} />} />
+      <Route
+        path={`${PLACEMENT_GROUPS.route}/:uid/edit`}
+        element={<ResourceShell spec={PLACEMENT_GROUPS} mode="edit" />}
+      />
+      <Route path={`${PLACEMENT_GROUPS.route}/:uid/:tab`} element={<ResourceShell spec={PLACEMENT_GROUPS} />} />
+      <Route path="*" element={<ProjectComputeDefaultRedirect />} />
+    </Routes>
+  );
+}
 
 export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
   const queryClient = useMemo(
@@ -111,6 +162,7 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
                 />
                 <Route path="*" element={<ProjectComputeDefaultRedirect />} />
               </Routes>
+              <ComputeRoutes />
             </ComputeFrame>
           </PageHeaderSlotProvider>
         </QueryClientProvider>

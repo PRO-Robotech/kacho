@@ -15,9 +15,10 @@ import {
 } from "@shared/components/atoms/ui/Dialog";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
-import { ApiError, api } from "@shared/api/client";
+import { api } from "@shared/api/client";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
+import { errorText } from "@shared/lib/error-presentation";
 
 interface Props {
   /** /v1/<plural>/{id} */
@@ -54,7 +55,7 @@ export function DeleteButton({ apiPath, resourceId, name, resourceLabel, project
       }
     },
     onError: (e) => {
-      const m = e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message;
+      const m = errorText(e);
       setErr(m);
       toast.error(`Delete ${resourceLabel} ${name}: ${m}`);
     },

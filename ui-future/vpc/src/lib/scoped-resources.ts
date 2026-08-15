@@ -17,6 +17,7 @@ export const VPC_SCOPED_IDS = [
   "security-groups",
   "network-interfaces",
   "gateways",
+  "cidr-groups",
 ] as const;
 
 /**
@@ -32,6 +33,7 @@ export const VPC_SCOPED_IDS = [
  * вовсе, при живом сервере и живом ресурсе в провайдере инфраструктуры.
  */
 export const COMPUTE_SCOPED_IDS = ["compute-instances", "guest-access-keys"] as const;
+export const COMPUTE_SCOPED_IDS = ["compute-instances", "placement-groups"] as const;
 
 /** NLB-ресурсы под /projects/:projectId/nlb/<route>. */
 export const NLB_SCOPED_IDS = ["load-balancers", "listeners", "target-groups"] as const;

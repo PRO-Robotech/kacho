@@ -152,14 +152,12 @@ describe("CidrSection подсети", () => {
     );
   });
 
-  it("отказ края показывается кодом и текстом", async () => {
-    action.mockRejectedValue(new ApiError(400, "FAILED_PRECONDITION", null, "subnet has allocated addresses"));
+  it("отказ края показывается текстом сервера, без кода протокола", async () => {
+    action.mockRejectedValue(new ApiError(400, 9, null, "subnet has allocated addresses"));
     show({ blocks: ["10.0.2.0/24"] });
 
     fireEvent.click(removeBtns()[0]);
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("IPv4 CIDR удаление: FAILED_PRECONDITION: subnet has allocated addresses"),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("IPv4 CIDR удаление: subnet has allocated addresses"));
   });
 });
