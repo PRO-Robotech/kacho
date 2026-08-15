@@ -38,7 +38,7 @@ interface Props {
 }
 
 function autoName(): string {
-  return `subnetwork-${Math.floor(100000 + Math.random() * 900000)}`;
+  return `subnet-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
 export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, onCancel, onSuccess }: Props) {
@@ -104,7 +104,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
       })),
     [zoneData],
   );
-  // Default-zone — первая по списку (обычно ru-central1-a).
+  // Default-zone — первая по списку.
   useEffect(() => {
     if (!zoneId && zoneOptions.length > 0) {
       setZoneId(zoneOptions[0].value);
@@ -263,7 +263,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
         </Form.Item>
 
         <Form.Item label="Имя" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="subnetwork-..." />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="subnet-..." />
         </Form.Item>
 
         <Form.Item label="Описание">

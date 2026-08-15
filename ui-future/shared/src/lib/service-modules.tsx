@@ -1,3 +1,5 @@
+// Подписи разделов и ресурсов — из единственного источника (см. entity-names.ts).
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 // service-modules — реестр «компонентов» (опубликованных сервисов) Kachō-консоли.
 //
 // Каждый модуль (vpc / compute) описывает:
@@ -79,7 +81,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "vpc",
     segment: "vpc",
-    label: "Virtual Private Cloud",
+    label: SERVICES.vpc.menuTitle,
     short: "VPC",
     icon: <ApartmentOutlined />,
     color: "#3D8DF5",
@@ -95,7 +97,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "networks",
         icon: <ApartmentOutlined />,
-        label: "Облачные сети",
+        label: ENTITIES.networks.plural,
         to: (f) => seg(f, "vpc/networks"),
         matches: (p) => projectRe("vpc/networks").test(p),
         requiresProject: true,
@@ -103,7 +105,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "subnets",
         icon: <ClusterOutlined />,
-        label: "Подсети",
+        label: ENTITIES.subnets.plural,
         to: (f) => seg(f, "vpc/subnets"),
         matches: (p) => projectRe("vpc/subnets").test(p),
         requiresProject: true,
@@ -111,7 +113,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "addresses",
         icon: <GlobalOutlined />,
-        label: "IP-адреса",
+        label: ENTITIES.addresses.plural,
         to: (f) => seg(f, "vpc/addresses"),
         matches: (p) => projectRe("vpc/addresses").test(p),
         requiresProject: true,
@@ -119,7 +121,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "route-tables",
         icon: <NodeIndexOutlined />,
-        label: "Таблицы маршрутов",
+        label: ENTITIES["route-tables"].plural,
         to: (f) => seg(f, "vpc/route-tables"),
         matches: (p) => projectRe("vpc/route-tables").test(p),
         requiresProject: true,
@@ -127,7 +129,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "security-groups",
         icon: <SafetyOutlined />,
-        label: "Группы безопасности",
+        label: ENTITIES["security-groups"].plural,
         to: (f) => seg(f, "vpc/security-groups"),
         matches: (p) => projectRe("vpc/security-groups").test(p),
         requiresProject: true,
@@ -135,7 +137,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "network-interfaces",
         icon: <ApiOutlined />,
-        label: "Сетевые интерфейсы",
+        label: ENTITIES["network-interfaces"].plural,
         to: (f) => seg(f, "vpc/network-interfaces"),
         matches: (p) => projectRe("vpc/network-interfaces").test(p),
         requiresProject: true,
@@ -143,7 +145,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "gateways",
         icon: <GatewayOutlined />,
-        label: "Шлюзы",
+        label: ENTITIES.gateways.plural,
         to: (f) => seg(f, "vpc/gateways"),
         matches: (p) => projectRe("vpc/gateways").test(p),
         requiresProject: true,
@@ -159,7 +161,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "operations",
         icon: <HistoryOutlined />,
-        label: "Операции",
+        label: ENTITIES.operations.plural,
         to: (f) => seg(f, "vpc/operations"),
         matches: (p) => projectRe("vpc/operations").test(p),
         requiresProject: true,
@@ -169,7 +171,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "compute",
     segment: "compute",
-    label: "Compute Cloud",
+    label: SERVICES.compute.menuTitle,
     short: "Compute",
     icon: <CloudServerOutlined />,
     color: "#36CFC9",
@@ -183,7 +185,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "compute-instances",
         icon: <DesktopOutlined />,
-        label: "Виртуальные машины",
+        label: ENTITIES.instances.plural,
         to: (f) => seg(f, "compute/instances"),
         matches: (p) => projectRe("compute/instances").test(p),
         requiresProject: true,
@@ -202,7 +204,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "nlb",
     segment: "nlb",
-    label: "Network Load Balancer",
+    label: SERVICES.nlb.menuTitle,
     short: "NLB",
     icon: <NodeIndexOutlined />,
     color: "#FA8C16",
@@ -216,14 +218,14 @@ export const SERVICE_MODULES: ServiceModule[] = [
         listPath: "/nlb/v1/networkLoadBalancers",
         payloadKey: "network_load_balancers",
       },
-      { key: "listeners", label: "Listeners", listPath: "/nlb/v1/listeners", payloadKey: "listeners" },
-      { key: "target-groups", label: "Target Groups", listPath: "/nlb/v1/targetGroups", payloadKey: "target_groups" },
+      { key: "listeners", label: "Обработчиков", listPath: "/nlb/v1/listeners", payloadKey: "listeners" },
+      { key: "target-groups", label: "Целевых групп", listPath: "/nlb/v1/targetGroups", payloadKey: "target_groups" },
     ],
     items: [
       {
         key: "load-balancers",
         icon: <ApartmentOutlined />,
-        label: "Балансировщики",
+        label: ENTITIES["load-balancers"].plural,
         to: (f) => seg(f, "nlb/load-balancers"),
         matches: (p) => projectRe("nlb/load-balancers").test(p),
         requiresProject: true,
@@ -231,7 +233,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "listeners",
         icon: <ApiOutlined />,
-        label: "Listeners",
+        label: ENTITIES.listeners.plural,
         to: (f) => seg(f, "nlb/listeners"),
         matches: (p) => projectRe("nlb/listeners").test(p),
         requiresProject: true,
@@ -239,7 +241,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "target-groups",
         icon: <ClusterOutlined />,
-        label: "Target Groups",
+        label: ENTITIES["target-groups"].plural,
         to: (f) => seg(f, "nlb/target-groups"),
         matches: (p) => projectRe("nlb/target-groups").test(p),
         requiresProject: true,
@@ -247,7 +249,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "nlb-operations",
         icon: <HistoryOutlined />,
-        label: "Операции",
+        label: ENTITIES.operations.plural,
         to: (f) => seg(f, "nlb/operations"),
         matches: (p) => projectRe("nlb/operations").test(p),
         requiresProject: true,
@@ -260,7 +262,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "iam",
     segment: "iam",
-    label: "Identity and Access Management",
+    label: SERVICES.iam.menuTitle,
     short: "IAM",
     icon: <LockOutlined />,
     color: "#9B59F6",
@@ -275,49 +277,49 @@ export const SERVICE_MODULES: ServiceModule[] = [
       {
         key: "iam-accounts",
         icon: <ApartmentOutlined />,
-        label: "Аккаунты",
+        label: ENTITIES.accounts.plural,
         to: () => iamSeg("accounts"),
         matches: (p) => iamRe("accounts").test(p),
       },
       {
         key: "iam-projects",
         icon: <ClusterOutlined />,
-        label: "Проекты",
+        label: ENTITIES.projects.plural,
         to: () => iamSeg("projects"),
         matches: (p) => iamRe("projects").test(p),
       },
       {
         key: "iam-users",
         icon: <UserOutlined />,
-        label: "Пользователи",
+        label: ENTITIES.users.plural,
         to: () => iamSeg("users"),
         matches: (p) => iamRe("users").test(p),
       },
       {
         key: "iam-service-accounts",
         icon: <ApiOutlined />,
-        label: "Сервисные аккаунты",
+        label: ENTITIES["service-accounts"].plural,
         to: () => iamSeg("service-accounts"),
         matches: (p) => iamRe("service-accounts").test(p),
       },
       {
         key: "iam-groups",
         icon: <NodeIndexOutlined />,
-        label: "Группы",
+        label: ENTITIES.groups.plural,
         to: () => iamSeg("groups"),
         matches: (p) => iamRe("groups").test(p),
       },
       {
         key: "iam-roles",
         icon: <SafetyOutlined />,
-        label: "Роли",
+        label: ENTITIES.roles.plural,
         to: () => iamSeg("roles"),
         matches: (p) => iamRe("roles").test(p),
       },
       {
         key: "iam-access-bindings",
         icon: <GatewayOutlined />,
-        label: "Связки прав",
+        label: ENTITIES["access-bindings"].plural,
         to: () => iamSeg("access-bindings"),
         matches: (p) => iamRe("access-bindings").test(p),
       },
@@ -363,7 +365,7 @@ export const COMMON_BOTTOM: NavLeaf[] = [
   {
     key: "system",
     icon: <SettingOutlined />,
-    label: "Администрирование",
+    label: SERVICES.system.title,
     to: () => "/system/regions",
     // KAC-196: добавлен /system/cluster/admins (cluster RBAC management) под
     // тем же admin-entry; AdminLayout-табы рендерят его как отдельный таб.

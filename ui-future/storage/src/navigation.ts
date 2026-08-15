@@ -1,3 +1,7 @@
+// Подписи разделов и ресурсов — из единственного источника: литерал рядом
+// с местом показа расходится молча, ссылка — нет (см. entity-names.ts).
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+
 export type RemoteIconName = "camera" | "hard-drive" | "layers";
 
 export interface RemoteNavItem {
@@ -26,19 +30,37 @@ export const STORAGE_NAVIGATION: RemoteNavSection[] = [
     key: "storage",
     segment: "storage",
     icon: "hard-drive",
-    label: "Storage",
+    label: SERVICES.storage.menuTitle,
     landingPath: "storage/volumes",
     requiresProject: true,
     items: [
-      { key: "storage-volumes", icon: "hard-drive", label: "Тома", path: "storage/volumes", requiresProject: true },
-      { key: "storage-snapshots", icon: "camera", label: "Снимки", path: "storage/snapshots", requiresProject: true },
+      {
+        key: "storage-volumes",
+        icon: "hard-drive",
+        label: ENTITIES.volumes.plural,
+        path: "storage/volumes",
+        requiresProject: true,
+      },
+      {
+        key: "storage-snapshots",
+        icon: "camera",
+        label: ENTITIES.snapshots.plural,
+        path: "storage/snapshots",
+        requiresProject: true,
+      },
       // Образ (boot-image, STOR-1) — иконка в рейле резолвится по specId "images"
       // (antdIconBySpec → FileImageOutlined); item.icon — host-валидный fallback.
-      { key: "storage-images", icon: "layers", label: "Образы", path: "storage/images", requiresProject: true },
+      {
+        key: "storage-images",
+        icon: "layers",
+        label: ENTITIES.images.plural,
+        path: "storage/images",
+        requiresProject: true,
+      },
       {
         key: "storage-disk-types",
         icon: "layers",
-        label: "Типы дисков",
+        label: ENTITIES["disk-types"].plural,
         path: "storage/disk-types",
         requiresProject: true,
       },

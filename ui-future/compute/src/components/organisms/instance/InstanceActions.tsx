@@ -11,6 +11,9 @@ import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
+// Имя ресурса в тексте отказа — из единственного источника: «Инстанс» было
+// вторым именем машины в продукте (везде остальное — «Виртуальная машина»).
+import { ENTITIES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
 
 type Verb = "start" | "stop" | "restart";
@@ -35,7 +38,7 @@ export function InstanceActions({
       if (id) setOpId(id);
       else invalidate("compute-instances", projectId);
     },
-    onError: (e) => toast.error(`Инстанс: ${errorText(e)}`),
+    onError: (e) => toast.error(`${ENTITIES.instances.singular}: ${errorText(e)}`),
   });
   const busy = mut.isPending || opId !== null;
 

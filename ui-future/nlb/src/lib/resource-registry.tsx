@@ -20,6 +20,9 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
+// литерал рядом с местом показа расходится молча, ссылка — нет.
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import {
   isSystemScopedResource,
   resourceListPath,
@@ -100,7 +103,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Регион",
     accusative: "регион",
     plural: "Регионы",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -129,7 +132,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: "Виртуальная машина",
     accusative: "виртуальную машину",
     plural: "Виртуальные машины",
-    serviceTitle: "Compute Cloud",
+    serviceTitle: SERVICES.compute.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -143,10 +146,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    singular: "Сетевой интерфейс",
+    singular: ENTITIES["network-interfaces"].singular,
     accusative: "сетевой интерфейс",
-    plural: "Сетевые интерфейсы",
-    serviceTitle: "Virtual Private Cloud",
+    plural: ENTITIES["network-interfaces"].plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -160,10 +163,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
-    singular: "Зона",
+    singular: ENTITIES.zones.singular,
     accusative: "зону",
-    plural: "Зоны",
-    serviceTitle: "Администрирование",
+    plural: ENTITIES.zones.plural,
+    serviceTitle: SERVICES.system.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
@@ -179,10 +182,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "subnets",
     apiPath: "/vpc/v1/subnets",
     payloadKey: "subnets",
-    singular: "Подсеть",
+    singular: ENTITIES.subnets.singular,
     accusative: "подсеть",
-    plural: "Подсети",
-    serviceTitle: "Virtual Private Cloud",
+    plural: ENTITIES.subnets.plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -197,10 +200,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "addresses",
     apiPath: "/vpc/v1/addresses",
     payloadKey: "addresses",
-    singular: "Адрес",
-    accusative: "адрес",
-    plural: "Адреса",
-    serviceTitle: "Virtual Private Cloud",
+    singular: ENTITIES.addresses.singular,
+    // Винительный падеж — от ИМЕНИ сущности, а не от прежней подписи: здесь
+    // стояло «адрес», написанное под старое «Адрес», а имя сведено к «IP-адрес»
+    // (@shared/lib/entity-names). Тот же ресурс в shared-реестре уже так и назван.
+    accusative: "IP-адрес",
+    plural: ENTITIES.addresses.plural,
+    serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
     columns: [
@@ -224,15 +230,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     apiPath: "/nlb/v1/networkLoadBalancers",
     // proto ListNetworkLoadBalancersResponse repeated-поле — `network_load_balancers`.
     payloadKey: "network_load_balancers",
-    singular: "Балансировщик нагрузки",
+    singular: ENTITIES["load-balancers"].singular,
     accusative: "балансировщик нагрузки",
-    plural: "Балансировщики нагрузки",
+    plural: ENTITIES["load-balancers"].plural,
     genitive: "Балансировщика нагрузки",
     docs: [
       { label: "Балансировщики нагрузки", href: "#" },
       { label: "Обработчики и целевые группы", href: "#" },
     ],
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
     // административное включение/выключение выражается полем admin_state.
@@ -434,14 +440,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "listeners",
     apiPath: "/nlb/v1/listeners",
     payloadKey: "listeners",
-    singular: "Обработчик",
+    singular: ENTITIES.listeners.singular,
     accusative: "обработчик",
-    plural: "Listeners",
+    plural: ENTITIES.listeners.plural,
     docs: [
       { label: "Обработчики (Listeners)", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [
@@ -535,15 +541,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "target-groups",
     apiPath: "/nlb/v1/targetGroups",
     payloadKey: "target_groups",
-    singular: "Целевая группа",
+    singular: ENTITIES["target-groups"].singular,
     accusative: "целевую группу",
-    plural: "Target Groups",
+    plural: ENTITIES["target-groups"].plural,
     docs: [
       { label: "Целевые группы (Target Groups)", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     genitive: "Целевой группы",
-    serviceTitle: "Network Load Balancer",
+    serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
     columns: [

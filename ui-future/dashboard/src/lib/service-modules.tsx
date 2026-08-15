@@ -65,7 +65,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "compute",
     segment: "compute",
-    label: "Compute Cloud",
+    label: "Compute",
     short: "Compute",
     icon: <Cloud size={iconSize} />,
     color: "#36CFC9",
@@ -78,9 +78,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
     description: "Виртуальные машины и типы машин.",
     requiresProject: true,
     landing: (projectId) => (projectId ? `/projects/${projectId}/compute/instances` : null),
-    stats: [
-      { key: "instances", label: "Машин", listPath: "/compute/v1/instances", payloadKey: "instances" },
-    ],
+    stats: [{ key: "instances", label: "Машин", listPath: "/compute/v1/instances", payloadKey: "instances" }],
   },
   {
     key: "storage",
@@ -101,7 +99,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "registry",
     segment: "registry",
-    label: "Container Registry",
+    label: "Registry",
     short: "Registry",
     icon: <Boxes size={iconSize} />,
     color: "#EB2F96",
@@ -117,7 +115,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
   {
     key: "nlb",
     segment: "nlb",
-    label: "Network Load Balancer",
+    label: "Load Balancer",
     short: "NLB",
     icon: <Scale size={iconSize} />,
     color: "#FA8C16",
@@ -131,8 +129,8 @@ export const SERVICE_MODULES: ServiceModule[] = [
         listPath: "/nlb/v1/networkLoadBalancers",
         payloadKey: "networkLoadBalancers",
       },
-      { key: "listeners", label: "Listeners", listPath: "/nlb/v1/listeners", payloadKey: "listeners" },
-      { key: "target-groups", label: "Target Groups", listPath: "/nlb/v1/targetGroups", payloadKey: "targetGroups" },
+      { key: "listeners", label: "Обработчиков", listPath: "/nlb/v1/listeners", payloadKey: "listeners" },
+      { key: "target-groups", label: "Целевых групп", listPath: "/nlb/v1/targetGroups", payloadKey: "targetGroups" },
     ],
   },
   {

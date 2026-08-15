@@ -1,20 +1,15 @@
 import type { FC } from "react";
 import { Button, Empty, Typography } from "antd";
 import { useNavigate, useParams } from "react-router";
-
-const MODULE_LABELS: Record<string, string> = {
-  vpc: "Virtual Private Cloud",
-  compute: "Compute Cloud",
-  nlb: "Network Load Balancer",
-  iam: "Identity and Access Management",
-  system: "Администрирование",
-};
+// Заголовок раздела — из того же зеркала канона, что и крошка хоста: своя
+// карта здесь была третьей подписью одного раздела в одном продукте.
+import { SERVICES } from "../../lib/entity-names";
 
 export const ModulePlaceholderPage: FC = () => {
   const navigate = useNavigate();
   const params = useParams();
   const moduleKey = params.moduleKey ?? params.iamSection ?? params.systemSection ?? "module";
-  const label = MODULE_LABELS[moduleKey] ?? moduleKey;
+  const label = SERVICES[moduleKey]?.menuTitle ?? moduleKey;
 
   return (
     <section className="workbench" data-testid="module-placeholder-page">

@@ -9,8 +9,8 @@ describe("HostRail", () => {
     expect(screen.getByRole("button", { name: "Все сервисы" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Поиск" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Virtual Private Cloud" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Compute Cloud" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Network Load Balancer" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Compute" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load Balancer" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Identity and Access Management" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Администрирование" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
@@ -30,8 +30,8 @@ describe("HostRail", () => {
     );
 
     expect(await screen.findByRole("button", { name: "Virtual Private Cloud" })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: "Compute Cloud" })).not.toBeDisabled();
-    expect(screen.getByRole("button", { name: "Network Load Balancer" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Compute" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load Balancer" })).not.toBeDisabled();
   });
 
   it("switches to section navigation inside a federated module uri", async () => {
@@ -48,7 +48,7 @@ describe("HostRail", () => {
 
     expect(await screen.findByRole("button", { name: "Облачные сети" })).toHaveAttribute("data-active", "true");
     expect(screen.getByRole("button", { name: "Подсети" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Compute Cloud" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compute" })).not.toBeInTheDocument();
   });
 
   it("surfaces the compute MachineType resource item inside the compute section", async () => {
@@ -116,7 +116,7 @@ describe("HostRail", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: "Связки прав" })).toHaveAttribute("data-active", "true");
+    expect(await screen.findByRole("button", { name: "Привязки доступа" })).toHaveAttribute("data-active", "true");
     expect(screen.getByRole("button", { name: "Права доступа" })).not.toHaveAttribute("data-active", "true");
   });
 });

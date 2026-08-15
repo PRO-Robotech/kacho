@@ -156,7 +156,7 @@ export function refOptionExtra(
           : "";
       return join([tier ?? "", retired]);
     }
-    // Geo Region: name — head-label, id (ru-central1) — полезный extra.
+    // Geo Region: name — head-label, id (region-1) — полезный extra.
     case "regions":
     case "compute-regions": {
       const id = (row.id as string | undefined) ?? "";

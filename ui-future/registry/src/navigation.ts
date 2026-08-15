@@ -1,3 +1,7 @@
+// Подписи разделов и ресурсов — из единственного источника: литерал рядом
+// с местом показа расходится молча, ссылка — нет (см. entity-names.ts).
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+
 export type RemoteIconName = "activity" | "cable" | "git-branch" | "globe" | "layers" | "network" | "route" | "shield";
 
 export interface RemoteNavItem {
@@ -23,14 +27,14 @@ export const REGISTRY_NAVIGATION: RemoteNavSection[] = [
     key: "registry",
     segment: "registry",
     icon: "layers",
-    label: "Container Registry",
+    label: SERVICES.registry.menuTitle,
     landingPath: "registry/registries",
     requiresProject: true,
     items: [
       {
         key: "registry-registries",
         icon: "layers",
-        label: "Реестры",
+        label: ENTITIES.registries.plural,
         path: "registry/registries",
         requiresProject: true,
       },

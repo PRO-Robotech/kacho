@@ -1,5 +1,12 @@
 import type { RemoteIconName } from "dashboard/navigation";
 
+// Имя раздела берётся из зеркала канона имён (`host/src/lib/entity-names`), а
+// не выписывается здесь: тот же раздел называет себя в меню модуля, в крошке и
+// на экране отказа, и литерал совпадал бы с ними ровно до первой правки имени.
+// Оболочка импортирует ЗЕРКАЛО, а не `@shared`: её образ собирается из её
+// дерева, каталога `shared/` в контексте сборки нет (см. шапку зеркала).
+import { SERVICES } from "../lib/entity-names";
+
 /**
  * Каталог удалённых модулей консоли — ОДНО место, где живёт имя раздела.
  *
@@ -33,12 +40,12 @@ export const REMOTE_MODULES: readonly RemoteModule[] = [
   { remote: "dashboard", label: "Все сервисы" },
   {
     remote: "vpc",
-    label: "Virtual Private Cloud",
+    label: SERVICES.vpc.menuTitle,
     section: { key: "vpc", segment: "vpc", icon: "network", landingPath: "vpc/networks", requiresProject: true },
   },
   {
     remote: "compute",
-    label: "Compute Cloud",
+    label: SERVICES.compute.menuTitle,
     section: {
       key: "compute",
       segment: "compute",
@@ -49,7 +56,7 @@ export const REMOTE_MODULES: readonly RemoteModule[] = [
   },
   {
     remote: "storage",
-    label: "Storage",
+    label: SERVICES.storage.menuTitle,
     section: {
       key: "storage",
       segment: "storage",
@@ -60,7 +67,7 @@ export const REMOTE_MODULES: readonly RemoteModule[] = [
   },
   {
     remote: "nlb",
-    label: "Network Load Balancer",
+    label: SERVICES.nlb.menuTitle,
     section: {
       key: "nlb",
       segment: "nlb",
@@ -71,7 +78,7 @@ export const REMOTE_MODULES: readonly RemoteModule[] = [
   },
   {
     remote: "registry",
-    label: "Container Registry",
+    label: SERVICES.registry.menuTitle,
     section: {
       key: "registry",
       segment: "registry",
@@ -82,10 +89,10 @@ export const REMOTE_MODULES: readonly RemoteModule[] = [
   },
   {
     remote: "iam",
-    label: "Identity and Access Management",
+    label: SERVICES.iam.menuTitle,
     section: { key: "iam", segment: "iam", icon: "key", landingPath: "/iam/accounts" },
   },
-  { remote: "system", label: "Администрирование" },
+  { remote: "system", label: SERVICES.system.menuTitle },
 ] as const;
 
 const BY_REMOTE = new Map(REMOTE_MODULES.map((module) => [module.remote, module]));

@@ -14,6 +14,7 @@ import {
   type HostContext,
   type ProjectRef,
 } from "../../../utils";
+import { ENTITIES, SERVICES } from "../../../lib/entity-names";
 
 // Метки модулей и ресурсов для хлебных крошек в шапке (как в kacho-ui):
 // «<Модуль> / <ресурс>» выводится из URL. Хост держит собственную карту, т.к. по
@@ -22,72 +23,40 @@ import {
  * Подписи разделов и ресурсов. Экспортированы, чтобы проба утверждала о САМИХ
  * картах как о значениях, а не разбирала исходник этого файла как текст:
  * текстовый разбор говорит о форме записи и переживает любую её смену молча.
+ *
+ * Сами подписи ВЫВОДЯТСЯ из зеркала канона (`host/src/lib/entity-names`), а не
+ * выписываются здесь: до этого обработчик балансировщика назывался у хоста
+ * «Слушатели», в меню модуля «Обработчики», в агрегатном меню «Listeners» — три
+ * подписи одного предмета в одном продукте. Зеркало сверяется с каноном пробой
+ * `HostBreadcrumb.names.test.tsx`.
+ *
+ * Ниже к выведенным добавлены подписи, которые сущность НЕ именуют и потому в
+ * каноне не живут: разделы администрирования и агрегатная страница доступа.
  */
-export const MODULE_LABELS: Record<string, string> = {
-  iam: "IAM",
-  vpc: "VPC",
-  compute: "Compute",
-  storage: "Хранилище",
-  registry: "Реестр",
-  nlb: "NLB",
-  system: "Администрирование",
-};
+export const MODULE_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(SERVICES).map(([key, value]) => [key, value.title]),
+);
 
 export const RESOURCE_LABELS: Record<string, string> = {
-  // iam
-  accounts: "Аккаунты",
-  projects: "Проекты",
-  "service-accounts": "Сервисные аккаунты",
-  users: "Пользователи",
-  groups: "Группы",
-  roles: "Роли",
-  "access-bindings": "Привязки доступа",
-  operations: "Операции",
+  ...Object.fromEntries(Object.entries(ENTITIES).map(([key, value]) => [key, value.plural])),
+  // Подписи не-сущностей: agregate-страница прав и разделы администрирования.
+  // `/system/cluster/admins` и `/system/tokens/user-tokens` подписывает их
+  // РАЗДЕЛ, потому что крошка строится по ПЕРВОМУ сегменту после `/system/`.
   access: "Управление доступом",
-  // vpc
-  networks: "Облачные сети",
-  subnets: "Подсети",
-  "security-groups": "Группы безопасности",
-  "route-tables": "Таблицы маршрутов",
-  addresses: "Адреса",
-  gateways: "Шлюзы",
-  "network-interfaces": "Сетевые интерфейсы",
-  "address-pools": "Пулы адресов",
-  // compute
-  instances: "Инстансы",
-  "machine-types": "Типы машин",
-  // storage — блочное хранение принадлежит storage-remote'у: Volume заменил
-  // прежний диск compute, Image/Snapshot/DiskType переехали туда же.
-  volumes: "Тома",
-  images: "Образы",
-  snapshots: "Снимки",
-  "disk-types": "Типы дисков",
-  // registry
-  registries: "Реестры",
-  // geo (админ-раздел)
-  regions: "Регионы",
-  zones: "Зоны",
-  // administration — первый сегмент после /system/, а не последний сегмент
-  // адреса: `/system/cluster/admins` и `/system/tokens/user-tokens` подписывает
-  // их РАЗДЕЛ, потому что крошка строится по первому сегменту.
   search: "Поиск",
   cluster: "Cluster admins",
   tokens: "Токены и ключи",
-  // nlb
-  "load-balancers": "Балансировщики",
-  listeners: "Слушатели",
-  "target-groups": "Целевые группы",
 };
 
 // deriveCrumb — «<Модуль> / <ресурс>» из pathname. Поддержаны /iam/<res>,
 // /projects/<pid>/<module>/<res>, /system/<res>. Иначе null → «Все сервисы».
 function deriveCrumb(path: string): { module: string; resource: string } | null {
   let m = path.match(/^\/iam\/([^/]+)/);
-  if (m) return { module: "IAM", resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
+  if (m) return { module: SERVICES.iam.title, resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
   m = path.match(/^\/projects\/[^/]+\/([^/]+)\/([^/]+)/);
   if (m) return { module: MODULE_LABELS[m[1]] ?? m[1].toUpperCase(), resource: RESOURCE_LABELS[m[2]] ?? "Раздел" };
   m = path.match(/^\/system\/([^/]+)/);
-  if (m) return { module: "Администрирование", resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
+  if (m) return { module: SERVICES.system.title, resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
   return null;
 }
 
