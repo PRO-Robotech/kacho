@@ -451,6 +451,24 @@ function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
   );
 }
 
+/**
+ * Поле-список, чьи элементы приходят с сервера строками, а форма ведёт объектами
+ * `{ value }`.
+ *
+ * Вынесено из ТРЁХ дословных копий (блоки сети, ссылки интерфейса, блоки
+ * подсети): третью добавила волна правок консоли, и линт справедливо назвал её
+ * ростом — `Array.isArray` сужает до `any[]`, поэтому возврат элемента был
+ * небезопасным. Тип элемента здесь назван явно, и правило снимается не
+ * подавлением, а тем, что утверждение стало верным.
+ */
+function hydrateStringListFields(out: Record<string, unknown>, keys: string[]): void {
+  for (const key of keys) {
+    const raw = out[key];
+    if (!Array.isArray(raw)) continue;
+    out[key] = (raw as unknown[]).map((item: unknown) => (typeof item === "string" ? { value: item } : item));
+  }
+}
+
 export const REGISTRY: Record<string, ResourceSpec> = {
   // ====== iam ======
   // proto: kacho.cloud.iam.v1.AccountService / ProjectService.
@@ -1066,12 +1084,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      hydrateStringListFields(out, ["ipv4_cidr_blocks", "ipv6_cidr_blocks"]);
       return out;
     },
   },
@@ -1997,12 +2010,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // edit-режиме RefSelect получает массив строк и не показывает имена.
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_address_ids", "v6_address_ids", "security_group_ids"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      hydrateStringListFields(out, ["v4_address_ids", "v6_address_ids", "security_group_ids"]);
       return out;
     },
   },
@@ -2328,12 +2336,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
-        const raw = out[key];
-        if (Array.isArray(raw)) {
-          out[key] = raw.map((item) => (typeof item === "string" ? { value: item } : item));
-        }
-      }
+      hydrateStringListFields(out, ["v4_cidr_blocks", "v6_cidr_blocks"]);
       return out;
     },
   },
@@ -3061,7 +3064,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Правило",
         path: "strategy",
-        render: (row) => <>{PLACEMENT_STRATEGY_TEXT[String(row.strategy ?? "")] ?? placementDash}</>,
+        render: (row) => <>{PLACEMENT_STRATEGY_TEXT[displayText(row.strategy)] ?? placementDash}</>,
       },
       {
         // Якорь — ресурс каталога geo, поэтому ссылка, а не идентификатор. Ветку

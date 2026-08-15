@@ -47,7 +47,7 @@ function targetSelect(): HTMLSelectElement {
     [...s.options].some((o) => o.textContent === "CIDR-блоки"),
   );
   if (!sel) throw new Error("селект выбора цели правила не найден");
-  return sel as HTMLSelectElement;
+  return sel;
 }
 
 describe("цель правила — три ветви, а не две", () => {

@@ -36,7 +36,9 @@ export type ServicePrefix = "vpc" | "compute" | "storage" | "nlb" | "registry" |
 export function resourceServicePrefix(specId: string): ServicePrefix | null {
   if (specId.startsWith("compute-")) return "compute";
   switch (specId) {
-    // VPC
+    // VPC. Отдельного слова заслуживает `cidr-groups` — именованный набор
+    // префиксов: на него ссылается правило группы безопасности третьей ветвью
+    // цели, поэтому он тоже ресурс vpc.
     case "networks":
     case "subnets":
     case "addresses":
@@ -44,17 +46,13 @@ export function resourceServicePrefix(specId: string): ServicePrefix | null {
     case "security-groups":
     case "network-interfaces":
     case "gateways":
-    // Именованный набор префиксов — ресурс vpc; на него ссылается правило
-    // группы безопасности третьей ветвью цели.
     case "cidr-groups":
       return "vpc";
-    // Compute
+    // Compute. Два последних идентификатора префикса `compute-` НЕ несут, и это
+    // намеренно: их разделы монтируют оба приложения по одному адресу, поэтому
+    // переименование спеки ради предиката сломало бы ссылки на карточку.
     case "machine-types":
-    // Группа размещения — ресурс compute, но её идентификатор спеки префикса
-    // `compute-` не несёт: раздел монтируют оба приложения по одному адресу,
-    // и переименование спеки ради предиката сломало бы ссылки на карточку.
     case "placement-groups":
-    // Ключ доступа в гостевую систему — тот же случай.
     case "guest-access-keys":
       return "compute";
     // Storage — блочное хранение

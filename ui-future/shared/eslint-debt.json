@@ -3,7 +3,7 @@
   "rules": {
     "@typescript-eslint/no-require-imports": 2,
     "@typescript-eslint/no-unsafe-assignment": 1,
-    "@typescript-eslint/no-unsafe-return": 4,
+    "@typescript-eslint/no-unsafe-return": 2,
     "jsx-a11y/no-autofocus": 2,
     "react-hooks/exhaustive-deps": 2,
     "react-hooks/immutability": 2,

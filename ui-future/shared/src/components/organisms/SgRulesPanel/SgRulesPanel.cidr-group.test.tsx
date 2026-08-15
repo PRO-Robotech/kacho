@@ -55,7 +55,7 @@ beforeEach(() => {
 
 describe("источник правила — ссылка на то, на что правило ссылается", () => {
   it("набор префиксов назван своим типом и ведёт на свою карточку", async () => {
-    show([{ id: "sgr-1", direction: "INGRESS", cidr_group_id: "cdg-1" } as Rule]);
+    show([{ id: "sgr-1", direction: "INGRESS", cidr_group_id: "cdg-1" }]);
 
     expect(screen.getByText("Набор префиксов")).toBeInTheDocument();
     const link = await screen.findByRole("link", { name: "office" });
@@ -63,7 +63,7 @@ describe("источник правила — ссылка на то, на чт�
   });
 
   it("группа безопасности показана ТЕМ ЖЕ видом — один предмет, один вид", async () => {
-    show([{ id: "sgr-2", direction: "EGRESS", security_group_id: "sg-9" } as Rule]);
+    show([{ id: "sgr-2", direction: "EGRESS", security_group_id: "sg-9" }]);
 
     const link = await screen.findByRole("link", { name: "backend" });
     expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/security-groups/sg-9");
@@ -72,7 +72,7 @@ describe("источник правила — ссылка на то, на чт�
   it("набор блоков остаётся текстом — ссылаться там не на что", () => {
     // Контроль в обратную сторону: без него «ссылка есть» зеленело бы на
     // реализации, оборачивающей в ссылку что угодно, включая CIDR.
-    show([{ id: "sgr-3", direction: "INGRESS", cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] } } as Rule]);
+    show([{ id: "sgr-3", direction: "INGRESS", cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] } }]);
 
     expect(screen.getByText("10.0.0.0/8")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "10.0.0.0/8" })).not.toBeInTheDocument();
