@@ -63,6 +63,23 @@ export function ComputeRoutes() {
       <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} panelForms />} />
       <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
       <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
+      {/* GuestAccessKey — ключ входа в гостя, полноценный ресурс проекта. */}
+      <Route
+        path={GUEST_ACCESS_KEYS.route}
+        element={
+          <ResourceListPage spec={GUEST_ACCESS_KEYS} parentField="project_id" parentParam="projectId" panelForms />
+        }
+      />
+      <Route
+        path={`${GUEST_ACCESS_KEYS.route}/create`}
+        element={<ResourceCreatePage spec={GUEST_ACCESS_KEYS} parentField="project_id" parentParam="projectId" />}
+      />
+      <Route path={`${GUEST_ACCESS_KEYS.route}/:uid`} element={<ResourceShell spec={GUEST_ACCESS_KEYS} />} />
+      <Route
+        path={`${GUEST_ACCESS_KEYS.route}/:uid/edit`}
+        element={<ResourceShell spec={GUEST_ACCESS_KEYS} mode="edit" />}
+      />
+      <Route path={`${GUEST_ACCESS_KEYS.route}/:uid/:tab`} element={<ResourceShell spec={GUEST_ACCESS_KEYS} />} />
       {/* PlacementGroup — правило взаимного размещения машин (CRUD + операции). */}
       <Route
         path={PLACEMENT_GROUPS.route}
@@ -115,53 +132,6 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
         <QueryClientProvider client={queryClient}>
           <PageHeaderSlotProvider>
             <ComputeFrame>
-              <Routes>
-                <Route index element={<ProjectComputeDefaultRedirect />} />
-                <Route
-                  path={INSTANCES.route}
-                  element={
-                    <ResourceListPage spec={INSTANCES} parentField="project_id" parentParam="projectId" panelForms />
-                  }
-                />
-                <Route
-                  path={`${INSTANCES.route}/create`}
-                  element={<ResourceCreatePage spec={INSTANCES} parentField="project_id" parentParam="projectId" />}
-                />
-                <Route path={`${INSTANCES.route}/:uid`} element={<ResourceShell spec={INSTANCES} />} />
-                <Route path={`${INSTANCES.route}/:uid/edit`} element={<ResourceShell spec={INSTANCES} mode="edit" />} />
-                <Route path={`${INSTANCES.route}/:uid/:tab`} element={<ResourceShell spec={INSTANCES} />} />
-                {/* MachineType — read-only cluster-scoped каталог sizing (без create/edit). */}
-                <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} panelForms />} />
-                <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
-                <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
-                <Route
-                  path={GUEST_ACCESS_KEYS.route}
-                  element={
-                    <ResourceListPage
-                      spec={GUEST_ACCESS_KEYS}
-                      parentField="project_id"
-                      parentParam="projectId"
-                      panelForms
-                    />
-                  }
-                />
-                <Route
-                  path={`${GUEST_ACCESS_KEYS.route}/create`}
-                  element={
-                    <ResourceCreatePage spec={GUEST_ACCESS_KEYS} parentField="project_id" parentParam="projectId" />
-                  }
-                />
-                <Route path={`${GUEST_ACCESS_KEYS.route}/:uid`} element={<ResourceShell spec={GUEST_ACCESS_KEYS} />} />
-                <Route
-                  path={`${GUEST_ACCESS_KEYS.route}/:uid/edit`}
-                  element={<ResourceShell spec={GUEST_ACCESS_KEYS} mode="edit" />}
-                />
-                <Route
-                  path={`${GUEST_ACCESS_KEYS.route}/:uid/:tab`}
-                  element={<ResourceShell spec={GUEST_ACCESS_KEYS} />}
-                />
-                <Route path="*" element={<ProjectComputeDefaultRedirect />} />
-              </Routes>
               <ComputeRoutes />
             </ComputeFrame>
           </PageHeaderSlotProvider>
