@@ -245,9 +245,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         createOnly: true,
         immutable: true,
         visibleWhen: { field: "_source_kind", equals: "image" },
-        description:
-          "Образ, из которого материализуется загрузочный том (immutable после Create). Same-DB ref → Image.",
-        description: "Необязательно: восстановить том из снимка. Неизменяемо после создания; пусто — пустой том.",
+          description: "Образ, из которого создаётся загрузочный том. Задаётся при создании и потом не меняется.",
       },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
