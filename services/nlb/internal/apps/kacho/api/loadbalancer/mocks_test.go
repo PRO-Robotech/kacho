@@ -119,9 +119,16 @@ type fakeWriter struct {
 }
 
 // fgaIntentEvent records one FGARegisterOutbox.Emit  for assertions.
+//
+// StampedAt — версия, которую эмиттер выдал ЭТОМУ намерению. Записывается,
+// потому что порядок версий и есть контракт переписи проекции: снятие обязано
+// нести версию МЕНЬШЕ, чем последующая регистрация, иначе отзыв, применённый
+// дренажем позже, снимет уже поставленную проекцию. Без этого поля проба могла
+// бы утверждать лишь «доставка случилась», но не то, что она безопасна.
 type fgaIntentEvent struct {
 	EventType string
 	Intent    domain.FGARegisterIntent
+	StampedAt time.Time
 }
 
 func (w *fakeWriter) LoadBalancers() kachorepo.LoadBalancerWriterIface {
@@ -681,7 +688,12 @@ type fakeAddressClient struct {
 	byoReqs    []vpcclient.AttachExistingRequest
 	freed      []string
 	cleared    []string
-	seq        int
+	// freeErr — отказ соседа на освобождении. Дублёр обязан УМЕТЬ отказать:
+	// без этого «что делает компенсация, когда освобождение не удалось» не
+	// проверяемо вовсе, а это единственный путь, на котором аренда теряется
+	// безвозвратно.
+	freeErr error
+	seq     int
 }
 
 func (f *fakeAddressClient) AllocateInternalIP(ctx context.Context, req vpcclient.AllocateInternalIPRequest) (*vpcclient.AllocateResponse, error) {
@@ -751,6 +763,9 @@ func (f *fakeAddressClient) AttachExisting(ctx context.Context, req vpcclient.At
 func (f *fakeAddressClient) FreeIP(ctx context.Context, addressID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.freeErr != nil {
+		return f.freeErr
+	}
 	f.freed = append(f.freed, addressID)
 	return nil
 }
@@ -839,9 +854,11 @@ func (o *fakeFGARegisterOutbox) Emit(ctx context.Context, eventType string, inte
 	if o.w.r.failOnOutbox != nil {
 		return time.Time{}, o.w.r.failOnOutbox
 	}
-	o.w.pendingFGA = append(o.w.pendingFGA, fgaIntentEvent{EventType: eventType, Intent: intent})
 	seq := atomic.AddInt64(&fakeFGAStampSeq, 1)
-	return fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond), nil
+	stamped := fakeFGAStampBase.Add(time.Duration(seq) * time.Millisecond)
+	o.w.pendingFGA = append(o.w.pendingFGA,
+		fgaIntentEvent{EventType: eventType, Intent: intent, StampedAt: stamped})
+	return stamped, nil
 }
 
 // Счётчик атомарный: рабочий очередей исполняет операции ПАРАЛЛЕЛЬНО, и две
