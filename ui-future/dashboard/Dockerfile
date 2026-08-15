@@ -5,10 +5,23 @@ WORKDIR /app
 ARG KACHO_PUBLIC_BASE=/dashboard-remote/
 ENV KACHO_PUBLIC_BASE=$KACHO_PUBLIC_BASE
 
+# Этот remote ставит зависимости сам (свой package-lock), но собирает и исходники
+# shared/ — они лежат рядом, а не внутри его дерева.
+#
+# ПОЧЕМУ ЭТО ЗДЕСЬ. Модуль начал импортировать из `@shared` (граница отказа
+# раздела, канон имён), и без этой строки образ собирается на дереве, где
+# `shared/` нет вовсе: `tsc` не находит модуль, сборка падает. Локальная сборка
+# при этом зелёная — каталог рядом, — и расхождение видно ТОЛЬКО в образе.
+#
+# Установка в КОРЕНЬ стадии даёт обоим деревьям один node_modules: иначе импорты
+# shared/src резолвились бы вверх от /app/shared и не находили ничего, а react
+# нашёлся бы дважды. Так же устроены образы compute, storage, nlb и registry.
 COPY dashboard/package*.json ./
 RUN npm ci
 
-COPY dashboard/ ./
+COPY shared/ shared/
+COPY dashboard/ dashboard/
+WORKDIR /app/dashboard
 RUN npm run build
 
 # nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные файлы
@@ -19,7 +32,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 COPY dashboard/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/dashboard/dist /usr/share/nginx/html
 
 # Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
 USER 101

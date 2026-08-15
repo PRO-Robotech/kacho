@@ -19,10 +19,23 @@ ENV KACHO_SYSTEM_REMOTE=$KACHO_SYSTEM_REMOTE
 ENV KACHO_COMPUTE_REMOTE=$KACHO_COMPUTE_REMOTE
 ENV KACHO_STORAGE_REMOTE=$KACHO_STORAGE_REMOTE
 
+# Этот remote ставит зависимости сам (свой package-lock), но собирает и исходники
+# shared/ — они лежат рядом, а не внутри его дерева.
+#
+# ПОЧЕМУ ЭТО ЗДЕСЬ. Модуль начал импортировать из `@shared` (граница отказа
+# раздела, канон имён), и без этой строки образ собирается на дереве, где
+# `shared/` нет вовсе: `tsc` не находит модуль, сборка падает. Локальная сборка
+# при этом зелёная — каталог рядом, — и расхождение видно ТОЛЬКО в образе.
+#
+# Установка в КОРЕНЬ стадии даёт обоим деревьям один node_modules: иначе импорты
+# shared/src резолвились бы вверх от /app/shared и не находили ничего, а react
+# нашёлся бы дважды. Так же устроены образы compute, storage, nlb и registry.
 COPY host/package*.json ./
 RUN npm ci
 
-COPY host/ ./
+COPY shared/ shared/
+COPY host/ host/
+WORKDIR /app/host
 RUN npm run build
 
 # nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные файлы
@@ -33,7 +46,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 COPY host/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/host/dist /usr/share/nginx/html
 
 # Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
 USER 101
