@@ -222,8 +222,11 @@ func New(pool *pgxpool.Pool, cfg Config, ad Adapters, logger *slog.Logger) (*Rec
 // later intent for the same resource. But the row itself then stays undelivered
 // forever unless something re-drives it, and an undelivered registration means the
 // resource has no mirror row in kacho-iam, hence no owner tuple and no materialized
-// verbs: invisible to authz until someone edits the database by hand. The periodic
-// redrive is what makes poisoning a bounded pause rather than a permanent loss.
+// verbs: invisible to authz until someone edits the database by hand. The redrive
+// is what makes poisoning a bounded pause rather than a permanent loss — on a
+// timer for the register-outboxes, on the authorization-model-change event for
+// iam's tuple outbox, where the permanent cause is known and a blind repeat of a
+// refused write cannot pass.
 //
 // BackfillFromState and GCOrphans return an error on a redrive-only Reconciler:
 // the narrowing is enforced where it matters, not left to a nil dereference.
