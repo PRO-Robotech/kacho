@@ -106,6 +106,18 @@ message EffectiveLimit {
 
   // Id of the object the winning scope names; empty when the winner is DEFAULT.
   string source_scope_id = 4;
+
+  // WHERE this kind is counted: a tenancy root (`project` / `account`) or the
+  // two-part token of the parent type a nested kind is counted within.
+  //
+  // Stated rather than left to the reader, because the shape of the kind does
+  // NOT determine it: `iam.project` has two parts and is counted in an ACCOUNT.
+  // A consumer that guessed would file the accounting row under the wrong
+  // owner — and that failure is silent, because the row is created, returned
+  // and simply never charged.
+  //
+  // Never empty in an answer: a kind outside the catalogue never reaches here.
+  string carrier = 5;
 }
 
 // LimitChange — one entry of the delta an owner-service pulls.

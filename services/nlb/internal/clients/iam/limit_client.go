@@ -91,6 +91,7 @@ func (c *LimitClient) Resolve(ctx context.Context, scopeID, service string) ([]q
 			out = append(out, quota.ResolvedLimit{
 				Kind:          l.GetKind(),
 				Value:         l.GetValue(),
+				Carrier:       l.GetCarrier(),
 				SourceScope:   scopeName(l.GetSourceScope()),
 				SourceScopeID: l.GetSourceScopeId(),
 			})

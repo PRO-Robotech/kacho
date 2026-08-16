@@ -61,8 +61,18 @@ func (g *Guard) States(ctx context.Context, projectID string) ([]kacho.QuotaStat
 		return nil, g.peerRefusal(err, "iam.limit", projectID)
 	}
 
+	// Отвечаем только про виды, чей носитель — ПРОЕКТ: спрашивали про проект.
+	//
+	// Вид, считаемый в родительском ресурсе, единственного значения на уровне
+	// проекта не имеет by construction — подсетей столько-то в КАЖДОЙ сети.
+	// Прежде такие строки уезжали арендатору с носителем `project`, то есть
+	// называли носителем то, чем вид не считается, и показывали потребление,
+	// которое не наполнится никогда.
 	out := make([]kacho.QuotaState, 0, len(limits))
 	for _, l := range limits {
+		if l.Carrier != repo.QuotaCarrierProject {
+			continue
+		}
 		out = append(out, kacho.QuotaState{
 			Kind: l.Kind,
 			// Потребление нулевое не по умолчанию, а по факту: строк учёта нет,
