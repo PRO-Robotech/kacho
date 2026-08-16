@@ -128,7 +128,14 @@ func (u *DeleteLoadBalancerUseCase) Execute(
 }
 
 // vipBinding — per-family VIP-привязка LB (release-вход для Delete).
+//
+// Адрес несётся рядом с идентификатором аренды намеренно: без него освобождение
+// не отличает «у этого семейства аренды нет» от «аренда есть, а её
+// идентификатор потерян». Оба состояния выглядят как пустой идентификатор, а
+// исходы у них противоположные — см. releaseVIP.
 type vipBinding struct {
+	addressV4   string
+	addressV6   string
 	addressIDV4 string
 	addressIDV6 string
 	originV4    domain.VipOrigin
@@ -158,6 +165,8 @@ func (u *DeleteLoadBalancerUseCase) doDelete(ctx context.Context, id, projectID 
 	}
 	// VIP-binding — из строки под mark-lock (устойчиво к гонке с AttachVIP).
 	vip := vipBinding{
+		addressV4:   string(marked.AddressV4),
+		addressV6:   string(marked.AddressV6),
 		addressIDV4: string(marked.AddressIDV4),
 		addressIDV6: string(marked.AddressIDV6),
 		originV4:    marked.VipOriginV4,
@@ -165,10 +174,10 @@ func (u *DeleteLoadBalancerUseCase) doDelete(ctx context.Context, id, projectID 
 	}
 
 	// Шаг 2: per-family release VIP (раздельно v4/v6).
-	if err := u.releaseVIP(ctx, vip.addressIDV4, vip.originV4); err != nil {
+	if err := u.releaseVIP(ctx, "IPV4", vip.addressV4, vip.addressIDV4, vip.originV4); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	if err := u.releaseVIP(ctx, vip.addressIDV6, vip.originV6); err != nil {
+	if err := u.releaseVIP(ctx, "IPV6", vip.addressV6, vip.addressIDV6, vip.originV6); err != nil {
 		return nil, mapDomainErr(err)
 	}
 
@@ -230,11 +239,34 @@ func (u *DeleteLoadBalancerUseCase) markDeleting(ctx context.Context, id string)
 // releaseVIP — освобождает VIP одного семейства по address_id: owned (auto)
 // → two-step ClearReference → FreeIP (иначе FreeIP==AddressService.Delete упрётся
 // в собственный Delete-guard на owned-референсе); linked → ClearReference без
-// Delete (tenant-адрес уцелевает). Пустой addressID → no-op. Идемпотентно
-// (NotFound → успех; окно cleared-but-not-deleted добивает free_ip_runner).
-func (u *DeleteLoadBalancerUseCase) releaseVIP(ctx context.Context, addressID string, origin domain.VipOrigin) error {
+// Delete (tenant-адрес уцелевает). Идемпотентно (NotFound → успех; окно
+// cleared-but-not-deleted добивает free_ip_runner).
+//
+// ПУСТОЙ addressID — ДВА РАЗНЫХ СОСТОЯНИЯ, и различает их адрес (#467):
+//
+//   - адреса нет и идентификатора нет — у балансировщика нет этого семейства,
+//     освобождать нечего, это законный вход;
+//   - адрес ЕСТЬ, а идентификатора нет — аренда выдана, а ключ к ней потерян.
+//
+// Прежняя редакция принимала оба за первое и возвращала успех. Дальше шаг 3
+// удалял строку, и с этого мгновения аренду не видел НИКТО: реконсайлер выбирает
+// только строки в DELETING/CREATING, а обратного поиска «что принадлежит этому
+// балансировщику» на стороне vpc не существует. Подсеть после этого не удалить
+// никогда — `Subnet has allocated internal addresses`, — и починить некому.
+//
+// Поэтому второе состояние — ОТКАЗ. Он оставляет строку в DELETING, то есть
+// оставляет зацепку: её видит реконсайлер и видит человек. Отказ шумен и
+// поправим; успех тих и необратим. Из двух ошибок выбираем ту, которую ещё можно
+// заметить.
+func (u *DeleteLoadBalancerUseCase) releaseVIP(
+	ctx context.Context, family, address, addressID string, origin domain.VipOrigin,
+) error {
 	if addressID == "" {
-		return nil
+		if address == "" {
+			return nil // семейства у балансировщика нет — освобождать нечего
+		}
+		return status.Errorf(codes.Internal,
+			"load balancer %s lease is not releasable: address is set but its address id is empty", family)
 	}
 	if u.addressClient == nil {
 		return status.Error(codes.Unavailable, "vpc internal address client not configured")
