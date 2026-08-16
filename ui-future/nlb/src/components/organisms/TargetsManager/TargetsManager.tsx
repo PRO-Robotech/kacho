@@ -18,6 +18,22 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+
+/**
+ * Место полной замены набора: элемент уезжает на край целиком, поэтому поле
+ * контракта, которого не назвал тип `Target`, до края не доедет и не вернётся.
+ * Состав сверяется с контрактом гейтом
+ * `shared/test/set-replacement-draft-composition`; тип `Target` объявлен ещё и
+ * в `shared` — гейт разрешает имя по всему дереву, поэтому обе копии сверяются
+ * вместе, а не расходятся молча.
+ */
+export const TARGETS_MANAGER_REPLACEMENT: SetReplacementDraft = {
+  field: "targets",
+  contract: "kacho/cloud/loadbalancer/v1/target_group.proto",
+  message: "Target",
+  drafts: ["Target"],
+};
 
 const TARGET_GROUPS_API = "/nlb/v1/targetGroups";
 const MONO_FONT = "ui-monospace, monospace";
@@ -32,6 +48,15 @@ export interface Target {
   ip_ref?: { subnet_id?: string; address?: string };
   external_ip?: { address?: string; zone_id?: string };
   weight?: number;
+  /**
+   * Состояние цели внутри группы. Назначается сервером (снятие двухфазное:
+   * DRAINING, затем удаление по истечении задержки) — форма его не отправляет,
+   * но НАЗЫВАЕТ: не названное поле контракта невидимо консоли целиком, и
+   * «удаление ничего не сделало» отличить от «цель сливается» нечем.
+   */
+  status?: string;
+  /** Момент перевода цели в слив. Назначается сервером; см. `status`. */
+  drain_started_at?: string;
 }
 
 export interface TargetFormState {
@@ -63,12 +88,12 @@ export function buildTargetPayload(kind: TargetKind, f: TargetFormState): Target
 
 // targetIdentity — человекочитаемое представление identity для таблицы.
 export function targetIdentity(t: Target): { label: string; value: string } {
-  if (t.instance_id) return { label: "Instance", value: t.instance_id };
+  if (t.instance_id) return { label: "Виртуальная машина", value: t.instance_id };
   if (t.nic_id) return { label: "NIC", value: t.nic_id };
-  if (t.ip_ref) return { label: "In-cloud IP", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
+  if (t.ip_ref) return { label: "Адрес в облаке", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
   if (t.external_ip)
     return {
-      label: "External IP",
+      label: "Внешний адрес",
       value: `${t.external_ip.address ?? ""}${t.external_ip.zone_id ? ` @${t.external_ip.zone_id}` : ""}`,
     };
   return { label: "—", value: "" };
@@ -157,7 +182,7 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
           Список
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--kc-text)" }}>
-          Targets <Typography.Text type="secondary">({targets.length})</Typography.Text>
+          Цели <Typography.Text type="secondary">({targets.length})</Typography.Text>
         </div>
       </div>
 
@@ -207,7 +232,7 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
                     color: "var(--kc-text-tertiary)",
                   }}
                 >
-                  Targets ещё не добавлены
+                  Цели ещё не добавлены
                 </td>
               </tr>
             )}
@@ -268,10 +293,10 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
                       disabled={inputsDisabled}
                       style={{ width: 220 }}
                       options={[
-                        { value: "instance", label: "Compute Instance" },
-                        { value: "nic", label: "VPC NetworkInterface" },
-                        { value: "ip_ref", label: "In-cloud IP (subnet + адрес)" },
-                        { value: "external_ip", label: "External IP (вне облака)" },
+                        { value: "instance", label: "Виртуальная машина" },
+                        { value: "nic", label: "Сетевой интерфейс" },
+                        { value: "ip_ref", label: "Адрес в облаке (подсеть + адрес)" },
+                        { value: "external_ip", label: "Внешний адрес (вне облака)" },
                       ]}
                     />
                     {kind === "instance" && (

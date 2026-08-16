@@ -25,22 +25,45 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 )
 
-// internalRESTProbePath is a real Internal* REST path (AddressPool admin,
-// isInternalPath → internal sub-mux). It MUST 404 on any external listener and
-// be reachable (non-404 — a downstream gRPC error against the unreachable
-// backend) only on the dedicated internal admin listener.
-const internalRESTProbePath = "/vpc/v1/addressPools"
+// internalRESTProbePath is a real Internal* REST path standing for the whole
+// class. It MUST 404 on any external listener and be reachable (non-404 — a
+// downstream gRPC error against the unreachable backend) only on the dedicated
+// internal admin listener.
+//
+// WHAT CLASSIFIES THIS PATH, named because the mechanism — not the bucket — is
+// what the next reader needs. `/storage/v1/storageBackends` carries NO
+// `/internal` segment and is matched by NONE of the hand-written path rules in
+// `isInternalPath`. It is classified by the DESCRIPTOR half,
+// `matchesInternalRESTBinding`, which keys on the SERVICE NAME
+// (`InternalStorageBackendService`) via the generated REST route table — five
+// rows there, one per verb. A comment calling it "an internal path" would be
+// false in exactly the way `security.md` §5 names a trap: the next reader,
+// removing the hand-written rules, would conclude this probe rests on them and
+// "fix" it.
+//
+// WHY THIS RESOURCE AND NOT THE PREVIOUS ONE. The probe used to point at
+// `/vpc/v1/addressPools`, whose admin surface is being published (sub-phase
+// ADM-1). A representative must outlive the thing it represents: the storage
+// backend carries the backend coordinate and a reference to its credentials, so
+// it stays internal under any continuation of that work.
+const internalRESTProbePath = "/storage/v1/storageBackends"
 
 // wiringMuxAddrs — full backend address map so all Internal* routes register.
 // 127.0.0.1:1 is intentionally unreachable: a route that IS found yields a
 // downstream gRPC error, never a route-level 404 — so 404 unambiguously means
 // "rejected by the internal-path gate".
+//
+// `storage`/`storageInternal` are load-bearing, not filler: mux.go registers
+// InternalStorageBackendService only under `storageInternal != ""`. Omit the key
+// and the probe 404s on the INTERNAL listener too — the case would go red for
+// the wrong reason and, worse, its external half would pass vacuously.
 func wiringMuxAddrs() map[string]string {
 	return map[string]string{
 		"vpc": "127.0.0.1:1", "vpcInternal": "127.0.0.1:1",
 		"compute": "127.0.0.1:1", "computeInternal": "127.0.0.1:1",
 		"iam": "127.0.0.1:1", "iamInternal": "127.0.0.1:1",
 		"loadbalancer": "127.0.0.1:1", "loadbalancerInternal": "127.0.0.1:1",
+		"storage": "127.0.0.1:1", "storageInternal": "127.0.0.1:1",
 	}
 }
 

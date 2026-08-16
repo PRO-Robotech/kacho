@@ -45,7 +45,7 @@ interface PoolData {
 // KAC-70: AddressPoolKind — единственный валидный вариант EXTERNAL_PUBLIC.
 // EXTERNAL_TEST = 2 / RESERVED_INTERNAL = 100 удалены из proto enum
 // (`reserved 2, 100` в kacho.cloud.vpc.v1.AddressPoolKind).
-const KIND_OPTIONS = [{ value: "EXTERNAL_PUBLIC", label: "External public" }];
+const KIND_OPTIONS = [{ value: "EXTERNAL_PUBLIC", label: "Внешний публичный" }];
 
 export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props) {
   const invalidate = useInvalidateResourceList();
@@ -169,7 +169,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
         <Form.Item
           label={
             <Space size={4}>
-              Default
+              По умолчанию
               <Tooltip title="Пул по умолчанию — один на пару «зона + семейство адресов».">
                 <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
               </Tooltip>
@@ -179,7 +179,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
           <Switch checked={isDefault} onChange={setIsDefault} />
         </Form.Item>
 
-        <Form.Item label="Selector priority">
+        <Form.Item label="Приоритет выбора">
           <InputNumber
             value={selectorPriority}
             onChange={(v) => setSelectorPriority((v as number) ?? 0)}

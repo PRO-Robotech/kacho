@@ -226,3 +226,28 @@ func isPlaceholder(seg string) bool {
 
 // Ensure RestRouter satisfies the interface at compile time.
 var _ RestRouteResolver = (*RestRouter)(nil)
+
+// ProofRoute — одна строка сгенерированной таблицы маршрутов, видимая соседним
+// пакетам края.
+//
+// Существует ровно затем, чтобы проверка соответствия двух таблиц сравнивала
+// МНОЖЕСТВА FQN на паре (метод, шаблон), а не единственные значения. Пара
+// перестала определять один FQN, когда административная поверхность стала
+// публиковаться на том же каноническом пути, что несёт внутренняя: обе таблицы
+// начали выбирать кандидата сами, и сравнение единственных значений измеряло
+// порядок обхода, а не расхождение таблиц.
+type ProofRoute struct {
+	Method   string
+	Template string
+	FQN      string
+}
+
+// RestRoutesForProof отдаёт таблицу маршрутов целиком. Только для проверок края:
+// решение о доступе принимается через Resolve + каталог прав, а не здесь.
+func RestRoutesForProof() []ProofRoute {
+	out := make([]ProofRoute, 0, len(generatedRestRoutes))
+	for _, r := range generatedRestRoutes {
+		out = append(out, ProofRoute{Method: r.Method, Template: r.Template, FQN: r.FQN})
+	}
+	return out
+}

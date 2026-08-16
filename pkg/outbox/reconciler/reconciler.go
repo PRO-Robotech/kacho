@@ -135,10 +135,31 @@ type Config struct {
 	//     registry) carries one row per FGA object and keys on RegisterOutboxPartition
 	//     ("resource_id");
 	//   - iam's `fga_outbox` carries tuple WRITES and DELETES and keys on `tuple_key`,
-	//     the full (user, relation, object) triple materialised by iam migration 0067.
-	//     OpenFGA's state is a SET OF TUPLES, so rows that merely share an object
-	//     commute and a wider key would park healthy rows for no correctness gained.
+	//     which since iam migration 0098 renders the GRANT (user, object): one row there
+	//     carries a subject's whole relation SET on one object, and a partition has to
+	//     cover every row it can be ordered against.
 	PartitionColumn string
+	// SupersededCoverageSQL — an EXTRA condition a delivered successor must satisfy
+	// before a poisoned row is treated as void. Empty (the default) keeps the plain
+	// rule: any later delivered row of the same partition supersedes.
+	//
+	// WHEN IT IS REQUIRED. The plain rule is sound only while a partition key implies
+	// that two rows touch THE SAME THING. That holds when a row carries one tuple; it
+	// stops holding the moment a row carries a SET, because then a successor may have
+	// re-determined only part of what the poisoned row named. Voiding it there discards
+	// intent nobody re-stated — and in the removal direction that is access outliving
+	// its own revoke, which looks exactly like a revoke that worked.
+	//
+	// The fragment is SQL, evaluated with `s` bound to the delivered successor and `t`
+	// to the poisoned row, e.g. "s.payload->'relations' @> t.payload->'relations'". It
+	// must express COVERAGE — «the successor re-determined everything this row named» —
+	// and nothing else: direction (write vs delete) is deliberately NOT part of the
+	// test, because a later delivered row states the desired final state whichever way
+	// it points.
+	//
+	// It is the caller's SQL because only the caller knows its payload shape; the
+	// contract this package holds is the meaning, not the expression.
+	SupersededCoverageSQL string
 	// GraceWindow — a resource must be continuously absent (and not
 	// intended-registered) for at least this long before GCOrphans emits an
 	// unregister (anti-race deferral). 0 → emit on the first confirmed
@@ -266,7 +287,12 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // # Reviving respects the order of the partition
 //
 // An intent is NOT revived once a LATER intent for the SAME resource has already
-// been delivered. Reviving past a delivered successor replays an outdated intent
+// been delivered — and, where the caller sets Config.SupersededCoverageSQL, only
+// when that successor RE-DETERMINED everything the poisoned row named. Without
+// that qualifier the rule is sound exactly while one row means one thing: it reads
+// «somebody restated this» from «somebody restated something in the same
+// partition», which stops being the same statement the moment a row carries a set.
+// Reviving past a delivered successor replays an outdated intent
 // on top of the current state — and for a register-outbox that is precisely the
 // over-grant the partition ordering exists to prevent: the target (kacho-iam's
 // resource_mirror) versions only its update branch, deregistration is a hard
@@ -338,6 +364,10 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 	table := outbox.SanitizeTable(r.cfg.Table)
 	part := pgx.Identifier{r.cfg.PartitionColumn}.Sanitize()
+	coverage := "TRUE"
+	if r.cfg.SupersededCoverageSQL != "" {
+		coverage = "(" + r.cfg.SupersededCoverageSQL + ")"
+	}
 	q := fmt.Sprintf(`
 		WITH poisoned AS (
 		    SELECT t.id, t.%[3]s AS partition_key,
@@ -346,6 +376,7 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 		                WHERE s.%[3]s = t.%[3]s
 		                  AND s.id > t.id
 		                  AND s.sent_at IS NOT NULL
+		                  AND %[4]s
 		           ) AS superseded
 		      FROM %[1]s t
 		     WHERE t.sent_at IS NULL AND t.attempt_count >= $1
@@ -361,7 +392,7 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 		       (SELECT coalesce(array_agg(partition_key ORDER BY id), '{}')
 		          FROM (SELECT partition_key, id FROM poisoned
 		                 WHERE superseded ORDER BY id LIMIT %[2]d) sample)`,
-		table, supersededSampleLimit, part)
+		table, supersededSampleLimit, part, coverage)
 
 	var revived, superseded int64
 	var sample []string

@@ -108,7 +108,7 @@ export function RolesPage() {
               {p}
             </Tag>
           ))}
-          {(v?.length ?? 0) > 4 && <Typography.Text type="secondary">+{(v?.length ?? 0) - 4} more</Typography.Text>}
+          {(v?.length ?? 0) > 4 && <Typography.Text type="secondary">ещё {(v?.length ?? 0) - 4}</Typography.Text>}
         </Space>
       ),
     },
@@ -134,7 +134,7 @@ export function RolesPage() {
             onClick={() => navigate(`/iam/roles/${row.id}/edit`)}
           />
           <Popconfirm
-            title="Удалить Role?"
+            title="Удалить роль?"
             description={`Удалить «${row.name}»? Custom role с активными AccessBinding → FailedPrecondition.`}
             okText="Удалить"
             okButtonProps={{ danger: true }}
@@ -226,7 +226,7 @@ export function RoleCreatePage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/roles">
-            <Typography.Text type="secondary">Roles</Typography.Text>
+            <Typography.Text type="secondary">Роли</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>

@@ -1,0 +1,275 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.vpc.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/vpc/v1/internal_address_pool_service.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
+
+// AddressPoolService — управление пулами адресов на ПУБЛИЧНОЙ поверхности, под
+// правом администратора кластера (под-фаза ADM-1, корзина А2).
+//
+// # Почему административный ресурс живёт на публичном сервисе
+//
+// Граница проходит по ДАННЫМ и ПРАВУ, а не по тому, кто зовёт. Имя `Internal`
+// означало сразу две несовместимые вещи: «данные, раскрытие которых помогает
+// картировать физику» — это про данные и обязано остаться разделением по краю,
+// потому что право не спасает, если поле уже в ответе; и «действие, дозволенное
+// не всякому» — это про право, и краем оно выражается плохо: край отвечает на
+// вопрос «откуда пришёл запрос», тогда как спрашивать надо «что этому
+// вызывающему разрешено».
+//
+// Пул адресов — второй случай. Инфра-полей по перечню `security.md` он не несёт;
+// закрыто должно быть не место вызова, а вызывающий без права. Запрет 6 при этом
+// не смягчается ни в одной букве: `Internal*`-сервисы на внешнем крае
+// по-прежнему не публикуются, и предикат, который это ловит
+// (`HasInternalSuffix`), не тронут — меняется СОСТАВ того, что кладут в
+// `Internal.*`, а не поверхность разрешённого для него.
+//
+// # Отношение — `system_admin`, и это не вкусовщина
+//
+// `viewer` @ `cluster` выполняется подстановочным кортежем `user:*` НАМЕРЕННО —
+// так глобальный справочник читает каждый аутентифицированный арендатор. Значит
+// запись каталога, стоящая на `viewer`, означает «аутентифицирован», а не
+// «авторизован», и для административного глагола она была бы формой проверки без
+// содержания. `system_admin` объявлен `[user, service_account]`, подстановки не
+// несёт. Не `admin`/`editor` @ `cluster`: те выводятся из `system_admin`, но
+// допускают и прямую выдачу в обход кластерного администрирования.
+//
+// # Пути те же, что у внутреннего сервиса — и почему
+//
+// Конвенция даёт ресурсу один канонический адрес `/vpc/v1/addressPools`; второй
+// адрес того же предмета — это «два места об одном предмете, из которых верно
+// одно». Пока идёт окно расширения (S1→S3), публичный и внутренний глаголы
+// сосуществуют на одной паре (метод, путь): снаружи виден публичный (обе ветки
+// диспетчера края на внешнем слушателе ведут в `publicMux`), изнутри —
+// внутренний (`runtime.ServeMux.Handle` предваряет список, внутренние
+// регистрации идут после публичных).
+//
+// # Форма ответа приведена к конвенции
+//
+// Мутации возвращают `operation.Operation` (запрет 9), а не ресурс синхронно.
+// Внутренний сервис отвечает ресурсом — ему не приходилось соблюдать конвенцию,
+// его не видел ни один арендатский клиент. Клиент публичного API вправе
+// рассчитывать на один и тот же контракт у всех мутаций, а консоль — на один и
+// тот же способ дождаться результата.
+service AddressPoolService {
+  // -- Чтение (sync) --
+
+  rpc Get(GetAddressPoolRequest) returns (AddressPool) {
+    option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}"};
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.get";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // List — межпроектный по построению: пул адресов глобален, `project_id` у него
+  // нет вовсе. Поэтому список гейтится ОДНИМ вопросом `system_admin` @ `cluster`,
+  // а не сужается пообъектно: сужать нечего, объект один и он кластерный.
+  // Арендатор без права получает отказ, а не пустую страницу — пустая страница
+  // означала бы «чтение открыто, данных нет», то есть другое утверждение о
+  // системе.
+  rpc List(ListAddressPoolsRequest) returns (ListAddressPoolsResponse) {
+    option (google.api.http) = {get: "/vpc/v1/addressPools"};
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.list";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // ListAddresses — адреса ВСЕХ проектов, получившие IP из этого пула.
+  // Межпроектность намеренна и является предметом глагола.
+  rpc ListAddresses(ListAddressPoolAddressesRequest) returns (ListAddressPoolAddressesResponse) {
+    option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}/addresses"};
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.list_addresses";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc GetUtilization(GetAddressPoolUtilizationRequest) returns (AddressPoolUtilization) {
+    option (google.api.http) = {get: "/vpc/v1/addressPools/{pool_id}/utilization"};
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.get_utilization";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  // -- Мутации (async, Operation) --
+
+  rpc Create(CreateAddressPoolRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/addressPools"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateAddressPoolMetadata"
+      response: "AddressPool"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.create";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc Update(UpdateAddressPoolRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      patch: "/vpc/v1/addressPools/{pool_id}"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateAddressPoolMetadata"
+      response: "AddressPool"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.update";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc Delete(DeleteAddressPoolRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/vpc/v1/addressPools/{pool_id}"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteAddressPoolMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.delete";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc AddCidrBlocks(AddAddressPoolCidrBlocksRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/addressPools/{address_pool_id}:addCidrBlocks"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateAddressPoolMetadata"
+      response: "AddressPool"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.add_cidr_blocks";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc RemoveCidrBlocks(RemoveAddressPoolCidrBlocksRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/addressPools/{address_pool_id}:removeCidrBlocks"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateAddressPoolMetadata"
+      response: "AddressPool"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.remove_cidr_blocks";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc BindAsNetworkDefault(BindAsNetworkDefaultRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/vpc/v1/networks/{network_id}/addressPoolBinding"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "AddressPoolBindingMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.bind";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+
+  rpc UnbindNetworkDefault(UnbindNetworkDefaultRequest) returns (operation.Operation) {
+    option (google.api.http) = {delete: "/vpc/v1/networks/{network_id}/addressPoolBinding"};
+    option (kacho.cloud.api.operation) = {
+      metadata: "AddressPoolBindingMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission) = "vpc.address_pools.unbind";
+    option (kacho.iam.authz.v1.required_relation) = "system_admin";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+// CreateAddressPoolMetadata — id создаваемого пула, доступный клиенту ДО того как
+// операция дойдёт до `done`.
+//
+// Идентификатор здесь чеканится ДО применения, поэтому его наличие НЕ
+// доказывает, что ресурс создан: операция несёт пред-выделенный id и на
+// `done=true` с `error`. Читающий обязан сперва убедиться, что `error`
+// отсутствует.
+message CreateAddressPoolMetadata {
+  // ID создаваемого пула адресов.
+  string address_pool_id = 1;
+}
+
+// UpdateAddressPoolMetadata — id правимого пула. Общая для правки полей и для
+// пары глаголов управления CIDR-блоками: предмет у всех трёх один — этот пул.
+message UpdateAddressPoolMetadata {
+  // ID правимого пула адресов.
+  string address_pool_id = 1;
+}
+
+// DeleteAddressPoolMetadata — id удаляемого пула.
+message DeleteAddressPoolMetadata {
+  // ID удаляемого пула адресов.
+  string address_pool_id = 1;
+}
+
+// AddressPoolBindingMetadata — привязка пула к сети как умолчания. Несёт ОБА
+// идентификатора: у снятия привязки пул вызывающим не называется, и поле
+// остаётся пустым — это «не задано», а не «пул с пустым id».
+message AddressPoolBindingMetadata {
+  // ID сети, чьё умолчание меняется.
+  string network_id = 1;
+
+  // ID привязываемого пула. Пусто при снятии привязки.
+  string address_pool_id = 2;
+}

@@ -217,7 +217,7 @@ function SecretModal({ resp, onClose }: { resp: IssueSAKeyResponse; onClose: () 
         <Descriptions.Item label="Идентификатор ключа">
           <CopyableMonoId id={keyId} />
         </Descriptions.Item>
-        <Descriptions.Item label="Client ID">
+        <Descriptions.Item label="Идентификатор клиента">
           <CopyableMonoId id={clientId} />
         </Descriptions.Item>
         <Descriptions.Item label="Алгоритм">{resp.algorithm || "ES256"}</Descriptions.Item>

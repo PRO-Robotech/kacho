@@ -55,7 +55,8 @@ var creatingVerbs = map[string]bool{
 // списков, роняет гейт. Без него слепое пятно повторится молча — ровно так, как повторилось
 // с `Invite`. Список механически выведен из дерева и обязан за ним следовать.
 var nonCreatingVerbs = map[string]bool{
-	"AddCidrBlocks": true, "AddMember": true, "ChangeDiskType": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
+	"AddCidrBlocks": true, "AddMember": true, "BindAsNetworkDefault": true, "UnbindNetworkDefault": true,
+	"GetUtilization": true, "ListAddresses": true, "ChangeDiskType": true, "AddOneToOneNat": true, "AddRoutes": true, "AddTargets": true, "AttachDisk": true,
 	"AttachNetworkInterface": true, "BatchCheck": true, "Block": true, "Cancel": true, "Check": true, "Delete": true,
 	"DeleteRepository": true, "DeleteTag": true, "DetachDisk": true, "DetachNetworkInterface": true, "Disable": true,
 	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByValue": true, "GetRepository": true,
@@ -115,6 +116,20 @@ var tfCoverage = map[string]string{
 
 	// registry
 	"RegistryService": "kacho_registry_registry",
+
+	// vpc, административная поверхность
+	//
+	// ОСОЗНАННОЕ ОТСУТСТВИЕ, а не долг. Пул адресов — инвентарь ПЛАТФОРМЫ, а не
+	// арендатора: у него нет проекта, он заводится администратором кластера и
+	// живёт в единственном экземпляре на зону. Провайдер декларирует ресурсы,
+	// которыми управляет арендатор в своём проекте; пул в эту модель не
+	// укладывается, и завести его там значило бы предложить арендатору
+	// декларировать имущество кластера.
+	//
+	// Строка появилась потому, что сервис стал ПУБЛИЧНЫМ (ADM-1 S1) — до этого
+	// гейт его не видел вовсе, поскольку смотрит на публичные контракты. То есть
+	// это не новый пробел, а прежний, ставший наблюдаемым.
+	"AddressPoolService": "",
 }
 
 // tfPending — ресурсы, которых в провайдере ЕЩЁ нет, с названным предметом.

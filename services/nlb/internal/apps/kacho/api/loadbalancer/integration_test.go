@@ -165,9 +165,10 @@ func (s *stubAddressClient) AttachExisting(_ context.Context, req vpcclient.Atta
 	return &vpcclient.AllocateResponse{AddressID: req.AddressID, Value: fmt.Sprintf("100.64.9.%d", n)}, nil
 }
 
-func (s *stubAddressClient) FreeIP(context.Context, string) error { return nil }
-func (s *stubAddressClient) ClearReference(context.Context, string) error {
-	return nil
+func (s *stubAddressClient) ReleaseLease(
+	context.Context, vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
+	return vpcclient.LeaseReleased, nil
 }
 
 // internalAutoReq — INTERNAL REGIONAL Create-request (subnet-auto v4) для e2e.

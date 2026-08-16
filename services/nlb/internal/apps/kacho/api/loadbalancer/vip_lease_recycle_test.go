@@ -13,6 +13,7 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
@@ -31,25 +32,34 @@ import (
 // Ниже — два таких пути. Оба проверяются вместе с законными близнецами: без них
 // «адрес не освобождён» было бы неотличимо от «освобождение не работает вовсе».
 
-// TestDelete_UnsetVipOriginStillReleases — ПУТЬ 1: неизвестный дискриминатор.
+// TestDelete_LocalDiscriminatorNoLongerDecidesRelease — ПУТЬ 1: неизвестный
+// дискриминатор.
 //
-// Колонка допускает пустое значение (`vip_origin_v4 text NOT NULL DEFAULT ”`),
-// и ни одно ограничение не связывает непустой `address_id_v4` с непустым
-// `vip_origin_v4`. Удержание адреса обязано требовать ЯВНОГО `linked`; всё
-// остальное освобождается. Прежняя редакция спрашивала «это auto?» и на пустом
-// значении молча уходила в ветку «адрес арендатора» — то есть не освобождала.
-func TestDelete_UnsetVipOriginStillReleases(t *testing.T) {
+// ЧТО ЗДЕСЬ ПРОВЕРЯЛОСЬ ПРЕЖДЕ И ПОЧЕМУ ПРОБА ПЕРЕПИСАНА. Раньше решение
+// «освободить или удержать» принимал ПОТРЕБИТЕЛЬ по своей колонке
+// `vip_origin_*`. Колонка допускает пустое значение, ни одно ограничение не
+// связывает её с непустым `address_id`, и три места, принимавшие это решение,
+// спрашивали по-разному — поэтому проба стерегла НАПРАВЛЕНИЕ СРАВНЕНИЯ: удержание
+// обязано требовать явного `linked`.
+//
+// Предмет этой стражи снят вместе с самим сравнением (#439): решение переехало к
+// ВЛАДЕЛЬЦУ, который читает свою колонку `owned`. Проба, оставленная как была,
+// утверждала бы о ветке, которой в коде нет.
+//
+// Свойство, которое пережило правку и стережётся здесь, СИЛЬНЕЕ прежнего:
+// аренда не может быть брошена НИ ПРИ КАКОМ значении локального дискриминатора,
+// потому что потребитель его больше не читает вовсе. Для каждого семейства с
+// непустым идентификатором аренды владельцу предъявляется владение — ровно один
+// раз, с той же парой, какой аренда заводилась.
+func TestDelete_LocalDiscriminatorNoLongerDecidesRelease(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name      string
-		origin    domain.VipOrigin
-		wantFreed bool
+		name   string
+		origin domain.VipOrigin
 	}{
-		// Предмет пробы: пустой дискриминатор.
-		{"unset origin frees (lease must never be stranded)", domain.VipOrigin(""), true},
-		// Законные близнецы — на них поведение меняться НЕ должно.
-		{"auto frees (positive control)", domain.VipOriginAuto, true},
-		{"linked keeps the tenant address (negative control)", domain.VipOriginLinked, false},
+		{"пустой дискриминатор", domain.VipOrigin("")},
+		{"auto", domain.VipOriginAuto},
+		{"linked", domain.VipOriginLinked},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -67,16 +77,15 @@ func TestDelete_UnsetVipOriginStillReleases(t *testing.T) {
 			require.NoError(t, err)
 			require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
 
-			// Референс снимается ВСЕГДА — и у адреса арендатора тоже.
-			require.Equal(t, []string{"adr-v4"}, addr.cleared,
-				"референс снимается на любом origin")
-			if tc.wantFreed {
-				require.Equal(t, []string{"adr-v4"}, addr.freed,
-					"аренда обязана вернуться в пул: после сноса строки её не найдёт никто")
-			} else {
-				require.Empty(t, addr.freed,
-					"адрес арендатора переживает балансировщик")
-			}
+			reqs := addr.releaseReqs()
+			require.Len(t, reqs, 1,
+				"владельцу предъявляется владение ровно один раз на семейство — при ЛЮБОМ локальном дискриминаторе")
+			require.Equal(t, "adr-v4", reqs[0].AddressID)
+			require.Equal(t, "prj-a", reqs[0].ProjectID,
+				"якорь права — проект: без него глагол не авторизуем")
+			require.Equal(t, vpcclient.OwnerKindLoadBalancer, reqs[0].Owner.Kind,
+				"предъявляется ТА ЖЕ пара, какой аренда заводилась — иначе сверка владения не совпадёт ни разу")
+			require.Equal(t, lbID, reqs[0].Owner.ID)
 		})
 	}
 }
@@ -95,7 +104,7 @@ func TestCompensateCreate_KeepsHandleWhenReleaseFailed(t *testing.T) {
 	addr := &fakeAddressClient{freeErr: errors.New("vpc unavailable")}
 
 	uc := newCreateUC(repo, newFakeOpsRepo(), createDeps{addr: addr})
-	uc.compensateCreate(context.Background(), lbID, map[domain.IPVersion]vipAllocResult{
+	uc.compensateCreate(context.Background(), "prj-a", lbID, map[domain.IPVersion]vipAllocResult{
 		domain.IPVersionV4: {addressID: "adr-v4", origin: domain.VipOriginAuto},
 	})
 
@@ -115,7 +124,7 @@ func TestCompensateCreate_DropsHandleWhenReleaseSucceeded(t *testing.T) {
 	addr := &fakeAddressClient{}
 
 	uc := newCreateUC(repo, newFakeOpsRepo(), createDeps{addr: addr})
-	uc.compensateCreate(context.Background(), lbID, map[domain.IPVersion]vipAllocResult{
+	uc.compensateCreate(context.Background(), "prj-a", lbID, map[domain.IPVersion]vipAllocResult{
 		domain.IPVersionV4: {addressID: "adr-v4", origin: domain.VipOriginAuto},
 	})
 

@@ -66,7 +66,7 @@ export function CopyableMonoId({ id }: { id: string | undefined }) {
 }
 
 export function SystemTag({ isSystem }: { isSystem?: boolean }) {
-  return isSystem ? <Tag color="purple">system</Tag> : <Tag color="default">custom</Tag>;
+  return isSystem ? <Tag color="purple">Системная</Tag> : <Tag color="default">Пользовательская</Tag>;
 }
 
 /**

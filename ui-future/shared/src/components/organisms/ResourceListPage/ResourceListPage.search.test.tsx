@@ -136,6 +136,27 @@ describe("поиск уходит на сервер там, где владел�
     });
   });
 
+  it("перекрытие подписи ресурсом НЕ отменяет названия области", async () => {
+    // Единственный ресурс с собственной подписью — пользователи: имени у них нет
+    // вовсе, ищут по почте. Перекрытие называет ПРЕДМЕТ поиска; область обязана
+    // остаться, иначе именно этот список — и только он — о ней молчит.
+    //
+    // Проба заведена слиянием с работой по переводу подписей (#478): там
+    // подписи переехали в единственный источник, и стык двух правок виден
+    // только здесь — обе стороны по отдельности зелены.
+    const spec = REGISTRY.users;
+    expect(spec.search?.placeholder).toBeDefined();
+    expect(spec.search?.serverTerm).toBe("search");
+    stubList(spec.payloadKey, [{ id: "usr-1", email: "kto@example.test" }], "");
+    renderList(spec, "/iam/users");
+    await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
+
+    const поле = await screen.findByPlaceholderText(/по всему списку/i);
+    // И предмет поиска на месте — иначе «область названа» достигалось бы
+    // затиранием того, ради чего перекрытие заводили.
+    expect(поле.getAttribute("placeholder")).toMatch(/почте/i);
+  });
+
   it("пустая строка поиска фильтра не шлёт", async () => {
     const spec = REGISTRY.networks;
     stubList(spec.payloadKey, [{ id: "net-1", name: "netto" }]);

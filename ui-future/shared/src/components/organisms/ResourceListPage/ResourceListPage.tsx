@@ -24,7 +24,13 @@ import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/compon
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
 import { searchFilterExpression } from "@shared/lib/list-search-filter";
-import { clientScope, narrowingTitle, searchPlaceholder, type NarrowingScope } from "@shared/lib/list-scope";
+import {
+  clientScope,
+  narrowingTitle,
+  scopeSuffix,
+  searchPlaceholder,
+  type NarrowingScope,
+} from "@shared/lib/list-scope";
 
 interface Props {
   spec: ResourceSpec;
@@ -390,7 +396,15 @@ export function ResourceListPage({
                 выдавать второе за первое нельзя: пользователь читает «ничего не
                 найдено» как утверждение об отсутствии ресурса. */}
             <Input.Search
-              placeholder={spec.search?.placeholder ?? searchPlaceholder(searchScope)}
+              // Перекрытие ресурса называет ПРЕДМЕТ поиска (у пользователя имени
+              // нет вовсе — ищут по почте), область по-прежнему называем мы:
+              // иначе единственный ресурс с перекрытием оказывался бы и
+              // единственным, чья строка поиска о своей области молчит.
+              placeholder={
+                spec.search?.placeholder
+                  ? `${spec.search.placeholder} ${scopeSuffix(searchScope)}`
+                  : searchPlaceholder(searchScope)
+              }
               title={narrowingTitle(searchScope)}
               value={query}
               onChange={(e) => setQuery(e.target.value)}

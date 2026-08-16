@@ -52,7 +52,7 @@ describe("RefSelect", () => {
   it("неизвестный тип ссылки назван прямо, а не показан пустым списком", () => {
     show({ refResource: "no-such-resource" });
 
-    expect(screen.getByText(/Unknown ref: no-such-resource/)).toBeInTheDocument();
+    expect(screen.getByText(/Неизвестная ссылка: no-such-resource/)).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 

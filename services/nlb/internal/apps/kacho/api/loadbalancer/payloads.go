@@ -10,7 +10,12 @@ import (
 )
 
 // lbAddressOwnerKind — Reference.type для NLB LoadBalancer в vpc.Address referrer.
-const lbAddressOwnerKind = "network_load_balancer"
+//
+// Не собственная константа, а ССЫЛКА на значение из клиента vpc: им заводится
+// аренда и им же она предъявляется при снятии — в том числе реконсайлером из
+// соседнего пакета. Своя копия здесь разошлась бы с ним молча, и сверка
+// владения перестала бы совпадать.
+const lbAddressOwnerKind = vpcclient.OwnerKindLoadBalancer
 
 // lbAddressOwner — owner-tuple для vpc.Address referrer ("network_load_balancer:<id>").
 // name — display-имя LB для used_by-зеркала (пусто на release-пути, где имя не нужно).

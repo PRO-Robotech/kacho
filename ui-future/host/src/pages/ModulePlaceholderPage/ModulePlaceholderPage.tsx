@@ -19,7 +19,7 @@ export const ModulePlaceholderPage: FC = () => {
             <Typography.Text strong>{label}</Typography.Text>
             <br />
             <Typography.Text type="secondary">
-              Route is registered in the host. Remote page implementation is next.
+              Маршрут в хосте зарегистрирован. Страница модуля появится следующим шагом.
             </Typography.Text>
           </>
         }

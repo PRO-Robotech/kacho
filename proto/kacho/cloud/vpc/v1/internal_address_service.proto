@@ -196,6 +196,52 @@ service InternalAddressService {
     };
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
+
+  // ReleaseOwnedAddress снимает аренду адреса ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и
+  // называет исход ПОЛЕМ ОТВЕТА.
+  //
+  // ЗАЧЕМ ОТДЕЛЬНЫЙ ГЛАГОЛ, А НЕ ПАРА ClearAddressReference + AddressService.Delete.
+  // Пара анкорит право ПООБЪЕКТНО, на самом `vpc_address`. Отказ на пообъектном
+  // имени платформа обязана делать неотличимым от отсутствия объекта, иначе по
+  // различию ответов устанавливают существование чужих ресурсов. Правило верное и
+  // остаётся; следствие у него такое: код ответа владельца НЕ несёт утверждения
+  // «аренды нет» — его не несёт и не должен нести. Вызывающий, который выводил
+  // «работа сделана» из кода ошибки, строил необратимый шаг на утверждении,
+  // которого не делали.
+  //
+  // Здесь право анкорится на `project` — ТОМ ЖЕ якоре, что у CreateOwnedAddress, —
+  // поэтому пообъектной пробы существования у глагола нет вовсе, а вместе с ней
+  // нет и полосы скрытия. Неоднозначность устраняется не тем, что её научились
+  // различать, а тем, что её больше нечем породить.
+  //
+  // Принадлежность КОНКРЕТНОЙ аренды решает не отношение вызывающего к адресу, а
+  // сверка предъявленной пары (referrer_type, referrer_id) и project_id внутри
+  // собственной транзакции vpc — одним стейтментом с проверкой кардинальности.
+  // Право звать глагол и право снять ЭТУ аренду — разные вопросы, и второй не
+  // решается моделью прав.
+  //
+  // Синхронный, в отличие от CreateOwnedAddress: исход обязан приехать ПОЛЕМ, а
+  // форма Operation унесла бы его за опрос публичного OperationService — то есть
+  // за ту самую поверхность, с которой глагол уходит. Отступление от ban #9
+  // записано в services/vpc/docs/engineering/architecture/07-known-divergences.md.
+  //
+  // NOT_FOUND этот глагол НЕ ПРОИЗВОДИТ НИ НА ОДНОМ ВХОДЕ: отсутствие — законный
+  // исход, и он назван (ALREADY_RELEASED / ALREADY_DETACHED).
+  //
+  // Errors:
+  //   - InvalidArgument: пустое любое из четырёх полей; негодный address_id.
+  //   - FailedPrecondition: аренда принадлежит другому потребителю ЛИБО адрес
+  //     принадлежит другому проекту.
+  //   - Unavailable: хранилище недоступно (fail-closed — НИКОГДА не успех).
+  rpc ReleaseOwnedAddress(ReleaseOwnedAddressRequest) returns (ReleaseOwnedAddressResponse) {
+    option (kacho.iam.authz.v1.permission) = "vpc.addresses.releaseOwned";
+    option (kacho.iam.authz.v1.required_relation) = "editor";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
 }
 
 message AllocateInternalIPRequest {
@@ -279,4 +325,45 @@ message CreateOwnedAddressRequest {
   // owned — владелец распоряжается жизненным циклом адреса (release =
   // ClearReference + Delete), а не просто ссылается на него.
   bool owned = 5;
+}
+
+// ReleaseOwnedAddressRequest — предъявление владения арендой.
+//
+// `owned` здесь НЕ передаётся намеренно: ветку «удалить адрес» либо «оставить
+// адрес арендатора» выбирает vpc по СВОЕЙ колонке address_references.owned.
+// Один ограниченный источник вместо решения, принимаемого потребителем по
+// собственной копии признака.
+message ReleaseOwnedAddressRequest {
+  // Якорь авторизации — тот же, что у CreateOwnedAddress. Required.
+  string project_id = 1;
+  // Адрес, аренду которого снимают. Required.
+  string address_id = 2;
+  // Тип потребителя, предъявляющего владение, напр. "nlb_network_load_balancer".
+  // Required.
+  string referrer_type = 3;
+  // ID потребителя. Required.
+  string referrer_id = 4;
+}
+
+// ReleaseOwnedAddressResponse — ИСХОД НАЗВАН ПОЛЕМ, а не выведен из кода ошибки.
+//
+// Прецедент в этом же контракте — AllocateIPResponse.already_allocated: повтор
+// выражается полем, а не молчаливым «как будто выделили».
+message ReleaseOwnedAddressResponse {
+  // Исход. У каждого «сделал сейчас» есть свой «сделано ранее»: без этого повтор
+  // после DETACHED попал бы в отказ, а отказ на полосе освобождения перманентен и
+  // заклинил бы снос потребителя навсегда.
+  enum Outcome {
+    // Сервер, вернувший это, дефектен: исход обязателен.
+    OUTCOME_UNSPECIFIED = 0;
+    // ЭТИМ вызовом: ссылка снята, адрес удалён, IP возвращён в свободный список.
+    RELEASED = 1;
+    // Строки адреса у владельца нет — аренда снята ранее.
+    ALREADY_RELEASED = 2;
+    // ЭТИМ вызовом: адрес арендатора (owned=false) — ссылка снята, адрес оставлен.
+    DETACHED = 3;
+    // Адрес есть, ссылки этого потребителя на нём нет — снята ранее.
+    ALREADY_DETACHED = 4;
+  }
+  Outcome outcome = 1;
 }

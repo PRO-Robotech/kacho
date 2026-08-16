@@ -302,6 +302,40 @@ func (aw *addressWriter) ClearReference(_ context.Context, addressID string) err
 	return nil
 }
 
+// ReleaseLease — дублёр обязан выполнять контракт настоящего, а не свою копию:
+// он тоже сверяет пару и проект, тоже НАЗЫВАЕТ исход и тоже не производит
+// ErrNotFound. Дублёр, глотающий вход, на котором настоящий отвечает отказом,
+// сделал бы невидимым ровно тот дефект, ради которого его подставляют.
+func (aw *addressWriter) ReleaseLease(
+	_ context.Context, req kacho.LeaseReleaseRequest,
+) (*kacho.LeaseReleaseResult, error) {
+	a, ok := aw.w.localAddrs[req.AddressID]
+	if !ok {
+		return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseAlreadyReleased}, nil
+	}
+	if a.ProjectID != req.ProjectID {
+		return nil, fmt.Errorf("%w: address %s does not belong to project %s",
+			repo.ErrFailedPrecondition, req.AddressID, req.ProjectID)
+	}
+	ref, hasRef := aw.w.localRefs[req.AddressID]
+	if !hasRef {
+		return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseAlreadyDetached}, nil
+	}
+	if ref.ReferrerType != req.ReferrerType || ref.ReferrerID != req.ReferrerID {
+		return nil, fmt.Errorf("%w: address %s is not leased by %s %s",
+			repo.ErrFailedPrecondition, req.AddressID, req.ReferrerType, req.ReferrerID)
+	}
+	owned := ref.Owned
+	delete(aw.w.localRefs, req.AddressID)
+	a.Used = false
+	if !owned {
+		return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseDetached}, nil
+	}
+	deleted := *a
+	delete(aw.w.localAddrs, req.AddressID)
+	return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseReleased, Deleted: &deleted}, nil
+}
+
 // Compile-time проверка соответствия интерфейсам.
 var (
 	_ kacho.AddressReaderIface = (*addressReader)(nil)
