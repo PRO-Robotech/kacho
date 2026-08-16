@@ -57,7 +57,7 @@ export const SYSTEM_NAVIGATION: RemoteNavSection[] = [
         label: ENTITIES["address-pools"].plural,
         path: "/system/address-pools",
       },
-      { key: "system-cluster-admins", icon: "shield", label: "Cluster admins", path: "/system/cluster/admins" },
+      { key: "system-cluster-admins", icon: "shield", label: "Администраторы кластера", path: "/system/cluster/admins" },
     ],
   },
   // Tokens & keys (выпуск OAuth-креденшалов). Под /system/tokens/*.

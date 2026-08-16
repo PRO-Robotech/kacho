@@ -362,7 +362,12 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "IP-адрес", value: cidrTags(info.ip ? [info.ip] : undefined) },
         { label: "Версия", value: txt(info.family) },
         { label: "Вид", value: txt(info.kind) },
-        { label: "Занятость", value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" /> },
+        {
+          label: "Занятость",
+          // `accent` — как у соседних фактов этой же карточки: без него «занят»
+          // получал третичный цвет и читался выключенным рядом с включёнными.
+          value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" accent />,
+        },
         {
           // Тот же вид, что у группы правил, — но БЕЗ потолка: у адреса число
           // потребителей ограничено по построению (адрес держит один интерфейс),

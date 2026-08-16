@@ -1,13 +1,61 @@
-// SystemSearchPage — admin-search по resource ID и имени клиента.
-// Запрашивает list endpoints всех ресурсов параллельно, фильтрует client-side
-// substring match. Прорастает project/account breadcrumbs для каждого хита.
+// SystemSearchPage — поиск по всем ресурсам сразу, по имени и идентификатору.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧЕТЫРЕ ВЕЩИ, КОТОРЫЕ ЗДЕСЬ СДЕЛАНЫ ИНАЧЕ, И ПОЧЕМУ (#373, #465)
+//
+// 1. НИЧЕГО НЕ СПРАШИВАЕТСЯ, ПОКА НЕ НАБРАН ЗАПРОС. Прежде страница на открытии
+//    тянула девять списков по 500 строк — безусловно, ещё до того как читатель
+//    что-нибудь набрал. Эту стоимость платил каждый заглянувший, и платил зря.
+//
+// 2. ГДЕ ВЛАДЕЛЕЦ УМЕЕТ — СПРАШИВАЕТСЯ СЕРВЕР. Совпадение искалось подстрокой в
+//    браузере поверх первых 500 строк, поэтому за этим пределом ресурс был
+//    невидим НАВСЕГДА, а «ничего не найдено» выглядело так же уверенно, как
+//    настоящий ответ. Право спросить сервер берётся из спеки ресурса
+//    (`serverSearchField`) — одного места, где оно объявлено и проверено против
+//    дерева владельца (`lib/list-server-search-parity.test.ts`).
+//
+//    Отправлять выражение всем нельзя: владелец, который его не разбирает,
+//    молча игнорирует незнакомое, и список вернулся бы ПОЛНЫМ под видом
+//    отфильтрованного — строго хуже прежнего среза.
+//
+// 3. НЕПОЛНОТА НАЗЫВАЕТСЯ. Области, где поиск остаётся клиентским, перечислены
+//    на странице поимённо. Молчание сделало бы неполный ответ неотличимым от
+//    полного.
+//
+// 4. PROJECT-SCOPED ОБЛАСТЬ СПРАШИВАЕТСЯ ТОЛЬКО С `project_id`, И ТОЛЬКО КОГДА
+//    ОН ЕСТЬ. Прежде запрос уходил без него всегда — край резолвит отсутствие
+//    в `project:*` и отвечает отказом в правах (#465), а не пустым списком:
+//    поиск по сети/подсети/машине падал целиком отказом сервера. Область
+//    видимости берётся из той же спеки реестра (`scope`), что и у
+//    `RefNameLink`. Без выбранного проекта такая область не спрашивается
+//    вовсе (не отказ — отсутствие вопроса) и названа поимённо тем же приёмом,
+//    что и клиентская неполнота в пункте 3: молчаливое «Найдено: 0» здесь
+//    означало бы «ресурса нет», а не «эти области не смотрели».
+//
+// Плюс машины и тома, которых в области поиска не было вовсе: без них самый
+// частый запрос администратора («найди эту машину») не решался в принципе.
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@shared/api/client";
+import { REGISTRY } from "@shared/lib/resource-registry";
+import { searchFilterExpression } from "@shared/lib/list-search-filter";
 import { displayText } from "@shared/lib/display-text";
+import { useProjectStore } from "@shared/lib/context-store";
+
+/** Значение, отставшее от ввода на `ms` спокойных миллисекунд. */
+function useDebounced(value: string, ms: number): string {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (value === settled) return;
+    const t = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, ms]);
+  return settled;
+}
 
 interface Hit {
   resource: string;
@@ -19,55 +67,120 @@ interface Hit {
   extras?: Record<string, string>;
 }
 
-export const SEARCH_DOMAINS = [
-  // KAC-124: Resource Manager (orgs/clouds/folders) → IAM (accounts/projects).
-  { resource: "accounts", path: "/iam/v1/accounts", key: "accounts", linkBase: "/iam/accounts" },
-  { resource: "projects", path: "/iam/v1/projects", key: "projects", linkBase: "/projects/:id" },
-  {
-    resource: "networks",
-    path: "/vpc/v1/networks",
-    key: "networks",
-    linkBase: "/projects/:project_id/vpc/networks/:id",
-  },
-  { resource: "subnets", path: "/vpc/v1/subnets", key: "subnets", linkBase: "/projects/:project_id/vpc/subnets/:id" },
-  {
-    resource: "addresses",
-    path: "/vpc/v1/addresses",
-    key: "addresses",
-    linkBase: "/projects/:project_id/vpc/addresses/:id",
-  },
-  {
-    resource: "network-interfaces",
-    path: "/vpc/v1/networkInterfaces",
-    key: "network_interfaces",
-    linkBase: "/projects/:project_id/vpc/network-interfaces/:id",
-  },
-  { resource: "address-pools", path: "/vpc/v1/addressPools", key: "pools", linkBase: "/system/address-pools/:id" },
-  // Каталог размещения принадлежит geo и всегда принадлежал ему: маршрутов
-  // /compute/v1/{regions,zones} в продукте нет и не было — compute не несёт ни
-  // одного сообщения Region/Zone. Реестр в этом же пакете читает /geo/v1/…, так
-  // что здесь был не устаревший адрес, а второе место об одном предмете.
-  { resource: "regions", path: "/geo/v1/regions", key: "regions", linkBase: "/system/regions/:id" },
-  { resource: "zones", path: "/geo/v1/zones", key: "zones", linkBase: "/system/zones/:id" },
+/**
+ * Область поиска. `specId` — ключ РЕЕСТРА: адрес, ключ ответа и право спросить
+ * сервер берутся оттуда, а не выписываются здесь вторым списком (расходятся
+ * такие списки молча, и первым узнаёт об этом пользователь).
+ */
+interface SearchDomain {
+  specId: string;
+  resource: string;
+  path: string;
+  key: string;
+  linkBase: string;
+  /** Поле серверного поиска либо `undefined` — владелец выражения не разбирает. */
+  serverSearchField?: string;
+  /** Область видимости — из спеки реестра, не второй список: `project` требует
+   *  `project_id` в запросе, `global`/`account` его не несут вовсе (край
+   *  резолвит такой параметр в `project:*` и отвергает — инцидент #465). */
+  scope: "global" | "project" | "account";
+}
+
+function domain(specId: string, linkBase: string, resource?: string): SearchDomain {
+  const spec = REGISTRY[specId];
+  if (!spec) throw new Error(`область поиска «${specId}» не найдена в реестре`);
+  return {
+    specId,
+    resource: resource ?? specId,
+    path: spec.apiPath,
+    key: spec.payloadKey,
+    linkBase,
+    serverSearchField: spec.serverSearchField,
+    scope: spec.scope,
+  };
+}
+
+const PRJ = "/projects/:project_id";
+
+export const SEARCH_DOMAINS: SearchDomain[] = [
+  domain("accounts", "/iam/accounts/:id"),
+  domain("projects", "/projects/:id"),
+  domain("networks", `${PRJ}/vpc/networks/:id`),
+  domain("subnets", `${PRJ}/vpc/subnets/:id`),
+  domain("addresses", `${PRJ}/vpc/addresses/:id`),
+  domain("security-groups", `${PRJ}/vpc/security-groups/:id`),
+  domain("route-tables", `${PRJ}/vpc/route-tables/:id`),
+  domain("gateways", `${PRJ}/vpc/gateways/:id`),
+  domain("cidr-groups", `${PRJ}/vpc/cidr-groups/:id`),
+  domain("network-interfaces", `${PRJ}/vpc/network-interfaces/:id`),
+  domain("address-pools", "/system/address-pools/:id"),
+  // Машины и тома — ради них поиск и переписан: без них «найди эту машину» не
+  // решалось вовсе.
+  domain("compute-instances", `${PRJ}/compute/instances/:id`, "instances"),
+  domain("volumes", `${PRJ}/storage/volumes/:id`),
+  // Каталог размещения принадлежит geo и всегда принадлежал ему.
+  domain("regions", "/system/regions/:id"),
+  domain("zones", "/system/zones/:id"),
 ];
 
-// ВАЖНО: VPC list endpoints (networks/subnets/addresses) обычно требуют projectId,
-// но в нашем bекенде они работают и без него (cross-project, вернут все).
-// Тогда client-side filter сделает остальное.
+/** Области, где совпадение ищется в браузере поверх прочитанной страницы. */
+export const PARTIAL_DOMAINS = SEARCH_DOMAINS.filter((d) => !d.serverSearchField);
+
+/** Области, которым для запроса нужен `project_id` выбранного проекта. */
+export const PROJECT_SCOPED_DOMAINS = SEARCH_DOMAINS.filter((d) => d.scope === "project");
+
+/**
+ * Сколько строк просить у области, которая сервером не сужается.
+ *
+ * Это НЕ «достаточно»: это цена компромисса, названная числом. Полный ответ у
+ * такой области получить нечем, пока её владелец не научится разбирать
+ * выражение, — и страница об этом говорит вслух, а не делает вид.
+ */
+const PARTIAL_PAGE = "200";
+/** Сужено сервером — страница нужна только чтобы ограничить ответ сверху. */
+const SERVER_PAGE = "100";
 
 export function SystemSearchPage() {
   const [q, setQ] = useState("");
+  // Пауза перед запросом: без неё каждое нажатие клавиши — пятнадцать запросов.
+  const term = useDebounced(q, 300);
+  const active = term.trim();
+
+  // Область видимости решает, чем спрашивать (тот же предикат, что у
+  // `RefNameLink`): `project`-scoped ресурс без `project_id` в запросе край
+  // резолвит в `project:*` и отвергает отказом в правах, а не пустым списком
+  // — молчаливый провал в 403, а не в «ничего не найдено» (#465). Глобальный
+  // каталог и account-scoped ресурс `project_id` не несут вовсе — для них он
+  // чужой параметр.
+  const project = useProjectStore((s) => s.project);
+  const projectId = project?.id ?? null;
 
   const queries = useQueries({
-    queries: SEARCH_DOMAINS.map((d) => ({
-      queryKey: ["search", d.resource],
-      queryFn: () => api.list<Record<string, unknown>>(d.path, { pageSize: "500" }),
-      staleTime: 10_000,
-    })),
+    queries: SEARCH_DOMAINS.map((d) => {
+      const expr = searchFilterExpression(d.serverSearchField, active);
+      const needsProject = d.scope === "project";
+      return {
+        // Запрос — ЧАСТЬ ключа: без него ответ на «прод» переиспользовался бы
+        // как ответ на «тест». `project_id` — тоже часть ключа там, где он
+        // влияет на ответ: смена проекта не должна отдавать чужой кэш.
+        queryKey: ["search", d.specId, expr ?? null, needsProject ? projectId : null],
+        queryFn: () =>
+          api.list<Record<string, unknown>>(d.path, {
+            pageSize: expr ? SERVER_PAGE : PARTIAL_PAGE,
+            ...(expr ? { filter: expr } : {}),
+            ...(needsProject ? { project_id: projectId! } : {}),
+          }),
+        // Ничего не спрашиваем, пока не набран запрос, и project-scoped
+        // область не спрашиваем, пока нет выбранного проекта — иначе запрос
+        // уходит без `project_id` и край отвечает отказом, а не пустым ответом.
+        enabled: active.length > 0 && (!needsProject || !!projectId),
+        staleTime: 10_000,
+      };
+    }),
   });
 
   const hits: Hit[] = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const term = active.toLowerCase();
     if (!term) return [];
 
     const out: Hit[] = [];
@@ -78,9 +191,14 @@ export function SystemSearchPage() {
       list.forEach((r) => {
         const id = displayText(r.id);
         const name = displayText(r.name);
-        const matchesId = id.toLowerCase().includes(term);
-        const matchesName = name.toLowerCase().includes(term);
-        if (!matchesId && !matchesName) return;
+        // Строку, которую сузил СЕРВЕР, клиент не пересевает: он судил бы своим
+        // правилом сравнения о том, что владелец уже признал подходящим, и
+        // отбрасывал бы часть ответа — тот же дефект этажом выше.
+        if (!d.serverSearchField) {
+          const matchesId = id.toLowerCase().includes(term);
+          const matchesName = name.toLowerCase().includes(term);
+          if (!matchesId && !matchesName) return;
+        }
         out.push({
           resource: d.resource,
           id,
@@ -93,16 +211,16 @@ export function SystemSearchPage() {
       });
     });
     return out.slice(0, 100);
-  }, [q, queries]);
+  }, [active, queries]);
 
   const loading = queries.some((q) => q.isLoading);
 
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">System Search</h1>
+        <h1 className="text-xl font-semibold">Поиск</h1>
         <p className="text-sm text-muted-foreground">
-          Cross-resource поиск по ID и имени. Включает IAM accounts/projects и vpc-ресурсы (admin).
+          Поиск по всем ресурсам сразу — по имени и идентификатору.
         </p>
       </div>
 
@@ -112,15 +230,38 @@ export function SystemSearchPage() {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="ID, имя ресурса, имя клиента…"
+          placeholder="Поиск: имя или идентификатор ресурса"
           className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
-      {loading && <div className="text-xs text-muted-foreground">Loading indices…</div>}
+      {loading && <div className="text-xs text-muted-foreground">Ищем…</div>}
       <div className="text-xs text-muted-foreground">
-        {q ? `${hits.length} match${hits.length === 1 ? "" : "es"}` : "Введите подстроку — ID или имя"}
+        {active ? `Найдено: ${hits.length}` : "Введите имя или идентификатор"}
       </div>
+
+      {/* Без выбранного проекта project-scoped области вообще не спрашиваются
+          (иначе запрос уходит без `project_id` и край отвечает отказом, а не
+          пустым ответом) — и «Найдено: 0» без этой строки читалось бы как факт
+          об отсутствии ресурса, а не как «эти области не смотрели вовсе». */}
+      {active && !projectId && PROJECT_SCOPED_DOMAINS.length > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Выберите проект — без него не смотрены {PROJECT_SCOPED_DOMAINS.length} из {SEARCH_DOMAINS.length}{" "}
+          областей:{" "}
+          {PROJECT_SCOPED_DOMAINS.map((d) => REGISTRY[d.specId].plural).join(", ")}.
+        </div>
+      )}
+
+      {/* Неполноту нельзя выдавать за полноту: области, где совпадение ищется в
+          браузере поверх прочитанной страницы, названы поимённо. Иначе «ничего
+          не найдено» читалось бы как утверждение об отсутствии ресурса. */}
+      {active && PARTIAL_DOMAINS.length > 0 && (
+        <div className="text-xs text-muted-foreground">
+          Поиск неполон в {PARTIAL_DOMAINS.length} из {SEARCH_DOMAINS.length} областей — там сравниваются только
+          загруженные строки (по {PARTIAL_PAGE}):{" "}
+          {PARTIAL_DOMAINS.map((d) => REGISTRY[d.specId].plural).join(", ")}.
+        </div>
+      )}
 
       {hits.length > 0 && (
         <div className="border border-border rounded overflow-hidden">

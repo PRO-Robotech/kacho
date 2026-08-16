@@ -27,6 +27,7 @@ import { InstanceDetailPage } from "@/pages/InstanceDetailPage";
 import { TargetGroupDetailPage } from "@/pages/TargetGroupDetailPage";
 import { OperationsPage } from "@/pages/OperationsPage";
 import { SystemSearchPage } from "@/pages/SystemSearchPage";
+import { QuotasPage } from "@/pages/QuotasPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AuthCallback } from "@/pages/auth/AuthCallback";
 import { SignupPage } from "@/pages/auth/SignupPage";
@@ -253,6 +254,11 @@ export function AppRoutes() {
 
           {/* === Global VPC Operations (project-scoped) === */}
           <Route path="/projects/:projectId/vpc/operations" element={<OperationsPage />} />
+
+          {/* Квоты — витрина пределов проекта. Не под сегментом сервиса: общий
+              контракт `quota.v1` подаёт каждый владелец своим путём, и страница
+              собирает их вместе (#364). */}
+          <Route path="/projects/:projectId/quotas" element={<QuotasPage />} />
 
           {/* KAC-231: вложенные network-/subnet-scoped detail-страницы
                 (SubnetDetailPage/RouteTableDetailPage/SecurityGroupDetailPage/

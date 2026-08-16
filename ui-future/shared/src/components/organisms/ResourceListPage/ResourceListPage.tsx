@@ -4,14 +4,15 @@
 
 import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Segmented, Select, Typography, Tag } from "antd";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Button, Checkbox, Input, Modal, Segmented, Select, Typography, Tag } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { REGISTRY, getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { REGISTRY, getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
+import { filterExpressionValue, useDebouncedValue } from "@shared/lib/list-search";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { type ReactNode } from "react";
@@ -22,6 +23,7 @@ import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
+import { searchFilterExpression } from "@shared/lib/list-search-filter";
 
 interface Props {
   spec: ResourceSpec;
@@ -75,12 +77,54 @@ export function ResourceListPage({
   // загруженную страницу: клиентский фильтр поверх курсорной страницы отфильтровал
   // бы только то, что успело приехать, и выдал бы это за весь список.
   const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
+
+  // Выделение строк и групповое снятие.
+  //
+  // Столбец флажков появляется ТОЛЬКО у ресурса, который вообще можно удалять:
+  // выделение без действия — приглашение к тому, чего нет. Снимаются ровно
+  // выделенные строки, а не «всё, что подошло под фильтр»: второе снесло бы и
+  // то, что осталось за курсором и на экран не приезжало.
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const canBulkDelete = spec.ops.delete;
+
+  // Поиск: спрашивает СЕРВЕР, если ресурс это объявил. Способов два, и они НЕ
+  // взаимозаменяемы — у них разные операторы и разные предметы:
+  //   `search.serverTerm`  — ВЫДЕЛЕННОЕ слово запроса, которое владелец толкует
+  //                          сам (`search="…"`: у пользователя имени нет вовсе,
+  //                          ищут по почте или идентификатору);
+  //   `serverSearchField`  — НАСТОЯЩЕЕ поле ресурса, по которому ищут подстроку
+  //                          (`name CONTAINS "…"`).
+  // Объявлять оба на одном ресурсе запрещено (см. `resource-spec.ts`). Если это
+  // всё же случилось, выигрывает `serverTerm` — разрешение здесь ради
+  // детерминизма, а не как второй законный режим.
+  const serverSearchTerm = spec.search?.serverTerm ?? null;
+  const serverSearch = spec.serverSearchField;
+  const asksServer = Boolean(serverSearchTerm || serverSearch);
+  // Ввод отстаёт на четверть секунды — иначе каждая нажатая клавиша уходит
+  // отдельным запросом. При клиентском сужении спрашивать некого, поэтому
+  // отставание не берётся вовсе (`0` отдаёт значение как есть, а не через
+  // нулевой таймер).
+  const debouncedQuery = useDebouncedValue(query, asksServer ? 250 : 0);
+  const searchExpr = useMemo(() => {
+    if (serverSearchTerm) {
+      const q = filterExpressionValue(debouncedQuery);
+      return q ? `${serverSearchTerm}="${q}"` : null;
+    }
+    return serverSearch ? searchFilterExpression(serverSearch, debouncedQuery) : null;
+  }, [serverSearchTerm, serverSearch, debouncedQuery]);
+  // Выражение — ЧАСТЬ серверных фильтров, а не отдельный механизм: оба уезжают
+  // одним запросом, и ключ кэша обязан различать их оба.
+  const listQuery = useMemo(
+    () => (searchExpr ? { ...serverFilters, filter: searchExpr } : serverFilters),
+    [serverFilters, searchExpr],
+  );
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     spec,
     parentField ?? null,
     filterValue,
     pageSize,
-    serverFilters,
+    listQuery,
   );
   const setServerFilter = (param: string, value: string) =>
     setServerFilters((prev) => {
@@ -128,6 +172,20 @@ export function ResourceListPage({
 
   const items = data?.[spec.payloadKey] ?? [];
 
+  const bulkDelete = useMutation({
+    // По запросу на строку: группового снятия у края нет, и собирать его из
+    // одного запроса значило бы придумать контракт, которого не существует.
+    // Ошибка на одной строке не отменяет остальных — снятие идемпотентно.
+    mutationFn: async (ids: string[]) => {
+      const base = mutationBasePath(spec);
+      await Promise.allSettled(ids.map((id) => api.delete(`${base}/${id}`)));
+    },
+    onSettled: () => {
+      setSelected([]);
+      setConfirming(false);
+    },
+  });
+
   // Дополнительный фильтр "Зона доступности" — для ресурсов, у которых есть
   // понятие zone. Subnet хранит zone напрямую, Address — внутри
   // internal_ipv4_address.zone_id / external_ipv4_address.zone_id.
@@ -170,7 +228,11 @@ export function ResourceListPage({
   }
 
   const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    // Когда сузил сервер — клиент НЕ пересевает: он судил бы по своему правилу
+    // сравнения о строках, которые владелец уже признал подходящими, и отбросил
+    // бы часть ответа. Это вернуло бы исходный дефект этажом выше и незаметно:
+    // список выглядел бы отфильтрованным, просто короче настоящего.
+    const q = serverSearch ? "" : query.trim().toLowerCase();
     return items.filter((row) => {
       // "Публичные IP" — это external addresses; internal IPs показываются
       // только в subnet detail (IP-адреса tab). Фильтруем по наличию
@@ -187,12 +249,15 @@ export function ResourceListPage({
         if (roleKind === "custom" && isSystem) return false;
       }
       if (!q) return true;
-      const name = (getByPath<string>(row, "name") ?? "").toLowerCase();
-      const id = (getByPath<string>(row, "id") ?? "").toLowerCase();
-      return name.includes(q) || id.includes(q);
+      // Сузил сервер — резать его ответ повторно нельзя: он отбирал строки по
+      // своим полям, а здесь их может не оказаться вовсе.
+      if (serverSearchTerm) return true;
+      return (spec.search?.fields ?? ["name", "id"]).some((f) =>
+        (getByPath<string>(row, f) ?? "").toLowerCase().includes(q),
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, query, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
+  }, [items, query, serverSearch, serverSearchTerm, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
 
   // Заглушка «проект не выбран» — НИЖЕ всех хуков страницы, а не выше.
   // Scope приходит из context-store (аккаунтные списки IAM) или из параметра
@@ -312,8 +377,23 @@ export function ResourceListPage({
       <div style={{ flexShrink: 0, marginBottom: 12 }}>
         {listHeader(
           <>
+            {/* Одна и та же строка ввода означает на разных страницах разное —
+                значит она обязана об этом СКАЗАТЬ. Серверный поиск спрашивает
+                весь список; клиентский судит о прочитанных страницах, и молча
+                выдавать второе за первое нельзя: пользователь читает «ничего не
+                найдено» как утверждение об отсутствии ресурса. */}
             <Input.Search
-              placeholder="Фильтр по имени или идентификатору"
+              placeholder={
+                spec.search?.placeholder ??
+                (asksServer
+                  ? "Поиск по имени — по всему списку"
+                  : "Фильтр по имени или идентификатору среди загруженных")
+              }
+              title={
+                asksServer
+                  ? "Запрос уходит на сервер: ищется по всему списку, а не по загруженным строкам."
+                  : "Этот ресурс не умеет искать на сервере: сужаются только уже загруженные строки. Нажмите «Показать ещё», чтобы расширить набор."
+              }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{ width: 320 }}
@@ -350,6 +430,16 @@ export function ResourceListPage({
                 ]}
               />
             )}
+            {canBulkDelete && selected.length > 0 && (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Выделено: {selected.length}
+                </Typography.Text>
+                <Button danger size="small" onClick={() => setConfirming(true)}>
+                  Удалить выделенные
+                </Button>
+              </>
+            )}
             <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
           </>,
         )}
@@ -366,9 +456,42 @@ export function ResourceListPage({
             loading={isLoading && items.length === 0}
             rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
             columns={columns}
+            // Сортировать можно только прочитанный целиком список. Пока за
+            // курсором есть страницы, стрелка упорядочивала бы случайную его
+            // часть и переставляла бы её при каждой догрузке — читатель принял
+            // бы первую строку прочитанного за первую вообще. Порядок серверу
+            // не заказывается: поле порядка снято с контракта осознанно.
+            sortable={!hasMore}
+            selection={
+              canBulkDelete
+                ? {
+                    selected,
+                    onChange: setSelected,
+                  }
+                : undefined
+            }
           />
         )}
       </div>
+
+      {/* Подтверждение называет ЧИСЛО, а не перечень имён: перечень из сорока
+          строк не читают — его прокручивают до кнопки. Число же отвечает на
+          единственный вопрос, который здесь задают себе: «столько я и
+          выделял?» Ошибка выделения проявляется именно в числе. */}
+      <Modal
+        open={confirming}
+        title={`Удалить ${selected.length} ${spec.plural.toLowerCase()}?`}
+        okText="Удалить"
+        cancelText="Отмена"
+        okButtonProps={{ danger: true }}
+        confirmLoading={bulkDelete.isPending}
+        onCancel={() => setConfirming(false)}
+        onOk={() => bulkDelete.mutate(selected)}
+      >
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          Действие необратимо. Снимаются ровно выделенные строки — {selected.length}.
+        </Typography.Paragraph>
+      </Modal>
 
       {/* Курсорная пагинация: общего числа у List нет, поэтому «ещё» — это
           наличие next_page_token, а не арифметика по общему числу. */}
