@@ -31,7 +31,7 @@ beforeEach(() => {
     configurable: true,
     value: { writeText: (v: string) => (copied.push(v), Promise.resolve()) },
   });
-  globalThis.fetch = (() => jsonOk({ id: "prj-7", name: "проект-семь" })) as typeof fetch;
+  globalThis.fetch = () => jsonOk({ id: "prj-7", name: "проект-семь" });
 });
 
 afterEach(() => {

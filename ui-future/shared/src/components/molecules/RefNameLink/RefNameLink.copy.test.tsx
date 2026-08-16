@@ -27,8 +27,8 @@ beforeEach(() => {
     configurable: true,
     value: { writeText: (v: string) => (copied.push(v), Promise.resolve()) },
   });
-  globalThis.fetch = (() =>
-    jsonOk({ networks: [{ id: "net-7", name: "сеть-семь" }], nextPageToken: "" })) as typeof fetch;
+  globalThis.fetch = () =>
+    jsonOk({ networks: [{ id: "net-7", name: "сеть-семь" }], nextPageToken: "" });
 });
 
 afterEach(() => {

@@ -30,8 +30,8 @@ function jsonOk(body: unknown): Promise<Response> {
 }
 
 beforeEach(() => {
-  globalThis.fetch = (() =>
-    jsonOk({ networks: [{ id: "net-7", name: "сеть-семь" }], nextPageToken: "" })) as typeof fetch;
+  globalThis.fetch = () =>
+    jsonOk({ networks: [{ id: "net-7", name: "сеть-семь" }], nextPageToken: "" });
 });
 
 afterEach(() => {
