@@ -33,8 +33,12 @@ export function runTag(): string {
   return Date.now().toString(36) + Math.trunc(performance.now()).toString(36);
 }
 
-/** registerAndSignIn проводит регистрацию до рабочей сессии и отдаёт проект арендатора. */
-export async function registerAndSignIn(page: Page): Promise<Tenant> {
+/** register проводит регистрацию до РАБОЧЕЙ СЕССИИ и отдаёт почту арендатора.
+ *
+ * Вынесено из `registerAndSignIn` без изменения его поведения: проект арендатора
+ * добывается двумя разными способами (см. `tenantWithProject`), а вход — один и
+ * тот же, и второй его копии заводить незачем. */
+export async function register(page: Page): Promise<string> {
   const email = `e2e-${runTag()}@kacho.local`;
 
   await page.goto("/registration", { waitUntil: "domcontentloaded" });
@@ -69,6 +73,13 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
     )
     .toBe(true);
 
+  return email;
+}
+
+/** registerAndSignIn проводит регистрацию до рабочей сессии и отдаёт проект арендатора. */
+export async function registerAndSignIn(page: Page): Promise<Tenant> {
+  const email = await register(page);
+
   // Проект арендатора заводится сам; без него адресовать модули нечем.
   const projectId = await expect
     .poll(
@@ -91,6 +102,107 @@ export async function registerAndSignIn(page: Page): Promise<Tenant> {
   const body = (await res.json()) as { projects: Array<{ id: string }> };
   void projectId;
   return { email, projectId: body.projects[0].id };
+}
+
+/**
+ * tenantWithProject — арендатор со СВОИМ проектом, добытым независимо от того,
+ * попала ли его строка на первую страницу списка.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ НЕ ХВАТАЕТ `registerAndSignIn`
+ *
+ * Тот берёт проект первой строкой `GET /iam/v1/projects`. Список курсорный и
+ * фильтруется по правам ПОСТРАНИЧНО: на стенде, где накопились чужие строки,
+ * первая страница может целиком состоять из недоступных — тогда ответ выглядит
+ * как «проектов нет», хотя свой проект есть и читается по идентификатору.
+ * Наблюдалось 2026-08-15 на стенде показа: `{"projects":[],"nextPageToken":"…"}`
+ * — пустая страница С ПРОДОЛЖЕНИЕМ, то есть не «пусто», а «не на этой странице».
+ *
+ * ПОЧЕМУ ЗАПАСНОЙ ПУТЬ НЕ ЯВЛЯЕТСЯ МАСКОЙ
+ *
+ * Он не подменяет ответ края и ничего не прощает: аккаунт заводится ПУБЛИЧНЫМ
+ * API, а его проект признаётся годным только после того, как прочитан по своему
+ * адресу (`GET /iam/v1/projects/<id>` → 200). Идентификатор, взятый из метаданных
+ * операции и не подтверждённый чтением, был бы фантомом — операция чеканит его
+ * ДО того, как асинхронная часть могла отказать.
+ */
+export async function tenantWithProject(page: Page): Promise<Tenant> {
+  const email = await register(page);
+
+  const own = await firstProjectId(page);
+  if (own !== "") return { email, projectId: own };
+
+  const res = await page.request.post("/iam/v1/accounts", { data: { name: `acc${runTag()}` } });
+  const body = (await res.json()) as { metadata?: { defaultProjectId?: string } };
+  expect(
+    res.status(),
+    `аккаунт не заведён: край ответил ${res.status()} — условие проб не создано, ` +
+      `и всё дальнейшее меряло бы не консоль`,
+  ).toBe(200);
+
+  const projectId = body.metadata?.defaultProjectId ?? "";
+  expect(projectId, "создание аккаунта не назвало проект по умолчанию").not.toBe("");
+
+  await expect
+    .poll(async () => (await page.request.get(`/iam/v1/projects/${projectId}`)).status(), {
+      message:
+        `проект ${projectId} не читается по своему адресу: идентификатор из метаданных ` +
+        `операции без подтверждения чтением — фантом, и пробы шли бы по несуществующему ресурсу`,
+      timeout: 60_000,
+    })
+    .toBe(200);
+
+  return { email, projectId };
+}
+
+async function firstProjectId(page: Page): Promise<string> {
+  for (let i = 0; i < 8; i++) {
+    const res = await page.request.get("/iam/v1/projects");
+    if (res.ok()) {
+      const body = (await res.json()) as { projects?: Array<{ id: string }> };
+      const id = body.projects?.[0]?.id ?? "";
+      if (id) return id;
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+  return "";
+}
+
+/**
+ * createdResourceId доводит асинхронную мутацию до ПРОВЕРЕННОГО ресурса.
+ *
+ * Идентификатор из `metadata` сам по себе ничего не доказывает: он выделяется до
+ * асинхронной части и остаётся в ответе даже тогда, когда та отказала. Поэтому
+ * здесь он подтверждается чтением ресурса по его собственному адресу — это
+ * сильнее проверки `op.error` и не зависит от того, какой службе принадлежит
+ * запись операции.
+ */
+export async function createdResourceId(
+  page: Page,
+  response: Awaited<ReturnType<Page["request"]["post"]>>,
+  metadataField: string,
+  addressOf: (id: string) => string,
+  subject: string,
+): Promise<string> {
+  const text = await response.text();
+  expect(
+    response.status(),
+    `${subject}: край отверг создание — ${response.status()} ${text.slice(0, 300)}. ` +
+      `Это УСЛОВИЕ пробы, а не её предмет: вердикта о консоли такой прогон не даёт`,
+  ).toBe(200);
+
+  const body = JSON.parse(text) as { metadata?: Record<string, string> };
+  const id = body.metadata?.[metadataField] ?? "";
+  expect(id, `${subject}: операция не назвала ${metadataField}`).not.toBe("");
+
+  await expect
+    .poll(async () => (await page.request.get(addressOf(id))).status(), {
+      message: `${subject}: ресурс ${id} не читается по своему адресу — операция вернула фантом`,
+      timeout: 60_000,
+    })
+    .toBe(200);
+
+  return id;
 }
 
 /** apiCalls собирает коды ответов API, которые страница сделала сама. */
