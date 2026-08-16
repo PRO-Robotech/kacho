@@ -78,12 +78,15 @@ func NewHandler(
 	}
 }
 
-// WithRegistrar инжектит sync-primary owner-tuple registrar в Create И Update
-// use-case'ы (Update — ради доставки обновлённого зеркала меток на пути запроса)
-// (composition root). Возвращает self для chaining.
+// WithRegistrar инжектит sync-primary owner-tuple registrar в Create, Update И
+// Move use-case'ы (Update — ради доставки обновлённого зеркала меток на пути
+// запроса; Move — ради восстановления проекции назначения, которую он сам же
+// сносит вместе с проекцией источника, см. Move.WithRegistrar) (composition
+// root). Возвращает self для chaining.
 func (h *Handler) WithRegistrar(r Registrar) *Handler {
 	h.create.WithRegistrar(r)
 	h.update.WithRegistrar(r)
+	h.move.WithRegistrar(r)
 	return h
 }
 
