@@ -733,21 +733,6 @@
           ]
         },
         {
-          "file": "nlb/src/lib/theme-context.tsx",
-          "symbols": [
-            "ThemeProvider",
-            "useThemeMode"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/theme.ts",
-          "symbols": [
-            "BRAND",
-            "buildTheme",
-            "paletteFor"
-          ]
-        },
-        {
           "file": "nlb/src/lib/use-operation-store.ts",
           "symbols": [
             "operationStore",
