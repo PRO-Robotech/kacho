@@ -7,7 +7,7 @@
 // PRIVATE behind a success toast.
 
 import { REGISTRY, applyFieldDefaults } from "./resource-registry";
-import { buildCreateBody, computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
+import { buildCreateBody, computeUpdateMask } from "@shared/lib/update-mask";
 
 const asObj = (v: unknown) => v as Record<string, unknown>;
 

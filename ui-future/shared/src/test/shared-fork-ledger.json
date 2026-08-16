@@ -20,40 +20,6 @@
           ]
         },
         {
-          "file": "compute/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles",
-            "statusLabel",
-            "statusOf"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -77,13 +43,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -121,12 +80,6 @@
           "file": "compute/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -168,29 +121,11 @@
           ]
         },
         {
-          "file": "compute/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
           "file": "compute/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "compute/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
           ]
         },
         {
@@ -210,13 +145,6 @@
             "buildSpecColumns",
             "formatCellByFormat",
             "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "compute/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
           ]
         },
         {
@@ -313,32 +241,6 @@
           ]
         },
         {
-          "file": "nlb/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles"
-          ]
-        },
-        {
           "file": "nlb/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -361,13 +263,6 @@
           "file": "nlb/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
           "symbols": [
             "RowActionsMenu"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -405,12 +300,6 @@
           "file": "nlb/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -467,29 +356,11 @@
           ]
         },
         {
-          "file": "nlb/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
           "file": "nlb/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
           ]
         },
         {
@@ -509,19 +380,6 @@
             "buildSpecColumns",
             "formatCellByFormat",
             "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/use-resource-list.ts",
-          "symbols": [
-            "useResourceList"
           ]
         }
       ]
@@ -551,38 +409,6 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/JsonMonacoView/LazyJsonMonacoView.tsx",
-          "symbols": [
-            "LazyJsonMonacoView"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles"
-          ]
-        },
-        {
           "file": "registry/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -606,13 +432,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -650,12 +469,6 @@
           "file": "registry/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -697,29 +510,11 @@
           ]
         },
         {
-          "file": "registry/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
           "file": "registry/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "registry/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
           ]
         },
         {
@@ -739,13 +534,6 @@
             "buildSpecColumns",
             "formatCellByFormat",
             "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "registry/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
           ]
         },
         {
@@ -775,40 +563,6 @@
           ]
         },
         {
-          "file": "storage/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles",
-            "statusLabel",
-            "statusOf"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -832,13 +586,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -876,12 +623,6 @@
           "file": "storage/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -923,29 +664,11 @@
           ]
         },
         {
-          "file": "storage/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
           "file": "storage/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "storage/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
           ]
         },
         {
@@ -965,13 +688,6 @@
             "buildSpecColumns",
             "formatCellByFormat",
             "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "storage/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
           ]
         },
         {
