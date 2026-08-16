@@ -68,6 +68,24 @@ SERVICES := iam vpc compute api-gateway nlb geo storage registry
 # отсутствующая запись даёт аннотацию "unset", а не сорванный рендер.
 IMAGES ?= $(SERVICES)
 
+# BUILD_UI — собирать ли образы консоли. Умолчание 1: локальный `make dev-up` без
+# аргументов ведёт себя как раньше и поднимает продукт целиком, вместе с
+# интерфейсом.
+#
+# Ручка заведена потому, что отказаться от сборки консоли было НЕЧЕМ. `IMAGES`
+# сужает только бэкенд (перечень SERVICES), а модули консоли выводятся из дерева
+# и потому всегда полны — девять `docker build` независимо от того, нужна ли
+# консоль этому стенду. На стендах e2e-newman она не нужна ни одному запросу
+# (предикат — в deploy/e2e-shards.json §_uif), и это стоило около 31 ранер-минуты
+# за прогон: девять образов × пять шардов, ни один из которых их не спрашивает.
+#
+# ЗНАЧЕНИЕ ПРИХОДИТ ИЗ ТОЙ ЖЕ СТРОКИ, ЧТО И ВЫКЛЮЧЕНИЕ ПОДЧАРТА: конвейер выводит
+# его из состава компонентов шарда (`uif` в gates и не назван никем ⇒ и
+# `--set uif.enabled=false`, и `BUILD_UI=0`). Второго объявления нет намеренно —
+# два места об одном предмете разъехались бы молча, и худшая из двух форм
+# расхождения тихая: стенд без консоли, а девять образов всё равно собираются.
+BUILD_UI ?= 1
+
 # PROVENANCE — every locally built image records the commit it came from.
 #
 # Every service image is tagged `:dev` and nothing else: no label, no embedded
@@ -417,7 +435,11 @@ dev-up: preflight
 	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
 	  --overwrite >/dev/null; \
 	$(MAKE) build-services; \
-	$(MAKE) build-ui; \
+	if [ "$(BUILD_UI)" = "0" ]; then \
+	  echo "=== консоль НЕ собирается (BUILD_UI=0) — подчарт uif на этом стенде выключен ==="; \
+	else \
+	  $(MAKE) build-ui; \
+	fi; \
 	./scripts/gen-tls-cert.sh; \
 	bash scripts/helm-umbrella-deps.sh; \
 	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \
