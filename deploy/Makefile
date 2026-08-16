@@ -87,14 +87,38 @@ IMAGES ?= $(SERVICES)
 # report version="dev" commit="unknown" everywhere. Populating them means editing
 # the Dockerfiles, which is outside this change; the image labels below are the
 # part that can be done from the build command alone.
+#
+# ОТМЕТКИ ВРЕМЕНИ СБОРКИ ЗДЕСЬ НЕТ — И ЭТО РЕШЕНИЕ, А НЕ ПРОПУСК.
+#
+# Метка входит в конфигурацию образа, а идентификатор содержимого — это дайджест
+# конфигурации. Значит метка, вычисляемая заново в каждом под-make (`date -u`),
+# делает идентификатор новым ДАЖЕ при стопроцентном попадании в кэш сборки: слои
+# те же, конфигурация другая. Дальше срабатывает привязка ниже
+# ($(IMAGE_IDS_VALUES)) — она работает верно и делает ровно то, ради чего
+# заведена: новый идентификатор ⇒ новый шаблон пода ⇒ перекат. Итог: на
+# НЕИЗМЕННОМ дереве `make dev-up` перекатывал все восемь подов и ждал это двумя
+# `helm --wait` с потолками 10 и 12 минут.
+#
+# Предикат, которым это проверяется: два `make dev-up` подряд без единой правки
+# обязаны дать ОДИН И ТОТ ЖЕ `docker image inspect --format '{{.Id}}'`.
+#
+# Чем заменён ответ на «когда это собрано». Тем же вопросом к демону:
+# `docker image inspect --format '{{.Created}}'` — он записывает отметку сам, и
+# при попадании в кэш она указывает на сборку, произведшую ЭТО содержимое, что и
+# есть правильный ответ. Метка отвечала на другой вопрос — «когда мы в последний
+# раз позвали docker build», — и ценой ответу был перекат стенда.
+#
+# «Какой код на стенде» остаётся за `revision`/`version`: они функция ДЕРЕВА, а не
+# часов, поэтому на неизменном дереве постоянны и `stand-provenance` читает их
+# по-прежнему. Читателей у снятой метки в дереве нет ни одного (единственное
+# совпадение — клиент zot, читающий одноимённую OCI-аннотацию у образов
+# арендатора; к меткам наших образов оно отношения не имеет).
 GIT_COMMIT := $(shell git -C .. rev-parse HEAD 2>/dev/null || echo unknown)
 GIT_DIRTY  := $(shell test -n "$$(git -C .. status --porcelain 2>/dev/null)" && echo "-dirty" || echo "")
 GIT_REF    := $(shell git -C .. rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE_LABELS := \
   --label org.opencontainers.image.revision="$(GIT_COMMIT)$(GIT_DIRTY)" \
-  --label org.opencontainers.image.version="$(GIT_REF)" \
-  --label org.opencontainers.image.created="$(BUILD_DATE)"
+  --label org.opencontainers.image.version="$(GIT_REF)"
 
 # IMAGE_IDS_VALUES — карта «сервис → идентификатор СОДЕРЖИМОГО его образа».
 #
