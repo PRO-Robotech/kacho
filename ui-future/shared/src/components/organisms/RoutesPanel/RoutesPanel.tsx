@@ -240,7 +240,12 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
   const showTable = editing || routes.length > 0;
 
   return (
-    <div style={{ marginTop: 24, maxWidth: 760 }}>
+    // Маркер нужен ПРОБЕ, и предмет у него точный: на карточке таблицы
+    // маршрутов действие «Редактировать» есть у ДВУХ разных хозяев — у самого
+    // ресурса (шапка карточки) и у этой панели. Их доступные имена совпадают
+    // дословно («edit Редактировать»), поэтому выбрать панель по имени кнопки
+    // нельзя ничем: `.first()` берёт чужую и открывает не тот редактор.
+    <div data-testid="routes-panel" style={{ marginTop: 24, maxWidth: 760 }}>
       <SectionHeader
         eyebrow="Список"
         title={

@@ -1,8 +1,26 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect } from "@playwright/test";
-import { registerAndSignIn, runTag } from "./fixtures";
+import { test, expect, type Page } from "@playwright/test";
+import { registerAndSignIn, createdResourceId, runTag } from "./fixtures";
+
+/**
+ * Свежий арендатор пуст, и пустой список — НЕ страница списка.
+ *
+ * Список без единой строки показывает приветственный экран: заголовок «Создайте
+ * вашу первую облачную сеть» и кнопку создания. Ни строки поиска, ни таблицы,
+ * ни заголовков колонок там нет — и это правильно, спрашивать нечего.
+ *
+ * Поэтому проба про СПИСОК обязана сперва создать предмет списка. Прежде она
+ * этого не делала и падала на «нет строки поиска» — сообщение верное, вывод из
+ * него делался неверный: искали пропавший поиск, а не отсутствующий ресурс.
+ */
+async function сетьВПроекте(page: Page, projectId: string): Promise<string> {
+  const ответ = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: `net-lst-${runTag()}`, ipv4CidrBlocks: ["10.93.0.0/16"] },
+  });
+  return createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под список");
+}
 
 /**
  * Список отвечает про СПИСОК, а не про загруженную страницу.
@@ -23,6 +41,7 @@ import { registerAndSignIn, runTag } from "./fixtures";
 test("поиск в списке уходит запросом, и край его принимает", async ({ page }) => {
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
+  await сетьВПроекте(page, projectId);
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
@@ -65,8 +84,12 @@ test("поиск в списке уходит запросом, и край ег
 test("пока список прочитан не весь, сортировка не предлагается", async ({ page }) => {
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
+  await сетьВПроекте(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("table").first()).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.locator("table").first(),
+    "таблицы списка нет — у пустого арендатора её и не бывает, предмет пробы не создан",
+  ).toBeVisible({ timeout: 30_000 });
 
   const ещё = page.locator('button:has-text("Показать ещё")');
   const сортируемые = page.locator("th.ant-table-column-has-sorters");
