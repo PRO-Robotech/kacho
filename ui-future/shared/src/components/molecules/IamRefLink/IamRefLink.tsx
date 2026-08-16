@@ -1,25 +1,28 @@
-// IamRefLink — ссылка на IAM-ресурс по id (account/project/user/role/…).
+// IamRefLink — ссылка на ресурс IAM по идентификатору (аккаунт/проект/
+// пользователь/роль/…).
 //
-// RefNameLink (VPC) делает project-scoped list-query (project_id=…), что не
-// подходит для IAM-ресурсов (они не scoped к проекту). Здесь — точечный GET
-// /iam/v1/<route>/<id> (дедуплицируется TanStack), резолв name (или email для
-// user), ссылка на /iam/<route>/<id>. Cross-domain dangling-ref грациозен: при
-// NOT_FOUND показываем raw id моноширинно, без падения.
+// Отличие от `RefNameLink` ровно одно и оно про ЗАПРОС: ресурсы IAM не сужаются
+// проектом, поэтому имя резолвится точечным чтением `/iam/v1/<route>/<id>`, а не
+// списочным запросом с `project_id`. Всё остальное — вид ссылки, иконка типа,
+// усечение, копирование значения — берётся у общей `ResourceLink`.
 //
-// App-agnostic: живёт в shared, чтобы REGISTRY-колонки IAM-ресурсов (shared)
-// резолвились в любом app'е (только @shared-зависимости).
+// Прежде разметка собиралась здесь руками, и это была ВТОРАЯ реализация «иконка +
+// имя + ссылка». Два места об одном предмете разошлись предсказуемо: копирование
+// значения появилось у общей ссылки и не появилось здесь (#446).
+//
+// Живёт в shared (app-agnostic), чтобы колонки реестра для ресурсов IAM
+// резолвились в любом приложении.
 
-import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { ResourceLink } from "@shared/components/molecules/ResourceLink";
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 
 interface Props {
-  /** plural-ключ IAM-ресурса в REGISTRY: accounts/projects/users/service-accounts/roles/groups. */
+  /** plural-ключ ресурса IAM в реестре: accounts/projects/users/service-accounts/roles/groups. */
   specId: string;
   refId: string | null | undefined;
-  /** поле для отображаемого имени (default «name»; для user — «email»). */
+  /** поле отображаемого имени (по умолчанию «name»; у пользователя — «email»). */
   nameField?: string;
   maxChars?: number;
 }
@@ -35,20 +38,25 @@ export function IamRefLink({ specId, refId, nameField = "name", maxChars = 36 }:
     retry: false,
   });
 
-  if (!refId) return <span className="text-muted-foreground">—</span>;
-  if (!spec) return <span className="text-muted-foreground">{refId}</span>;
+  // Тип, которого нет в реестре, адресовать нечем: маршрут карточки строится из
+  // его записи. Показываем идентификатор без ссылки — обещать переход, которого
+  // нет, хуже, чем не обещать ничего.
+  if (!spec) return <span className="text-muted-foreground">{refId || "—"}</span>;
 
   const resolved = data ? getByPath<string>(data, nameField) || getByPath<string>(data, "name") : undefined;
-  const fullName = resolved || refId;
-  const display = fullName.length > maxChars ? fullName.slice(0, maxChars) + "…" : fullName;
-  const href = `/iam/${spec.route}/${refId}`;
 
   return (
-    <Link to={href} onClick={(e) => e.stopPropagation()} title={fullName} className="text-primary hover:underline">
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <ResourceIcon specId={specId} />
-        {display}
-      </span>
-    </Link>
+    <ResourceLink
+      specId={specId}
+      id={refId}
+      name={resolved ?? ""}
+      // Адрес задаётся явно: ресурсы IAM смонтированы под `/iam/<route>` и
+      // project-scoped пути не имеют — общая функция отдала бы для них null.
+      href={refId ? `/iam/${spec.route}/${refId}` : null}
+      icon
+      copy
+      maxChars={maxChars}
+      plain
+    />
   );
 }

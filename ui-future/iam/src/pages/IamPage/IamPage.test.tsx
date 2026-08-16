@@ -164,9 +164,8 @@ jest.unstable_mockModule("@/pages/iam/RolesPage", () => ({
   RolesPage: () => <div>Roles</div>,
 }));
 
-jest.unstable_mockModule("@/pages/iam/UsersPage", () => ({
+jest.unstable_mockModule("@/pages/iam/InviteUserPage", () => ({
   InviteUserPage: () => <div>Invite user</div>,
-  UsersPage: () => <div>Users</div>,
 }));
 
 // IamPage's route table also mounts these dedicated list shells / pages and the

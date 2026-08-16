@@ -9,7 +9,7 @@
 // stored as if it were an IP. Both names are declared fields, so the edge accepts
 // the body — strict parsing would not catch it either.
 
-import { draftsFromRoutes, routesFromDrafts } from "./RoutesPanel";
+import { draftsFromRoutes, routeGaps, routesFromDrafts } from "./RoutesPanel";
 
 describe("routes drafts round-trip", () => {
   it("keeps a gateway route on its own arm through load and save", () => {
@@ -31,14 +31,82 @@ describe("routes drafts round-trip", () => {
     }
   });
 
-  it("drops a row with a destination but no next hop, and one with neither", () => {
+  // Здесь стояла проба «drops a row with a destination but no next hop, and one
+  // with neither» — она ЗАКРЕПЛЯЛА молчаливое удаление. Сохранение заменяет весь
+  // список, поэтому отброшенная перед отправкой строка не «не сохраняется», а
+  // УДАЛЯЕТСЯ: оператор, стерев адрес существующего маршрута, чтобы набрать его
+  // заново, и нажав «Сохранить», терял маршрут целиком и получал сообщение об
+  // успехе.
+  //
+  // При этом край такую строку принимать и не собирался: он отвечает
+  // `InvalidArgument` с указанием поля и текстом
+  // `static_routes[i]: next_hop_address or gateway_id is required`
+  // (services/vpc/internal/apps/kacho/api/routetable/helpers.go). То есть отбор
+  // не «оберегал» вызов от отказа — он подменял точный отказ края потерей данных.
+  it("неполную строку не выбрасывает, а называет — строкой и тем, чего в ней нет", () => {
+    const drafts = [
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "  " },
+      { destination_prefix: "  ", next_hop_address: "10.0.0.1" },
+      { destination_prefix: " 10.1.0.0/16 ", next_hop_address: " 10.1.0.1 " },
+      { destination_prefix: "  ", next_hop_address: "  " },
+    ];
+
+    expect(routeGaps(drafts)).toEqual([
+      { row: 1, missing: ["следующий узел"] },
+      { row: 2, missing: ["префикс назначения"] },
+      { row: 4, missing: ["префикс назначения", "следующий узел"] },
+    ]);
+  });
+
+  it("полный набор строк претензий не вызывает — положительный контроль", () => {
+    expect(
+      routeGaps([
+        { destination_prefix: "10.1.0.0/16", next_hop_address: "10.1.0.1" },
+        { destination_prefix: "0.0.0.0/0", next_hop_address: "", gateway_id: "gtw-1" },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("строка со шлюзом узел ИМЕЕТ — пустое поле адреса претензией не является", () => {
+    expect(routeGaps([{ destination_prefix: "0.0.0.0/0", next_hop_address: "", gateway_id: "gtw-1" }])).toEqual([]);
+  });
+
+  it("сохранение уносит все строки, включая неполные, — отбора перед отправкой нет", () => {
     expect(
       routesFromDrafts([
-        { destination_prefix: "10.0.0.0/8", next_hop_address: "  " },
-        { destination_prefix: "  ", next_hop_address: "10.0.0.1" },
         { destination_prefix: " 10.1.0.0/16 ", next_hop_address: " 10.1.0.1 " },
+        { destination_prefix: "10.0.0.0/8", next_hop_address: "" },
       ]),
-    ).toEqual([{ destination_prefix: "10.1.0.0/16", next_hop_address: "10.1.0.1" }]);
+    ).toEqual([{ destination_prefix: "10.1.0.0/16", next_hop_address: "10.1.0.1" }, { destination_prefix: "10.0.0.0/8" }]);
+  });
+
+  it("метки строки переживают круг «загрузили → сохранили»", () => {
+    const fromServer = [
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1", labels: { env: "prod" } },
+      { destination_prefix: "0.0.0.0/0", gateway_id: "gtw-1", labels: { env: "dev" } },
+    ];
+
+    expect(routesFromDrafts(draftsFromRoutes(fromServer))).toEqual(fromServer);
+  });
+
+  it("правка одной строки не трогает метки соседней", () => {
+    const drafts = draftsFromRoutes([
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1", labels: { env: "prod" } },
+      { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2", labels: { env: "dev" } },
+    ]);
+    drafts[0].next_hop_address = "10.0.0.9";
+
+    expect(routesFromDrafts(drafts)[1]).toEqual({
+      destination_prefix: "192.168.0.0/16",
+      next_hop_address: "10.0.0.2",
+      labels: { env: "dev" },
+    });
+  });
+
+  it("маршрут без меток их и не отращивает — пустая карта на край не уезжает", () => {
+    expect(routesFromDrafts(draftsFromRoutes([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]))).toEqual(
+      [{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }],
+    );
   });
 
   it("an address typed over a gateway row replaces the arm, deliberately", () => {

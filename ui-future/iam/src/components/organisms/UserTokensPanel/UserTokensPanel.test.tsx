@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Operation } from "@shared/api/types";
 import type { UserTokensPanel as UserTokensPanelExport } from "./UserTokensPanel";
+import { antdDouble } from "@/test/antd-double";
 
 interface MutationOpts {
   method: string;
@@ -18,7 +19,7 @@ const mutations: MutationOpts[] = [];
 
 // Свой дублёр antd — общий бросает на `rowKey="id"` и не подставляет значение
 // ячейки; разбор — в шапке @/test/antd-double.
-jest.unstable_mockModule("antd", async () => (await import("@/test/antd-double")).antdDouble);
+jest.unstable_mockModule("antd", () => antdDouble);
 
 jest.unstable_mockModule("@shared/api/iam", () => ({
   iamApi: { listUserTokens },

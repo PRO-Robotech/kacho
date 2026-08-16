@@ -77,7 +77,7 @@ describe("HostBreadcrumb — крошка на живых адресах", () =>
     // остальные два — навигацией system-remote'а.
     for (const [pathname, label] of [
       ["/system/search", "Поиск"],
-      ["/system/cluster/admins", "Cluster admins"],
+      ["/system/cluster/admins", "Администраторы кластера"],
       ["/system/tokens/user-tokens", "Токены и ключи"],
     ] as const) {
       const view = at(pathname);

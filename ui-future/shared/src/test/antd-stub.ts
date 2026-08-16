@@ -30,6 +30,8 @@ interface MockColumn {
   /** Ширина. Настоящая таблица ИГНОРИРУЕТ `fixed` без неё. */
   width?: number | string;
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
+  /** Сравнение для сортировки. Настоящая таблица рисует стрелку ровно при нём. */
+  sorter?: unknown;
 }
 
 interface SelectOption {
@@ -144,6 +146,11 @@ interface MockTableProps {
   rowKey?: string | ((row: unknown) => string);
   onRow?: (row: unknown) => Record<string, unknown>;
   locale?: { emptyText?: React.ReactNode };
+  /** Настоящая таблица рисует столбец флажков ровно при этом свойстве. */
+  rowSelection?: {
+    selectedRowKeys?: (string | number)[];
+    onChange?: (keys: (string | number)[], rows: unknown[]) => void;
+  };
 }
 
 /** Значение клетки: настоящая таблица достаёт его по `dataIndex` и отдаёт в `render`. */
@@ -207,10 +214,36 @@ export function antdStub(): Record<string, unknown> {
       ? React.createElement("span", null, prefix, React.createElement("input", props), suffix)
       : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
+  // Настоящее ЧИСЛОВОЕ поле зовёт `onChange` с ЧИСЛОМ (или `null` на пустоте), а
+  // не с событием. Заменитель, отдававший событие, делал недостижимым весь путь
+  // «ввёл число → отправили»: вызывающий, разбирающий число, получал объект,
+  // сохранял пустоту и молча не отправлял ничего. Дублёр обязан выполнять
+  // контракт настоящего, иначе он прячет ровно то, ради чего его подставляют.
+  const InputNumber = ({ onChange, value, ...props }: AnyProps & { onChange?: (v: number | null) => void }) =>
+    React.createElement("input", {
+      type: "number",
+      value: value === undefined || value === null ? "" : (value as number),
+      onChange: (e: { target: { value: string } }) => {
+        const raw = e.target.value;
+        onChange?.(raw.trim() === "" || Number.isNaN(Number(raw)) ? null : Number(raw));
+      },
+      ...props,
+    });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
-  const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale }: MockTableProps) =>
-    React.createElement(
+  const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale, rowSelection }: MockTableProps) => {
+    // Столбец флажков — наблюдаемое следствие `rowSelection`, и он ОБЯЗАН быть
+    // настоящим флажком: проба о групповом действии иначе утверждала бы о
+    // разметке, которой у заменителя нет, и зеленела бы при любом поведении.
+    const selected = new Set((rowSelection?.selectedRowKeys ?? []).map(String));
+    const toggle = (key: string) => {
+      const next = new Set(selected);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      const keys = [...next];
+      rowSelection?.onChange?.(keys, dataSource.filter((r, i) => next.has(String(keyOf(r, rowKey, i)))));
+    };
+    return React.createElement(
       "table",
       null,
       React.createElement(
@@ -219,7 +252,22 @@ export function antdStub(): Record<string, unknown> {
         React.createElement(
           "tr",
           null,
-          columns.map((c, i) => React.createElement("th", { key: i, "data-fixed": c.fixed, "data-width": c.width }, c.title)),
+          rowSelection ? React.createElement("th", { key: "__sel__" }) : null,
+          columns.map((c, i) =>
+            React.createElement(
+              "th",
+              {
+                key: i,
+                "data-fixed": c.fixed,
+                "data-width": c.width,
+                // Стрелка сортировки — наблюдаемое следствие `sorter`. Без неё
+                // проба о сортировке утверждала бы о разметке, которой у
+                // заменителя нет вовсе, и зеленела бы при любом поведении.
+                "data-sortable": c.sorter ? "yes" : undefined,
+              },
+              c.title,
+            ),
+          ),
         ),
       ),
       React.createElement(
@@ -235,6 +283,17 @@ export function antdStub(): Record<string, unknown> {
               React.createElement(
                 "tr",
                 { key: keyOf(row, rowKey, ri), ...(onRow ? onRow(row) : {}) },
+                rowSelection
+                  ? React.createElement(
+                      "td",
+                      { key: "__sel__" },
+                      React.createElement("input", {
+                        type: "checkbox",
+                        checked: selected.has(String(keyOf(row, rowKey, ri))),
+                        onChange: () => toggle(String(keyOf(row, rowKey, ri))),
+                      }),
+                    )
+                  : null,
                 columns.map((c, ci) => {
                   const value = cellValue(row, c.dataIndex);
                   return React.createElement(
@@ -247,6 +306,7 @@ export function antdStub(): Record<string, unknown> {
             ),
       ),
     );
+  };
   // Настоящий `Select` рисует ВАРИАНТЫ и отдаёт в `onChange` выбранное
   // ЗНАЧЕНИЕ (не DOM-событие). Заменитель-`<select>` с `options` в атрибуте не
   // показывал ни одного варианта и передавал событие: состав списка был
@@ -450,7 +510,7 @@ export function antdStub(): Record<string, unknown> {
     Form,
     Image: Component,
     Input: Object.assign(Input, { TextArea: Textarea, Search }),
-    InputNumber: Input,
+    InputNumber,
     Layout,
     List: Component,
     // Настоящее меню рисует свои пункты. На карточке ресурса это рейл вкладок:
