@@ -176,6 +176,16 @@ func TestInterceptor_HideExistenceMapsToNotFound(t *testing.T) {
 	}
 }
 
+// TestInterceptor_FailClosedOnCheckError — Check-ошибка отвергает запрос
+// (fail-closed) и делает это кодом НЕДОСТУПНОСТИ.
+//
+// Ожидание сменилось с `PermissionDenied` на `Unavailable` вместе с задачей #497,
+// и утверждение при этом не ослаблено: fail-closed проверяется прямо (обработчик
+// не вызван, ошибка есть). Менялось не то, отвергнут ли запрос, а то, что
+// вызывающему СКАЗАНО: «тебе нельзя» вместо «я не смог спросить». Первое означает
+// «повторять бессмысленно» и превращало перебой модели прав длиной в доли секунды
+// в терминальный отказ операции у потребителя. Полосы целиком — в
+// decision_lane_codes_test.go.
 func TestInterceptor_FailClosedOnCheckError(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, errors.New("connection refused")
@@ -186,12 +196,15 @@ func TestInterceptor_FailClosedOnCheckError(t *testing.T) {
 		Client: stub,
 	})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
-	_, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get", &fakeReq{id: "enp_x"})
+	resp, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get", &fakeReq{id: "enp_x"})
 	if err == nil {
-		t.Fatalf("expected fail-closed deny")
+		t.Fatalf("expected fail-closed refusal, got resp=%v", resp)
 	}
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied (fail-closed), got %v", err)
+	if resp != nil {
+		t.Fatalf("fail-closed: handler must not have produced a response, got %v", resp)
+	}
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("expected Unavailable (fail-closed, retryable), got %v", err)
 	}
 }
 
@@ -576,7 +589,12 @@ func TestInterceptorStream_DeniedOnNegativeCheck(t *testing.T) {
 }
 
 // TestInterceptorStream_UnavailableFailClosed — Check-error (не NoPath) →
-// PermissionDenied на stream'е (DecisionUnavailable arm, fail-closed).
+// Unavailable на stream'е (DecisionUnavailable arm, fail-closed).
+//
+// Стрим обязан отвечать тем же кодом, что unary: у обоих один источник маппинга
+// (`decisionError`), и расхождение означало бы, что полоса зависит от формы RPC, а
+// не от того, что произошло. Ожидание сменилось с `PermissionDenied` вместе с
+// задачей #497 — см. TestInterceptor_FailClosedOnCheckError.
 func TestInterceptorStream_UnavailableFailClosed(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, errors.New("connection refused")
@@ -587,8 +605,8 @@ func TestInterceptorStream_UnavailableFailClosed(t *testing.T) {
 	if called {
 		t.Fatalf("handler must NOT run when Check unavailable")
 	}
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied (fail-closed), got %v", err)
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("expected Unavailable (fail-closed, retryable), got %v", err)
 	}
 }
 
@@ -675,10 +693,14 @@ func TestInterceptor_NoPathPassthroughRunsHandler(t *testing.T) {
 	}
 }
 
-// TestInterceptor_NoPathBoundary_GenericErrorStillDenies — граница NoPath: ошибка
-// Check, НЕ являющаяся ErrNoPath (даже обёрнутая), обязана оставаться fail-closed
-// (Unavailable → PermissionDenied), чтобы passthrough не «расширился» молча.
-func TestInterceptor_NoPathBoundary_GenericErrorStillDenies(t *testing.T) {
+// TestInterceptor_NoPathBoundary_GenericErrorStillRefuses — граница NoPath: ошибка
+// Check, НЕ являющаяся ErrNoPath (даже обёрнутая), обязана оставаться fail-closed,
+// чтобы passthrough не «расширился» молча.
+//
+// Предмет пробы — ГРАНИЦА пропускающей ветки, а не конкретный код отказа: до #497
+// оба назывались `PermissionDenied`, теперь недоступность отвечает `Unavailable`.
+// Утверждается ровно то, ради чего проба написана: обработчик не запущен.
+func TestInterceptor_NoPathBoundary_GenericErrorStillRefuses(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, fmt.Errorf("wrapped: %w", errors.New("dial timeout"))
 	})
@@ -686,10 +708,13 @@ func TestInterceptor_NoPathBoundary_GenericErrorStillDenies(t *testing.T) {
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	resp, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get", &fakeReq{id: "enp_x"})
 	if err == nil {
-		t.Fatalf("expected fail-closed deny for a non-NoPath error, got resp=%v", resp)
+		t.Fatalf("expected fail-closed refusal for a non-NoPath error, got resp=%v", resp)
 	}
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("expected PermissionDenied (fail-closed), got %v", err)
+	if resp != nil {
+		t.Fatalf("passthrough leaked: handler produced %v on a non-NoPath Check error", resp)
+	}
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("expected Unavailable (fail-closed, retryable), got %v", err)
 	}
 }
 
