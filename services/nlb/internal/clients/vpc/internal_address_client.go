@@ -165,7 +165,6 @@ type InternalAddressClient interface {
 	//   - NotFound                                       → domain.ErrInvalidArg
 	//   - Unavailable/DeadlineExceeded                   → domain.ErrUnavailable
 	SetReference(ctx context.Context, addressID string, owner AddressOwner, owned bool) error
-
 }
 
 // OwnerKindLoadBalancer — значение `referrer_type`, под которым балансировщик
