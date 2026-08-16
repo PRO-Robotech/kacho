@@ -529,6 +529,11 @@ export function antdStub(): Record<string, unknown> {
     Row: Component,
     Segmented: Component,
     Select,
+    // `Skeleton` стоит на пути монтирования страниц реестра (заглушка загрузки
+    // в `RepositoryTagsPanel`). Приехал сюда вместе со сведением окружения проб
+    // (#418): у registry он был в СВОЁМ наборе, у общего — нет, и без него
+    // ESM-линкер валил бы суиту целиком до первого утверждения.
+    Skeleton: Component,
     Space,
     Spin: Component,
     Statistic: Component,

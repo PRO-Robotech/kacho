@@ -4,7 +4,7 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
-  setupFilesAfterEnv: ["<rootDir>/src/test/setup.ts"],
+  setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал

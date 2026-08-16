@@ -21,6 +21,35 @@ if (!("ResizeObserver" in globalThis)) {
   Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
 }
 
+// Ещё два пробела в API браузера, которых у jsdom нет, а у antd-организмов
+// (Dropdown, Tabs) — есть на пути монтирования. Без них render страницы падает
+// AggregateError'ом, в котором ИМЯ причины не печатается вовсе: список
+// вложенных ошибок React 19 в отчёт jest не выводит, и падение читается как
+// «страница не монтируется», хотя не хватает ровно этих заглушек.
+//
+// Приехало сюда из окружений nlb и registry при сведении (#418): они это несли,
+// общее окружение — нет. Заглушка НЕ подменяет поведение продукта — она даёт
+// среде ответ той же ФОРМЫ, какую даёт браузер: медиазапрос, который не совпал.
+// Проба, которой понадобится настоящий замер, обязана это назвать, а не молча
+// получить нули.
+//
+// Обёртки над `getComputedStyle` рядом НЕ переехало намеренно. В исходных копиях
+// она подменяла метод функцией, которая зовёт его же и ТЕРЯЕТ второй аргумент
+// (псевдоэлемент). Прогон всех семи модулей одинаково зелёный без неё, поэтому
+// сюда приехала бы не заглушка, а сужение чужого API без предмета.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 // @ant-design/icons мокается через moduleNameMapper (стаб ./antd-icons-stub.tsx
 // с реальными статическими named-экспортами), а НЕ Proxy-моком: Proxy их не
 // даёт, и под --experimental-vm-modules ESM-линкер не находит binding для
