@@ -5,13 +5,14 @@ package treecorpus_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // TestTreeExcludesIgnoredAndKeepsTracked — состав обязан краснеть на внесённом
@@ -32,9 +33,8 @@ func TestTreeExcludesIgnoredAndKeepsTracked(t *testing.T) {
 	root := t.TempDir()
 	mustRun := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(),
+		cmd := gitenv.Command(root, args...)
+		cmd.Env = append(cmd.Env,
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
 			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		if out, err := cmd.CombinedOutput(); err != nil {

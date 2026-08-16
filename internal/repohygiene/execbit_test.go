@@ -25,17 +25,17 @@ package repohygiene
 import (
 	"bufio"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // gitLsFiles возвращает `git ls-files -s`-строки: "<mode> <oid> <stage>\t<path>".
 func gitLsFiles(t *testing.T, root string) []string {
 	t.Helper()
-	cmd := exec.Command("git", "ls-files", "-s")
-	cmd.Dir = root
+	cmd := gitenv.Command(root, "ls-files", "-s")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Skipf("git ls-files недоступен (%v) — гейт пропущен", err)

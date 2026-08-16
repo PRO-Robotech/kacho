@@ -19,10 +19,11 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // syntheticTree раскладывает крошечное дерево и делает его ОТСЛЕЖИВАЕМЫМ:
@@ -44,8 +45,7 @@ func syntheticTree(t *testing.T, files map[string]string) string {
 		{"init", "-q"},
 		{"add", "-A"},
 	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
+		cmd := gitenv.Command(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
