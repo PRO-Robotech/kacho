@@ -2,7 +2,7 @@
 //
 // Polling 3 сек (через useResourceList).
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Checkbox, Input, Modal, Segmented, Select, Typography, Tag } from "antd";
