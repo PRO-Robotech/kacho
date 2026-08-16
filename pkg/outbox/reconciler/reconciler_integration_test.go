@@ -176,10 +176,11 @@ func markAllSent(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 func newReconciler(t *testing.T, pool *pgxpool.Pool, enum reconciler.ResourceEnumerator, reg reconciler.TupleRegistry, grace time.Duration) *reconciler.Reconciler {
 	t.Helper()
 	r, err := reconciler.New(pool, reconciler.Config{
-		Table:       tbl,
-		Channel:     "kacho_apps_fga_register_outbox",
-		MaxAttempts: 10,
-		GraceWindow: grace,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           tbl,
+		Channel:         "kacho_apps_fga_register_outbox",
+		MaxAttempts:     10,
+		GraceWindow:     grace,
 	}, reconciler.Adapters{Enumerator: enum, Registry: reg}, nil)
 	require.NoError(t, err)
 	return r

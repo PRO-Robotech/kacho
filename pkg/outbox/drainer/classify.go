@@ -124,8 +124,15 @@ func Classify(err error) Class {
 // kacho-iam never got the resource's mirror row, and every candidate query the
 // binding reconciler runs reads that mirror, so the resource has no owner tuple and
 // no materialized verbs until the row is delivered. Poisoning is therefore only
-// correct in a service that also re-drives poisoned rows periodically
-// (reconciler.RedrivePoisoned). With that backstop the outcome is a bounded pause:
+// correct in a service that also re-drives poisoned rows
+// (reconciler.RedrivePoisoned). WHEN it re-drives is the service's choice and the
+// two live shapes differ on purpose: the register-outboxes run the pass on a
+// timer, while iam's tuple outbox runs it on an EVENT — the authorization model
+// changing — because there the permanent cause is known and a blind repeat of a
+// refused write cannot pass. Either shape satisfies this comment; no backstop at
+// all does not, and that this is a property of the TREE rather than of anyone's
+// memory is held by internal/repohygiene TestEveryPoisoningOutboxHasARedrive.
+// With that backstop the outcome is a bounded pause:
 // a cause that was temporary succeeds on a later pass, and a cause that is genuinely
 // permanent keeps poisoning — visibly, via the poison counter — instead of silently
 // wedging every intent behind it. Without it, poisoning loses the intent for good.

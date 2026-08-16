@@ -39,9 +39,10 @@ const (
 // фатальна. Интервалы reconcile/metrics — разумные production-каденции по умолчанию.
 func startBackstop(ctx context.Context, pool *pgxpool.Pool, rec metrics.Recorder, logger *slog.Logger) error {
 	rc, err := reconciler.New(pool, reconciler.Config{
-		Table:       fgaRegisterOutboxTable,
-		Channel:     fgaRegisterOutboxChannel,
-		GraceWindow: time.Minute, // anti-race: отсрочка, чтобы re-Create успел записать свой intent первым
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           fgaRegisterOutboxTable,
+		Channel:         fgaRegisterOutboxChannel,
+		GraceWindow:     time.Minute, // anti-race: отсрочка, чтобы re-Create успел записать свой intent первым
 	}, reconciler.Adapters{
 		Enumerator: pgrepo.NewFGAReconcileAdapter(pool),
 		Registry:   pgrepo.NewFGAReconcileAdapter(pool),
