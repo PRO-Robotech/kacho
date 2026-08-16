@@ -44,6 +44,8 @@ func run() error {
 		}
 		path := filepath.Join("services", o.Service, "internal", "migrations", o.Migration)
 
+		// #nosec G304 -- путь собран из перечня владельцев в этом же модуле
+		// (`quota.RefusalOwners`), а не из ввода: снаружи сюда не приходит ничего.
 		if prev, rerr := os.ReadFile(path); rerr == nil && string(prev) == body {
 			unchanged++
 			continue
