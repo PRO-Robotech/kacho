@@ -12,6 +12,27 @@
       "table": "kacho_vpc.cloud_pool_selector",
       "kind": "retire",
       "expect_rows": 0
+    },
+    {
+      "version": 45,
+      "table": "kacho_vpc.dataplane_apply",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "What the data-plane executor reported back. Zero on every database, replayed or live, and for a stronger reason than 'we happen to be empty': the table's only writer was the executor, and the executor was never built. No migration in this chain INSERTs into it either (predicate: grep -icE 'INSERT[[:space:]]+INTO[[:space:]]+kacho_vpc\\.dataplane_apply' *.sql -> 0 across all 45 files). A table whose sole producer does not exist cannot hold a row somebody needs."
+    },
+    {
+      "version": 45,
+      "table": "kacho_vpc.dataplane_intent_horizon",
+      "kind": "retire",
+      "expect_rows": 1,
+      "note": "Exactly one row, and one is a structural fact rather than an observation: the table is keyed by a constant column (only_row boolean PRIMARY KEY) with CHECK (only_row), so a second row is unrepresentable, and 0032 INSERTs the single row at creation. Nothing in the chain deletes from it (predicate: grep -inE '(INSERT INTO|DELETE FROM|TRUNCATE)[[:space:]]+kacho_vpc\\.dataplane_intent_horizon' *.sql -> one hit, 0032:118, an INSERT). The row is a resume cursor (revision=0, 'no state'), not tenant data: it is derived bookkeeping for a stream that is being removed in this same change, so destroying it loses nothing a caller created."
+    },
+    {
+      "version": 45,
+      "table": "kacho_vpc.dataplane_intent",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "Zero is what the chain seeds, and it is derived from the backfill's source rather than assumed. 0032 fills this table from seven resource tables (networks, subnets, network_interfaces, security_groups, route_tables, gateways, addresses) and thereafter keeps it via AFTER-triggers on those same seven. No migration in the chain writes a row into any of them (predicate: for t in the seven; grep -icE \"INSERT[[:space:]]+INTO[[:space:]]+kacho_vpc\\.$t\\b\" *.sql -> 0 for all seven), so on a replayed chain the backfill selects from empty tables and no trigger ever fires. STATED PLAINLY, because expect_rows is an equality and this is its limit: on a tenant database this table is NOT empty — it holds one row per live resource plus a tombstone per deleted one. That number is unbounded and unknowable to any test container, which is why it cannot be written here; dropguard's own doc.go owns this gap and exports Observe so the same count can be put to a live database before a deploy applies the drop. Destroying those rows is admissible because the table is a derived projection: every non-tombstone row is reconstructible from the resource tables it was built from (0045's Down re-runs exactly that backfill), and its only reader was the executor stream, removed in this same change."
     }
   ]
 }

@@ -618,18 +618,7 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));",
-                  "const __as = pm.response.json().applyState;",
-                  "pm.test('ADR: applyState доехал до арендатора', () => {",
-                  "  pm.expect(__as, 'applyState отсутствует: платформа молчит о живом ресурсе').to.be.an('object');",
-                  "  pm.expect(__as.applied, 'applied').to.be.a('boolean');",
-                  "  pm.expect(__as.reason, 'reason').to.be.a('string');",
-                  "});",
-                  "pm.test('ADR: свежее намерение — в работе, без класса отказа', () => {",
-                  "  const as2 = pm.response.json().applyState;",
-                  "  pm.expect(as2.applied, 'applied').to.eql(false);",
-                  "  pm.expect(as2.reason, 'reason').to.eql('APPLY_FAILURE_REASON_UNSPECIFIED');",
-                  "});"
+                  "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));"
                 ]
               }
             }

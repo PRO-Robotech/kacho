@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
@@ -170,28 +171,61 @@ func TestHiddenTypesAreResourcesNotHierarchyAnchors(t *testing.T) {
 		"скрывающие типы — ресурсы домена, и только они")
 }
 
-// Срок жизни подписки объявлен ВЕЛИЧИНОЙ и превосходит срок одиночного вызова.
+// Срок жизни подписки объявлен ИЗЪЯТИЕМ: серверных потоков vpc не служит.
 //
-// Прежде здесь проверялось обратное — что ось объявлена изъятием «серверных
-// стримов не служу». Изъятие истекло от появления предмета: vpc служит поток
-// намерения датаплейна (`InternalDataplaneService/WatchIntent`). Само заявление
-// судит носитель по СЛУЖИМОМУ набору (О11); здесь проверяется, что объявлена
-// именно величина и что она больше границы обработки одиночного вызова —
-// подписка, накрытая сроком запроса, рвалась бы раз в этот срок, и клиент читал
-// бы это как сетевой сбой.
-func TestStreamBudgetIsAValueLongerThanTheRequestBudget(t *testing.T) {
+// Ось меняла форму дважды, и оба раза — от появления и исчезновения ОДНОГО
+// предмета. Изъятие стояло здесь изначально; истекло, когда завели поток
+// намерения исполнителю датаплейна; вернулось, когда весь шов сняли целиком
+// вместе с этим потоком (kacho#400) — исполнителя не существует.
+//
+// Проверяется ровно то, что делает изъятие честным: (а) величины НЕТ — иначе
+// дескриптор утверждал бы срок подписки при нулевом наборе подписок; (б) причина
+// НЕПУСТА — пустая причина объявлением не является, и конструктор её отвергает;
+// (в) служимый набор действительно не несёт серверных потоков — это и есть
+// предпосылка изъятия, и судится она набором, а не памятью автора (О11).
+//
+// Появится поток снова — предпосылка станет ложной, и проба покраснеет ЗДЕСЬ, а
+// не на подъёме стенда.
+func TestStreamBudgetIsExemptBecauseNoServerStreamIsServed(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
 	require.NoError(t, err)
 
-	budget, hasValue := desc.Spec().StreamBudget.Get()
-	require.True(t, hasValue, "у процесса есть служимый серверный стрим — величина обязана быть объявлена")
-	assert.Equal(t, dataplaneStreamLifetime, budget)
-	_, na := desc.Spec().StreamBudget.NotApplicableBecause()
-	assert.False(t, na, "ось объявлена изъятием при живом стриме — заявление ложно")
-	assert.Greater(t, budget, desc.Spec().HandlingBudget,
-		"срок подписки не больше срока одиночного вызова: подписка рвалась бы по границе запроса")
+	_, hasValue := desc.Spec().StreamBudget.Get()
+	assert.False(t, hasValue,
+		"величина при отсутствии служимых потоков — срок для подписки, которой нет")
+
+	because, na := desc.Spec().StreamBudget.NotApplicableBecause()
+	require.True(t, na, "ось обязана быть объявлена изъятием")
+	assert.NotEmpty(t, because, "изъятие без причины объявлением не является")
+
+	// Предпосылка изъятия — переписью по СЛУЖИМОМУ набору, а не утверждением о
+	// нём, и набор берётся у ТЕХ ЖЕ регистраторов, что поднимают процесс: своя
+	// копия перечня разошлась бы с боевой проводкой молча.
+	//
+	// «Ноль потоков» обязано быть отличимо от «ноль прочитанных дескрипторов»,
+	// поэтому перепись называет и число осмотренных методов.
+	svcs := emptyServices()
+	probe := grpc.NewServer()
+	registerPublicServices(probe, svcs, nil)
+	registerInternalServices(probe, svcs)
+
+	var streams, methods int
+	var streaming []string
+	for name, info := range probe.GetServiceInfo() {
+		for _, m := range info.Methods {
+			methods++
+			if m.IsServerStream || m.IsClientStream {
+				streams++
+				streaming = append(streaming, name+"/"+m.Name)
+			}
+		}
+	}
+	require.Positive(t, methods, "перепись прочла ноль методов — судить не о чем")
+	assert.Zero(t, streams,
+		"при объявленном изъятии служится потоков: %v. Заявление ложно — "+
+			"величину надо вернуть осознанно (осмотрено методов: %d)", streaming, methods)
 }
 
 // Проводка сужателя — ровно на тот метод, который каталог объявляет сужаемым.
