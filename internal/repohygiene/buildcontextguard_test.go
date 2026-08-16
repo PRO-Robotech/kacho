@@ -47,12 +47,13 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // dockerIgnorePatterns — исполняемые строки `.dockerignore` (без комментариев).
@@ -136,8 +137,7 @@ func TestBuildContextCarriesNothingOurPipelinesWrite(t *testing.T) {
 		}
 	}
 
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard")
-	cmd.Dir = root
+	cmd := gitenv.Command(root, "ls-files", "--others", "--ignored", "--exclude-standard")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files --others --ignored: %v — состав произведённых файлов "+

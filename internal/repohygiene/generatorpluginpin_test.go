@@ -47,13 +47,14 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // genPluginDoc — то немногое из buf.gen.yaml, что нужно этому гейту.
@@ -150,7 +151,7 @@ func checkGeneratorPluginPins(path, raw string, modulePkgs map[string]bool) ([]s
 func TestGeneratorPluginsArePinned(t *testing.T) {
 	root := repoRoot(t)
 
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "*buf.gen.yaml").Output()
+	out, err := gitenv.Command(root, "ls-files", "-z", "*buf.gen.yaml").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — без переписи «ноль находок» неотличимо от "+
 			"«ноль прочитанного»", err)

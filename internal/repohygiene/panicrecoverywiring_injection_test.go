@@ -11,10 +11,11 @@ package repohygiene
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // синтетическое общее звено — распознаётся по существу: возвращает
@@ -159,8 +160,7 @@ func synthTrack(t *testing.T, root string) {
 		{"init", "-q"},
 		{"add", "-A"},
 	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
+		cmd := gitenv.Command(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v в синтетическом дереве: %v\n%s", args, err, out)
 		}

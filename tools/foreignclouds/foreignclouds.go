@@ -62,11 +62,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // tokens are the provider and provider-product names. Each is matched
@@ -300,8 +301,7 @@ func (s ignoreSet) covers(rel string) bool {
 // is a silent one.
 func ignoredPaths(repoRoot string) ignoreSet {
 	set := ignoreSet{exact: map[string]bool{}}
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
-	cmd.Dir = repoRoot
+	cmd := gitenv.Command(repoRoot, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
 	out, err := cmd.Output()
 	if err != nil {
 		return set

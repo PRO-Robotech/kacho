@@ -26,7 +26,6 @@ package pythonprobes
 
 import (
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -36,6 +35,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // runner — прогонщик проб. Он же обязан быть тем, кого зовёт конвейер.
@@ -133,7 +134,7 @@ func runnerSteps(t *testing.T, root string) []string {
 // файла. Отслеживаемое множество — то же, что увидит CI на свежем checkout'е.
 func findProbeFiles(t *testing.T, root string) []string {
 	t.Helper()
-	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--", "services/")
+	cmd := gitenv.Command(root, "ls-files", "-z", "--", "services/")
 	raw, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-files сорвался: %v — предпосылка гейта не выполняется", err)

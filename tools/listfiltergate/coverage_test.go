@@ -38,12 +38,13 @@ package listfiltergate
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // repoRootForCoverage walks up from this file until it finds the repository root
@@ -80,8 +81,7 @@ func repoRootForCoverage(t *testing.T) string {
 // otherwise join or leave the census depending on whose worktree ran the test.
 func servicesFromGit(t *testing.T, root string) []string {
 	t.Helper()
-	cmd := exec.Command("git", "ls-tree", "--name-only", "-d", "HEAD", "services/")
-	cmd.Dir = root
+	cmd := gitenv.Command(root, "ls-tree", "--name-only", "-d", "HEAD", "services/")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("git ls-tree services/ failed: %v — the service census could not be taken, "+
@@ -107,9 +107,8 @@ func servicesFromGit(t *testing.T, root string) []string {
 // committed tree. This is the predicate under test, factored out so the positive
 // control below can exercise the SAME code path on an input it must reject.
 func hasAnalyser(root, svc string) bool {
-	cmd := exec.Command("git", "ls-tree", "--name-only", "HEAD",
+	cmd := gitenv.Command(root, "ls-tree", "--name-only", "HEAD",
 		"services/"+svc+"/tools/auditlistfilter/")
-	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
 		return false
@@ -334,10 +333,9 @@ func TestCoverage_PremiseEveryServiceHasAListingSurface(t *testing.T) {
 // answering it needs the service's Profile.
 func countListDeclarations(t *testing.T, root, svc string) int {
 	t.Helper()
-	cmd := exec.Command("git", "grep", "-c", "-E",
+	cmd := gitenv.Command(root, "grep", "-c", "-E",
 		`^func \([a-zA-Z_][a-zA-Z0-9_]* \*[A-Za-z0-9_]+\) List[A-Za-z0-9_]*\(`,
 		"HEAD", "--", "services/"+svc+"/internal/")
-	cmd.Dir = root
 	out, _ := cmd.Output() // exit 1 simply means "no matches"
 	total := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {

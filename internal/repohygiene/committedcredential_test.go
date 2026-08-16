@@ -101,13 +101,14 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // credentialKeyVocabulary — имена, по которым узнаётся СЛОТ креда в файле
@@ -658,8 +659,7 @@ var repoCredentialScan = sync.OnceValues(func() (credentialScan, error) {
 	if err != nil {
 		return credentialScan{}, err
 	}
-	cmd := exec.Command("git", "ls-files", "-z")
-	cmd.Dir = root
+	cmd := gitenv.Command(root, "ls-files", "-z")
 	out, err := cmd.Output()
 	if err != nil {
 		return credentialScan{}, fmt.Errorf("git ls-files в %s: %w — гейт не может назвать "+
@@ -1003,9 +1003,8 @@ func TestCommittedCredentialGateCutsBothWays(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(),
+		cmd := gitenv.Command(root, args...)
+		cmd.Env = append(cmd.Env,
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
 			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		if out, err := cmd.CombinedOutput(); err != nil {
