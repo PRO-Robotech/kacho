@@ -653,15 +653,11 @@ type fakeInternalAddressClient struct {
 	allocInternalCalls   []vpcclient.AllocateInternalIPRequest
 	allocExternalV6Calls []vpcclient.AllocateExternalIPRequest
 	allocInternalV6Calls []vpcclient.AllocateInternalIPRequest
-	freeCalls            []string
-	clearCalls           []string
 	setRefCalls          []setRefCall
 	allocExternalResult  *vpcclient.AllocateResponse
 	allocInternalResult  *vpcclient.AllocateResponse
 	allocErr             error
 	setRefErr            error
-	freeErr              error
-	clearErr             error
 	nextAllocID          string
 	nextAllocValue       string
 	nextAllocV6ID        string
@@ -735,23 +731,11 @@ func (c *fakeInternalAddressClient) AllocateInternalIPv6(_ context.Context, req 
 		Value:     c.nextAllocV6Value,
 	}, nil
 }
-func (c *fakeInternalAddressClient) FreeIP(_ context.Context, id string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.freeCalls = append(c.freeCalls, id)
-	return c.freeErr
-}
 func (c *fakeInternalAddressClient) SetReference(_ context.Context, id string, owner vpcclient.AddressOwner, _ bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.setRefCalls = append(c.setRefCalls, setRefCall{addressID: id, owner: owner})
 	return c.setRefErr
-}
-func (c *fakeInternalAddressClient) ClearReference(_ context.Context, id string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.clearCalls = append(c.clearCalls, id)
-	return c.clearErr
 }
 func (c *fakeInternalAddressClient) AttachExisting(_ context.Context, req vpcclient.AttachExistingRequest) (*vpcclient.AllocateResponse, error) {
 	c.mu.Lock()

@@ -44,9 +44,16 @@ function textOf(value: ReactNode): string {
   );
 }
 
+// Подпись строки — ReactNode (в неё кладут ⓘ-подсказку), поэтому сверяется
+// ПОКАЗАННЫЙ текст: `String(<узел>)` дал бы «[object Object]» для любой
+// подписи, и поиск находил бы первую попавшуюся строку.
+function labelText(i: DescItem): string {
+  return textOf(i.label);
+}
+
 function find(items: DescItem[], re: RegExp): DescItem {
-  const hit = items.find((i) => re.test(i.label));
-  if (!hit) throw new Error(`строки ${re} нет среди: ${items.map((i) => i.label).join(" | ")}`);
+  const hit = items.find((i) => re.test(labelText(i)));
+  if (!hit) throw new Error(`строки ${re} нет среди: ${items.map(labelText).join(" | ")}`);
   return hit;
 }
 
@@ -110,7 +117,7 @@ describe("обзор балансировщика показывает объя�
       placement_type: "ZONAL",
       cross_zone_enabled: false,
     });
-    expect(items.find((i) => /зонами/i.test(i.label))).toBeUndefined();
+    expect(items.find((i) => /зонами/i.test(labelText(i)))).toBeUndefined();
   });
 
   it("группы безопасности VIP перечислены поимённо", () => {
@@ -127,7 +134,7 @@ describe("обзор балансировщика показывает объя�
       placement_type: "",
       security_group_ids: [],
     });
-    expect(items.find((i) => /групп/i.test(i.label))).toBeUndefined();
+    expect(items.find((i) => /групп/i.test(labelText(i)))).toBeUndefined();
   });
 });
 

@@ -56,7 +56,7 @@ const FIELD_DESCRIPTION: FormField = {
 
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -122,7 +122,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
-      { label: "Тома (block storage)", href: "#" },
+      { label: "Тома (блочное хранение)", href: "#" },
       { label: "Снимки томов", href: "#" },
     ],
     columns: [
@@ -214,7 +214,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         default: "empty",
         options: [
           { value: "empty", label: "Пустой том — без данных" },
-          { value: "snapshot", label: "Из снимка (Snapshot)" },
+          { value: "snapshot", label: "Из снимка" },
           { value: "image", label: "Из образа (Image) — загрузочный том" },
         ],
         description:
@@ -308,7 +308,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     emptyState: {
       title: "Создайте первый том",
       body: "Том — это персистентный блочный диск. ОС инстанса доставляется из OCI-образа, а данные живут на подключённых томах. После создания том можно подключить к виртуальной машине в разделе Compute.",
-      docs: ["Тома (block storage)"],
+      docs: ["Тома (блочное хранение)"],
     },
   },
 
@@ -407,8 +407,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     docs: [
-      { label: "Образы (boot-image)", href: "#" },
-      { label: "Тома (block storage)", href: "#" },
+      { label: "Образы (загрузочные)", href: "#" },
+      { label: "Тома (блочное хранение)", href: "#" },
     ],
     columns: [
       {
@@ -466,8 +466,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         createOnly: true,
         default: "snapshot",
         options: [
-          { value: "snapshot", label: "Из снимка (Snapshot)" },
-          { value: "volume", label: "Из тома (Volume)" },
+          { value: "snapshot", label: "Из снимка" },
+          { value: "volume", label: "Из тома" },
         ],
         description: "Образ создаётся РОВНО из одного источника: снимок ИЛИ том (взаимоисключающе).",
       },
@@ -530,7 +530,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     emptyState: {
       title: "Создайте первый образ",
       body: "Образ — это boot-seed для тома: том с указанным образом материализуется из него. Образ REGIONAL (anycast) и создаётся из снимка или тома проекта.",
-      docs: ["Образы (boot-image)"],
+      docs: ["Образы (загрузочные)"],
     },
   },
 

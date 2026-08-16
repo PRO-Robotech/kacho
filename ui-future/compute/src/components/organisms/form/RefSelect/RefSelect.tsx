@@ -87,7 +87,7 @@ export function RefSelect({
     staleTime: 30_000,
   });
 
-  if (!spec) return <div className="text-xs text-rose-600">Unknown ref: {refResource}</div>;
+  if (!spec) return <div className="text-xs text-rose-600">Неизвестная ссылка: {refResource}</div>;
 
   const candidates = (data?.[spec.payloadKey] ?? []).filter((it) =>
     refFilter ? refFilter(it as Record<string, unknown>) : true,

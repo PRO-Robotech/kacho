@@ -61,18 +61,24 @@ func (s *fanoutCompensationStub) AttachExisting(_ context.Context, _ vpcclient.A
 	return nil, status.Error(codes.Unavailable, "AttachExisting not expected in fan-out compensation test")
 }
 
-func (s *fanoutCompensationStub) FreeIP(_ context.Context, addressID string) error {
+// ReleaseLease — ОДИН глагол вместо прежней пары. Дублёр отвергает
+// незаполненное предъявление владения так же, как боевой владелец.
+func (s *fanoutCompensationStub) ReleaseLease(
+	_ context.Context, req vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
+	switch {
+	case req.ProjectID == "":
+		return "", status.Error(codes.InvalidArgument, "project_id: required")
+	case req.AddressID == "":
+		return "", status.Error(codes.InvalidArgument, "address_id: required")
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", status.Error(codes.InvalidArgument, "owner: required")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.freeIPs = append(s.freeIPs, addressID)
-	return nil
-}
-
-func (s *fanoutCompensationStub) ClearReference(_ context.Context, addressID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.clears = append(s.clears, addressID)
-	return nil
+	s.clears = append(s.clears, req.AddressID)
+	s.freeIPs = append(s.freeIPs, req.AddressID)
+	return vpcclient.LeaseReleased, nil
 }
 
 func (s *fanoutCompensationStub) freedIPs() []string {
@@ -126,10 +132,10 @@ func TestIntegration_CreateLoadBalancer_FanoutCompensationOnV6Fail(t *testing.T)
 	require.Equal(t, int32(codes.FailedPrecondition), final.Error.GetCode())
 	require.Equal(t, "could not allocate load balancer address", final.Error.GetMessage())
 
-	// v4 уже persisted (owned auto) → освобождён two-step compensation'ом:
-	// ClearReference(v4) → FreeIP(v4); v6 не аллоцировался → не освобождается.
+	// v4 уже persisted (owned auto) → аренда снята компенсацией ОДНИМ глаголом;
+	// v6 не аллоцировался → не освобождается.
 	require.Equal(t, []string{"adr00000000000FANV4X"}, stub.freedIPs(), "v4 freed by compensation")
-	require.Equal(t, []string{"adr00000000000FANV4X"}, stub.clearedRefs(), "owned v4 ref cleared before free (two-step)")
+	require.Equal(t, []string{"adr00000000000FANV4X"}, stub.clearedRefs(), "аренда v4 снята одним глаголом владельца")
 
 	// Durable-handle снят — реальная строка удалена; LB не остаётся с половиной VIP.
 	var n int

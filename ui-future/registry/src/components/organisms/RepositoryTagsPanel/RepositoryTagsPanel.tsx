@@ -212,12 +212,12 @@ export const RepositoryTagsPanel: FC<{
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                     <HddOutlined style={{ fontSize: 12 }} /> {size}
                   </span>
-                  <Tooltip title="Запушен (время docker push)">
+                  <Tooltip title="Загружен (docker push)">
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                       <ClockCircleOutlined style={{ fontSize: 12 }} /> {created ? formatDateTime(created) : "—"}
                     </span>
                   </Tooltip>
-                  <Tooltip title="Последний pull (docker pull)">
+                  <Tooltip title="Последнее скачивание (docker pull)">
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                       <DownloadOutlined style={{ fontSize: 12 }} /> {lastPull}
                     </span>
@@ -265,7 +265,7 @@ export const RepositoryTagsPanel: FC<{
                       </Tooltip>
                     )}
                     {downloadCount !== null && (
-                      <Tooltip title="Число pull'ов">
+                      <Tooltip title="Число скачиваний">
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                           <DownloadOutlined style={{ fontSize: 11 }} /> {downloadCount}
                         </span>

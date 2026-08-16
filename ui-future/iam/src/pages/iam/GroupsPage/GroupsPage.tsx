@@ -34,7 +34,7 @@ export function GroupsPage() {
         disabled={!accountId}
         onClick={() => navigate("/iam/groups/create")}
       >
-        Создать Group
+        Создать группу
       </Button>
     ),
     [accountId, navigate],
@@ -98,7 +98,7 @@ export function GroupsPage() {
             onClick={() => navigate(`/iam/groups/${row.id}/edit`)}
           />
           <Popconfirm
-            title="Удалить Group?"
+            title="Удалить группу?"
             description={`Удалить «${row.name}»?`}
             okText="Удалить"
             okButtonProps={{ danger: true }}
@@ -115,7 +115,7 @@ export function GroupsPage() {
   return (
     <IamListShell specId="groups" title="Группы" count={groups.length}>
       {!accountId ? (
-        <Typography.Text type="secondary">Выберите Account, чтобы увидеть его Groups.</Typography.Text>
+        <Typography.Text type="secondary">Выберите аккаунт, чтобы увидеть его группы.</Typography.Text>
       ) : (
         <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <Table<Group>
@@ -142,7 +142,7 @@ export function GroupsPage() {
             expandable={{
               expandedRowRender: (row) => <GroupMembersPanel group={row} accountId={accountId} />,
             }}
-            locale={{ emptyText: "Group'ов нет. Создайте первую." }}
+            locale={{ emptyText: "Групп нет. Создайте первую." }}
           />
         </div>
       )}
@@ -164,7 +164,7 @@ export function GroupCreatePage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Groups</Typography.Text>
+            <Typography.Text type="secondary">Группы</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>
@@ -185,7 +185,7 @@ export function GroupCreatePage() {
   });
 
   return (
-    <FormShell specId="groups" mode="create" singular="Group">
+    <FormShell specId="groups" mode="create" singular="Группа">
       <Form
         form={form}
         layout="horizontal"
@@ -258,7 +258,7 @@ export function GroupEditPage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Groups</Typography.Text>
+            <Typography.Text type="secondary">Группы</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Редактирование</Typography.Text>
@@ -276,7 +276,7 @@ export function GroupEditPage() {
   });
 
   return (
-    <FormShell specId="groups" mode="edit" singular="Group">
+    <FormShell specId="groups" mode="edit" singular="Группа">
       <Form
         form={form}
         layout="horizontal"

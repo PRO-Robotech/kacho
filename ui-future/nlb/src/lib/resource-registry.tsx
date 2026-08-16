@@ -80,7 +80,7 @@ const FIELD_DESCRIPTION: FormField = {
 
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -338,12 +338,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "session_affinity",
-        label: "Session affinity",
+        label: "Привязка сессий",
         type: "enum",
         default: "FIVE_TUPLE",
         options: [
-          { value: "FIVE_TUPLE", label: "5-tuple (src ip+port, dst ip+port, proto)" },
-          { value: "CLIENT_IP_ONLY", label: "Client IP only (src ip)" },
+          { value: "FIVE_TUPLE", label: "По пяти полям (src ip+port, dst ip+port, proto)" },
+          { value: "CLIENT_IP_ONLY", label: "Только по адресу клиента" },
         ],
         description:
           "Привязка соединений к target: FIVE_TUPLE — по 5-tuple, CLIENT_IP_ONLY — только по IP клиента. Control-plane намерение (распределение трафика — data-plane).",
@@ -444,7 +444,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     accusative: "обработчик",
     plural: ENTITIES.listeners.plural,
     docs: [
-      { label: "Обработчики (Listeners)", href: "#" },
+      { label: "Обработчики", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     serviceTitle: SERVICES.nlb.title,
@@ -511,7 +511,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "default_target_group_id",
-        label: "Target group по умолчанию",
+        label: "Целевая группа по умолчанию",
         type: "ref",
         refResource: "target-groups",
         refProjectScoped: true,
@@ -545,7 +545,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     accusative: "целевую группу",
     plural: ENTITIES["target-groups"].plural,
     docs: [
-      { label: "Целевые группы (Target Groups)", href: "#" },
+      { label: "Целевые группы", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     genitive: "Целевой группы",
@@ -601,7 +601,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // int-секундное имя deregistration_delay_seconds — reserved и на Create,
         // и на Update. Форма редактирует число, sanitize/hydrate переводят.
         name: "deregistration_delay",
-        label: "Drain timeout (с)",
+        label: "Время вывода из-под нагрузки (с)",
         type: "int",
         required: false,
         default: 300,
@@ -638,7 +638,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "health_check.unhealthy_threshold",
-        label: "HC: failure threshold",
+        label: "Порог отказа проверки",
         type: "int",
         required: true,
         default: 2,
@@ -648,7 +648,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "health_check.healthy_threshold",
-        label: "HC: success threshold",
+        label: "Порог успеха проверки",
         type: "int",
         required: true,
         default: 2,

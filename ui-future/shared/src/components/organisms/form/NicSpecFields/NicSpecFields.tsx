@@ -14,7 +14,7 @@
 //      NAT). «Автоматически» → one_to_one_nat_spec = {ip_version:"IPV4"}.
 //      «Список» → Select внешних Address-ресурсов + «+ Создать адрес…»
 //      (kind=external); выбор пишет one_to_one_nat_spec = {address:<IP>}.
-//   3. (advanced) toggle «Использовать существующий NetworkInterface» → ref на
+//   3. (advanced) toggle «Использовать существующий сетевой интерфейс» → ref на
 //      network-interfaces; если задан — sanitize отдаёт только nic_id.
 //
 // Все «сырые» поля (`subnet_id`, `primary_v4_address_spec.address`,
@@ -212,7 +212,7 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
           <Switch size="small" checked={useExisting} onChange={onUseExistingToggle} />
-          <span className="text-sm">Использовать существующий NetworkInterface</span>
+          <span className="text-sm">Использовать существующий сетевой интерфейс</span>
         </div>
         {useExisting && (
           <RefSelect
@@ -281,7 +281,7 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
           {/* --- external IP --- */}
           <div className="space-y-1.5">
             <Label description="«Автоматически» — backend выделит и привяжет внешний адрес. «Список» — выбрать существующий публичный Address. «Без адреса» — без публичного IP.">
-              Публичный IP (one-to-one NAT)
+              Публичный IP (NAT один-к-одному)
             </Label>
             <Segmented
               value={extMode}

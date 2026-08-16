@@ -688,6 +688,7 @@ type fakeAddressClient struct {
 	byoReqs    []vpcclient.AttachExistingRequest
 	freed      []string
 	cleared    []string
+	releases   []vpcclient.ReleaseLeaseRequest
 	// freeErr — отказ соседа на освобождении. Дублёр обязан УМЕТЬ отказать:
 	// без этого «что делает компенсация, когда освобождение не удалось» не
 	// проверяемо вовсе, а это единственный путь, на котором аренда теряется
@@ -768,27 +769,43 @@ func (f *fakeAddressClient) AttachExisting(ctx context.Context, req vpcclient.At
 // `freed`, поэтому освобождение «несуществующей» аренды выглядело исполненным —
 // и класс #467 доехал до прогона зелёным. Фикстура не бывает снисходительнее
 // продукта.
-func (f *fakeAddressClient) FreeIP(ctx context.Context, addressID string) error {
+// ReleaseLease — дублёр обязан выполнять контракт настоящего: отвергать
+// незаполненное предъявление владения так же и НАЗЫВАТЬ исход. Дублёр,
+// принимающий больше настоящего, сделал бы невидимым ровно тот дефект, ради
+// которого его подставляют.
+func (f *fakeAddressClient) ReleaseLease(
+	_ context.Context, req vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	switch {
+	case req.ProjectID == "":
+		return "", fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
+	case req.AddressID == "":
+		return "", fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
 	}
+	// Вызов записывается ДО решения об отказе: «что полоса предъявила владельцу»
+	// и «что владелец ответил» — разные факты, и проба о первом не вправе
+	// зеленеть только потому, что второй оказался отказом.
+	f.releases = append(f.releases, req)
+	f.cleared = append(f.cleared, req.AddressID)
 	if f.freeErr != nil {
-		return f.freeErr
+		return "", f.freeErr
 	}
-	f.freed = append(f.freed, addressID)
-	return nil
+	f.freed = append(f.freed, req.AddressID)
+	return vpcclient.LeaseReleased, nil
 }
 
-func (f *fakeAddressClient) ClearReference(ctx context.Context, addressID string) error {
+// releaseReqs — копия предъявленных владений (для проб о том, ЧТО полоса
+// послала владельцу).
+func (f *fakeAddressClient) releaseReqs() []vpcclient.ReleaseLeaseRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
-	}
-	f.cleared = append(f.cleared, addressID)
-	return nil
+	out := make([]vpcclient.ReleaseLeaseRequest, len(f.releases))
+	copy(out, f.releases)
+	return out
 }
 
 // fakeSubnetClient — двойник vpc.SubnetClient для sync-precheck REGIONAL-подсети.

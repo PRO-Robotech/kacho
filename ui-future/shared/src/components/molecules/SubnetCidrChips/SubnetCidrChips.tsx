@@ -111,7 +111,7 @@ export function CidrSection({ kind, blocks, onChange, hideTitle }: SectionProps)
             }}
           />
           <Button type="primary" ghost onClick={onAdd} disabled={!draft.trim()} icon={<PlusOutlined />}>
-            Add
+            Добавить
           </Button>
         </Space.Compact>
       </Space>

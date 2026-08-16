@@ -64,12 +64,21 @@ function rows(specId: string, data: Record<string, unknown>) {
   return ext.overviewExtra!(ctx(data));
 }
 
+// Подпись строки — ReactNode (в неё кладут ⓘ-подсказку). Здесь все подписи
+// текстовые, и проба на этом НАСТАИВАЕТ: узел вместо текста — находка, а не
+// повод к `String(<узел>)`, который дал бы «[object Object]» для любой подписи
+// и сделал бы сравнения ниже истинными при любом содержании.
+function labelText(r: { label: ReactNode }): string {
+  if (typeof r.label !== "string") throw new Error(`подпись строки не текст: ${String(r.label)}`);
+  return r.label;
+}
+
 function labels(specId: string, data: Record<string, unknown>): string[] {
-  return rows(specId, data).map((r) => r.label);
+  return rows(specId, data).map(labelText);
 }
 
 function valueOf(specId: string, data: Record<string, unknown>, label: string): ReactNode {
-  const row = rows(specId, data).find((r) => r.label === label);
+  const row = rows(specId, data).find((r) => labelText(r) === label);
   return row?.value ?? null;
 }
 

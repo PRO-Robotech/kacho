@@ -18,16 +18,19 @@ import { OperationsTable, operationColumnTitles, type Op, statusOf, type Operati
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
+// Подписи ресурсов — из единственного источника: выписанная здесь копия уже
+// разошлась с ним (была английской при русском реестре), см. продукт #478.
+import { ENTITIES } from "@shared/lib/entity-names";
 
 // Список VPC-ресурсов, у которых есть per-resource ListOperations.
 const VPC_RESOURCES = [
-  { id: "networks", label: "Network" },
-  { id: "subnets", label: "Subnet" },
-  { id: "network-interfaces", label: "Network Interface" },
-  { id: "addresses", label: "Address" },
-  { id: "route-tables", label: "Route Table" },
-  { id: "security-groups", label: "Security Group" },
-  { id: "gateways", label: "Gateway" },
+  { id: "networks", label: ENTITIES.networks.singular },
+  { id: "subnets", label: ENTITIES.subnets.singular },
+  { id: "network-interfaces", label: ENTITIES["network-interfaces"].singular },
+  { id: "addresses", label: ENTITIES.addresses.singular },
+  { id: "route-tables", label: ENTITIES["route-tables"].singular },
+  { id: "security-groups", label: ENTITIES["security-groups"].singular },
+  { id: "gateways", label: ENTITIES.gateways.singular },
 ] as const;
 
 const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [

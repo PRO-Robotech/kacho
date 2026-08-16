@@ -124,7 +124,7 @@ export default function ClusterAdminsPage() {
       render: (v: string) => v || <Typography.Text type="secondary">—</Typography.Text>,
     },
     {
-      title: "Subject ID",
+      title: "Идентификатор субъекта",
       dataIndex: "subject_id",
       key: "subject_id",
       width: 220,
@@ -136,7 +136,7 @@ export default function ClusterAdminsPage() {
       key: "granted_by_email",
       render: (v: string, row) => {
         if (row.granted_by_user_id === "bootstrap") {
-          return <Typography.Text type="secondary">bootstrap</Typography.Text>;
+          return <Typography.Text type="secondary">первичная настройка</Typography.Text>;
         }
         return v || <CopyableMonoId id={row.granted_by_user_id} />;
       },
@@ -173,8 +173,8 @@ export default function ClusterAdminsPage() {
         }
         return (
           <Popconfirm
-            title="Отозвать admin?"
-            description={`Удалить cluster admin у «${row.subject_email || row.subject_id}»?`}
+            title="Отозвать права администратора?"
+            description={`Снять права администратора кластера у «${row.subject_email || row.subject_id}»?`}
             okText="Отозвать"
             okButtonProps={{ danger: true }}
             cancelText="Отмена"
@@ -226,7 +226,7 @@ export default function ClusterAdminsPage() {
           onClick={() => setGrantOpen(true)}
           data-testid="cluster-admins-grant-button"
         >
-          Добавить admin (legacy)
+          Добавить администратора (устаревший путь)
         </Button>
         <Button
           icon={<UserAddOutlined />}
@@ -237,7 +237,7 @@ export default function ClusterAdminsPage() {
           }
           data-testid="cluster-admins-grant-via-binding"
         >
-          Выдать через AccessBinding
+          Выдать через привязку доступа
         </Button>
         <Button
           icon={<ReloadOutlined />}
@@ -258,11 +258,11 @@ export default function ClusterAdminsPage() {
         message="Администратор облака — это выданный доступ"
         description={
           <>
-            Cluster admin grants теперь видны и через страницу <Link to="/iam/access-bindings">Access Bindings</Link>{" "}
+            Права администратора кластера видны и на странице <Link to="/iam/access-bindings">Привязки доступа</Link>{" "}
             (фильтр
-            <code> resource_type=cluster, resource_id=cluster_kacho_root</code>). Создавать новый grant можно как через
-            &quot;Добавить admin (legacy)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), так и через
-            &quot;Выдать через AccessBinding&quot; — оба flow идемпотентны.
+            <code> resource_type=cluster, resource_id=cluster_kacho_root</code>). Выдать их можно и кнопкой
+            &quot;Добавить администратора (устаревший путь)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), и
+            через &quot;Выдать через привязку доступа&quot; — оба пути идемпотентны.
           </>
         }
         data-testid="cluster-admins-unified-flow-note"
@@ -293,7 +293,7 @@ export default function ClusterAdminsPage() {
         dataSource={admins}
         columns={columns}
         pagination={false}
-        locale={{ emptyText: "Cluster admin'ов нет." }}
+        locale={{ emptyText: "Администраторов кластера нет." }}
       />
 
       <GrantAdminModal open={grantOpen} onClose={() => setGrantOpen(false)} />

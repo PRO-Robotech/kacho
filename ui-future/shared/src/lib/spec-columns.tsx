@@ -261,7 +261,7 @@ export function formatCellByFormat(
             <ReferrerLink projectId={projectId} referrer={first?.referrer} />
             {more > 0 && (
               <span style={{ color: "rgba(0,0,0,.45)", fontSize: 11 }} title={restTitle}>
-                +{more} more
+                ещё {more}
               </span>
             )}
           </span>

@@ -41,7 +41,7 @@ function family(label: string): HTMLElement {
 
 const v4card = () => family("IPv4 CIDR blocks");
 const v6card = () => family("IPv6 CIDR blocks");
-const addBtn = (card: HTMLElement) => within(card).getByRole("button", { name: /Add/ });
+const addBtn = (card: HTMLElement) => within(card).getByRole("button", { name: /Добавить/ });
 
 function type(card: HTMLElement, value: string) {
   fireEvent.change(within(card).getByRole("textbox"), { target: { value } });

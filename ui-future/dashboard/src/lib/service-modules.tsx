@@ -119,7 +119,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
     short: "NLB",
     icon: <Scale size={iconSize} />,
     color: "#FA8C16",
-    description: "L4 балансировщики трафика TCP/UDP: LoadBalancer, Listener, Target Group.",
+    description: "Балансировка трафика TCP/UDP на четвёртом уровне: балансировщики, обработчики, целевые группы.",
     requiresProject: true,
     landing: (projectId) => (projectId ? `/projects/${projectId}/nlb/load-balancers` : null),
     stats: [

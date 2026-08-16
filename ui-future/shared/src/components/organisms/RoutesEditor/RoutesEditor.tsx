@@ -33,6 +33,15 @@ export interface RouteEntry {
   destination_prefix: string;
   next_hop_address?: string;
   gateway_id?: string;
+  /**
+   * Метки маршрута. Редактор их не показывает и не правит, но НАЗЫВАЕТ и
+   * проносит: набор уезжает на край полной заменой, поэтому поле, которого нет
+   * в черновике, стирается у всех строк разом. Прежде поле держалось тем, что
+   * форма правки маршрутов скрыта (`editHidden`), — а скрытие не утверждение:
+   * снявший флаг вернул бы #422 в полном виде и так же молча. Состав против
+   * контракта держит `test/set-replacement-draft-composition`.
+   */
+  labels?: Record<string, string>;
 }
 
 type NextHopKind = "address" | "gateway";
@@ -40,6 +49,24 @@ type NextHopKind = "address" | "gateway";
 /** Ветвь строки — по тому, какое поле в ней есть. */
 function kindOf(r: RouteEntry): NextHopKind {
   return r.gateway_id !== undefined ? "gateway" : "address";
+}
+
+/**
+ * Строка с ВЫБРАННОЙ ветвью следующего узла: прежняя ветвь снимается (строка,
+ * несущая обе, — отказ сервера, `exactly_one`), всё остальное переносится
+ * дословно.
+ *
+ * Прежде каждое такое место пересобирало строку ПЕРЕЧИСЛЕНИЕМ полей
+ * (`{ destination_prefix, gateway_id }`), то есть стирало всё, чего редактор не
+ * показывает. Пока в строке было три поля, стирать было нечего; с метками —
+ * есть, и потеря была бы тихой. Снимается ровно одна ветвь, названная здесь, а
+ * не всё, кроме перечисленного.
+ */
+function withNextHop(r: RouteEntry, next: { gateway_id: string } | { next_hop_address: string }): RouteEntry {
+  const out: RouteEntry = { ...r, ...next };
+  if ("gateway_id" in next) delete out.next_hop_address;
+  else delete out.gateway_id;
+  return out;
 }
 
 interface Props {
@@ -84,7 +111,7 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
   const update = (idx: number, next: RouteEntry) => onChange(value.map((r, i) => (i === idx ? next : r)));
 
   /**
-   * Смена ветви ПЕРЕСОБИРАЕТ строку, а не дописывает поле рядом: иначе строка
+   * Смена ветви СНИМАЕТ прежнюю, а не дописывает поле рядом: иначе строка
    * унесла бы обе ветви и сервер отверг бы её целиком, а причина читалась бы как
    * «маршрут неверен», хотя неверен был редактор.
    */
@@ -93,8 +120,8 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
     update(
       idx,
       kind === "gateway"
-        ? { destination_prefix: r.destination_prefix, gateway_id: r.gateway_id ?? "" }
-        : { destination_prefix: r.destination_prefix, next_hop_address: r.next_hop_address ?? "" },
+        ? withNextHop(r, { gateway_id: r.gateway_id ?? "" })
+        : withNextHop(r, { next_hop_address: r.next_hop_address ?? "" }),
     );
   };
 
@@ -160,7 +187,7 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
                   refResource="gateways"
                   refProjectScoped
                   value={r.gateway_id ?? ""}
-                  onChange={(id) => update(idx, { destination_prefix: r.destination_prefix, gateway_id: id })}
+                  onChange={(id) => update(idx, withNextHop(r, { gateway_id: id }))}
                   placeholder="Выберите шлюз"
                   disabled={disabled}
                 />
@@ -169,9 +196,7 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
                   variant="borderless"
                   placeholder="10.0.0.1"
                   value={r.next_hop_address ?? ""}
-                  onChange={(e) =>
-                    update(idx, { destination_prefix: r.destination_prefix, next_hop_address: e.target.value })
-                  }
+                  onChange={(e) => update(idx, withNextHop(r, { next_hop_address: e.target.value }))}
                   disabled={disabled}
                   style={cellInputStyle}
                 />

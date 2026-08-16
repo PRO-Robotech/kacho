@@ -19,7 +19,10 @@ import { getByPath } from "@/lib/resource-registry";
 import { formatBytes } from "@/lib/bytes";
 
 export interface DescItem {
-  label: string;
+  /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
+   *  именем — поле, которое заполняет система, иначе читается как пустое,
+   *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
+  label: ReactNode;
   value: ReactNode;
 }
 
@@ -78,7 +81,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     // размещения (REG-1 F4, REGIONAL-anycast), видимость репозиториев по умолчанию
     // (REG-1 F5), число репозиториев (растёт с push) и статус.
     overviewExtra: ({ data }) => [
-      { label: "Endpoint", value: code(getByPath<string>(data, "endpoint")) },
+      { label: "Адрес", value: code(getByPath<string>(data, "endpoint")) },
       { label: "Регион", value: txt(getByPath<string>(data, "region_id")) },
       { label: "Размещение", value: txt(getByPath<string>(data, "placement_type")) },
       {

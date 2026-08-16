@@ -463,7 +463,7 @@ func (u *CreateLoadBalancerUseCase) doCreate(
 		if finalized {
 			return
 		}
-		u.compensateCreate(ctx, string(lb.ID), allocated)
+		u.compensateCreate(ctx, string(lb.ProjectID), string(lb.ID), allocated)
 	}()
 
 	for _, fs := range specs {
@@ -711,10 +711,10 @@ func (u *CreateLoadBalancerUseCase) finalizeCreate(
 	return created, intent, intentVersion, nil
 }
 
-// compensateCreate — best-effort откат до finalize: освобождает каждый
-// аллоцированный VIP по origin (auto → two-step ClearReference→FreeIP, linked →
-// ClearReference) и удаляет handle. Ошибки логируются; краш раньше — free_ip_runner.
-func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, lbID string, allocated map[domain.IPVersion]vipAllocResult) {
+// compensateCreate — best-effort откат до finalize: снимает аренду каждого
+// аллоцированного VIP одним глаголом владельца и удаляет handle. Ошибки
+// логируются; краш раньше — free_ip_runner.
+func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, projectID, lbID string, allocated map[domain.IPVersion]vipAllocResult) {
 	logger := u.logger
 	if logger == nil {
 		logger = slog.Default()
@@ -724,10 +724,20 @@ func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, lbID s
 	releaseFailed := false
 	if u.addressClient != nil {
 		for family, alloc := range allocated {
+			// Аллокация без ключа аренды сюда НЕ ДОХОДИТ: обе полосы
+			// `acquireFamilyVIP` возвращают непустой ключ — авто-полоса отвергает
+			// ответ vpc без него (`allocFromCreate`), полоса привязки требует ключ
+			// на входе (`AttachExisting`). Ветка оставлена РОВНО как отказ, а не
+			// как пропуск: пропустив, компенсация оставила бы `releaseFailed=false`,
+			// снесла handle — и потеряла бы аренду навсегда, то есть воспроизвела
+			// бы #467 с другого конца.
 			if alloc.addressID == "" {
+				releaseFailed = true
+				logger.Warn("LoadBalancer.Create compensation cannot release a lease without its id",
+					"family", string(family))
 				continue
 			}
-			if rerr := u.releaseAddress(ctx, alloc.addressID, alloc.origin); rerr != nil {
+			if rerr := u.releaseAddress(ctx, projectID, lbID, alloc.addressID); rerr != nil {
 				releaseFailed = true
 				logger.Warn("LoadBalancer.Create compensation release failed",
 					"err", rerr, "address_id", alloc.addressID, "family", string(family))
@@ -760,21 +770,23 @@ func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, lbID s
 	}
 }
 
-// releaseAddress — release одного Address по origin: owned (auto) →
-// two-step ClearReference → FreeIP (иначе FreeIP==Delete упрётся в собственный
-// guard); linked → ClearReference без Delete. Идемпотентно.
-func (u *CreateLoadBalancerUseCase) releaseAddress(ctx context.Context, addressID string, origin domain.VipOrigin) error {
+// releaseAddress — снятие аренды одного адреса на компенсации сорвавшегося
+// создания. Один глагол владельца, исход читается из поля.
+//
+// Ветку «удалить адрес» либо «оставить адрес арендатора» выбирает ВЛАДЕЛЕЦ по
+// своей колонке — потребитель её больше не выводит. Прежде это решение
+// принимали три места по собственной копии признака, и спрашивали они
+// по-разному.
+func (u *CreateLoadBalancerUseCase) releaseAddress(ctx context.Context, projectID, lbID, addressID string) error {
 	if u.addressClient == nil {
 		return status.Error(codes.Unavailable, "vpc internal address client not configured")
 	}
-	if origin == domain.VipOriginLinked {
-		return u.addressClient.ClearReference(ctx, addressID)
-	}
-	// owned (auto): снять собственный owned-референс, затем удалить адрес.
-	if err := u.addressClient.ClearReference(ctx, addressID); err != nil {
-		return err
-	}
-	return u.addressClient.FreeIP(ctx, addressID)
+	_, err := u.addressClient.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
+		ProjectID: projectID,
+		AddressID: addressID,
+		Owner:     vpcclient.AddressOwner{Kind: lbAddressOwnerKind, ID: lbID},
+	})
+	return err
 }
 
 // deleteHandle — best-effort DELETE durable-handle строки LB в собственной TX.

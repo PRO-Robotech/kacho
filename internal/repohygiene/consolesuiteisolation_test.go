@@ -1,0 +1,229 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// consolesuiteisolation_test.go — проба консоли не переносит состояние соседке.
+//
+// # Предмет: единственный носитель, который РЕАЛЬНО пересекает границу суиты
+//
+// Разбирая PRO-Robotech/kacho#461, я подложил производителя утечки: одна проба
+// оставляет след, соседняя его ищет; порядок задавался явно, в обе стороны. Из
+// четырёх носителей границу суиты пересёк ровно один:
+//
+//	модульное состояние (реестр расширений) — НЕТ (свой реестр модулей на файл)
+//	process.env                             — НЕТ
+//	globalThis / global                     — НЕТ (свой jsdom-контекст на файл)
+//	ФАЙЛОВАЯ СИСТЕМА                        — ДА
+//
+// Отсюда практический вывод, который дороже самого гейта: проба, утверждающая
+// «модульный реестр в начале суиты пуст», в этом харнессе упасть НЕ МОЖЕТ — она
+// была бы формой без содержания. А проба, пишущая в ФС, — может уронить соседку,
+// и вердикт соседки станет функцией порядка.
+//
+// # Что требуется
+//
+//	проба консоли и её оснастка не зовут запись в файловую систему.
+//
+// Читать дерево пробам НЕ запрещено и запрещать нечего: чтение состояния не несёт.
+// Гейт различает чтение и запись по имени вызова, и на дереве это различение
+// доказуемо — читающих проб десятки.
+//
+// # Исключение — одно, поимённое, и оно САМОИСТЕКАЕТ
+//
+// `shared/src/test/shared-organisms-single-source.test.ts` пересобирает ведомость
+// форков, и только под явной ручкой `KACHO_REGEN_FORK_LEDGER=1`. Если этот файл
+// перестанет писать, исключению станет нечего исключать — и гейт краснеет на самой
+// записи, а не наследует её как слепую зону (`testing.md` §«Гейт на класс», п. 5).
+//
+// # Способность упасть
+//
+// Доказана инъекцией — `consolesuiteisolation_injection_test.go`: запись краснеет с
+// координатой, чтение молчит, а исключение без предмета краснеет само.
+package repohygiene
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Предикат класса.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// fsModuleSpecifiers — по ним файл признаётся работающим с файловой системой.
+// Признак берётся из ЛИТЕРАЛОВ (спецификатор импорта — строка), а не из кода.
+var fsModuleSpecifiers = []string{"node:fs", "fs", "node:fs/promises", "fs/promises"}
+
+// fsWriteCalls — имена, которыми пишут в ФС. Перечень закрытый: угадывать «что-то
+// похожее на запись» значит краснеть на чужом методе с совпавшим именем. Обе формы
+// — синхронная и промисная — потому что escape через `fs/promises` был бы дырой
+// ровно того же размера.
+//
+// Одноимённость с доменными глаголами консоли (`rename`, `truncate`) обезврежена
+// НЕ выбором имён, а предпосылкой: имя считается только в файле, который вообще
+// импортирует `node:fs`. Проба про переименование ресурса его не импортирует.
+var fsWriteCalls = []string{
+	"writeFileSync", "appendFileSync", "mkdirSync", "mkdtempSync", "rmSync", "rmdirSync",
+	"unlinkSync", "copyFileSync", "renameSync", "truncateSync", "createWriteStream",
+	"writeFile", "appendFile", "mkdir", "mkdtemp", "copyFile", "rename", "truncate", "rm",
+}
+
+// fsReadCalls — контроль дискриминатора: чтение обязано оставаться законным.
+var fsReadCalls = []string{"readFileSync", "readdirSync", "existsSync", "statSync", "readFile"}
+
+// usesFilesystemModule — импортирует ли файл `node:fs` (в любой из форм).
+func usesFilesystemModule(literals []string) bool {
+	for _, lit := range literals {
+		for _, spec := range fsModuleSpecifiers {
+			if lit == spec {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// consoleFilesystemWriterAllowance — единственное исключение. Ключ — путь; значение
+// — причина, которая обязана оставаться верной.
+var consoleFilesystemWriterAllowance = map[string]string{
+	"ui-future/shared/src/test/shared-organisms-single-source.test.ts": "пересобирает ведомость форков под ручкой KACHO_REGEN_FORK_LEDGER=1",
+}
+
+type fsWriteFinding struct {
+	File string
+	Call string
+}
+
+// auditConsoleFilesystemWrites — предикат класса. Вход — «путь → исходник».
+// Инъекция гоняет ЭТУ ЖЕ функцию, а не свою копию логики.
+//
+// Возвращает находки, число прочитанных проб, число проб, зовущих ЧТЕНИЕ ФС
+// (контроль дискриминатора), и перечень исключений, которым нечего исключать.
+func auditConsoleFilesystemWrites(
+	sources map[string]string,
+	allowance map[string]string,
+) (findings []fsWriteFinding, scanned, fsAware, readers int, staleAllowances []string) {
+	writesSeen := map[string]bool{}
+
+	for rel, src := range sources {
+		scanned++
+		code, literals := tsScan(src)
+
+		// Файл, не импортирующий `node:fs`, писать в ФС этими именами не может —
+		// совпадение имени с доменным глаголом консоли отсекается здесь.
+		if !usesFilesystemModule(literals) {
+			continue
+		}
+		fsAware++
+
+		for _, name := range fsReadCalls {
+			if strings.Contains(code, name+"(") {
+				readers++
+				break
+			}
+		}
+
+		for _, name := range fsWriteCalls {
+			if !strings.Contains(code, name+"(") {
+				continue
+			}
+			writesSeen[rel] = true
+			if _, ok := allowance[rel]; ok {
+				break
+			}
+			findings = append(findings, fsWriteFinding{File: rel, Call: name})
+			break
+		}
+	}
+
+	for rel := range allowance {
+		if !writesSeen[rel] {
+			staleAllowances = append(staleAllowances, rel)
+		}
+	}
+
+	sort.Slice(findings, func(i, j int) bool { return findings[i].File < findings[j].File })
+	sort.Strings(staleAllowances)
+	return findings, scanned, fsAware, readers, staleAllowances
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Гейт по дереву.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// consoleProbeSources — пробы консоли и их оснастка. Оснастка входит именно потому,
+// что исполняется в КАЖДОЙ суите: запись оттуда переносит состояние всем сразу.
+func consoleProbeSources(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, rel := range trackedPaths(t, root) {
+		if !strings.HasPrefix(rel, "ui-future/") {
+			continue
+		}
+		if !strings.HasSuffix(rel, ".ts") && !strings.HasSuffix(rel, ".tsx") {
+			continue
+		}
+		isProbe := strings.Contains(rel, ".test.")
+		isHarness := strings.Contains(rel, "/src/test/")
+		if !isProbe && !isHarness {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("%s: %v — состав проб консоли неизвестен, значит вердикт был бы утверждением ни о чём", rel, err)
+		}
+		out[rel] = string(b)
+	}
+	return out
+}
+
+// TestConsoleProbesDoNotWriteToTheFilesystem — проба не переносит состояние соседке.
+func TestConsoleProbesDoNotWriteToTheFilesystem(t *testing.T) {
+	root := repoRoot(t)
+	sources := consoleProbeSources(t, root)
+
+	if len(sources) == 0 {
+		t.Fatal("обход не нашёл ни одной пробы консоли — гейт беспредметен. " +
+			"Либо каталог переехал, либо изменилось имя проб; в обоих случаях " +
+			"зелёный вердикт ниже был бы получен даром.")
+	}
+
+	findings, scanned, fsAware, readers, stale := auditConsoleFilesystemWrites(sources, consoleFilesystemWriterAllowance)
+
+	// Предпосылка дискриминатора — две части, и обе обязаны быть непустыми:
+	// кто-то вообще работает с ФС, и среди них кто-то её ЧИТАЕТ. Иначе молчание
+	// ниже означает «не прочитал», а не «чисто».
+	if fsAware == 0 {
+		t.Error("ни одна проба консоли не импортирует node:fs — распознавание импорта сломано. " +
+			"«Ноль находок» здесь неотличимо от «ноль прочитанного».")
+	}
+	if readers == 0 {
+		t.Error("ни одна проба консоли не зовёт чтение ФС — дискриминатору нечего отличать " +
+			"от записи, значит молчание ниже ничего не стоит.")
+	}
+
+	for _, f := range findings {
+		t.Errorf("проба %s зовёт %s — запись в ФС переживает границу суиты\n\n"+
+			"Замер (#461) показал: из четырёх носителей состояния границу суиты пересекает "+
+			"ТОЛЬКО файловая система — модульное состояние, `process.env` и `globalThis` "+
+			"обнуляются на каждый файл. Значит запись отсюда способна изменить вердикт "+
+			"СОСЕДНЕЙ пробы, и он станет функцией порядка: та же краснота, что и в #461, "+
+			"только источник в другом файле.\n"+
+			"Исход: держать состояние в памяти пробы; если запись — предмет самой пробы, "+
+			"внести файл в `consoleFilesystemWriterAllowance` с причиной.",
+			f.File, f.Call)
+	}
+
+	for _, rel := range stale {
+		t.Errorf("исключению %s нечего исключать: запись в ФС из него ушла.\n"+
+			"Причина в ведомости — %q. Снимите запись: послабление, пережившее свой предмет, "+
+			"остаётся слепой зоной для следующей записи, которая туда попадёт.",
+			rel, consoleFilesystemWriterAllowance[rel])
+	}
+
+	t.Logf("перепись: проб и файлов оснастки осмотрено %d, импортируют node:fs %d, "+
+		"из них читают %d, исключений %d, находок %d",
+		scanned, fsAware, readers, len(consoleFilesystemWriterAllowance), len(findings))
+}

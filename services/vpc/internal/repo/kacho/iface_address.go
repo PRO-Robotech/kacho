@@ -133,4 +133,68 @@ type AddressWriterIface interface {
 	// ClearReference удаляет referrer-row + used=false. ErrNotFound если адрес
 	// не существует.
 	ClearReference(ctx context.Context, addressID string) error
+	// ReleaseLease снимает аренду ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и НАЗЫВАЕТ исход.
+	//
+	// Отличие от ClearReference — в том, кто и по чему принимает решение.
+	// ClearReference ключуется ТОЛЬКО на address_id: он снимет любую ссылку,
+	// включая чужую, и ничего не сообщит о том, что снял. Здесь предъявленная
+	// пара (referrer_type, referrer_id) и project_id — часть ОДНОГО стейтмента с
+	// проверкой кардинальности (ban #10), а нулевая кардинальность разрешается в
+	// той же транзакции: под row-lock проигравший гонку видит закоммиченное
+	// состояние и отличает «строки адреса нет» от «ссылка чужая».
+	//
+	// Ветку RELEASED/DETACHED выбирает КОЛОНКА owned у владельца, а не признак,
+	// который принёс вызывающий: своя копия признака у потребителя — это второе
+	// место об одном предмете, и расходится оно молча.
+	//
+	// ОТСУТСТВИЕ АРЕНДЫ — НЕ ОШИБКА. Постусловие глагола — «этот потребитель не
+	// держит аренды на этом адресе»; когда оно уже верно, работа сделана. Отказ
+	// здесь заклинил бы снос потребителя навсегда: на полосе освобождения отказ
+	// FailedPrecondition перманентен, строка изолируется и переизбирается вечно.
+	//
+	// ErrFailedPrecondition — только когда предъявленное владение НЕ ПОДТВЕРЖДЕНО:
+	// ссылка принадлежит другому потребителю либо адрес принадлежит другому
+	// проекту. ErrNotFound этот метод НЕ ПРОИЗВОДИТ НИ НА ОДНОМ ВХОДЕ.
+	//
+	// На ветке RELEASED адрес УДАЛЁН и удалённая строка возвращена — из неё
+	// вызывающий берёт координаты, по которым возвращает аренду в пул (IP и пул
+	// читаются из свежего snapshot, а не из чтения до транзакции).
+	// `deletion_protection` на этой ветке НЕ ЧИТАЕТСЯ намеренно: флаг ограждает
+	// арендатора от удаления СВОЕГО адреса, а эфемерная аренда, заведённая
+	// модулем, его собственностью не является. Обратное превращало бы флаг в
+	// вечный клин на сносе потребителя.
+	ReleaseLease(ctx context.Context, req LeaseReleaseRequest) (*LeaseReleaseResult, error)
+}
+
+// LeaseReleaseRequest — предъявление владения арендой.
+type LeaseReleaseRequest struct {
+	AddressID    string
+	ProjectID    string
+	ReferrerType string
+	ReferrerID   string
+}
+
+// LeaseOutcome — НАЗВАННЫЙ исход снятия аренды.
+//
+// Исход называется полем, а не выводится вызывающим из кода ошибки: код ошибки
+// для такого вывода непригоден by construction — у владельца есть законные
+// причины отвечать одним кодом на разные положения дел.
+type LeaseOutcome string
+
+const (
+	// LeaseReleased — ЭТИМ вызовом: ссылка снята, адрес удалён.
+	LeaseReleased LeaseOutcome = "RELEASED"
+	// LeaseAlreadyReleased — строки адреса нет, аренда снята ранее.
+	LeaseAlreadyReleased LeaseOutcome = "ALREADY_RELEASED"
+	// LeaseDetached — ЭТИМ вызовом: адрес арендатора, ссылка снята, адрес оставлен.
+	LeaseDetached LeaseOutcome = "DETACHED"
+	// LeaseAlreadyDetached — адрес есть, ссылки этого потребителя нет.
+	LeaseAlreadyDetached LeaseOutcome = "ALREADY_DETACHED"
+)
+
+// LeaseReleaseResult — исход плюс удалённая строка (только у LeaseReleased).
+type LeaseReleaseResult struct {
+	Outcome LeaseOutcome
+	// Deleted — удалённая строка адреса; nil на всех исходах, кроме LeaseReleased.
+	Deleted *AddressRecord
 }

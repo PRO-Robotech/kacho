@@ -25,6 +25,7 @@ import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { FieldLabel } from "@shared/components/organisms/form/FieldLabel";
 import { CopyableMonoId, fmtTs, useIamMutation } from "@shared/components/organisms/iam/IamCommon";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { getByPath } from "@shared/lib/resource-registry";
@@ -211,7 +212,7 @@ function subjectsView(data: Record<string, unknown>): ReactNode {
 // ResourceRef-чипы {type:id} (closed-table, без name).
 function targetView(t: AccessBindingTarget | undefined): ReactNode {
   const kind = targetKind(t);
-  if (kind === "allInScope") return <Tag>весь scope (allInScope)</Tag>;
+  if (kind === "allInScope") return <Tag>вся область (allInScope)</Tag>;
   if (kind === "resources") {
     const res = targetResources(t);
     return (
@@ -643,26 +644,26 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
             </Tag>
             <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                module:
+                модуль:
               </Typography.Text>
               <Tag style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{rule.module || "—"}</Tag>
             </span>
             <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                resources:
+                ресурсы:
               </Typography.Text>
               {chips(rule.resources ?? [])}
             </span>
             <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                verbs:
+                глаголы:
               </Typography.Text>
               {chips(rule.verbs ?? [])}
             </span>
             {arm === "ARM_NAMES" && (
               <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  resourceNames:
+                  имена ресурсов:
                 </Typography.Text>
                 {chips(rule.resource_names ?? [])}
               </span>
@@ -670,7 +671,7 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
             {arm === "ARM_LABELS" && (
               <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  matchLabels:
+                  метки:
                 </Typography.Text>
                 {Object.entries(rule.match_labels ?? {}).map(([k, v]) => (
                   <Tag
@@ -701,20 +702,20 @@ registerDetailExtension("roles", {
     const dt: DefinitionTier | undefined = roleDefinitionTier(role);
     const tt = dt?.tier_type ?? dt?.tierType ?? "";
     const tid = dt?.tier_id ?? dt?.tierId ?? "";
-    const rows: DescItem[] = [{ label: "Тип", value: isSystem ? <Tag color="purple">system</Tag> : <Tag>custom</Tag> }];
+    const rows: DescItem[] = [{ label: "Тип", value: isSystem ? <Tag color="purple">Системная</Tag> : <Tag>Пользовательская</Tag> }];
     // definitionTier (dotted tierType + anchor). Legacy fallback — flat FK-поля.
     if (tt) {
       rows.push({ label: "Уровень (tierType)", value: <Tag color={iamTierColor(tt)}>{tt}</Tag> });
       if (tt === "iam.account" && tid)
-        rows.push({ label: "Anchor", value: <IamRefLink specId="accounts" refId={tid} /> });
+        rows.push({ label: "Якорь", value: <IamRefLink specId="accounts" refId={tid} /> });
       else if (tt === "iam.project" && tid)
-        rows.push({ label: "Anchor", value: <IamRefLink specId="projects" refId={tid} /> });
-      else if (tid) rows.push({ label: "Anchor", value: mono(tid) });
+        rows.push({ label: "Якорь", value: <IamRefLink specId="projects" refId={tid} /> });
+      else if (tid) rows.push({ label: "Якорь", value: mono(tid) });
     } else {
       const acc = getByPath<string>(data, "account_id");
       const cluster = getByPath<string>(data, "cluster_id");
       const project = getByPath<string>(data, "project_id");
-      if (acc) rows.push({ label: "Область (Account)", value: <IamRefLink specId="accounts" refId={acc} /> });
+      if (acc) rows.push({ label: "Область (аккаунт)", value: <IamRefLink specId="accounts" refId={acc} /> });
       if (cluster) rows.push({ label: "Область (кластер)", value: mono(cluster) });
       if (project) rows.push({ label: "Область (проект)", value: <IamRefLink specId="projects" refId={project} /> });
     }
@@ -813,7 +814,12 @@ registerDetailExtension("users", {
   overviewExtra: ({ data }) => [
     { label: "Статус приглашения", value: <StatusBadge state={getByPath<string>(data, "invite_status")} /> },
     {
-      label: "External ID",
+      label: (
+        <FieldLabel
+          text="Внешний идентификатор"
+          info="Идентификатор пользователя у поставщика входа. Заполняется автоматически при первом входе — вручную его не задают."
+        />
+      ),
       value: getByPath<string>(data, "external_id") ? (
         <CopyableId id={getByPath<string>(data, "external_id")!} />
       ) : (
@@ -904,7 +910,7 @@ registerDetailExtension("access-bindings", {
         value: scopeTypeDotted ? <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag> : dash,
       },
       {
-        label: "Anchor (scopeId)",
+        label: "Якорь (scopeId)",
         value: scopeIdVal ? (
           anchorSpec ? (
             <IamRefLink specId={anchorSpec} refId={scopeIdVal} />
@@ -915,7 +921,7 @@ registerDetailExtension("access-bindings", {
           dash
         ),
       },
-      { label: "Цель (target)", value: targetView(target) },
+      { label: "Цель", value: targetView(target) },
       { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
     ];
     if (revokedAt) rows.push({ label: "Отозвана", value: fmtTs(revokedAt) });

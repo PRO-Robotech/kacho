@@ -75,12 +75,27 @@ type OwnedAddressCreator interface {
 	CreateOwnedAddress(ctx context.Context, req *vpcv1.CreateOwnedAddressRequest) (*operationpb.Operation, error)
 }
 
+// LeaseReleaser — port снятия аренды по предъявлению владения ею.
+//
+// Отдельно от AddressReferenceManager намеренно: у того каждый метод коммитит
+// СВОЕЙ транзакцией, а здесь снятие ссылки, сброс `used`, удаление строки,
+// возврат аренды в пул, событие и снятие owner-tuple обязаны быть ОДНОЙ
+// writer-TX. Частичный исход — это ровно то состояние, из которого потом
+// выводят «наверное сделано».
+//
+// Port транспортный (proto ↔ proto), как OwnedAddressCreator: use-case-конкреты
+// в transport-слой не импортируются (architecture.md §dependency-rule).
+type LeaseReleaser interface {
+	ReleaseOwnedAddress(ctx context.Context, req *vpcv1.ReleaseOwnedAddressRequest) (*vpcv1.ReleaseOwnedAddressResponse, error)
+}
+
 // InternalAddressAllocateHandler — реализация InternalAddressService.
 type InternalAddressAllocateHandler struct {
 	vpcv1.UnimplementedInternalAddressServiceServer
 	allocate AddressAllocator
 	refs     AddressReferenceManager
 	owned    OwnedAddressCreator
+	release  LeaseReleaser
 }
 
 // NewInternalAddressAllocateHandler собирает handler из двух port'ов —
@@ -97,6 +112,24 @@ func NewInternalAddressAllocateHandler(allocate AddressAllocator, refs AddressRe
 func (h *InternalAddressAllocateHandler) WithOwnedCreator(c OwnedAddressCreator) *InternalAddressAllocateHandler {
 	h.owned = c
 	return h
+}
+
+// WithLeaseReleaser подключает путь `ReleaseOwnedAddress` — по той же причине,
+// что и WithOwnedCreator: непровязанный путь обязан отвечать Unimplemented, а не
+// тихо «освобождать».
+func (h *InternalAddressAllocateHandler) WithLeaseReleaser(r LeaseReleaser) *InternalAddressAllocateHandler {
+	h.release = r
+	return h
+}
+
+// ReleaseOwnedAddress — снятие аренды с НАЗВАННЫМ исходом.
+func (h *InternalAddressAllocateHandler) ReleaseOwnedAddress(
+	ctx context.Context, req *vpcv1.ReleaseOwnedAddressRequest,
+) (*vpcv1.ReleaseOwnedAddressResponse, error) {
+	if h.release == nil {
+		return nil, status.Error(codes.Unimplemented, "owned address release is not wired")
+	}
+	return h.release.ReleaseOwnedAddress(ctx, req)
 }
 
 func (h *InternalAddressAllocateHandler) AllocateInternalIP(ctx context.Context, req *vpcv1.AllocateInternalIPRequest) (*vpcv1.AllocateIPResponse, error) {

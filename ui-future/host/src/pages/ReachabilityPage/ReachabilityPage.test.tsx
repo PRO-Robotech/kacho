@@ -22,7 +22,7 @@ describe("ReachabilityPage", () => {
     jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ message: "ready" }));
     render(<ReachabilityPage />);
 
-    await user.click(screen.getByRole("button", { name: "Probe all" }));
+    await user.click(screen.getByRole("button", { name: "Проверить все" }));
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(6);

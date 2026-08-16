@@ -33,7 +33,7 @@ export function InviteUserPage() {
         <Typography.Text type="secondary">IAM</Typography.Text>
         <Typography.Text type="secondary">/</Typography.Text>
         <Link to="/iam/users">
-          <Typography.Text type="secondary">Users</Typography.Text>
+          <Typography.Text type="secondary">Пользователи</Typography.Text>
         </Link>
         <Typography.Text type="secondary">/</Typography.Text>
         <Typography.Text strong>Пригласить</Typography.Text>
@@ -173,7 +173,7 @@ export function InviteUserPage() {
             />
           </Form.Item>
           <Form.Item
-            label="Email"
+            label="Эл. почта"
             name="email"
             required
             rules={[
@@ -197,7 +197,7 @@ export function InviteUserPage() {
             />
           </Form.Item>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
-            Проект и роль необязательны — можно назначить позже через Access Bindings.
+            Проект и роль необязательны — можно назначить позже через привязки доступа.
           </Typography.Paragraph>
           <FormFooter
             submitLabel="Пригласить"

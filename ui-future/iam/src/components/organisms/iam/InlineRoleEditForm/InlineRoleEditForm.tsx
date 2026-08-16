@@ -18,6 +18,24 @@ import { ImmutableField } from "@shared/components/organisms/form/ImmutableField
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormSection } from "@/components/organisms/form/FormSection";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+
+/**
+ * Место полной замены набора: `rules[]` уходит целиком, поэтому поле контракта,
+ * которого не назвал тип `Rule`, стёрлось бы у ВСЕХ правил роли — включая те,
+ * которых оператор не касался. Состав сверяется с контрактом гейтом
+ * `shared/test/set-replacement-draft-composition`.
+ *
+ * Имя поля `rules` несут два разных сообщения контракта (правило роли IAM и
+ * правило группы безопасности VPC), поэтому сообщение названо здесь, а не
+ * выведено по имени.
+ */
+export const ROLE_RULES_REPLACEMENT: SetReplacementDraft = {
+  field: "rules",
+  contract: "kacho/cloud/iam/v1/role.proto",
+  message: "Rule",
+  drafts: ["Rule"],
+};
 
 /** Стабильная сигнатура набора rules — для diff (изменились ли правила). */
 function rulesSig(rules: Rule[]): string {

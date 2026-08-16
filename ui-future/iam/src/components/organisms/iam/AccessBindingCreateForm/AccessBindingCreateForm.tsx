@@ -564,7 +564,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
         setInlineError({
           type: "error",
           message:
-            "Укажите хотя бы один объект (ResourceRef) или выберите «Весь scope» (allInScope) — target обязателен (least-privilege).",
+            "Укажите хотя бы один объект (ResourceRef) или выберите «Вся область» (allInScope): цель обязательна.",
         });
         return;
       }
@@ -809,15 +809,15 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
         </FormSection>
 
         {/* ── Секция «Цель (target)» — IAM-1 F8 least-priv spine ── */}
-        <FormSection title="Цель (target)">
+        <FormSection title="Цель">
           <Form.Item
             label="Тип цели"
             name="_target_kind"
             tooltip="allInScope — все объекты под anchor'ом, включая будущие (широкий явный opt-in); resources — только перечисленные объекты (least-privilege)."
           >
             <Radio.Group data-testid="access-bindings-target-kind">
-              <Radio.Button value="allInScope">Весь scope</Radio.Button>
-              <Radio.Button value="resources">Точечно (resources)</Radio.Button>
+              <Radio.Button value="allInScope">Вся область</Radio.Button>
+              <Radio.Button value="resources">Точечно (перечень объектов)</Radio.Button>
             </Radio.Group>
           </Form.Item>
           {watchedTargetKind === "resources" && (
@@ -852,8 +852,8 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
             </Form.Item>
           )}
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
-            target обязателен (least-privilege): «Весь scope» — явный широкий opt-in; «Точечно» — грант только на
-            перечисленные объекты (ResourceRef {"{type,id}"}, closed-table).
+            Цель обязательна (минимально необходимые права): «Вся область» — явно выбранная широкая выдача;
+            «Точечно» — доступ только на перечисленные объекты (ResourceRef {"{type,id}"}, закрытый список типов).
           </Typography.Paragraph>
         </FormSection>
 

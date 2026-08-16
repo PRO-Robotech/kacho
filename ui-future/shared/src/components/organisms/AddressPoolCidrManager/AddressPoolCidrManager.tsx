@@ -168,7 +168,7 @@ function CidrSection({ poolId, kind, blocks }: SectionProps) {
             }}
           />
           <Button type="primary" ghost onClick={onAdd} disabled={!draft.trim() || busyAny} icon={<PlusOutlined />}>
-            Add
+            Добавить
           </Button>
         </Space.Compact>
       </Space>
