@@ -19,6 +19,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	"github.com/PRO-Robotech/kacho/pkg/peer"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -31,11 +32,13 @@ const (
 	vpcOpPollTimeout  = 15 * time.Second
 )
 
-// Здесь стоял бюджет ретрая на окно видимости своего свежего адреса (12 × 500ms).
-// У него больше нет предмета: адрес рождается СРАЗУ привязанным к владельцу
-// (`createOwnedAddressAndWait`), поэтому второго решения о доступе на пути нет —
-// а ждать материализацию было нужно именно перед ним. Ожидание снято вместе с
-// причиной, а не заменено ретраем побольше.
+// Бюджет ожидания окна видимости снят с полосы АВТО-аллокации и у неё не
+// восстановлен: адрес рождается СРАЗУ привязанным к владельцу
+// (`createOwnedAddressAndWait`), второго решения о доступе на пути нет — ждать
+// нечего. Полоса BYO-привязки устроена иначе и свой бюджет несёт: адрес принесён
+// арендатором и существует задолго до вызова, поэтому отдельное решение о
+// доступе к нему принимается всегда (см. `attachWithVisibilityBudget`). Разница
+// не в аппетите к ретраю, а в том, устранима ли зависимость по существу.
 
 // DefaultInternalAddressCallTimeout — per-call deadline применяемый к КАЖДОМу
 // outbound gRPC-вызову этого client'а (Create/Delete/Get на AddressService,
@@ -78,9 +81,10 @@ type AllocateResponse struct {
 
 // AttachExistingRequest — параметры link-привязки принесённого tenant'ом Address к
 // owner-ресурсу (LoadBalancer VIP). Server-side привязка идёт через
-// InternalAddressService.SetAddressReference (атомарный CAS в vpc); mismatch /
-// not-found мапится в generic InvalidArgument (анти-oracle). Owned=false —
-// tenant-owned адрес (link): release снимает только референс, адрес уцелевает.
+// InternalAddressService.SetAddressReference (атомарный CAS в vpc); полосы
+// ответа владельца разведены по sentinel'ам — см. контракт `AttachExisting`.
+// Owned=false — tenant-owned адрес (link): release снимает только референс,
+// адрес уцелевает.
 type AttachExistingRequest struct {
 	AddressID string
 	Owner     AddressOwner
@@ -112,11 +116,17 @@ type InternalAddressClient interface {
 	AllocateInternalIPv6(ctx context.Context, req AllocateInternalIPRequest) (*AllocateResponse, error)
 
 	// AttachExisting привязывает принесённый tenant'ом Address к owner-ресурсу
-	// через InternalAddressService.SetAddressReference. Семантика ошибок
-	// (анти-oracle: не подтверждаем чужой ownership/семейство/существование):
+	// через InternalAddressService.SetAddressReference. Полосы ответа владельца
+	// (анти-oracle сохраняется ПРОЗОЙ у вызывающего, а не схлопыванием полос —
+	// api-conventions.md §By-lane code-split):
 	//   - AlreadyExists (address занят другим referrer)  → domain.ErrFailedPrecondition
-	//   - NotFound / InvalidArgument / PermissionDenied  → generic domain.ErrInvalidArg
-	//                                                       "Illegal argument addressId"
+	//   - NotFound / PermissionDenied                    → domain.ErrNotFound: адрес
+	//     сейчас не резолвится у владельца. ПЕРЕХОДНОЕ состояние, пока
+	//     материализуется пообъектный доступ к свежесозданному адресу; повтор
+	//     закрывает его (ban #9 — барьера на стороне сервера не заводим)
+	//   - InvalidArgument                                → domain.ErrInvalidArg
+	//     (владелец счёл ссылку негодной — повтором не лечится)
+	//   - FailedPrecondition                             → domain.ErrFailedPrecondition
 	//   - Unavailable/DeadlineExceeded                   → domain.ErrUnavailable
 	// Возвращает resolved-значение привязанного Address (Get после успеха).
 	AttachExisting(ctx context.Context, req AttachExistingRequest) (*AllocateResponse, error)
@@ -154,6 +164,24 @@ type internalAddressClient struct {
 	// конструкторы дефолтят на slog.Default() (main.go делает slog.SetDefault).
 	logger  *slog.Logger
 	timeout time.Duration
+	// linkAttempts / linkBackoff — бюджет окна видимости на link-CAS. Поля, а не
+	// константы, чтобы проба сжимала каденцию, не подменяя саму петлю: подменённая
+	// петля утверждала бы о своей копии, а не о том, что исполняется в проде.
+	// Ноль = значения по умолчанию.
+	linkAttempts int
+	linkBackoff  time.Duration
+}
+
+// linkBudget — фактический бюджет окна видимости этого клиента.
+func (c *internalAddressClient) linkBudget() (int, time.Duration) {
+	attempts, backoff := c.linkAttempts, c.linkBackoff
+	if attempts <= 0 {
+		attempts = linkVisibilityAttempts
+	}
+	if backoff <= 0 {
+		backoff = linkVisibilityBackoff
+	}
+	return attempts, backoff
 }
 
 // NewInternalAddressClient оборачивает grpc-conn'ы в typed adapter.
@@ -548,11 +576,81 @@ func (c *internalAddressClient) AttachExisting(
 		return nil, fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
 	}
 
-	// Атомарный CAS-referrer в vpc (та же tx, что и запись used_by). Mismatch /
-	// not-found → generic InvalidArgument (анти-oracle: не раскрываем чужой
-	// ownership/семейство/несуществование адреса).
+	// Атомарный CAS-referrer в vpc (та же tx, что и запись used_by). Полосы
+	// ответа владельца разведены по sentinel'ам — см. контракт метода.
+	err := c.attachWithVisibilityBudget(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Привязка прошла → адрес наш; читаем resolved-значение.
+	addr, err := c.resolveAddressValue(ctx, req.AddressID)
+	if err != nil {
+		return nil, err
+	}
+	return &AllocateResponse{AddressID: req.AddressID, Value: addr}, nil
+}
+
+// linkVisibilityBudget — сколько попыток и с какой паузой закрывать окно, в
+// котором пообъектный доступ к УЖЕ СУЩЕСТВУЮЩЕМУ адресу ещё не материализовался.
+//
+// Замер стенда 2026-08-16 (прогон e2e 31965970965): адрес создан в 19:07:20.129,
+// `v_get` виден в .237, `v_update` — только к .939, то есть окно ≈0.7 с и набор
+// глаголов объекта в нём виден ЧАСТИЧНО. Бюджет взят с запасом к измеренному, но
+// конечным: невидимость, которая не закрылась за него, отвечает своей полосой, а
+// не ждёт дальше.
+const (
+	linkVisibilityAttempts = 12
+	linkVisibilityBackoff  = 500 * time.Millisecond
+)
+
+// attachWithVisibilityBudget — link-CAS с ОГРАНИЧЕННЫМ повтором ровно одной
+// полосы: «адрес сейчас не резолвится у владельца».
+//
+// Почему повтор здесь законен, хотя у соседней полосы авто-аллокации его сняли.
+// Там зависимость от окна убрали ПО СУЩЕСТВУ: адрес рождается сразу привязанным,
+// второго решения о доступе на пути нет. Здесь так нельзя by construction —
+// адрес принесён арендатором и существует ЗАДОЛГО до нашего вызова, поэтому
+// решение о доступе к нему принимается отдельно и всегда. Это ровно тот случай,
+// для которого конвенция и предписывает ограниченный повтор ВЫЗЫВАЮЩЕГО
+// (api-conventions.md: «создал→сразу мутирую» закрывается повтором клиента, а не
+// серверным барьером — ban #9).
+//
+// Повторяется ТОЛЬКО полоса промаха. Негодная ссылка, проигранный CAS и
+// состояние ресурса терминальны — повтор идентичного запроса их не изменит и
+// лишь оттянул бы отказ на весь бюджет (data-integrity.md §«Межсервисное
+// намерение»: отказ в правах НЕ временный). Недоступность соседа остаётся за
+// `retry.OnUnavailable` внутри одной попытки.
+func (c *internalAddressClient) attachWithVisibilityBudget(
+	ctx context.Context, req AttachExistingRequest,
+) error {
+	attempts, backoff := c.linkBudget()
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("%w: vpc set address reference %s: %s",
+					domain.ErrUnavailable, req.AddressID, ctx.Err())
+			case <-time.After(backoff):
+			}
+		}
+		err = c.setAddressReferenceOnce(ctx, req)
+		if err == nil || !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+	}
+	return err
+}
+
+// setAddressReferenceOnce — одна попытка link-CAS: сам RPC плюс классификация
+// ответа владельца.
+func (c *internalAddressClient) setAddressReferenceOnce(
+	ctx context.Context, req AttachExistingRequest,
+) error {
 	setCtx, setCancel := c.withCallTimeout(ctx)
-	err := retry.OnUnavailable(setCtx, func(ctx context.Context) error {
+	defer setCancel()
+	return retry.OnUnavailable(setCtx, func(ctx context.Context) error {
 		_, rerr := c.internal.SetAddressReference(auth.PropagateOutgoing(ctx), &vpcpb.SetAddressReferenceRequest{
 			AddressId:    req.AddressID,
 			ReferrerType: req.Owner.Kind,
@@ -566,30 +664,32 @@ func (c *internalAddressClient) AttachExisting(
 		if !ok {
 			return fmt.Errorf("vpc set address reference %q: %w", req.AddressID, rerr)
 		}
-		switch st.Code() {
-		case codes.AlreadyExists:
+		// Проигранный CAS — вне закрытого набора носителя (`AlreadyExists` полосы
+		// не имеет: у соседа это не отказ ссылки, а состояние нашей же попытки).
+		if st.Code() == codes.AlreadyExists {
 			return fmt.Errorf("%w: address %s already used by another resource", domain.ErrFailedPrecondition, req.AddressID)
-		case codes.NotFound, codes.InvalidArgument, codes.PermissionDenied:
-			return fmt.Errorf("%w: Illegal argument addressId", domain.ErrInvalidArg)
-		case codes.Unavailable, codes.DeadlineExceeded:
+		}
+		// Остальное классифицирует носитель — тот же, что у публичного
+		// `AddressClient.Get` (`mapAddressErr`). Прежде здесь стоял свой разбор
+		// кодов, и он сводил промах, отказ в правах и негодную ссылку в ОДИН
+		// sentinel «аргумент незаконен»: окно материализации пообъектного доступа
+		// становилось неотличимо от настоящей ошибки ввода — ни для клиентского
+		// повтора (ban #9), ни для разбора красноты.
+		switch peer.Classify(rerr) {
+		case peer.OutcomeMissing, peer.OutcomeDenied:
+			// anti-oracle: «нет адреса» и «не виден» — один sentinel и один текст.
+			return fmt.Errorf("%w: address %s not found", domain.ErrNotFound, req.AddressID)
+		case peer.OutcomeStateRefused:
+			return fmt.Errorf("%w: address %s state does not allow linking", domain.ErrFailedPrecondition, req.AddressID)
+		case peer.OutcomeMalformed:
+			return fmt.Errorf("%w: vpc set address reference %s: %s", domain.ErrInvalidArg, req.AddressID, peer.PeerMessage(rerr))
+		case peer.OutcomeUnavailable:
 			// fail-closed для мутации (api-conventions.md); также покрывает
 			// DeadlineExceeded от per-call c.withCallTimeout на зависшем peer'е.
-			return fmt.Errorf("%w: vpc set address reference %s: %s", domain.ErrUnavailable, req.AddressID, st.Message())
-		default:
-			return fmt.Errorf("vpc set address reference %q: %w", req.AddressID, rerr)
+			return fmt.Errorf("%w: vpc set address reference %s: %s", domain.ErrUnavailable, req.AddressID, peer.PeerMessage(rerr))
 		}
+		return fmt.Errorf("vpc set address reference %q: %w", req.AddressID, rerr)
 	})
-	setCancel()
-	if err != nil {
-		return nil, err
-	}
-
-	// Привязка прошла → адрес наш; читаем resolved-значение.
-	addr, err := c.resolveAddressValue(ctx, req.AddressID)
-	if err != nil {
-		return nil, err
-	}
-	return &AllocateResponse{AddressID: req.AddressID, Value: addr}, nil
 }
 
 // resolveAddressValue — Get Address + извлечение resolved IP-строки (любое
