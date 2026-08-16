@@ -135,6 +135,45 @@ func TestExpiredDeclarationIsRed(t *testing.T) {
 	}
 }
 
+// TestEmptyLedgerOnTrunkIsThePointNotAFailure — ПУСТОЙ ПЕРЕЧЕНЬ ПРОХОДИТ, объявляя
+// перепись.
+//
+// Это вход, который гейт видит на СТВОЛЕ чаще любого другого: база сравнения там — сам
+// ствол, поэтому находок 0 по построению, а нормальное состояние перечня — пусто. Пустой
+// перечень есть ЦЕЛЬ, ради которой перечень заведён; отказ на нём толкал бы держать
+// запись ради зелёного — то есть ровно наоборот тому, что гейт защищает.
+//
+// Утверждается ПАРА: исход зелёный И перепись напечатана. Без второй половины «ноль
+// находок» было бы неотличимо от «ноль прочитанного» — прецедент записан в самом
+// конвейере, где три шага получали skipped, а вердикт о них выдавался.
+func TestEmptyLedgerOnTrunkIsThePointNotAFailure(t *testing.T) {
+	res := Adjudicate(nil, nil)
+	if !res.Clean() {
+		t.Fatalf("пустой перечень при нуле находок объявлен находкой:\n%s", res.Report())
+	}
+	if res.Incoherent() {
+		t.Error("вырожденный вход принят за самопротиворечивый вердикт — на стволе гейт отказывал бы всегда")
+	}
+	rep := res.Report()
+	for _, want := range []string{"осмотрено находок buf 0", "записей перечня 0", "[PASS]"} {
+		if !strings.Contains(rep, want) {
+			t.Errorf("перепись не называет %q:\n%s", want, rep)
+		}
+	}
+
+	// Зеркало: тот же ноль находок, но перечень НЕ пуст — красное. Иначе «проходит на
+	// пустом» было бы неотличимо от «проходит на чём угодно, где нет находок».
+	red := Adjudicate(nil, []Declaration{
+		decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "AddRoutes"),
+	})
+	if red.Clean() {
+		t.Fatalf("на стволе запись без предмета прошла — истечение не обнаруживается там, где происходит:\n%s", red.Report())
+	}
+	if !strings.Contains(red.Report(), "ПОСЛАБЛЕНИЕ ИСТЕКЛО") {
+		t.Errorf("исход не назван:\n%s", red.Report())
+	}
+}
+
 // TestSymbolMismatchIsItsOwnOutcome — отказ предпосылки НЕ маскируется под истечение.
 func TestSymbolMismatchIsItsOwnOutcome(t *testing.T) {
 	decls := []Declaration{decl("RPC_NO_DELETE", "kacho/cloud/vpc/v1/route_table_service.proto", "RemoveRoutes")}
