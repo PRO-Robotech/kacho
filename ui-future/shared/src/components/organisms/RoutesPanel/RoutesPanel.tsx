@@ -33,9 +33,22 @@ import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+
+/**
+ * Место полной замены набора. Состав обоих типов, через которые проходит
+ * маршрут, сверяется с `StaticRoute` контракта гейтом
+ * `test/set-replacement-draft-composition`.
+ */
+export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
+  field: "static_routes",
+  contract: "kacho/cloud/vpc/v1/route_table.proto",
+  message: "StaticRoute",
+  drafts: ["StaticRoute", "DraftRoute"],
+};
 
 export interface StaticRoute {
   destination_prefix?: string;

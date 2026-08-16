@@ -122,10 +122,14 @@ function refLinks(ids: string[] | undefined, specId: string): ReactNode {
 }
 
 // ── RouteTable static_routes ──
+// Копия того же имени, что у типа панели маршрутов, — поэтому гейт
+// `test/set-replacement-draft-composition` сверяет её с контрактом вместе с
+// оригиналом: форк не остаётся незамеченным ровно потому, что он форк.
 interface StaticRoute {
   destination_prefix?: string;
   next_hop_address?: string;
   gateway_id?: string;
+  labels?: Record<string, string>;
 }
 // Статические маршруты — PROP таблицы маршрутизации (не смежный ресурс).
 // Показываем ОТДЕЛЬНОЙ таблицей с подписью под Обзором (overviewBelow);
