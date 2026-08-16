@@ -14,6 +14,7 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
@@ -80,18 +81,24 @@ type poolAddressClient struct {
 	pool *leasePool
 }
 
-func (c *poolAddressClient) FreeIP(ctx context.Context, addressID string) error {
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+// ReleaseLease — возврат аренды в пул. Отвергает незаполненное предъявление
+// владения так же, как боевой владелец: дублёр, принимающий больше настоящего,
+// сделал бы невидимым дефект, ради которого его подставляют.
+func (c *poolAddressClient) ReleaseLease(
+	_ context.Context, req vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
+	switch {
+	case req.ProjectID == "":
+		return "", fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
+	case req.AddressID == "":
+		return "", fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
 	}
-	return c.pool.give(addressID)
-}
-
-func (c *poolAddressClient) ClearReference(ctx context.Context, addressID string) error {
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	if err := c.pool.give(req.AddressID); err != nil {
+		return "", err
 	}
-	return nil
+	return vpcclient.LeaseReleased, nil
 }
 
 // Пул не деградирует: N заведений → N удалений → N заведений снова проходят.

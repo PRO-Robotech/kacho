@@ -1109,10 +1109,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressListBySubnetUC := addressapp.NewListBySubnetUseCase(kachoRepo, subnetAdapter)
 	addressListOpsUC := addressapp.NewListOperationsUseCase(opsRepo)
 	addressAllocateUC := addressapp.NewAllocateUseCase(kachoRepo, addressPoolResolver)
+	addressReleaseUC := addressapp.NewReleaseOwnedAddressUseCase(kachoRepo)
 	addressHandler := addressapp.NewHandler(
 		addressCreateUC, addressUpdateUC, addressDeleteUC,
 		addressGetUC, addressGetByValueUC, addressListUC, addressListBySubnetUC, addressListOpsUC,
-	)
+	).WithLeaseReleaser(addressReleaseUC)
 
 	// SecurityGroup — use-case-структура. Split-endpoint Update / UpdateRules /
 	// UpdateRule (OCC через xmin в repo). Все DML + outbox-emit идут в одной writer-TX.
@@ -1251,9 +1252,15 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// привязанного к владельцу, одной writer-TX. Реализуется публичным
 	// транспортным handler'ом адреса, чтобы разбор тела создания оставался
 	// единственным на оба пути.
+	// `WithLeaseReleaser` — путь `ReleaseOwnedAddress`: снятие аренды по
+	// предъявлению владения ею, одной writer-TX, с НАЗВАННЫМ исходом. Право
+	// анкорится на проекте (как у создания аренды), поэтому пообъектной пробы
+	// существования у глагола нет, а значит нет и полосы скрытия, из которой
+	// вызывающий выводил бы «работа сделана».
 	vpcv1.RegisterInternalAddressServiceServer(srv,
 		handler.NewInternalAddressAllocateHandler(svcs.addressAllocate, svcs.addressRefService).
-			WithOwnedCreator(svcs.addressHandler))
+			WithOwnedCreator(svcs.addressHandler).
+			WithLeaseReleaser(svcs.addressHandler))
 	vpcv1.RegisterInternalAddressPoolServiceServer(srv, svcs.addressPoolHandler)
 	vpcv1.RegisterInternalNetworkServiceServer(srv, handler.NewInternalNetworkHandler(svcs.networkInternal))
 	// InternalNetworkInterfaceService — NIC↔Instance attach-CAS (:9091, ban #6): не на

@@ -13,15 +13,21 @@ import { REGISTRY } from "@shared/lib/resource-registry";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
+// Копия того же имени, что у типа панели правил, — поэтому гейт
+// `test/set-replacement-draft-composition` сверяет её с контрактом вместе с
+// оригиналом: форк не остаётся незамеченным ровно потому, что он форк.
 interface SgRule {
   id?: string;
   direction?: string;
   description?: string;
+  labels?: Record<string, string>;
   protocol_name?: string;
   protocol_number?: number;
   ports?: { from_port?: number | string; to_port?: number | string };
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
+  /** Третья ветвь `oneof target` — ссылка на именованный набор префиксов. */
+  cidr_group_id?: string;
   predefined_target?: string;
 }
 

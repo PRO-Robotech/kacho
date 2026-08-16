@@ -51,6 +51,17 @@ type TargetKind = "cidr" | "sg" | "cidr-group";
 export interface RuleExt {
   direction?: string;
   description?: string;
+  /**
+   * Метки правила. Редактор их не показывает и не правит, но НАЗЫВАЕТ и
+   * проносит: правило пересоздаётся из черновика целиком (правка — это
+   * `deletion_rule_ids` + `addition_rule_specs`), поэтому поле, которого
+   * черновик не назвал, у правила исчезает. Прежде поле выживало ТОЛЬКО
+   * распространением объекта в `{ ...rule }` — то есть случайно, а не
+   * утверждением: первая же пересборка правила перечислением полей унесла бы
+   * его молча. Состав против контракта держит
+   * `test/set-replacement-draft-composition`.
+   */
+  labels?: Record<string, string>;
   _protocol_mode?: ProtocolMode;
   protocol_name?: string;
   // int64 on the wire → a JSON string when it comes from the server.
