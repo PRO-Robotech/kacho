@@ -51,57 +51,7 @@
 # Два файла + семь полей. Номера и имена полей зарезервированы надгробиями в
 # самих контрактах, имена обеих RPC — в переписи снятой поверхности
 # (`internal/repohygiene/retiredrpcsurface_test.go`).
-declared:
-  - rule: FILE_NO_DELETE
-    path: kacho/cloud/vpc/v1/internal_dataplane_service.proto
-    symbol: kacho/cloud/vpc/v1/internal_dataplane_service.proto
-    reason: >-
-      поверхность шва с исполнителем датаплейна: поток намерения и приём отчёта о
-      применении. Вызывающей стороны не существовало ни у одного из двух методов
-    issue: kacho#400
-  - rule: FILE_NO_DELETE
-    path: kacho/cloud/vpc/v1/apply_state.proto
-    symbol: kacho/cloud/vpc/v1/apply_state.proto
-    reason: >-
-      сообщение состояния применения и закрытый словарь классов отказа
-      исполнителя. Снимается вместе с семью полями, которые были его
-      единственными потребителями
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/network.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности сети
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/subnet.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности подсети
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_interface.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности интерфейса
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/address.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности адреса
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/security_group.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности группы правил
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности таблицы маршрутизации
-    issue: kacho#400
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/vpc/v1/gateway.proto
-    symbol: apply_state
-    reason: поле без производителя на публичной поверхности шлюза
-    issue: kacho#400
+declared: []
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #
