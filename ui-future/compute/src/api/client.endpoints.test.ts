@@ -21,7 +21,7 @@
 // Объём осмотренного печатается числами: «ноль находок» обязано быть отличимо от
 // «ноль прочитанного».
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -123,12 +123,50 @@ function tsFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
+// Обход идёт ЗА ШИМ. Файл-шим — это исходник ЭТОГО приложения, у которого тело
+// лежит в `shared/`: он не несёт собственных объявлений и целиком состоит из
+// `export * from "@shared/…"` (#405, сведение форков). Не пойти за него значит
+// перестать видеть адресацию, которая никуда не делась: `src/api/iam.ts` после
+// сведения не содержит ни одного литерала, а приложение по-прежнему зовёт
+// `/iam/v1/accounts`. Тогда равенство множеств чинилось бы ВЫЧЁРКИВАНИЕМ строк
+// из шапки — то есть предикат заставлял бы документ лгать, чтобы сойтись.
+//
+// Следование одноуровневое и только за шимом: внутренности `shared/`, которые
+// шим не называет, адресацией этого приложения не являются. Признак истекает
+// сам — снимут шим, и его цель перестанет читаться.
+const SHARED_SRC = join(SRC_DIR, "..", "..", "shared", "src");
+
+function shimTarget(source: string): string | null {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .trim();
+  const m = /^export \* from "@shared\/([A-Za-z0-9/_.-]+)";$/.exec(code);
+  return m ? m[1] : null;
+}
+
+function resolveShared(spec: string): string | null {
+  for (const ext of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+    const p = join(SHARED_SRC, spec + ext);
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
 describe("шапка client.ts перечисляет ровно те эндпоинты, которые адресует исходник", () => {
   const files = tsFiles(SRC_DIR);
   const clientSource = readFileSync(CLIENT_TS, "utf8");
 
-  const addressed = new Set<string>();
+  const behindShims: string[] = [];
   for (const f of files) {
+    const spec = shimTarget(readFileSync(f, "utf8"));
+    if (!spec) continue;
+    const target = resolveShared(spec);
+    if (target && !behindShims.includes(target)) behindShims.push(target);
+  }
+
+  const addressed = new Set<string>();
+  for (const f of [...files, ...behindShims]) {
     for (const token of addressedIn(readFileSync(f, "utf8"), f)) addressed.add(token);
   }
 
@@ -138,11 +176,12 @@ describe("шапка client.ts перечисляет ровно те эндпо
     // Положительный контроль объёма — без него «множества совпали» неотличимо от
     // «оба пусты, потому что предикат ничего не нашёл».
     expect(files.length).toBeGreaterThan(100);
+    expect(behindShims.length).toBeGreaterThan(0);
     expect(declared.size).toBeGreaterThan(5);
     expect(addressed.size).toBeGreaterThan(5);
     // eslint-disable-next-line no-console
     console.log(
-      `[endpoints] файлов прочитано: ${files.length}; объявлено: ${declared.size}; адресуется: ${addressed.size}`,
+      `[endpoints] файлов прочитано: ${files.length}; за шимами: ${behindShims.length}; объявлено: ${declared.size}; адресуется: ${addressed.size}`,
     );
   });
 
