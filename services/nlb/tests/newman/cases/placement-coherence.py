@@ -91,6 +91,11 @@ def _provision_zonal_subnet(zone_var, suffix, save_var, family="v4"):
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_SUBNETS, save_var, f"subnet-{suffix}"),
     ]
 
 
@@ -119,6 +124,11 @@ def _provision_regional_subnet(region_var, suffix, save_var):
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_SUBNETS, save_var, f"subnet-{suffix}"),
     ]
 
 
