@@ -88,12 +88,12 @@ export function buildTargetPayload(kind: TargetKind, f: TargetFormState): Target
 
 // targetIdentity — человекочитаемое представление identity для таблицы.
 export function targetIdentity(t: Target): { label: string; value: string } {
-  if (t.instance_id) return { label: "Instance", value: t.instance_id };
+  if (t.instance_id) return { label: "Виртуальная машина", value: t.instance_id };
   if (t.nic_id) return { label: "NIC", value: t.nic_id };
-  if (t.ip_ref) return { label: "In-cloud IP", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
+  if (t.ip_ref) return { label: "Адрес в облаке", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
   if (t.external_ip)
     return {
-      label: "External IP",
+      label: "Внешний адрес",
       value: `${t.external_ip.address ?? ""}${t.external_ip.zone_id ? ` @${t.external_ip.zone_id}` : ""}`,
     };
   return { label: "—", value: "" };
@@ -182,7 +182,7 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
           Список
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--kc-text)" }}>
-          Targets <Typography.Text type="secondary">({targets.length})</Typography.Text>
+          Цели <Typography.Text type="secondary">({targets.length})</Typography.Text>
         </div>
       </div>
 
@@ -232,7 +232,7 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
                     color: "var(--kc-text-tertiary)",
                   }}
                 >
-                  Targets ещё не добавлены
+                  Цели ещё не добавлены
                 </td>
               </tr>
             )}
@@ -293,10 +293,10 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
                       disabled={inputsDisabled}
                       style={{ width: 220 }}
                       options={[
-                        { value: "instance", label: "Compute Instance" },
-                        { value: "nic", label: "VPC NetworkInterface" },
-                        { value: "ip_ref", label: "In-cloud IP (subnet + адрес)" },
-                        { value: "external_ip", label: "External IP (вне облака)" },
+                        { value: "instance", label: "Виртуальная машина" },
+                        { value: "nic", label: "Сетевой интерфейс" },
+                        { value: "ip_ref", label: "Адрес в облаке (подсеть + адрес)" },
+                        { value: "external_ip", label: "Внешний адрес (вне облака)" },
                       ]}
                     />
                     {kind === "instance" && (

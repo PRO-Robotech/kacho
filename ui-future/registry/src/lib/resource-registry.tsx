@@ -59,7 +59,7 @@ const FIELD_DESCRIPTION: FormField = {
 
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -116,7 +116,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Регион", path: "region_id", format: "text" },
       { header: "Статус", path: "status", format: "status" },
       { header: "Репозиториев", path: "repository_count", format: "text" },
-      { header: "Endpoint", path: "endpoint", format: "code" },
+      { header: "Адрес", path: "endpoint", format: "code" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
@@ -269,9 +269,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: true },
     columns: [
       { header: "Тег", path: "tag", format: "text" },
-      { header: "Digest", path: "digest", format: "code" },
+      { header: "Дайджест", path: "digest", format: "code" },
       { header: "Размер", path: "size_bytes", format: "text" },
-      { header: "Media type", path: "media_type", format: "text" },
+      { header: "Тип содержимого", path: "media_type", format: "text" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
     // Мутаций create/update нет — form-schema не требуется.

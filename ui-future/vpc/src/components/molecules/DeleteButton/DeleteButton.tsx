@@ -93,7 +93,7 @@ export function DeleteButton({ apiPath, resourceId, name, resourceLabel, project
           {err && <div className="rounded-md bg-destructive/10 text-destructive p-2 text-xs">{err}</div>}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)} disabled={mutation.isPending}>
-              Cancel
+              Отмена
             </Button>
             <Button variant="destructive" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
               {mutation.isPending ? "Deleting…" : "Delete"}

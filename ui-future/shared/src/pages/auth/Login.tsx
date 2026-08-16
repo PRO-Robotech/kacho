@@ -210,7 +210,7 @@ export function LoginPage() {
         <div style={{ textAlign: "center", padding: 48 }}>
           <Spin size="large" />
           <Paragraph type="secondary" style={{ marginTop: 16 }}>
-            Загрузка login-flow…
+            Загрузка формы входа…
           </Paragraph>
         </div>
       </AuthLayout>
@@ -255,7 +255,7 @@ export function LoginPage() {
 
         {hasPassword && (
           <Form form={form} layout="vertical" onFinish={submitPassword} requiredMark={false}>
-            <Form.Item name="identifier" label="Email" rules={[{ required: true, message: "Введите email" }]}>
+            <Form.Item name="identifier" label="Эл. почта" rules={[{ required: true, message: "Введите email" }]}>
               <Input
                 size="large"
                 prefix={<MailOutlined />}
@@ -276,7 +276,7 @@ export function LoginPage() {
             {flow.requested_aal === "aal2" && (
               <Form.Item
                 name="totp_code"
-                label="Код из authenticator-приложения"
+                label="Код из приложения-аутентификатора"
                 rules={[{ required: true, message: "Введите 6-значный код" }]}
               >
                 <Input

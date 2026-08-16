@@ -20,8 +20,8 @@ import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 
 // Custom-роль определяется на account- ИЛИ project-уровне (cluster = system-only).
 const TIER_OPTIONS: { value: Extract<TierType, "iam.account" | "iam.project">; label: string }[] = [
-  { value: "iam.account", label: "iam.account — роль уровня Account" },
-  { value: "iam.project", label: "iam.project — роль уровня Project" },
+  { value: "iam.account", label: "iam.account — роль уровня аккаунта" },
+  { value: "iam.project", label: "iam.project — роль уровня проекта" },
 ];
 
 export function InlineRoleCreateForm({
@@ -117,7 +117,7 @@ export function InlineRoleCreateForm({
           </Form.Item>
           {tierType === "iam.project" ? (
             <Form.Item
-              label="Anchor (Project)"
+              label="Якорь (проект)"
               name="tier_id"
               required
               rules={[{ required: true, message: "Выберите Project" }]}
@@ -132,7 +132,7 @@ export function InlineRoleCreateForm({
             </Form.Item>
           ) : (
             <Form.Item
-              label="Anchor (Account)"
+              label="Якорь (аккаунт)"
               name="tier_id"
               required
               rules={[{ required: true, message: "Выберите Account" }]}

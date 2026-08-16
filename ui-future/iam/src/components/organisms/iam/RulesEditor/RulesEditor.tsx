@@ -332,7 +332,7 @@ export function RulesEditor({
                       size="small"
                     >
                       <Radio.Button value="anchor" data-testid={`role-rule-${i}-arm-anchor`}>
-                        Все в scope
+                        Все в области
                       </Radio.Button>
                       <Radio.Button value="names" data-testid={`role-rule-${i}-arm-names`}>
                         По именам
@@ -418,7 +418,7 @@ function CatalogSelect({
   value: string[];
   options: readonly string[];
   onChange: (tokens: string[]) => void;
-  /** Показать бейдж «* — system-only» рядом с label (module/resource в custom). */
+  /** Показать бейдж «* — только для системных ролей» рядом с label (module/resource в custom). */
   systemOnlyWildcardHint: boolean;
 }) {
   // Опции каталога. Если в `value` есть legacy/unknown-токен (из существующего
@@ -433,7 +433,7 @@ function CatalogSelect({
         {systemOnlyWildcardHint && (
           <Tooltip title="Wildcard '*' здесь доступен только системным ролям">
             {" "}
-            <Tag style={{ marginLeft: 4 }}>* — system-only</Tag>
+            <Tag style={{ marginLeft: 4 }}>* — только для системных ролей</Tag>
           </Tooltip>
         )}
       </Typography.Text>
@@ -479,7 +479,7 @@ function ModuleSelect({
         {systemOnlyWildcardHint && (
           <Tooltip title="Wildcard '*' здесь доступен только системным ролям">
             {" "}
-            <Tag style={{ marginLeft: 4 }}>* — system-only</Tag>
+            <Tag style={{ marginLeft: 4 }}>* — только для системных ролей</Tag>
           </Tooltip>
         )}
       </Typography.Text>
@@ -570,7 +570,7 @@ function ResourceNamesFreeText({
     <div data-testid={testid}>
       <div data-testid={`${testid}-freetext`}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          resourceNames (ручной ввод id)
+          имена ресурсов (ввод вручную)
         </Typography.Text>
         <Select
           mode="tags"
@@ -712,7 +712,7 @@ function MatchLabelsEditor({
   return (
     <div data-testid={testid}>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        matchLabels (AND-equality)
+        метки (совпадение всех)
       </Typography.Text>
       <Space direction="vertical" size={6} style={{ width: "100%", marginTop: 4 }}>
         {Object.keys(value).length > 0 && (

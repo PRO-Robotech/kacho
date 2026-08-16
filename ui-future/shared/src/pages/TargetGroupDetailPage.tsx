@@ -92,12 +92,12 @@ export function buildTargetPayload(kind: TargetKind, f: TargetFormState): Target
 
 /** targetIdentity — человекочитаемое представление identity для таблицы. */
 export function targetIdentity(t: Target): { label: string; value: string } {
-  if (t.instance_id) return { label: "Instance", value: t.instance_id };
+  if (t.instance_id) return { label: "Виртуальная машина", value: t.instance_id };
   if (t.nic_id) return { label: "NIC", value: t.nic_id };
-  if (t.ip_ref) return { label: "In-cloud IP", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
+  if (t.ip_ref) return { label: "Адрес в облаке", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
   if (t.external_ip)
     return {
-      label: "External IP",
+      label: "Внешний адрес",
       value: `${t.external_ip.address ?? ""}${t.external_ip.zone_id ? ` @${t.external_ip.zone_id}` : ""}`,
     };
   return { label: "—", value: "" };
@@ -191,7 +191,7 @@ export function TargetGroupDetailPage() {
             width: 60,
             render: (_v, t) => (
               <Popconfirm
-                title="Удалить target?"
+                title="Удалить цель?"
                 okText="Удалить"
                 okButtonProps={{ danger: true }}
                 cancelText="Отмена"
@@ -207,7 +207,7 @@ export function TargetGroupDetailPage() {
             size="small"
             title={
               <Space>
-                <span>Targets</span>
+                <span>Цели</span>
                 <Tag color="blue">{targets.length}</Tag>
               </Space>
             }
@@ -221,7 +221,7 @@ export function TargetGroupDetailPage() {
                   setAddOpen(true);
                 }}
               >
-                Добавить target
+                Добавить цель
               </Button>
             }
           >
@@ -249,7 +249,7 @@ export function TargetGroupDetailPage() {
       <ResourceDetailPage spec={SPEC} secondaryActions={targetsSection} />
 
       <Modal
-        title="Добавить target"
+        title="Добавить цель"
         open={addOpen}
         onCancel={() => setAddOpen(false)}
         onOk={() => {
@@ -268,21 +268,21 @@ export function TargetGroupDetailPage() {
           labelAlign="left"
           colon={false}
         >
-          <Form.Item label="Тип target">
+          <Form.Item label="Тип цели">
             <Select
               value={kind}
               onChange={(v) => setKind(v)}
               options={[
-                { value: "instance", label: "Compute Instance" },
-                { value: "nic", label: "VPC NetworkInterface" },
-                { value: "ip_ref", label: "In-cloud IP (subnet + адрес)" },
-                { value: "external_ip", label: "External IP (вне облака)" },
+                { value: "instance", label: "Виртуальная машина" },
+                { value: "nic", label: "Сетевой интерфейс" },
+                { value: "ip_ref", label: "Адрес в облаке (подсеть + адрес)" },
+                { value: "external_ip", label: "Внешний адрес (вне облака)" },
               ]}
             />
           </Form.Item>
 
           {kind === "instance" && (
-            <Form.Item label="Instance">
+            <Form.Item label="Виртуальная машина">
               <RefSelect
                 refResource="compute-instances"
                 refProjectScoped
@@ -292,7 +292,7 @@ export function TargetGroupDetailPage() {
             </Form.Item>
           )}
           {kind === "nic" && (
-            <Form.Item label="NetworkInterface">
+            <Form.Item label="Сетевой интерфейс">
               <RefSelect
                 refResource="network-interfaces"
                 refProjectScoped
@@ -303,7 +303,7 @@ export function TargetGroupDetailPage() {
           )}
           {kind === "ip_ref" && (
             <>
-              <Form.Item label="Subnet">
+              <Form.Item label="Подсеть">
                 <RefSelect
                   refResource="subnets"
                   refProjectScoped
@@ -331,13 +331,13 @@ export function TargetGroupDetailPage() {
                   style={{ fontFamily: "monospace" }}
                 />
               </Form.Item>
-              <Form.Item label="Zone (опц.)">
+              <Form.Item label="Зона (опц.)">
                 <RefSelect refResource="zones" value={form.zoneId} onChange={(v) => set({ zoneId: v || undefined })} />
               </Form.Item>
             </>
           )}
 
-          <Form.Item label="Weight">
+          <Form.Item label="Вес">
             <InputNumber
               min={0}
               max={1000}

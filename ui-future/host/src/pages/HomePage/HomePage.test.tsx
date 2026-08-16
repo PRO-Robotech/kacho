@@ -6,6 +6,6 @@ describe("HomePage", () => {
     render(<HomePage />);
 
     expect(screen.getByRole("heading", { name: "Сервисы облака" })).toBeInTheDocument();
-    expect(screen.getByText("Host shell for future federated modules")).toBeInTheDocument();
+    expect(screen.getByText("Оболочка хоста для федеративных модулей")).toBeInTheDocument();
   });
 });

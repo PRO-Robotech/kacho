@@ -207,7 +207,7 @@ export function RegisterPage() {
         <div style={{ textAlign: "center", padding: 48 }}>
           <Spin size="large" />
           <Paragraph type="secondary" style={{ marginTop: 16 }}>
-            Загрузка registration-flow…
+            Загрузка формы регистрации…
           </Paragraph>
         </div>
       </AuthLayout>
@@ -235,7 +235,7 @@ export function RegisterPage() {
       <Form form={form} layout="vertical" requiredMark={false} onFinish={submitPassword} style={{ marginTop: 24 }}>
         <Form.Item
           name="email"
-          label="Email"
+          label="Эл. почта"
           rules={[
             { required: true, message: "Введите email" },
             { type: "email", message: "Неверный формат email" },

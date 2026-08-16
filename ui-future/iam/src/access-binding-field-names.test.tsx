@@ -147,8 +147,8 @@ describe("карточка привязки: что она показывает"
     });
 
     expect(valueOf("Область (scopeType)")).toContain("iam.account");
-    expect(valueOf("Anchor (scopeId)")).toContain("acc-1");
-    expect(screen.getByText("Цель (target)")).toBeInTheDocument();
+    expect(valueOf("Якорь (scopeId)")).toContain("acc-1");
+    expect(screen.getByText("Цель")).toBeInTheDocument();
   });
 
   it("ресурс, у которого заполнены ТОЛЬКО снятые имена, показывает прочерк", () => {
@@ -167,7 +167,7 @@ describe("карточка привязки: что она показывает"
     });
 
     expect(valueOf("Область (scopeType)")).not.toContain("iam.account");
-    expect(valueOf("Anchor (scopeId)")).not.toContain("acc-СНЯТОЕ");
+    expect(valueOf("Якорь (scopeId)")).not.toContain("acc-СНЯТОЕ");
   });
 
   it("защита от удаления читается в обеих проекциях имени края", () => {

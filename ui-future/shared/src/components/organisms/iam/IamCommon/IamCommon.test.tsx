@@ -122,11 +122,11 @@ describe("CopyableMonoId", () => {
 describe("SystemTag", () => {
   it("системная и своя роль подписаны по-разному", () => {
     const { unmount } = render(<SystemTag isSystem />);
-    expect(screen.getByText("system")).toBeInTheDocument();
+    expect(screen.getByText("Системная")).toBeInTheDocument();
     unmount();
 
     render(<SystemTag isSystem={false} />);
-    expect(screen.getByText("custom")).toBeInTheDocument();
+    expect(screen.getByText("Пользовательская")).toBeInTheDocument();
   });
 });
 

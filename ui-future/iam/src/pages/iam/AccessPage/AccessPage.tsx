@@ -399,7 +399,7 @@ export function AccessGrantPage() {
             message="Приглашение создано!"
             description={
               <Space direction="vertical" style={{ width: "100%" }} size={4}>
-                <Typography.Text>Скопируйте magic-link и отправьте пользователю:</Typography.Text>
+                <Typography.Text>Скопируйте ссылку для входа и отправьте пользователю:</Typography.Text>
                 <Input.TextArea value={magicLink} rows={3} readOnly />
               </Space>
             }

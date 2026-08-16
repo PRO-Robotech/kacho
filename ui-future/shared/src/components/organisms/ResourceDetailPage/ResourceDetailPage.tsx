@@ -473,7 +473,7 @@ export function ResourceDetailPage({
             if (rules.length === 0) {
               return (
                 <Space direction="vertical" size={2}>
-                  <Typography.Text type="secondary">empty</Typography.Text>
+                  <Typography.Text type="secondary">пусто</Typography.Text>
                   <Typography.Text strong>Задайте правила для группы безопасности</Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     Правила управляют входящим трафиком ВМ.
@@ -618,7 +618,7 @@ export function ResourceDetailPage({
       ? [
           {
             id: "jsonint",
-            label: "jsonint",
+            label: "JSON (служебный)",
             render: () => (
               <JsonIntTab
                 path={spec.internalGetPath!.replace("{id}", resourceId)}
@@ -736,7 +736,7 @@ function UsedByBlock({ data }: { data: Record<string, unknown> }) {
   }>;
   return (
     <div className="rounded-lg border border-border p-4 space-y-2">
-      <h3 className="font-semibold text-sm">Used by</h3>
+      <h3 className="font-semibold text-sm">Используется</h3>
       <ul className="space-y-1 text-sm">
         {items.map((r, i) => {
           const type = r.referrer?.type ?? "?";

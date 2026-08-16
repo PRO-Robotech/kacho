@@ -321,7 +321,7 @@ export function SettingsPage() {
         title={
           <Space>
             <SafetyOutlined />
-            TOTP (authenticator-приложение)
+            TOTP (приложение-аутентификатор)
           </Space>
         }
         style={{ marginTop: 16 }}

@@ -176,7 +176,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>
           <ResourceRefChips
             titleHidden
-            title="IPv4 Address"
+            title="IPv4-адрес"
             refResource="addresses"
             projectId={projectId}
             tagColor="blue"
@@ -202,7 +202,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         >
           <ResourceRefChips
             titleHidden
-            title="IPv6 Address"
+            title="IPv6-адрес"
             refResource="addresses"
             projectId={projectId}
             tagColor="geekblue"
@@ -221,10 +221,10 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
           />
         </Form.Item>
 
-        <Form.Item label={labelWithInfo("Группы безопасности", "Security Groups, прилинкованные к NIC.")}>
+        <Form.Item label={labelWithInfo("Группы безопасности", "Группы безопасности, привязанные к этому интерфейсу.")}>
           <ResourceRefChips
             titleHidden
-            title="Security Group"
+            title="Группа безопасности"
             refResource="security-groups"
             projectId={projectId}
             tagColor="purple"

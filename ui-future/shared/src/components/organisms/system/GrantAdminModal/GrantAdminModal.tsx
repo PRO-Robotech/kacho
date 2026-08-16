@@ -174,7 +174,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
       title={
         <span>
           <UserAddOutlined style={{ marginRight: 8 }} />
-          Выдать cluster admin
+          Выдать права администратора кластера
         </span>
       }
       open={open}

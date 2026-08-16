@@ -108,7 +108,7 @@ describe("IAM-1 F6 — canonical system-role order", () => {
 describe("IAM-1 F7/F8/F10 — access-bindings spec", () => {
   it("scopeType/scopeId/target колонки заменяют resource_type/resource_id/scope", () => {
     expect(colByHeader("access-bindings", "Область")?.path).toBe("scope_type");
-    expect(colByHeader("access-bindings", "Anchor")?.path).toBe("scope_id");
+    expect(colByHeader("access-bindings", "Якорь")?.path).toBe("scope_id");
     expect(colByHeader("access-bindings", "Цель")?.path).toBe("target");
     // Старой колонки «Ресурс» (resource_id) больше нет.
     expect(colByHeader("access-bindings", "Ресурс")).toBeUndefined();

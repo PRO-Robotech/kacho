@@ -39,7 +39,10 @@ export interface UsedByEntry {
 }
 
 export interface DescItem {
-  label: string;
+  /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
+   *  именем — поле, которое заполняет система, иначе читается как пустое,
+   *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
+  label: ReactNode;
   value: ReactNode;
 }
 

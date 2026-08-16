@@ -153,7 +153,7 @@ export function InstanceDisksTab({
           disabled={busy}
         />
         <Checkbox checked={autoDelete} onChange={(e) => setAutoDelete(e.target.checked)} disabled={busy}>
-          Auto-delete
+          Автоудаление
         </Checkbox>
         <Button type="primary" icon={<PlusOutlined />} onClick={onAttach} disabled={!draftVolume || busy}>
           Подключить

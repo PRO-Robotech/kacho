@@ -158,7 +158,7 @@ export function RecoveryPage() {
           <Form form={form} layout="vertical" requiredMark={false} onFinish={submitEmail} style={{ marginTop: 24 }}>
             <Form.Item
               name="email"
-              label="Email"
+              label="Эл. почта"
               rules={[
                 { required: true, message: "Введите email" },
                 { type: "email", message: "Неверный формат email" },
@@ -194,7 +194,7 @@ export function RecoveryPage() {
         <Result
           status="success"
           icon={<MailOutlined />}
-          title="Проверьте email"
+          title="Проверьте почту"
           subTitle={
             <Paragraph type="secondary">
               Мы отправили ссылку для восстановления. Откройте email и кликните по ссылке (действительна{" "}
