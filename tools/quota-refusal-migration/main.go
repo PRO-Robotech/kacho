@@ -48,7 +48,11 @@ func run() error {
 			unchanged++
 			continue
 		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		// 0600, а не 0644: право чтения для всех тут ничего не даёт — git хранит
+		// из режима только бит исполнения, и файл всё равно приедет к каждому по
+		// его umask. Послабления к правам, за которое нечем заплатить, быть не
+		// должно (gosec G306); исключений на этот счёт в дереве нет ни одного.
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			return fmt.Errorf("запись %s: %w", path, err)
 		}
 		fmt.Println("записано:", path)
