@@ -23,6 +23,37 @@ async function сетьВПроекте(page: Page, projectId: string): Promise<
 }
 
 /**
+ * Заходит в маршрут проекта, чтобы context-store подхватил `project_id` из
+ * URL (`ContextUrlSync`) прежде, чем идти в `/system/*`.
+ *
+ * Контекст ПЕРЕЖИВАЕТ переход: он persist'ится в localStorage под ключом
+ * `kacho.context.v2`, и следующая навигация видит уже выбранный проект. Без
+ * этого захода `/system/search` не знает проекта вовсе — project-scoped
+ * область поиска не спрашивается (осознанно, #465), и утверждать про её ответ
+ * тут было бы нечего.
+ */
+async function проектВКонтексте(page: Page, projectId: string): Promise<void> {
+  await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          try {
+            const raw = window.localStorage.getItem("kacho.context.v2");
+            return raw ? ((JSON.parse(raw) as { project?: { id?: string } }).project?.id ?? null) : null;
+          } catch {
+            return null;
+          }
+        }),
+      {
+        timeout: 10_000,
+        message: "контекст проекта не осел в localStorage — следующий переход в /system/* уедет без project_id",
+      },
+    )
+    .toBe(projectId);
+}
+
+/**
  * Список отвечает про СПИСОК, а не про загруженную страницу.
  *
  * ─────────────────────────────────────────────────────────────────────────────
@@ -110,10 +141,16 @@ test("пока список прочитан не весь, сортировка
  *
  * Прежде страница на открытии тянула девять списков по 500 строк — безусловно,
  * ещё до первого нажатия клавиши.
+ *
+ * `networks` — project-scoped область (#465): без `project_id` в запросе край
+ * резолвит его в `project:*` и отвечает отказом в правах, а не пустым
+ * списком, — поэтому проба сперва заводит проект в контексте (переходом по
+ * его маршруту) и только потом идёт в `/system/search`.
  */
 test("общий поиск не работает вхолостую и уходит на сервер", async ({ page }) => {
-  // verifies #373
-  await registerAndSignIn(page);
+  // verifies #373, #465
+  const { projectId } = await registerAndSignIn(page);
+  await проектВКонтексте(page, projectId);
 
   const списки: string[] = [];
   page.on("request", (r) => {
@@ -144,4 +181,8 @@ test("общий поиск не работает вхолостую и уход
     поиск.fill("прод"),
   ]);
   expect(ответ.status(), `край отверг выражение поиска: ${await ответ.text()}`).toBe(200);
+  // Запирает #465: без `project_id` запрос уходил, но край его отвергал —
+  // здесь утверждается не только «край ответил», а что ответил ИМЕННО на
+  // project-scoped запрос своего проекта, а не по чужой случайности.
+  expect(new URL(ответ.url()).searchParams.get("project_id"), "запрос ушёл без project_id").toBe(projectId);
 });

@@ -20,10 +20,20 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { requestUrl } from "@shared/test/fetch-capture";
-import { SystemSearchPage, SEARCH_DOMAINS } from "./SystemSearchPage";
+import { contextApi } from "@shared/lib/context-store";
+import { SystemSearchPage, SEARCH_DOMAINS, PROJECT_SCOPED_DOMAINS } from "./SystemSearchPage";
 
 const realFetch = globalThis.fetch;
 let urls: string[] = [];
+
+// project-scoped областям (networks и т.п.) для запроса нужен выбранный
+// проект — иначе край резолвит отсутствующий `project_id` в `project:*` и
+// отвечает отказом (#465), а не пустым списком. По умолчанию проект выбран,
+// чтобы существующие пробы, утверждающие про эти области, не путали «нет
+// проекта» с «владелец не разбирает выражение».
+beforeEach(() => {
+  contextApi.setProject({ id: "prj-1", name: "проект", accountId: "acc-1" });
+});
 
 function stub() {
   urls = [];
@@ -44,6 +54,7 @@ function stub() {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  contextApi.setProject(null);
 });
 
 function renderPage() {
@@ -57,10 +68,11 @@ function renderPage() {
   );
 }
 
-function типЗапроса(path: string): { filter: string | null } | null {
+function типЗапроса(path: string): { filter: string | null; projectId: string | null } | null {
   const u = urls.find((x) => x.split("?")[0] === path);
   if (!u) return null;
-  return { filter: new URLSearchParams(u.split("?")[1] ?? "").get("filter") };
+  const qs = new URLSearchParams(u.split("?")[1] ?? "");
+  return { filter: qs.get("filter"), projectId: qs.get("project_id") };
 }
 
 describe("глобальный поиск", () => {
@@ -88,6 +100,41 @@ describe("глобальный поиск", () => {
     const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
     await waitFor(() => expect(типЗапроса(сеть.path)).not.toBeNull());
     expect(типЗапроса(сеть.path)!.filter).toBe('name CONTAINS "прод"');
+  });
+
+  it("project-scoped область несёт project_id выбранного проекта (#465)", async () => {
+    // Прежде запрос уходил без `project_id` ВСЕГДА — край резолвит отсутствие
+    // в `project:*` и отвечает отказом в правах, а не пустым списком: поиск
+    // по сети/подсети/машине падал целиком отказом сервера, не «не найдено».
+    stub();
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
+
+    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    expect(сеть.scope).toBe("project");
+    await waitFor(() => expect(типЗапроса(сеть.path)).not.toBeNull());
+    expect(типЗапроса(сеть.path)!.projectId).toBe("prj-1");
+  });
+
+  it("без выбранного проекта project-scoped область НЕ спрашивается вовсе", async () => {
+    // Не отказ — отсутствие вопроса: молчаливый провал в 403 хуже честного
+    // «эту область не смотрели», и вопрос без обязательного параметра
+    // задавать незачем.
+    contextApi.setProject(null);
+    stub();
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
+
+    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    // Молчание сделало бы «Найдено: 0» неотличимым от «ресурса нет»: страница
+    // называет непросмотренные project-scoped области поимённо и числом —
+    // тем же приёмом, что клиентскую неполноту (PARTIAL_DOMAINS) выше. Ждём
+    // ИМЕННО эту строку (debounce доехал, active обновился) — только тогда
+    // отсутствие запроса что-то утверждает, а не просто «ещё не успел».
+    expect(PROJECT_SCOPED_DOMAINS.length).toBeGreaterThan(0);
+    await screen.findByText(new RegExp(String(PROJECT_SCOPED_DOMAINS.length)));
+    expect(screen.getByText(/выберите проект/i)).toBeTruthy();
+    expect(типЗапроса(сеть.path)).toBeNull();
   });
 
   it("а там, где не разбирает, фильтр НЕ отправляется", async () => {
