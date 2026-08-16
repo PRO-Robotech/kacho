@@ -214,6 +214,21 @@ export function antdStub(): Record<string, unknown> {
       ? React.createElement("span", null, prefix, React.createElement("input", props), suffix)
       : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
+  // Настоящее ЧИСЛОВОЕ поле зовёт `onChange` с ЧИСЛОМ (или `null` на пустоте), а
+  // не с событием. Заменитель, отдававший событие, делал недостижимым весь путь
+  // «ввёл число → отправили»: вызывающий, разбирающий число, получал объект,
+  // сохранял пустоту и молча не отправлял ничего. Дублёр обязан выполнять
+  // контракт настоящего, иначе он прячет ровно то, ради чего его подставляют.
+  const InputNumber = ({ onChange, value, ...props }: AnyProps & { onChange?: (v: number | null) => void }) =>
+    React.createElement("input", {
+      type: "number",
+      value: value === undefined || value === null ? "" : (value as number),
+      onChange: (e: { target: { value: string } }) => {
+        const raw = e.target.value;
+        onChange?.(raw.trim() === "" || Number.isNaN(Number(raw)) ? null : Number(raw));
+      },
+      ...props,
+    });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
   const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale, rowSelection }: MockTableProps) => {
@@ -495,7 +510,7 @@ export function antdStub(): Record<string, unknown> {
     Form,
     Image: Component,
     Input: Object.assign(Input, { TextArea: Textarea, Search }),
-    InputNumber: Input,
+    InputNumber,
     Layout,
     List: Component,
     // Настоящее меню рисует свои пункты. На карточке ресурса это рейл вкладок:

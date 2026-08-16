@@ -33,6 +33,7 @@ export const ClusterOutlined = Icon;
 export const CodeOutlined = Icon;
 export const ContainerOutlined = Icon;
 export const CopyOutlined = Icon;
+export const DashboardOutlined = Icon;
 export const DatabaseOutlined = Icon;
 export const DeleteOutlined = Icon;
 export const DeploymentUnitOutlined = Icon;
