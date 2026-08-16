@@ -96,6 +96,19 @@ function makeExpect(fail) {
 
 // runStep — исполняет prerequest + test одного шага. Возвращает перепись того, что
 // реально исполнилось. `env` — Map начального окружения (мутируется скриптами).
+// substitutePath — путь шага, каким его увидит скрипт под newman.
+//
+// Переменные подставляются из окружения прогона; НЕЗАДАННАЯ даёт пустую строку.
+// Это не упрощение, а воспроизведение: ровно так в прогоне 31951162447 и возник
+// адрес `/operations/` — шаг спрашивал ни о чём и получал отказ по пустому пути.
+function substitutePath(item, env) {
+  const raw = (item.request && item.request.url && item.request.url.path) || [];
+  return raw.map((seg) => String(seg).replace(/\{\{([^}]+)\}\}/g, (_, name) => {
+    const v = env && env.get(name);
+    return v === undefined || v === null ? '' : String(v);
+  }));
+}
+
 function runStep(item, response, env, onRetry) {
   const executed = [];
   const failed = [];
@@ -115,7 +128,20 @@ function runStep(item, response, env, onRetry) {
       has: (k) => env.has(k),
     },
     variables: { get: (k) => env.get(k) },
-    request: { headers: { has: () => true, upsert: () => {}, remove: () => {} } },
+    // АДРЕС ШАГА — ЧАСТЬ ЕГО ВХОДА, а не оформление. Раньше здесь стояли одни
+    // заголовки, и `pm.request.url` был undefined: дублёр был снисходительнее
+    // newman, который адрес подставляет ВСЕГДА. Скрипт, читающий адрес, ронялся
+    // об это исключением — то есть дублёр делал невидимым ровно тот класс,
+    // ради которого его подставляют (`testing.md`: дублёр обязан выполнять
+    // контракт настоящего).
+    //
+    // Подстановка воспроизводит newman дословно: незаданная переменная даёт
+    // ПУСТОЙ сегмент, а не остаётся литералом `{{opId}}` — именно так в прогоне
+    // и появляется адрес `/operations/`, по которому шаг спрашивает ни о чём.
+    request: {
+      headers: { has: () => true, upsert: () => {}, remove: () => {} },
+      url: { path: substitutePath(item, env), raw: (item.request && item.request.url && item.request.url.raw) || '' },
+    },
     info: { requestName: item.name },
     execution: { setNextRequest: () => { if (onRetry) onRetry(); } },
     expect: makeExpect(fail),
@@ -285,7 +311,95 @@ function prove() {
   return problems;
 }
 
-const proveProblems = prove();
+// --- предпосылка стража незахваченной подстановки: инъекция В ОБЕ СТОРОНЫ ----
+//
+// Обёртка окна видимости прав (`retry_until_authorized` в gen.py) повторяет шаг по
+// КОДУ ОТВЕТА. Шаг, чей адрес собран из незахваченной переменной, отвечает 403 по
+// пустому сегменту — код в полосе ожидания, — и выжигает весь бюджет на вопрос, в
+// котором нет ресурса. Замер прогона 31951162447, часть registry: 1863 запроса из
+// 3903 ушли по такому адресу в 23 обёрнутых шагах.
+//
+// Тело стража берётся ИЗ СГЕНЕРИРОВАННОЙ КОЛЛЕКЦИИ, а не переписывается здесь:
+// собственная копия разошлась бы с настоящей молча и доказывала бы свойство копии.
+function proveRetryGuard(collectionsDir) {
+  const problems = [];
+  let body = null;
+  let owner = null;
+  for (const f of (fs.existsSync(collectionsDir) ? fs.readdirSync(collectionsDir) : [])) {
+    if (!f.endsWith('.postman_collection.json')) continue;
+    const walk = (items) => {
+      for (const it of items) {
+        if (it.item) { walk(it.item); continue; }
+        if (body || !/-rya\d+$/.test(it.name)) continue;
+        for (const ev of it.event || []) {
+          if (ev.listen === 'test' && (ev.script.exec || []).some((l) => l.includes('_rblank'))) {
+            body = ev.script.exec.join('\n');
+            owner = it.name;
+          }
+        }
+      }
+    };
+    walk(JSON.parse(fs.readFileSync(path.join(collectionsDir, f), 'utf8')).item);
+    if (body) break;
+  }
+  if (!body) {
+    return ['в сгенерированных коллекциях нет ни одного обёрнутого шага со стражем ' +
+      'незахваченной подстановки — предпосылка проверки исчезла вместе со своим предметом'];
+  }
+
+  // Обрезаем по решению о повторе: собственные утверждения шага здесь не предмет.
+  const cut = body.indexOf("pm.environment.unset('_authRetryCount');\npm.environment.unset('_authRetryStarted');");
+  const guard = cut > 0 ? body.slice(0, cut) : body;
+
+  const fire = (segs, code) => {
+    const env = new Map([['_authRetryStarted', owner], ['_authRetryCount', '3']]);
+    const out = { retried: false, failed: 0 };
+    const pm = {
+      info: { requestName: owner },
+      request: { url: { path: segs } },
+      response: { code, text: () => '' },
+      environment: {
+        get: (k) => env.get(k), set: (k, v) => env.set(k, String(v)), unset: (k) => env.delete(k),
+      },
+      execution: { setNextRequest: () => { out.retried = true; } },
+      test: (n, fn) => { try { fn(); } catch (e) { out.failed += 1; } },
+      expect: makeExpect((m) => { throw new Error(m); }),
+    };
+    new Function('pm', 'console', guard + '\nreturn;')(pm, QUIET_CONSOLE);
+    return out;
+  };
+
+  // (а) ВОЗВРАЩЁННЫЙ ДЕФЕКТ — ровно тот вход, что дал 1863 холостых запроса.
+  const blank = fire(['operations', ''], 403);
+  if (blank.retried || blank.failed !== 1) {
+    problems.push(`страж не поймал пустой сегмент (повтор=${blank.retried}, падений=${blank.failed}) — ` +
+      'шаг снова выжжет бюджет на адресе, в котором нет ресурса');
+  }
+  // (б) та же форма литералом — подстановка не разрешилась вовсе.
+  const literal = fire(['operations', '{{opId}}'], 403);
+  if (literal.retried || literal.failed !== 1) {
+    problems.push('страж не поймал неразрешённую подстановку в адресе');
+  }
+  // (в) ЗАКОННЫЙ БЛИЗНЕЦ: адрес разрешён, 403 — настоящее окно материализации прав.
+  //     Без него страж ловил бы форму, а не существо, и отменил бы ожидание вообще.
+  const real = fire(['registry', 'v1', 'registries', 'regaaaaaaaaaaaaaaaaa'], 403);
+  if (!real.retried || real.failed !== 0) {
+    problems.push(`законное окно видимости прав ОШИБОЧНО прервано (повтор=${real.retried}, ` +
+      `падений=${real.failed}) — страж отменил ожидание, ради которого обёртка существует`);
+  }
+  // (г) второй законный близнец: разрешённый адрес на успехе — ни повтора, ни падения.
+  const ok = fire(['operations', 'ropbff6rjfvypqawrmww'], 200);
+  if (ok.retried || ok.failed !== 0) problems.push('страж срабатывает на разрешённом адресе с успешным ответом');
+
+  if (problems.length === 0) {
+    console.log(`проверка предпосылки стража адреса: тело взято у шага ${owner}, ` +
+      'пустой сегмент и литерал подстановки повтора не получают и краснеют поимённо, ' +
+      'разрешённый адрес с 403 повторяется по-прежнему');
+  }
+  return problems;
+}
+
+const proveProblems = prove().concat(proveRetryGuard(COLLECTIONS_DIR));
 if (proveProblems.length > 0) {
   console.error('SELFTEST FAIL: гейт не прошёл собственную проверку предпосылки:');
   for (const p of proveProblems) console.error('  - ' + p);
