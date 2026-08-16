@@ -17,6 +17,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -174,10 +175,10 @@ func (u *DeleteLoadBalancerUseCase) doDelete(ctx context.Context, id, projectID 
 	}
 
 	// Шаг 2: per-family release VIP (раздельно v4/v6).
-	if err := u.releaseVIP(ctx, "IPV4", vip.addressV4, vip.addressIDV4, vip.originV4); err != nil {
+	if err := u.releaseVIP(ctx, "IPV4", vip.addressV4, vip.addressIDV4, projectID, id); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	if err := u.releaseVIP(ctx, "IPV6", vip.addressV6, vip.addressIDV6, vip.originV6); err != nil {
+	if err := u.releaseVIP(ctx, "IPV6", vip.addressV6, vip.addressIDV6, projectID, id); err != nil {
 		return nil, mapDomainErr(err)
 	}
 
@@ -236,11 +237,22 @@ func (u *DeleteLoadBalancerUseCase) markDeleting(ctx context.Context, id string)
 	return rec, nil
 }
 
-// releaseVIP — освобождает VIP одного семейства по address_id: owned (auto)
-// → two-step ClearReference → FreeIP (иначе FreeIP==AddressService.Delete упрётся
-// в собственный Delete-guard на owned-референсе); linked → ClearReference без
-// Delete (tenant-адрес уцелевает). Идемпотентно (NotFound → успех; окно
-// cleared-but-not-deleted добивает free_ip_runner).
+// releaseVIP — снимает аренду VIP одного семейства по address_id ОДНИМ глаголом
+// владельца, который называет исход полем ответа.
+//
+// ЧТО ЗДЕСЬ БЫЛО И ПОЧЕМУ ЭТО БЫЛ ДЕФЕКТ (#439). Прежде освобождение было парой
+// вызовов, спрашивавших владельца ПООБЪЕКТНО — про сам адрес. На пообъектном
+// вопросе ответ «не найдено» не означает «аренды нет»: тем же ответом владелец
+// намеренно отвечает на промах чужого проекта, а опрос операции схлопывает в
+// него же три разных положения дел, включая «у тебя нет ключа владельца». Пара
+// принимала этот ответ за доказательство выполненной работы и возвращала успех,
+// после чего шаг 3 сносил строку — и с этого мгновения аренду не видел никто:
+// реконсайлер ищет от строки потребителя, а обратного поиска у владельца нет.
+//
+// Теперь вопрос задан так, что такого ответа не бывает: право анкорится на
+// проекте, исход приезжает полем. Решение «удалить адрес или оставить адрес
+// арендатора» принимает ВЛАДЕЛЕЦ по своей колонке — потребитель его больше не
+// выводит и не может ошибиться направлением сравнения.
 //
 // ПУСТОЙ addressID — ДВА РАЗНЫХ СОСТОЯНИЯ, и различает их адрес (#467):
 //
@@ -259,7 +271,7 @@ func (u *DeleteLoadBalancerUseCase) markDeleting(ctx context.Context, id string)
 // поправим; успех тих и необратим. Из двух ошибок выбираем ту, которую ещё можно
 // заметить.
 func (u *DeleteLoadBalancerUseCase) releaseVIP(
-	ctx context.Context, family, address, addressID string, origin domain.VipOrigin,
+	ctx context.Context, family, address, addressID, projectID, lbID string,
 ) error {
 	if addressID == "" {
 		if address == "" {
@@ -271,33 +283,16 @@ func (u *DeleteLoadBalancerUseCase) releaseVIP(
 	if u.addressClient == nil {
 		return status.Error(codes.Unavailable, "vpc internal address client not configured")
 	}
-	// Снять референс обязаны В ЛЮБОМ случае — и owned, и linked.
-	if err := u.addressClient.ClearReference(ctx, addressID); err != nil {
+	// Исход читается, а не выводится. Все четыре названных исхода означают
+	// «этот потребитель аренды на этом адресе не держит» — то есть работу,
+	// доведённую до постусловия; любой ОТКАЗ означает, что она не доведена, и
+	// тогда строка потребителя обязана уцелеть (шаг 3 не выполняется).
+	if _, err := u.addressClient.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
+		ProjectID: projectID,
+		AddressID: addressID,
+		Owner:     vpcclient.AddressOwner{Kind: lbAddressOwnerKind, ID: lbID},
+	}); err != nil {
 		return err
 	}
-	// УДЕРЖИВАЕТ адрес только ЯВНО названный linked (адрес арендатора, он его
-	// переживает). Всё остальное — включая НЕЗАПОЛНЕННЫЙ дискриминатор —
-	// освобождается.
-	//
-	// Направление сравнения здесь и есть предмет. Колонка допускает пустое
-	// значение (`vip_origin_v4 text NOT NULL DEFAULT ''`), и ни одно ограничение
-	// не связывает непустой `address_id_v4` с непустым `vip_origin_v4`. Прежняя
-	// редакция спрашивала «это auto?» — и на пустом значении уходила в ветку
-	// linked, то есть НЕ ОСВОБОЖДАЛА адрес вовсе. Два других места, принимающих
-	// РОВНО ЭТО решение, спрашивают наоборот, «это linked?»
-	// (`create.go` compensateCreate → releaseAddress и
-	// `jobs/free_ip_runner.go` releaseFamily), поэтому неизвестное значение у них
-	// освобождается. Три места об одном предмете, из которых верным было два.
-	//
-	// Цена ошибки несимметрична, и поэтому у неё есть безопасная сторона.
-	// Неосвобождённый адрес держит свою подсеть ВЕЧНО: как только строка
-	// балансировщика удалена (шаг 3 ниже), реконсайлер её больше не видит — он
-	// выбирает только `load_balancers` в состояниях DELETING/CREATING, — и
-	// освободить аренду в системе уже некому. Адрес арендатора при этом защищён
-	// не догадкой, а записью: полоса привязки существующего адреса пишет
-	// `linked` ЯВНО (`create.go` acquireFamilyVIP, ветка srcAddressLink).
-	if origin == domain.VipOriginLinked {
-		return nil
-	}
-	return u.addressClient.FreeIP(ctx, addressID)
+	return nil
 }

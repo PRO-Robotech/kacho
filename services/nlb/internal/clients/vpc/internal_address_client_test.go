@@ -113,6 +113,14 @@ type fakeInternalAddressService struct {
 	setErr   error
 	clearErr error
 
+	// release* — путь `ReleaseOwnedAddress`. Дублёр обязан уметь и НАЗВАТЬ
+	// исход, и отказать: без отказа «что делает полоса, когда владелец не снял
+	// аренду» не проверяемо вовсе, а это единственный путь, на котором аренда
+	// теряется безвозвратно.
+	releaseOutcome vpcpb.ReleaseOwnedAddressResponse_Outcome
+	releaseErr     error
+	releaseCalls   []*vpcpb.ReleaseOwnedAddressRequest
+
 	// setErrTimes>0 → setErr is returned only for the first N SetAddressReference
 	// calls, then the call succeeds. Models a per-object authz materialisation
 	// window that closes on its own. 0 (default) keeps the original behaviour:
@@ -378,25 +386,105 @@ func TestInternalAddressClient_AllocateInternalIP_EmptySubnetRejected(t *testing
 	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
 }
 
-func TestInternalAddressClient_FreeIP_Idempotent(t *testing.T) {
-	addrSvc := &fakeAddressForAlloc{deleteNotFound: true}
-	intAddrSvc := &fakeInternalAddressService{}
-	conn := startFakeVPC(t, nil, nil, addrSvc, intAddrSvc, &fakeOperationService{})
-
-	c := NewInternalAddressClient(conn, conn)
-	err := c.FreeIP(ctxBackground(), "e9b-already-gone")
-	require.NoError(t, err, "FreeIP must be idempotent: NotFound treated as success")
+func (f *fakeInternalAddressService) ReleaseOwnedAddress(
+	_ context.Context, req *vpcpb.ReleaseOwnedAddressRequest,
+) (*vpcpb.ReleaseOwnedAddressResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.releaseCalls = append(f.releaseCalls, req)
+	if f.releaseErr != nil {
+		return nil, f.releaseErr
+	}
+	out := f.releaseOutcome
+	if out == vpcpb.ReleaseOwnedAddressResponse_OUTCOME_UNSPECIFIED {
+		out = vpcpb.ReleaseOwnedAddressResponse_RELEASED
+	}
+	return &vpcpb.ReleaseOwnedAddressResponse{Outcome: out}, nil
 }
 
-func TestInternalAddressClient_FreeIP_HappyPath(t *testing.T) {
-	addrSvc := &fakeAddressForAlloc{}
-	intAddrSvc := &fakeInternalAddressService{}
-	conn := startFakeVPC(t, nil, nil, addrSvc, intAddrSvc, &fakeOperationService{})
+// Повтор законен и НАЗВАН: полоса освобождения работает at-least-once, поэтому
+// «аренда снята ранее» — исход, а не ошибка. Прежде на этом месте стояла проба,
+// закреплявшая ПРОТИВОПОЛОЖНОЕ: она требовала, чтобы ответ владельца
+// «не найдено» читался как успех. Тот ответ такого утверждения не несёт (им же
+// отвечают на промах чужого проекта и на опрос операции без ключа владельца), и
+// проба закрепляла дефект, а не свойство.
+func TestInternalAddressClient_ReleaseLease_RepeatIsNamed(t *testing.T) {
+	intAddrSvc := &fakeInternalAddressService{
+		releaseOutcome: vpcpb.ReleaseOwnedAddressResponse_ALREADY_RELEASED,
+	}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
 
 	c := NewInternalAddressClient(conn, conn)
-	err := c.FreeIP(ctxBackground(), "e9b-ip-1")
+	out, err := c.ReleaseLease(ctxBackground(), ReleaseLeaseRequest{
+		ProjectID: "prj-1", AddressID: "e9b-already-gone",
+		Owner: AddressOwner{Kind: "nlb_network_load_balancer", ID: "lb-1"},
+	})
 	require.NoError(t, err)
-	assert.Equal(t, 1, addrSvc.deleteCalls)
+	assert.Equal(t, LeaseAlreadyReleased, out, "исход обязан быть НАЗВАН, а не выведен из кода ошибки")
+}
+
+func TestInternalAddressClient_ReleaseLease_HappyPath(t *testing.T) {
+	intAddrSvc := &fakeInternalAddressService{}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
+
+	c := NewInternalAddressClient(conn, conn)
+	out, err := c.ReleaseLease(ctxBackground(), ReleaseLeaseRequest{
+		ProjectID: "prj-1", AddressID: "e9b-ip-1",
+		Owner: AddressOwner{Kind: "nlb_network_load_balancer", ID: "lb-1"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, LeaseReleased, out)
+	require.Len(t, intAddrSvc.releaseCalls, 1)
+	assert.Equal(t, "prj-1", intAddrSvc.releaseCalls[0].GetProjectId(),
+		"якорь права — проект: без него глагол не авторизуем")
+	assert.Equal(t, "lb-1", intAddrSvc.releaseCalls[0].GetReferrerId())
+}
+
+// Ни один код ошибки владельца не читается как «аренда снята» — это и есть
+// предмет #439. Табличная проба перечисляет ВСЕ полосы отказа, включая
+// `NOT_FOUND`, которого глагол не производит: получить его можно только говоря
+// не с тем глаголом, и это настройка, а не «уже снято».
+func TestInternalAddressClient_ReleaseLease_NoRefusalIsReadAsSuccess(t *testing.T) {
+	cases := []struct {
+		name string
+		peer error
+		want error
+	}{
+		{"нет права", status.Error(codes.PermissionDenied, "no path"), domain.ErrFailedPrecondition},
+		{"аренда чужая", status.Error(codes.FailedPrecondition, "not leased by"), domain.ErrFailedPrecondition},
+		{"негодный ввод", status.Error(codes.InvalidArgument, "bad id"), domain.ErrInvalidArg},
+		{"глагол не обслуживается", status.Error(codes.NotFound, "unknown method"), domain.ErrFailedPrecondition},
+		{"владелец недоступен", status.Error(codes.Unavailable, "vpc down"), domain.ErrUnavailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			intAddrSvc := &fakeInternalAddressService{releaseErr: tc.peer}
+			conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
+			c := NewInternalAddressClient(conn, conn)
+			out, err := c.ReleaseLease(ctxBackground(), ReleaseLeaseRequest{
+				ProjectID: "prj-1", AddressID: "e9b-ip-1",
+				Owner: AddressOwner{Kind: "nlb_network_load_balancer", ID: "lb-1"},
+			})
+			require.Error(t, err, "отказ владельца НЕ ЕСТЬ доказательство снятой аренды")
+			assert.True(t, errors.Is(err, tc.want), "ожидалась полоса %v, получено %v", tc.want, err)
+			assert.Empty(t, out, "исход не называется там, где работа не сделана")
+		})
+	}
+}
+
+// Неназванный исход — тоже отказ. Без этой пробы `OUTCOME_UNSPECIFIED` читался
+// бы как нулевое значение и вернул бы вывод, который метод устраняет.
+func TestInternalAddressClient_ReleaseLease_UnnamedOutcomeIsRefused(t *testing.T) {
+	intAddrSvc := &fakeInternalAddressService{}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
+	c := NewInternalAddressClient(conn, conn)
+
+	// Дублёр по умолчанию отвечает RELEASED, поэтому неназванный исход подаём
+	// напрямую — иначе проба утверждала бы о своей копии, а не о клиенте.
+	out, ok := leaseOutcomeFromProto(vpcpb.ReleaseOwnedAddressResponse_OUTCOME_UNSPECIFIED)
+	require.False(t, ok, "неназванный исход обязан быть нераспознан")
+	assert.Empty(t, out)
+	_ = c
 }
 
 func TestInternalAddressClient_SetReference_AlreadyExistsMapsToPrecondition(t *testing.T) {
@@ -417,26 +505,6 @@ func TestInternalAddressClient_SetReference_NotFoundMapsToInvalidArg(t *testing.
 	err := c.SetReference(ctxBackground(), "e9b-nx", AddressOwner{Kind: "k", ID: "i"}, false)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
-}
-
-func TestInternalAddressClient_ClearReference_Idempotent(t *testing.T) {
-	intAddrSvc := &fakeInternalAddressService{clearErr: status.Error(codes.NotFound, "already cleared")}
-	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
-
-	c := NewInternalAddressClient(conn, conn)
-	err := c.ClearReference(ctxBackground(), "e9b-gone")
-	require.NoError(t, err, "ClearReference NotFound is idempotent")
-}
-
-func TestInternalAddressClient_ClearReference_HappyPath(t *testing.T) {
-	intAddrSvc := &fakeInternalAddressService{}
-	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
-
-	c := NewInternalAddressClient(conn, conn)
-	err := c.ClearReference(ctxBackground(), "e9b-ip-1")
-	require.NoError(t, err)
-	require.Len(t, intAddrSvc.clearCalls, 1)
-	assert.Equal(t, "e9b-ip-1", intAddrSvc.clearCalls[0].AddressId)
 }
 
 func TestInternalAddressClient_AllocateExternalIP_EmptyArgs(t *testing.T) {
@@ -592,15 +660,17 @@ func TestVPC_FromStubConstructors_Nil(t *testing.T) {
 	assert.Nil(t, NewInternalAddressClientFromStubs(nil, nil, nil))
 }
 
-func TestInternalAddressClient_FreeIP_Unavailable(t *testing.T) {
-	addrSvc := &fakeAddressForAlloc{deleteErr: status.Error(codes.Unavailable, "down")}
-	intAddrSvc := &fakeInternalAddressService{}
-	conn := startFakeVPC(t, nil, nil, addrSvc, intAddrSvc, &fakeOperationService{})
+func TestInternalAddressClient_ReleaseLease_Unavailable(t *testing.T) {
+	intAddrSvc := &fakeInternalAddressService{releaseErr: status.Error(codes.Unavailable, "down")}
+	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, intAddrSvc, &fakeOperationService{})
 	c := NewInternalAddressClient(conn, conn)
 	ctx, cancel := context.WithTimeout(ctxBackground(), 200*time.Millisecond)
 	defer cancel()
-	err := c.FreeIP(ctx, "e9b-ip-1")
-	require.Error(t, err)
+	_, err := c.ReleaseLease(ctx, ReleaseLeaseRequest{
+		ProjectID: "prj-1", AddressID: "e9b-ip-1",
+		Owner: AddressOwner{Kind: "nlb_network_load_balancer", ID: "lb-1"},
+	})
+	require.Error(t, err, "недоступность владельца — не «уже снято»")
 	if !errors.Is(err, domain.ErrUnavailable) && !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected ErrUnavailable or DeadlineExceeded; got %v", err)
 	}
@@ -637,6 +707,13 @@ func (f *blockingInternalAddressService) ClearAddressReference(
 	return &vpcpb.ClearAddressReferenceResponse{}, nil
 }
 
+func (f *blockingInternalAddressService) ReleaseOwnedAddress(
+	_ context.Context, _ *vpcpb.ReleaseOwnedAddressRequest,
+) (*vpcpb.ReleaseOwnedAddressResponse, error) {
+	<-f.release
+	return &vpcpb.ReleaseOwnedAddressResponse{}, nil
+}
+
 func TestInternalAddressClient_SetReference_HangingPeer_BoundsToConfiguredTimeout(t *testing.T) {
 	fake := &blockingInternalAddressService{release: make(chan struct{})}
 	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, fake, &fakeOperationService{})
@@ -660,7 +737,7 @@ func TestInternalAddressClient_SetReference_HangingPeer_BoundsToConfiguredTimeou
 		configuredTimeout, elapsed)
 }
 
-func TestInternalAddressClient_ClearReference_HangingPeer_BoundsToConfiguredTimeout(t *testing.T) {
+func TestInternalAddressClient_ReleaseLease_HangingPeer_BoundsToConfiguredTimeout(t *testing.T) {
 	fake := &blockingInternalAddressService{release: make(chan struct{})}
 	conn := startFakeVPC(t, nil, nil, &fakeAddressForAlloc{}, fake, &fakeOperationService{})
 
@@ -668,7 +745,10 @@ func TestInternalAddressClient_ClearReference_HangingPeer_BoundsToConfiguredTime
 	c := NewInternalAddressClientWithTimeout(conn, conn, configuredTimeout)
 
 	start := time.Now()
-	err := c.ClearReference(context.Background(), "e9b-ip-1")
+	_, err := c.ReleaseLease(context.Background(), ReleaseLeaseRequest{
+		ProjectID: "prj-1", AddressID: "e9b-ip-1",
+		Owner: AddressOwner{Kind: "nlb_network_load_balancer", ID: "lb-1"},
+	})
 	elapsed := time.Since(start)
 	close(fake.release)
 
@@ -676,7 +756,7 @@ func TestInternalAddressClient_ClearReference_HangingPeer_BoundsToConfiguredTime
 	assert.True(t, errors.Is(err, domain.ErrUnavailable),
 		"expected fail-closed domain.ErrUnavailable on peer hang; got %v", err)
 	assert.Less(t, elapsed, 2*time.Second,
-		"ClearReference must bound to the configured per-call timeout (~%s), not hang; took %s",
+		"ReleaseLease must bound to the configured per-call timeout (~%s), not hang; took %s",
 		configuredTimeout, elapsed)
 }
 
@@ -699,31 +779,6 @@ func (f *blockingAddressForAlloc) Create(
 ) (*operationpb.Operation, error) {
 	<-f.release
 	return &operationpb.Operation{Id: "op-create-1", Done: false}, nil
-}
-
-// TestInternalAddressClient_FreeIP_HangingPeer_BoundsToConfiguredTimeout —
-// regression for round-6 audit finding 1 (free_ip_runner holds a row-lock+tx
-// across exactly this call) + finding 2 (missing per-call deadline). A
-// stalled kacho-vpc peer on AddressService.Delete must not park the calling
-// goroutine (and, in free_ip_runner, the row-lock) forever.
-func TestInternalAddressClient_FreeIP_HangingPeer_BoundsToConfiguredTimeout(t *testing.T) {
-	fake := &blockingAddressForAlloc{release: make(chan struct{})}
-	conn := startFakeVPC(t, nil, nil, fake, &fakeInternalAddressService{}, &fakeOperationService{})
-
-	const configuredTimeout = 100 * time.Millisecond
-	c := NewInternalAddressClientWithTimeout(conn, conn, configuredTimeout)
-
-	start := time.Now()
-	err := c.FreeIP(context.Background(), "e9b-ip-1")
-	elapsed := time.Since(start)
-	close(fake.release)
-
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrUnavailable),
-		"expected fail-closed domain.ErrUnavailable on peer hang; got %v", err)
-	assert.Less(t, elapsed, 2*time.Second,
-		"FreeIP must bound to the configured per-call timeout (~%s), not hang; took %s",
-		configuredTimeout, elapsed)
 }
 
 // blockingOperationService — fake OperationServiceServer whose Get never

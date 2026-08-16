@@ -40,8 +40,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// fakeReleaser — in-memory vpcclient.InternalAddressClient: считает FreeIP /
-// ClearReference (release-ветка reconciler'а). Alloc/SetReference не нужны.
+// fakeReleaser — in-memory vpcclient.InternalAddressClient: считает вызовы
+// снятия аренды (release-ветка reconciler'а). Alloc/SetReference не нужны.
 type fakeReleaser struct {
 	mu          sync.Mutex
 	freeCalls   []string
@@ -72,7 +72,21 @@ func (f *fakeReleaser) AttachExisting(context.Context, vpcclient.AttachExistingR
 	return &vpcclient.AllocateResponse{}, nil
 }
 
-func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
+// ReleaseLease — ОДИН глагол вместо прежней пары. Дублёр отвергает
+// незаполненное предъявление владения так же, как настоящий: без этого проба
+// зеленела бы на вызове, который боевой владелец отверг бы синхронно.
+func (f *fakeReleaser) ReleaseLease(
+	_ context.Context, req vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
+	switch {
+	case req.ProjectID == "":
+		return "", fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
+	case req.AddressID == "":
+		return "", fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
+	}
+	addressID := req.AddressID
 	f.mu.Lock()
 	hook := f.onFirstFree
 	if hook != nil && !f.firstFired {
@@ -80,8 +94,12 @@ func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
 	} else {
 		hook = nil
 	}
+	f.clearCalls = append(f.clearCalls, addressID)
 	f.freeCalls = append(f.freeCalls, addressID)
 	err := f.freeErr
+	if err == nil {
+		err = f.clearErr
+	}
 	if e, ok := f.errByAddr[addressID]; ok {
 		err = e
 	}
@@ -89,17 +107,10 @@ func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
 	if hook != nil {
 		hook()
 	}
-	return err
-}
-
-func (f *fakeReleaser) ClearReference(_ context.Context, addressID string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.clearCalls = append(f.clearCalls, addressID)
-	if e, ok := f.errByAddr[addressID]; ok {
-		return e
+	if err != nil {
+		return "", err
 	}
-	return f.clearErr
+	return vpcclient.LeaseReleased, nil
 }
 
 func (f *fakeReleaser) frees() []string {

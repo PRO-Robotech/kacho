@@ -55,16 +55,21 @@ type ZoneRegionClient interface {
 // InternalAddressClient — VIP-lifecycle port над vpc InternalAddressService:
 // per-family auto-аллокация (AllocateInternalIP/IPv6 из подсети, AllocateExternalIP/
 // IPv6 — платформенный public), link существующего Address (AttachExisting) и
-// release (FreeIP/ClearReference) в compensation/Delete. Concrete
+// снятие аренды (ReleaseLease) в compensation/Delete/реконсайлере. Concrete
 // `*vpcclient.internalAddressClient` удовлетворяет интерфейс структурно.
+//
+// Снятие аренды — ОДИН глагол, а не пара «снять ссылку» + «удалить адрес».
+// Пара спрашивала владельца пообъектно, а на такой вопрос ответ «не найдено»
+// не несёт утверждения «аренды нет» — и полоса читала его как выполненную
+// работу. Здесь исход приезжает ПОЛЕМ, и решение «удалять или оставить»
+// принимает владелец по своей колонке, а не потребитель по своей копии признака.
 type InternalAddressClient interface {
 	AllocateInternalIP(ctx context.Context, req vpcclient.AllocateInternalIPRequest) (*vpcclient.AllocateResponse, error)
 	AllocateInternalIPv6(ctx context.Context, req vpcclient.AllocateInternalIPRequest) (*vpcclient.AllocateResponse, error)
 	AllocateExternalIP(ctx context.Context, req vpcclient.AllocateExternalIPRequest) (*vpcclient.AllocateResponse, error)
 	AllocateExternalIPv6(ctx context.Context, req vpcclient.AllocateExternalIPRequest) (*vpcclient.AllocateResponse, error)
 	AttachExisting(ctx context.Context, req vpcclient.AttachExistingRequest) (*vpcclient.AllocateResponse, error)
-	FreeIP(ctx context.Context, addressID string) error
-	ClearReference(ctx context.Context, addressID string) error
+	ReleaseLease(ctx context.Context, req vpcclient.ReleaseLeaseRequest) (vpcclient.LeaseOutcome, error)
 }
 
 // SubnetClient — Get(subnetID) → *vpcclient.Subnet. sync-precheck placement подсети
