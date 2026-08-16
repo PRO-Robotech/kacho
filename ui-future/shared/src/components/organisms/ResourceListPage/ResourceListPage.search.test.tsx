@@ -29,7 +29,7 @@ import { ResourceListPage } from "./ResourceListPage";
 const realFetch = globalThis.fetch;
 let urls: string[] = [];
 
-function stubList(payloadKey: string, rows: Record<string, unknown>[]) {
+function stubList(payloadKey: string, rows: Record<string, unknown>[], nextToken = "") {
   urls = [];
   globalThis.fetch = (input: RequestInfo | URL) => {
     urls.push(requestUrl(input));
@@ -37,7 +37,7 @@ function stubList(payloadKey: string, rows: Record<string, unknown>[]) {
       ok: true,
       status: 200,
       statusText: "OK",
-      text: () => Promise.resolve(JSON.stringify({ [payloadKey]: rows })),
+      text: () => Promise.resolve(JSON.stringify({ [payloadKey]: rows, next_page_token: nextToken })),
     } as Response);
   };
 }
@@ -136,6 +136,27 @@ describe("поиск уходит на сервер там, где владел�
     });
   });
 
+  it("перекрытие подписи ресурсом НЕ отменяет названия области", async () => {
+    // Единственный ресурс с собственной подписью — пользователи: имени у них нет
+    // вовсе, ищут по почте. Перекрытие называет ПРЕДМЕТ поиска; область обязана
+    // остаться, иначе именно этот список — и только он — о ней молчит.
+    //
+    // Проба заведена слиянием с работой по переводу подписей (#478): там
+    // подписи переехали в единственный источник, и стык двух правок виден
+    // только здесь — обе стороны по отдельности зелены.
+    const spec = REGISTRY.users;
+    expect(spec.search?.placeholder).toBeDefined();
+    expect(spec.search?.serverTerm).toBe("search");
+    stubList(spec.payloadKey, [{ id: "usr-1", email: "kto@example.test" }], "");
+    renderList(spec, "/iam/users");
+    await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
+
+    const поле = await screen.findByPlaceholderText(/по всему списку/i);
+    // И предмет поиска на месте — иначе «область названа» достигалось бы
+    // затиранием того, ради чего перекрытие заводили.
+    expect(поле.getAttribute("placeholder")).toMatch(/почте/i);
+  });
+
   it("пустая строка поиска фильтра не шлёт", async () => {
     const spec = REGISTRY.networks;
     stubList(spec.payloadKey, [{ id: "net-1", name: "netto" }]);
@@ -182,13 +203,15 @@ describe("законный близнец: владелец, который вы
     expect(filterParams(spec.apiPath).filter((f) => f !== null)).toEqual([]);
   });
 
-  it("и его строка поиска НАЗЫВАЕТ, что судит о загруженном", async () => {
-    // Иначе одна и та же строка ввода означает на разных страницах разное, и
-    // пользователь читает клиентский срез как ответ про список.
-    const spec = REGISTRY.accounts;
-    expect(spec.serverSearchField).toBeUndefined();
-    expect(spec.search?.serverTerm).toBeUndefined();
-    stubList(spec.payloadKey, [{ id: "acc-1", name: "alpha" }]);
+  /**
+   * Клиентский поиск имеет ДВЕ области, а не одну (#373).
+   *
+   * Прежде подпись была одна на оба состояния — «среди загруженных». На
+   * дочитанном списке это правда, но правда пессимистичная: загруженное там и
+   * есть весь набор, и подпись отговаривала верить верному ответу. Различие
+   * стоит различать, поэтому ниже пара, а не один случай.
+   */
+  function рендерСписка(spec: (typeof REGISTRY)[string]) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -200,7 +223,28 @@ describe("законный близнец: владелец, который вы
         </MemoryRouter>
       </QueryClientProvider>,
     );
+  }
+
+  it("за курсором есть ещё — строка поиска НАЗЫВАЕТ, что судит о загруженном", async () => {
+    // Иначе одна и та же строка ввода означает на разных страницах разное, и
+    // пользователь читает клиентский срез как ответ про список.
+    const spec = REGISTRY.accounts;
+    expect(spec.serverSearchField).toBeUndefined();
+    expect(spec.search?.serverTerm).toBeUndefined();
+    stubList(spec.payloadKey, [{ id: "acc-1", name: "alpha" }], "cursor-1");
+    рендерСписка(spec);
     await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
-    expect(screen.getByPlaceholderText(/среди загруженных/i)).toBeTruthy();
+    expect(await screen.findByPlaceholderText(/среди загруженных/i)).toBeTruthy();
+  });
+
+  it("список дочитан — та же строка НАЗЫВАЕТ, что судит обо всём списке", async () => {
+    // Положительный контроль к предыдущему: без него «среди загруженных» могло
+    // бы стоять безусловно, и проба выше зеленела бы на подписи, не зависящей
+    // ни от чего.
+    const spec = REGISTRY.accounts;
+    stubList(spec.payloadKey, [{ id: "acc-1", name: "alpha" }], "");
+    рендерСписка(spec);
+    await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
+    expect(await screen.findByPlaceholderText(/по всему списку/i)).toBeTruthy();
   });
 });

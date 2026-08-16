@@ -24,6 +24,13 @@ import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/compon
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
 import { searchFilterExpression } from "@shared/lib/list-search-filter";
+import {
+  clientScope,
+  narrowingTitle,
+  scopeSuffix,
+  searchPlaceholder,
+  type NarrowingScope,
+} from "@shared/lib/list-scope";
 
 interface Props {
   spec: ResourceSpec;
@@ -126,6 +133,12 @@ export function ResourceListPage({
     pageSize,
     listQuery,
   );
+  // Область, о которой судит строка поиска. Три состояния, не два: сужал сервер
+  // (`server`) · сужает браузер над дочитанным списком (`whole`) · сужает
+  // браузер над прочитанной частью (`loaded`). Подписи ко всем трём живут в
+  // одном месте — иначе соседние списки говорят об одном предмете разными
+  // словами (`@shared/lib/list-scope`).
+  const searchScope: NarrowingScope = asksServer ? "server" : clientScope(hasMore);
   const setServerFilter = (param: string, value: string) =>
     setServerFilters((prev) => {
       const next = { ...prev };
@@ -383,17 +396,16 @@ export function ResourceListPage({
                 выдавать второе за первое нельзя: пользователь читает «ничего не
                 найдено» как утверждение об отсутствии ресурса. */}
             <Input.Search
+              // Перекрытие ресурса называет ПРЕДМЕТ поиска (у пользователя имени
+              // нет вовсе — ищут по почте), область по-прежнему называем мы:
+              // иначе единственный ресурс с перекрытием оказывался бы и
+              // единственным, чья строка поиска о своей области молчит.
               placeholder={
-                spec.search?.placeholder ??
-                (asksServer
-                  ? "Поиск по имени — по всему списку"
-                  : "Фильтр по имени или идентификатору среди загруженных")
+                spec.search?.placeholder
+                  ? `${spec.search.placeholder} ${scopeSuffix(searchScope)}`
+                  : searchPlaceholder(searchScope)
               }
-              title={
-                asksServer
-                  ? "Запрос уходит на сервер: ищется по всему списку, а не по загруженным строкам."
-                  : "Этот ресурс не умеет искать на сервере: сужаются только уже загруженные строки. Нажмите «Показать ещё», чтобы расширить набор."
-              }
+              title={narrowingTitle(searchScope)}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{ width: 320 }}
@@ -461,7 +473,10 @@ export function ResourceListPage({
             // часть и переставляла бы её при каждой догрузке — читатель принял
             // бы первую строку прочитанного за первую вообще. Порядок серверу
             // не заказывается: поле порядка снято с контракта осознанно.
-            sortable={!hasMore}
+            //
+            // Серверный поиск полноты НЕ добавляет: он сужает весь список, но
+            // ответ по-прежнему приезжает страницей.
+            complete={!hasMore}
             selection={
               canBulkDelete
                 ? {

@@ -30,6 +30,14 @@ import { targetGroupWiring, type TargetGroupWiring } from "@/api/resources";
 import { REGISTRY, getByPath } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
 import { ColumnSettings, useHiddenColumns } from "@/components/molecules/TableToolbar";
+import {
+  clientScope,
+  narrowingTitle,
+  noMatchesText,
+  rowsAreComplete,
+  scopeSuffix,
+  type NarrowingScope,
+} from "@shared/lib/list-scope";
 
 const LB_SPEC = REGISTRY["load-balancers"];
 const TG_SPEC = REGISTRY["target-groups"];
@@ -48,7 +56,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
   const listeners = useQuery({
     queryKey: ["listeners", "by-lb", projectId, lbId],
     queryFn: () =>
-      api.list<{ listeners: Record<string, unknown>[] }>(LISTENER_SPEC.apiPath, {
+      api.list<{ listeners: Record<string, unknown>[]; next_page_token?: string }>(LISTENER_SPEC.apiPath, {
         project_id: projectId ?? "",
         pageSize: "500",
       }),
@@ -61,7 +69,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
   const groups = useQuery({
     queryKey: ["target-groups", "by-lb", projectId, lbId],
     queryFn: () =>
-      api.list<{ target_groups: Record<string, unknown>[] }>(TG_SPEC.apiPath, {
+      api.list<{ target_groups: Record<string, unknown>[]; next_page_token?: string }>(TG_SPEC.apiPath, {
         project_id: projectId ?? "",
         pageSize: "500",
       }),
@@ -75,6 +83,15 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
   }, [listeners.data, lbId]);
 
   const wiredBy = useMemo(() => new Map(wiring.map((w) => [w.targetGroupId, w.listeners])), [wiring]);
+
+  // Область вкладки (#373). Строки выводятся из ДВУХ одностраничных чтений
+  // списка проекта — листенеров и целевых групп, — и продолжения ни у одного
+  // из них здесь нет. Достаточно одного усечённого, чтобы вкладка перестала
+  // отвечать про весь набор: непрочитанный листенер уносит с собой и свою
+  // группу.
+  const scope: NarrowingScope = clientScope(
+    !!listeners.data?.next_page_token || !!groups.data?.next_page_token,
+  );
 
   const rows = useMemo(() => {
     const all = groups.data?.target_groups ?? [];
@@ -129,7 +146,8 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
         <Input.Search
-          placeholder="Фильтр по имени или идентификатору"
+          placeholder={`Фильтр по имени или идентификатору ${scopeSuffix(scope)}`}
+          title={narrowingTitle(scope)}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: 320 }}
@@ -141,7 +159,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {query
-            ? "По фильтру ничего не найдено."
+            ? noMatchesText(scope)
             : "Ни один листенер этого балансировщика не направляет трафик в целевую группу. Группа задаётся на листенере."}
         </div>
       ) : (
@@ -149,6 +167,7 @@ function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: strin
           rows={filtered}
           columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
+          complete={rowsAreComplete(scope)}
         />
       )}
     </Space>

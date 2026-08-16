@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Button, Checkbox, Dropdown, Input, Typography } from "antd";
 import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
+import { narrowingTitle, searchPlaceholder, type NarrowingScope } from "@shared/lib/list-scope";
 
 export interface ToggleCol {
   key: string;
@@ -43,15 +44,29 @@ export function useHiddenColumns(storageKey: string): [Set<string>, (key: string
   return [hidden, toggle];
 }
 
-/** TableSearch — controlled поиск-инпут с иконкой. */
+/**
+ * TableSearch — controlled поиск-инпут с иконкой.
+ *
+ * `scope` ОБЯЗАТЕЛЕН и без умолчания (#373): одна и та же строка ввода означает
+ * на разных страницах разное, и молчаливое умолчание выдавало бы сужение
+ * прочитанной части за поиск по списку. Пользователь читает пустой ответ как
+ * утверждение «такого нет» — а над недочитанным списком это утверждение никем
+ * не проверено.
+ *
+ * `placeholder` остаётся необязательным перекрытием для ресурсов, у которых
+ * ищут не по имени (почта, идентификатор): подпись области при этом никуда не
+ * девается — она в `title`.
+ */
 export function TableSearch({
   value,
   onChange,
-  placeholder = "Поиск по имени или идентификатору",
+  scope,
+  placeholder,
   width = 260,
 }: {
   value: string;
   onChange: (v: string) => void;
+  scope: NarrowingScope;
   placeholder?: string;
   width?: number;
 }) {
@@ -59,7 +74,8 @@ export function TableSearch({
     <Input
       allowClear
       prefix={<SearchOutlined style={{ color: "var(--ant-color-text-tertiary, #8c8c8c)" }} />}
-      placeholder={placeholder}
+      placeholder={placeholder ?? searchPlaceholder(scope)}
+      title={narrowingTitle(scope)}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{ width }}

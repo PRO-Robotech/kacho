@@ -29,6 +29,7 @@ import {
   statusOf,
   type OperationStatus,
 } from "@shared/components/molecules/OperationsTable";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 
@@ -68,6 +69,11 @@ export function OperationsTab({ spec, resourceId, listPath }: Props) {
   });
 
   // Хуки — ВСЕГДА до раннего return (Rules of Hooks).
+  //
+  // Область ручек (#373): читается ОДНА страница, продолжения у вкладки нет,
+  // поэтому и отбор по статусу, и поиск по идентификатору судят о прочитанном.
+  // Курсор в типе ответа был объявлен и не читался ни разу.
+  const scope = clientScope(!!data?.next_page_token);
   const ops = useMemo(() => {
     const raw = data?.operations ?? [];
     return (
@@ -119,13 +125,20 @@ export function OperationsTab({ spec, resourceId, listPath }: Props) {
       {/* Фильтры операций — на уровень имени ресурса (зона 3, правый слот). */}
       <HeaderSlotPortal>
         <Input
-          placeholder="Фильтр по идентификатору"
+          placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
+          title={narrowingTitle(scope)}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           allowClear
           style={{ width: 260 }}
         />
-        <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
+        <Select
+          value={status}
+          onChange={setStatus}
+          options={STATUS_OPTIONS}
+          title={narrowingTitle(scope)}
+          style={{ width: 180 }}
+        />
         {/* Где есть фильтр — есть и выбор столбцов. */}
         <ColumnSettings
           columns={operationColumnTitles().map((t) => ({ key: t, label: t }))}
