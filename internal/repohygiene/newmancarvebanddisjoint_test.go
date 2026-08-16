@@ -58,6 +58,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 var (
@@ -207,21 +209,28 @@ func TestCarvedSubnetsOfOneRunCanNotCollide(t *testing.T) {
 	root := repoRoot(t)
 	corpus := map[string][]byte{}
 	for _, sub := range subnetSupernetScanRoots {
-		_ = filepath.Walk(filepath.Join(root, sub), func(p string, fi os.FileInfo, err error) error {
-			if err != nil || fi.IsDir() {
-				return nil //nolint:nilerr // недоступный подкаталог не подменяет вердикт
-			}
-			if !strings.HasSuffix(p, ".postman_collection.json") {
-				return nil
-			}
-			b, rerr := os.ReadFile(p) //nolint:gosec // путь получен обходом дерева репозитория
+		abs := filepath.Join(root, sub)
+		if _, err := os.Stat(abs); err != nil {
+			continue
+		}
+		// Состав берётся у ИНДЕКСА, а не обходом диска: рядом с деревом на машине
+		// со стендом лежат распаковки чартов и отчёты прогонов, и вердикт стал бы
+		// свойством рабочего каталога, а не коммита. Заодно исчезает чтение файла
+		// по собранному пути — вместе с подавлением, которое в этом репозитории
+		// не читает никто.
+		paths, err := treecorpus.UnderWithSuffix(abs, ".postman_collection.json")
+		if err != nil {
+			t.Fatalf("состав дерева под %s: %v — без него «ноль находок» неотличимо "+
+				"от «ноль прочитанного»", sub, err)
+		}
+		for _, path := range paths {
+			b, rerr := os.ReadFile(path)
 			if rerr != nil {
-				return nil
+				t.Fatalf("читаю %s: %v", path, rerr)
 			}
-			rel, _ := filepath.Rel(root, p)
+			rel, _ := filepath.Rel(root, path)
 			corpus[rel] = b
-			return nil
-		})
+		}
 	}
 	if len(corpus) == 0 {
 		t.Fatalf("гейт не прочитал ни одной коллекции (корни: %v) — предпосылка обхода "+
