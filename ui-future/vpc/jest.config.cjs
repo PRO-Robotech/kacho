@@ -1,4 +1,9 @@
 module.exports = {
+  // Порядок суит — свойство дерева, а не кэша машины: см. шапку
+  // ../shared/jest-sequencer-by-path.cjs (и #461, где плавающий порядок давал
+  // разное число падений на одном дереве). `require.resolve` — потому что
+  // `testSequencer` принимает ПУТЬ, а файл лежит вне пакета.
+  testSequencer: require.resolve("../shared/jest-sequencer-by-path.cjs"),
   preset: "ts-jest",
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
