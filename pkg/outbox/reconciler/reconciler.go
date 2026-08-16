@@ -54,10 +54,18 @@ const (
 	eventUnregister = "fga.unregister"
 )
 
-// supersededSampleLimit bounds how many resource ids RedrivePoisoned names in its
-// WARN. Attribution needs examples, not the whole set; an unbounded list would
-// turn one stuck resource into an unreadable log line.
+// supersededSampleLimit bounds how many partition keys RedrivePoisoned names in
+// its WARN. Attribution needs examples, not the whole set; an unbounded list would
+// turn one stuck partition into an unreadable log line.
 const supersededSampleLimit = 20
+
+// RegisterOutboxPartition is the ordering partition key of every register-outbox
+// in the platform: one row per FGA object, stamped with that object's globally
+// unique id. Named once so the five services that wire this backstop cannot drift
+// into five literals — and so the one queue that is NOT a register-outbox
+// (iam's fga_outbox, keyed on the full tuple) has to say so out loud rather than
+// inherit a default.
+const RegisterOutboxPartition = "resource_id"
 
 // ResourceRow is one live resource as seen by the per-service enumerator. Kind +
 // ID identify the resource; ProjectID is the hierarchy parent ("" when there is
@@ -100,14 +108,37 @@ type Adapters struct {
 
 // Config parameterises a Reconciler.
 type Config struct {
-	// Table — full register-outbox table name (`<schema>.<table>`). Must be the
-	// SAME table the drainer drains (intents are re-emitted here so the CAS-claim
-	// path governs delivery).
+	// Table — full outbox table name (`<schema>.<table>`). Must be the SAME table
+	// the drainer drains: RedrivePoisoned hands rows back to that claim path, and
+	// BackfillFromState re-emits into it, so a second table here would repair a
+	// queue nobody delivers.
 	Table string
 	// Channel — LISTEN/NOTIFY channel of the table (for parity / future use).
 	Channel string
 	// MaxAttempts — poison threshold (default 10) used by RedrivePoisoned.
 	MaxAttempts int
+	// PartitionColumn — the ORDERING PARTITION key of this outbox: the column over
+	// which its events fail to commute. REQUIRED; there is no default and no zero
+	// value, because an unset key would read as "no ordering" and silently turn the
+	// revival into the over-grant it exists to prevent (RedrivePoisoned §Reviving
+	// respects the order of the partition).
+	//
+	// It MUST be the SAME column the drainer of this table is configured with
+	// (drainer.Config.PartitionColumn). The two carry the two halves of one rule —
+	// the claim refuses to take a row ahead of a DELIVERABLE predecessor, the
+	// revival refuses to raise a row past a DELIVERED successor — and on different
+	// keys each half guards a partition the other does not.
+	//
+	// Two shapes exist in this platform, and they are not interchangeable:
+	//
+	//   - a register-outbox (`fga_register_outbox` in vpc / compute / nlb / storage /
+	//     registry) carries one row per FGA object and keys on RegisterOutboxPartition
+	//     ("resource_id");
+	//   - iam's `fga_outbox` carries tuple WRITES and DELETES and keys on `tuple_key`,
+	//     the full (user, relation, object) triple materialised by iam migration 0067.
+	//     OpenFGA's state is a SET OF TUPLES, so rows that merely share an object
+	//     commute and a wider key would park healthy rows for no correctness gained.
+	PartitionColumn string
 	// GraceWindow — a resource must be continuously absent (and not
 	// intended-registered) for at least this long before GCOrphans emits an
 	// unregister (anti-race deferral). 0 → emit on the first confirmed
@@ -123,7 +154,9 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Reconciler orchestrates the backstop passes over one register-outbox table.
+// Reconciler orchestrates the backstop passes over one outbox table. All three
+// passes serve a register-outbox; RedrivePoisoned alone is shape-agnostic and is
+// what a non-register queue takes (NewRedriveOnly).
 type Reconciler struct {
 	pool *pgxpool.Pool
 	cfg  Config
@@ -154,6 +187,17 @@ func New(pool *pgxpool.Pool, cfg Config, ad Adapters, logger *slog.Logger) (*Rec
 	if ad.Registry == nil {
 		return nil, errors.New("reconciler.New: Adapters.Registry required")
 	}
+	// BackfillFromState and GCOrphans reason about `resource_id` directly
+	// (intendedRegistered, lockResource, the synthesised project-hierarchy intent),
+	// so a full Reconciler is a register-outbox Reconciler by construction. Saying
+	// that here beats discovering it as a column-does-not-exist at the first pass.
+	if cfg.PartitionColumn != RegisterOutboxPartition {
+		return nil, fmt.Errorf(
+			"reconciler.New: Config.PartitionColumn must be %q (the backfill and GC passes "+
+				"are register-outbox specific); an outbox keyed on anything else takes "+
+				"NewRedriveOnly, got %q",
+			RegisterOutboxPartition, cfg.PartitionColumn)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -181,8 +225,11 @@ func New(pool *pgxpool.Pool, cfg Config, ad Adapters, logger *slog.Logger) (*Rec
 // later intent for the same resource. But the row itself then stays undelivered
 // forever unless something re-drives it, and an undelivered registration means the
 // resource has no mirror row in kacho-iam, hence no owner tuple and no materialized
-// verbs: invisible to authz until someone edits the database by hand. The periodic
-// redrive is what makes poisoning a bounded pause rather than a permanent loss.
+// verbs: invisible to authz until someone edits the database by hand. The redrive
+// is what makes poisoning a bounded pause rather than a permanent loss — on a
+// timer for the register-outboxes, on the authorization-model-change event for
+// iam's tuple outbox, where the permanent cause is known and a blind repeat of a
+// refused write cannot pass.
 //
 // BackfillFromState and GCOrphans return an error on a redrive-only Reconciler:
 // the narrowing is enforced where it matters, not left to a nil dereference.
@@ -192,6 +239,14 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 	}
 	if cfg.Table == "" {
 		return nil, errors.New("reconciler.NewRedriveOnly: Config.Table required")
+	}
+	if !validIdentifier(cfg.PartitionColumn) {
+		return nil, fmt.Errorf(
+			"reconciler.NewRedriveOnly: Config.PartitionColumn must be a plain column "+
+				"identifier and MUST match the drainer's PartitionColumn for %s "+
+				"(unset would read as \"no ordering\" and revive an intent past a "+
+				"delivered successor), got %q",
+			cfg.Table, cfg.PartitionColumn)
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -226,28 +281,36 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // deliverable set — so the backstop has to carry the other half of the same rule
 // itself, or it re-opens through repair exactly what the claim closed.
 //
-// The partition is `resource_id`, the same key every production register-outbox
-// gives the drainer and the same one this package already keys lockResource and
-// intendedRegistered on: every emitter writes one row per FGA object and stamps
-// resource_id with that object's globally-unique id, so "same partition" is
-// exactly "same target object". There is no knob for it — a knob left unset here
-// would read as "no ordering" and silently restore the defect. The table MUST
-// therefore carry a resource_id column; the one outbox in the platform that does
-// not (iam's fga_outbox, partitioned on tuple_key) is not a register-outbox and
-// has no reconciler.
+// The partition is Config.PartitionColumn — REQUIRED, with no default and no zero
+// value, because a knob left unset here would read as "no ordering" and silently
+// restore the defect. It must be the SAME column the drainer of this table is
+// given: the claim's guard covers deliverable predecessors, this one covers
+// delivered successors, and on two different keys each half guards a partition
+// the other does not.
+//
+// Two shapes exist and both are live. A register-outbox writes one row per FGA
+// object and stamps RegisterOutboxPartition ("resource_id") with that object's
+// globally-unique id, so "same partition" is exactly "same target object"; that is
+// also the key lockResource and intendedRegistered use, which is why a full
+// Reconciler (New) accepts nothing else. iam's `fga_outbox` is the other: it
+// carries tuple WRITES and DELETES and keys on `tuple_key`, the full
+// (user, relation, object) triple materialised by iam migration 0067, because
+// OpenFGA's state is a set of tuples and rows that merely share an object commute.
+// It takes NewRedriveOnly.
 //
 // # Two honest limits of this rule
 //
-// A row with an EMPTY resource_id names no resource, so "a later intent for the
-// same resource" cannot be established for it. Such rows group together — the
-// drainer's claim already groups them the same way and the two must agree — and
-// the conservative reading is deliberate: reviving one risks replaying it past a
+// A row with an EMPTY partition key names nothing, so "a later intent for the same
+// partition" cannot be established for it. Such rows group together — the drainer's
+// claim already groups them the same way and the two must agree — and the
+// conservative reading is deliberate: reviving one risks replaying it past a
 // delivered intent, which is the defect this guard exists for. The cost is real
 // and is NOT merely a delay: one delivered empty-key row parks every earlier
-// poisoned empty-key row permanently. No live emitter writes an empty
-// resource_id, so this is reachable only for rows predating the column
-// (vpc migration 0008 added it without a backfill) — which is why the report
-// below names the rows rather than counting them.
+// poisoned empty-key row permanently. No live emitter writes an empty key — on the
+// register side this is reachable only for rows predating the column (vpc migration
+// 0008 added it without a backfill), and on iam's side migration 0067's NOT VALID
+// check makes an incomplete key fail at emit — which is why the report below names
+// the rows rather than counting them.
 //
 // The check is evaluated against ONE statement snapshot, so it is "no delivered
 // successor as of this pass", not a serialised guarantee: a successor the drainer
@@ -274,12 +337,13 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // should add a plain btree on (resource_id, id) to turn it into a lookup.
 func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 	table := outbox.SanitizeTable(r.cfg.Table)
+	part := pgx.Identifier{r.cfg.PartitionColumn}.Sanitize()
 	q := fmt.Sprintf(`
 		WITH poisoned AS (
-		    SELECT t.id, t.resource_id,
+		    SELECT t.id, t.%[3]s AS partition_key,
 		           EXISTS (
 		               SELECT 1 FROM %[1]s s
-		                WHERE s.resource_id = t.resource_id
+		                WHERE s.%[3]s = t.%[3]s
 		                  AND s.id > t.id
 		                  AND s.sent_at IS NOT NULL
 		           ) AS superseded
@@ -294,10 +358,10 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 		)
 		SELECT (SELECT count(*) FROM revived),
 		       (SELECT count(*) FROM poisoned WHERE superseded),
-		       (SELECT coalesce(array_agg(resource_id ORDER BY id), '{}')
-		          FROM (SELECT resource_id, id FROM poisoned
+		       (SELECT coalesce(array_agg(partition_key ORDER BY id), '{}')
+		          FROM (SELECT partition_key, id FROM poisoned
 		                 WHERE superseded ORDER BY id LIMIT %[2]d) sample)`,
-		table, supersededSampleLimit)
+		table, supersededSampleLimit, part)
 
 	var revived, superseded int64
 	var sample []string
@@ -311,11 +375,12 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 		// PII or infrastructure detail — the same call the drainer's wedge
 		// reporter makes.
 		r.log.Warn("poisoned intents left un-revived: a later intent for the same "+
-			"resource has already been delivered, so replaying them would undo it; "+
+			"partition has already been delivered, so replaying them would undo it; "+
 			"they remain pending and must be retired by hand",
 			slog.Int64("superseded", superseded),
 			slog.Int("sampled", len(sample)),
-			slog.String("resources", strings.Join(sample, ",")))
+			slog.String("partition_column", r.cfg.PartitionColumn),
+			slog.String("partitions", strings.Join(sample, ",")))
 	}
 	return int(revived), nil
 }
@@ -531,6 +596,28 @@ func EmitUnregister(ctx context.Context, tx pgx.Tx, table, kind, id, payload str
 		return err
 	}
 	return insertIntent(ctx, tx, table, eventUnregister, kind, id, payload)
+}
+
+// validIdentifier reports whether s is a plain unquoted SQL column identifier
+// ([A-Za-z_][A-Za-z0-9_]*). The name is interpolated into the redrive statement,
+// so it is checked at CONSTRUCTION — a bad value must refuse to build a
+// Reconciler, not surface as a syntax error on the first pass minutes later, and
+// must never be able to carry SQL. pgx.Identifier.Sanitize quotes it as well; this
+// is the belt to that suspenders, and it also rejects the empty string, which is
+// the value that would silently mean "no ordering".
+func validIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_':
+		case i > 0 && c >= '0' && c <= '9':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // lockResource takes a transaction-scoped advisory lock keyed by the resource id

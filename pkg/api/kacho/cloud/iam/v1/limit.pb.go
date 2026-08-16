@@ -238,6 +238,17 @@ type EffectiveLimit struct {
 	SourceScope Limit_Scope `protobuf:"varint,3,opt,name=source_scope,json=sourceScope,proto3,enum=kacho.cloud.iam.v1.Limit_Scope" json:"source_scope,omitempty"`
 	// Id of the object the winning scope names; empty when the winner is DEFAULT.
 	SourceScopeId string `protobuf:"bytes,4,opt,name=source_scope_id,json=sourceScopeId,proto3" json:"source_scope_id,omitempty"`
+	// WHERE this kind is counted: a tenancy root (`project` / `account`) or the
+	// two-part token of the parent type a nested kind is counted within.
+	//
+	// Stated rather than left to the reader, because the shape of the kind does
+	// NOT determine it: `iam.project` has two parts and is counted in an ACCOUNT.
+	// A consumer that guessed would file the accounting row under the wrong
+	// owner — and that failure is silent, because the row is created, returned
+	// and simply never charged.
+	//
+	// Never empty in an answer: a kind outside the catalogue never reaches here.
+	Carrier       string `protobuf:"bytes,5,opt,name=carrier,proto3" json:"carrier,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -296,6 +307,13 @@ func (x *EffectiveLimit) GetSourceScope() Limit_Scope {
 func (x *EffectiveLimit) GetSourceScopeId() string {
 	if x != nil {
 		return x.SourceScopeId
+	}
+	return ""
+}
+
+func (x *EffectiveLimit) GetCarrier() string {
+	if x != nil {
+		return x.Carrier
 	}
 	return ""
 }
@@ -519,12 +537,13 @@ const file_kacho_cloud_iam_v1_limit_proto_rawDesc = "" +
 	"\x11SCOPE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aDEFAULT\x10\x01\x12\v\n" +
 	"\aACCOUNT\x10\x02\x12\v\n" +
-	"\aPROJECT\x10\x03\"\xa6\x01\n" +
+	"\aPROJECT\x10\x03\"\xc0\x01\n" +
 	"\x0eEffectiveLimit\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value\x12B\n" +
 	"\fsource_scope\x18\x03 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\vsourceScope\x12&\n" +
-	"\x0fsource_scope_id\x18\x04 \x01(\tR\rsourceScopeId\"\\\n" +
+	"\x0fsource_scope_id\x18\x04 \x01(\tR\rsourceScopeId\x12\x18\n" +
+	"\acarrier\x18\x05 \x01(\tR\acarrier\"\\\n" +
 	"\vLimitChange\x12/\n" +
 	"\x05limit\x18\x01 \x01(\v2\x19.kacho.cloud.iam.v1.LimitR\x05limit\x12\x1c\n" +
 	"\twithdrawn\x18\x02 \x01(\bR\twithdrawn\"0\n" +

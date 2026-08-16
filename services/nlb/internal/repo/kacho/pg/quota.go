@@ -38,6 +38,23 @@ type quotaReader struct {
 //
 // nil означает «место было в момент чтения», а не «место будет».
 func (q *quotaReader) Admit(ctx context.Context, carrierType, carrierID, kind string) error {
+	// `used` НЕ приходит из Go и не может: единственный, кто знает потребление, —
+	// сама база. Прежняя редакция ставила здесь ноль, объясняя это тем, что
+	// потребление создаёт триггер; утверждение верно ровно для проекта, у
+	// которого на момент заведения строки ресурсов НЕТ, и ложно для всякого
+	// другого. Затравка считается тем же отображением «вид → таблица», которым
+	// ведёт списание, — оно читается у самих триггеров, поэтому разойтись со
+	// списанием не может.
+	//
+	// Гонки здесь нет by construction: пока строки учёта нет, вставка строки
+	// ресурса отвергается, значит множество, которое считают, между счётом и
+	// вставкой не меняется. `ON CONFLICT DO NOTHING` при этом сохраняет прежний
+	// смысл — потребление уже заведённой строки не переписывается.
+	//
+	// `COALESCE(…, 0)` покрывает вид, который не списывается НИЧЕМ: у такого вида
+	// потребления не существует, и ноль здесь — не догадка, а единственное
+	// возможное значение. Само же наличие таких видов — предмет отдельной
+	// задачи про виды без производителя списания, а не материализации.
 	const stmt = `SELECT kacho_nlb.kacho_quota_admit($1, $2, $3)`
 	if _, err := q.tx.Exec(ctx, stmt, carrierType, carrierID, kind); err != nil {
 		return mapPgErr(err, "Quota", "")
@@ -83,16 +100,22 @@ func MaterializeQuotas(ctx context.Context, ex QuotaExecutor, rows []kacho.Quota
 		INSERT INTO kacho_nlb.project_resource_quotas
 		    (carrier_type, carrier_id, kind, used, limit_value,
 		     source_scope, source_scope_id, limit_revision, account_id)
-		SELECT * FROM unnest(
-		    $1::text[], $2::text[], $3::text[], $4::bigint[], $5::bigint[],
-		    $6::text[], $7::text[], $8::bigint[], $9::text[])
+		SELECT s.carrier_type, s.carrier_id, s.kind,
+		       COALESCE(kacho_nlb.kacho_quota_used_actual(
+		           s.carrier_type, s.carrier_id, s.kind), 0),
+		       s.limit_value, s.source_scope, s.source_scope_id,
+		       s.limit_revision, s.account_id
+		  FROM unnest(
+		      $1::text[], $2::text[], $3::text[], $4::bigint[],
+		      $5::text[], $6::text[], $7::bigint[], $8::text[])
+		      AS s(carrier_type, carrier_id, kind, limit_value,
+		           source_scope, source_scope_id, limit_revision, account_id)
 		ON CONFLICT (carrier_type, carrier_id, kind) DO NOTHING`
 
 	n := len(rows)
 	carrierTypes := make([]string, n)
 	carrierIDs := make([]string, n)
 	kinds := make([]string, n)
-	used := make([]int64, n)
 	limits := make([]int64, n)
 	scopes := make([]string, n)
 	scopeIDs := make([]string, n)
@@ -102,7 +125,6 @@ func MaterializeQuotas(ctx context.Context, ex QuotaExecutor, rows []kacho.Quota
 		carrierTypes[i] = r.CarrierType
 		carrierIDs[i] = r.CarrierID
 		kinds[i] = r.Kind
-		used[i] = 0 // новая строка учёта не несёт потребления: его создаёт триггер
 		limits[i] = r.Limit
 		scopes[i] = r.SourceScope
 		scopeIDs[i] = r.SourceScopeID
@@ -111,7 +133,7 @@ func MaterializeQuotas(ctx context.Context, ex QuotaExecutor, rows []kacho.Quota
 	}
 
 	tag, err := ex.Exec(ctx, stmt,
-		carrierTypes, carrierIDs, kinds, used, limits, scopes, scopeIDs, revisions, accounts)
+		carrierTypes, carrierIDs, kinds, limits, scopes, scopeIDs, revisions, accounts)
 	if err != nil {
 		return 0, mapPgErr(err, "Quota", "")
 	}

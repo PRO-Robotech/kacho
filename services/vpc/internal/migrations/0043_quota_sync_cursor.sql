@@ -1,0 +1,74 @@
+-- Copyright (c) PRO-Robotech
+-- SPDX-License-Identifier: BUSL-1.1
+
+-- =============================================================================
+-- Курсор дельты величин: место, с которого синхронизатор продолжает.
+-- =============================================================================
+-- Задача `PRO-Robotech/kacho#410`.
+--
+-- ЧЕГО НЕ БЫЛО. Столбцы под синхронизацию (`limit_revision`, `synced_at`) стоят
+-- в схеме с самого заведения учёта, индекс по возрасту снимка создан, а писателя
+-- не было НИ ОДНОГО: ревизия писалась константой, отметка времени не двигалась
+-- ни одним оператором, дельту не тянул ни один домен. Три столбца, заведённые
+-- под механизм, которого не построили.
+--
+-- Следствие, ради которого это чинится: администратор менял величину, ответ был
+-- успешным, значение в базе владельца величин менялось — и до живого проекта не
+-- доезжало НИКОГДА. Ни поднятие, ни понижение. Лаг был не «большой»: его не
+-- существовало как понятия, потому что не было пути.
+--
+-- ПОЧЕМУ КУРСОР ПЕРСИСТЕНТЕН, А НЕ В ПАМЯТИ. Синхронизатор перезапускается
+-- вместе с процессом. Курсор в памяти означал бы полный проход по истории
+-- изменений на каждом перезапуске — и, что хуже, «догоняем с начала времён»
+-- выглядело бы ровно так же, как «догнали»: обе картины дают ноль применённых
+-- строк на установившейся конфигурации.
+--
+-- ПОЧЕМУ СЧЁТЧИКИ НАКОПИТЕЛЬНЫЕ. «Ни одна строка не синхронизирована за всё
+-- время» обязано быть ЗАМЕТНО. Без накопительного счёта мёртвый синхронизатор
+-- неотличим от живого: и тот и другой применяют ноль строк, когда никто ничего
+-- не менял. Счётчик проходов отдельно от счётчика строк ровно затем, чтобы
+-- отличить «не работает» от «нечего делать».
+
+-- +goose Up
+-- +goose StatementBegin
+SET search_path TO kacho_vpc, public;
+
+CREATE TABLE IF NOT EXISTS kacho_vpc.quota_sync_cursor (
+    -- Одна строка на один вид синхронизации. Ключ — не идентификатор реплики:
+    -- курсор ОБЩИЙ для всех реплик владельца намеренно, потому что дельта
+    -- идемпотентна по ревизии, а второй курсор означал бы второй порядок
+    -- применения одних и тех же изменений.
+    id                 text        NOT NULL PRIMARY KEY,
+
+    -- Непрозрачный курсор владельца величин. Пустая строка означает «с начала
+    -- времён» — ровно то, что нужно проекции, ни разу не тянувшей дельту, и
+    -- ровно то, чем состояние «ещё не начинали» отличается от «догнали».
+    cursor             text        NOT NULL DEFAULT '',
+
+    applied_rows_total bigint      NOT NULL DEFAULT 0,
+    pulls_total        bigint      NOT NULL DEFAULT 0,
+    updated_at         timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT quota_sync_cursor_applied_check CHECK (applied_rows_total >= 0),
+    CONSTRAINT quota_sync_cursor_pulls_check   CHECK (pulls_total >= 0)
+);
+
+COMMENT ON TABLE kacho_vpc.quota_sync_cursor IS
+    'where the limit-delta puller resumes from. The cumulative counters are not '
+    'decoration: without them a syncer that has never applied a single row looks '
+    'exactly like a healthy one on an unchanged configuration';
+
+COMMENT ON COLUMN kacho_vpc.quota_sync_cursor.cursor IS
+    'opaque cursor of the limit owner; empty means "from the beginning of time"';
+
+-- Строка заводится здесь, а не первым проходом: читатель, не нашедший её,
+-- должен был бы решать, завести ли её самому, — и два прохода завели бы две.
+INSERT INTO kacho_vpc.quota_sync_cursor (id) VALUES ('limits')
+ON CONFLICT (id) DO NOTHING;
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+SET search_path TO kacho_vpc, public;
+DROP TABLE IF EXISTS kacho_vpc.quota_sync_cursor;
+-- +goose StatementEnd

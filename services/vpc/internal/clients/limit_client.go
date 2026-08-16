@@ -10,6 +10,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 )
@@ -73,6 +74,7 @@ func (c *LimitClient) Resolve(ctx context.Context, scopeID, service string) ([]q
 			out = append(out, quota.ResolvedLimit{
 				Kind:          l.GetKind(),
 				Value:         l.GetValue(),
+				Carrier:       l.GetCarrier(),
 				SourceScope:   scopeName(l.GetSourceScope()),
 				SourceScopeID: l.GetSourceScopeId(),
 			})
@@ -103,4 +105,55 @@ func scopeName(s iamv1.Limit_Scope) string {
 		return "PROJECT"
 	}
 	return ""
+}
+
+// ListChangedSince тянет ДЕЛЬТУ изменений величин — то, чем снимок догоняет
+// авторитет.
+//
+// Курсор непрозрачен и приезжает от владельца величин; пустая строка означает
+// «с начала времён», то есть ровно то, что нужно проекции, ни разу не тянувшей
+// дельту. Следующий курсор владелец возвращает ВСЕГДА, включая пустую страницу:
+// тянущий, продвигавший курсор только на непустых страницах, перечитывал бы один
+// и тот же хвост вечно, как только догнал.
+//
+// Область переводится тем же переводом, что и на резолве, и НЕ приводится к
+// умолчанию: неизвестная область здесь означает, что сосед сказал то, чего мы не
+// понимаем, и синхронизатор обязан отказаться, а не догадаться. Пустая строка
+// невалидна для `quota.Change`, поэтому такой ответ остановит проход, не сдвинув
+// курсор, — и это громче, чем применить догадку.
+func (c *LimitClient) ListChangedSince(
+	ctx context.Context, cursor string, pageSize int32,
+) ([]corequota.Change, string, error) {
+	var (
+		out  []corequota.Change
+		next string
+	)
+	err := retry.OnUnavailable(ctx, func(ctx context.Context) error {
+		cctx, cancel := peerCallCtx(ctx, defaultPeerCallTimeout)
+		defer cancel()
+		resp, rerr := c.cli.ListChangedSince(auth.PropagateOutgoing(cctx),
+			&iamv1.ListChangedLimitsRequest{Cursor: cursor, PageSize: int64(pageSize)})
+		if rerr != nil {
+			return rerr
+		}
+		changes := resp.GetChanges()
+		out = make([]corequota.Change, 0, len(changes))
+		for _, ch := range changes {
+			l := ch.GetLimit()
+			out = append(out, corequota.Change{
+				Kind:      l.GetKind(),
+				Scope:     corequota.Scope(scopeName(l.GetScope())),
+				ScopeID:   l.GetScopeId(),
+				Value:     l.GetValue(),
+				Revision:  l.GetRevision(),
+				Withdrawn: ch.GetWithdrawn(),
+			})
+		}
+		next = resp.GetNextCursor()
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return out, next, nil
 }

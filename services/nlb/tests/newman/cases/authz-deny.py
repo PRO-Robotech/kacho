@@ -935,6 +935,13 @@ CASES.append(Case(
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(auth="jwtProjectEditorA"),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Читаем ТЕМ ЖЕ
+        # предъявителем, что создаёт LB, — прогрев чужим субъектом ничего не
+        # доказывает о доступе этого. Разбор — в шапке `warm_peer_fixture`.
+        warm_peer_fixture(_VPC_SUBNETS, "azdSubnetId", "azd-lcd-subnet",
+                          auth="jwtProjectEditorA"),
         retry_create_until_present(Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-lcd-{{runId}}", "placement": "INTERNAL_ZONAL",

@@ -440,9 +440,16 @@ func (c *internalAddressClient) SetReference(
 }
 
 // setAddressReferenceRaw — сам RPC SetAddressReference (retry.OnUnavailable +
-// per-call deadline), возвращающий СЫРОЙ gRPC-status. Единственная точка вызова;
-// классификацию делают вызывающие — BYO-lane через `mapSetReferenceErr`
-// (анти-oracle), own-lane через `linkOwnAddress` (по коду, а не по прозе).
+// per-call deadline), возвращающий СЫРОЙ gRPC-status; классификацию делает
+// вызывающий — `SetReference` через `mapSetReferenceErr` (анти-oracle).
+//
+// Здесь стояло «единственная точка вызова» и ссылка на `linkOwnAddress` как на
+// own-полосу. Оба утверждения ложны и пережили свой предмет: функции с таким
+// именем в дереве нет ВОВСЕ, а вызовов самого RPC в этом файле два — этот и
+// встроенный в `AttachExisting`, которая классифицирует свой ответ сама.
+// Own-полоса этот RPC не зовёт с тех пор, как пара «создать, затем привязать»
+// свелась к одному `CreateOwnedAddress` в одной транзакции (см. `allocFromCreate`),
+// — именно ради снятия зависимости от окна материализации.
 func (c *internalAddressClient) setAddressReferenceRaw(
 	ctx context.Context, addressID string, owner AddressOwner, owned bool,
 ) error {

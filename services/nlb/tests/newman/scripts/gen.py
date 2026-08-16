@@ -636,6 +636,20 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
     deny). The counter/started env-vars are request-name-scoped (step names are
     globally unique after serialization) so the loop never bleeds across cases or
     steps -- same discipline as poll_operation_until_done.
+
+    ГРАНИЦА, КОТОРУЮ ЭТА ОБЁРТКА НЕ ПЕРЕХОДИТ (issue #351). Решение о повторе
+    принимается по КОДУ ОТВЕТА шага, поэтому закрыта ровно одна полоса — СИНХРОННЫЙ
+    отказ этого запроса (шлюз не разрешил цель проверки прав → 403; чтение скрытого
+    ресурса → 404). У АСИНХРОННОЙ мутации отказ ВЛАДЕЛЬЦА чужого ресурса приезжает
+    иначе: шаг отвечает `200` и конвертом `Operation`, а отказ лежит терминальной
+    ошибкой ВНУТРИ операции и читается уже другим шагом — сюда он не попадает НИКОГДА.
+    Обёртка на таком шаге не инертна (полосу шлюза она по-прежнему закрывает), но
+    читать её как «окно видимости здесь закрыто» — ошибка: чужой свежий идентификатор
+    обязан быть либо ПРОЧИТАН до мутации (`retry_until_authorized(GET <владелец>/<id>)`
+    — форма, посаженная PR #350), либо прикрыт повтором по ИСХОДУ операции
+    (`poll_operation_until_done(retry_from=…)`). Свойство держит по всему дереву гейт
+    `internal/repohygiene/artifactgates`
+    `TestAsyncMutationDoesNotCarryAnUnwarmedPeerId`.
     """
     # Полоса, по которой приходит окно видимости, задаётся МЕТОДОМ, а не вкусом
     # автора: у мутации отказ виден как 403, а у ЧТЕНИЯ он спрятан под 404
@@ -669,10 +683,20 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
         # Ждать нечего: все коды полосы видимости объявлены исходами. Обёртка
         # выродилась бы в петлю, которая не может сработать, — не ставим её.
         return step
+    # ЗДЕСЬ ЖЕ — граница, которую этот отказ ставить обёртку НЕ ловит (issue #351).
+    # Условие выше отсекает вырожденный случай «ждать нечего», и это верно только
+    # для полосы, ВИДИМОЙ КОДОМ ОТВЕТА. У асинхронной мутации есть вторая полоса —
+    # отказ ВЛАДЕЛЬЦА чужого ресурса внутри `Operation`, — и она не видна отсюда ни
+    # при каком `retry_on`: обёртка ставится, читается как закрытое окно и им не
+    # является. Молча этот случай не проходит: эмитируемый комментарий ниже называет
+    # свою полосу вслух, а свойство по дереву держит гейт
+    # `internal/repohygiene/artifactgates` TestAsyncMutationDoesNotCarryAnUnwarmedPeerId.
     retry_set = ",".join(str(c) for c in retry_on)
     guard = [
         "// bounded read-your-writes retry over the owner-tuple materialization window",
         "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+        "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+        "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
         "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_authRetryCount', '0');",
         "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -696,6 +720,40 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
     # exact hazard poll_operation_until_done avoids via its unique poll-op-<n> name.
     return replace(step, name=f"{step.name}-rya{_RYA_SEQ[0]}",
                    test_script=guard + list(step.test_script))
+
+
+def warm_peer_fixture(base_path: str, id_var: str, suffix: str,
+                      auth: Optional[str] = None) -> Step:
+    """Прогреть ЧУЖОЙ свежий ресурс чтением — до того, как его идентификатор уедет в
+    асинхронную мутацию этого набора.
+
+    Зачем (issue #351). `retry_until_authorized` решает о повторе по КОДУ ОТВЕТА шага,
+    а асинхронная мутация отвечает `200` и конвертом `Operation` ВСЕГДА: отказ владельца
+    чужого ресурса приезжает терминальной ошибкой ВНУТРИ операции и читается уже другим
+    шагом. Значит на такой мутации окно материализации прав у ЧУЖОГО идентификатора не
+    закрыто ничем — обёртка на ней закрывает только полосу шлюза (собственную цель
+    проверки прав этого RPC).
+
+    Отличить открытое окно от настоящего промаха кейс не может by construction: владелец
+    прячет существование и берёт текст из общей таблицы (`security.md` §6), поэтому
+    красное приезжает как утверждение о продукте — ровно так и было прочитано в разборе,
+    из которого заведён #351.
+
+    Греется ЧТЕНИЕМ, потому что на нём обёртка работает: 403/404 видны кодом ответа,
+    ожидание ограничено бюджетом, и ничего не маскируется — постоянный отказ по-прежнему
+    роняет посев, и роняет его НА СВОЁМ шаге, а не через три шага на чужом.
+
+    Второй законный исход — повтор по ИСХОДУ операции
+    (`poll_operation_until_done(retry_from=…)`); он дороже (перезапускает саму мутацию) и
+    применяется там, где чтение чужого ресурса кейсу недоступно.
+
+    Свойство держит гейт по дереву `internal/repohygiene/artifactgates`
+    `TestAsyncMutationDoesNotCarryAnUnwarmedPeerId`.
+    """
+    return retry_until_authorized(Step(
+        name=f"warm-{suffix}", method="GET",
+        path=f"{base_path}/{{{{{id_var}}}}}", auth=auth,
+        test_script=[*assert_status(200)]))
 
 
 def retry_until_state(step: Step, converged_expr: str, budget: int = 25,
@@ -1923,6 +1981,7 @@ def load_cases_module(path: Path):
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
+    mod.warm_peer_fixture = warm_peer_fixture
     mod.retry_until_present = retry_until_present
     mod.retry_until_state = retry_until_state
     mod.retry_create_until_present = retry_create_until_present
