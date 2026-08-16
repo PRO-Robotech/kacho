@@ -81,7 +81,7 @@ describe("исход 1 — не принята: край отказал сраз
 
 describe("исход 2 — принята: операция идёт", () => {
   it("пока операция не завершилась, исход НЕ объявляется", async () => {
-    operation = { id: "op-1", done: false } as Operation;
+    operation = { id: "op-1", done: false };
     const { result } = setup(() => Promise.resolve({ id: "op-1", done: false }));
     act(() => result.current.run(undefined as never));
 
@@ -93,7 +93,7 @@ describe("исход 2 — принята: операция идёт", () => {
 
 describe("исход 3 — завершена", () => {
   it("успех: сообщение согласовано по роду, onSucceeded вызван", async () => {
-    operation = { id: "op-1", done: true } as Operation;
+    operation = { id: "op-1", done: true };
     const onSucceeded = jest.fn();
     const { result } = setup(() => Promise.resolve({ id: "op-1", done: true }), onSucceeded);
     act(() => result.current.run(undefined as never));

@@ -9,7 +9,7 @@
     "react-hooks/immutability": 2,
     "react-hooks/purity": 2,
     "react-hooks/refs": 3,
-    "react-hooks/set-state-in-effect": 29,
+    "react-hooks/set-state-in-effect": 27,
     "react-hooks/use-memo": 2
   }
 }

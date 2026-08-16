@@ -118,7 +118,7 @@ export function useSignalledMutation<TVars = void>(
 
   const run = useCallback(
     (vars: TVars) => {
-      subjectRef.current = typeof subject === "function" ? (subject as (v: TVars) => MutationSubject)(vars) : subject;
+      subjectRef.current = typeof subject === "function" ? subject(vars) : subject;
       mutation.mutate(vars);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

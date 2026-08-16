@@ -84,14 +84,15 @@ function rendersToaster(module: string): boolean {
 describe("показ уведомлений примонтирован в каждом мутирующем модуле", () => {
   // Перепись: «все несут показ» обязано быть отличимо от «ничего не прочитано».
   it("исходники модулей прочитаны", () => {
-    const counts = MUTATING_MODULES.map((m) => sourceFilesOf(m).length);
-    for (const [i, n] of counts.entries()) {
-      expect({ module: MUTATING_MODULES[i], files: n }).toEqual({
-        module: MUTATING_MODULES[i],
-        files: expect.any(Number),
-      });
-      expect(n).toBeGreaterThan(0);
-    }
+    // Утверждается пара «модуль и число», а не одно число: на голом `n > 0`
+    // отказ не называет, У КАКОГО модуля перепись пуста, — а именно это и надо
+    // знать, потому что пустая перепись означает сломанный обход, а не чистый
+    // модуль. Прежняя редакция строила ту же пару через `expect.any(Number)`;
+    // он возвращает `any`, и присваивание в литерал становится небезопасным —
+    // проверка ничего не утверждала (число есть число) и стоила находки линта.
+    const counts = MUTATING_MODULES.map((m) => ({ module: m, files: sourceFilesOf(m).length }));
+    const empty = counts.filter((c) => c.files === 0);
+    expect(empty).toEqual([]);
   });
 
   it("ни одного мутирующего модуля без показа", () => {
