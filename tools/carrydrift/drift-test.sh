@@ -32,6 +32,17 @@ no() { fail=$((fail + 1)); echo "  ✗ $1"; echo "$2" | sed 's/^/      /'; }
 
 # Репозиторий на один случай. Подпись фиксирована здесь и никогда не берётся из
 # настроек машины: проба, зависящая от чужого git-config, красна не по делу.
+#
+# СУДЬЯ ЗОВЁТ `drift.sh` ПО ОТНОСИТЕЛЬНОМУ ПУТИ, поэтому синтетический репозиторий
+# обязан нести оба скрипта — иначе `bash tools/carrydrift/drift.sh` отвечает «нет
+# такого файла», судья читает это как отказ разбора и классифицирует посадку, ни
+# разу её не сверив. Случай, утверждающий что-либо о РАЗБОРЕ посадки, в таком
+# репозитории зеленел бы, не коснувшись предмета.
+#
+# Скрипты кладутся в рабочую копию и НЕ коммитятся: попав в дерево, они вошли бы
+# в дельты ствола и ветки и меняли бы тот самый граф, который случай строит.
+# Исключение точечное, по двум путям, — `declared-removals.txt` остаётся
+# коммитабельным, он предмет случая 4.
 newrepo() {
   local d
   d=$(mktemp -d)
@@ -39,6 +50,10 @@ newrepo() {
   git -C "$d" config user.email proba@example.invalid
   git -C "$d" config user.name  proba
   git -C "$d" config commit.gpgsign false
+  mkdir -p "$d/tools/carrydrift"
+  cp "$DRIFT" "$JUDGE" "$d/tools/carrydrift/"
+  printf '/tools/carrydrift/drift.sh\n/tools/carrydrift/judge.sh\n' \
+    >> "$d/.git/info/exclude"
   echo "$d"
 }
 commit() { # <repo> <сообщение>
@@ -275,6 +290,150 @@ case_trunk_is_second_parent() {
   rm -rf "$r"
 }
 
+# ── Случай 6. Область гейта ПУСТА — это не слепота ───────────────────────────
+# Ствол успел изменить только те файлы, которые правит и сама ветка. Тогда у
+# гейта не остаётся в области НИ ОДНОГО файла — по его же правилу области
+# («ветки отличаются на N из них: их судит не этот гейт»). Возвращать было
+# нечего by construction, ровно как когда ствол не двигался вовсе.
+#
+# Прежний судья читал этот исход как слепоту и краснел. Различитель у него был
+# УЖЕ условия, которое он различал: он спрашивал «двигался ли ствол», тогда как
+# пустой область делает не только неподвижный ствол, но и ствол, вся правка
+# которого лежит на файлах ветки. Прокси ломался раньше своего предмета.
+#
+# Форма не экзотическая, а самая частая: две линии дописывают ОДИН перечень
+# (наблюдалось на `proto/declared-breaks.yaml`), и дельта ствола схлопывается в
+# один файл, который правят обе. Хуже того, красило это не автора формы: посадка
+# уезжала в ствол и краснела у КАЖДОГО, кто потом догонял ствол, — двум
+# несвязанным PR продукта разом.
+#
+# Отдельный довод, проверяемый глазом: при `skipped=3` из 417 гейт молчит и
+# сегодня. Краснеть на `skipped=1` из 1 и молчать на `skipped=3` из 417 —
+# несогласуемо: дыра области одна и та же, различается лишь её доля.
+case_empty_surface_is_not_blindness() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/ledger.txt"; echo "прочее" > "$r/other.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b feature
+  printf 'база\nстрока ветки\n' > "$r/ledger.txt"; commit "$r" "ветка дописала перечень"
+
+  git -C "$r" checkout -q main
+  printf 'база\nстрока ствола\n' > "$r/ledger.txt"; commit "$r" "ствол дописал ТОТ ЖЕ перечень"
+  local trunk_before; trunk_before=$(git -C "$r" rev-parse HEAD)
+
+  # Ветка догоняет ствол. Единственный файл, который менял ствол, — тот же,
+  # что правит ветка, поэтому область гейта пуста.
+  git -C "$r" checkout -q feature
+  git -C "$r" merge -q --no-edit "$trunk_before" -m "ветка догнала ствол" >/dev/null 2>&1 || true
+  printf 'база\nстрока ствола\nстрока ветки\n' > "$r/ledger.txt"
+  git -C "$r" add -A
+  git -C "$r" commit -qm "ветка догнала ствол" >/dev/null 2>&1 \
+    || git -C "$r" commit -q --amend --no-edit >/dev/null 2>&1
+  local inner; inner=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q main
+  git -C "$r" merge -q --no-ff --no-edit feature -m "посадка ветки"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$head"
+
+  # Предпосылка случая, без которой он зеленел бы вхолостую: у внутреннего
+  # слияния ствол ОБЯЗАН был двигаться (иначе это давно опознанный «ствол не
+  # двигался»), и КАЖДЫЙ сдвинутый им файл обязан лежать в правках ветки —
+  # иначе область не пуста и предмет случая не построен.
+  local p1 p2 mb moved untouched
+  read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$inner")"
+  mb=$(git -C "$r" merge-base "$p2" "$p1")
+  moved=$(git -C "$r" diff --name-only "$mb" "$p2")
+  untouched=$(comm -23 \
+    <(printf '%s\n' "$moved" | sort -u) \
+    <(git -C "$r" diff --name-only "$(git -C "$r" merge-base "$p2" "$p1")" "$p1" | sort -u))
+  if [ -z "$moved" ] || [ -n "$untouched" ]; then
+    no "предпосылка случая не выполнена: ствол сдвинул «${moved//$'\n'/,}», вне ветки «${untouched//$'\n'/,}»" ""
+    rm -rf "$r"; return
+  fi
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "не сверил НИ ОДНОГО"; then
+    ok "пустая область гейта не выдана за слепоту"
+  else
+    no "пустая область прочитана как слепота (rc=$rc) — гейт краснеет там, где судить нечего" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 6б. Близнец: рядом с файлом ветки ЛЕЖИТ настоящий откат ───────────
+# Тот же граф, но ствол сдвинул ещё один файл, которого ветка не касалась, и
+# посадка вернула на нём базу. Послабление случая 6 не имеет права это съесть:
+# область непуста, значит гейт обязан заговорить и назвать координату.
+case_rollback_survives_the_empty_surface_relief() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/ledger.txt"; echo "база" > "$r/lone.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+
+  git -C "$r" checkout -q -b feature
+  printf 'база\nстрока ветки\n' > "$r/ledger.txt"; commit "$r" "ветка дописала перечень"
+
+  git -C "$r" checkout -q main
+  printf 'база\nстрока ствола\n' > "$r/ledger.txt"
+  echo "ПРАВКА СТВОЛА" > "$r/lone.txt"; commit "$r" "ствол правит перечень и свой файл"
+  local trunk_before; trunk_before=$(git -C "$r" rev-parse HEAD)
+
+  # Догон, вернувший базу на файле, которого ветка не касалась.
+  git -C "$r" checkout -q feature
+  git -C "$r" merge -q --no-edit "$trunk_before" -m "ветка догнала ствол" >/dev/null 2>&1 || true
+  printf 'база\nстрока ствола\nстрока ветки\n' > "$r/ledger.txt"
+  echo "база" > "$r/lone.txt"
+  git -C "$r" add -A
+  git -C "$r" commit -qm "ветка догнала ствол" >/dev/null 2>&1 \
+    || git -C "$r" commit -q --amend --no-edit >/dev/null 2>&1
+
+  git -C "$r" checkout -q main
+  git -C "$r" merge -q --no-ff --no-edit feature -m "посадка ветки"
+  local head; head=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" update-ref refs/remotes/origin/main "$head"
+
+  local out rc
+  out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && echo "$out" | grep -q "ОТКАТ: lone.txt"; then
+    ok "откат рядом с файлом ветки по-прежнему назван, и координата напечатана"
+  else
+    no "послабление пустой области съело настоящий откат (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
+# ── Случай 6в. Слепота осталась достижимой ──────────────────────────────────
+# Признак беспредметности — не «drift.sh вышел двойкой», а его собственное
+# machine-readable заявление. Отказ по другой причине (ревизия не разрешается)
+# заявления не несёт и обязан по-прежнему читаться как слепота, иначе
+# послабление стало бы всеразрешающим: любой сбой гейта сходил бы за «судить
+# было нечего».
+case_blindness_is_still_reachable() {
+  cases=$((cases + 1))
+  local r; r=$(newrepo)
+  echo "база" > "$r/a.txt"; commit "$r" "база"
+  local base; base=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" checkout -q -b branch
+  echo "ветка" > "$r/b.txt"; commit "$r" "ветка правит своё"
+  local br; br=$(git -C "$r" rev-parse HEAD)
+  git -C "$r" checkout -q main
+  echo "ствол" > "$r/a.txt"; commit "$r" "ствол ушёл вперёд"
+  local trunk; trunk=$(git -C "$r" rev-parse HEAD)
+
+  local out rc
+  out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" 0000000000000000000000000000000000000000 2>&1); rc=$?
+  if [ "$rc" -eq 2 ] && ! echo "$out" | grep -q '^no-surface:'; then
+    ok "отказ не по беспредметности заявления о пустой области не несёт"
+  else
+    no "гейт заявил пустую область там, где он просто не смог посмотреть (rc=$rc)" "$out"
+  fi
+  rm -rf "$r"
+}
+
 echo "проба гейта переноса — синтетические графы"
 case_real_rollback
 case_branch_owns_file
@@ -282,6 +441,9 @@ case_content_moved
 case_content_truly_gone
 case_declared_not_judged_per_landing
 case_trunk_is_second_parent
+case_empty_surface_is_not_blindness
+case_rollback_survives_the_empty_surface_relief
+case_blindness_is_still_reachable
 
 echo
 echo "перепись: случаев ${cases}; прошло ${pass}; упало ${fail}"
