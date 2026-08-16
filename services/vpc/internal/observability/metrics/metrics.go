@@ -64,17 +64,6 @@ type Metrics struct {
 
 	// readiness mirror
 	dependencyUp *prometheus.GaugeVec
-
-	// applyStateMissingIntent — чтения живого ресурса, о котором проекция
-	// подтверждений ничего не сказала.
-	//
-	// Законный источник ровно один — удаление в полёте: чтение увидело ресурс,
-	// параллельное удаление зафиксировалось, намерение стало снятым. Всё
-	// остальное — дефект проекции, и различить их в момент чтения нечем.
-	// Поэтому цена незаполненного поля оплачивается ЗДЕСЬ: установившийся
-	// ненулевой темп, не объяснимый удалениями, есть сигнал, а «ноль за всю
-	// жизнь» обязано быть так же заметно, как ноль доставленных строк очереди.
-	applyStateMissingIntent prometheus.Counter
 }
 
 // New конструирует адаптер, регистрирует Go + process runtime-коллекторы,
@@ -143,13 +132,6 @@ func New(version, commit string) *Metrics {
 			Name: "kacho_vpc_dependency_up",
 			Help: "Readiness mirror: 1 if the dependency is up, 0 if down, by dependency.",
 		}, []string{"dependency"}),
-		applyStateMissingIntent: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "kacho_vpc_apply_state_missing_intent_total",
-			Help: "Reads of a live resource the apply-state projection said nothing about. " +
-				"One lawful source: a delete landing mid-read, which withdraws the intent row. " +
-				"A sustained non-zero rate not explained by deletes means the projection is broken " +
-				"and every tenant is being told 'no statement' about a resource that has one.",
-		}),
 	}
 
 	buildInfo := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -172,18 +154,10 @@ func New(version, commit string) *Metrics {
 		m.reconcileRuns, m.reconcileErrors,
 		m.outboxBacklog, m.outboxOldest, m.outboxPoisonCur, m.outboxPoisonTot,
 		m.outboxDirBacklog, m.outboxDirOldest, m.outboxDirDelivered,
-		m.dependencyUp, m.applyStateMissingIntent, buildInfo, lroActive,
+		m.dependencyUp, buildInfo, lroActive,
 	)
 	return m
 }
-
-// IncApplyStateMissingIntent отмечает чтение живого ресурса, о котором проекция
-// подтверждений ничего не сказала.
-//
-// Счётчик, а не журнальная запись: строка журнала на каждое такое чтение под
-// нагрузкой утонет в собственном объёме, а темп — величина, по которой видно
-// разницу между штатной гонкой удаления и сломанной проекцией.
-func (m *Metrics) IncApplyStateMissingIntent() { m.applyStateMissingIntent.Inc() }
 
 // Handler возвращает promhttp-handler приватного реестра. Монтируется ТОЛЬКО на
 // выделенном cluster-internal diagnostic-listener'е.

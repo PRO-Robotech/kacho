@@ -5,10 +5,11 @@ package legacyfolder
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // TestFires lists every spelling the retired identifier has actually worn in
@@ -117,8 +118,7 @@ func TestScanSkipsWhatVersionControlIgnores(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
+		cmd := gitenv.Command(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}

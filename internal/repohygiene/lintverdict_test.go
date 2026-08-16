@@ -55,7 +55,6 @@ package repohygiene
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -63,6 +62,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 const lintInvocation = "golangci-lint run"
@@ -504,7 +505,7 @@ func TestLintCachePredicateCutsBothWays(t *testing.T) {
 // (артефакт сборки, чужой каталог, недоудалённый файл).
 func trackedPaths(t *testing.T, root string) []string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", root, "ls-files").Output()
+	out, err := gitenv.Command(root, "ls-files").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — перепись невозможна, а без переписи «ноль находок» "+
 			"неотличимо от «ноль прочитанного»", err)

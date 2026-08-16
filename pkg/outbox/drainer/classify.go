@@ -147,3 +147,130 @@ func isPermanentGRPC(err error) bool {
 	}
 	return st.Code() == codes.InvalidArgument || st.Code() == codes.PermissionDenied
 }
+
+// PermanentPolicy — что делать с ПОСТОЯННЫМ отказом ПРИМЕНЕНИЯ.
+//
+// # Почему у этого вопроса вообще появился второй ответ
+//
+// Травление покупает РОВНО ОДНО: отравленная строка выбывает из блокирующего
+// набора заявки, и партиция, стоявшая за ней, разблокируется. Комментарий выше
+// это и обосновывает — и обосновывает целиком через партицию: «with
+// PartitionColumn set every later row of its partition is never claimed».
+//
+// У КОММУТАТИВНОГО потока партиции нет. Блокировать нечего, разблокировать
+// нечего — травление не покупает ничего, а платит полной ценой: намерение
+// выбывает навсегда. Тот же комментарий называет и условие правильности —
+// «poisoning is therefore only correct in a service that also re-drives poisoned
+// rows», — а возврат отравленных строк строится только вокруг ключа порядка,
+// которого у коммутативной очереди нет by construction. То есть для такой
+// очереди травление одновременно бесполезно и невосполнимо.
+//
+// Отсюда второй ответ, и он не «мягче», а уместнее: повторять с отступом. Цена
+// названа честно — вечный повтор заведомо безнадёжного вызова с частотой не
+// чаще BackoffMax, видимый счётчиком незавершённых строк. Цена альтернативы —
+// молча потерянное намерение, и наблюдать её нечем: «доставлено» и «потеряно»
+// снаружи выглядят одинаково.
+//
+// Выведено 2026-08-16 по kacho#455 из двух очередей kacho-iam, у которых
+// травление работало, а возврата не было ни у одной.
+type PermanentPolicy int
+
+const (
+	// PoisonPermanent — отравить строку. Умолчание и сегодняшнее поведение:
+	// нулевое значение обязано означать то, что уже провязанные очереди делают
+	// сейчас, иначе введение поля сменило бы их поведение молча.
+	//
+	// Требует возврата отравленных строк. Что это свойство ДЕРЕВА, а не чьей-то
+	// памяти, держит internal/repohygiene TestEveryPoisoningOutboxHasARedrive.
+	PoisonPermanent PermanentPolicy = iota
+
+	// RetryPermanent — повторять, как временный отказ.
+	//
+	// Законно ТОЛЬКО у коммутативной очереди (PartitionColumn пуст): пара с
+	// ключом порядка отвергается Config.Validate, потому что там постоянный
+	// отказ заклинил бы свою партицию навсегда.
+	RetryPermanent
+)
+
+// String — для журналов и меток.
+func (p PermanentPolicy) String() string {
+	switch p {
+	case PoisonPermanent:
+		return "poison"
+	case RetryPermanent:
+		return "retry"
+	default:
+		return "unknown"
+	}
+}
+
+// Disposition — что полагается сделать со строкой.
+//
+// Отделено от места, где строка помечается: пометка требует транзакции и
+// проверяется интеграционно, а решение обязано быть проверяемо без базы. Иначе
+// единственная точка принятия решения снова размазалась бы по ветвям, которые
+// поодиночке защитимы.
+type Disposition int
+
+const (
+	// DispositionDeliver — пометить доставленной.
+	DispositionDeliver Disposition = iota
+	// DispositionPoison — отравить: повтор не имеет шанса на успех, и партиция
+	// обязана разблокироваться.
+	DispositionPoison
+	// DispositionRetry — повторить с отступом, не доводя до порога отравления.
+	DispositionRetry
+)
+
+// String — для журналов и текстов отказа проб.
+func (d Disposition) String() string {
+	switch d {
+	case DispositionDeliver:
+		return "deliver"
+	case DispositionPoison:
+		return "poison"
+	case DispositionRetry:
+		return "retry"
+	default:
+		return "unknown"
+	}
+}
+
+// Decide — единственная точка, отвечающая «что сделать со строкой» по классу
+// отказа применения и политике очереди.
+func Decide(cls Class, policy PermanentPolicy) Disposition {
+	switch cls {
+	case ClassSuccess, ClassAlreadyApplied:
+		return DispositionDeliver
+	case ClassPermanent:
+		if policy == RetryPermanent {
+			return DispositionRetry
+		}
+		return DispositionPoison
+	default: // ClassTransient
+		return DispositionRetry
+	}
+}
+
+// DecideOutcome — ЕДИНСТВЕННАЯ точка, отвечающая «что сделать со строкой» по
+// обоим исходам её обработки и политике очереди. Ровно её зовёт путь пометки,
+// поэтому здесь нет ветви, которой нет в работе.
+//
+// # Почему отказ РАЗБОРА не читает политику
+//
+// Политика повтора относится к отказу ПРИМЕНЕНИЯ — к тому, что сказал сосед, и
+// что способно измениться от внешнего события. Отказ разбора говорит о самой
+// строке: её тело не станет разбираемым ни от какого события, поэтому повтор —
+// вечная работа без единого шанса на успех.
+//
+// Следствие надо назвать вслух, а не проглотить: очередь с политикой повтора
+// всё ещё МОЖЕТ отравить строку — по разбору. «Травиться нечему» достигается не
+// терпимостью к битой строке, а тем, что такую строку НЕЛЬЗЯ ЗАПИСАТЬ: каждое
+// условие отказа разбора обязано быть закрыто ограничением схемы у владельца
+// очереди. Для очередей kacho-iam это сделано миграциями 0079/0080 и 0097.
+func DecideOutcome(decodeErr, applyErr error, policy PermanentPolicy) Disposition {
+	if decodeErr != nil {
+		return DispositionPoison
+	}
+	return Decide(Classify(applyErr), policy)
+}

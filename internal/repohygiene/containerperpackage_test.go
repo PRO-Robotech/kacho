@@ -71,13 +71,14 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // modulePath переехал в operationtimestamptruncation.go — НЕтестовый файл того
@@ -301,7 +302,7 @@ func judgePerTestContainers(reaching map[string]int, declared map[string]string)
 func scanTree(t *testing.T, root string) scan {
 	t.Helper()
 
-	out, err := exec.Command("git", "-C", root, "ls-files", "*.go").Output()
+	out, err := gitenv.Command(root, "ls-files", "*.go").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v", err)
 	}
@@ -667,7 +668,7 @@ func TestSanctionedProvidersStillExist(t *testing.T) {
 	// которые git добавит (не игнорируемые). Без них тест падал бы на каждом честном
 	// новом поставщике до первого `git add` — то есть требовал бы коммитить, чтобы
 	// пройти проверку, которая решает, можно ли коммитить.
-	out, err := exec.Command("git", "-C", root, "ls-files", "--cached", "--others",
+	out, err := gitenv.Command(root, "ls-files", "--cached", "--others",
 		"--exclude-standard").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v", err)
@@ -753,7 +754,7 @@ func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 // Поэтому каждый объявленный путь обязан встречаться в дереве хотя бы раз.
 func TestContainerStartAPIsStillExistInTheTree(t *testing.T) {
 	root := repoRoot(t)
-	out, err := exec.Command("git", "-C", root, "grep", "-l", "testcontainers", "--", "*.go").Output()
+	out, err := gitenv.Command(root, "grep", "-l", "testcontainers", "--", "*.go").Output()
 	if err != nil {
 		t.Fatalf("git grep: %v", err)
 	}
@@ -762,7 +763,7 @@ func TestContainerStartAPIsStillExistInTheTree(t *testing.T) {
 			"мир, которого нет, и гейт зелен по построению")
 	}
 	for p := range containerStartAPIs {
-		o, gerr := exec.Command("git", "-C", root, "grep", "-l", p, "--", "*.go").Output()
+		o, gerr := gitenv.Command(root, "grep", "-l", p, "--", "*.go").Output()
 		if gerr != nil || len(strings.Fields(string(o))) == 0 {
 			t.Errorf("путь импорта %q не встречается в дереве: гейт ищет API, которого здесь "+
 				"больше нет, и его молчание ничего не значит", p)

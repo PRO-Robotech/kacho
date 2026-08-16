@@ -209,12 +209,32 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
         if make_images and img not in make_images:
             findings.append(f"манифест называет образ '{img}', которого нет в SERVICES "
                             f"сборки — шард попытается собрать несуществующее")
+    # Компонент, который не является go-сервисом продукта, образа в SERVICES не
+    # имеет by construction (его собирает другая цель). Исключение ОБЪЯВЛЕНО в
+    # манифесте и проверяется на живость ниже, а не зашито здесь именем.
+    non_service = manifest.get("non_service_gates", {})
     for g in sorted(gates):
-        if g.startswith("pg-"):
+        if g.startswith("pg-") or g in non_service:
             continue
         if g not in manifest.get("gate_images", {}):
             findings.append(f"компонент '{g}' переключаемый, но образа за ним не закреплено — "
                             f"шард, который его включит, не соберёт его образ")
+
+    # 6а. САМОИСТЕЧЕНИЕ исключения «не сервис». Запись, которой больше нечего
+    #     исключать, — находка: иначе она переживёт свой предмет и следующий
+    #     читатель примет её за действующее свойство компонента.
+    mk_targets = set(re.findall(r'^([A-Za-z0-9_-]+):', mk, re.M))
+    for g, target in sorted(non_service.items()):
+        if g not in gates:
+            findings.append(f"'{g}' объявлен не-сервисом, но переключаемым компонентом "
+                            f"не является (нет в gates) — исключать нечего")
+        if make_images and g in make_images:
+            findings.append(f"'{g}' объявлен не-сервисом, но он ЕСТЬ в SERVICES сборки — "
+                            f"исключение пережило свой предмет: образ у него теперь есть, "
+                            f"и пункты 6/8 обязаны его судить")
+        if target not in mk_targets:
+            findings.append(f"'{g}' объявлен собираемым целью '{target}', которой в "
+                            f"deploy/Makefile НЕТ — названа команда, которой не существует")
 
     # 7. имя, которым шард ОБЪЯВЛЯЕТ отсутствие сервиса, обязано быть тем именем,
     #    которое понимает гейт посадки. Он держит жёсткий список ожидаемых
@@ -259,7 +279,7 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
     for d in sorted(union_b6 - want_b6):
         findings.append(f"шарды заявляют ban #6 для домена '{d}', у которого нет "
                         f"Internal*-контракта в proto — измерять нечего")
-    for g in sorted(set(gates) - {x for x in gates if x.startswith("pg-")}):
+    for g in sorted(set(gates) - {x for x in gates if x.startswith("pg-")} - set(non_service)):
         if g not in gate_b6:
             findings.append(f"компонент '{g}' переключаемый, но домена ban #6 за ним "
                             f"не закреплено — включивший его шард не проверит его изоляцию")
@@ -421,7 +441,42 @@ def _self_test() -> int:
     # (д) предпосылка гейта: gates обязаны быть условны в Chart.yaml
     m = copy.deepcopy(base)
     m["gates"] = m["gates"] + ["kratos-selfservice-ui"]
-    run(m, "(д) gate без condition в Chart.yaml", want_red=True)
+    run(m, "(д) gate без condition в Chart.yaml", want_red=True,
+        expect="НЕТ `condition:")
+
+    # (д1) ТОТ ЖЕ ПУНКТ НА НОВОМ КЛЮЧЕ: `uif` гасит консоль на всех шардах, и это
+    # работает ТОЛЬКО если условие у подчарта есть — `--set uif.enabled=false` без
+    # него отрендерится успешно и не сделает ничего. Инъекция берёт компонент,
+    # который в Chart.yaml условен, и делает его безусловным, подменяя имя на
+    # соседнее необусловленное; законный близнец — (д2) ниже.
+    m = copy.deepcopy(base)
+    m["gates"] = [g for g in m["gates"] if g != "uif"] + ["api-gateway"]
+    m["non_service_gates"] = {"api-gateway": "build-ui"}
+    run(m, "(д1) не-сервисный gate без condition в Chart.yaml", want_red=True,
+        expect="НЕТ `condition:")
+
+    # (д2) ЗАКОННЫЙ БЛИЗНЕЦ: `uif` как есть — условен в Chart.yaml, не назван ни
+    # одним шардом, образа в SERVICES не имеет и домена ban #6 не имеет. Гейт
+    # обязан МОЛЧАТЬ: иначе (д1) доказывал бы лишь чувствительность к правке
+    # манифеста, а не то, что предикат различает существо.
+    run(base, "(д2) законный близнец: uif условен и объявлен не-сервисом",
+        want_red=False)
+
+    # (д3) САМОИСТЕЧЕНИЕ исключения «не сервис»: компонент, ставший сервисом,
+    # обязан выпасть из исключения находкой, а не молча остаться неподсудным
+    # пунктам 6 и 8.
+    m = copy.deepcopy(base)
+    m["gates"] = m["gates"] + ["vpc-extra"]
+    m["non_service_gates"] = dict(m["non_service_gates"], vpc="build-ui")
+    run(m, "(д3) исключение на компоненте, который ЕСТЬ в SERVICES", want_red=True,
+        expect="пережило свой предмет")
+
+    # (д4) названная цель сборки обязана существовать: «названа команда, которой
+    # нет» — отдельный класс, и он ловится здесь, а не при первом прогоне стенда.
+    m = copy.deepcopy(base)
+    m["non_service_gates"] = {"uif": "build-console-that-does-not-exist"}
+    run(m, "(д4) исключение называет несуществующую цель сборки", want_red=True,
+        expect="которой в deploy/Makefile НЕТ")
 
     # (е) ban #6: домен выпал из охвата ВСЕХ шардов. Это и есть послабление, ради
     # невозможности которого сужение пробы сделано явным: без этой проверки метод

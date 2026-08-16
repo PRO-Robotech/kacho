@@ -2,34 +2,6 @@
   "note": "Ведомость форков: файлы вне shared/, объявляющие символ, который объявляет shared/. Держится гейтом shared-organisms-single-source. Запись, которой нечего исключать, роняет гейт — ведомость уменьшается сама, растёт только правкой человека с причиной. Пересбор: KACHO_REGEN_FORK_LEDGER=1 npm test -- shared-organisms-single-source",
   "groups": [
     {
-      "id": "compute:api",
-      "reason": "Клиент края, разбор отказа и справочник прав скопированы вместе с самим модулем: standalone-пакет (свой package-lock, корневой npm ci его не ставит) и на сборке не зависит от workspace. Сведение к @shared делается вместе с переводом пакета в workspace — отдельным предметом, а не попутно.",
-      "entries": [
-        {
-          "file": "compute/src/api/auth.ts",
-          "symbols": [
-            "authApi",
-            "extractDenyReasons",
-            "hasPermission"
-          ]
-        },
-        {
-          "file": "compute/src/api/client.ts",
-          "symbols": [
-            "ApiError",
-            "api"
-          ]
-        },
-        {
-          "file": "compute/src/api/iam.ts",
-          "symbols": [
-            "IAM",
-            "iamApi"
-          ]
-        }
-      ]
-    },
-    {
       "id": "compute:components",
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
@@ -45,46 +17,6 @@
           "file": "compute/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
           "symbols": [
             "DetailOverviewActions"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationBanner/OperationBanner.tsx",
-          "symbols": [
-            "OperationBanner"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles",
-            "statusLabel",
-            "statusOf"
           ]
         },
         {
@@ -111,19 +43,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
-          "symbols": [
-            "DependencyTreePanel"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -158,31 +77,9 @@
           ]
         },
         {
-          "file": "compute/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
-          "symbols": [
-            "buildCreateBody",
-            "buildUpdateBody",
-            "computeUpdateMask",
-            "snakeToCamelPath",
-            "stripFormOnlyKeys"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx",
-          "symbols": [
-            "ResourceFormModal"
-          ]
-        },
-        {
           "file": "compute/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -224,66 +121,11 @@
           ]
         },
         {
-          "file": "compute/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
-          "file": "compute/src/lib/config.ts",
-          "symbols": [
-            "appOrigin",
-            "config",
-            "hydraUrl",
-            "kratosUrl"
-          ]
-        },
-        {
-          "file": "compute/src/lib/datetime.ts",
-          "symbols": [
-            "formatDateTime"
-          ]
-        },
-        {
           "file": "compute/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "compute/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
-          ]
-        },
-        {
-          "file": "compute/src/lib/path.ts",
-          "symbols": [
-            "deleteByPath",
-            "getByPath",
-            "setByPath"
-          ]
-        },
-        {
-          "file": "compute/src/lib/preset-fields.ts",
-          "symbols": [
-            "presetFieldsForSpec"
-          ]
-        },
-        {
-          "file": "compute/src/lib/referrer.ts",
-          "symbols": [
-            "normalizeReferrerType",
-            "referrerHref",
-            "referrerMeta"
           ]
         },
         {
@@ -306,44 +148,9 @@
           ]
         },
         {
-          "file": "compute/src/lib/theme-context.tsx",
-          "symbols": [
-            "ThemeProvider",
-            "useThemeMode"
-          ]
-        },
-        {
-          "file": "compute/src/lib/theme.ts",
-          "symbols": [
-            "BRAND",
-            "buildTheme",
-            "paletteFor"
-          ]
-        },
-        {
-          "file": "compute/src/lib/use-operation-store.ts",
-          "symbols": [
-            "operationStore",
-            "useOperationEntry"
-          ]
-        },
-        {
-          "file": "compute/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
-          ]
-        },
-        {
           "file": "compute/src/lib/use-resource-list.ts",
           "symbols": [
             "useResourceList"
-          ]
-        },
-        {
-          "file": "compute/src/lib/utils.ts",
-          "symbols": [
-            "cn"
           ]
         }
       ]
@@ -416,34 +223,6 @@
       ]
     },
     {
-      "id": "nlb:api",
-      "reason": "Клиент края, разбор отказа и справочник прав скопированы вместе с самим модулем: standalone-пакет (свой package-lock, корневой npm ci его не ставит) и на сборке не зависит от workspace. Сведение к @shared делается вместе с переводом пакета в workspace — отдельным предметом, а не попутно.",
-      "entries": [
-        {
-          "file": "nlb/src/api/auth.ts",
-          "symbols": [
-            "authApi",
-            "extractDenyReasons",
-            "hasPermission"
-          ]
-        },
-        {
-          "file": "nlb/src/api/client.ts",
-          "symbols": [
-            "ApiError",
-            "api"
-          ]
-        },
-        {
-          "file": "nlb/src/api/iam.ts",
-          "symbols": [
-            "IAM",
-            "iamApi"
-          ]
-        }
-      ]
-    },
-    {
       "id": "nlb:components",
       "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
       "entries": [
@@ -459,45 +238,6 @@
           "file": "nlb/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
           "symbols": [
             "DetailOverviewActions"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationBanner/OperationBanner.tsx",
-          "symbols": [
-            "OperationBanner"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/OperationsTable/opFilter.ts",
-          "symbols": [
-            "statusLabel",
-            "statusOf"
           ]
         },
         {
@@ -523,19 +263,6 @@
           "file": "nlb/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
           "symbols": [
             "RowActionsMenu"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
-          "symbols": [
-            "DependencyTreePanel"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -570,31 +297,9 @@
           ]
         },
         {
-          "file": "nlb/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
-          "symbols": [
-            "buildCreateBody",
-            "buildUpdateBody",
-            "computeUpdateMask",
-            "snakeToCamelPath",
-            "stripFormOnlyKeys"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx",
-          "symbols": [
-            "ResourceFormModal"
-          ]
-        },
-        {
           "file": "nlb/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -651,66 +356,11 @@
           ]
         },
         {
-          "file": "nlb/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/config.ts",
-          "symbols": [
-            "appOrigin",
-            "config",
-            "hydraUrl",
-            "kratosUrl"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/datetime.ts",
-          "symbols": [
-            "formatDateTime"
-          ]
-        },
-        {
           "file": "nlb/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/path.ts",
-          "symbols": [
-            "deleteByPath",
-            "getByPath",
-            "setByPath"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/preset-fields.ts",
-          "symbols": [
-            "presetFieldsForSpec"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/referrer.ts",
-          "symbols": [
-            "normalizeReferrerType",
-            "referrerHref",
-            "referrerMeta"
           ]
         },
         {
@@ -730,75 +380,6 @@
             "buildSpecColumns",
             "formatCellByFormat",
             "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/theme-context.tsx",
-          "symbols": [
-            "ThemeProvider",
-            "useThemeMode"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/theme.ts",
-          "symbols": [
-            "BRAND",
-            "buildTheme",
-            "paletteFor"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/use-operation-store.ts",
-          "symbols": [
-            "operationStore",
-            "useOperationEntry"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/use-resource-list.ts",
-          "symbols": [
-            "useResourceList"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/utils.ts",
-          "symbols": [
-            "cn"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "registry:api",
-      "reason": "Клиент края, разбор отказа и справочник прав скопированы вместе с самим модулем: standalone-пакет (свой package-lock, корневой npm ci его не ставит) и на сборке не зависит от workspace. Сведение к @shared делается вместе с переводом пакета в workspace — отдельным предметом, а не попутно.",
-      "entries": [
-        {
-          "file": "registry/src/api/auth.ts",
-          "symbols": [
-            "authApi",
-            "extractDenyReasons",
-            "hasPermission"
-          ]
-        },
-        {
-          "file": "registry/src/api/client.ts",
-          "symbols": [
-            "ApiError",
-            "api"
-          ]
-        },
-        {
-          "file": "registry/src/api/iam.ts",
-          "symbols": [
-            "IAM",
-            "iamApi"
           ]
         }
       ]
@@ -828,57 +409,6 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/JsonMonacoView/LazyJsonMonacoView.tsx",
-          "symbols": [
-            "LazyJsonMonacoView"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationBanner/OperationBanner.tsx",
-          "symbols": [
-            "OperationBanner"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/OperationsTable/opFilter.ts",
-          "symbols": [
-            "statusLabel",
-            "statusOf"
-          ]
-        },
-        {
           "file": "registry/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
             "RefNameLink"
@@ -902,19 +432,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
-          "symbols": [
-            "DependencyTreePanel"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -949,31 +466,9 @@
           ]
         },
         {
-          "file": "registry/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
-          "symbols": [
-            "buildCreateBody",
-            "buildUpdateBody",
-            "computeUpdateMask",
-            "snakeToCamelPath",
-            "stripFormOnlyKeys"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx",
-          "symbols": [
-            "ResourceFormModal"
-          ]
-        },
-        {
           "file": "registry/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -1015,66 +510,11 @@
           ]
         },
         {
-          "file": "registry/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
-          "file": "registry/src/lib/config.ts",
-          "symbols": [
-            "appOrigin",
-            "config",
-            "hydraUrl",
-            "kratosUrl"
-          ]
-        },
-        {
-          "file": "registry/src/lib/datetime.ts",
-          "symbols": [
-            "formatDateTime"
-          ]
-        },
-        {
           "file": "registry/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "registry/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
-          ]
-        },
-        {
-          "file": "registry/src/lib/path.ts",
-          "symbols": [
-            "deleteByPath",
-            "getByPath",
-            "setByPath"
-          ]
-        },
-        {
-          "file": "registry/src/lib/preset-fields.ts",
-          "symbols": [
-            "presetFieldsForSpec"
-          ]
-        },
-        {
-          "file": "registry/src/lib/referrer.ts",
-          "symbols": [
-            "normalizeReferrerType",
-            "referrerHref",
-            "referrerMeta"
           ]
         },
         {
@@ -1097,72 +537,9 @@
           ]
         },
         {
-          "file": "registry/src/lib/theme-context.tsx",
-          "symbols": [
-            "ThemeProvider",
-            "useThemeMode"
-          ]
-        },
-        {
-          "file": "registry/src/lib/theme.ts",
-          "symbols": [
-            "BRAND",
-            "buildTheme",
-            "paletteFor"
-          ]
-        },
-        {
-          "file": "registry/src/lib/use-operation-store.ts",
-          "symbols": [
-            "operationStore",
-            "useOperationEntry"
-          ]
-        },
-        {
-          "file": "registry/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
-          ]
-        },
-        {
           "file": "registry/src/lib/use-resource-list.ts",
           "symbols": [
             "useResourceList"
-          ]
-        },
-        {
-          "file": "registry/src/lib/utils.ts",
-          "symbols": [
-            "cn"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "storage:api",
-      "reason": "Клиент края, разбор отказа и справочник прав скопированы вместе с самим модулем: standalone-пакет (свой package-lock, корневой npm ci его не ставит) и на сборке не зависит от workspace. Сведение к @shared делается вместе с переводом пакета в workspace — отдельным предметом, а не попутно.",
-      "entries": [
-        {
-          "file": "storage/src/api/auth.ts",
-          "symbols": [
-            "authApi",
-            "extractDenyReasons",
-            "hasPermission"
-          ]
-        },
-        {
-          "file": "storage/src/api/client.ts",
-          "symbols": [
-            "ApiError",
-            "api"
-          ]
-        },
-        {
-          "file": "storage/src/api/iam.ts",
-          "symbols": [
-            "IAM",
-            "iamApi"
           ]
         }
       ]
@@ -1183,46 +560,6 @@
           "file": "storage/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
           "symbols": [
             "DetailOverviewActions"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/ErrorResult/ErrorResult.tsx",
-          "symbols": [
-            "ErrorResult"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/JsonMonacoView/JsonMonacoView.tsx",
-          "symbols": [
-            "JsonMonacoView"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationBanner/OperationBanner.tsx",
-          "symbols": [
-            "OperationBanner"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationDialog/OperationDialog.tsx",
-          "symbols": [
-            "OperationDialog",
-            "extractOperationId"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationToastWatcher/OperationToastWatcher.tsx",
-          "symbols": [
-            "OperationToastWatcher"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/OperationsTable/OperationsTable.tsx",
-          "symbols": [
-            "OperationsTable",
-            "operationColumnTitles",
-            "statusLabel",
-            "statusOf"
           ]
         },
         {
@@ -1249,19 +586,6 @@
           "symbols": [
             "RowActionsMenu",
             "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/DependencyTreePanel/DependencyTreePanel.tsx",
-          "symbols": [
-            "DependencyTreePanel"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/DetailShell/DetailShell.tsx",
-          "symbols": [
-            "DetailShell",
-            "HeaderSlotPortal"
           ]
         },
         {
@@ -1296,31 +620,9 @@
           ]
         },
         {
-          "file": "storage/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
-          "symbols": [
-            "buildCreateBody",
-            "buildUpdateBody",
-            "computeUpdateMask",
-            "snakeToCamelPath",
-            "stripFormOnlyKeys"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx",
-          "symbols": [
-            "ResourceFormModal"
-          ]
-        },
-        {
           "file": "storage/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
             "ResourceShell"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/ResourceTable/ResourceTable.tsx",
-          "symbols": [
-            "ResourceTable"
           ]
         },
         {
@@ -1362,66 +664,11 @@
           ]
         },
         {
-          "file": "storage/src/lib/case.ts",
-          "symbols": [
-            "camelToSnake",
-            "snakeToCamel"
-          ]
-        },
-        {
-          "file": "storage/src/lib/config.ts",
-          "symbols": [
-            "appOrigin",
-            "config",
-            "hydraUrl",
-            "kratosUrl"
-          ]
-        },
-        {
-          "file": "storage/src/lib/datetime.ts",
-          "symbols": [
-            "formatDateTime"
-          ]
-        },
-        {
           "file": "storage/src/lib/dependency-graph.ts",
           "symbols": [
             "blockingNodes",
             "hasDependencyResolver",
             "loadDependents"
-          ]
-        },
-        {
-          "file": "storage/src/lib/kratos.ts",
-          "symbols": [
-            "availableMethods",
-            "csrfToken",
-            "findNode",
-            "flowMessages",
-            "kratos",
-            "nodeMessages"
-          ]
-        },
-        {
-          "file": "storage/src/lib/path.ts",
-          "symbols": [
-            "deleteByPath",
-            "getByPath",
-            "setByPath"
-          ]
-        },
-        {
-          "file": "storage/src/lib/preset-fields.ts",
-          "symbols": [
-            "presetFieldsForSpec"
-          ]
-        },
-        {
-          "file": "storage/src/lib/referrer.ts",
-          "symbols": [
-            "normalizeReferrerType",
-            "referrerHref",
-            "referrerMeta"
           ]
         },
         {
@@ -1444,44 +691,9 @@
           ]
         },
         {
-          "file": "storage/src/lib/theme-context.tsx",
-          "symbols": [
-            "ThemeProvider",
-            "useThemeMode"
-          ]
-        },
-        {
-          "file": "storage/src/lib/theme.ts",
-          "symbols": [
-            "BRAND",
-            "buildTheme",
-            "paletteFor"
-          ]
-        },
-        {
-          "file": "storage/src/lib/use-operation-store.ts",
-          "symbols": [
-            "operationStore",
-            "useOperationEntry"
-          ]
-        },
-        {
-          "file": "storage/src/lib/use-operation.ts",
-          "symbols": [
-            "useInvalidateResourceList",
-            "useOperation"
-          ]
-        },
-        {
           "file": "storage/src/lib/use-resource-list.ts",
           "symbols": [
             "useResourceList"
-          ]
-        },
-        {
-          "file": "storage/src/lib/utils.ts",
-          "symbols": [
-            "cn"
           ]
         }
       ]

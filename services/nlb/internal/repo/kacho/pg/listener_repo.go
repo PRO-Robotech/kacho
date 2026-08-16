@@ -103,9 +103,13 @@ func (r *listenerReader) List(ctx context.Context, f kacho.ListenerFilter, p kac
 		args = append(args, f.LoadBalancerID)
 		argIdx++
 	}
-	if f.Name != "" {
-		conditions = append(conditions, fmt.Sprintf("name = $%d", argIdx))
-		args = append(args, f.Name)
+	if f.Name != nil {
+		// Оператор берётся из РАЗОБРАННОГО узла: подстрочный запрос обязан остаться
+		// подстрочным. Зашитое здесь равенство отвечало бы «ничего не найдено» на
+		// любой неполный ввод — уверенно и неверно (#460).
+		frag, fargs := f.Name.ToSQLOn("name", argIdx)
+		conditions = append(conditions, frag)
+		args = append(args, fargs...)
 		argIdx++
 	}
 	if p.PageToken != "" {

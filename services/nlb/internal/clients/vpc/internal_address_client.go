@@ -349,7 +349,18 @@ func (c *internalAddressClient) allocFromCreate(
 	if err != nil {
 		return nil, err
 	}
-	return &AllocateResponse{AddressID: addr.GetId(), Value: readIP(addr)}, nil
+	// Аллокация, которая не может НАЗВАТЬ выделенное, — неудавшаяся аллокация
+	// (#467). Пустой идентификатор доезжал до строки балансировщика и там
+	// становился неотличим от «этого семейства нет»: освобождение молча ничего не
+	// делало, строка удалялась, и аренда оставалась висеть на подсети навсегда —
+	// вернуть её было уже нечем и некому. Отказ здесь разворачивает создание
+	// целиком (вся вставка, аллокация и привязка идут одной транзакцией у vpc),
+	// поэтому платы за него нет: невыделённый адрес возвращать не нужно.
+	id := addr.GetId()
+	if id == "" {
+		return nil, fmt.Errorf("%w: vpc allocated an address without an id", domain.ErrUnavailable)
+	}
+	return &AllocateResponse{AddressID: id, Value: readIP(addr)}, nil
 }
 
 // validateExternalReq — общая sync-валидация аргументов external-alloc (v4/v6).

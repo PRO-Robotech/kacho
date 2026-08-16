@@ -171,6 +171,24 @@ const (
 		"what the executor actually holds; lowering the promise is a product decision and changes the " +
 		"documentation that states it"
 
+	// errExecutorCeilingBelowPublished — стенд умеет МЕНЬШЕ опубликованного
+	// потолка интерфейса (kacho#290).
+	//
+	// Один текст на три величины, а не три копии: они отличаются только именем
+	// ручки и числом, и обе подставляются. Три расходящихся текста об одном
+	// предмете разошлись бы на первой же правке формулировки.
+	//
+	// Направление сравнения то же, что у пола, хотя это ПОТОЛКИ: разница «пол
+	// против потолка» — про то, как число читает арендатор, а со стороны стенда
+	// обе величины означают «обязан уметь выдать опубликованное».
+	errExecutorCeilingBelowPublished = "mode %[1]s: %[2]s=%[3]d is below the per-interface ceiling this " +
+		"product publishes to the tenant (%[4]d, env %[5]s) — the published number is product-wide, the " +
+		"tenant plans against it and has no way to measure this stand, so a stand whose executor carries " +
+		"less breaks that tenant SILENTLY and at a threshold nobody documented. A stand that carries MORE " +
+		"is lawful and is not rejected. Either point this stand at an executor that holds at least the " +
+		"published ceiling, or raise the declaration to what the executor actually holds; lowering the " +
+		"published number is a product decision and changes the documentation that states it"
+
 	// S6-гардрейлы (перечень адресных диапазонов, которые платформа держит за
 	// собой, см. dataplane.go `ReservedPrefixes`).
 	//
@@ -648,7 +666,67 @@ func (c Config) ValidateExecutorProfile() error {
 		errs = multierr.Append(errs, fmt.Errorf(errExecutorBandBelowProductFloor,
 			c.AuthN.Mode, b, domain.GuaranteedInterfaceBandwidthFloorMbps))
 	}
+	// Три ПОТОЛКА интерфейса — та же проверка и по той же причине, что две
+	// гарантии выше (kacho#290). До неё эти числа не читал никто: они стояли
+	// объявлением в домене, повторялись в документации и не участвовали ни в одной
+	// ветке кода, то есть арендатору обещали то, чего не проверяли даже у себя.
+	//
+	// Ноль отсеян выше как ОТСУТСТВИЕ объявления, поэтому здесь только `> 0`:
+	// второй отказ про то же число назвал бы оператору две проблемы там, где она
+	// одна. Граница ВКЛЮЧАЮЩАЯ — ровно опубликованное законно.
+	for _, cl := range c.executorPublishedCeilings() {
+		if cl.declared > 0 && cl.declared < cl.published {
+			errs = multierr.Append(errs, fmt.Errorf(errExecutorCeilingBelowPublished,
+				c.AuthN.Mode, cl.knob, cl.declared, cl.published, cl.env))
+		}
+	}
 	return errs
+}
+
+// executorPublishedCeiling — потолок интерфейса, объявленный ПОСАДКОЙ, рядом с
+// числом, которое по этому же поводу продукт обещает АРЕНДАТОРУ.
+//
+// Пара живёт в одной структуре, чтобы отказ не мог назвать не ту ручку и не то
+// число: три величины проверяются одинаково, и общий текст «что-то ниже
+// обещанного» не сказал бы оператору, что именно чинить. Ровно тот же приём, что
+// у executorGuarantee выше, и заведён он по той же причине.
+type executorPublishedCeiling struct {
+	knob      string
+	env       string
+	declared  int
+	published int
+}
+
+// executorPublishedCeilings связывает объявление посадки с обещанием продукта.
+//
+// Обещание берётся ИЗ ДОМЕНА (`domain.Interface…Ceiling`), а не переписывается
+// сюда числом: копия разошлась бы с оригиналом молча, и разошлась бы там, где это
+// не видно, — страж сравнивал бы посадку с числом, которого арендатору никто не
+// обещал. Совпадение домена с документацией держит отдельный гейт
+// (`internal/repohygiene` `TestPublishedInterfaceLimitsAreOnePlace`), поэтому
+// цепочка «документация → домен → страж» замкнута целиком.
+func (c Config) executorPublishedCeilings() []executorPublishedCeiling {
+	e := c.Dataplane.Executor
+	return []executorPublishedCeiling{
+		{
+			knob:      "dataplane.executor.connection-limit-per-interface",
+			env:       "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE",
+			declared:  e.ConnectionLimitPerInterface,
+			published: domain.InterfaceConnectionCeiling,
+		},
+		{
+			knob:      "dataplane.executor.connection-rate-limit-per-interface-per-second",
+			env:       "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_LIMIT_PER_INTERFACE_PER_SECOND",
+			declared:  e.ConnectionRateLimitPerInterfacePerSecond,
+			published: domain.InterfaceConnectionRateCeilingPerSecond,
+		},
+		{
+			knob:      "dataplane.executor.connection-rate-burst-per-interface",
+			env:       "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_BURST_PER_INTERFACE",
+			declared:  e.ConnectionRateBurstPerInterface,
+			published: domain.InterfaceConnectionRateBurstCeiling,
+		},
+	}
 }
 
 // executorGuarantee — числовая гарантия профиля вместе с именами, которыми её
@@ -678,6 +756,16 @@ func (c Config) executorGuarantees() []executorGuarantee {
 			knob:  "dataplane.executor.connection-limit-per-interface",
 			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE",
 			value: e.ConnectionLimitPerInterface,
+		},
+		{
+			knob:  "dataplane.executor.connection-rate-limit-per-interface-per-second",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_LIMIT_PER_INTERFACE_PER_SECOND",
+			value: e.ConnectionRateLimitPerInterfacePerSecond,
+		},
+		{
+			knob:  "dataplane.executor.connection-rate-burst-per-interface",
+			env:   "KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_BURST_PER_INTERFACE",
+			value: e.ConnectionRateBurstPerInterface,
 		},
 	}
 }

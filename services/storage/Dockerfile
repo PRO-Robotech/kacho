@@ -10,11 +10,26 @@ ARG TARGETARCH
 WORKDIR /src
 
 COPY . .
-RUN go mod download
+# КЭШ КОМПИЛЯЦИИ — ОБЩИЙ НА ВСЕ ОБРАЗЫ ЭТОГО МОДУЛЯ.
+#
+# Восемь образов компилируют ОДИН И ТОТ ЖЕ модуль: 3995 собранных пакетов
+# суммарно против 879 в объединении, то есть 78% работы — повторная. Кэш
+# buildkit принадлежит builder'у, а не образу, поэтому второй и далее образы
+# на той же машине берут готовое.
+#
+# ЭТО НЕ КЛАСС «КЭШ СОХРАНИЛ НЕУДАЧУ»: кэш компиляции Go контент-адресуем —
+# недописанная или битая запись не находится по хэшу входов и просто вызывает
+# перекомпиляцию. Гейтить сохранение по исходу шага здесь нечего.
+#
+# Директивы `# syntax=` намеренно нет: встроенный frontend buildkit `--mount`
+# понимает (проверено), а `docker/dockerfile:1` — движущийся тег, то есть версия
+# менялась бы без правки дерева, плюс сетевая тяга на каждом builder'е. Сборка
+# со ВЫКЛЮЧЕННЫМ buildkit падает громко и по имени («requires BuildKit»).
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 # Two independent binaries:
 #   storage        — gRPC API server (`serve`).
 #   kacho-migrator — migration CLI (up|down|status); deploy init-container.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /storage ./services/storage/cmd/storage \
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /storage ./services/storage/cmd/storage \
  && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /kacho-migrator ./services/storage/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.24

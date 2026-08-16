@@ -188,6 +188,14 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("dataplane.executor.guaranteed-payload-bytes", 0)
 	v.SetDefault("dataplane.executor.guaranteed-bandwidth-per-interface-mbps", 0)
 	v.SetDefault("dataplane.executor.connection-limit-per-interface", 0)
+	// Умолчание ОБЯЗАТЕЛЬНО, даже когда оно нулевое: разбор настроек резолвит
+	// переменную окружения только для ключа, который ему УЖЕ известен, а известен
+	// он из умолчаний. Ключ, объявленный лишь полем структуры, из окружения не
+	// приезжает — молча, и величина остаётся нулём при заданной оператором
+	// переменной. Полярность нуля та же, что у соседей: ноль означает ОТСУТСТВИЕ
+	// объявления, а не «ограничения нет», и боевую посадку с ним страж не поднимает.
+	v.SetDefault("dataplane.executor.connection-rate-limit-per-interface-per-second", 0)
+	v.SetDefault("dataplane.executor.connection-rate-burst-per-interface", 0)
 	v.SetDefault("dataplane.executor.tenant-settable-bandwidth-limit", false)
 
 	// dataplane.reserved-prefixes — адресные диапазоны, которые платформа держит

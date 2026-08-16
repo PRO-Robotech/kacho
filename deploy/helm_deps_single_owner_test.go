@@ -51,11 +51,12 @@ package deploy_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // helmDepsOwner — единственный файл дерева, которому позволено звать helm за
@@ -146,7 +147,7 @@ func helmDepScannable(path string) bool {
 
 func TestUmbrellaDepsHaveASingleOwner(t *testing.T) {
 	root := ".."
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	out, err := gitenv.Command(root, "ls-files", "-z").Output()
 	if err != nil {
 		t.Fatalf("git ls-files не отработал (%v) — обход не прочитал НИ ОДНОГО файла, "+
 			"и «ноль находок» здесь ничего не значило бы", err)

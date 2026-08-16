@@ -68,6 +68,24 @@ SERVICES := iam vpc compute api-gateway nlb geo storage registry
 # отсутствующая запись даёт аннотацию "unset", а не сорванный рендер.
 IMAGES ?= $(SERVICES)
 
+# BUILD_UI — собирать ли образы консоли. Умолчание 1: локальный `make dev-up` без
+# аргументов ведёт себя как раньше и поднимает продукт целиком, вместе с
+# интерфейсом.
+#
+# Ручка заведена потому, что отказаться от сборки консоли было НЕЧЕМ. `IMAGES`
+# сужает только бэкенд (перечень SERVICES), а модули консоли выводятся из дерева
+# и потому всегда полны — девять `docker build` независимо от того, нужна ли
+# консоль этому стенду. На стендах e2e-newman она не нужна ни одному запросу
+# (предикат — в deploy/e2e-shards.json §_uif), и это стоило около 31 ранер-минуты
+# за прогон: девять образов × пять шардов, ни один из которых их не спрашивает.
+#
+# ЗНАЧЕНИЕ ПРИХОДИТ ИЗ ТОЙ ЖЕ СТРОКИ, ЧТО И ВЫКЛЮЧЕНИЕ ПОДЧАРТА: конвейер выводит
+# его из состава компонентов шарда (`uif` в gates и не назван никем ⇒ и
+# `--set uif.enabled=false`, и `BUILD_UI=0`). Второго объявления нет намеренно —
+# два места об одном предмете разъехались бы молча, и худшая из двух форм
+# расхождения тихая: стенд без консоли, а девять образов всё равно собираются.
+BUILD_UI ?= 1
+
 # PROVENANCE — every locally built image records the commit it came from.
 #
 # Every service image is tagged `:dev` and nothing else: no label, no embedded
@@ -87,14 +105,38 @@ IMAGES ?= $(SERVICES)
 # report version="dev" commit="unknown" everywhere. Populating them means editing
 # the Dockerfiles, which is outside this change; the image labels below are the
 # part that can be done from the build command alone.
+#
+# ОТМЕТКИ ВРЕМЕНИ СБОРКИ ЗДЕСЬ НЕТ — И ЭТО РЕШЕНИЕ, А НЕ ПРОПУСК.
+#
+# Метка входит в конфигурацию образа, а идентификатор содержимого — это дайджест
+# конфигурации. Значит метка, вычисляемая заново в каждом под-make (`date -u`),
+# делает идентификатор новым ДАЖЕ при стопроцентном попадании в кэш сборки: слои
+# те же, конфигурация другая. Дальше срабатывает привязка ниже
+# ($(IMAGE_IDS_VALUES)) — она работает верно и делает ровно то, ради чего
+# заведена: новый идентификатор ⇒ новый шаблон пода ⇒ перекат. Итог: на
+# НЕИЗМЕННОМ дереве `make dev-up` перекатывал все восемь подов и ждал это двумя
+# `helm --wait` с потолками 10 и 12 минут.
+#
+# Предикат, которым это проверяется: два `make dev-up` подряд без единой правки
+# обязаны дать ОДИН И ТОТ ЖЕ `docker image inspect --format '{{.Id}}'`.
+#
+# Чем заменён ответ на «когда это собрано». Тем же вопросом к демону:
+# `docker image inspect --format '{{.Created}}'` — он записывает отметку сам, и
+# при попадании в кэш она указывает на сборку, произведшую ЭТО содержимое, что и
+# есть правильный ответ. Метка отвечала на другой вопрос — «когда мы в последний
+# раз позвали docker build», — и ценой ответу был перекат стенда.
+#
+# «Какой код на стенде» остаётся за `revision`/`version`: они функция ДЕРЕВА, а не
+# часов, поэтому на неизменном дереве постоянны и `stand-provenance` читает их
+# по-прежнему. Читателей у снятой метки в дереве нет ни одного (единственное
+# совпадение — клиент zot, читающий одноимённую OCI-аннотацию у образов
+# арендатора; к меткам наших образов оно отношения не имеет).
 GIT_COMMIT := $(shell git -C .. rev-parse HEAD 2>/dev/null || echo unknown)
 GIT_DIRTY  := $(shell test -n "$$(git -C .. status --porcelain 2>/dev/null)" && echo "-dirty" || echo "")
 GIT_REF    := $(shell git -C .. rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE_LABELS := \
   --label org.opencontainers.image.revision="$(GIT_COMMIT)$(GIT_DIRTY)" \
-  --label org.opencontainers.image.version="$(GIT_REF)" \
-  --label org.opencontainers.image.created="$(BUILD_DATE)"
+  --label org.opencontainers.image.version="$(GIT_REF)"
 
 # IMAGE_IDS_VALUES — карта «сервис → идентификатор СОДЕРЖИМОГО его образа».
 #
@@ -393,7 +435,11 @@ dev-up: preflight
 	  pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/audit-version=latest \
 	  --overwrite >/dev/null; \
 	$(MAKE) build-services; \
-	$(MAKE) build-ui; \
+	if [ "$(BUILD_UI)" = "0" ]; then \
+	  echo "=== консоль НЕ собирается (BUILD_UI=0) — подчарт uif на этом стенде выключен ==="; \
+	else \
+	  $(MAKE) build-ui; \
+	fi; \
 	./scripts/gen-tls-cert.sh; \
 	bash scripts/helm-umbrella-deps.sh; \
 	echo "=== cert-manager: ОТДЕЛЬНЫЙ релиз, до продукта ==="; \

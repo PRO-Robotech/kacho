@@ -163,8 +163,9 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 	if p.ProjectID != "" {
 		add("v.project_id = $%d", p.ProjectID)
 	}
-	if p.Filter != "" {
-		add("v.name = $%d", p.Filter)
+	if frag, fargs := nameFilterCond("v", p.FilterAST, len(args)+1); frag != "" {
+		args = append(args, fargs...)
+		conds = append(conds, frag)
 	}
 	if p.PageToken != "" {
 		cur, derr := decodePageToken(p.PageToken)
