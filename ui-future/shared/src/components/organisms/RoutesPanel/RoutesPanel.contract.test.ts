@@ -13,94 +13,39 @@
 // уронит этот гейт, не дожидаясь, пока его потерю заметит арендатор.
 //
 // Гейт читает САМ контракт, а не его копию в коде консоли: копия разошлась бы с
-// оригиналом ровно так же молча, как черновик разошёлся с контрактом.
+// оригиналом ровно так же молча, как черновик разошёлся с контрактом. Разбор
+// контракта живёт в `test/proto-contract` — общий с гейтом состава черновиков
+// по всему дереву (`test/set-replacement-draft-composition`). Вторая копия
+// разбора разошлась бы с первой так же тихо, как черновик с контрактом,
+// поэтому здесь она не заводится.
+//
+// ОТЛИЧИЕ ОТ ТОГО ГЕЙТА, ради которого этот остаётся: тот сверяет ОБЪЯВЛЕННЫЙ
+// СОСТАВ типов по всему дереву, а этот прогоняет ФУНКЦИИ круга — то есть ловит
+// поле, которое тип называет, а перенос теряет.
 //
 // Инъекция (доказано в обе стороны): убрать перенос `labels` из
 // `draftsFromRoutes` — гейт краснеет и называет поле; законный код — молчит.
 
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { parseMessageFields, readMessageFields, type ProtoField } from "@shared/test/proto-contract";
 
 import { draftsFromRoutes, routesFromDrafts } from "./RoutesPanel";
 
-const CONTRACT = join("proto", "kacho", "cloud", "vpc", "v1", "route_table.proto");
+const CONTRACT = "kacho/cloud/vpc/v1/route_table.proto";
 
 /**
- * Контракт лежит в корне монорепо, а прогон идёт из `ui-future/<модуль>` —
- * и модулей, исполняющих пробы shared, три. Поэтому корень ищется подъёмом, а
- * не считается от известной глубины: промах по глубине дал бы «файл не найден»
- * там, где файл есть.
+ * Поля, значение которых проба умеет синтезировать дословно. Круг «загрузили →
+ * сохранили» подставляет строку и карту; поле другого рода в `StaticRoute` не
+ * встречается, и появись оно — предпосылка ниже это назовёт.
  */
-function contractPath(): string {
-  let dir = resolve(process.cwd());
-  for (;;) {
-    const candidate = join(dir, CONTRACT);
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error(
-    `не найден контракт ${CONTRACT} подъёмом от ${process.cwd()} — гейт не прочитал ничего и не вправе молчать`,
-  );
-}
-
-interface ProtoField {
-  name: string;
-  /** `string` | `map` — из чего синтезируется значение для круга. */
-  kind: "string" | "map";
-  /** Имя `oneof`, если поле — его ветвь; иначе null. */
-  oneof: string | null;
-}
-
-/** Поля message `StaticRoute` с разбором ветвей `oneof`. */
-function parseStaticRouteFields(source: string): ProtoField[] {
-  const start = source.indexOf("message StaticRoute {");
-  if (start < 0) throw new Error("в контракте нет message StaticRoute — предпосылка гейта не выполнена");
-
-  const fields: ProtoField[] = [];
-  let depth = 0;
-  let oneof: string | null = null;
-
-  for (const raw of source.slice(start).split("\n")) {
-    const line = raw.trim();
-    if (line.startsWith("//")) continue;
-
-    const oneofOpen = /^oneof\s+(\w+)\s*\{/.exec(line);
-    if (oneofOpen) {
-      oneof = oneofOpen[1];
-      depth += 1;
-      continue;
-    }
-    if (line.startsWith("message ") || line.endsWith("{")) {
-      depth += 1;
-      continue;
-    }
-    if (line.startsWith("}")) {
-      depth -= 1;
-      if (depth <= 1) oneof = null;
-      if (depth === 0) break;
-      continue;
-    }
-
-    const asMap = /^map<\s*[\w.]+\s*,\s*[\w.]+\s*>\s+(\w+)\s*=\s*\d+\s*;/.exec(line);
-    if (asMap) {
-      fields.push({ name: asMap[1], kind: "map", oneof });
-      continue;
-    }
-    const asScalar = /^(?:repeated\s+)?([\w.]+)\s+(\w+)\s*=\s*\d+\s*;/.exec(line);
-    if (asScalar && asScalar[1] === "string") {
-      fields.push({ name: asScalar[2], kind: "string", oneof });
-    }
-  }
-  return fields;
+function synthesizable(f: ProtoField): boolean {
+  return f.kind === "string" || f.kind === "map";
 }
 
 function sampleValue(f: ProtoField): unknown {
   return f.kind === "map" ? { [`k-${f.name}`]: `v-${f.name}` } : `v-${f.name}`;
 }
 
-const fields = parseStaticRouteFields(readFileSync(contractPath(), "utf8"));
+const fields = readMessageFields(CONTRACT, "StaticRoute");
 const plain = fields.filter((f) => f.oneof === null);
 const oneofNames = [...new Set(fields.filter((f) => f.oneof !== null).map((f) => f.oneof as string))];
 
@@ -128,6 +73,19 @@ describe("состав черновика маршрута против конт
     );
     expect(oneofNames).toEqual(expect.arrayContaining(["destination", "next_hop"]));
     expect(plain.length).toBeGreaterThanOrEqual(1);
+    // Круг подставляет значения только тем полям, которые умеет синтезировать.
+    // Появление поля другого рода обязано быть ВИДНО здесь, а не молча сузить
+    // проверяемый состав до подмножества.
+    expect(fields.filter((f) => !synthesizable(f)).map((f) => f.name)).toEqual([]);
+  });
+
+  it("собственная предпосылка: разбор контракта читает то, что в контракте написано", () => {
+    // Контроль в обе стороны на синтетике: сообщение без поля — поле не
+    // появляется; с полем — появляется вместе со своей ветвью `oneof`.
+    const WITHOUT = `message Sample {\n  oneof pick {\n    string a = 1;\n  }\n}\n`;
+    const WITH = `message Sample {\n  oneof pick {\n    string a = 1;\n  }\n  map<string, string> labels = 2;\n}\n`;
+    expect(parseMessageFields(WITHOUT, "Sample").map((f) => `${f.name}@${f.oneof}`)).toEqual(["a@pick"]);
+    expect(parseMessageFields(WITH, "Sample").map((f) => `${f.name}@${f.oneof}`)).toEqual(["a@pick", "labels@null"]);
   });
 
   it.each(armCombinations().map((arms) => [arms.map((a) => a.name).join(" + "), arms] as const))(

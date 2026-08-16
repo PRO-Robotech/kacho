@@ -18,6 +18,22 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+
+/**
+ * Место полной замены набора: элемент уезжает на край целиком, поэтому поле
+ * контракта, которого не назвал тип `Target`, до края не доедет и не вернётся.
+ * Состав сверяется с контрактом гейтом
+ * `shared/test/set-replacement-draft-composition`; тип `Target` объявлен ещё и
+ * в `shared` — гейт разрешает имя по всему дереву, поэтому обе копии сверяются
+ * вместе, а не расходятся молча.
+ */
+export const TARGETS_MANAGER_REPLACEMENT: SetReplacementDraft = {
+  field: "targets",
+  contract: "kacho/cloud/loadbalancer/v1/target_group.proto",
+  message: "Target",
+  drafts: ["Target"],
+};
 
 const TARGET_GROUPS_API = "/nlb/v1/targetGroups";
 const MONO_FONT = "ui-monospace, monospace";
@@ -32,6 +48,15 @@ export interface Target {
   ip_ref?: { subnet_id?: string; address?: string };
   external_ip?: { address?: string; zone_id?: string };
   weight?: number;
+  /**
+   * Состояние цели внутри группы. Назначается сервером (снятие двухфазное:
+   * DRAINING, затем удаление по истечении задержки) — форма его не отправляет,
+   * но НАЗЫВАЕТ: не названное поле контракта невидимо консоли целиком, и
+   * «удаление ничего не сделало» отличить от «цель сливается» нечем.
+   */
+  status?: string;
+  /** Момент перевода цели в слив. Назначается сервером; см. `status`. */
+  drain_started_at?: string;
 }
 
 export interface TargetFormState {

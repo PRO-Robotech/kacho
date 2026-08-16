@@ -22,6 +22,19 @@ import { useProjectStore } from "@shared/lib/context-store";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+
+/**
+ * Место полной замены набора — см. одноимённое объявление в модуле nlb: тип
+ * `Target` живёт в обеих копиях, и гейт
+ * `test/set-replacement-draft-composition` сверяет их вместе.
+ */
+export const TARGET_GROUP_TARGETS_REPLACEMENT: SetReplacementDraft = {
+  field: "targets",
+  contract: "kacho/cloud/loadbalancer/v1/target_group.proto",
+  message: "Target",
+  drafts: ["Target"],
+};
 
 const SPEC = REGISTRY["target-groups"];
 
@@ -35,6 +48,14 @@ export interface Target {
   ip_ref?: { subnet_id?: string; address?: string };
   external_ip?: { address?: string; zone_id?: string };
   weight?: number;
+  /**
+   * Состояние цели внутри группы. Назначается сервером (снятие двухфазное:
+   * DRAINING, затем удаление по истечении задержки) — форма его не отправляет,
+   * но НАЗЫВАЕТ: не названное поле контракта невидимо консоли целиком.
+   */
+  status?: string;
+  /** Момент перевода цели в слив. Назначается сервером; см. `status`. */
+  drain_started_at?: string;
 }
 
 export interface TargetFormState {

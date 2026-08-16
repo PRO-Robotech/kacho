@@ -43,6 +43,7 @@ import {
   guestAccessKeyTemplate,
 } from "@shared/lib/guest-access-key-form";
 import { resourceListPath as resourceListPathImpl } from "@shared/lib/service-prefix";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
 import type { ResourceColumn, ResourceSpec } from "./resource-spec";
 // Подписи сущностей и разделов — из единственного источника (см. entity-names.ts):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
@@ -54,6 +55,30 @@ import { ENTITIES, SERVICES } from "./entity-names";
 // здесь запрещено (KAC #132) — его ловит scripts/check-resource-spec-single-source.mjs.
 
 export type { ResourceColumn, ResourceSpec };
+
+// ── Наборы, которые форма правит ПОЛНОЙ ЗАМЕНОЙ ─────────────────────────────
+//
+// Схема формы уносит набор на край целиком, поэтому поле контракта, которого не
+// назвал тип-черновик, исчезает у ВСЕХ элементов — включая нетронутые. Состав
+// черновиков сверяется с контрактом гейтом
+// `test/set-replacement-draft-composition`, а перепись мест он берёт обходом
+// дерева: новое такое место без объявления рядом уронит его с координатой.
+
+/** Строки маршрутов формы таблицы маршрутизации (`render` + `sanitize` ниже). */
+export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
+  field: "static_routes",
+  contract: "kacho/cloud/vpc/v1/route_table.proto",
+  message: "StaticRoute",
+  drafts: ["RouteEntry"],
+};
+
+/** Правила формы группы безопасности (`sanitize` ниже). */
+export const SG_RULE_SPECS_REPLACEMENT: SetReplacementDraft = {
+  field: "rule_specs",
+  contract: "kacho/cloud/vpc/v1/security_group_service.proto",
+  message: "SecurityGroupRuleSpec",
+  drafts: ["RuleExt"],
+};
 
 // ── Geography (Region / Zone) — общие куски их спеков ────────────────────────
 
