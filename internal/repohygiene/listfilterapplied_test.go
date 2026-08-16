@@ -40,6 +40,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // filterParseSite — одно место вызова filter.Parse с разобранным whitelist'ом.
@@ -54,33 +56,40 @@ type filterParseSite struct {
 // collectFilterParseSites обходит дерево и находит вызовы `filter.Parse(...)` в
 // НЕ-тестовом коде, определяя размер объявленного whitelist'а и то, читает ли
 // охватывающая функция разобранное поле.
+//
+// Состав берётся у ИНДЕКСА (`internal/treecorpus`), а не обходом диска: правила
+// игнорирования действуют на любой глубине, и под `services/`, `gateway/`, `pkg/`
+// на всякой машине, где поднимали стенд, лежат распаковки чартов, сборочные
+// каталоги и отчёты прогонов. Обход диска сделал бы вердикт свойством рабочего
+// каталога, а не коммита, — и в обе стороны: красный на файле, которого в
+// репозитории нет, и молчание в свежем checkout там, где гейт обязан говорить.
 func collectFilterParseSites(t *testing.T, roots []string) (sites []filterParseSite, filesRead int) {
 	t.Helper()
-	repo := repoRootForFilterGate(t)
+	repo := repoRoot(t)
 
 	for _, root := range roots {
 		abs := filepath.Join(repo, root)
 		if _, err := os.Stat(abs); err != nil {
 			continue
 		}
-		err := filepath.Walk(abs, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
+		paths, err := treecorpus.UnderWithSuffix(abs, ".go")
+		if err != nil {
+			t.Fatalf("состав дерева под %s: %v — без него «ноль находок» неотличимо "+
+				"от «ноль прочитанного»", root, err)
+		}
+		for _, path := range paths {
+			if strings.HasSuffix(path, "_test.go") {
+				continue
 			}
-			if info.IsDir() {
-				base := info.Name()
-				if base == "vendor" || base == "testdata" || base == "node_modules" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
+			// testdata Go не компилирует: тамошний вызов `filter.Parse` — фикстура
+			// чужой пробы, а не владелец списка полей.
+			if strings.Contains(filepath.ToSlash(path), "/testdata/") {
+				continue
 			}
 			fset := token.NewFileSet()
 			f, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {
-				return nil
+				continue
 			}
 			filesRead++
 
@@ -162,10 +171,6 @@ func collectFilterParseSites(t *testing.T, roots []string) (sites []filterParseS
 					return true
 				})
 			}
-			return nil
-		})
-		if err != nil {
-			t.Fatalf("обход %s: %v", root, err)
 		}
 	}
 	return sites, filesRead
@@ -193,22 +198,6 @@ func stringSliceLiteral(e ast.Expr) ([]string, bool) {
 		out = append(out, strings.Trim(bl.Value, `"`))
 	}
 	return out, true
-}
-
-func repoRootForFilterGate(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	for i := 0; i < 8; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		dir = filepath.Dir(dir)
-	}
-	t.Fatal("корень репозитория не найден")
-	return ""
 }
 
 // TestMultiFieldFilterOwnerAppliesTheParsedField — владелец, объявивший больше

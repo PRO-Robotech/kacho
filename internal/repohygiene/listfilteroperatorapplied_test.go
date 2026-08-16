@@ -81,7 +81,7 @@ type opSite struct {
 // читается `.Value` разобранного выражения.
 func collectFilterOperatorSites(t *testing.T, roots []string) (sites []opSite, filesRead int) {
 	t.Helper()
-	repo := repoRootForFilterGate(t)
+	repo := repoRoot(t)
 
 	type parsedFile struct {
 		path string
