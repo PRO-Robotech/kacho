@@ -677,7 +677,8 @@ var bespokeConsoleMutationSites = map[string]string{
 	"shared/src/components/organisms/InlineSubnetEditForm/InlineSubnetEditForm.tsx":                         "подсеть: собственная форма, тело из локального состояния",
 	"shared/src/components/organisms/RoutesPanel/RoutesPanel.tsx":                                           "маршруты таблицы маршрутизации: отдельный RPC, тело из локального состояния",
 	"shared/src/components/organisms/SgRulesPanel/SgRulesPanel.tsx":                                         "правила группы безопасности: отдельный RPC, тело из локального состояния",
-	"shared/src/api/cluster.ts": "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
+	"shared/src/api/cluster.ts":              "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
+	"shared/src/pages/system/LimitsPage.tsx": "правка предела: административный RPC с маской, тело из локального состояния",
 
 	// Транспорт. Он ВЫПОЛНЯЕТ запрос, который собрали типизированные обёртки, и
 	// тело получает аргументом (`opts.body`) — своего состава у него нет.
