@@ -80,3 +80,45 @@ test("пока список прочитан не весь, сортировка
     expect(await сортируемые.count(), "список прочитан целиком, а сортировать нечем").toBeGreaterThan(0);
   }
 });
+
+/**
+ * Поиск по всем ресурсам сразу ничего не спрашивает, пока не набран запрос,
+ * и спрашивает сервер там, где владелец это умеет.
+ *
+ * Прежде страница на открытии тянула девять списков по 500 строк — безусловно,
+ * ещё до первого нажатия клавиши.
+ */
+test("общий поиск не работает вхолостую и уходит на сервер", async ({ page }) => {
+  // verifies #373
+  await registerAndSignIn(page);
+
+  const списки: string[] = [];
+  page.on("request", (r) => {
+    const u = new URL(r.url());
+    if (/\/v1\//.test(u.pathname)) списки.push(u.pathname + u.search);
+  });
+
+  await page.goto("/system/search", { waitUntil: "domcontentloaded" });
+  const поиск = page.locator('input[placeholder*="Поиск"]').first();
+  await expect(поиск).toBeVisible({ timeout: 30_000 });
+
+  // Дать странице время сделать то, чего она делать не должна.
+  await expect
+    .poll(async () => списки.filter((u) => u.includes("/vpc/v1/networks")).length, { timeout: 3_000 })
+    .toBe(0)
+    .catch(() => {
+      throw new Error(`страница спросила списки до запроса: ${списки.join(", ")}`);
+    });
+
+  const [ответ] = await Promise.all([
+    page.waitForResponse(
+      (r) => {
+        const u = new URL(r.url());
+        return u.pathname === "/vpc/v1/networks" && (u.searchParams.get("filter") ?? "").includes("CONTAINS");
+      },
+      { timeout: 30_000 },
+    ),
+    поиск.fill("прод"),
+  ]);
+  expect(ответ.status(), `край отверг выражение поиска: ${await ответ.text()}`).toBe(200);
+});
