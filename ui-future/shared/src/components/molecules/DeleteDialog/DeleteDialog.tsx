@@ -3,18 +3,17 @@
 // Для ресурсов с RESTRICT-детьми (Network/Subnet) сбоку — дерево связанных
 // ресурсов (DependencyTreePanel): видно, что подвязано и что блокирует удаление.
 
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button, Modal, Typography, Input, theme } from "antd";
 import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { DopplerButton } from "@shared/components/molecules/DopplerButton";
-import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
-import { toast } from "@shared/lib/toast";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { DependencyTreePanel } from "@shared/components/organisms/DependencyTreePanel";
 import { hasDependencyResolver, loadDependents } from "@shared/lib/dependency-graph";
-import { errorText } from "@shared/lib/error-presentation";
+import { genderOfLabel } from "@shared/lib/mutation-signal";
+import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 
 /**
  * High-risk ресурсы — удаление требует ввода имени для подтверждения
@@ -64,9 +63,6 @@ export function DeleteDialog({
   const { token } = theme.useToken();
   const [confirmText, setConfirmText] = useState("");
   const invalidate = useInvalidateResourceList();
-  const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op, error: opFetchError } = useOperation(pendingOpId);
-  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
 
   const resourceUid = useMemo(() => apiPath.split("/").filter(Boolean).pop() ?? "", [apiPath]);
   const showDeps = hasDependencyResolver(resourceId);
@@ -78,46 +74,25 @@ export function DeleteDialog({
     gcTime: 0,
   });
 
-  const mutation = useMutation({
+  // Исход — через единый механизм: разбор ответа, опрос операции и сообщение
+  // одной формой на все три исхода (`use-signalled-mutation`).
+  const mutation = useSignalledMutation({
+    verb: "delete",
+    subject: { label: resourceLabel, gender: genderOfLabel(resourceLabel) ?? "m", name },
+    expectOperation: expectOperation === true,
     mutationFn: () => api.delete(apiPath),
-    onSuccess: (resp) => {
-      const resolved = resolveMutationResponse(resp, expectOperation === true);
-      if (resolved.kind === "operation") {
-        setPendingOpId(resolved.opId);
-        return;
-      }
-      if (resolved.kind === "violation") {
-        toast.error(`Удалить ${resourceLabel} ${name}: ${resolved.message}`);
-        return;
-      }
+    onSucceeded: () => {
       invalidate(resourceId, projectId ?? null);
       onOpenChange(false);
       setConfirmText("");
       onSuccess?.();
     },
-    onError: (e) => {
-      const m = errorText(e);
-      toast.error(`Удалить ${resourceLabel} ${name}: ${m}`);
-    },
+    // На отказе окно НЕ закрывается. Закрытие — жест успеха: за ним обновляется
+    // список и пользователь уходит уверенным, что ресурса больше нет. Отказ
+    // обязан оставить его там, где он нажал, рядом с причиной.
   });
 
-  useEffect(() => {
-    if (outcome.kind === "failed") {
-      toast.error(`Удалить ${resourceLabel} ${name}: ${outcome.message}`);
-    } else if (outcome.kind === "succeeded") {
-      invalidate(resourceId, projectId ?? null);
-      toast.success(`${resourceLabel} ${name} удалён`);
-      onSuccess?.();
-    } else {
-      return;
-    }
-    setPendingOpId(null);
-    onOpenChange(false);
-    setConfirmText("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
-
-  const pending = mutation.isPending || pendingOpId !== null;
+  const pending = mutation.pending;
   const canConfirm = !requireNameConfirm || confirmText.trim() === name;
 
   const displayName = name || "(без имени)";
@@ -234,7 +209,7 @@ export function DeleteDialog({
           key="ok"
           danger
           type="primary"
-          onClick={() => mutation.mutate()}
+          onClick={() => mutation.run()}
           pulsing={pending}
           disabled={!canConfirm}
         >

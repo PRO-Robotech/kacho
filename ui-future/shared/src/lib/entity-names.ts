@@ -61,10 +61,29 @@ export const SERVICES = {
 
 export type ServiceKey = keyof typeof SERVICES;
 
+/**
+ * Род имени в единственном числе.
+ *
+ * Объявляется, а НЕ выводится из окончания. Русский род по хвосту слова — правило
+ * с исключениями («Шлюз» и «Роль» кончаются на согласную, род разный; «Тип диска»
+ * кончается на «а», род мужской, потому что склоняется опорное слово), и вывод по
+ * строке ошибается МОЛЧА — тем же классом, что деривация региона из имени зоны.
+ * Тот же довод, по которому рядом объявляется винительный падеж
+ * (`resource-label.ts`).
+ */
+export type Gender = "m" | "f" | "n";
+
 /** Сущность: одна подпись в единственном и одна во множественном числе. */
 export interface EntityName {
   singular: string;
   plural: string;
+  /**
+   * Род `singular` — для согласования причастия в сигнале об исходе мутации
+   * («Облачная сеть создана», а не «создан»). Поле ОБЯЗАТЕЛЬНОЕ: необязательное
+   * молча дало бы мужской род по умолчанию, то есть ровно тот дефект, ради
+   * которого заведено. Потребитель — `mutation-signal.ts`.
+   */
+  gender: Gender;
 }
 
 /**
@@ -75,61 +94,67 @@ export interface EntityName {
  */
 export const ENTITIES = {
   // iam
-  accounts: { singular: "Аккаунт", plural: "Аккаунты" },
-  projects: { singular: "Проект", plural: "Проекты" },
-  users: { singular: "Пользователь", plural: "Пользователи" },
+  accounts: { singular: "Аккаунт", plural: "Аккаунты", gender: "m" },
+  projects: { singular: "Проект", plural: "Проекты", gender: "m" },
+  users: { singular: "Пользователь", plural: "Пользователи", gender: "m" },
   "service-accounts": {
     singular: "Сервисный аккаунт",
     plural: "Сервисные аккаунты",
+    gender: "m",
   },
-  groups: { singular: "Группа", plural: "Группы" },
-  roles: { singular: "Роль", plural: "Роли" },
+  groups: { singular: "Группа", plural: "Группы", gender: "f" },
+  roles: { singular: "Роль", plural: "Роли", gender: "f" },
   "access-bindings": {
     singular: "Привязка доступа",
     plural: "Привязки доступа",
+    gender: "f",
   },
-  operations: { singular: "Операция", plural: "Операции" },
+  operations: { singular: "Операция", plural: "Операции", gender: "f" },
   // vpc
-  networks: { singular: "Облачная сеть", plural: "Облачные сети" },
-  subnets: { singular: "Подсеть", plural: "Подсети" },
-  addresses: { singular: "IP-адрес", plural: "IP-адреса" },
+  networks: { singular: "Облачная сеть", plural: "Облачные сети", gender: "f" },
+  subnets: { singular: "Подсеть", plural: "Подсети", gender: "f" },
+  addresses: { singular: "IP-адрес", plural: "IP-адреса", gender: "m" },
   "route-tables": {
     singular: "Таблица маршрутов",
     plural: "Таблицы маршрутов",
+    gender: "f",
   },
   "security-groups": {
     singular: "Группа безопасности",
     plural: "Группы безопасности",
+    gender: "f",
   },
   "network-interfaces": {
     singular: "Сетевой интерфейс",
     plural: "Сетевые интерфейсы",
+    gender: "m",
   },
-  gateways: { singular: "Шлюз", plural: "Шлюзы" },
-  "address-pools": { singular: "Пул адресов", plural: "Пулы адресов" },
-  "cidr-groups": { singular: "Набор префиксов", plural: "Наборы префиксов" },
+  gateways: { singular: "Шлюз", plural: "Шлюзы", gender: "m" },
+  "address-pools": { singular: "Пул адресов", plural: "Пулы адресов", gender: "m" },
+  "cidr-groups": { singular: "Набор префиксов", plural: "Наборы префиксов", gender: "m" },
   // compute
-  instances: { singular: "Виртуальная машина", plural: "Виртуальные машины" },
-  "machine-types": { singular: "Тип машины", plural: "Типы машин" },
-  "placement-groups": { singular: "Группа размещения", plural: "Группы размещения" },
-  "guest-access-keys": { singular: "Ключ доступа", plural: "Ключи доступа" },
+  instances: { singular: "Виртуальная машина", plural: "Виртуальные машины", gender: "f" },
+  "machine-types": { singular: "Тип машины", plural: "Типы машин", gender: "m" },
+  "placement-groups": { singular: "Группа размещения", plural: "Группы размещения", gender: "f" },
+  "guest-access-keys": { singular: "Ключ доступа", plural: "Ключи доступа", gender: "m" },
   // storage
-  volumes: { singular: "Том", plural: "Тома" },
-  snapshots: { singular: "Снимок", plural: "Снимки" },
-  images: { singular: "Образ", plural: "Образы" },
-  "disk-types": { singular: "Тип диска", plural: "Типы дисков" },
+  volumes: { singular: "Том", plural: "Тома", gender: "m" },
+  snapshots: { singular: "Снимок", plural: "Снимки", gender: "m" },
+  images: { singular: "Образ", plural: "Образы", gender: "m" },
+  "disk-types": { singular: "Тип диска", plural: "Типы дисков", gender: "m" },
   // nlb
   "load-balancers": {
     singular: "Балансировщик нагрузки",
     plural: "Балансировщики нагрузки",
+    gender: "m",
   },
-  listeners: { singular: "Обработчик", plural: "Обработчики" },
-  "target-groups": { singular: "Целевая группа", plural: "Целевые группы" },
+  listeners: { singular: "Обработчик", plural: "Обработчики", gender: "m" },
+  "target-groups": { singular: "Целевая группа", plural: "Целевые группы", gender: "f" },
   // registry
-  registries: { singular: "Реестр", plural: "Реестры" },
+  registries: { singular: "Реестр", plural: "Реестры", gender: "m" },
   // geo
-  regions: { singular: "Регион", plural: "Регионы" },
-  zones: { singular: "Зона", plural: "Зоны" },
+  regions: { singular: "Регион", plural: "Регионы", gender: "m" },
+  zones: { singular: "Зона", plural: "Зоны", gender: "f" },
 } as const satisfies Record<string, EntityName>;
 
 export type EntityKey = keyof typeof ENTITIES;

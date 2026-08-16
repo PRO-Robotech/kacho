@@ -13,6 +13,7 @@ import { AuthProvider } from "@shared/contexts/AuthContext";
 import { StepUpModal } from "@/components/molecules/auth/StepUpModal";
 import { HeaderRightSlot, PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
 import { OperationBanner } from "@shared/components/molecules/OperationBanner";
+import { Toaster } from "@shared/components/molecules/Toaster";
 import { GlobalResourceFormModal } from "@shared/components/organisms/GlobalResourceFormModal";
 import "@shared/typography.css";
 import "@shared/index.css";
@@ -56,6 +57,13 @@ export function RemoteShell({ children }: { children: ReactNode }) {
                 <OperationBanner />
                 <div className="vpc-remote-content">{children}</div>
                 <GlobalResourceFormModal />
+                {/* Показ уведомлений. Без него КАЖДЫЙ сигнал об исходе мутации
+                    уходит в очередь, которую никто не читает: этот модуль
+                    маршрутизирует общие страницы создания/правки/удаления, они
+                    исправно сообщали об отказе, и отказ не было видно нигде.
+                    Так выглядела находка владельца на форме создания региона —
+                    «ничего не происходит, но выдаёт 403». */}
+                <Toaster />
               </section>
             </PageHeaderSlotProvider>
           </AuthProvider>

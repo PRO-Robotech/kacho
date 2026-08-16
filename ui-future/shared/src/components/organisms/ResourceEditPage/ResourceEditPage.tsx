@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Space, Spin, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
@@ -13,13 +13,11 @@ import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api } from "@shared/api/client";
 import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
-import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
-import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
-import { toast } from "@shared/lib/toast";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
+import { subjectOfSpec } from "@shared/lib/mutation-signal";
+import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
-import { errorText } from "@shared/lib/error-presentation";
-import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
   spec: ResourceSpec;
@@ -118,45 +116,17 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   const noHeaderRight = useMemo(() => null, []);
   useHeaderRight(noHeaderRight);
 
-  // Doppler-flow: ждём op.done через polling, кнопка пульсирует.
-  const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op, error: opFetchError } = useOperation(pendingOpId);
-  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
-
-  const mutation = useMutation({
-    mutationFn: (item: unknown) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
-    onSuccess: (resp) => {
-      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
-      if (resolved.kind === "operation") {
-        setPendingOpId(resolved.opId);
-        return;
-      }
-      if (resolved.kind === "violation") {
-        toast.error(`${createActionLabel(spec, "Сохранить")}: ${resolved.message}`);
-        return;
-      }
+  // Исход — через единый механизм (`use-signalled-mutation`).
+  const mutation = useSignalledMutation<Record<string, unknown>>({
+    verb: "update",
+    subject: () => subjectOfSpec(spec, typeof obj.name === "string" ? obj.name : null),
+    expectOperation: spec.mutationsReturnOperation !== false,
+    mutationFn: (item) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
+    onSucceeded: () => {
       invalidate(spec.id, project?.id ?? null);
       void navigate(backHref);
     },
-    onError: (err) => {
-      const m = errorText(err);
-      toast.error(`${createActionLabel(spec, "Сохранить")}: ${m}`);
-    },
   });
-
-  useEffect(() => {
-    if (outcome.kind === "failed") {
-      toast.error(`${createActionLabel(spec, "Сохранить")}: ${outcome.message}`);
-      setPendingOpId(null);
-      return;
-    }
-    if (outcome.kind !== "succeeded") return;
-    invalidate(spec.id, project?.id ?? null);
-    toast.success(`${spec.singular} сохранён`);
-    setPendingOpId(null);
-    void navigate(backHref);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const submit = () => {
     if (!fields || !originalRef.current) return;
@@ -171,7 +141,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
       void navigate(backHref);
       return;
     }
-    mutation.mutate(payload);
+    mutation.run(payload);
   };
 
   if (!fields) {
@@ -217,7 +187,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
           obj={obj}
           onChange={setObj}
           submitLabel="Сохранить"
-          submitting={mutation.isPending || pendingOpId !== null}
+          submitting={mutation.pending}
           onSubmit={submit}
           onCancel={() => navigate(backHref)}
         />
