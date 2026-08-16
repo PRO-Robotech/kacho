@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
@@ -49,7 +50,7 @@ func TestFreeIP_FamilyWithAddressButNoLeaseID_KeptAndReported(t *testing.T) {
 			dsn := setupTestDB(t)
 			pool, err := coredb.NewPool(ctx, dsn)
 			require.NoError(t, err)
-			defer pool.Close()
+			pgtest.ClosePoolAtEnd(t, pool)
 
 			// Испорченная — СТАРШЕ, то есть выборка взяла бы её первой.
 			lostID := insertPreMigrationSkewedLB(t, ctx, pool, family, 20*time.Minute)
@@ -106,7 +107,7 @@ func TestFreeIP_NoFamilyAtAll_StillDeletedWithoutRelease(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	lbID, _ := insertStuckLB(t, ctx, pool, domain.LBStatusCreating, "", "", "", "", 10*time.Minute)
 
