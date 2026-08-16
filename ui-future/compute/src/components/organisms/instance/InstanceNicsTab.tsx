@@ -138,12 +138,12 @@ export function InstanceNicsTab({
           Сетевые интерфейсы ещё не подключены.
         </div>
       ) : (
-        {/* Интерфейсы приезжают полем машины, а не списком у края: курсора нет,
-            набор полон by construction. */}
         <ResourceTable
           rows={rows}
           columns={columns}
           rowKey={(r) => r.nic_id ?? r.index ?? Math.random().toString()}
+          // Интерфейсы приезжают полем машины, а не списком у края: курсора
+          // здесь нет, набор полон by construction.
           complete
         />
       )}

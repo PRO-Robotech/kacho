@@ -115,7 +115,7 @@ export function SubnetDetailPage() {
       // tab "Операции" автоматически добавляется ResourceDetailPage —
       // не дублируем здесь.
     ],
-    [subnetAddresses, addrColumns, subnetId, openReserveModal],
+    [subnetAddresses, addrColumns, subnetId, openReserveModal, addrList?.next_page_token],
   );
 
   const headerActionsByTab = useCallback(

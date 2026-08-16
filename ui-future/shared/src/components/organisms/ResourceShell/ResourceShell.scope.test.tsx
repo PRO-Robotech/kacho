@@ -56,7 +56,7 @@ function jsonOk(body: unknown): Promise<Response> {
  * ответ на неожиданный адрес зеленил бы утверждения о пустоте таблицы.
  */
 function stubNetworkWithSubnets(next: string): void {
-  globalThis.fetch = ((input: RequestInfo | URL) => {
+  globalThis.fetch = (input: RequestInfo | URL) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const u = new URL(raw, "http://console.test");
     if (u.pathname === "/vpc/v1/networks/net-1") return jsonOk(NETWORK);
@@ -70,7 +70,7 @@ function stubNetworkWithSubnets(next: string): void {
       statusText: "Not Found",
       text: () => Promise.resolve(JSON.stringify({ code: 5, message: `нет заглушки для ${u.pathname}` })),
     } as Response);
-  }) as typeof globalThis.fetch;
+  };
 }
 
 function showSubnetsTab() {
