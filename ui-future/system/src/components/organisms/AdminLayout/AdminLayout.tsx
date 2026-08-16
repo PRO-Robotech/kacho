@@ -36,6 +36,14 @@ const TABS: AdminTab[] = [
     // /iam/v1/internal/cluster/* требует system_admin.
     visible: (p) => p.isSystemAdmin,
   },
+  {
+    key: "/system/limits",
+    label: "Пределы",
+    // Величины квот меняет только администратор облака (#364);
+    // /iam/v1/internal/limits требует system_admin на кластере. Тенантская
+    // витрина «Мои квоты» этой ручки не несёт вовсе.
+    visible: (p) => p.isSystemAdmin,
+  },
 ];
 
 export function AdminLayout() {

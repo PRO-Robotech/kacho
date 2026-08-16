@@ -1,0 +1,59 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+import { test, expect } from "@playwright/test";
+import { registerAndSignIn } from "./fixtures";
+
+/**
+ * Арендатор видит свои пределы — без обращения в поддержку.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ БРАУЗЕРОМ
+ *
+ * Модульная проба подменяет ответ и утверждает про отрисовку. Она не может
+ * утверждать, что край этот ответ ДАЁТ: чтение квот гейтится отношением на
+ * проекте, а сам глагол регистрируется условно — если полоса квот не собрана,
+ * его нет вовсе, и вместо набора пределов приходит отказ «не реализовано».
+ *
+ * Поэтому здесь утверждается пара: край отвечает успехом — и витрина показывает
+ * то, что он назвал.
+ */
+
+test("витрина квот показывает пределы проекта", async ({ page }) => {
+  // verifies #364
+  const { projectId } = await registerAndSignIn(page);
+
+  const [ответ] = await Promise.all([
+    page.waitForResponse((r) => new URL(r.url()).pathname === "/vpc/v1/quotas", { timeout: 30_000 }),
+    page.goto(`/projects/${projectId}/quotas`, { waitUntil: "domcontentloaded" }),
+  ]);
+
+  expect(ответ.status(), `край не отдал пределы: ${await ответ.text()}`).toBe(200);
+
+  const тело = (await ответ.json()) as { quotas?: unknown[] };
+  // Контракт обещает полный набор всегда — даже проекту, где ничего не создано.
+  // Пустой ответ означал бы, что витрине нечего показать не по своей вине.
+  expect(тело.quotas?.length ?? 0, "край вернул пустой набор пределов").toBeGreaterThan(0);
+
+  await expect(page.locator("table")).toBeVisible({ timeout: 20_000 });
+  // Источник значения обязателен: без него упёршийся не знает, куда идти.
+  await expect(page.getByText(/умолчание|Аккаунт |Проект /).first()).toBeVisible({ timeout: 20_000 });
+});
+
+/**
+ * Тенантская страница НЕ несёт ручки изменения величины.
+ *
+ * Величины меняет только администратор облака, своим разделом. Кнопка, которая
+ * у арендатора всегда заканчивается отказом, — обещание возможности, которой у
+ * него нет.
+ */
+test("витрина квот не предлагает арендатору менять величину", async ({ page }) => {
+  // verifies #364
+  const { projectId } = await registerAndSignIn(page);
+  await page.goto(`/projects/${projectId}/quotas`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("table")).toBeVisible({ timeout: 30_000 });
+
+  for (const подпись of [/Изменить предел/i, /Поднять квоту/i, /Редактировать/i]) {
+    expect(await page.getByRole("button", { name: подпись }).count()).toBe(0);
+  }
+});
