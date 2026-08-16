@@ -7,16 +7,16 @@ package repo_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
@@ -110,20 +110,24 @@ var fixtureQuotaKinds = []string{
 const fixtureQuotaLimit = 10000
 
 // collectFixtureProjects читает исходники проб пакета и собирает имена проектов.
-func collectFixtureProjects(t testing.TB) []string {
-	t.Helper()
-
+//
+// Отдаёт ошибку, а не роняет пробу: фикстура заводится ОДИН раз, в шаблоне
+// (см. `prepareTemplate`), где `*testing.T` ещё не существует.
+func collectFixtureProjects() (projects []string, filesRead int, err error) {
 	entries, err := os.ReadDir(".")
-	require.NoError(t, err, "фикстура учёта: чтение каталога пакета")
+	if err != nil {
+		return nil, 0, fmt.Errorf("фикстура учёта: чтение каталога пакета: %w", err)
+	}
 
 	seen := make(map[string]struct{}, 64)
-	filesRead := 0
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
 			continue
 		}
 		body, err := os.ReadFile(filepath.Clean(e.Name()))
-		require.NoError(t, err, "фикстура учёта: чтение %s", e.Name())
+		if err != nil {
+			return nil, filesRead, fmt.Errorf("фикстура учёта: чтение %s: %w", e.Name(), err)
+		}
 		filesRead++
 		text := string(body)
 		for _, m := range projectCandidate.FindAllStringSubmatch(text, -1) {
@@ -143,9 +147,11 @@ func collectFixtureProjects(t testing.TB) []string {
 		}
 	}
 
-	require.NotZero(t, filesRead,
-		"фикстура учёта прочитала НОЛЬ файлов проб — она собралась бы пустой и молча, "+
-			"и все пробы падали бы на отказе учёта вместо своего предмета")
+	if filesRead == 0 {
+		return nil, 0, errors.New(
+			"фикстура учёта прочитала НОЛЬ файлов проб — она собралась бы пустой и молча, " +
+				"и все пробы падали бы на отказе учёта вместо своего предмета")
+	}
 
 	out := make([]string, 0, len(seen))
 	for p := range seen {
@@ -153,10 +159,12 @@ func collectFixtureProjects(t testing.TB) []string {
 	}
 	sort.Strings(out)
 
-	require.NotEmpty(t, out,
-		"фикстура учёта не нашла ни одного имени проекта в %d файле(ах) проб: "+
-			"либо форма имени сменилась, либо предикат перестал её ловить", filesRead)
-	return out
+	if len(out) == 0 {
+		return nil, filesRead, fmt.Errorf(
+			"фикстура учёта не нашла ни одного имени проекта в %d файле(ах) проб: "+
+				"либо форма имени сменилась, либо предикат перестал её ловить", filesRead)
+	}
+	return out, filesRead, nil
 }
 
 // padNumber повторяет то, что делает `%0Nd`: число, дополненное нулями слева до
@@ -169,23 +177,37 @@ func padNumber(v, width int) string {
 	return s
 }
 
-// seedFixtureQuotas приводит базу пробы в состояние «проекты материализованы».
+// seedFixtureQuotas приводит базу в состояние «проекты материализованы».
 //
 // Идёт через `kachopg.MaterializeQuotas` — тот же и единственный оператор, каким
 // пользуется живой путь. Своего INSERT здесь нет намеренно: копия оператора
 // разошлась бы с настоящим молча, и разошлась бы на составе столбцов.
-func seedFixtureQuotas(t testing.TB, dsn string) {
-	t.Helper()
-	ctx := context.Background()
-
-	projects := collectFixtureProjects(t)
+//
+// Зовётся ОДИН раз за прогон — по шаблону, из которого клонируется база каждой
+// пробы (`prepareTemplate`). Прежде фикстура сеялась в КАЖДУЮ базу, и пока
+// материализация ставила ноль литералом, это стоило 0.25с на пробу. С тех пор
+// `used` считается по строкам, то есть на каждую из 8264 строк приходится
+// обращение к каталогу триггеров: та же фикстура стала стоить 8.5с на пробу,
+// а пакет — 1502с при пределе 1500с. Замер обеих величин снят на одной пробе
+// (`TestIntegration_Operations_AccountIDColumn_NullForVPC`) и на одном дереве.
+//
+// Посев в шаблон не меняет ни одного утверждения: база пробы по-прежнему своя,
+// а `used` в ней по-прежнему ноль — ресурсов на момент посева нет ни в шаблоне,
+// ни в клоне.
+func seedFixtureQuotas(ctx context.Context, dsn string) (projects, kinds int, seeded int64, err error) {
+	ps, _, err := collectFixtureProjects()
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	conn, err := pgx.Connect(ctx, dsn)
-	require.NoError(t, err, "фикстура учёта: подключение к базе пробы")
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("фикстура учёта: подключение к базе: %w", err)
+	}
 	defer func() { _ = conn.Close(ctx) }()
 
-	rows := make([]kacho.QuotaRow, 0, len(projects)*len(fixtureQuotaKinds))
-	for _, p := range projects {
+	rows := make([]kacho.QuotaRow, 0, len(ps)*len(fixtureQuotaKinds))
+	for _, p := range ps {
 		for _, k := range fixtureQuotaKinds {
 			rows = append(rows, kacho.QuotaRow{
 				CarrierType:   "project",
@@ -203,12 +225,15 @@ func seedFixtureQuotas(t testing.TB, dsn string) {
 	}
 
 	n, err := kachopg.MaterializeQuotas(ctx, conn, rows)
-	require.NoError(t, err, "фикстура учёта: заведение строк")
-	require.Equal(t, int64(len(rows)), n,
-		"перепись: объявлено строк %d, заведено %d. Расхождение означает, что часть "+
-			"идентичностей уже существовала, то есть фикстура работает не на свежей базе",
-		len(rows), n)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("фикстура учёта: заведение строк: %w", err)
+	}
+	if n != int64(len(rows)) {
+		return 0, 0, 0, fmt.Errorf(
+			"перепись: объявлено строк %d, заведено %d. Расхождение означает, что часть "+
+				"идентичностей уже существовала, то есть фикстура работает не на свежей базе",
+			len(rows), n)
+	}
 
-	t.Logf("фикстура учёта: проектов %d, видов %d, строк заведено %d",
-		len(projects), len(fixtureQuotaKinds), n)
+	return len(ps), len(fixtureQuotaKinds), n, nil
 }

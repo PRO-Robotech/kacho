@@ -67,6 +67,17 @@ func (f *fakeAccounts) AccountOf(_ context.Context, _ string) (string, error) {
 	return f.account, f.err
 }
 
+// eightKinds — ответ владельца величин, каким его видит vpc.
+//
+// Носитель проставлен У КАЖДОЙ строки, потому что настоящий резолв его
+// проставляет всегда: вид приходит из каталога, а запись каталога есть ПАРА —
+// вид и носитель. Дублёр, отдающий строку без носителя, был бы снисходительнее
+// настоящего и сделал бы невидимым ровно тот дефект, ради которого носитель и
+// повезли по проводу (`PRO-Robotech/kacho#401`).
+//
+// Здесь перечислены восемь ПЛОСКИХ видов домена — тех, чей носитель проект.
+// Вложенные четыре живут в `twelveKindsWithNested` рядом: набор, где они
+// смешаны, и есть предмет проб про раскладку по носителю.
 func eightKinds() []quota.ResolvedLimit {
 	kinds := []string{
 		"vpc.network", "vpc.subnet", "vpc.address", "vpc.networkInterface",
@@ -74,9 +85,41 @@ func eightKinds() []quota.ResolvedLimit {
 	}
 	out := make([]quota.ResolvedLimit, 0, len(kinds))
 	for _, k := range kinds {
-		out = append(out, quota.ResolvedLimit{Kind: k, Value: 4, SourceScope: "DEFAULT"})
+		out = append(out, quota.ResolvedLimit{
+			Kind: k, Value: 4, Carrier: "project", SourceScope: "DEFAULT",
+		})
 	}
 	return out
+}
+
+// nestedKinds — четыре вида домена, считаемые в РОДИТЕЛЬСКОМ ресурсе.
+//
+// Носители выписаны из каталога владельца величин, а не сочинены по форме
+// токена: правило «две части ⇒ проект» ложно на существующей записи каталога
+// (`iam.project`), и потому носитель объявляется, а не выводится.
+func nestedKinds() []quota.ResolvedLimit {
+	pairs := map[string]string{
+		"vpc.network.subnet":          "vpc.network",
+		"vpc.network.routeTable":      "vpc.network",
+		"vpc.network.securityGroup":   "vpc.network",
+		"vpc.subnet.networkInterface": "vpc.subnet",
+	}
+	out := make([]quota.ResolvedLimit, 0, len(pairs))
+	for k, c := range pairs {
+		out = append(out, quota.ResolvedLimit{
+			Kind: k, Value: 4, Carrier: c, SourceScope: "DEFAULT",
+		})
+	}
+	return out
+}
+
+// twelveKindsWithNested — полный ответ владельца величин про домен vpc.
+//
+// Настоящий резолв отдаёт ИМЕННО столько: двенадцать. Прежний дублёр отдавал
+// восемь и тем самым утверждал о соседе неправду — а заодно делал невыразимым
+// вопрос «что владелец типа делает со строкой, которую считает не он».
+func twelveKindsWithNested() []quota.ResolvedLimit {
+	return append(eightKinds(), nestedKinds()...)
 }
 
 // kindsExcept — набор владельца величин без одного названного вида.

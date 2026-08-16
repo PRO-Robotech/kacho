@@ -93,6 +93,7 @@ func (c *LimitClient) Resolve(ctx context.Context, scopeID, service string) ([]p
 			out = append(out, ports.ResolvedLimit{
 				Kind:          l.GetKind(),
 				Value:         l.GetValue(),
+				Carrier:       l.GetCarrier(),
 				SourceScope:   scope,
 				SourceScopeID: l.GetSourceScopeId(),
 			})
