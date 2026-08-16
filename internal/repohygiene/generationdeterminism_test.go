@@ -15,6 +15,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // Разбор класса «имя шага зависит от того, сколько модулей обработал
@@ -391,7 +393,7 @@ func TestGeneratedStepNamesDoNotDependOnHowManyModulesRan(t *testing.T) {
 // у соседа вместе с дефектом.
 func newmanSuites(t *testing.T, root string) []string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z",
+	out, err := gitenv.Command(root, "ls-files", "-z",
 		"*/tests/newman/scripts/gen.py").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — без переписи «ноль находок» неотличимо от "+

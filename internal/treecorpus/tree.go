@@ -27,10 +27,11 @@ package treecorpus
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // Tree — состав дерева: множество файлов и множество каталогов, в которых есть
@@ -52,8 +53,7 @@ func NewTree(root string) (*Tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: абсолютный путь для %s: %w", root, err)
 	}
-	cmd := exec.Command("git", "ls-files", "-z")
-	cmd.Dir = abs
+	cmd := gitenv.Command(abs, "ls-files", "-z")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: git ls-files в %s: %w — проверка не может "+

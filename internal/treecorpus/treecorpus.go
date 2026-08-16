@@ -39,10 +39,11 @@ package treecorpus
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // Under возвращает АБСОЛЮТНЫЕ пути отслеживаемых файлов под каталогом dir,
@@ -61,8 +62,7 @@ func Under(dir string) ([]string, error) {
 	// `git -C <dir> ls-files` и запуск git с рабочим каталогом <dir> дают здесь
 	// одно и то же — обе формы велят git считать <dir> текущим каталогом, а
 	// `ls-files` перечисляет относительно него.
-	cmd := exec.Command("git", "ls-files", "-z")
-	cmd.Dir = abs
+	cmd := gitenv.Command(abs, "ls-files", "-z")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: git ls-files в %s: %w — состав дерева "+
