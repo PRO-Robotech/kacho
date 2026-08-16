@@ -62,9 +62,10 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 
 	ad := clients.NewFGAReconcileAdapter(pool, computeOutboxTbl)
 	rc, err := reconciler.New(pool, reconciler.Config{
-		Table:       computeOutboxTbl,
-		Channel:     "compute_fga_register_outbox",
-		MaxAttempts: 10,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           computeOutboxTbl,
+		Channel:         "compute_fga_register_outbox",
+		MaxAttempts:     10,
 	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
 	require.NoError(t, err)
 

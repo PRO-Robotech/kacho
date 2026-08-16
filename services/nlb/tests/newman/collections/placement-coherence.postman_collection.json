@@ -252,6 +252,58 @@
           ]
         },
         {
+          "name": "warm-subnet-z1v4-rya1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubV4Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubV4Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "prov-zonal-z2v6",
           "request": {
             "method": "POST",
@@ -447,7 +499,59 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr1",
+          "name": "warm-subnet-z2v6-rya2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubV6Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubV6Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-cross-zone-cr3",
           "request": {
             "method": "POST",
             "header": [
@@ -523,7 +627,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV4Id-dl2",
+          "name": "zc-cleanup-zcSubV4Id-dl4",
           "request": {
             "method": "DELETE",
             "header": [
@@ -656,7 +760,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV6Id-dl3",
+          "name": "zc-cleanup-zcSubV6Id-dl5",
           "request": {
             "method": "DELETE",
             "header": [
@@ -990,6 +1094,58 @@
           ]
         },
         {
+          "name": "warm-subnet-szv4-rya6",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubV4Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubV4Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "prov-zonal-szv6",
           "request": {
             "method": "POST",
@@ -1185,7 +1341,59 @@
           ]
         },
         {
-          "name": "create-same-zone-cr4",
+          "name": "warm-subnet-szv6-rya7",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubV6Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubV6Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-same-zone-cr8",
           "request": {
             "method": "POST",
             "header": [
@@ -1321,7 +1529,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-lb-cond-rya11",
+          "name": "zc-cleanup-lb-cond-rya17",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1351,6 +1559,8 @@
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
                   "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_authRetryCount', '0');",
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -1443,7 +1653,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV4Id-dl5",
+          "name": "zc-cleanup-zcSubV4Id-dl9",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1576,7 +1786,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV6Id-dl6",
+          "name": "zc-cleanup-zcSubV6Id-dl10",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1910,7 +2120,59 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr7",
+          "name": "warm-subnet-r2-rya11",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubR2Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubR2Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-wrong-region-cr12",
           "request": {
             "method": "POST",
             "header": [
@@ -2065,7 +2327,7 @@
           ]
         },
         {
-          "name": "cleanup-zc-leak-lb-rya12",
+          "name": "cleanup-zc-leak-lb-rya18",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2104,6 +2366,8 @@
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
                   "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_authRetryCount', '0');",
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -2195,7 +2459,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubR2Id-dl8",
+          "name": "zc-cleanup-zcSubR2Id-dl13",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2529,7 +2793,59 @@
           ]
         },
         {
-          "name": "create-same-region-cr9",
+          "name": "warm-subnet-r1-rya14",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{zcSubR1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{zcSubR1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "create-same-region-cr15",
           "request": {
             "method": "POST",
             "header": [
@@ -2665,7 +2981,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-lb-sr-rya13",
+          "name": "zc-cleanup-lb-sr-rya19",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2695,6 +3011,8 @@
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
                   "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_authRetryCount', '0');",
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
@@ -2787,7 +3105,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubR1Id-dl10",
+          "name": "zc-cleanup-zcSubR1Id-dl16",
           "request": {
             "method": "DELETE",
             "header": [

@@ -193,6 +193,15 @@ type outboxInventory struct {
 	// для гейта порядка неотличима от «ключ не задан», поэтому она называется
 	// вслух, а не проглатывается.
 	partitionUnresolved []string
+	// redrive — таблица → координаты, где поднят возврат отравленных строк
+	// (reconciler.Config). Читается гейтом согласия ключей
+	// (outboxredrivekeygate_test.go).
+	redrive map[string][]string
+	// redrivePartition — таблица → ключ партиции, объявленный проводкой ВОЗВРАТА.
+	// Обязан совпадать с ключом дренажа той же таблицы: заявка стережёт
+	// доставляемого предшественника, возврат — доставленного преемника, и на
+	// разных ключах каждая половина стережёт партицию, которой не стережёт другая.
+	redrivePartition map[string]string
 	// unresolved — координаты проводок, чьё поле Table не резолвится разбором.
 	unresolved []string
 	// notes — таблица → комментарии, стоящие ВНУТРИ литерала настроек её дренажа.
@@ -311,11 +320,13 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 		return cached
 	}
 	inv := outboxInventory{
-		drained:   map[string][]string{},
-		observed:  map[string][]string{},
-		split:     map[string]bool{},
-		partition: map[string]string{},
-		notes:     map[string][]wiringNote{},
+		drained:          map[string][]string{},
+		observed:         map[string][]string{},
+		split:            map[string]bool{},
+		partition:        map[string]string{},
+		redrive:          map[string][]string{},
+		redrivePartition: map[string]string{},
+		notes:            map[string][]wiringNote{},
 	}
 
 	servicesDir := filepath.Join(root, "services")
@@ -330,6 +341,16 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 		svc := e.Name()
 		svcRoot := filepath.Join(servicesDir, svc)
 		consts := serviceConstStrings(t, svcRoot)
+		// Ключ партиции register-очередей назван КОНСТАНТОЙ общей библиотеки
+		// (reconciler.RegisterOutboxPartition), а не литералом в каждом сервисе.
+		// Её значение читается из дерева, а не повторяется здесь: повторённое
+		// разошлось бы с ней молча, и гейт сверял бы ключи с числом, которого в
+		// коде уже нет.
+		for k, v := range corelibOutboxConstStrings(t, root) {
+			if _, taken := consts[k]; !taken {
+				consts[k] = v
+			}
+		}
 		files := goFilesUnder(t, svcRoot)
 		for _, path := range files {
 			inv.filesRead++
@@ -438,8 +459,13 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		kind := ""
 		switch sel.Sel.Name {
 		case "Config":
-			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "drainer" {
-				kind = "дренаж"
+			if pkg, ok := sel.X.(*ast.Ident); ok {
+				switch pkg.Name {
+				case "drainer":
+					kind = "дренаж"
+				case "reconciler":
+					kind = "возврат"
+				}
 			}
 		case "CollectorConfig":
 			kind = "сканер"
@@ -477,6 +503,13 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 			if hasTableKey {
 				inv.unresolved = append(inv.unresolved,
 					coord+" ("+kind+", строка "+strconv.Itoa(fset.Position(cl.Pos()).Line)+")")
+			}
+			return true
+		}
+		if kind == "возврат" {
+			inv.redrive[table] = append(inv.redrive[table], coord)
+			if hasPartitionKey && partition != "" {
+				inv.redrivePartition[table] = partition
 			}
 			return true
 		}
@@ -535,5 +568,25 @@ func sortedKeys(m map[string][]string) []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// corelibOutboxConstStrings — строковые константы пакетов общей библиотеки,
+// на которые ссылается проводка очередей по имени (сегодня это ровно
+// reconciler.RegisterOutboxPartition). Значение берётся ИЗ ДЕРЕВА: повтори его
+// здесь литералом — и оно разошлось бы с константой молча, а гейт сверял бы
+// ключи с величиной, которой в коде уже нет.
+func corelibOutboxConstStrings(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, pkg := range []string{"reconciler", "drainer"} {
+		dir := filepath.Join(root, "pkg", "outbox", pkg)
+		if _, err := os.Stat(dir); err != nil {
+			continue
+		}
+		for k, v := range serviceConstStrings(t, dir) {
+			out[k] = v
+		}
+	}
 	return out
 }

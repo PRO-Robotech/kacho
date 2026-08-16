@@ -192,9 +192,10 @@ func attemptCountOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rowID
 func newRedriveReconciler(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 	t.Helper()
 	r, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
-		Table:       redriveTable,
-		Channel:     redriveChannel,
-		MaxAttempts: redriveMaxAtt,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           redriveTable,
+		Channel:         redriveChannel,
+		MaxAttempts:     redriveMaxAtt,
 	}, nil)
 	require.NoError(t, err)
 	return r
@@ -381,9 +382,10 @@ func Test_Redrive_ParkedRowsAreNamedInTheReport(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	r, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
-		Table:       redriveTable,
-		Channel:     redriveChannel,
-		MaxAttempts: redriveMaxAtt,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           redriveTable,
+		Channel:         redriveChannel,
+		MaxAttempts:     redriveMaxAtt,
 	}, logger)
 	require.NoError(t, err)
 
@@ -407,7 +409,8 @@ func Test_Redrive_ParkedRowsAreNamedInTheReport(t *testing.T) {
 	pool2 := setupRegisterOutboxPG(t)
 	seedIntent(t, ctx, pool2, "fga.register", "app-fine", redriveMaxAtt, false)
 	r2, err := reconciler.NewRedriveOnly(pool2, reconciler.Config{
-		Table: redriveTable, Channel: redriveChannel, MaxAttempts: redriveMaxAtt,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           redriveTable, Channel: redriveChannel, MaxAttempts: redriveMaxAtt,
 	}, logger)
 	require.NoError(t, err)
 	revived2, err := r2.RedrivePoisoned(ctx)

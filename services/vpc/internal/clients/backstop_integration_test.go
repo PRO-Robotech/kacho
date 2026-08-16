@@ -48,10 +48,11 @@ func newVPCReconciler(t *testing.T, pool *pgxpool.Pool, grace time.Duration) *re
 	t.Helper()
 	ad := pgrepo.NewFGAReconcileAdapter(pool)
 	rc, err := reconciler.New(pool, reconciler.Config{
-		Table:       vpcOutboxTable,
-		Channel:     "kacho_vpc_fga_register_outbox",
-		MaxAttempts: 10,
-		GraceWindow: grace,
+		PartitionColumn: reconciler.RegisterOutboxPartition,
+		Table:           vpcOutboxTable,
+		Channel:         "kacho_vpc_fga_register_outbox",
+		MaxAttempts:     10,
+		GraceWindow:     grace,
 	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
 	require.NoError(t, err)
 	return rc

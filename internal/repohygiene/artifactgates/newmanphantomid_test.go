@@ -101,6 +101,15 @@ type nmEvent struct {
 type nmRequest struct {
 	Method string          `json:"method"`
 	URL    json.RawMessage `json:"url"`
+	// Body — тело запроса. Читает его только гейт прогрева чужого свежего
+	// идентификатора (`newmanasyncpeerwarmup_test.go`): ссылка на чужой ресурс
+	// приезжает и адресом, и телом, а гейт, читающий один адрес, был бы слеп
+	// ровно к той половине дерева, где ссылка лежит в теле.
+	Body *nmBody `json:"body"`
+}
+
+type nmBody struct {
+	Raw string `json:"raw"`
 }
 
 type nmItem struct {
