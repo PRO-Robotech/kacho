@@ -208,7 +208,7 @@ export default function ClusterAdminsPage() {
     <Space direction="vertical" size={16} style={{ width: "100%" }} data-testid="cluster-admins-page">
       <div>
         <Typography.Title level={3} style={{ margin: 0 }} data-testid="cluster-admins-page-title">
-          Cluster admins
+          Администраторы кластера
         </Typography.Title>
         <Typography.Text type="secondary" style={{ fontSize: 13 }}>
           Управление permanent cluster-admin grants на singleton{" "}
