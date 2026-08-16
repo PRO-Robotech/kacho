@@ -10917,7 +10917,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"n63abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"{{_lbName63}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10927,10 +10927,25 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var __r = (pm.environment.get('runId') || 'x0');",
+                  "var __h = 0; for (var i = 0; i < __r.length; i++) { __h = ((__h << 5) - __h + __r.charCodeAt(i)) | 0; }",
+                  "var __t = Math.abs(__h).toString(36);",
+                  "while (__t.length < 6) { __t = '0' + __t; }",
+                  "__t = __t.slice(0, 6);",
+                  "pm.environment.set('_lbName63', 'n63' + __t + 'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij' + 'abcd');"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('the fixture name sits exactly on the 63-character bound', () => pm.expect((pm.environment.get('_lbName63') || '').length).to.eql(63));",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
