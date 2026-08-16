@@ -1,39 +1,42 @@
-// AdminLayout — обёртка над admin-страницами /system/{regions,zones,
-// address-pools,cluster/admins} в system-remote. Рендерит горизонтальные табы
-// навигации между admin-ресурсами.
+// AdminLayout — оболочка раздела «Администрирование» (`/system/{regions,zones,
+// address-pools,cluster/admins}`).
 //
-// Применяется только для list/cluster страниц. Detail/Create/Edit ресурсов
-// используют ResourceDetailPage/CreatePage/EditPage как обычно.
+// Вид берётся ОБЩИЙ — `DetailShell`, тот же, что на карточке ресурса: вертикальный
+// рейл слева, содержимое справа. Прежде здесь стоял свой горизонтальный ряд
+// вкладок, и раздел выглядел другим местом продукта (правило 8 `ui.md`, решение
+// владельца #447).
 //
-// GlobalResourceFormModal здесь НЕ монтируется: RemoteShell (SystemPage)
-// монтирует его на уровне фрейма; regions/zones/address-pools используют
-// panel/page-формы (ResourceCreatePage/EditPage), а не ?modal-флоу.
+// Применяется только для списочных страниц раздела. Карточка / создание / правка
+// ресурса идут своими страницами, как и у остальных ресурсов.
+//
+// Форма-модалка здесь НЕ монтируется: её монтирует фрейм раздела (`SystemPage`),
+// а регионы/зоны/пулы используют панельные формы.
 
 import { useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
-import { Space, Tabs, Typography } from "antd";
+import { DetailShell, type DetailTab } from "@shared/components/organisms/DetailShell";
 import { usePermissions } from "@shared/lib/permissions";
 
-interface AdminTab {
-  key: string;
+interface AdminSection {
+  /** Идентификатор вкладки и он же — адрес её страницы. */
+  path: string;
   label: string;
-  /** Predicate над PermissionSnapshot — true → таб виден; default — всегда. */
+  /** Предикат над снимком прав — true → пункт виден; без него виден всегда. */
   visible?: (p: ReturnType<typeof usePermissions>) => boolean;
 }
 
-const TABS: AdminTab[] = [
-  { key: "/system/regions", label: "Регионы" },
-  { key: "/system/zones", label: "Зоны" },
+const SECTIONS: AdminSection[] = [
+  { path: "/system/regions", label: "Регионы" },
+  { path: "/system/zones", label: "Зоны" },
   {
-    key: "/system/address-pools",
+    path: "/system/address-pools",
     label: "Пулы адресов",
-    // AddressPool — admin-only (FGA admin@cluster:cluster_kacho_root).
+    // Пул адресов — administrative-only ресурс.
     visible: (p) => p.isSystemAdmin,
   },
   {
-    key: "/system/cluster/admins",
-    label: "Cluster admins",
-    // /iam/v1/internal/cluster/* требует system_admin.
+    path: "/system/cluster/admins",
+    label: "Администраторы кластера",
     visible: (p) => p.isSystemAdmin,
   },
 ];
@@ -43,35 +46,25 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const perms = usePermissions();
 
-  const visibleTabs = useMemo(() => TABS.filter((t) => !t.visible || t.visible(perms)), [perms]);
+  const visible = useMemo(() => SECTIONS.filter((s) => !s.visible || s.visible(perms)), [perms]);
 
-  const active =
-    visibleTabs.find((t) => location.pathname.startsWith(t.key))?.key ?? visibleTabs[0]?.key ?? TABS[0].key;
+  const active = visible.find((s) => location.pathname.startsWith(s.path))?.path ?? visible[0]?.path ?? SECTIONS[0].path;
+
+  // Содержимое вкладки рисует маршрут, а не сама вкладка: страницы раздела
+  // остаются самостоятельными адресами (ссылку на пункт можно дать и открыть).
+  const tabs: DetailTab[] = useMemo(
+    () => visible.map((s) => ({ id: s.path, label: s.label, render: () => <Outlet />, fill: true })),
+    [visible],
+  );
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div>
-        <Typography.Title level={3} className="t-page-title" style={{ margin: 0 }}>
-          Администрирование
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          Глобальные ресурсы инфраструктуры. Каталог размещения (регионы и зоны) читает любой аутентифицированный
-          пользователь — из него берутся координаты для любого размещаемого ресурса; изменять каталог и остальные
-          разделы может только администратор кластера.
-        </Typography.Text>
-      </div>
-
-      <Tabs
-        activeKey={active}
-        onChange={(k) => navigate(k)}
-        items={visibleTabs.map((t) => ({ key: t.key, label: t.label }))}
-        size="middle"
-        style={{ marginBottom: 0 }}
-        data-testid="admin-tabs"
-      />
-
-      <Outlet />
-    </Space>
+    <DetailShell
+      resourceLabel="Администрирование"
+      resourceName="Администрирование"
+      tabs={tabs}
+      activeTabId={active}
+      onTabSelect={(id) => void navigate(id)}
+    />
   );
 }
 
