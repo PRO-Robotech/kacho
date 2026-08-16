@@ -310,42 +310,12 @@ func packagesProbingRealFGA(t *testing.T, root string) (pkgs []string, scanned i
 // authzFGADeclaredPkgs читает перечень AUTHZ_FGA_PKGS из корневого Makefile.
 // Пути там записаны как аргументы `go test` (`./services/...`) — приводятся к
 // той же форме, что у обхода дерева, иначе сверялись бы разные вещи.
+//
+// Разбор перечня общий с соседним швом (pgoutsideselection_test.go): у двух
+// целей одна форма списка, и второй разбор разошёлся бы с первым молча.
 func authzFGADeclaredPkgs(t *testing.T, root string) []string {
 	t.Helper()
-	var out []string
-	for _, f := range strings.Fields(authzFGAAssignment(t, root)) {
-		if p, ok := strings.CutPrefix(f, "./"); ok {
-			out = append(out, strings.TrimSuffix(p, "/"))
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// authzFGAAssignment — правая часть присваивания AUTHZ_FGA_PKGS, склеенная по
-// продолжениям строк.
-func authzFGAAssignment(t *testing.T, root string) string {
-	t.Helper()
-	var b strings.Builder
-	inside := false
-	for _, line := range strings.Split(rootMakefile(t, root), "\n") {
-		if !inside {
-			rest, ok := strings.CutPrefix(line, "AUTHZ_FGA_PKGS")
-			if !ok {
-				continue
-			}
-			if _, after, found := strings.Cut(rest, "="); found {
-				b.WriteString(after + " ")
-			}
-			inside = true
-		} else {
-			b.WriteString(line + " ")
-		}
-		if !strings.HasSuffix(strings.TrimRight(line, " \t"), `\`) {
-			break
-		}
-	}
-	return strings.ReplaceAll(b.String(), `\`, " ")
+	return makefileListedPkgs(t, root, "AUTHZ_FGA_PKGS")
 }
 
 // authzFGARecipe — рецепт цели test-authz-fga: строки от заголовка цели до
