@@ -724,7 +724,17 @@ func (u *CreateLoadBalancerUseCase) compensateCreate(ctx context.Context, lbID s
 	releaseFailed := false
 	if u.addressClient != nil {
 		for family, alloc := range allocated {
+			// Аллокация без ключа аренды сюда НЕ ДОХОДИТ: обе полосы
+			// `acquireFamilyVIP` возвращают непустой ключ — авто-полоса отвергает
+			// ответ vpc без него (`allocFromCreate`), полоса привязки требует ключ
+			// на входе (`AttachExisting`). Ветка оставлена РОВНО как отказ, а не
+			// как пропуск: пропустив, компенсация оставила бы `releaseFailed=false`,
+			// снесла handle — и потеряла бы аренду навсегда, то есть воспроизвела
+			// бы #467 с другого конца.
 			if alloc.addressID == "" {
+				releaseFailed = true
+				logger.Warn("LoadBalancer.Create compensation cannot release a lease without its id",
+					"family", string(family))
 				continue
 			}
 			if rerr := u.releaseAddress(ctx, alloc.addressID, alloc.origin); rerr != nil {
