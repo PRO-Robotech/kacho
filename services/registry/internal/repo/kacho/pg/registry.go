@@ -89,11 +89,15 @@ func (r *RegistryRepo) RegistryProjectID(ctx context.Context, id string) (string
 func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 	conds := []string{}
 	args := []any{}
-	idx := 1
+	// Номер параметра выводится из длины args, а не из отдельного счётчика: тот
+	// дублировал ту же величину и требовал прибавления в каждой ветке. Последнее
+	// прибавление никто не читал (его и нашёл линтер), а пропущенное в новой ветке
+	// не заметил бы никто — номера разъехались бы молча. Тот же способ уже
+	// применён у вызывающего List.
+	nextArg := func() int { return len(args) + 1 }
 	if q.ProjectID != "" {
-		conds = append(conds, fmt.Sprintf("project_id = $%d", idx))
+		conds = append(conds, fmt.Sprintf("project_id = $%d", nextArg()))
 		args = append(args, q.ProjectID)
-		idx++
 	}
 
 	ast, err := filter.Parse(q.Filter, []string{"name"})
@@ -107,10 +111,9 @@ func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 		// вопрос, которого никто не задавал (#460). Поле контракта и колонка тут
 		// названы одинаково, поэтому годится ToSQL; владельцам с псевдонимом
 		// таблицы — ToSQLOn.
-		frag, fargs := ast.ToSQL(idx)
+		frag, fargs := ast.ToSQL(nextArg())
 		conds = append(conds, frag)
 		args = append(args, fargs...)
-		idx += len(fargs)
 	}
 
 	if q.PageToken != "" {
@@ -118,9 +121,8 @@ func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 		if derr != nil {
 			return nil, nil, invalidPageTokenErr(derr)
 		}
-		conds = append(conds, fmt.Sprintf("(created_at, id) > ($%d, $%d)", idx, idx+1))
+		conds = append(conds, fmt.Sprintf("(created_at, id) > ($%d, $%d)", nextArg(), nextArg()+1))
 		args = append(args, cur.CreatedAt, cur.ID)
-		idx += 2
 	}
 
 	return conds, args, nil

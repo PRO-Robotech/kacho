@@ -21,6 +21,7 @@ package pg
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,6 +84,36 @@ func TestRegistryListWhere_460_PlaceholdersStayInStep(t *testing.T) {
 			assert.Len(t, args, len(conds), "one placeholder per argument")
 		})
 	}
+}
+
+// TestRegistryListWhere_PlaceholdersStayInStepAcrossAllThreeConditions — the
+// cursor condition is the only one that consumes TWO placeholder numbers, and it
+// is also the last, so a number it fails to account for is invisible until some
+// later condition is added. The scoped+filtered+paged request is the one a console
+// actually issues past the first page; here every number is pinned literally.
+//
+// Placeholder numbers are derived from len(args) rather than carried in a counter:
+// the counter had to be advanced in every branch, its final advance was read by
+// nobody, and a branch that forgot to advance it would have mis-bound every
+// argument after itself with no failing assertion anywhere.
+func TestRegistryListWhere_PlaceholdersStayInStepAcrossAllThreeConditions(t *testing.T) {
+	cursorAt := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
+	conds, args, err := registryListWhere(registry.ListQuery{
+		ProjectID: "prj-1",
+		Filter:    `name CONTAINS "prod"`,
+		PageToken: encodePageToken(cursorAt, "reg-9"),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, conds, 3)
+	assert.Equal(t, "project_id = $1", conds[0])
+	assert.Equal(t, "name LIKE $2", conds[1])
+	assert.Equal(t, "(created_at, id) > ($3, $4)", conds[2])
+	assert.Equal(t, []any{"prj-1", "%prod%", cursorAt, "reg-9"}, args)
+
+	// List binds LIMIT as len(args)+1. Every placeholder above must therefore have
+	// its own argument, or LIMIT collides with one of them.
+	assert.Len(t, args, 4, "one argument per placeholder, LIMIT takes $5")
 }
 
 // TestRegistryListWhere_460_WildcardsInTheValueAreEscaped — `%` typed by the caller
