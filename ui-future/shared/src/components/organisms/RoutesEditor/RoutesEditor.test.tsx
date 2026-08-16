@@ -79,6 +79,6 @@ describe("следующий узел маршрута — обе ветви к�
     // Маршрут, приехавший с сервера со шлюзом, обязан открыться тем, чем он
     // является. Иначе первое же сохранение молча переводило бы его в адрес.
     renderEditor([{ destination_prefix: "0.0.0.0/0", gateway_id: "gw-1" }], () => {});
-    expect((screen.getByLabelText("Вид следующего узла") as HTMLSelectElement).value).toBe("gateway");
+    expect(screen.getByLabelText<HTMLSelectElement>("Вид следующего узла").value).toBe("gateway");
   });
 });

@@ -145,7 +145,7 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
                 aria-label="Вид следующего узла"
                 variant="borderless"
                 value={kind}
-                onChange={(v) => switchKind(idx, v as NextHopKind)}
+                onChange={(v) => switchKind(idx, v)}
                 disabled={disabled}
                 style={{ width: "100%" }}
                 options={[

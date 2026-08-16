@@ -4252,7 +4252,7 @@ export function sanitizeHealthCheck(obj: Record<string, unknown>): Record<string
     for (const [k, v] of Object.entries(тело as Record<string, unknown>)) {
       if (typeof v === "string" && v.trim() === "") continue;
       if (v === undefined || v === null) continue;
-      if (typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0) continue;
+      if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
       очищенное[k] = v;
     }
     next[ветвь] = очищенное;

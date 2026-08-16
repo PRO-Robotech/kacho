@@ -74,10 +74,14 @@ export function QuotasPage() {
     })),
   });
 
+  // Отметка последнего обновления каждого запроса — простое выражение в списке
+  // зависимостей. Вычислять её ВНУТРИ списка нельзя: правило use-memo требует
+  // простых выражений, а вычисление на месте оно прочесть не может.
+  const обновлено = results.map((r) => r.dataUpdatedAt).join("|");
   const quotas: Quota[] = useMemo(
     () => results.flatMap((r) => r.data?.quotas ?? []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [results.map((r) => r.dataUpdatedAt).join("|")],
+    [обновлено],
   );
   const rows = useMemo(() => quotaRows(quotas), [quotas]);
 
