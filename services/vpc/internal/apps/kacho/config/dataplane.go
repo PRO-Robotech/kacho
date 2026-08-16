@@ -105,6 +105,23 @@ type ExecutorProfileConfig struct {
 	// интерфейс.
 	ConnectionLimitPerInterface int `mapstructure:"connection-limit-per-interface"`
 
+	// ConnectionRateLimitPerInterfacePerSecond — темп установления новых соединений
+	// на интерфейс, в секунду, который держит исполнитель этого стенда.
+	//
+	// Отдельная величина от предыдущей, а не её следствие, — по той же причине, по
+	// какой они порознь опубликованы арендатору: предел одновременных защищает
+	// ПАМЯТЬ под записями о соединениях, а темп — стоимость их появления. Поток
+	// полуоткрытых соединений исчерпывает второе, не приближаясь к первому.
+	ConnectionRateLimitPerInterfacePerSecond int `mapstructure:"connection-rate-limit-per-interface-per-second"`
+
+	// ConnectionRateBurstPerInterface — кратковременный всплеск темпа установления
+	// соединений на интерфейс, который держит исполнитель этого стенда.
+	//
+	// Объявляется ВМЕСТЕ с постоянным темпом и порознь с ним не имеет смысла: темп
+	// без права на всплеск отвергал бы законную неравномерность нагрузки, а всплеск
+	// без темпа не говорит, сколько его можно держать.
+	ConnectionRateBurstPerInterface int `mapstructure:"connection-rate-burst-per-interface"`
+
 	// TenantSettableBandwidthLimit — арендатор вправе сам задать ограничение полосы
 	// (а не только получить гарантированную). Объявляется вместе с
 	// GuaranteedBandwidthPerInterfaceMbps: ограничивать не от чего, если полоса не

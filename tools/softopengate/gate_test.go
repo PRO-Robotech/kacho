@@ -5,7 +5,6 @@ package softopengate
 
 import (
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // declaredFilterRoots — все фильтры сужения страницы. Перечислены ЦЕЛИКОМ, а не
@@ -93,7 +94,7 @@ func repoRoot(t *testing.T) string {
 // должен зависеть от локального мусора рядом.
 func trackedPageFilterDirs(t *testing.T, repo string) []string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", repo, "ls-files", "-z", "--", pageFilterDirGlob+"/*.go").Output()
+	out, err := gitenv.Command(repo, "ls-files", "-z", "--", pageFilterDirGlob+"/*.go").Output()
 	require.NoError(t, err, "git ls-files сорвался — предпосылку сверки не на чем проверить")
 
 	seen := map[string]bool{}

@@ -452,11 +452,17 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// СЛИЯНИЕ: эта ветка добавляет к каталогу ещё две группы, обе рутинные.
 	// (а) шов с исполнителем датаплейна (`vpc.v1.InternalDataplaneService`): поток
 	// намерения `WatchIntent` (`system_viewer` @ cluster) и подтверждение применения
-	// `ReportIntentApplied` (`system_admin` @ cluster). Полоса ACR у потока — та же,
-	// что у остальных внутренних чтений инфра-поверхности: поднимать её значило бы
-	// требовать повторной аутентификации от машинного вызывающего, у которого
-	// интерактивной сессии нет вовсе. Отношения при этом РАЗНЫЕ у чтения и записи:
-	// право смотреть намерение не даёт права объявлять применённым что угодно.
+	// `ReportIntentApplied` (`system_admin` @ cluster).
+	//
+	// ОБЕ ЗАПИСИ СНЯТЫ (kacho#400) — вместе со всем швом: исполнителя не
+	// существует, вызывающей стороны у подтверждения не было ни одной. Абзац
+	// оставлен, а не удалён, потому что он объясняет, откуда брались числа
+	// предыдущего замера; сегодня он читается как история, а не как описание
+	// каталога. Обе записи были рутинными, поэтому снятие вычитается целиком из
+	// рутинной полосы: 265→263 routine, итог 327→325; sensitive (28) и exempt (34)
+	// не тронуты. Имена обеих RPC перешли в перепись снятой поверхности
+	// (`internal/repohygiene`), чтобы не вернуться молча.
+	//
 	// (б) ресурс «именованный набор префиксов» (`vpc.v1.CidrGroupService`, восемь
 	// публичных методов: чтение, список, история операций, создание, правка, два
 	// глагола состава, удаление) — ни один не меняет посадку безопасности
@@ -489,9 +495,9 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// «да» каждому аутентифицированному, а эти числа принадлежат одному
 	// арендатору. 264→265 routine, итог 326→327; sensitive и exempt не тронуты.
 	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 265, n1, "routine count")
+	assert.Equal(t, 263, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 327, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 325, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

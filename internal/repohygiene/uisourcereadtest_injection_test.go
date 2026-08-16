@@ -31,6 +31,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,12 +334,12 @@ func TestUISourceReadGateOnTreeFailsOnInjectedDefect(t *testing.T) {
 	// Гейт берёт состав у git-индекса, поэтому файл на диске ему не виден:
 	// без `git add` инъекция дала бы ложное «гейт мёртв».
 	addArgs := append([]string{"-C", root, "add", "-f", "--"}, rels...)
-	if out, err := exec.Command("git", addArgs...).CombinedOutput(); err != nil {
+	if out, err := gitenv.Command("", addArgs...).CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v\n%s", err, out)
 	}
 	t.Cleanup(func() {
 		rmArgs := append([]string{"-C", root, "rm", "-q", "-f", "--"}, rels...)
-		if out, err := exec.Command("git", rmArgs...).CombinedOutput(); err != nil {
+		if out, err := gitenv.Command("", rmArgs...).CombinedOutput(); err != nil {
 			t.Errorf("уборка инъекции не удалась: %v\n%s — дерево осталось грязным", err, out)
 		}
 	})

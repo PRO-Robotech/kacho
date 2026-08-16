@@ -381,3 +381,16 @@ body.ant-modal-open {
 .kc-grid-table td:not(:last-child) {
   border-right: 1px solid var(--kc-border-secondary);
 }
+
+/* Подсветка строки, чьё содержимое раскрыто в боковой панели (`selectedRowKey`
+ * у ResourceTable): связь панель↔строка. Правило переехало сюда вместе с самим
+ * пропом (#405) — стиль, объявленный в одном модуле, работал бы ровно там, где
+ * его объявили, и молча не работал бы у следующего. Перебивает zebra-striping и
+ * красит закреплённую ячейку. */
+.kc-table .ant-table-row.kc-row-selected > .ant-table-cell,
+.kc-table .ant-table-row.kc-row-selected > .ant-table-cell-fix-left {
+  background: var(--kc-primary-bg, rgb(64 128 255 / 0.16)) !important;
+}
+.kc-table .ant-table-row.kc-row-selected > .ant-table-cell:first-child {
+  box-shadow: inset 3px 0 0 var(--kc-primary, #4080ff);
+}

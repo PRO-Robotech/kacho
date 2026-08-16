@@ -12,7 +12,6 @@ export const TYPES = {
   reference: 'Reference',
   cidrSpec: 'CidrBlocks',
   addressSpec: 'AddressSpec (oneof)',
-  applyState: 'ApplyState',
 } as const
 
 export type TypeKey = keyof typeof TYPES

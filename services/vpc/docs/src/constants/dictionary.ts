@@ -9,10 +9,6 @@ export const DICTIONARY = {
   createdAt: { short: 'Время создания (output-only; truncate до секунд)' },
   updateMask: { short: 'FieldMask: список изменяемых полей. Неизвестное поле / immutable → InvalidArgument; пустой mask = full-PATCH' },
   status: { short: 'Грубый статус ресурса (output-only enum)' },
-  applyState: {
-    short:
-      'Применено ли намерение ТЕКУЩЕЙ ревизии (output-only). Незаполненное поле — «утверждения нет», а не «не применено»; заполняется Get и List. Классы отказа и три состояния — в обзоре API',
-  },
   filter: { short: 'Строка фильтра (конвенция Kachō; поддерживается name="<value>")' },
   pageSize: { short: 'Размер страницы (0 → 50, max 1000)' },
   pageToken: { short: 'Opaque cursor (base64 от {created_at, id}); невалидный → InvalidArgument' },

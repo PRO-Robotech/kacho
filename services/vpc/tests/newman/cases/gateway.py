@@ -38,10 +38,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/gateways/{{gwId}}",
              test_script=[*assert_status(200),
-                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('gwId')));",
-                          # APPLY-11: чтение ресурса со строкой намерения несёт
-                          # состояние применения.
-                          *assert_apply_state_in_flight("GW")])),
+                          "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('gwId')));"])),
         retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/gateways/{{gwId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),

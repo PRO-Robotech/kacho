@@ -52,12 +52,13 @@ import (
 	"bytes"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // makeMentionRe — вызов вида make [-C <каталог>] <цель> внутри inline-кода.
@@ -189,7 +190,7 @@ func checkNamedMakeTargets(path, raw string, known map[string]bool) (findings []
 func TestNamedMakeTargetExists(t *testing.T) {
 	root := repoRoot(t)
 
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	out, err := gitenv.Command(root, "ls-files", "-z").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — без переписи «ноль находок» неотличимо от "+
 			"«ноль прочитанного»", err)

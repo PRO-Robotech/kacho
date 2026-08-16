@@ -6,6 +6,7 @@ package drainer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -245,6 +246,32 @@ type Config struct {
 	// oldest-pending-age метрика всё равно покрывает «доставка застряла»). Опрос
 	// использует тот же partial-index, что и claim.
 	WedgeWarnAfter time.Duration
+
+	// PermanentPolicy — что делать с ПОСТОЯННЫМ отказом ПРИМЕНЕНИЯ. Умолчание
+	// (нулевое значение) — травить, то есть сегодняшнее поведение.
+	//
+	// RetryPermanent законен ТОЛЬКО без PartitionColumn: обоснование политики
+	// целиком опирается на отсутствие партиции. Пара отвергается Validate, а не
+	// оговаривается комментарием. Полностью — у типа PermanentPolicy.
+	PermanentPolicy PermanentPolicy
+}
+
+// Validate отвергает настройку, которая внутренне противоречива.
+//
+// Отдельный экспортируемый метод, а не ветка внутри New: правило проверяемо без
+// пула и без базы, и проверять его хочется там же, где оно записано.
+func (c Config) Validate() error {
+	if c.PermanentPolicy == RetryPermanent && c.PartitionColumn != "" {
+		return fmt.Errorf(
+			"drainer.Config: PermanentPolicy=RetryPermanent несовместим с "+
+				"PartitionColumn=%q — политика повтора обоснована ОТСУТСТВИЕМ партиции "+
+				"(коммутативному потоку нечего заклинивать), а с ключом порядка "+
+				"постоянный отказ заклинил бы свою партицию навсегда: ни одна строка "+
+				"за ним не будет взята. Либо сними ключ порядка, либо оставь травление "+
+				"и подними возврат отравленных строк",
+			c.PartitionColumn)
+	}
+	return nil
 }
 
 // withDefaults заполняет нулевые поля конфигом по умолчанию.
@@ -426,6 +453,9 @@ func New[T any](
 	}
 	if applier == nil {
 		return nil, errors.New("drainer.New: applier is nil")
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 	if logger == nil {
 		logger = slog.Default()

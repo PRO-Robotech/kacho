@@ -45,6 +45,6 @@ type LoadBalancerRecord struct {
 // сторе) и молча прятало собственные ресурсы тенанта.
 type LoadBalancerFilter struct {
 	ProjectID string
-	Name      string
+	Name      *NameFilter
 	Filter    string
 }

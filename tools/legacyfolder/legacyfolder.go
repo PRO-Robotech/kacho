@@ -55,12 +55,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // idWords are the components that turn a preceding "folder" into the retired
@@ -330,8 +331,7 @@ func (s ignoreSet) covers(rel string) bool {
 // newly authored file nobody has added yet is exactly what this must catch.
 func ignoredPaths(repoRoot string) ignoreSet {
 	set := ignoreSet{exact: map[string]bool{}}
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
-	cmd.Dir = repoRoot
+	cmd := gitenv.Command(repoRoot, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
 	out, err := cmd.Output()
 	if err != nil {
 		return set

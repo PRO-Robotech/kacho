@@ -133,14 +133,16 @@ func (r *SnapshotRepo) List(ctx context.Context, p snapshot.Pagination) ([]*doma
 	if p.ProjectID != "" {
 		add("s.project_id = $%d", p.ProjectID)
 	}
-	if p.Filter != "" {
-		add("s.name = $%d", p.Filter)
+	if frag, fargs := nameFilterCond("s", p.FilterAST, len(args)+1); frag != "" {
+		args = append(args, fargs...)
+		conds = append(conds, frag)
 	}
 	if p.PageToken != "" {
 		cur, derr := decodePageToken(p.PageToken)
 		if derr != nil {
 			return nil, "", derr
 		}
+		// keyset по (created_at,id): строки строго после курсора.
 		args = append(args, cur.createdAt, cur.id)
 		conds = append(conds, fmt.Sprintf("(s.created_at, s.id) > ($%d, $%d)", len(args)-1, len(args)))
 	}
