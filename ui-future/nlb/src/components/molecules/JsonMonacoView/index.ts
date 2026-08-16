@@ -1,2 +1,4 @@
-export * from "./JsonMonacoView";
-export * from "./LazyJsonMonacoView";
+// Единственная реализация живёт в `shared/`. Копия в модуле была форком:
+// правка, севшая в одну копию, молча минует остальные, и пользователь читает
+// разницу как «другое место продукта» (#405).
+export * from "@shared/components/molecules/JsonMonacoView";
