@@ -86,7 +86,10 @@ export function ResourceLink({
       ) : (
         <span className={plain ? "text-foreground" : "text-foreground font-medium"}>{label}</span>
       )}
-      {copy && full ? <CopyableName name={full} iconOnly /> : null}
+      {/* Копируется ЗНАЧЕНИЕ, а не показанное: усечение — свойство показа, и
+          идентификатор с многоточием на конце не находится нигде и не
+          вставляется никуда. Ошибку такого рода замечает уже тот, кто вставил. */}
+      {copy && (name || rid) ? <CopyableName name={name ?? ""} fallback={rid} iconOnly /> : null}
     </span>
   );
 }

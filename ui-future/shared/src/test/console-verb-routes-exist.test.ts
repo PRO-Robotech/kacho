@@ -296,7 +296,15 @@ describe("console addresses only verb-routes the contract serves", () => {
     //   · `/storage/v1/snapshots/{id}:copy` — копия снимка в другую зону;
     //   · `/storage/v1/images/{id}:copy`   — копия образа в другой регион.
     // Совпадение каждого со связыванием контракта подтверждает утверждение ниже.
-    expect(uses.length).toBe(48);
+    //
+    // Было 48. Убыль законна и ровно две: `/iam/v1/users/{id}:block` и
+    // `:unblock` адресовались ТОЛЬКО из `UsersPage` — страницы, которую не
+    // рендерил ни один маршрут (`/iam/users` ведёт в `IamUsersListShell`).
+    // Страница снята вместе с находкой #421, и вместе с ней с этого надзора
+    // ушли два глагола. Связывания в контракте остались: с консоли пропало
+    // обращение, а не возможность. Отсутствие запрета участия на живой странице
+    // заведено предметом (#440), а не оставлено молчаливым.
+    expect(uses.length).toBe(46);
   });
 
   it("every verb-route the console addresses exists in the contract", () => {

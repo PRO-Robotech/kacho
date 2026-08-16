@@ -35,6 +35,7 @@ import { RemoteShell } from "@/pages/RemoteShell";
 import { TokensRoutes } from "@/pages/TokensPage";
 
 const ClusterAdminsPage = lazy(() => import("@shared/pages/system/ClusterAdminsPage"));
+const LimitsPage = lazy(() => import("@shared/pages/system/LimitsPage"));
 
 const spin = (
   <div style={{ padding: 48, textAlign: "center" }}>
@@ -69,6 +70,14 @@ export function SystemRoutes() {
           element={
             <Suspense fallback={spin}>
               <ClusterAdminsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="limits"
+          element={
+            <Suspense fallback={spin}>
+              <LimitsPage />
             </Suspense>
           }
         />
