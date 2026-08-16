@@ -117,7 +117,7 @@ function BlockedReasonCell({
 // Pool kinds — единственный валидный тип. KAC-70 удалил EXTERNAL_TEST/
 // RESERVED_INTERNAL из proto enum kacho.cloud.vpc.v1.AddressPoolKind
 // (`reserved 2, 100`).
-const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "External" }];
+const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "Внешний публичный" }];
 
 // Правило группы размещения названо СЛЕДСТВИЕМ, а не машинным значением: «SPREAD»
 // не говорит ни что группа разнесена, ни зачем. Словарь один и тот же в списке и
@@ -191,7 +191,7 @@ const FIELD_DESCRIPTION: FormField = {
 // Hidden поле для project-context
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -199,7 +199,7 @@ const FIELD_PROJECT_ID: FormField = {
 // Hidden поле для account-context (IAM: Project / ServiceAccount scoped по Account).
 const FIELD_ACCOUNT_ID: FormField = {
   name: "account_id",
-  label: "Account",
+  label: "Аккаунт",
   type: "string",
   hidden: true,
 };
@@ -395,15 +395,15 @@ function targetCell(row: Record<string, unknown>): ReactNode {
   if (kind === "resources") {
     const n = targetResources(t).length;
     return (
-      <Tag color="geekblue" title="Per-object least-priv">
+      <Tag color="geekblue" title="Права только на перечисленные объекты">
         {n} объект{n === 1 ? "" : "а/ов"}
       </Tag>
     );
   }
   if (kind === "allInScope")
     return (
-      <Tag title="Весь scope (явный opt-in)" color="default">
-        весь scope
+      <Tag title="Вся область — выбрано явно" color="default">
+        вся область
       </Tag>
     );
   return IAM_DASH;
@@ -522,7 +522,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { label: "Управление доступом", href: "#" },
     ],
     emptyState: {
-      title: "Создайте первый Account",
+      title: "Создайте первый аккаунт",
       body:
         "Account — верхнеуровневый tenant Kachō: владелец, проекты, пользователи и роли живут внутри него. " +
         "Создайте Account, чтобы начать выдавать доступ и заводить проекты.",
@@ -566,7 +566,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME,
       {
         name: "account_id",
-        label: "Account",
+        label: "Аккаунт",
         type: "string",
         hidden: true,
         immutable: true,
@@ -651,7 +651,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string | undefined} />,
       },
       { header: "ID", path: "id", format: "uid-short" },
-      { header: "External ID", path: "external_id", format: "uid-short" },
+      { header: "Внешний идентификатор", path: "external_id", format: "uid-short" },
       { header: "Создан", path: "created_at", format: "datetime" },
     ],
     docs: [
@@ -734,7 +734,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "is_system",
         // IAM-1 F4/F6: isSystem° derived (definitionTier.tierType==iam.cluster);
         // fallback на хранимый is_system/isSystem (AS-IS до миграции).
-        render: (row) => (roleIsSystem(row) ? <Tag color="purple">system</Tag> : <Tag color="default">custom</Tag>),
+        render: (row) => (roleIsSystem(row) ? <Tag color="purple">Системная</Tag> : <Tag color="default">Пользовательская</Tag>),
       },
       COL_ID,
       {
@@ -848,8 +848,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => scopeTypeCell(row),
       },
       {
-        // Anchor — scopeId, ссылка по типу якоря.
-        header: "Anchor",
+        // Якорь — scopeId, ссылка по типу якоря.
+        header: "Якорь",
         path: "scope_id",
         render: (row) => scopeAnchorCell(row),
       },
@@ -879,8 +879,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "deletion_protection",
         render: (row) =>
           row.deletion_protection || row.deletionProtection ? (
-            <Tag color="gold" title="Защита от удаления (owner-привязка)">
-              Owner
+            <Tag color="gold" title="Защита от удаления: привязка владельца">
+              Владелец
             </Tag>
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -1212,7 +1212,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       {
         name: "network_id",
-        label: "Network",
+        label: "Облачная сеть",
         type: "ref",
         refResource: "networks",
         refProjectScoped: true,
@@ -1270,7 +1270,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "route_table_id",
-        label: "Route Table",
+        label: "Таблица маршрутов",
         type: "ref",
         refResource: "route-tables",
         refProjectScoped: true,
@@ -1912,7 +1912,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Address",
+            label: "IP-адрес",
             type: "ref",
             refResource: "addresses",
             required: true,
@@ -1946,7 +1946,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Address",
+            label: "IP-адрес",
             type: "ref",
             refResource: "addresses",
             required: true,
@@ -1979,7 +1979,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Security Group",
+            label: "Группа безопасности",
             type: "ref",
             refResource: "security-groups",
             refProjectScoped: true,
@@ -2101,7 +2101,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "network_id",
         // Create-only: UpdateSecurityGroupRequest не несёт network_id.
         immutable: true,
-        label: "Network",
+        label: "Облачная сеть",
         type: "ref",
         refResource: "networks",
         refProjectScoped: true,
@@ -2121,7 +2121,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // сообщений нет вовсе: правила, набранные в форме создания, край
         // выбрасывал молча, и группа создавалась пустой (default-deny) с 200.
         name: "rule_specs",
-        label: "Rules",
+        label: "Правила",
         type: "sg-rules",
         description:
           "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или предустановленный набор. Без правил трафик запрещён.",
@@ -2444,7 +2444,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "zones",
     singular: "Зона",
     accusative: "зону",
-    plural: "Зоны (Compute)",
+    plural: `Зоны (${SERVICES.compute.title})`,
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
@@ -2481,7 +2481,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "regions",
     singular: "Регион",
     accusative: "регион",
-    plural: "Регионы (Compute)",
+    plural: `Регионы (${SERVICES.compute.title})`,
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
@@ -2729,7 +2729,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "vm_spec.metadata_options.metadata_endpoint",
-        label: "Metadata endpoint",
+        label: "Адрес службы метаданных",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "VM" },
@@ -2738,7 +2738,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "ENABLED", label: "ENABLED — доступен из гостя" },
           { value: "DISABLED", label: "DISABLED — недоступен" },
         ],
-        description: "Доступность metadata-эндпоинта из гостевой ОС.",
+        description: "Доступность службы метаданных из гостевой ОС.",
       },
       {
         name: "assign_external_address",
@@ -2761,14 +2761,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // --- CONTAINER-only (instance_kind = CONTAINER) ---
       {
         name: "container_spec.restart_policy",
-        label: "Restart policy",
+        label: "Политика перезапуска",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "CONTAINER" },
         default: "NEVER",
         options: [
           { value: "NEVER", label: "NEVER — не перезапускать" },
-          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом exit" },
+          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом коде возврата" },
           { value: "ALWAYS", label: "ALWAYS — всегда" },
         ],
         description: "Политика перезапуска контейнер-джобы.",
@@ -2840,7 +2840,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             itemFields: [
               {
                 name: "value",
-                label: "Security Group",
+                label: "Группа безопасности",
                 type: "ref",
                 refResource: "security-groups",
                 refProjectScoped: true,
@@ -2854,7 +2854,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "hostname",
-        label: "Hostname",
+        label: "Имя хоста",
         type: "string",
         placeholder: "(= id если пусто)",
         pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
@@ -3475,7 +3475,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "infra.underlay_anchor",
-        label: "Якорь underlay",
+        label: "Якорь транспортной сети",
         type: "string",
         placeholder: "spine-1",
         description: "Транспортная координата зоны. Никогда не показывается тенанту.",
@@ -3624,15 +3624,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     fields: [
       {
         name: "name",
-        label: "Name",
+        label: "Имя",
         type: "string",
         placeholder: "<pool-name>",
       },
-      { name: "description", label: "Description", type: "text", rows: 2 },
+      { name: "description", label: "Описание", type: "text", rows: 2 },
       {
         // kind — UI ограничен одним значением, скрыт; backend требует поле в payload.
         name: "kind",
-        label: "Kind",
+        label: "Вид",
         type: "enum",
         options: POOL_KINDS,
         required: true,
@@ -3642,7 +3642,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "zone_id",
-        label: "Zone",
+        label: "Зона",
         type: "ref",
         refResource: "zones",
         immutable: true,
@@ -3655,7 +3655,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // через ResourceFormModal custom-ветку.
       {
         name: "v4_cidr_blocks",
-        label: "IPv4 CIDR blocks",
+        label: "Блоки IPv4 CIDR",
         type: "array",
         itemLabel: "v4-CIDR",
         description: "IPv4 CIDR-блоки, из которых аллоцируются внешние v4 адреса.",
@@ -3676,7 +3676,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "v6_cidr_blocks",
-        label: "IPv6 CIDR blocks",
+        label: "Блоки IPv6 CIDR",
         type: "array",
         itemLabel: "v6-CIDR",
         description: "IPv6 CIDR-блоки, из которых аллоцируются внешние v6 адреса.",
@@ -3694,14 +3694,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "is_default",
-        label: "Default for zone+kind",
+        label: "По умолчанию для зоны и вида",
         type: "bool",
         default: false,
         description: "Пул по умолчанию — один на пару «зона + семейство адресов».",
       },
       {
         name: "selector_priority",
-        label: "Selector priority",
+        label: "Приоритет выбора",
         type: "int",
         default: 0,
         description: "Tie-break при равенстве specificity. Higher wins.",
@@ -4015,7 +4015,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // int-секундное имя deregistration_delay_seconds — reserved и на Create,
         // и на Update. Форма редактирует число, sanitize/hydrate переводят.
         name: "deregistration_delay",
-        label: "Drain timeout (с)",
+        label: "Время вывода из-под нагрузки (с)",
         type: "int",
         required: false,
         default: 300,
@@ -4091,7 +4091,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "health_check.unhealthy_threshold",
-        label: "HC: failure threshold",
+        label: "Порог отказа проверки",
         type: "int",
         required: true,
         default: 2,
@@ -4099,7 +4099,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "health_check.healthy_threshold",
-        label: "HC: success threshold",
+        label: "Порог успеха проверки",
         type: "int",
         required: true,
         default: 2,

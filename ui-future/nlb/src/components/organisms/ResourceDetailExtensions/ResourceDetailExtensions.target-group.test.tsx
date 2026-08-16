@@ -29,8 +29,15 @@ function textOf(value: ReactNode): string {
   return render(<div>{value}</div>).container.textContent ?? "";
 }
 
+// Подпись строки — ReactNode (в неё кладут ⓘ-подсказку), поэтому сверять её
+// надо ПОКАЗАННЫМ текстом, а не приведением типа: `String(<узел>)` дал бы
+// «[object Object]» для любой подписи, и проба стала бы истинной при любой.
+function labelText(i: DescItem): string {
+  return textOf(i.label);
+}
+
 function labels(items: DescItem[]): string[] {
-  return items.map((i) => i.label);
+  return items.map(labelText);
 }
 
 const TG = {
@@ -49,20 +56,20 @@ const TG = {
 describe("обзор целевой группы против контракта ствола", () => {
   it("drain-таймаут читается из Duration-поля, а не из снятого целочисленного", () => {
     const items = itemsFor(TG);
-    const drain = items.find((i) => /drain/i.test(i.label));
+    const drain = items.find((i) => /вывода из-под нагрузки/i.test(labelText(i)));
     expect(drain).toBeDefined();
     expect(textOf(drain!.value)).toContain("300s");
     expect(textOf(drain!.value)).not.toContain("42");
   });
 
   it("подпись drain-строки не обещает секунды, которых в ответе нет", () => {
-    const drain = itemsFor(TG).find((i) => /drain/i.test(i.label))!;
-    expect(drain.label).not.toMatch(/\(с\)/);
+    const drain = itemsFor(TG).find((i) => /вывода из-под нагрузки/i.test(labelText(i)))!;
+    expect(labelText(drain)).not.toMatch(/\(с\)/);
   });
 
   it("проба показывается выбранной ветвью и портом, а не снятым именем", () => {
     const items = itemsFor(TG);
-    const hc = items.find((i) => /health/i.test(i.label));
+    const hc = items.find((i) => /проверка состояния/i.test(labelText(i)));
     expect(hc).toBeDefined();
     const text = textOf(hc!.value);
     expect(text).toContain("http");
@@ -73,7 +80,7 @@ describe("обзор целевой группы против контракта
     // Положительный контроль отрицания выше: без health_check строка обязана
     // остаться пустой, а не показать выдуманную ветвь.
     const items = itemsFor({ ...TG, health_check: undefined });
-    const hc = items.find((i) => /health/i.test(i.label))!;
+    const hc = items.find((i) => /проверка состояния/i.test(labelText(i)))!;
     expect(textOf(hc.value)).toBe("—");
   });
 

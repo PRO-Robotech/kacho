@@ -22,7 +22,10 @@ import { InstanceDisksTab } from "@/components/organisms/instance/InstanceDisksT
 import { InstanceNicsTab } from "@/components/organisms/instance/InstanceNicsTab";
 
 export interface DescItem {
-  label: string;
+  /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
+   *  именем — поле, которое заполняет система, иначе читается как пустое,
+   *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
+  label: ReactNode;
   value: ReactNode;
 }
 
@@ -107,8 +110,8 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "Гарантия CPU, %", value: txt(getByPath<unknown>(data, "cpu_guarantee_percent")) },
         { label: "Источник ОС", value: code(bootType) },
         { label: "Образ", value: bootName ? txt(bootName) : code(bootId) },
-        { label: "Image digest", value: code(bootDigest) },
-        { label: "Boot-том", value: code(bootVolume) },
+        { label: "Дайджест образа", value: code(bootDigest) },
+        { label: "Загрузочный том", value: code(bootVolume) },
         { label: "Сервисный аккаунт", value: code(getByPath<string>(data, "service_account.id")) },
         { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
         ...(statusReason ? [{ label: "Причина статуса", value: txt(statusReason) }] : []),

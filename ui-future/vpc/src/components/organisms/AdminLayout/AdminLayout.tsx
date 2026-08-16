@@ -34,7 +34,7 @@ const TABS: AdminTab[] = [
   },
   {
     key: "/system/cluster/admins",
-    label: "Cluster admins",
+    label: "Администраторы кластера",
     // KAC-196 + KAC item #2b: /iam/v1/internal/cluster/* теперь требует
     // system_admin (раньше был exempt).
     visible: (p) => p.isSystemAdmin,

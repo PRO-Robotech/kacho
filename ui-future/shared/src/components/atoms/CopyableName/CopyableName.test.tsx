@@ -30,7 +30,7 @@ describe("CopyableName", () => {
   it("renders an unnamed placeholder when no value is available", () => {
     render(<CopyableName name="" />);
 
-    expect(screen.getByText("(unnamed)")).toBeInTheDocument();
+    expect(screen.getByText("(без имени)")).toBeInTheDocument();
   });
 
   it("copies the provided name without bubbling the click", async () => {

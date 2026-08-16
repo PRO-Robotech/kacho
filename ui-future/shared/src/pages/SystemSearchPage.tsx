@@ -268,10 +268,10 @@ export function SystemSearchPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase tracking-wide">
               <tr>
-                <th className="text-left px-3 py-2">Resource</th>
-                <th className="text-left px-3 py-2">Name / ID</th>
-                <th className="text-left px-3 py-2">Project / Account</th>
-                <th className="text-left px-3 py-2">Extra</th>
+                <th className="text-left px-3 py-2">Ресурс</th>
+                <th className="text-left px-3 py-2">Имя / идентификатор</th>
+                <th className="text-left px-3 py-2">Проект / аккаунт</th>
+                <th className="text-left px-3 py-2">Дополнительно</th>
               </tr>
             </thead>
             <tbody>

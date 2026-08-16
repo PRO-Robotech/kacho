@@ -141,7 +141,7 @@ export function NetworkInterfaceDetailPage() {
                 <thead className="text-xs text-muted-foreground">
                   <tr>
                     <th className="text-left py-1 pr-3">Имя</th>
-                    <th className="text-left py-1 pr-3">Default</th>
+                    <th className="text-left py-1 pr-3">По умолчанию</th>
                     <th className="text-left py-1">ID</th>
                   </tr>
                 </thead>
@@ -161,7 +161,7 @@ export function NetworkInterfaceDetailPage() {
                             <span className="text-muted-foreground">(без имени)</span>
                           )}
                         </td>
-                        <td className="py-1 pr-3">{sg?.default_for_network ? <Tag color="gold">default</Tag> : "—"}</td>
+                        <td className="py-1 pr-3">{sg?.default_for_network ? <Tag color="gold">по умолчанию</Tag> : "—"}</td>
                         <td className="py-1 font-mono text-xs text-muted-foreground">{id}</td>
                       </tr>
                     );

@@ -45,7 +45,10 @@ import {
 } from "@/lib/storage-enums";
 
 export interface DescItem {
-  label: string;
+  /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
+   *  именем — поле, которое заполняет система, иначе читается как пустое,
+   *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
+  label: ReactNode;
   value: ReactNode;
 }
 
@@ -370,8 +373,8 @@ function FactTable({ rows }: { rows: DescItem[] }): ReactNode {
   return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
       <tbody>
-        {rows.map((r) => (
-          <tr key={r.label}>
+        {rows.map((r, i) => (
+          <tr key={i}>
             <td
               style={{
                 width: 240,

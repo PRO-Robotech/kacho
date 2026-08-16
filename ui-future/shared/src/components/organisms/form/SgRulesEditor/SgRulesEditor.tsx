@@ -455,7 +455,7 @@ export function RuleBody({
             }
             options={[
               { value: "cidr", label: "CIDR-блоки" },
-              { value: "sg", label: "Security Group" },
+              { value: "sg", label: "Группа безопасности" },
               { value: "cidr-group", label: "Набор префиксов" },
             ]}
             style={{ width: "100%" }}
@@ -612,7 +612,7 @@ function CidrChipList({
             }}
           />
           <AntButton type="primary" ghost icon={<PlusOutlined />} disabled={!draft.trim()} onClick={add}>
-            Add
+            Добавить
           </AntButton>
         </Space.Compact>
       </Space>

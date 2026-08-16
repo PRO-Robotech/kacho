@@ -7,7 +7,7 @@ export const HomePage: FC = () => {
       <div className="panel-heading">
         <div>
           <Typography.Title level={3}>Сервисы облака</Typography.Title>
-          <Typography.Text type="secondary">Host shell for future federated modules</Typography.Text>
+          <Typography.Text type="secondary">Оболочка хоста для федеративных модулей</Typography.Text>
         </div>
       </div>
     </section>
