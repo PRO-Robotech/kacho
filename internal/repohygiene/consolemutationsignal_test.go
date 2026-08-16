@@ -107,22 +107,26 @@ const consoleMutationTransportDir = "/src/api/"
 //
 // Замер на ревизии заведения: мест действия 42, из них заведено 3, в ведомости
 // 39. Предикат повторяемый — см. шапку теста.
+//
+// Самоистечение уже сработало и сняло 4 записи: диалог формы ресурса
+// (`ResourceFormDialog` у compute · nlb · registry · storage) не рендерился ни в
+// одном модуле и снят как мёртвый де-форком консоли (#405, коммиты 48c29ca2 и
+// 9f957e99). Мутации не переехали — их не стало вместе с кодом, который их звал.
+// Ровно тот исход, ради которого ведомость обязана истекать: долг закрылся не
+// работой по нему, и заметил это гейт, а не читатель.
 var consoleMutationLedger = []string{
 	"compute/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
 	"compute/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
 	"compute/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"compute/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
 	"iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx",
 	"iam/src/pages/iam/AccessPage/AccessPage.tsx",
 	"nlb/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
 	"nlb/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
 	"nlb/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"nlb/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
 	"nlb/src/components/organisms/TargetsManager/TargetsManager.tsx",
 	"registry/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
 	"registry/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
 	"registry/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"registry/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
 	"shared/src/components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx",
 	"shared/src/components/organisms/CidrTableSection/CidrTableSection.tsx",
 	"shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.tsx",
@@ -145,7 +149,6 @@ var consoleMutationLedger = []string{
 	"storage/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
 	"storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
 	"storage/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"storage/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx",
 	"vpc/src/components/molecules/DeleteButton/DeleteButton.tsx",
 }
 
