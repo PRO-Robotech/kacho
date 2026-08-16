@@ -147,3 +147,25 @@ func TestExecutorProfileLoneCommaFromEnvReadsAsUndeclared(t *testing.T) {
 	assert.False(t, cfg.StateTrackingFamilies().IsDeclared(),
 		"единственный предикат непустоты обязан прочитать одинокую запятую как «не объявлено»")
 }
+
+// TestExecutorProfileRateKnobsReachableFromEnv — темп и всплеск ДОЕЗЖАЮТ из
+// окружения (kacho#290).
+//
+// Случай заведён не для симметрии, а по факту промаха: разбор настроек резолвит
+// переменную только для ключа, который ему уже известен из умолчаний. Поле в
+// структуре ключом его не делает — величина остаётся нулём при заданной
+// оператором переменной, и остаётся МОЛЧА. Ровно это и произошло: обе ручки
+// приехали в чарт и в структуру, умолчаний не получили, и боевой стенд отказывал
+// в старте, называя ручку, которую оператор уже задал.
+//
+// Числа заведомо не круглые и разные между собой: одинаковые не отличили бы
+// «приехало своё» от «приехало соседнее».
+func TestExecutorProfileRateKnobsReachableFromEnv(t *testing.T) {
+	t.Setenv("KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_LIMIT_PER_INTERFACE_PER_SECOND", "4321")
+	t.Setenv("KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_BURST_PER_INTERFACE", "17654")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 4321, cfg.Dataplane.Executor.ConnectionRateLimitPerInterfacePerSecond)
+	assert.Equal(t, 17654, cfg.Dataplane.Executor.ConnectionRateBurstPerInterface)
+}

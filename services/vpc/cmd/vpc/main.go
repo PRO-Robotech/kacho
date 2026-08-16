@@ -223,6 +223,8 @@ func runServe(cfg config.Config) error {
 		"product_payload_floor_bytes", domain.GuaranteedPayloadFloorBytes,
 		"guaranteed_bandwidth_per_interface_mbps", cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
 		"connection_limit_per_interface", cfg.Dataplane.Executor.ConnectionLimitPerInterface,
+		"connection_rate_limit_per_interface_per_second", cfg.Dataplane.Executor.ConnectionRateLimitPerInterfacePerSecond,
+		"connection_rate_burst_per_interface", cfg.Dataplane.Executor.ConnectionRateBurstPerInterface,
 		"tenant_settable_bandwidth_limit", cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
 	)
 

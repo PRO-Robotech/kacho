@@ -195,4 +195,6 @@ data:
         guaranteed-payload-bytes: {{ .Values.dataplane.executor.guaranteedPayloadBytes }}
         guaranteed-bandwidth-per-interface-mbps: {{ .Values.dataplane.executor.guaranteedBandwidthPerInterfaceMbps }}
         connection-limit-per-interface: {{ .Values.dataplane.executor.connectionLimitPerInterface }}
+        connection-rate-limit-per-interface-per-second: {{ .Values.dataplane.executor.connectionRateLimitPerInterfacePerSecond }}
+        connection-rate-burst-per-interface: {{ .Values.dataplane.executor.connectionRateBurstPerInterface }}
         tenant-settable-bandwidth-limit: {{ .Values.dataplane.executor.tenantSettableBandwidthLimit }}
