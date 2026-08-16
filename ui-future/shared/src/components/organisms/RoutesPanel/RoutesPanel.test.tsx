@@ -25,7 +25,12 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 
 const { RoutesPanel } = await import("./RoutesPanel");
 
-type Route = { destination_prefix?: string; next_hop_address?: string; gateway_id?: string };
+type Route = {
+  destination_prefix?: string;
+  next_hop_address?: string;
+  gateway_id?: string;
+  labels?: Record<string, string>;
+};
 
 function show(routes: Route[]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -139,18 +144,74 @@ describe("RoutesPanel — правка", () => {
     );
   });
 
-  it("недописанная строка на край не уезжает", async () => {
+  // Здесь стояла проба «недописанная строка на край не уезжает». Она закрепляла
+  // молчаливое удаление: сохранение ЗАМЕНЯЕТ весь список, поэтому «не уехала» и
+  // «удалена» — одно и то же, а оператору при этом отвечали успехом.
+  it("недописанная строка выключает «Сохранить» и названа под таблицей", () => {
     show([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
 
     startEdit();
     fireEvent.click(screen.getByRole("button", { name: /Добавить маршрут/ }));
+
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+    expect(screen.getByText("Строка 2: не указан префикс назначения и следующий узел")).toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("стёртый адрес существующего маршрута не удаляет его молча", () => {
+    show([
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+      { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2" },
+    ]);
+
+    startEdit();
+    fireEvent.change(rowInputs()[1], { target: { value: "" } });
+
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+    expect(screen.getByText("Строка 1: не указан следующий узел")).toBeInTheDocument();
+  });
+
+  it("дописанная строка снова включает «Сохранить» и уезжает целиком", async () => {
+    show([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
+
+    startEdit();
+    fireEvent.click(screen.getByRole("button", { name: /Добавить маршрут/ }));
+    fireEvent.change(rowInputs()[2], { target: { value: "192.168.0.0/16" } });
+    fireEvent.change(rowInputs()[3], { target: { value: "10.0.0.2" } });
+
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBeEnabled();
     save();
 
-    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
-    expect(update).toHaveBeenCalledWith("/vpc/v1/routeTables/rt-1", {
-      static_routes: [{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }],
-      update_mask: "staticRoutes",
-    });
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("/vpc/v1/routeTables/rt-1", {
+        static_routes: [
+          { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+          { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2" },
+        ],
+        update_mask: "staticRoutes",
+      }),
+    );
+  });
+
+  it("правка одной строки не стирает метки соседней", async () => {
+    show([
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+      { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2", labels: { env: "prod" } },
+    ]);
+
+    startEdit();
+    fireEvent.change(rowInputs()[1], { target: { value: "10.0.0.9" } });
+    save();
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith("/vpc/v1/routeTables/rt-1", {
+        static_routes: [
+          { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.9" },
+          { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2", labels: { env: "prod" } },
+        ],
+        update_mask: "staticRoutes",
+      }),
+    );
   });
 
   it("снятая строка в сохранение не попадает", async () => {

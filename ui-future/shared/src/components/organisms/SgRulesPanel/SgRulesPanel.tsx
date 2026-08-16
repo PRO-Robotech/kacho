@@ -21,6 +21,7 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { ResourceTable } from "@shared/components/organisms/ResourceTable";
 import { useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
+import { ruleFieldError, type RuleFieldError } from "@shared/components/organisms/form/SgRulesEditor/rule-field-error";
 import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
@@ -104,6 +105,8 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const [editObj, setEditObj] = useState<RuleExt | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null); // null = добавление
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** Отказ края по ОТКРЫТОЙ форме — показывается в ней, а не всплывающим сообщением. */
+  const [formError, setFormError] = useState<RuleFieldError | null>(null);
 
   const mutation = useMutation({
     mutationFn: (payload: unknown) => api.update(`${sgSpec.apiPath}/${sgId}/rules`, payload),
@@ -115,19 +118,34 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   // Стабильна по той же причине, что и обработчики ниже: они попадают в узел,
   // который слот шапки кладёт в состояние, и новая функция на каждом рендере
   // означала бы новый узел на каждом рендере.
+  /**
+   * Отправка, которая ОТДАЁТ отказ вызывающему.
+   *
+   * Список показывает отказ всплывающим сообщением: терять там нечего, действие
+   * умещается в один клик. Форма — не может: в ней набранное, и её отказ обязан
+   * остаться на экране рядом с полем. Поэтому решение «как показать» принимает
+   * вызывающий, а не эта функция.
+   */
+  const submit = useCallback(
+    async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
+      const resp = await mutateAsync(payload);
+      const opId = extractOperationId(resp);
+      if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
+      void refresh();
+    },
+    [mutateAsync, projectId, refresh, sgSpec.id],
+  );
+
   const runOp = useCallback(
     async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
       try {
-        const resp = await mutateAsync(payload);
-        const opId = extractOperationId(resp);
-        if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
-        void refresh();
+        await submit(payload, opTitle);
       } catch (err) {
         const m = errorText(err);
         toast.error(`Правило группы безопасности: ${m}`);
       }
     },
-    [mutateAsync, projectId, refresh, sgSpec.id],
+    [submit],
   );
 
   // Выбор — только правила с id (после backfill id есть у всех).
@@ -186,6 +204,7 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const cancelEdit = () => {
     setEditObj(null);
     setEditingId(null);
+    setFormError(null);
   };
 
   const saveEdit = async () => {
@@ -200,11 +219,21 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
       addition_rule_specs: [clean],
     };
     if (editingId) payload.deletion_rule_ids = [editingId]; // edit = delete+add
-    cancelEdit();
-    await runOp(
-      payload,
-      editingId ? "Изменение правила группы безопасности" : "Добавление правила группы безопасности",
-    );
+
+    // Форма закрывается ТОЛЬКО после успеха. Прежде `cancelEdit()` стоял ЗДЕСЬ,
+    // до отправки, и отказ края приходил в размонтированную форму: набранное
+    // правило пропадало целиком, а причину показывали всплывающим сообщением —
+    // рядом с пустым списком, где чинить уже нечего.
+    setFormError(null);
+    try {
+      await submit(
+        payload,
+        editingId ? "Изменение правила группы безопасности" : "Добавление правила группы безопасности",
+      );
+      cancelEdit();
+    } catch (err) {
+      setFormError(ruleFieldError(err));
+    }
   };
 
   // ── режим редактора ОДНОГО правила — плоская форма (RuleBody), без Collapse ──
@@ -253,6 +282,23 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         title={editingId ? "Правило" : "Правило"}
       >
         <RuleBody rule={editObj} onChange={setEditObj} editingNetworkId={networkId || undefined} />
+        {formError && (
+          // Причина стоит НАД подвалом — там, где на неё смотрят перед повторным
+          // нажатием, и рядом с полями, а не поверх экрана.
+          <div
+            role="alert"
+            style={{
+              marginTop: 12,
+              padding: "8px 12px",
+              borderRadius: 6,
+              border: "1px solid var(--kc-error)",
+              color: "var(--kc-error)",
+              fontSize: 13,
+            }}
+          >
+            {formError.field ? `${formError.field}: ${formError.message}` : formError.message}
+          </div>
+        )}
         <FormFooter
           submitLabel={editingId ? "Сохранить" : "Добавить правило"}
           submitting={mutation.isPending}
