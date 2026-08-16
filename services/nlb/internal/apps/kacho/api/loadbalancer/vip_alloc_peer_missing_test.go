@@ -161,3 +161,54 @@ func TestCreate_Worker_OwnAddressNeverVisible_IsTransientNotCapacity(t *testing.
 		"the swallowed cause stays observable on this lane too")
 	assert.Empty(t, repo.lbs, "the durable handle is compensated away")
 }
+
+// FOURTH lane — the BYO link. `acquireFamilyVIP` names three ways to obtain a
+// VIP, and its own doc says every acquire failure is logged with the underlying
+// cause: the client answer is deliberately lossy, so the server has to keep what
+// it dropped (CWE-778). Two of the three branches did that; the link branch went
+// straight to the opaque answer and recorded nothing.
+//
+// It is the branch whose answer is the LEAST self-explanatory. `Illegal argument
+// addressId` is produced by every one of NOT_FOUND / INVALID_ARGUMENT /
+// PERMISSION_DENIED / link-CAS-lost (see vpc.AttachExisting), which are four
+// unrelated conditions — a tenant naming a foreign address, and the platform
+// refusing our own well-formed request, read identically. Without the log an
+// operation that failed hours ago cannot be attributed to any of them, and the
+// only remaining evidence is the very message that was designed to carry none.
+//
+// Locked after CI run 31888611739, where this lane failed the async operation and
+// the shard verdict could name the step but nothing could name the reason.
+func TestCreate_Worker_LinkFailure_LogsSwallowedCause(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	repo, opsRepo := newFakeRepo(), newFakeOpsRepo()
+	addr := &fakeAddressClient{byoFunc: func(_ context.Context, _ vpcclient.AttachExistingRequest) (*vpcclient.AllocateResponse, error) {
+		return nil, domain.ErrFailedPrecondition
+	}}
+	uc := newCreateUC(repo, opsRepo, createDeps{reader: &fakeAddressReader{}, addr: addr, logger: logger})
+	req := baseCreateReq()
+	req.Placement = lbv1.NetworkLoadBalancer_INTERNAL_REGIONAL
+	req.V4Source = vipAddress(lbTestAddrInternal)
+
+	op, err := uc.Execute(context.Background(), req)
+	require.NoError(t, err)
+	final := awaitOpDone(t, opsRepo, op.ID)
+	require.NotNil(t, final.Error)
+
+	logged := buf.String()
+	assert.Contains(t, logged, "load_balancer_vip_acquire_failed",
+		"the link lane swallows its cause too, so it must log it like its siblings")
+	assert.Contains(t, logged, domain.ErrFailedPrecondition.Error(),
+		"the log must carry the underlying peer cause the client answer drops")
+	assert.Contains(t, logged, lbTestAddrInternal,
+		"the link lane carries no subnet_id, so the address is its only coordinate — "+
+			"without it the record says what was refused but not on what")
+
+	// The paired positive: fixing observability must NOT relax the answer. Were
+	// this missing, moving the cause into the client message would also pass.
+	assert.Equal(t, "Illegal argument addressId", final.Error.GetMessage(),
+		"the CLIENT answer stays the fixed opaque text (anti-oracle)")
+	assert.NotContains(t, final.Error.GetMessage(), domain.ErrFailedPrecondition.Error(),
+		"no leak of the peer cause into the client answer")
+}

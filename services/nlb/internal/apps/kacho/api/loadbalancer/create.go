@@ -534,6 +534,11 @@ func (u *CreateLoadBalancerUseCase) acquireFamilyVIP(
 			Owned:     false,
 		})
 		if err != nil {
+			// Link-полоса теряет причину так же, как две соседние, и её ответ
+			// ЕДИНСТВЕННЫЙ, который не сужает ничего: `Illegal argument
+			// addressId` производят и промах, и отказ в правах, и проигранный
+			// CAS. Без этой записи отказ операции неатрибутируем.
+			u.logVIPAcquireFailure(lb, fs, err)
 			return vipAllocResult{}, linkAcquireErr(err)
 		}
 		return vipAllocResult{addressID: resp.AddressID, address: resp.Value, origin: domain.VipOriginLinked}, nil
@@ -605,6 +610,10 @@ func (u *CreateLoadBalancerUseCase) logVIPAcquireFailure(
 		"family", string(fs.family),
 		"source_kind", fs.kind.String(),
 		"subnet_id", fs.subnetID,
+		// Ссылка, которую назвал вызывающий на link-полосе. Без неё запись
+		// говорит, ЧТО отказано, но не НА ЧЁМ: у link-полосы subnet_id пуст
+		// by construction, и адрес — единственная её координата.
+		"address_id", fs.addressID,
 		"err", err.Error(),
 	)
 }
