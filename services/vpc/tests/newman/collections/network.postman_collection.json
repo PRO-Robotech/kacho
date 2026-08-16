@@ -311,7 +311,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya60",
+          "name": "cleanup-delete-rya57",
           "request": {
             "method": "DELETE",
             "header": [
@@ -886,7 +886,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya61",
+          "name": "cleanup-first-rya58",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1936,7 +1936,7 @@
           ]
         },
         {
-          "name": "list-subnets-rya62",
+          "name": "list-subnets-rya59",
           "request": {
             "method": "GET",
             "header": [
@@ -1988,7 +1988,7 @@
           ]
         },
         {
-          "name": "cleanup-rya63",
+          "name": "cleanup-rya60",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2282,7 +2282,7 @@
           ]
         },
         {
-          "name": "cleanup-rya64",
+          "name": "cleanup-rya61",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2576,7 +2576,7 @@
           ]
         },
         {
-          "name": "cleanup-rya65",
+          "name": "cleanup-rya62",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2762,7 +2762,7 @@
           ]
         },
         {
-          "name": "list-ops-rya66",
+          "name": "list-ops-rya63",
           "request": {
             "method": "GET",
             "header": [
@@ -2819,7 +2819,7 @@
           ]
         },
         {
-          "name": "cleanup-rya67",
+          "name": "cleanup-rya64",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3545,7 +3545,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya68",
+          "name": "get-after-delete-rya65",
           "request": {
             "method": "GET",
             "header": [
@@ -5614,7 +5614,7 @@
           ]
         },
         {
-          "name": "list-p2-rya69",
+          "name": "list-p2-rya66",
           "request": {
             "method": "GET",
             "header": [
@@ -5724,7 +5724,7 @@
           ]
         },
         {
-          "name": "poll-1-rya70",
+          "name": "poll-1-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -7954,7 +7954,7 @@
           ]
         },
         {
-          "name": "cleanup-rya71",
+          "name": "cleanup-rya68",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9084,7 +9084,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya72",
+          "name": "cleanup-first-rya69",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9799,7 +9799,7 @@
           ]
         },
         {
-          "name": "cleanup-rya73",
+          "name": "cleanup-rya70",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10631,7 +10631,7 @@
           ]
         },
         {
-          "name": "cr-sub-rya74",
+          "name": "cr-sub-rya71",
           "request": {
             "method": "POST",
             "header": [
@@ -11203,7 +11203,7 @@
           ]
         },
         {
-          "name": "cr-rt-rya75",
+          "name": "cr-rt-rya72",
           "request": {
             "method": "POST",
             "header": [
@@ -11399,7 +11399,7 @@
           ]
         },
         {
-          "name": "cleanup-rt-rya76",
+          "name": "cleanup-rt-rya73",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11775,7 +11775,7 @@
           ]
         },
         {
-          "name": "cr-sg-rya77",
+          "name": "cr-sg-rya74",
           "request": {
             "method": "POST",
             "header": [
@@ -11971,7 +11971,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya78",
+          "name": "cleanup-sg-rya75",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12571,7 +12571,7 @@
           ]
         },
         {
-          "name": "assert-success-rya79",
+          "name": "assert-success-rya76",
           "request": {
             "method": "GET",
             "header": [
@@ -12623,7 +12623,7 @@
           ]
         },
         {
-          "name": "get-after-del-rya80",
+          "name": "get-after-del-rya77",
           "request": {
             "method": "GET",
             "header": [
@@ -13032,7 +13032,7 @@
           ]
         },
         {
-          "name": "assert-net-deleted-rya81",
+          "name": "assert-net-deleted-rya78",
           "request": {
             "method": "GET",
             "header": [
@@ -13083,7 +13083,7 @@
           ]
         },
         {
-          "name": "get-default-sg-gone-rya82",
+          "name": "get-default-sg-gone-rya79",
           "request": {
             "method": "GET",
             "header": [
@@ -13268,7 +13268,7 @@
           ]
         },
         {
-          "name": "cr-sub-rya83",
+          "name": "cr-sub-rya80",
           "request": {
             "method": "POST",
             "header": [
@@ -13407,7 +13407,7 @@
           ]
         },
         {
-          "name": "cr-nic-rya84",
+          "name": "cr-nic-rya81",
           "request": {
             "method": "POST",
             "header": [
@@ -13603,7 +13603,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya85",
+          "name": "cleanup-nic-rya82",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14097,7 +14097,7 @@
           ]
         },
         {
-          "name": "listops-before-rya86",
+          "name": "listops-before-rya83",
           "request": {
             "method": "GET",
             "header": [
@@ -14274,7 +14274,7 @@
           ]
         },
         {
-          "name": "listops-after-delete-rya87",
+          "name": "listops-after-delete-rya84",
           "request": {
             "method": "GET",
             "header": [
@@ -15100,7 +15100,7 @@
           ]
         },
         {
-          "name": "upd-rya88",
+          "name": "upd-rya85",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15222,7 +15222,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya89",
+          "name": "get-after-upd-rya86",
           "request": {
             "method": "GET",
             "header": [
@@ -15275,7 +15275,7 @@
           ]
         },
         {
-          "name": "del-rya90",
+          "name": "del-rya87",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15433,7 +15433,7 @@
           ]
         },
         {
-          "name": "get-404-rya91",
+          "name": "get-404-rya88",
           "request": {
             "method": "GET",
             "header": [
@@ -15483,949 +15483,6 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-APPLY-STATE-CRUD-OK — Свежая сеть: applyState виден на Get и отсутствует в ответе операции",
-      "description": "class:CRUD | class:CONF | priority:P1",
-      "item": [
-        {
-          "name": "create",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-apst-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('netId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-76",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "op-response-carries-no-apply-state-rya92",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "pm.test('операция завершена без ошибки', () => {",
-                  "  pm.expect(j.done, pm.response.text()).to.eql(true);",
-                  "  pm.expect(j.error, 'операция завершилась отказом').to.be.oneOf([undefined, null]);",
-                  "});",
-                  "pm.test('ресурс в ответе операции состояния применения не несёт', () => {",
-                  "  pm.expect(j.response, 'в ответе операции нет ресурса').to.be.an('object');",
-                  "  pm.expect(j.response.applyState, JSON.stringify(j.response)).to.be.oneOf([undefined, null]);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-apply-state-rya57",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const __as = pm.response.json().applyState;",
-                  "pm.test('NET: applyState доехал до арендатора', () => {",
-                  "  pm.expect(__as, 'applyState отсутствует: платформа молчит о живом ресурсе').to.be.an('object');",
-                  "  pm.expect(__as.applied, 'applied').to.be.a('boolean');",
-                  "  pm.expect(__as.reason, 'reason').to.be.a('string');",
-                  "});",
-                  "pm.test('NET: свежее намерение — в работе, без класса отказа', () => {",
-                  "  const as2 = pm.response.json().applyState;",
-                  "  pm.expect(as2.applied, 'applied').to.eql(false);",
-                  "  pm.expect(as2.reason, 'reason').to.eql('APPLY_FAILURE_REASON_UNSPECIFIED');",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-rya93",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-APPLY-STATE-LIST-PARITY-OK — Список сетей несёт то же состояние применения, что и Get каждой",
-      "description": "class:CRUD | class:CONF | priority:P1",
-      "item": [
-        {
-          "name": "create-a",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-apst-la-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('netApstA', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-77",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
-                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
-                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
-                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
-                  "(function () {",
-                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
-                  "  if (_po.error) {",
-                  "    pm.environment.unset('netApstA');",
-                  "  }",
-                  "  pm.test('operation succeeded (no phantom netApstA)', function () {",
-                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "create-b",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-apst-lb-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('netApstB', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-78",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
-                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
-                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
-                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
-                  "(function () {",
-                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
-                  "  if (_po.error) {",
-                  "    pm.environment.unset('netApstB');",
-                  "  }",
-                  "  pm.test('operation succeeded (no phantom netApstB)', function () {",
-                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "create-c",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-apst-lc-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('netApstC', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-79",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
-                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
-                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
-                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
-                  "(function () {",
-                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
-                  "  if (_po.error) {",
-                  "    pm.environment.unset('netApstC');",
-                  "  }",
-                  "  pm.test('operation succeeded (no phantom netApstC)', function () {",
-                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-one-rya58",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netApstA}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netApstA}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const __as = pm.response.json().applyState;",
-                  "pm.test('NET: applyState доехал до арендатора', () => {",
-                  "  pm.expect(__as, 'applyState отсутствует: платформа молчит о живом ресурсе').to.be.an('object');",
-                  "  pm.expect(__as.applied, 'applied').to.be.a('boolean');",
-                  "  pm.expect(__as.reason, 'reason').to.be.a('string');",
-                  "});",
-                  "pm.environment.set('netApstAState', JSON.stringify(pm.response.json().applyState));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "list-parity-lst59",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks?projectId={{_suiteProjectId}}&pageSize=1000",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks?projectId={{_suiteProjectId}}&pageSize=1000"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry until own fresh id is present in the list",
-                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_lstRetryCount', '0');",
-                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-                  "let _present = false;",
-                  "const _want = [pm.environment.get('netApstA'), pm.environment.get('netApstB'), pm.environment.get('netApstC')];",
-                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; const _have = _arr.map(x => x.id); _present = _want.every(w => _have.includes(w)); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 25) {",
-                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 500) { /* list-visibility wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_lstRetryCount');",
-                  "pm.environment.unset('_lstRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const nets = pm.response.json().networks || [];",
-                  "const want = ['netApstA', 'netApstB', 'netApstC'].map(v => pm.environment.get(v));",
-                  "const mine = nets.filter(n => want.indexOf(n.id) >= 0);",
-                  "pm.test('все три сети на странице', () => pm.expect(mine.length, pm.response.text()).to.eql(3));",
-                  "pm.test('каждый элемент страницы несёт состояние применения', () => {",
-                  "  mine.forEach(n => {",
-                  "    pm.expect(n.applyState, 'applyState у ' + n.id).to.be.an('object');",
-                  "    pm.expect(n.applyState.applied, 'applied у ' + n.id).to.be.a('boolean');",
-                  "    pm.expect(n.applyState.reason, 'reason у ' + n.id).to.be.a('string');",
-                  "  });",
-                  "});",
-                  "pm.test('состояние в списке совпадает с одиночным чтением', () => {",
-                  "  const one = mine.filter(n => n.id === pm.environment.get('netApstA'))[0];",
-                  "  pm.expect(JSON.stringify(one.applyState)).to.eql(pm.environment.get('netApstAState'));",
-                  "});"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-a-rya94",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netApstA}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netApstA}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-b-rya95",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netApstB}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netApstB}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-c-rya96",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netApstC}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks",
-                "{{netApstC}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
-                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
                 ]
               }
             }

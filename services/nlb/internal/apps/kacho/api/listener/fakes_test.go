@@ -299,7 +299,7 @@ func (r *fakeListenerReader) List(_ context.Context, f kachorepo.ListenerFilter,
 		if f.ProjectID != "" && string(l.ProjectID) != f.ProjectID {
 			continue
 		}
-		if f.Name != "" && string(l.Name) != f.Name {
+		if !kachorepo.MatchesName(f.Name, string(l.Name)) {
 			continue
 		}
 		c := *l

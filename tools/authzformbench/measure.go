@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // Outcome — three categories, never two.
@@ -192,7 +193,7 @@ type Provenance struct {
 
 func CollectProvenance(st *Stack, modelPath string, modelDigest string) Provenance {
 	rev := "unknown"
-	if out, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil { // #nosec G204 -- fixed argv
+	if out, err := gitenv.Command("", "rev-parse", "HEAD").Output(); err == nil {
 		rev = strings.TrimSpace(string(out))
 	}
 	host, _ := os.Hostname()

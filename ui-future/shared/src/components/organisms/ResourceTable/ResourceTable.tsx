@@ -48,6 +48,19 @@ interface Props<T> {
     selected: string[];
     onChange: (next: string[]) => void;
   };
+  /**
+   * Строка, чьё содержимое раскрыто рядом (боковая панель): подсвечивается,
+   * чтобы панель было видно, ОТКУДА она открыта.
+   *
+   * Это НЕ `selection`: там множество строк, выбранных под групповое действие,
+   * здесь одна строка, чей контекст показан. Один проп на оба смысла означал бы
+   * «выделено» в двух разных значениях сразу.
+   *
+   * Приехало из форка registry (#405): панель тегов образа. Второй проп того
+   * форка — `stickyFirst` — не приехал, потому что предмета у него больше нет:
+   * закрепление начального отрезка до колонки идентичности здесь безусловно.
+   */
+  selectedRowKey?: string | null;
 }
 
 export function ResourceTable<T extends object>({
@@ -60,6 +73,7 @@ export function ResourceTable<T extends object>({
   onRowClick,
   sortable = true,
   selection,
+  selectedRowKey,
 }: Props<T>) {
   const antColumns: ColumnType<T>[] = useMemo(
     () =>
@@ -158,6 +172,7 @@ export function ResourceTable<T extends object>({
     locale: {
       emptyText: empty ?? "Ресурсов не найдено",
     },
+    rowClassName: selectedRowKey ? (row) => (rowKey(row) === selectedRowKey ? "kc-row-selected" : "") : undefined,
     // Ключ выделения — тот же, что ключ строки: иначе «выделено три» и
     // «удаляем три» относились бы к разным множествам.
     rowSelection: selection

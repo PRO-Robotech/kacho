@@ -67,12 +67,13 @@ package deploy_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,7 +216,7 @@ var externalDefaults = map[string]string{
 func trackedFiles(t *testing.T, patterns ...string) []string {
 	t.Helper()
 	args := append([]string{"-C", repoRoot, "ls-files", "-z", "--"}, patterns...)
-	out, err := exec.Command("git", args...).Output()
+	out, err := gitenv.Command("", args...).Output()
 	if err != nil {
 		t.Fatalf("git ls-files %v не отработал (%v) — обход не прочитал НИ ОДНОГО файла, "+
 			"и «ноль находок» здесь ничего не значило бы", patterns, err)

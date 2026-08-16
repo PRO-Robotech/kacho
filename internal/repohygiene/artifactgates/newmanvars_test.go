@@ -38,7 +38,6 @@ package artifactgates
 import (
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -46,6 +45,8 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // runtimeVars — выставляются харнессом при запуске (deploy/scripts/newman-e2e.sh
@@ -321,9 +322,8 @@ func TestNewmanCorpusComesFromTheIndex(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(),
+		cmd := gitenv.Command(root, args...)
+		cmd.Env = append(cmd.Env,
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
 			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
 		if out, err := cmd.CombinedOutput(); err != nil {

@@ -230,3 +230,70 @@ func TestToSQL_ContainsMaliciousFieldNeutralised(t *testing.T) {
 		t.Fatalf("expected malicious Field to be identifier-quoted, got %q", frag)
 	}
 }
+
+// TestToSQLOnAppliesOperatorToCallerColumn — предикат на колонке, которую
+// выбирает ВЫЗЫВАЮЩИЙ, обязан сохранять оператор.
+//
+// Зачем эта функция вообще. `ToSQL` строит предикат по имени ПОЛЯ, то есть
+// молча полагает, что поле контракта и колонка таблицы называются одинаково. У
+// половины владельцев это неверно: колонка уточнена псевдонимом таблицы
+// (`v.name`, `i.name`, `s.name`), либо предикат собирается не там, где разбирали
+// выражение. У такого владельца выбора не было: применить узел он не мог, и
+// забирал из него ОДНО ЗНАЧЕНИЕ — вместе с чем терял оператор. Отсутствие этой
+// функции и есть причина класса #460, а не невнимательность семи авторов.
+func TestToSQLOnAppliesOperatorToCallerColumn(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		ast      *FilterAST
+		column   string
+		wantFrag string
+		wantArg  any
+	}{
+		{"равенство на уточнённой колонке", &FilterAST{Field: "name", Op: OpEquals, Value: "web"},
+			"v.name", "v.name = $2", "web"},
+		{"подстрока на уточнённой колонке", &FilterAST{Field: "name", Op: OpContains, Value: "we"},
+			"v.name", "v.name LIKE $2", "%we%"},
+		// Подстановочные знаки ЗНАЧЕНИЯ экранируются и здесь: иначе `%`,
+		// набранный в строке поиска, совпал бы со всем подряд, а ответ выглядел
+		// бы результатом поиска.
+		{"знаки значения экранируются", &FilterAST{Field: "name", Op: OpContains, Value: "50%_x"},
+			"i.name", "i.name LIKE $2", `%50\%\_x%`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frag, args := tc.ast.ToSQLOn(tc.column, 2)
+			if frag != tc.wantFrag {
+				t.Fatalf("фрагмент = %q, ожидался %q", frag, tc.wantFrag)
+			}
+			if len(args) != 1 || args[0] != tc.wantArg {
+				t.Fatalf("аргументы = %#v, ожидался [%#v]", args, tc.wantArg)
+			}
+		})
+	}
+}
+
+// TestToSQLOnIsWhatToSQLUses — у двух точек входа одно поведение, а не две копии,
+// которые разойдутся на следующей правке грамматики.
+func TestToSQLOnIsWhatToSQLUses(t *testing.T) {
+	for _, op := range []string{OpEquals, OpContains} {
+		a := &FilterAST{Field: "name", Op: op, Value: "x"}
+		f1, a1 := a.ToSQL(1)
+		f2, a2 := a.ToSQLOn("name", 1)
+		if f1 != f2 || len(a1) != len(a2) || a1[0] != a2[0] {
+			t.Fatalf("op=%s: ToSQL=%q%v расходится с ToSQLOn=%q%v", op, f1, a1, f2, a2)
+		}
+	}
+}
+
+// TestToSQLOnQuotesUnsafeColumn — колонка приходит от вызывающего, поэтому
+// защита имени идентификатора обязана действовать и на этом входе, а не только
+// на разобранном поле.
+func TestToSQLOnQuotesUnsafeColumn(t *testing.T) {
+	a := &FilterAST{Field: "name", Op: OpEquals, Value: "x"}
+	frag, _ := a.ToSQLOn(`name"; DROP TABLE users; --`, 1)
+	if strings.Contains(frag, "DROP TABLE users; --") && !strings.Contains(frag, `"`) {
+		t.Fatalf("колонка попала в SQL без защиты: %q", frag)
+	}
+	if !strings.HasPrefix(frag, `"`) {
+		t.Fatalf("небезопасная колонка обязана быть закавычена, получено %q", frag)
+	}
+}

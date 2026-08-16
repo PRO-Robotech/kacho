@@ -121,14 +121,16 @@ func (r *ImageRepo) List(ctx context.Context, p image.Pagination) ([]*domain.Ima
 	if p.ProjectID != "" {
 		add("i.project_id = $%d", p.ProjectID)
 	}
-	if p.Filter != "" {
-		add("i.name = $%d", p.Filter)
+	if frag, fargs := nameFilterCond("i", p.FilterAST, len(args)+1); frag != "" {
+		args = append(args, fargs...)
+		conds = append(conds, frag)
 	}
 	if p.PageToken != "" {
 		cur, derr := decodePageToken(p.PageToken)
 		if derr != nil {
 			return nil, "", derr
 		}
+		// keyset по (created_at,id): строки строго после курсора.
 		args = append(args, cur.createdAt, cur.id)
 		conds = append(conds, fmt.Sprintf("(i.created_at, i.id) > ($%d, $%d)", len(args)-1, len(args)))
 	}

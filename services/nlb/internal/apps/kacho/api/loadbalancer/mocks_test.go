@@ -205,7 +205,7 @@ func (q *fakeLBReader) List(ctx context.Context, f kachorepo.LoadBalancerFilter,
 		if f.ProjectID != "" && string(lb.ProjectID) != f.ProjectID {
 			continue
 		}
-		if f.Name != "" && string(lb.Name) != f.Name {
+		if !kachorepo.MatchesName(f.Name, string(lb.Name)) {
 			continue
 		}
 		c := *lb
@@ -760,9 +760,20 @@ func (f *fakeAddressClient) AttachExisting(ctx context.Context, req vpcclient.At
 	return &vpcclient.AllocateResponse{AddressID: req.AddressID, Value: "10.0.0.250"}, nil
 }
 
+// FreeIP / ClearReference отвергают пустой идентификатор ТАК ЖЕ, как боевой
+// клиент (`internal_address_client.go`: `address_id is empty` → ErrInvalidArg).
+//
+// Дублёр, принимающий больше настоящего, делает невидимым ровно тот дефект, ради
+// которого его подставляют: прежняя редакция молча записывала пустую строку в
+// `freed`, поэтому освобождение «несуществующей» аренды выглядело исполненным —
+// и класс #467 доехал до прогона зелёным. Фикстура не бывает снисходительнее
+// продукта.
 func (f *fakeAddressClient) FreeIP(ctx context.Context, addressID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if addressID == "" {
+		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	}
 	if f.freeErr != nil {
 		return f.freeErr
 	}
@@ -773,6 +784,9 @@ func (f *fakeAddressClient) FreeIP(ctx context.Context, addressID string) error 
 func (f *fakeAddressClient) ClearReference(ctx context.Context, addressID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if addressID == "" {
+		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	}
 	f.cleared = append(f.cleared, addressID)
 	return nil
 }

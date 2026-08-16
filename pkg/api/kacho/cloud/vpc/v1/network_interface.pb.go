@@ -31,9 +31,10 @@ const (
 // Значения перечислены здесь ровно те, у которых есть производитель:
 // `AVAILABLE` ставит создание интерфейса и его отвязка, `ACTIVE` — привязка.
 // Три значения, заявлявшие программирование датаплейна (`PROVISIONING`,
-// `FAILED`, `DELETING`), сняты: их не производил никто, а их предмет —
-// применение намерения — выражает `apply_state`. Номера и имена закрыты,
-// чтобы слот не вернулся под другой смысл.
+// `FAILED`, `DELETING`), сняты: их не производил никто. Их предмет —
+// применение намерения — не выражает сегодня НИЧТО: поле, заведённое под
+// него, снято тем же доводом и по тому же признаку (kacho#400). Номера и
+// имена закрыты, чтобы слот не вернулся под другой смысл.
 type NetworkInterface_Status int32
 
 const (
@@ -150,20 +151,10 @@ type NetworkInterface struct {
 	// Состояние ПРИВЯЗКИ интерфейса — только чтение.
 	//
 	// Отвечает ровно на один вопрос: занят интерфейс потребителем или свободен.
-	// О том, доехало ли изменение до сети, это поле не говорит НИЧЕГО — на тот
-	// вопрос отвечает `apply_state`.
-	Status NetworkInterface_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.vpc.v1.NetworkInterface_Status" json:"status,omitempty"`
-	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
-	//
-	// Незаполненное поле означает «платформа не делает утверждения об этом
-	// объекте» (намерение снимается) и НЕ означает «не применено».
-	//
-	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
-	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
-	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
-	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
-	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
-	ApplyState    *ApplyState `protobuf:"bytes,21,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
+	// О том, доехало ли изменение до сети, это поле не говорит НИЧЕГО — и не
+	// говорит сегодня НИ ОДНО поле этого контракта: величину, отвечавшую на тот
+	// вопрос, сняли вместе с её несуществующим производителем (kacho#400).
+	Status        NetworkInterface_Status `protobuf:"varint,13,opt,name=status,proto3,enum=kacho.cloud.vpc.v1.NetworkInterface_Status" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -296,18 +287,11 @@ func (x *NetworkInterface) GetStatus() NetworkInterface_Status {
 	return NetworkInterface_STATUS_UNSPECIFIED
 }
 
-func (x *NetworkInterface) GetApplyState() *ApplyState {
-	if x != nil {
-		return x.ApplyState
-	}
-	return nil
-}
-
 var File_kacho_cloud_vpc_v1_network_interface_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_interface_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/vpc/v1/network_interface.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\xf5\x06\n" +
+	"*kacho/cloud/vpc/v1/network_interface.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xc7\x06\n" +
 	"\x10NetworkInterface\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -326,9 +310,7 @@ const file_kacho_cloud_vpc_v1_network_interface_proto_rawDesc = "" +
 	"\vmac_address\x18\x13 \x01(\tR\n" +
 	"macAddress\x120\n" +
 	"\x14bandwidth_limit_mbps\x18\x14 \x01(\x03R\x12bandwidthLimitMbps\x12C\n" +
-	"\x06status\x18\r \x01(\x0e2+.kacho.cloud.vpc.v1.NetworkInterface.StatusR\x06status\x12?\n" +
-	"\vapply_state\x18\x15 \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
-	"applyState\x1a9\n" +
+	"\x06status\x18\r \x01(\x0e2+.kacho.cloud.vpc.v1.NetworkInterface.StatusR\x06status\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"m\n" +
@@ -337,7 +319,7 @@ const file_kacho_cloud_vpc_v1_network_interface_proto_rawDesc = "" +
 	"\n" +
 	"\x06ACTIVE\x10\x02\x12\r\n" +
 	"\tAVAILABLE\x10\x03\"\x04\b\x01\x10\x01\"\x04\b\x04\x10\x04\"\x04\b\x05\x10\x05*\fPROVISIONING*\x06FAILED*\bDELETINGJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x15\x10\x16R\vapply_stateB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_network_interface_proto_rawDescOnce sync.Once
@@ -359,19 +341,17 @@ var file_kacho_cloud_vpc_v1_network_interface_proto_goTypes = []any{
 	nil,                           // 2: kacho.cloud.vpc.v1.NetworkInterface.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
 	(*reference.Reference)(nil),   // 4: kacho.cloud.reference.Reference
-	(*ApplyState)(nil),            // 5: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_network_interface_proto_depIdxs = []int32{
 	2, // 0: kacho.cloud.vpc.v1.NetworkInterface.labels:type_name -> kacho.cloud.vpc.v1.NetworkInterface.LabelsEntry
 	3, // 1: kacho.cloud.vpc.v1.NetworkInterface.created_at:type_name -> google.protobuf.Timestamp
 	4, // 2: kacho.cloud.vpc.v1.NetworkInterface.used_by:type_name -> kacho.cloud.reference.Reference
 	0, // 3: kacho.cloud.vpc.v1.NetworkInterface.status:type_name -> kacho.cloud.vpc.v1.NetworkInterface.Status
-	5, // 4: kacho.cloud.vpc.v1.NetworkInterface.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_network_interface_proto_init() }
@@ -379,7 +359,6 @@ func file_kacho_cloud_vpc_v1_network_interface_proto_init() {
 	if File_kacho_cloud_vpc_v1_network_interface_proto != nil {
 		return
 	}
-	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

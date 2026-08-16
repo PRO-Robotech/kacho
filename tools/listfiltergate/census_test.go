@@ -38,6 +38,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // transportListingRe matches a listing method declared on a pointer receiver whose
@@ -53,10 +55,9 @@ var transportListingRe = regexp.MustCompile(
 // service, returning "<Type>.<Method>" for each.
 func treeListings(t *testing.T, root, svc string) []string {
 	t.Helper()
-	cmd := exec.Command("git", "grep", "-h", "-E",
+	cmd := gitenv.Command(root, "grep", "-h", "-E",
 		`^func \([a-z_][a-zA-Z0-9_]* \*[A-Za-z0-9_]*Handler\) List[A-Za-z0-9_]*\(`,
 		"HEAD", "--", "services/"+svc+"/internal/")
-	cmd.Dir = root
 	out, _ := cmd.Output() // exit 1 simply means "no matches"
 
 	var found []string

@@ -36,7 +36,7 @@ type TargetGroupRecord struct {
 // Per-object RBAC-видимость решается на СТРАНИЦЕ (см. LoadBalancerFilter).
 type TargetGroupFilter struct {
 	ProjectID string
-	Name      string
+	Name      *NameFilter
 	Filter    string
 }
 

@@ -47,11 +47,12 @@ package repohygiene
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // ── чтение исполняемых областей документа ────────────────────────────────────
@@ -270,7 +271,7 @@ func TestDocsDoNotChangeIntoADirectoryTheTreeDoesNotHave(t *testing.T) {
 // объявление и поведение разъезжаются молча.
 func trackedDocsAndDirs(t *testing.T, root string) ([]string, map[string]bool) {
 	t.Helper()
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	out, err := gitenv.Command(root, "ls-files", "-z").Output()
 	if err != nil {
 		t.Fatalf("git ls-files: %v — без переписи «ноль находок» неотличимо от "+
 			"«ноль прочитанного»", err)

@@ -374,3 +374,129 @@ func TestValidateBoot_IncludesTheExecutorProfileGuard(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dataplane.executor.overlapping-tenant-addresses")
 }
+
+// ─── #290: три потолка интерфейса обязаны иметь ПРОИЗВОДИТЕЛЯ на нашей стороне ──
+//
+// Продукт публикует арендатору четыре величины одного интерфейса. Полосу наша
+// сторона сверяла с посадкой давно; три остальные — предел одновременных
+// соединений, темп их установления и всплеск — до этой правки не читал НИКТО:
+// объявление стояло в домене, повторялось в документации и не участвовало ни в
+// одной ветке кода. То есть арендатору обещали то, чего никто не проверял даже у
+// СЕБЯ, не говоря об исполнителе.
+//
+// # Почему направление сравнения то же, что у пола, хотя это ПОТОЛКИ
+//
+// Разница «пол против потолка» — про то, как число читает АРЕНДАТОР: полоса
+// гарантируется снизу («не менее»), число соединений ограничивает сверху («не
+// более»). Со стороны СТЕНДА обе величины означают одно: он обязан УМЕТЬ выдать
+// опубликованное. Стенд, отслеживающий меньше опубликованного потолка, ломает
+// арендатора, который на опубликованное число рассчитывал, — и ломает молча,
+// потому что проверить стенд арендатору нечем.
+//
+// Обратная сторона (стенд умеет БОЛЬШЕ) законна и не отвергается: опубликованное
+// число не уменьшается никогда, а запас железа обещания не ломает.
+//
+// # Граница ВКЛЮЧАЮЩАЯ
+//
+// Ровно опубликованное — законно. Это утверждается отдельным случаем, иначе
+// отрицание зеленело бы и от проверки «строго больше», которая отвергала бы
+// законную посадку.
+
+// Стенд, умеющий МЕНЬШЕ опубликованного потолка, не поднимается в боевом режиме —
+// по каждой из трёх величин, и отказ НАЗЫВАЕТ ручку и оба числа.
+func TestValidateExecutorProfile_Production_InterfaceCeilingBelowPublished_Fails(t *testing.T) {
+	cases := []struct {
+		name      string
+		lower     func(*ExecutorProfileConfig)
+		knob      string
+		published int
+	}{
+		{
+			"одновременные соединения",
+			func(e *ExecutorProfileConfig) { e.ConnectionLimitPerInterface = domain.InterfaceConnectionCeiling - 1 },
+			"dataplane.executor.connection-limit-per-interface",
+			domain.InterfaceConnectionCeiling,
+		},
+		{
+			"темп установления",
+			func(e *ExecutorProfileConfig) {
+				e.ConnectionRateLimitPerInterfacePerSecond = domain.InterfaceConnectionRateCeilingPerSecond - 1
+			},
+			"dataplane.executor.connection-rate-limit-per-interface-per-second",
+			domain.InterfaceConnectionRateCeilingPerSecond,
+		},
+		{
+			"всплеск",
+			func(e *ExecutorProfileConfig) {
+				e.ConnectionRateBurstPerInterface = domain.InterfaceConnectionRateBurstCeiling - 1
+			},
+			"dataplane.executor.connection-rate-burst-per-interface",
+			domain.InterfaceConnectionRateBurstCeiling,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := prodExecutorCfg(ModeProduction)
+			tc.lower(&c.Dataplane.Executor)
+
+			err := c.ValidateExecutorProfile()
+			require.Error(t, err, "стенд умеет меньше опубликованного — посадка обязана отказать")
+			assert.Contains(t, err.Error(), tc.knob, "отказ обязан назвать ручку, которую чинить")
+			assert.Contains(t, err.Error(), strconv.Itoa(tc.published),
+				"отказ обязан назвать опубликованное число — иначе оператору нечего с ним сравнить")
+		})
+	}
+}
+
+// Ровно опубликованное — законно. Положительный контроль к отрицанию выше: без
+// него оно зеленело бы и от проверки «строго больше».
+func TestValidateExecutorProfile_Production_InterfaceCeilingExactlyPublished_Passes(t *testing.T) {
+	c := prodExecutorCfg(ModeProduction)
+	c.Dataplane.Executor.ConnectionLimitPerInterface = domain.InterfaceConnectionCeiling
+	c.Dataplane.Executor.ConnectionRateLimitPerInterfacePerSecond = domain.InterfaceConnectionRateCeilingPerSecond
+	c.Dataplane.Executor.ConnectionRateBurstPerInterface = domain.InterfaceConnectionRateBurstCeiling
+
+	require.NoError(t, c.ValidateExecutorProfile(),
+		"обещание звучит как граница, и ровно обещанное её удовлетворяет")
+}
+
+// Незаявленный темп и всплеск в боевом режиме — отказ, каждый со своей ручкой.
+//
+// Полярность та же, что у остальных гарантий профиля: ноль означает ОТСУТСТВИЕ
+// объявления, а не «ограничения нет». Обратное умолчание давало бы посадке,
+// забывшей объявить, тихое «умею всё».
+func TestValidateExecutorProfile_Production_ZeroRateGuarantees_FailNamingEachKnob(t *testing.T) {
+	cases := []struct {
+		name  string
+		unset func(*ExecutorProfileConfig)
+		knob  string
+	}{
+		{"темп", func(e *ExecutorProfileConfig) { e.ConnectionRateLimitPerInterfacePerSecond = 0 },
+			"dataplane.executor.connection-rate-limit-per-interface-per-second"},
+		{"всплеск", func(e *ExecutorProfileConfig) { e.ConnectionRateBurstPerInterface = 0 },
+			"dataplane.executor.connection-rate-burst-per-interface"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := prodExecutorCfg(ModeProduction)
+			tc.unset(&c.Dataplane.Executor)
+
+			err := c.ValidateExecutorProfile()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.knob)
+		})
+	}
+}
+
+// Dev не отвергается: датаплейна в нём нет вовсе, а требование к ПОСАДКЕ
+// осмысленно только там, где исполнитель есть. Случай симметричен уже стоящим
+// выше «Dev_…Passes» и держит границу между «негодное объявление» (любой режим) и
+// «требование к посадке» (боевой).
+func TestValidateExecutorProfile_Dev_InterfaceCeilingBelowPublished_Passes(t *testing.T) {
+	c := prodExecutorCfg(ModeDev)
+	c.Dataplane.Executor.ConnectionLimitPerInterface = domain.InterfaceConnectionCeiling - 1
+	c.Dataplane.Executor.ConnectionRateLimitPerInterfacePerSecond = domain.InterfaceConnectionRateCeilingPerSecond - 1
+	c.Dataplane.Executor.ConnectionRateBurstPerInterface = domain.InterfaceConnectionRateBurstCeiling - 1
+
+	require.NoError(t, c.ValidateExecutorProfile())
+}

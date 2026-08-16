@@ -27,13 +27,14 @@ package deploy_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ func commitResolves(sha string) bool {
 			return false
 		}
 	}
-	return exec.Command("git", "cat-file", "-e", sha+"^{commit}").Run() == nil
+	return gitenv.Command("", "cat-file", "-e", sha+"^{commit}").Run() == nil
 }
 
 // expectedTag — тег, который CI публикует для этого образа на этом коммите.
@@ -429,7 +430,7 @@ func TestProductImagePinsAreDerivedFromTheRecordedCommit(t *testing.T) {
 // чтобы отличить «коммит не существует» от «истории нет вовсе».
 func headSHA(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	out, err := gitenv.Command("", "rev-parse", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
@@ -475,7 +476,7 @@ var trackedPaths = struct {
 func gitTracks(t *testing.T, path string) bool {
 	t.Helper()
 	trackedPaths.once.Do(func() {
-		out, err := exec.Command("git", "ls-files", "-z", "--", ".").Output()
+		out, err := gitenv.Command("", "ls-files", "-z", "--", ".").Output()
 		if err != nil {
 			trackedPaths.err = err
 			return

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -264,10 +265,35 @@ func TestImageListCursorFilter(t *testing.T) {
 		require.Equal(t, "prj-1", i.ProjectID, "project-scope: prj-2 image never leaks")
 	}
 
-	filtered, _, err := r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", Filter: "img-b"})
+	// Репозиторий получает РАЗОБРАННЫЙ узел, а не голое значение: оператор — часть
+	// выражения (#460). Узел строится тем же Parse, что зовёт use-case, — фикстура
+	// не вправе быть снисходительнее продукта.
+	nameEq, perr := filter.Parse(`name="img-b"`, []string{"name"})
+	require.NoError(t, perr)
+	filtered, _, err := r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameEq})
 	require.NoError(t, err)
 	require.Len(t, filtered, 1)
 	require.Equal(t, "img-b", filtered[0].Name)
+
+	// CONTAINS — подстрока. Равенство выше сузило до ОДНОЙ строки, поэтому три
+	// строки здесь пришли от оператора, а не от предиката, которого нет.
+	nameSub, perr := filter.Parse(`name CONTAINS "img-"`, []string{"name"})
+	require.NoError(t, perr)
+	subset, _, err := r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameSub})
+	require.NoError(t, err)
+	require.Len(t, subset, 3, "подстрока обязана вернуть все три образа проекта")
+	for _, i := range subset {
+		// img-other из prj-2 подстроке ТОЖЕ отвечает — и не приходит.
+		require.Equal(t, "prj-1", i.ProjectID)
+	}
+
+	// Совпадение ВНУТРИ имени, а не префикс.
+	nameMid, perr := filter.Parse(`name CONTAINS "g-b"`, []string{"name"})
+	require.NoError(t, perr)
+	mid, _, err := r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameMid})
+	require.NoError(t, err)
+	require.Len(t, mid, 1)
+	require.Equal(t, "img-b", mid[0].Name)
 
 	_, _, err = r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", PageToken: "%%%garbage%%%"})
 	require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)

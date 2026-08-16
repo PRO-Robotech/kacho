@@ -189,6 +189,44 @@ PRE_GLOBAL = [
 # `TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan`: шаг, режущий подсеть в сети
 # из посева и не прочитавший её плана, — находка. Гейт закрывает ту слепую зону,
 # которую соседний `newmansubnetsupernet_test.go` объявлял числом.
+#
+# ---------------------------------------------------------------------------
+# ПОЗИЦИЯ ВНУТРИ ПЛАНА — ВЫЧИСЛЯЕТСЯ, А НЕ РАЗЫГРЫВАЕТСЯ
+# ---------------------------------------------------------------------------
+#
+# Попадание в план ничего не говорит о том, что ДВА набора одного прогона возьмут
+# разные адреса. Пока позиция разыгрывалась хешем, столкновение было вопросом
+# вероятности — и вероятность эта измерена, а не предположена: 69 нарезок за
+# прогон (перепись по committed-коллекциям), план `10.0.0.0/8` даёт 65 536
+# различных /24, симуляция самой формулы на 20 000 runId — **3.40 %** прогонов с
+# хотя бы одним столкновением. По прогонам `e2e-newman` за 08-13…08-16 —
+# два столкновения на 63 прогона с вердиктом шарда nlb, то есть 3.2 %.
+#
+# Под ВТОРЫМ посевом (`prodseed_nlb_ext.py`, план `10.196.0.0/16`) в плане всего
+# 256 /24 — там жеребьёвка сталкивается практически ВСЕГДА (1 − e^(−69·68/512) ≈
+# 99.99 %). То есть у одного и того же кода два режима: «через раз» и «всегда».
+#
+# Поэтому пространство плана делится на равные полосы — по одной на набор
+# (`CIDR_BANDS` ниже), — а позиция внутри полосы задаётся порядковым номером
+# нарезки. Столкновение становится невозможным ПО ПОСТРОЕНИЮ. Энтропия прогона
+# остаётся и делает СВОЮ работу: она смещает всю сетку целиком, поэтому два
+# прогона на одном стенде по-прежнему расходятся, а полосы внутри прогона
+# по-прежнему не пересекаются (общий сдвиг по модулю сохраняет непересечение).
+#
+# Держит это гейт `internal/repohygiene`
+# `TestCarvedSubnetsOfOneRunCanNotCollide`.
+
+# CIDR_BANDS — полоса адресного пространства на набор. Таблица ЯВНАЯ, а не хеш от
+# имени: хеш вернул бы ту же жеребьёвку, только на пяти значениях вместо 65 536.
+# Набор, которого здесь нет, генерацию РОНЯЕТ — молча делить полосу с соседом
+# нельзя, иначе непересечение перестаёт быть свойством и становится удачей.
+CIDR_BANDS: Dict[str, int] = {
+    "authz-deny": 0,
+    "cross-resource": 1,
+    "listener": 2,
+    "load-balancer": 3,
+    "placement-coherence": 4,
+}
 
 _CARVE_HELPERS = [
     # Энтропия позиции: хеш прогона + порядковый номер нарезки + соль позиции.
@@ -224,19 +262,27 @@ _CARVE_HELPERS = [
     # плана, сохраняется как есть; накрытая частично — по маске; свободная —
     # энтропией. Так адрес лежит внутри плана ЛЮБОЙ ширины, а не только той, под
     # которую его однажды подогнали.
+    # Позиция /24 внутри плана: полоса набора + порядковый номер нарезки, всё
+    # смещено общим для прогона сдвигом. Арифметика, а не битовые операции: план
+    # шире /8 даёт номера до 2²⁴, и `<<` пришлось бы читать со знаком.
+    #
+    # `'!band'` — ОТДЕЛЬНЫЙ исход, а не пустая строка: «плана нет» и «набор
+    # перерос свою полосу» лечатся разным, и общий текст отказа сделал бы их
+    # неразличимыми — ровно тот класс, который мы ловим в продукте.
     "function __carve4(plan) {",
     "  var m = /^\\s*(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)\\/(\\d+)\\s*$/.exec(plan || '');",
     "  if (!m) { return ''; }",
     "  var o = [+m[1], +m[2], +m[3], +m[4]], L = +m[5];",
     "  if (L > 24) { return ''; }",
-    "  for (var k = 0; k < 3; k++) {",
-    "    var before = k * 8;",
-    "    if (L >= before + 8) { continue; }",
-    "    var keep = Math.max(0, L - before);",
-    "    var mask = keep === 0 ? 0 : ((0xff << (8 - keep)) & 0xff);",
-    "    o[k] = (o[k] & mask) | (__ent(k) & (~mask & 0xff));",
-    "  }",
-    "  return o[0] + '.' + o[1] + '.' + o[2] + '.0/24';",
+    "  var span = Math.pow(2, 24 - L);",
+    "  var width = Math.floor(span / __bands);",
+    "  if (width < 1 || __seq > width) { return '!band'; }",
+    "  var top = o[0] * 65536 + o[1] * 256 + o[2];",
+    "  var net = top - (top % span);",
+    "  var pos = (__mix(__runh) % span + __bandIndex * width + (__seq - 1)) % span;",
+    "  var v = net + pos;",
+    "  return Math.floor(v / 65536) + '.' + (Math.floor(v / 256) % 256) + "
+    "'.' + (v % 256) + '.0/24';",
     "}",
     "function __hextets(addr) {",
     "  var parts = String(addr).split('::');",
@@ -288,6 +334,20 @@ def _carve_guard(plan_var: str, cidr_var: str) -> List[str]:
     а падение называет переменную и путь её появления.
     """
     return [
+        # Полоса кончилась — это НЕ «плана нет»: план на месте, набор перерос свою
+        # долю. Исходов два (расширить план посева либо разбить набор), и отказ
+        # обязан их различать, иначе читатель начнёт чинить не то.
+        f"if ({cidr_var} === '!band') {{",
+        f"  pm.test('FIXTURE REQUIRED: {plan_var} band exhausted', () => pm.expect.fail("
+        f"'the suite asked for carve #' + __seq + ' but its band inside {plan_var} "
+        f"holds fewer. The plan is split into __bands equal bands, one per suite "
+        f"(CIDR_BANDS in services/nlb/tests/newman/scripts/gen.py), so that two suites "
+        f"of one run can never carve the same /24. Widen the plan the seeder declares, "
+        f"or split the suite — do NOT go back to drawing the position, that is the "
+        f"collision this band exists to kill.'));",
+        "  pm.execution.skipRequest();",
+        "  return;",
+        "}",
         f"if (!{cidr_var}) {{",
         f"  pm.test('FIXTURE REQUIRED: {plan_var}', () => pm.expect.fail("
         f"'{plan_var} is empty or not a CIDR the suite can carve a subnet from. "
@@ -306,17 +366,37 @@ def carve_cidr_pre(scope: str, v4_var: str = "_subnetCidr",
                    v6_var: Optional[str] = None) -> List[str]:
     """Pre-request: run-scoped адрес(а) подсети, вырезанные ИЗ ПЛАНА сети посева.
 
-    `scope` разводит наборы между собой (тот же runId — разные хеши), `__seq`
-    разводит нарезки внутри одного набора.
+    `scope` разводит наборы между собой, `__seq` разводит нарезки внутри одного
+    набора. Для v4 это разведение ВЫЧИСЛЯЕТСЯ (полоса набора + номер нарезки),
+    поэтому столкновение невозможно по построению; для v6 остаётся хеш — там
+    свободных бит 56, и предмета у запрета нет (см. шапку `CIDR_BANDS`).
     """
+    if scope not in CIDR_BANDS:
+        raise KeyError(
+            f"gen: набор '{scope}' не имеет полосы в CIDR_BANDS. Полоса — то, чем "
+            f"держится непересечение адресов между наборами одного прогона; без "
+            f"записи набор делил бы полосу с соседом, и столкновение вернулось бы "
+            f"молча. Заведите номер в CIDR_BANDS (services/nlb/tests/newman/"
+            f"scripts/gen.py) — он же попадёт в коллекцию и будет проверен гейтом "
+            f"TestCarvedSubnetsOfOneRunCanNotCollide."
+        )
     out = [
         "(function () {",
         "  var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
         "  pm.environment.set('_cidrSeq', String(__seq));",
-        f"  var __run = (pm.environment.get('runId') || 'x0') + '/{scope}';",
+        f"  var __bandIndex = {CIDR_BANDS[scope]};",
+        f"  var __bands = {len(CIDR_BANDS)};",
+        "  var __runOnly = pm.environment.get('runId') || 'x0';",
+        f"  var __run = __runOnly + '/{scope}';",
         "  var __h = 0;",
         "  for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
         "  __h = __h & 0x7fffffff;",
+        # Сдвиг сетки берётся из runId БЕЗ набора: он обязан быть общим для всех
+        # полос, иначе полосы разъедутся по-разному и перестанут не пересекаться.
+        "  var __runh = 0;",
+        "  for (var j = 0; j < __runOnly.length; j++) "
+        "{ __runh = ((__runh << 5) - __runh + __runOnly.charCodeAt(j)) | 0; }",
+        "  __runh = __runh & 0x7fffffff;",
         *["  " + ln for ln in _CARVE_HELPERS],
         "  var __v4 = __carve4(pm.environment.get('existingNetworkV4Plan'));",
         *["  " + ln for ln in _carve_guard("existingNetworkV4Plan", "__v4")],

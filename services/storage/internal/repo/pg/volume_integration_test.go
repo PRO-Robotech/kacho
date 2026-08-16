@@ -17,6 +17,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
+	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
@@ -422,10 +423,37 @@ func TestVolumeListCursorFilter(t *testing.T) {
 		require.Equal(t, "prj-1", v.ProjectID)
 	}
 
-	filtered, _, err := r.List(ctx, volume.Pagination{PageSize: 50, ProjectID: "prj-1", Filter: "vol-b"})
+	// Репозиторий получает РАЗОБРАННЫЙ узел, а не голое значение: оператор — часть
+	// выражения (#460). Узел строится тем же Parse, что зовёт use-case, — фикстура
+	// не вправе быть снисходительнее продукта.
+	nameEq, perr := filter.Parse(`name="vol-b"`, []string{"name"})
+	require.NoError(t, perr)
+	filtered, _, err := r.List(ctx, volume.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameEq})
 	require.NoError(t, err)
 	require.Len(t, filtered, 1)
 	require.Equal(t, "vol-b", filtered[0].Name)
+
+	// CONTAINS — подстрока. Равенство выше сузило до ОДНОЙ строки, поэтому три
+	// строки здесь пришли от оператора, а не от предиката, которого нет: без
+	// парного контроля «вернулось всё» неотличимо от «фильтр не применился».
+	nameSub, perr := filter.Parse(`name CONTAINS "vol-"`, []string{"name"})
+	require.NoError(t, perr)
+	subset, _, err := r.List(ctx, volume.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameSub})
+	require.NoError(t, err)
+	require.Len(t, subset, 3, "подстрока обязана вернуть все три тома проекта")
+	for _, v := range subset {
+		// vol-other из prj-2 подстроке ТОЖЕ отвечает — и не приходит: подстрочный
+		// фильтр не отменяет project-scope.
+		require.Equal(t, "prj-1", v.ProjectID)
+	}
+
+	// Совпадение ВНУТРИ имени, а не префикс: `l-b` начинает ни одно из имён.
+	nameMid, perr := filter.Parse(`name CONTAINS "l-b"`, []string{"name"})
+	require.NoError(t, perr)
+	mid, _, err := r.List(ctx, volume.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameMid})
+	require.NoError(t, err)
+	require.Len(t, mid, 1)
+	require.Equal(t, "vol-b", mid[0].Name)
 
 	_, _, err = r.List(ctx, volume.Pagination{PageSize: 50, PageToken: "%%%garbage%%%"})
 	require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)
