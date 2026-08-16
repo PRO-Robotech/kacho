@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
+import { antdDouble } from "@/test/antd-double";
 
 interface Privilege {
   binding_id: string;
@@ -22,7 +23,7 @@ interface Privilege {
   created_at?: string;
 }
 
-jest.unstable_mockModule("antd", async () => (await import("@/test/antd-double")).antdDouble);
+jest.unstable_mockModule("antd", () => antdDouble);
 
 // Клиент iam подменяется ТОЧЕЧНО — слежкой за методами настоящего объекта, а не
 // подменой всего модуля: перечень его экспортов пришлось бы выписывать руками, и

@@ -12,6 +12,7 @@ import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
+import { filterExpressionValue, useDebouncedValue } from "@shared/lib/list-search";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { type ReactNode } from "react";
@@ -75,12 +76,28 @@ export function ResourceListPage({
   // загруженную страницу: клиентский фильтр поверх курсорной страницы отфильтровал
   // бы только то, что успело приехать, и выдал бы это за весь список.
   const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
+
+  // Поиск: спрашивает СЕРВЕР, если ресурс это объявил. Ввод отстаёт на четверть
+  // секунды — иначе каждая нажатая клавиша уходит отдельным запросом; при
+  // клиентском сужении задержка не нужна и не берётся.
+  const serverSearchTerm = spec.search?.serverTerm ?? null;
+  const debouncedQuery = useDebouncedValue(query, serverSearchTerm ? 250 : 0);
+  const searchQuery = useMemo(() => {
+    if (!serverSearchTerm) return null;
+    const q = filterExpressionValue(debouncedQuery);
+    return q ? { filter: `${serverSearchTerm}="${q}"` } : null;
+  }, [serverSearchTerm, debouncedQuery]);
+  const extraQuery = useMemo(
+    () => (searchQuery ? { ...serverFilters, ...searchQuery } : serverFilters),
+    [serverFilters, searchQuery],
+  );
+
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     spec,
     parentField ?? null,
     filterValue,
     pageSize,
-    serverFilters,
+    extraQuery,
   );
   const setServerFilter = (param: string, value: string) =>
     setServerFilters((prev) => {
@@ -187,12 +204,15 @@ export function ResourceListPage({
         if (roleKind === "custom" && isSystem) return false;
       }
       if (!q) return true;
-      const name = (getByPath<string>(row, "name") ?? "").toLowerCase();
-      const id = (getByPath<string>(row, "id") ?? "").toLowerCase();
-      return name.includes(q) || id.includes(q);
+      // Сузил сервер — резать его ответ повторно нельзя: он отбирал строки по
+      // своим полям, а здесь их может не оказаться вовсе.
+      if (serverSearchTerm) return true;
+      return (spec.search?.fields ?? ["name", "id"]).some((f) =>
+        (getByPath<string>(row, f) ?? "").toLowerCase().includes(q),
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, query, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
+  }, [items, query, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id, serverSearchTerm]);
 
   // Заглушка «проект не выбран» — НИЖЕ всех хуков страницы, а не выше.
   // Scope приходит из context-store (аккаунтные списки IAM) или из параметра
@@ -313,7 +333,7 @@ export function ResourceListPage({
         {listHeader(
           <>
             <Input.Search
-              placeholder="Фильтр по имени или идентификатору"
+              placeholder={spec.search?.placeholder ?? "Фильтр по имени или идентификатору"}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{ width: 320 }}

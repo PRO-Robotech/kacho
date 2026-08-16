@@ -20,7 +20,7 @@ import { AccessGrantPage, AccessPage } from "@/pages/iam/AccessPage";
 import { GroupCreatePage } from "@/pages/iam/GroupsPage";
 import { RoleCreatePage } from "@/pages/iam/RolesPage";
 import { IamOperationsPage } from "@/pages/iam/IamOperationsPage";
-import { InviteUserPage } from "@/pages/iam/UsersPage";
+import { InviteUserPage } from "@/pages/iam/InviteUserPage";
 import { contextApi, useContext as useIamContext } from "@shared/lib/context-store";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import "@shared/typography.css";

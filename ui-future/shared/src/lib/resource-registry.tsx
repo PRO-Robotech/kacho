@@ -628,6 +628,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     id: "users",
     route: "users",
     apiPath: "/iam/v1/users",
+    // Пользователя знают по ПОЧТЕ: `name` у него нет вовсе, поэтому умолчание
+    // «по имени или идентификатору» обещало бы поиск по несуществующему полю.
+    // Сужает сервер (`filter=search="…"`, подстрока по почте и идентификатору):
+    // клиентское сужение судило бы только о загруженной странице и молча
+    // отвечало бы «нет такого» обо всём, что за курсором.
+    search: { placeholder: "Поиск по почте или идентификатору", serverTerm: "search" },
     payloadKey: "users",
     singular: ENTITIES.users.singular,
     accusative: "пользователя",

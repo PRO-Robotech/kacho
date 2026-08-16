@@ -1,4 +1,4 @@
-// AuthCallback — legacy-страница `/auth/callback` от OAuth2-flow (Zitadel-era).
+// AuthCallback — legacy-страница `/auth/callback` от прежнего OAuth2-flow.
 //
 // Ory stack (KAC-115): Kratos self-service flow завершается прямым redirect'ом
 // на `default_browser_return_url` (`/dashboard` или `/`). Этот landing больше
