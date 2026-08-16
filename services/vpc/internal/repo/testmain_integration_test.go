@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"sync/atomic"
@@ -130,6 +131,21 @@ func prepareTemplate() error {
 		_ = tmpl.Close()
 		return fmt.Errorf("migrate template: %w", err)
 	}
+
+	// Фикстура учёта сеется ЗДЕСЬ, а не в каждой пробе: клон наследует её даром.
+	// Цена посева перестала быть пренебрежимой, когда материализация начала
+	// считать `used` по строкам — обоснование и замер в шапке seedFixtureQuotas.
+	// Перепись печатается, чтобы «фикстура пуста» было отличимо от «фикстура не
+	// сеялась»: без неё пробы падали бы на отказе учёта вместо своего предмета.
+	projects, kinds, seeded, err := seedFixtureQuotas(
+		context.Background(), appendSearchPathOptions(dsnForDB(templateDB)))
+	if err != nil {
+		_ = tmpl.Close()
+		return fmt.Errorf("seed template quotas: %w", err)
+	}
+	log.Printf("фикстура учёта (шаблон, один раз за прогон): проектов %d, видов %d, строк заведено %d",
+		projects, kinds, seeded)
+
 	if err := tmpl.Close(); err != nil {
 		return fmt.Errorf("close template: %w", err)
 	}
