@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
@@ -97,6 +98,11 @@ func NewListPoolAddressesUseCase(r Repo) *ListPoolAddressesUseCase {
 func (u *ListPoolAddressesUseCase) Execute(ctx context.Context, poolID, projectFilter string, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
 	if poolID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "pool_id required")
+	}
+	// Форма страницы — до обращения к репозиторию и тем же кодеком курсора, что
+	// путь чтения. См. одноимённую проверку в `ListAddressPoolsUseCase.Execute`.
+	if err := listpage.ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
 	}
 	rd, err := u.repo.Reader(ctx)
 	if err != nil {

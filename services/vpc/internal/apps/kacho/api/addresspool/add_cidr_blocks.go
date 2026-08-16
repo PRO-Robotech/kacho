@@ -32,26 +32,38 @@ func NewAddCidrBlocksUseCase(r Repo) *AddCidrBlocksUseCase {
 	return &AddCidrBlocksUseCase{repo: r}
 }
 
-// Execute добавляет v4/v6 CIDR-блоки. Дубли уже существующих блоков
-// игнорируются (idempotent append). Возвращает обновленный AddressPool.
-func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []string) (*kachorepo.AddressPoolRecord, error) {
+// Validate — проверка входа, исполнимая до обращения к БД: непустота набора,
+// family-strict форма каждого блока и попарная непересекаемость блоков ВНУТРИ
+// запроса. DB EXCLUDE остаётся backstop'ом для пересечений между пулами.
+//
+// Отдельным методом — чтобы публичный путь отверг негодный CIDR СИНХРОННО, до
+// создания операции, как это делает соседний `NetworkService.AddCidrBlocks`.
+// Иначе форма ответа на один и тот же негодный ввод зависела бы от того, каким
+// глаголом ресурса вызывающий воспользовался.
+func (u *AddCidrBlocksUseCase) Validate(id string, v4, v6 []string) error {
 	if id == "" {
-		return nil, status.Error(codes.InvalidArgument, "address_pool_id required")
+		return status.Error(codes.InvalidArgument, "address_pool_id required")
 	}
 	if len(v4) == 0 && len(v6) == 0 {
-		return nil, status.Error(codes.InvalidArgument,
+		return status.Error(codes.InvalidArgument,
 			"v4_cidr_blocks or v6_cidr_blocks is required")
 	}
 	// Family-strict + host-bits=0 (как validateAddressPoolCIDRs на Create).
 	if err := validateAddressPoolCIDRs("v4_cidr_blocks", v4, familyV4Strict); err != nil {
-		return nil, err
+		return err
 	}
 	if err := validateAddressPoolCIDRs("v6_cidr_blocks", v6, familyV6Strict); err != nil {
-		return nil, err
+		return err
 	}
 	// Sync within-request precheck — добавляемые блоки попарно не пересекаются
 	// (InvalidArgument). DB EXCLUDE — backstop для cross-pool.
-	if err := checkPoolCIDRsDisjoint(v4, v6); err != nil {
+	return checkPoolCIDRsDisjoint(v4, v6)
+}
+
+// Execute добавляет v4/v6 CIDR-блоки. Дубли уже существующих блоков
+// игнорируются (idempotent append). Возвращает обновленный AddressPool.
+func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []string) (*kachorepo.AddressPoolRecord, error) {
+	if err := u.Validate(id, v4, v6); err != nil {
 		return nil, err
 	}
 

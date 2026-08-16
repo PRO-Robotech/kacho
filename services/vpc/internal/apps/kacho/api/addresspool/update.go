@@ -55,19 +55,32 @@ func NewUpdateAddressPoolUseCase(r Repo) *UpdateAddressPoolUseCase {
 	return &UpdateAddressPoolUseCase{repo: r}
 }
 
-// Execute применяет частичное обновление.
-func (u *UpdateAddressPoolUseCase) Execute(ctx context.Context, req UpdatePoolReq) (*kachorepo.AddressPoolRecord, error) {
-	// FieldMask discipline: immutable в mask → InvalidArgument; unknown →
-	// InvalidArgument; пустой mask → full-PATCH мутабельных полей (применяются ниже).
+// Validate — дисциплина маски правки, исполнимая до обращения к БД.
+//
+// Порядок половин НЕ произволен: immutable-переключатель стоит ДО
+// `corevalidate.UpdateMask`. Набор известных полей маски immutable-полей не
+// содержит, поэтому общая проверка отвергла бы их первой как generic «unknown
+// field» — и вызывающий получил бы неверную причину вместо конвенционного
+// «<поле> неизменяемо после AddressPool.Create».
+//
+// Отдельным методом — чтобы публичный путь отверг негодную маску СИНХРОННО, до
+// создания операции: маска, отвергнутая внутри операции, приехала бы вызывающему
+// как `200` с отказом внутри.
+func (u *UpdateAddressPoolUseCase) Validate(req UpdatePoolReq) error {
 	for _, f := range req.UpdateMask {
 		switch f {
 		case "kind", "zone_id", "id", "created_at", "pool_id":
-			return nil, serviceerr.InvalidArg(f, f+" is immutable after AddressPool.Create")
+			return serviceerr.InvalidArg(f, f+" is immutable after AddressPool.Create")
 		case "cidr_blocks", "v4_cidr_blocks", "v6_cidr_blocks":
-			return nil, serviceerr.InvalidArg(f, f+" is immutable via Update; use AddCidrBlocks/RemoveCidrBlocks")
+			return serviceerr.InvalidArg(f, f+" is immutable via Update; use AddCidrBlocks/RemoveCidrBlocks")
 		}
 	}
-	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, updatablePoolFields); err != nil {
+	return corevalidate.UpdateMask("update_mask", req.UpdateMask, updatablePoolFields)
+}
+
+// Execute применяет частичное обновление.
+func (u *UpdateAddressPoolUseCase) Execute(ctx context.Context, req UpdatePoolReq) (*kachorepo.AddressPoolRecord, error) {
+	if err := u.Validate(req); err != nil {
 		return nil, err
 	}
 

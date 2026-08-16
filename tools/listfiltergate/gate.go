@@ -110,6 +110,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -142,6 +143,24 @@ type Profile struct {
 	// suffix (otherwise). It is a declared TYPE: `func (h *X) List` and
 	// `func (handler *X) List` are the same declaration to this gate.
 	ReceiverSuffix string
+
+	// ExtraReceivers names ADDITIONAL transport types that serve the same resource
+	// as ReceiverSuffix, under PerPackage. Exact type names, not suffixes.
+	//
+	// The premise of PerPackage — "one transport type per package" — stops holding
+	// the moment a resource is served on two listeners at once: an administrative
+	// surface being published keeps its internal transport while the public one is
+	// introduced beside it, and for the length of that window the package declares
+	// two. Both hand a page to a caller, so both must be judged; a type this
+	// profile does not recognise falls out of the resource set entirely and goes
+	// unjudged while the gate prints OK.
+	//
+	// The entry EXPIRES BY ITSELF: a name here that no List declaration in the tree
+	// carries is a finding, so the window cannot outlive its subject and quietly
+	// keep a second surface excused. Without that, retiring the internal transport
+	// would leave a permanent hole shaped exactly like the one this gate exists to
+	// close.
+	ExtraReceivers []string
 
 	// Filters are the call names that prove the page was narrowed per object.
 	Filters []string
@@ -369,12 +388,29 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 	}
 
 	anchors := map[string][]anchorDecl{}
+	seenReceivers := map[string]struct{}{}
 	for _, u := range units {
-		found, orphans := u.anchors(p)
+		found, orphans, seen := u.anchors(p)
 		for res, decls := range found {
 			anchors[res] = append(anchors[res], decls...)
 		}
+		for typ := range seen {
+			seenReceivers[typ] = struct{}{}
+		}
 		rep.Unattributed = append(rep.Unattributed, orphans...)
+	}
+
+	// Самоистечение ExtraReceivers: запись, которой больше нечего называть, — это
+	// послабление, пережившее свой предмет. Оно не безобидно: следующий тип с этим
+	// именем получит освобождение, которого никто не выдавал. Проверяется здесь, а
+	// не при разборе профиля, потому что предикат — факт о ДЕРЕВЕ, а не о профиле.
+	for _, extra := range p.ExtraReceivers {
+		if _, ok := seenReceivers[extra]; !ok {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"Profile.ExtraReceivers names %q, but no List declaration in %s carries that receiver "+
+					"type — the entry has nothing left to admit and must be removed with its subject",
+				extra, p.AnchorRoot))
+		}
 	}
 	for res := range anchors {
 		rep.Resources = append(rep.Resources, res)
@@ -795,9 +831,13 @@ func (u *unit) index() {
 // same hole the predecessors had (they keyed on a mutable label and lost a resource
 // to a rename), only one level down: here the census showed it — "more packages
 // than resources" — and nothing acted on the gap.
-func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
+func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string, map[string]struct{}) {
 	out := map[string][]anchorDecl{}
 	var unattributed []string
+	// Типы получателей, фактически встреченные у объявлений `List*`. Нужны для
+	// самоистечения ExtraReceivers: запись, которой больше нечего называть, —
+	// находка, а не безобидный остаток.
+	seen := map[string]struct{}{}
 	for _, f := range u.files {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
@@ -816,6 +856,7 @@ func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
 				continue
 			}
 			_, typ := receiverOf(fn)
+			seen[typ] = struct{}{}
 			res, ok := p.resourceOf(u, typ)
 			if !ok {
 				unattributed = append(unattributed, fmt.Sprintf("%s (receiver type %s)",
@@ -830,7 +871,7 @@ func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
 			})
 		}
 	}
-	return out, unattributed
+	return out, unattributed, seen
 }
 
 // quoteType names a receiver type for a message, including the case where the
@@ -849,8 +890,10 @@ func (p Profile) resourceOf(u *unit, typ string) (string, bool) {
 		return "", false
 	}
 	if p.PerPackage {
-		// One transport type per package; the package IS the resource.
-		if typ != p.ReceiverSuffix {
+		// One transport type per package — plus any named in ExtraReceivers, which
+		// serve the SAME resource on another listener. Either way the package IS the
+		// resource.
+		if typ != p.ReceiverSuffix && !slices.Contains(p.ExtraReceivers, typ) {
 			return "", false
 		}
 		return u.name, true

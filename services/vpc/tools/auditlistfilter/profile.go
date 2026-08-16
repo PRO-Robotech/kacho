@@ -74,8 +74,16 @@ func parentGate() listfiltergate.Listing {
 }
 
 // adminPool is the shared reason for addresspool's two listings.
-const adminPool = "AddressPool is an Internal admin RPC gated on system_admin in middleware: a " +
-	"cluster-wide pool inventory with no per-object grants to narrow to. The exclusion expires " +
+//
+// Здесь стояло «Internal admin RPC». С ADM-1 S1 поверхность ПУБЛИЧНА, и довод
+// от места вызова перестал быть верным — но сам вывод не изменился и стал
+// прочнее: сужать по-прежнему нечего, потому что у пула нет владельца, о котором
+// можно спросить пообъектно. Объект один и он кластерный, поэтому список
+// гейтится одним вопросом `system_admin` @ `cluster`, а арендатор без права
+// получает отказ, а не пустую страницу.
+const adminPool = "AddressPool is an admin RPC gated on system_admin @ cluster: a cluster-wide " +
+	"pool inventory with no per-object grants to narrow to. Published on the public listener " +
+	"(ADM-1 S1) — what closes it is the caller's grant, not the listener. The exclusion expires " +
 	"with its method — retire the RPC and this entry becomes a finding."
 
 // quotaIsAProjectProperty — почему у чтения квот сужать НЕЧЕГО.
@@ -105,6 +113,14 @@ var Profile = listfiltergate.Profile{
 	// One package per resource, all declaring the same transport type.
 	PerPackage:     true,
 	ReceiverSuffix: "Handler",
+	// PublicHandler — второй транспорт ОДНОГО ресурса, пула адресов: его
+	// административная поверхность опубликована на внешнем слушателе (ADM-1 S1),
+	// а внутренний транспорт живёт рядом до стадии S3. Оба отдают страницу
+	// вызывающему, поэтому оба обязаны судиться; тип, которого профиль не знает,
+	// выпал бы из набора ресурсов целиком и остался бы неосуждённым при зелёном
+	// гейте. Запись истекает сама: имя, которого не несёт ни одно объявление
+	// `List*`, гейт объявляет находкой.
+	ExtraReceivers: []string{"PublicHandler"},
 	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},

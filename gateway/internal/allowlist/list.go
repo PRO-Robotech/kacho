@@ -33,14 +33,34 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.NetworkService/ListOperations":   {},
 	// vpc.v1 — CidrGroupService (именованный набор префиксов; цель правила
 	// группы безопасности вместо копии перечня в каждом правиле)
-	"/kacho.cloud.vpc.v1.CidrGroupService/Get":              {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/List":             {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/Create":           {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/Update":           {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/Delete":           {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":    {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks": {},
-	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":   {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Get":    {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/List":   {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Create": {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Update": {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/Delete": {},
+
+	// AddressPool — административная поверхность на публичном слушателе (ADM-1
+	// S1). В списке маршрутизируемого стоит ПУБЛИЧНЫЙ сервис; одноимённый
+	// `InternalAddressPoolService` сюда не попадает и попасть не может —
+	// `HasInternalSuffix` его отсекает, и это по-прежнему так.
+	//
+	// Присутствие здесь НЕ даёт доступа: каждый из одиннадцати гейтится
+	// `system_admin` @ `cluster` записью каталога прав. Список отвечает на другой
+	// вопрос — «существует ли такой маршрут», а не «кому он открыт».
+	"/kacho.cloud.vpc.v1.AddressPoolService/Get":                  {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/List":                 {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/ListAddresses":        {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/GetUtilization":       {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/Create":               {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/Update":               {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/Delete":               {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/AddCidrBlocks":        {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/RemoveCidrBlocks":     {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/BindAsNetworkDefault": {},
+	"/kacho.cloud.vpc.v1.AddressPoolService/UnbindNetworkDefault": {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/AddCidrBlocks":          {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/RemoveCidrBlocks":       {},
+	"/kacho.cloud.vpc.v1.CidrGroupService/ListOperations":         {},
 	// vpc.v1 — QuotaService (только чтение: величины администрируются на
 	// внутреннем слушателе через iam.v1.InternalLimitService)
 	"/kacho.cloud.vpc.v1.QuotaService/List": {},

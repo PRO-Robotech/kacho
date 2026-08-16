@@ -42,14 +42,30 @@ func NewRemoveCidrBlocksUseCase(r Repo) *RemoveCidrBlocksUseCase {
 	return &RemoveCidrBlocksUseCase{repo: r}
 }
 
-// Execute удаляет v4/v6 CIDR-блоки. Возвращает обновленный AddressPool.
-func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []string) (*kachorepo.AddressPoolRecord, error) {
+// Validate — проверка входа, исполнимая до обращения к БД. Отдельным методом по
+// той же причине, что у парного глагола добавления: публичный путь обязан
+// отвергнуть негодный вход синхронно, до создания операции.
+//
+// Форма удаляемых блоков здесь НЕ проверяется, и это не пропуск: удаление
+// сверяет присланные строки с уже сохранённым набором пула, поэтому строка,
+// которой в наборе нет, отвергается по существу («такого блока в пуле нет»), а
+// не по форме. Проверять форму дважды значило бы завести второй словарь того,
+// что считается блоком.
+func (u *RemoveCidrBlocksUseCase) Validate(id string, v4, v6 []string) error {
 	if id == "" {
-		return nil, status.Error(codes.InvalidArgument, "address_pool_id required")
+		return status.Error(codes.InvalidArgument, "address_pool_id required")
 	}
 	if len(v4) == 0 && len(v6) == 0 {
-		return nil, status.Error(codes.InvalidArgument,
+		return status.Error(codes.InvalidArgument,
 			"v4_cidr_blocks or v6_cidr_blocks is required")
+	}
+	return nil
+}
+
+// Execute удаляет v4/v6 CIDR-блоки. Возвращает обновленный AddressPool.
+func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []string) (*kachorepo.AddressPoolRecord, error) {
+	if err := u.Validate(id, v4, v6); err != nil {
+		return nil, err
 	}
 
 	w, err := u.repo.Writer(ctx)

@@ -267,9 +267,19 @@ func TestAuditListFilter_ExpiredDeclarationIsAFinding(t *testing.T) {
 // It deletes a real method rather than passing a made-up name, so the assertion is
 // about THIS service's own declarations: if the profile's entries stopped matching
 // the tree, this test could not pass by naming something imaginary.
+// Осиротить объявление значит убрать ВСЕХ его производителей. У пула адресов их
+// два: внутренний транспорт и публичный, опубликованный ADM-1 S1 рядом с ним на
+// время окна расширения. Переименование одного оставляло бы второй, ключ
+// продолжал бы находиться, и проба зеленела бы, ничего не проверив, — то есть
+// стала бы ровно тем, что она стережёт: формой без содержания.
+//
+// Когда внутренний транспорт снимут стадией S3, здесь останется одна строка. Это
+// и есть признак, по которому видно, что фикстура следует за деревом, а не
+// описывает его прошлое.
 func deleteADeclaredListing(t *testing.T, root string) string {
 	t.Helper()
 	patch(t, root, "addresspool/handler.go", "func (h *Handler) ListAddresses(", "func (h *Handler) FetchAddresses(")
+	patch(t, root, "addresspool/public_handler.go", "func (h *PublicHandler) ListAddresses(", "func (h *PublicHandler) FetchAddresses(")
 	return "addresspool.ListAddresses"
 }
 

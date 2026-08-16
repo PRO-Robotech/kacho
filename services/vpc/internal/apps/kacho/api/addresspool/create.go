@@ -58,6 +58,31 @@ func NewCreateAddressPoolUseCase(r Repo, zoneReg ZoneRegistry) *CreateAddressPoo
 
 // Execute создает AddressPool.
 func (u *CreateAddressPoolUseCase) Execute(ctx context.Context, req CreatePoolReq) (*kachorepo.AddressPoolRecord, error) {
+	p, err := u.Validate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return u.Persist(ctx, p)
+}
+
+// Validate — вся проверка входа, исполнимая ДО обращения к своей БД: форма
+// запроса плюс существование чужой зоны у её владельца.
+//
+// Вынесена из тела Execute отдельным методом, чтобы у ПУБЛИЧНОГО пути
+// (`AsyncMutations`, ответ — `Operation`) и у внутреннего была ОДНА проверка, а
+// не две копии. Копии здесь разошлись бы молча и в худшую сторону: асинхронный
+// путь обязан отвергать негодный вход синхронно, до создания операции, иначе
+// вызывающий получает `200` с операцией, несущей отказ, — то есть «принято» на
+// том, что не принято.
+//
+// Порядок половин сохранён дословно: форма — до peer-вызова, чтобы явный мусор
+// не оплачивался обращением к соседу.
+//
+// Возвращает ГОТОВЫЙ доменный объект, а не только приговор. Иначе вызывающему
+// пришлось бы собрать его второй раз — и второй сборке достался бы ДРУГОЙ
+// идентификатор, потому что он чеканится здесь. Публичный путь кладёт этот же
+// идентификатор в метаданные операции ещё до её применения.
+func (u *CreateAddressPoolUseCase) Validate(ctx context.Context, req CreatePoolReq) (*domain.AddressPool, error) {
 	if req.Kind == domain.AddressPoolKindUnspecified {
 		return nil, status.Error(codes.InvalidArgument, "kind must be specified")
 	}
@@ -108,7 +133,17 @@ func (u *CreateAddressPoolUseCase) Execute(ctx context.Context, req CreatePoolRe
 	if err := serviceerr.FromValidation(p.Validate()); err != nil {
 		return nil, err
 	}
+	return p, nil
+}
 
+// Persist — вторая половина создания: одна writer-TX (Insert + нормализация
+// CIDR-блоков + материализация freelist + outbox) и Commit.
+//
+// Отделена от Validate ровно по границе «что можно решить, не трогая свою БД».
+// Публичный путь исполняет её ВНУТРИ операции, внутренний — сразу за проверкой;
+// тело одно, поэтому два пути записи в одну таблицу не могут разойтись ни
+// валидацией, ни умолчаниями, ни набором заполняемых полей.
+func (u *CreateAddressPoolUseCase) Persist(ctx context.Context, p *domain.AddressPool) (*kachorepo.AddressPoolRecord, error) {
 	w, err := u.repo.Writer(ctx)
 	if err != nil {
 		return nil, err
