@@ -282,6 +282,15 @@ test-unit: $(HOOKS_NOTICE)
 ## integration-пакетов — пропуск» и выходит НУЛЁМ. Джоба зелёная, тестов
 ## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
 ## которого «ничего не нашлось» — законный исход (код 1).
+##
+## `-tags=integration` ОБЯЗАТЕЛЕН, и добавлен он позже самой цели (#489). Без
+## него файл под `//go:build integration` не попадает в сборку НИ В ОДНОМ
+## прогоне: юнит-джоба идёт с `-short`, а эта — шла без тегов. У compute так
+## жили 13 проб в 4 файлах, и незамеченным это осталось не по недосмотру —
+## пакет под своим тегом ещё и не собирался, а обычная сборка этих файлов не
+## читает и потому была зелёной. Собираемость держит гейт
+## `internal/repohygiene/buildtaggedtestpackage_test.go`; ИСПОЛНЕНИЕ — эта
+## строка. Свойства разные, и одно другого не заменяет.
 test-integration: $(HOOKS_NOTICE)
 ifdef SVC
 	@set -o pipefail; \
@@ -293,7 +302,7 @@ ifdef SVC
 	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler)(/|$$)'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
-	echo "$$pkgs" | xargs $(GO) test -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
 else
 	@set -e; for svc in $(SERVICES); do \
 		echo "=== integration: $$svc ==="; \
