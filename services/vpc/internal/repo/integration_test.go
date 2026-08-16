@@ -31,18 +31,16 @@ import (
 // exactly as it did when each test owned a container.
 func setupTestDB(t testing.TB) string {
 	t.Helper()
-	dsn := appendSearchPathOptions(newSharedDatabase(t, true))
-
 	// Учёт числа ресурсов: вставка строки ресурса СПИСЫВАЕТ место, и списать его
 	// не с чего, пока у проекта нет строки учёта. На живом пути её заводит
 	// материализация перед writer-транзакцией; проба идёт мимо use-case'а, прямо
 	// в репозиторий, поэтому базу в то же состояние приводит фикстура.
 	//
-	// Перечень проектов она ВЫВОДИТ из исходников проб пакета, а не выписывает:
-	// разбор и цена — `quota_fixture_integration_test.go`.
-	seedFixtureQuotas(t, dsn)
-
-	return dsn
+	// Сеется она в ШАБЛОН, один раз за прогон (`prepareTemplate`), и клон её
+	// наследует — здесь звать нечего. Перечень проектов фикстура ВЫВОДИТ из
+	// исходников проб пакета, а не выписывает: разбор, замер и причина переезда
+	// в шаблон — `quota_fixture_integration_test.go`.
+	return appendSearchPathOptions(newSharedDatabase(t, true))
 }
 
 func appendSearchPathOptions(dsn string) string {
