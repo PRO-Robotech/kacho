@@ -74,10 +74,7 @@ CREATE TABLE kacho_tuple.fga_outbox (
 CREATE OR REPLACE FUNCTION kacho_tuple.fga_outbox_tuple_key() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
-    NEW.tuple_key :=
-        (NEW.payload->>'user')     || ' ' ||
-        (NEW.payload->>'relation') || ' ' ||
-        (NEW.payload->>'object');
+    NEW.tuple_key := (NEW.payload->>'user') || ' ' || (NEW.payload->>'object');
     RETURN NEW;
 END;
 $fn$;
@@ -115,7 +112,11 @@ const (
 // on, and therefore the unit this queue must order by.
 type tuple struct{ user, relation, object string }
 
-func (tp tuple) key() string { return tp.user + " " + tp.relation + " " + tp.object }
+// key is the GRANT key production partitions on since iam migration 0098: one row there
+// carries a subject's whole relation set on one object, so the partition covers the set.
+// Copied from the trigger rather than paraphrased — a fixture that derives the key
+// differently from production would prove a property production does not have.
+func (tp tuple) key() string { return tp.user + " " + tp.object }
 
 // tupleStore models OpenFGA closely enough for what is asserted: a SET of tuples,
 // where a write inserts and a delete removes, and a delete of an absent tuple is
@@ -222,6 +223,12 @@ func newTupleRedriver(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 		Channel:         tupleChannel,
 		MaxAttempts:     tupleMaxAtt,
 		PartitionColumn: tupleKeyColumn,
+		// The same coverage rule iam wires (cmd/kacho-iam/fga_outbox_redrive_backstop.go):
+		// a delivered successor voids a poisoned row only if it re-determined everything
+		// that row named. Without it, a partition key that covers a SET reads "somebody
+		// restated something nearby" as "somebody restated this".
+		SupersededCoverageSQL: `coalesce(s.payload->'relations', jsonb_build_array(s.payload->>'relation'))
+		                        @> coalesce(t.payload->'relations', jsonb_build_array(t.payload->>'relation'))`,
 	}, nil)
 	require.NoError(t, err)
 	return r
@@ -361,4 +368,77 @@ func Test_Redrive_TupleKeyedOutbox_RespectsTupleOrder(t *testing.T) {
 		"revoked access came back through the backstop: applied=%v", s.log())
 	require.Truef(t, s.has(sameObject),
 		"the neighbouring tuple must have been delivered: applied=%v", s.log())
+}
+
+// seedGrantSetIntent seeds a SET-shaped row — one subject's several relations on one
+// object, the shape iam emits since the grant became the row's unit.
+func seedGrantSetIntent(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
+	eventType, user, object string, relations []string, attempt int, delivered bool,
+) int64 {
+	t.Helper()
+	sentAt := "NULL"
+	if delivered {
+		sentAt = "now()"
+	}
+	var id int64
+	err := pool.QueryRow(ctx, fmt.Sprintf(`
+		INSERT INTO kacho_tuple.fga_outbox (event_type, payload, attempt_count, sent_at)
+		VALUES ($1,
+		        jsonb_build_object('user',$2::text,'object',$3::text,
+		                           'relations', to_jsonb($4::text[])),
+		        $5, %s)
+		RETURNING id`, sentAt),
+		eventType, user, object, relations, attempt).Scan(&id)
+	require.NoError(t, err)
+	return id
+}
+
+// Test_Redrive_GrantSet_SupersededOnlyByACoveringSuccessor — the rule that a partition
+// covering a SET needs, and the direction where getting it wrong is silent.
+//
+// A poisoned row is void only when a later delivered row RE-DETERMINED everything it
+// named. Once a row carries a set, "a later delivered row of the same partition" no
+// longer implies that: the successor may have restated part of it.
+//
+// The pair below is the whole rule, and each half is required. Without the covering
+// case the check would pass on a rule that never voids anything (the backstop would
+// replay outdated intent past a delivered successor — the over-grant the ordering
+// exists to prevent). Without the partial case it would pass on the old direction-blind
+// rule, whose failure is a revoke retired while most of its set is still live — and
+// "revoked" and "still granted" look identical from outside.
+func Test_Redrive_GrantSet_SupersededOnlyByACoveringSuccessor(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	pool := setupTupleOutboxPG(t)
+
+	const (
+		subject     = "user:erin"
+		objPartial  = "vpc_network:net-partial"
+		objCovering = "vpc_network:net-covering"
+	)
+	full := []string{"v_get", "v_list", "v_update", "v_delete"}
+
+	// (a) poisoned REVOKE of the whole set; the delivered successor re-grants only ONE
+	//     relation of it. The other three were never restated by anyone.
+	partialID := seedGrantSetIntent(t, ctx, pool, "fga.tuple.delete", subject, objPartial, full, tupleMaxAtt, false)
+	seedGrantSetIntent(t, ctx, pool, "fga.tuple.write", subject, objPartial, []string{"v_get"}, 0, true)
+
+	// (b) poisoned REVOKE of the whole set; the delivered successor re-grants ALL of it.
+	//     Nothing this row named is left unstated, so replaying it would strip access the
+	//     successor deliberately granted.
+	coveringID := seedGrantSetIntent(t, ctx, pool, "fga.tuple.delete", subject, objCovering, full, tupleMaxAtt, false)
+	seedGrantSetIntent(t, ctx, pool, "fga.tuple.write", subject, objCovering, full, 0, true)
+
+	n, err := newTupleRedriver(t, pool).RedrivePoisoned(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, n, "exactly the partially-restated revoke is revived")
+
+	require.Lessf(t, tupleAttemptCount(t, ctx, pool, partialID), tupleMaxAtt,
+		"a revoke whose set was only PARTLY restated must be revived: the relations nobody "+
+			"restated would otherwise survive their own removal, with the queue reporting the work done")
+	require.GreaterOrEqualf(t, tupleAttemptCount(t, ctx, pool, coveringID), tupleMaxAtt,
+		"a revoke whose set was FULLY restated by a later delivered row must stay parked: "+
+			"replaying it would strip what the successor granted")
 }
