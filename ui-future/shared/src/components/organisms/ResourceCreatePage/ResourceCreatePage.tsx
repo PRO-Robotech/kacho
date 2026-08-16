@@ -1,8 +1,7 @@
 // ResourceCreatePage — full-page форма Create (не modal).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { useMutation } from "@tanstack/react-query";
 import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
@@ -12,11 +11,11 @@ import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared
 import { setByPath } from "@shared/lib/path";
 import { presetFieldsForSpec } from "@shared/lib/preset-fields";
 import { buildCreateBody } from "@shared/lib/update-mask";
-import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
-import { operationOutcome, operationWarnings, resolveMutationResponse } from "@shared/lib/operation-outcome";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
-import { errorText } from "@shared/lib/error-presentation";
 import { createActionLabel } from "@shared/lib/resource-label";
+import { mutationFailureText, subjectOfSpec } from "@shared/lib/mutation-signal";
+import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 
 interface Props {
   spec: ResourceSpec;
@@ -146,56 +145,21 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   const noHeaderRight = useMemo(() => null, []);
   useHeaderRight(noHeaderRight);
 
-  // Doppler-flow: после POST дожидаемся op.done через polling. Кнопка
-  // пульсирует пока pending. По завершении — toast + navigate на список.
-  const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op, error: opFetchError } = useOperation(pendingOpId);
-  const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
-
-  const mutation = useMutation({
-    // Мутация уходит на admin-плоскость ресурса, если она у него есть: публичный
-    // путь geo Region/Zone обслуживает только чтение (POST по нему не
-    // смаршрутизирован никем).
-    mutationFn: (item: unknown) => api.create(mutationBasePath(spec), item),
-    onSuccess: (resp) => {
-      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
-      if (resolved.kind === "operation") {
-        setPendingOpId(resolved.opId);
-        return;
-      }
-      if (resolved.kind === "violation") {
-        // Ресурс объявил, что мутации отвечают Operation. Ответа без операции
-        // достаточно, чтобы НЕ утверждать успех: подтверждать нечем.
-        toast.error(`${createActionLabel(spec)}: ${resolved.message}`);
-        return;
-      }
-      // Синхронный ответ самим ресурсом (vpc AddressPool).
+  // Исход мутации — через единый механизм (`use-signalled-mutation`): он же
+  // разбирает ответ, поллит операцию и сообщает про все три исхода одной формой.
+  // Мутация уходит на admin-плоскость ресурса, если она у него есть: публичный
+  // путь geo Region/Zone обслуживает только чтение (POST по нему не
+  // смаршрутизирован никем).
+  const mutation = useSignalledMutation<Record<string, unknown>>({
+    verb: "create",
+    subject: (body) => subjectOfSpec(spec, typeof body.name === "string" ? body.name : null),
+    expectOperation: spec.mutationsReturnOperation !== false,
+    mutationFn: (item) => api.create(mutationBasePath(spec), item),
+    onSucceeded: () => {
       invalidate(spec.id, filterValue ?? null);
       void navigate(backHref);
     },
-    onError: (err) => {
-      const m = errorText(err);
-      toast.error(`${createActionLabel(spec)}: ${m}`);
-    },
   });
-
-  useEffect(() => {
-    if (outcome.kind === "failed") {
-      toast.error(`${createActionLabel(spec)}: ${outcome.message}`);
-      setPendingOpId(null);
-      return;
-    }
-    if (outcome.kind !== "succeeded") return;
-    invalidate(spec.id, filterValue ?? null);
-    // Loud-no-op канал операции: geo сообщает так, что регион/зона созданы
-    // ЗАКРЫТЫМИ для размещения. Операция при этом успешна — проглотив
-    // предупреждение, оператор уйдёт уверенным, что запись пригодна к работе.
-    for (const w of operationWarnings(op)) toast.error(`${spec.singular}: ${w}`);
-    toast.success(`${spec.singular} создан`);
-    setPendingOpId(null);
-    void navigate(backHref);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const submit = () => {
     let parsed: Record<string, unknown> = obj;
@@ -206,7 +170,10 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
     if (spec.validate) {
       const err = spec.validate(parsed);
       if (err) {
-        toast.error(err);
+        // Отказ собственной проверки — тот же исход «не создан», что и отказ
+        // края: пользователю важно, что ресурс не создан и почему, а не то,
+        // на чьей стороне это выяснилось.
+        toast.error(mutationFailureText("create", subjectOfSpec(spec, obj.name as string), err));
         return;
       }
     }
@@ -215,7 +182,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
     // widget (`_`-prefixed discriminators, incl. inside array items) so it cannot
     // reach the wire as `Placement` / `AddressKind` / `BootSource` and be discarded
     // there in silence.
-    mutation.mutate(buildCreateBody(parsed));
+    mutation.run(buildCreateBody(parsed));
   };
 
   const fields = spec.fields;
@@ -234,7 +201,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
         lockedPaths={lockedPathsRef.current}
         fieldOptionsFilter={fieldOptionsFilter}
         submitLabel={createActionLabel(spec)}
-        submitting={mutation.isPending || pendingOpId !== null}
+        submitting={mutation.pending}
         onSubmit={submit}
         onCancel={() => navigate(backHref)}
       />
