@@ -13,6 +13,7 @@ import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import type { ReactNode } from "react";
 import {
   HomeOutlined,
+  DashboardOutlined,
   SearchOutlined,
   ApartmentOutlined,
   ClusterOutlined,
@@ -353,6 +354,16 @@ export const COMMON_TOP: NavLeaf[] = [
     label: "Поиск",
     to: () => "/system/search",
     matches: (p) => p.startsWith("/system/search"),
+  },
+  {
+    // Квоты — свойство ПРОЕКТА, а не одного сервиса: пределы объявлены общим
+    // контрактом, и упирается в них арендатор где угодно. Поэтому пункт стоит
+    // здесь, рядом с «Все сервисы», а не внутри сетевого раздела (#364).
+    key: "quotas",
+    icon: <DashboardOutlined />,
+    label: "Квоты",
+    to: (f) => (f ? `/projects/${f}/quotas` : "/dashboard"),
+    matches: (p) => /^\/projects\/[^/]+\/quotas/.test(p),
   },
 ];
 

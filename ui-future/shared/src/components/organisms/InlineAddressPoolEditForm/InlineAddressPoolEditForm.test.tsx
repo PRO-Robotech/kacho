@@ -151,7 +151,11 @@ describe("InlineAddressPoolEditForm", () => {
     // рисовал его текстовым полем и отдавал в обработчик СОБЫТИЕ вместо нового
     // состояния, поэтому «выключить» на нём не срабатывало ни разу.
     fireEvent.click(within(underLabel("Default")).getByRole("switch"));
-    fireEvent.change(within(underLabel("Selector priority")).getByRole("textbox"), { target: { value: "5" } });
+    // Числовое поле — `spinbutton`, а не `textbox`: ровно это рисует настоящий
+    // виджет. Прежде общий заменитель отдавал числовое поле текстовым и звал
+    // обработчик СОБЫТИЕМ вместо числа, поэтому проба спрашивала роль, которой
+    // в продукте нет.
+    fireEvent.change(within(underLabel("Selector priority")).getByRole("spinbutton"), { target: { value: "5" } });
     save();
 
     await waitFor(() => expect(update).toHaveBeenCalled());
