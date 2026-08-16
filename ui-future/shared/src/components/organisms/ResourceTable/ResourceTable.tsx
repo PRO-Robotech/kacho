@@ -27,6 +27,27 @@ interface Props<T> {
   /** Если задан — клик по строке вызывает callback (для drill-down в detail).
    *  Cells, у которых внутри есть button/link с stopPropagation, не триггерят. */
   onRowClick?: (row: T) => void;
+  /**
+   * Можно ли вообще предлагать сортировку. По умолчанию — да.
+   *
+   * Сортируется МАССИВ переданных строк, поэтому вызывающий, у которого за
+   * курсором остались непрочитанные страницы, обязан объявить `false`: иначе
+   * таблица упорядочит случайную часть списка и будет молча переупорядочивать её
+   * при каждой догрузке. Верхняя строка такой таблицы первая среди прочитанных,
+   * а читается как первая вообще.
+   */
+  sortable?: boolean;
+  /**
+   * Выделение строк. Не задано — столбца флажков нет вовсе.
+   *
+   * Вызывающий обязан объявить его ЯВНО: столбец флажков — приглашение к
+   * групповому действию, и заводить его там, где действия нет, значит обещать
+   * возможность, которой не существует.
+   */
+  selection?: {
+    selected: string[];
+    onChange: (next: string[]) => void;
+  };
 }
 
 export function ResourceTable<T extends object>({
@@ -37,6 +58,8 @@ export function ResourceTable<T extends object>({
   loading,
   defaultSort,
   onRowClick,
+  sortable = true,
+  selection,
 }: Props<T>) {
   const antColumns: ColumnType<T>[] = useMemo(
     () =>
@@ -47,7 +70,7 @@ export function ResourceTable<T extends object>({
           className: c.className,
           render: (_value, row) => c.cell(row),
         };
-        if (c.sortKey) {
+        if (c.sortKey && sortable) {
           col.sorter = (a: T, b: T) => {
             const av = getByPath(a, c.sortKey!);
             const bv = getByPath(b, c.sortKey!);
@@ -63,7 +86,7 @@ export function ResourceTable<T extends object>({
         }
         return col;
       }),
-    [columns, defaultSort],
+    [columns, defaultSort, sortable],
   );
 
   // Края таблицы закрепляются, потому что широкая таблица прокручивается вбок:
@@ -135,6 +158,14 @@ export function ResourceTable<T extends object>({
     locale: {
       emptyText: empty ?? "Ресурсов не найдено",
     },
+    // Ключ выделения — тот же, что ключ строки: иначе «выделено три» и
+    // «удаляем три» относились бы к разным множествам.
+    rowSelection: selection
+      ? {
+          selectedRowKeys: selection.selected,
+          onChange: (keys) => selection.onChange(keys.map(String)),
+        }
+      : undefined,
     onRow: onRowClick
       ? (row) => ({
           onClick: (e) => {

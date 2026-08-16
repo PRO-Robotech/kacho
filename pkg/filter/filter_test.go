@@ -158,3 +158,75 @@ func TestToSQL_LegitFieldVerbatim(t *testing.T) {
 		}
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTAINS — подстрока (#373).
+//
+// Поисковая строка списка в консоли фильтровала УЖЕ ЗАГРУЖЕННУЮ страницу:
+// на списке длиннее страницы она отвечала «ничего не найдено» про ресурс,
+// который существует. Уйти на сервер она может только тем выражением, которое
+// сервер разбирает, а разбиралось до сих пор одно точное равенство — для
+// строки поиска бесполезное: набирающий имя по частям не совпадёт никогда.
+
+func TestParse_Contains(t *testing.T) {
+	ast, err := Parse(`name CONTAINS "web"`, []string{"name"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if ast.Field != "name" || ast.Op != "CONTAINS" || ast.Value != "web" {
+		t.Fatalf("got %+v", ast)
+	}
+}
+
+func TestParse_ContainsUnknownFieldStillRejected(t *testing.T) {
+	if _, err := Parse(`secret CONTAINS "x"`, []string{"name"}); err == nil {
+		t.Fatal("expected whitelist rejection for CONTAINS on unlisted field")
+	}
+}
+
+// Оператор — единственная новая ветка; всё остальное, что стоит на месте
+// оператора, обязано отвергаться прежним сообщением.
+func TestParse_UnknownOperatorRejected(t *testing.T) {
+	for _, expr := range []string{`name LIKE "x"`, `name CONTAIN "x"`, `name ~ "x"`, `name CONTAINS"x"`} {
+		if _, err := Parse(expr, []string{"name"}); err == nil {
+			t.Fatalf("expected rejection of %q", expr)
+		}
+	}
+}
+
+func TestToSQL_Contains(t *testing.T) {
+	ast := &FilterAST{Field: "name", Op: "CONTAINS", Value: "web"}
+	frag, args := ast.ToSQL(3)
+	if frag != "name LIKE $3" {
+		t.Fatalf("got %q", frag)
+	}
+	if len(args) != 1 || args[0] != "%web%" {
+		t.Fatalf("got %v", args)
+	}
+}
+
+// Подстановочные знаки LIKE, пришедшие ЗНАЧЕНИЕМ, обязаны означать себя.
+// Иначе `%` в поисковой строке совпадает со всем подряд, а `_` — с любым
+// символом: пользователь получает ответ про другой набор строк, чем спросил.
+func TestToSQL_ContainsEscapesWildcards(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`50%`, `%50\%%`},
+		{`a_b`, `%a\_b%`},
+		{`c\d`, `%c\\d%`},
+	} {
+		ast := &FilterAST{Field: "name", Op: "CONTAINS", Value: tc.in}
+		_, args := ast.ToSQL(1)
+		if args[0] != tc.want {
+			t.Fatalf("value %q → %q, want %q", tc.in, args[0], tc.want)
+		}
+	}
+}
+
+// Инъекция в Field обезвреживается и на новой ветке — не только на равенстве.
+func TestToSQL_ContainsMaliciousFieldNeutralised(t *testing.T) {
+	ast := &FilterAST{Field: `1=1 OR name`, Op: "CONTAINS", Value: "x"}
+	frag, _ := ast.ToSQL(1)
+	if !strings.HasPrefix(frag, `"`) {
+		t.Fatalf("expected malicious Field to be identifier-quoted, got %q", frag)
+	}
+}

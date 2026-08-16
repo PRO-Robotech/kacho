@@ -929,6 +929,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "networks",
     apiPath: "/vpc/v1/networks",
     payloadKey: "networks",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     // proto: `InternalNetworkService.GetNetwork` → GET
     // /vpc/v1/networks/{network_id}:internal (глагольный суффикс отличает её от
     // публичного GET). Регистрируется только на cluster-internal mux.
@@ -1102,6 +1107,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "subnets",
     apiPath: "/vpc/v1/subnets",
     payloadKey: "subnets",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     related: [
       {
         // Под подсетью адреса всегда ВНУТРЕННИЕ (ссылка в internal_*.subnet_id).
@@ -1320,6 +1330,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "addresses",
     apiPath: "/vpc/v1/addresses",
     payloadKey: "addresses",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     docs: [
       { label: "Адреса облачных ресурсов", href: "#" },
       { label: "Резервирование внутренних IP-адресов", href: "#" },
@@ -1591,6 +1606,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "route-tables",
     apiPath: "/vpc/v1/routeTables",
     payloadKey: "route_tables",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     docs: [
       { label: "Таблицы маршрутизации", href: "#" },
       { label: "Статическая маршрутизация", href: "#" },
@@ -2028,6 +2048,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "security-groups",
     apiPath: "/vpc/v1/securityGroups",
     payloadKey: "security_groups",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     docs: [
       { label: "Группы безопасности", href: "#" },
       { label: "Правила групп безопасности", href: "#" },
@@ -2128,6 +2153,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "gateways",
     apiPath: "/vpc/v1/gateways",
     payloadKey: "gateways",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     singular: ENTITIES.gateways.singular,
     accusative: "шлюз",
     plural: ENTITIES.gateways.plural,
@@ -2228,6 +2258,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "cidr-groups",
     apiPath: "/vpc/v1/cidrGroups",
     payloadKey: "cidr_groups",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     singular: "Набор префиксов",
     plural: "Наборы префиксов",
     genitive: "Набора префиксов",
@@ -2465,6 +2500,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "instances",
     apiPath: "/compute/v1/instances",
     payloadKey: "instances",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     singular: "Виртуальная машина",
     accusative: "виртуальную машину",
     plural: "Виртуальные машины",
@@ -2948,6 +2988,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "guest-access-keys",
     apiPath: "/compute/v1/guestAccessKeys",
     payloadKey: "guest_access_keys",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     singular: "Ключ доступа",
     plural: "Ключи доступа",
     genitive: "Ключа доступа",
@@ -3044,6 +3089,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "placement-groups",
     apiPath: "/compute/v1/placementGroups",
     payloadKey: "placement_groups",
+    // Поиск по имени спрашивает сервер (#373): владелец держит `name` в белом
+    // списке выражения И применяет разобранный узел через `ToSQL`, то есть
+    // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
+    // `lib/list-server-search-parity.test.ts`.
+    serverSearchField: "name",
     singular: "Группа размещения",
     plural: "Группы размещения",
     genitive: "Группы размещения",

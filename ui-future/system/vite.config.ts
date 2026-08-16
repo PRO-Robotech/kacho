@@ -51,6 +51,13 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // Поиск по всем ресурсам сразу спрашивает и тома (#373): без этого
+      // правила его запрос уходит в раздачу статики и возвращает страницу
+      // вместо ответа — то есть область молча ищет в пустоте.
+      "/storage": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/operations": {
         target: apiGateway,
         changeOrigin: true,
