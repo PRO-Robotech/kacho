@@ -270,7 +270,7 @@ func (q *fakeTGReader) List(_ context.Context, f kachorepo.TargetGroupFilter, _ 
 		if f.ProjectID != "" && string(rec.ProjectID) != f.ProjectID {
 			continue
 		}
-		if f.Name != "" && string(rec.Name) != f.Name {
+		if !kachorepo.MatchesName(f.Name, string(rec.Name)) {
 			continue
 		}
 		c := *rec

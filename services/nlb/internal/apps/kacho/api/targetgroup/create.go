@@ -259,7 +259,7 @@ func (u *CreateTargetGroupUseCase) assertNameUnique(ctx context.Context, project
 	defer func() { _ = rd.Close() }()
 
 	existing, _, err := rd.TargetGroups().List(ctx,
-		kachorepo.TargetGroupFilter{ProjectID: projectID, Name: name},
+		kachorepo.TargetGroupFilter{ProjectID: projectID, Name: kachorepo.ExactName(name)},
 		kachorepo.Pagination{},
 	)
 	if err != nil {

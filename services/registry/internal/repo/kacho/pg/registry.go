@@ -77,14 +77,16 @@ func (r *RegistryRepo) RegistryProjectID(ctx context.Context, id string) (string
 	return projectID, nil
 }
 
-// List возвращает реестры project'а cursor-пагинацией (created_at,id) ASC.
-// filter — whitelist `name=` (corelib filter.Parse; garbage → InvalidArgument);
-// garbage page_token → InvalidArgument. Запрашивает pageSize+1 для next-cursor.
-func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
-	if err := r.ready(); err != nil {
-		return nil, "", err
-	}
-
+// registryListWhere строит условия WHERE и их аргументы для List: project-scope,
+// предикат filter-выражения и keyset-курсор. Плейсхолдеры нумеруются подряд от $1,
+// поэтому вызывающему остаётся ровно один вывод — `len(args)+1` — и рассинхрона
+// между «сколько аргументов» и «какой номер у LIMIT» быть не может.
+//
+// Вынесена из List, чтобы построение предиката проверялось БЕЗ базы: репозиторий
+// держит `*pgxpool.Pool`, и единственной пробой на этот код была интеграционная —
+// то есть та, что под `-short` не идёт вовсе. Предикат filter именно поэтому и
+// разъехался с грамматикой незамеченным (#460).
+func registryListWhere(q registry.ListQuery) ([]string, []any, error) {
 	conds := []string{}
 	args := []any{}
 	idx := 1
@@ -96,23 +98,47 @@ func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domai
 
 	ast, err := filter.Parse(q.Filter, []string{"name"})
 	if err != nil {
-		return nil, "", invalidFilterErr(err)
+		return nil, nil, invalidFilterErr(err)
 	}
 	if ast != nil {
-		conds = append(conds, fmt.Sprintf("name = $%d", idx))
-		args = append(args, ast.Value)
-		idx++
+		// Предикат эмитит САМ узел, а не вызывающий. Прежде здесь стояло
+		// `name = $N` + `ast.Value`: оператор оставался в узле и до SQL не доезжал,
+		// поэтому `name CONTAINS "prod"` отвечал точным равенством — успехом на
+		// вопрос, которого никто не задавал (#460). Поле контракта и колонка тут
+		// названы одинаково, поэтому годится ToSQL; владельцам с псевдонимом
+		// таблицы — ToSQLOn.
+		frag, fargs := ast.ToSQL(idx)
+		conds = append(conds, frag)
+		args = append(args, fargs...)
+		idx += len(fargs)
 	}
 
 	if q.PageToken != "" {
 		cur, derr := decodePageToken(q.PageToken)
 		if derr != nil {
-			return nil, "", invalidPageTokenErr(derr)
+			return nil, nil, invalidPageTokenErr(derr)
 		}
 		conds = append(conds, fmt.Sprintf("(created_at, id) > ($%d, $%d)", idx, idx+1))
 		args = append(args, cur.CreatedAt, cur.ID)
 		idx += 2
 	}
+
+	return conds, args, nil
+}
+
+// List возвращает реестры project'а cursor-пагинацией (created_at,id) ASC.
+// filter — whitelist `name=` (corelib filter.Parse; garbage → InvalidArgument);
+// garbage page_token → InvalidArgument. Запрашивает pageSize+1 для next-cursor.
+func (r *RegistryRepo) List(ctx context.Context, q registry.ListQuery) ([]*domain.Registry, string, error) {
+	if err := r.ready(); err != nil {
+		return nil, "", err
+	}
+
+	conds, args, err := registryListWhere(q)
+	if err != nil {
+		return nil, "", err
+	}
+	idx := len(args) + 1
 
 	where := ""
 	if len(conds) > 0 {

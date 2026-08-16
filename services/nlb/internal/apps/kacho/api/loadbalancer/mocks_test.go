@@ -205,7 +205,7 @@ func (q *fakeLBReader) List(ctx context.Context, f kachorepo.LoadBalancerFilter,
 		if f.ProjectID != "" && string(lb.ProjectID) != f.ProjectID {
 			continue
 		}
-		if f.Name != "" && string(lb.Name) != f.Name {
+		if !kachorepo.MatchesName(f.Name, string(lb.Name)) {
 			continue
 		}
 		c := *lb

@@ -48,7 +48,19 @@ type Pagination struct {
 	PageSize  int64
 	PageToken string
 	ProjectID string
-	Filter    string // name=<v> уже распарсен use-case-слоем в чистое значение
+	// Filter — СЫРОЕ filter-выражение запроса (`name="x"` либо `name CONTAINS "x"`),
+	// как его прислал вызывающий. Разбирает его use-case; репозиторий на это поле
+	// НЕ смотрит.
+	Filter string
+	// FilterAST — результат разбора Filter, и ровно он предназначен репозиторию.
+	//
+	// Здесь прежде лежало голое ЗНАЧЕНИЕ (`p.Filter = ast.Value`), а оператор
+	// оставался в узле и до SQL не доезжал — репозиторий, которому нечем было
+	// отличить одно от другого, строил равенство для обоих, и `name CONTAINS "x"`
+	// получал ответ про точное совпадение под 200 (#460). Узел несёт оператор с
+	// собой, поэтому предикат эмитит он сам (ToSQLOn на колонке владельца), а не
+	// вызывающий по памяти.
+	FilterAST *filter.FilterAST
 }
 
 // VolumeUpdate — резолвнутый набор mutable-изменений для Writer.Update. nil-поле →
@@ -274,13 +286,15 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 	}
 	p.PageSize = size
 	// filter=name — whitelist через corelib filter; невалидное поле/форма →
-	// InvalidArgument. Repo получает уже чистое значение name (не raw-выражение).
+	// InvalidArgument. Repo получает РАЗОБРАННЫЙ УЗЕЛ, а не выдернутое из него
+	// значение: оператор — часть выражения, и потерять его здесь значит ответить
+	// равенством на запрос подстроки (#460).
 	if p.Filter != "" {
 		ast, ferr := filter.Parse(p.Filter, []string{"name"})
 		if ferr != nil {
 			return nil, "", u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, ferr.Error()))
 		}
-		p.Filter = ast.Value
+		p.FilterAST = ast
 	}
 	vols, next, err := u.reader.List(ctx, p)
 	if err != nil {
