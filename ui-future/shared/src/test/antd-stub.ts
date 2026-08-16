@@ -30,6 +30,8 @@ interface MockColumn {
   /** Ширина. Настоящая таблица ИГНОРИРУЕТ `fixed` без неё. */
   width?: number | string;
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
+  /** Сравнение для сортировки. Настоящая таблица рисует стрелку ровно при нём. */
+  sorter?: unknown;
 }
 
 interface SelectOption {
@@ -144,6 +146,11 @@ interface MockTableProps {
   rowKey?: string | ((row: unknown) => string);
   onRow?: (row: unknown) => Record<string, unknown>;
   locale?: { emptyText?: React.ReactNode };
+  /** Настоящая таблица рисует столбец флажков ровно при этом свойстве. */
+  rowSelection?: {
+    selectedRowKeys?: (string | number)[];
+    onChange?: (keys: (string | number)[], rows: unknown[]) => void;
+  };
 }
 
 /** Значение клетки: настоящая таблица достаёт его по `dataIndex` и отдаёт в `render`. */
@@ -209,8 +216,19 @@ export function antdStub(): Record<string, unknown> {
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
-  const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale }: MockTableProps) =>
-    React.createElement(
+  const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale, rowSelection }: MockTableProps) => {
+    // Столбец флажков — наблюдаемое следствие `rowSelection`, и он ОБЯЗАН быть
+    // настоящим флажком: проба о групповом действии иначе утверждала бы о
+    // разметке, которой у заменителя нет, и зеленела бы при любом поведении.
+    const selected = new Set((rowSelection?.selectedRowKeys ?? []).map(String));
+    const toggle = (key: string) => {
+      const next = new Set(selected);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      const keys = [...next];
+      rowSelection?.onChange?.(keys, dataSource.filter((r, i) => next.has(String(keyOf(r, rowKey, i)))));
+    };
+    return React.createElement(
       "table",
       null,
       React.createElement(
@@ -219,7 +237,22 @@ export function antdStub(): Record<string, unknown> {
         React.createElement(
           "tr",
           null,
-          columns.map((c, i) => React.createElement("th", { key: i, "data-fixed": c.fixed, "data-width": c.width }, c.title)),
+          rowSelection ? React.createElement("th", { key: "__sel__" }) : null,
+          columns.map((c, i) =>
+            React.createElement(
+              "th",
+              {
+                key: i,
+                "data-fixed": c.fixed,
+                "data-width": c.width,
+                // Стрелка сортировки — наблюдаемое следствие `sorter`. Без неё
+                // проба о сортировке утверждала бы о разметке, которой у
+                // заменителя нет вовсе, и зеленела бы при любом поведении.
+                "data-sortable": c.sorter ? "yes" : undefined,
+              },
+              c.title,
+            ),
+          ),
         ),
       ),
       React.createElement(
@@ -235,6 +268,17 @@ export function antdStub(): Record<string, unknown> {
               React.createElement(
                 "tr",
                 { key: keyOf(row, rowKey, ri), ...(onRow ? onRow(row) : {}) },
+                rowSelection
+                  ? React.createElement(
+                      "td",
+                      { key: "__sel__" },
+                      React.createElement("input", {
+                        type: "checkbox",
+                        checked: selected.has(String(keyOf(row, rowKey, ri))),
+                        onChange: () => toggle(String(keyOf(row, rowKey, ri))),
+                      }),
+                    )
+                  : null,
                 columns.map((c, ci) => {
                   const value = cellValue(row, c.dataIndex);
                   return React.createElement(
@@ -247,6 +291,7 @@ export function antdStub(): Record<string, unknown> {
             ),
       ),
     );
+  };
   // Настоящий `Select` рисует ВАРИАНТЫ и отдаёт в `onChange` выбранное
   // ЗНАЧЕНИЕ (не DOM-событие). Заменитель-`<select>` с `options` в атрибуте не
   // показывал ни одного варианта и передавал событие: состав списка был

@@ -1,0 +1,127 @@
+// Глобальный поиск спрашивает СЕРВЕР и знает про машины и тома (#373).
+//
+// ПРЕДМЕТ (три отдельных дефекта в одном месте):
+//
+//  1. поиск тянул девять списков по 500 строк — БЕЗУСЛОВНО, на открытии
+//     страницы, ещё до того как пользователь что-нибудь набрал;
+//  2. совпадение искалось подстрокой в браузере, поэтому за пределом пятисот
+//     строк ресурс был невидим — а ответ «ничего не найдено» выглядел так же
+//     уверенно, как настоящий;
+//  3. машины и тома не индексировались вовсе, то есть самый частый запрос
+//     администратора («найди эту машину») не решался в принципе.
+//
+// ЧТО СТАЛО. Ничего не спрашивается, пока не набран запрос. Где владелец
+// разбирает выражение фильтра и сохраняет оператор — спрашивается СЕРВЕР, и
+// ответ полон. Где не разбирает — остаётся срез по прочитанной странице, и
+// страница называет эти области поимённо: неполноту нельзя выдавать за полноту.
+
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
+import { REGISTRY } from "@shared/lib/resource-registry";
+import { requestUrl } from "@shared/test/fetch-capture";
+import { SystemSearchPage, SEARCH_DOMAINS } from "./SystemSearchPage";
+
+const realFetch = globalThis.fetch;
+let urls: string[] = [];
+
+function stub() {
+  urls = [];
+  globalThis.fetch = (input: RequestInfo | URL) => {
+    const url = requestUrl(input);
+    urls.push(url);
+    const path = url.split("?")[0];
+    const d = SEARCH_DOMAINS.find((x) => x.path === path);
+    const rows = d ? [{ id: `${d.key}-1`, name: "нечто", project_id: "prj-1" }] : [];
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => Promise.resolve(JSON.stringify({ [d?.key ?? "x"]: rows })),
+    } as Response);
+  };
+}
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+function renderPage() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/system/search"]}>
+        <SystemSearchPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function типЗапроса(path: string): { filter: string | null } | null {
+  const u = urls.find((x) => x.split("?")[0] === path);
+  if (!u) return null;
+  return { filter: new URLSearchParams(u.split("?")[1] ?? "").get("filter") };
+}
+
+describe("глобальный поиск", () => {
+  it("до ввода запроса не спрашивает НИЧЕГО", async () => {
+    // Пятнадцать списков на открытии страницы — это стоимость, которую платит
+    // каждый заглянувший, и платит зря: искать он ещё ничего не начал.
+    stub();
+    renderPage();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(urls).toEqual([]);
+  });
+
+  it("машины и тома входят в область поиска", async () => {
+    // Именно их отсутствие делало неразрешимым «найди эту машину».
+    const ids = SEARCH_DOMAINS.map((d) => d.specId);
+    expect(ids).toContain("compute-instances");
+    expect(ids).toContain("volumes");
+  });
+
+  it("там, где владелец разбирает выражение, уходит СЕРВЕРНЫЙ запрос", async () => {
+    stub();
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
+
+    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    await waitFor(() => expect(типЗапроса(сеть.path)).not.toBeNull());
+    expect(типЗапроса(сеть.path)!.filter).toBe('name CONTAINS "прод"');
+  });
+
+  it("а там, где не разбирает, фильтр НЕ отправляется", async () => {
+    // Владелец, который выражения не знает, молча его игнорирует: список
+    // вернулся бы полным под видом отфильтрованного. Это строго хуже среза.
+    stub();
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
+
+    const проекты = SEARCH_DOMAINS.find((d) => d.specId === "projects")!;
+    expect(REGISTRY[проекты.specId]?.serverSearchField).toBeUndefined();
+    await waitFor(() => expect(типЗапроса(проекты.path)).not.toBeNull());
+    expect(типЗапроса(проекты.path)!.filter).toBeNull();
+  });
+
+  it("области, где поиск неполон, названы поимённо", async () => {
+    // Молчание сделало бы неполный ответ неотличимым от полного, и «ничего не
+    // найдено» читалось бы как утверждение об отсутствии ресурса.
+    stub();
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
+    expect(await screen.findByText(/неполон|загруженн/i)).toBeTruthy();
+  });
+
+  it("каждая область поиска — реальная спека реестра", async () => {
+    // Иначе список областей и реестр разъедутся молча, и область будет
+    // спрашивать несуществующий адрес.
+    for (const d of SEARCH_DOMAINS) {
+      const spec = REGISTRY[d.specId];
+      // Отсутствие спеки называется своим именем: иначе отказ приходит строкой
+      // ниже, про `apiPath` у `undefined`, и виновником выглядит адрес.
+      expect(spec ? d.specId : `НЕТ СПЕКИ: ${d.specId}`).toBe(d.specId);
+      expect(d.path).toBe(spec.apiPath);
+      expect(d.key).toBe(spec.payloadKey);
+    }
+  });
+});
