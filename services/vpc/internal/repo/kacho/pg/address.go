@@ -1075,6 +1075,99 @@ func (w *addressWriter) ClearReference(ctx context.Context, addressID string) er
 	return nil
 }
 
+// ReleaseLease — см. контракт kacho.AddressWriterIface.ReleaseLease.
+//
+// Первый стейтмент — CAS: снимает ссылку ТОЛЬКО если предъявленная пара и
+// проект совпали. Это не «прочитал → удалил»: single-statement DELETE берёт
+// row-lock, поэтому конкурирующий вызов либо ждёт коммита и видит 0 строк, либо
+// выигрывает сам. Ровно один вызывающий получает RELEASED.
+func (w *addressWriter) ReleaseLease(ctx context.Context, req kacho.LeaseReleaseRequest) (*kacho.LeaseReleaseResult, error) {
+	var owned bool
+	err := w.tx.QueryRow(ctx, `
+		DELETE FROM address_references ar
+		 USING addresses a
+		 WHERE ar.address_id     = $1
+		   AND a.id              = ar.address_id
+		   AND ar.referrer_type  = $2
+		   AND ar.referrer_id    = $3
+		   AND a.project_id      = $4
+		RETURNING ar.owned`,
+		req.AddressID, req.ReferrerType, req.ReferrerID, req.ProjectID).Scan(&owned)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, helpers.WrapPgErr(err, "Address", req.AddressID)
+		}
+		// 0 строк — разрешаем В ЭТОЙ ЖЕ транзакции: под row-lock мы видим
+		// закоммиченное состояние, поэтому «строки нет» отличимо от «ссылка
+		// чужая» без второго запроса к владельцу и без окна между ними.
+		return w.resolveUnmatchedLease(ctx, req)
+	}
+
+	// Ссылка снята. `used` живёт в другой таблице, чем ссылка, поэтому его сброс
+	// — часть ЭТОГО же снятия: без него адрес арендатора остался бы занятым
+	// навсегда, а адрес модуля не прошёл бы собственный guard удаления.
+	if _, uerr := w.tx.Exec(ctx, `UPDATE addresses SET used = false WHERE id = $1`, req.AddressID); uerr != nil {
+		return nil, helpers.WrapPgErr(uerr, "Address", req.AddressID)
+	}
+	if !owned {
+		return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseDetached}, nil
+	}
+
+	// owned: адрес заведён модулем и его жизненный цикл кончается вместе с
+	// арендой. `deletion_protection` здесь не читается — см. контракт метода.
+	rec, derr := helpers.ScanAddress(w.tx.QueryRow(ctx,
+		`DELETE FROM addresses WHERE id = $1 RETURNING `+helpers.AddressCols, req.AddressID))
+	if derr != nil {
+		if errors.Is(derr, pgx.ErrNoRows) {
+			// Строку унёс конкурент между двумя стейтментами. Аренды на ней всё
+			// равно больше нет — постусловие верно, и это НЕ отказ.
+			return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseAlreadyReleased}, nil
+		}
+		return nil, helpers.WrapPgErr(derr, "Address", req.AddressID)
+	}
+	return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseReleased, Deleted: rec}, nil
+}
+
+// resolveUnmatchedLease — почему CAS не совпал. Читается под той же
+// транзакцией, что и CAS.
+func (w *addressWriter) resolveUnmatchedLease(
+	ctx context.Context, req kacho.LeaseReleaseRequest,
+) (*kacho.LeaseReleaseResult, error) {
+	var projectID string
+	if err := w.tx.QueryRow(ctx,
+		`SELECT project_id FROM addresses WHERE id = $1`, req.AddressID).Scan(&projectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Строки адреса нет — аренда снята ранее. Законный исход повтора:
+			// полоса освобождения работает at-least-once.
+			return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseAlreadyReleased}, nil
+		}
+		return nil, helpers.WrapPgErr(err, "Address", req.AddressID)
+	}
+	if projectID != req.ProjectID {
+		// Право звать глагол выдано на ПРОЕКТ, поэтому без этой сверки `editor`
+		// на своём проекте стал бы правом снимать аренды в чужом.
+		return nil, fmt.Errorf("%w: address %s does not belong to project %s",
+			helpers.ErrFailedPrecondition, req.AddressID, req.ProjectID)
+	}
+
+	var leasedByAnyone bool
+	if err := w.tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM address_references WHERE address_id = $1)`,
+		req.AddressID).Scan(&leasedByAnyone); err != nil {
+		return nil, helpers.WrapPgErr(err, "Address", req.AddressID)
+	}
+	if !leasedByAnyone {
+		// Ссылки нет вовсе — постусловие «этот потребитель аренды не держит» уже
+		// верно. Адрес НЕ трогаем: удаление неарендованного адреса принадлежит
+		// публичному Delete от арендатора.
+		return &kacho.LeaseReleaseResult{Outcome: kacho.LeaseAlreadyDetached}, nil
+	}
+	// Ссылка есть, но не наша. Текст называет ПРЕДЪЯВЛЕННОЕ владение, а не то,
+	// чьё оно на самом деле: чужая пара — не наше дело сообщать.
+	return nil, fmt.Errorf("%w: address %s is not leased by %s %s",
+		helpers.ErrFailedPrecondition, req.AddressID, req.ReferrerType, req.ReferrerID)
+}
+
 // ---- helpers ----
 
 // marshalIPSpec — общий json marshaler для опциональных IP-spec'ов

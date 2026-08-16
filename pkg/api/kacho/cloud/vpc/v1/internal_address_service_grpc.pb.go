@@ -32,6 +32,7 @@ const (
 	InternalAddressService_GetAddressReference_FullMethodName       = "/kacho.cloud.vpc.v1.InternalAddressService/GetAddressReference"
 	InternalAddressService_MarkAddressEphemeralInUse_FullMethodName = "/kacho.cloud.vpc.v1.InternalAddressService/MarkAddressEphemeralInUse"
 	InternalAddressService_CreateOwnedAddress_FullMethodName        = "/kacho.cloud.vpc.v1.InternalAddressService/CreateOwnedAddress"
+	InternalAddressService_ReleaseOwnedAddress_FullMethodName       = "/kacho.cloud.vpc.v1.InternalAddressService/ReleaseOwnedAddress"
 )
 
 // InternalAddressServiceClient is the client API for InternalAddressService service.
@@ -143,6 +144,43 @@ type InternalAddressServiceClient interface {
 	// откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
 	// вызывающего больше не существует by construction.
 	CreateOwnedAddress(ctx context.Context, in *CreateOwnedAddressRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// ReleaseOwnedAddress снимает аренду адреса ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и
+	// называет исход ПОЛЕМ ОТВЕТА.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ГЛАГОЛ, А НЕ ПАРА ClearAddressReference + AddressService.Delete.
+	// Пара анкорит право ПООБЪЕКТНО, на самом `vpc_address`. Отказ на пообъектном
+	// имени платформа обязана делать неотличимым от отсутствия объекта, иначе по
+	// различию ответов устанавливают существование чужих ресурсов. Правило верное и
+	// остаётся; следствие у него такое: код ответа владельца НЕ несёт утверждения
+	// «аренды нет» — его не несёт и не должен нести. Вызывающий, который выводил
+	// «работа сделана» из кода ошибки, строил необратимый шаг на утверждении,
+	// которого не делали.
+	//
+	// Здесь право анкорится на `project` — ТОМ ЖЕ якоре, что у CreateOwnedAddress, —
+	// поэтому пообъектной пробы существования у глагола нет вовсе, а вместе с ней
+	// нет и полосы скрытия. Неоднозначность устраняется не тем, что её научились
+	// различать, а тем, что её больше нечем породить.
+	//
+	// Принадлежность КОНКРЕТНОЙ аренды решает не отношение вызывающего к адресу, а
+	// сверка предъявленной пары (referrer_type, referrer_id) и project_id внутри
+	// собственной транзакции vpc — одним стейтментом с проверкой кардинальности.
+	// Право звать глагол и право снять ЭТУ аренду — разные вопросы, и второй не
+	// решается моделью прав.
+	//
+	// Синхронный, в отличие от CreateOwnedAddress: исход обязан приехать ПОЛЕМ, а
+	// форма Operation унесла бы его за опрос публичного OperationService — то есть
+	// за ту самую поверхность, с которой глагол уходит. Отступление от ban #9
+	// записано в services/vpc/docs/engineering/architecture/07-known-divergences.md.
+	//
+	// NOT_FOUND этот глагол НЕ ПРОИЗВОДИТ НИ НА ОДНОМ ВХОДЕ: отсутствие — законный
+	// исход, и он назван (ALREADY_RELEASED / ALREADY_DETACHED).
+	//
+	// Errors:
+	//   - InvalidArgument: пустое любое из четырёх полей; негодный address_id.
+	//   - FailedPrecondition: аренда принадлежит другому потребителю ЛИБО адрес
+	//     принадлежит другому проекту.
+	//   - Unavailable: хранилище недоступно (fail-closed — НИКОГДА не успех).
+	ReleaseOwnedAddress(ctx context.Context, in *ReleaseOwnedAddressRequest, opts ...grpc.CallOption) (*ReleaseOwnedAddressResponse, error)
 }
 
 type internalAddressServiceClient struct {
@@ -237,6 +275,16 @@ func (c *internalAddressServiceClient) CreateOwnedAddress(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
 	err := c.cc.Invoke(ctx, InternalAddressService_CreateOwnedAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *internalAddressServiceClient) ReleaseOwnedAddress(ctx context.Context, in *ReleaseOwnedAddressRequest, opts ...grpc.CallOption) (*ReleaseOwnedAddressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReleaseOwnedAddressResponse)
+	err := c.cc.Invoke(ctx, InternalAddressService_ReleaseOwnedAddress_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -352,6 +400,43 @@ type InternalAddressServiceServer interface {
 	// откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
 	// вызывающего больше не существует by construction.
 	CreateOwnedAddress(context.Context, *CreateOwnedAddressRequest) (*operation.Operation, error)
+	// ReleaseOwnedAddress снимает аренду адреса ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и
+	// называет исход ПОЛЕМ ОТВЕТА.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ГЛАГОЛ, А НЕ ПАРА ClearAddressReference + AddressService.Delete.
+	// Пара анкорит право ПООБЪЕКТНО, на самом `vpc_address`. Отказ на пообъектном
+	// имени платформа обязана делать неотличимым от отсутствия объекта, иначе по
+	// различию ответов устанавливают существование чужих ресурсов. Правило верное и
+	// остаётся; следствие у него такое: код ответа владельца НЕ несёт утверждения
+	// «аренды нет» — его не несёт и не должен нести. Вызывающий, который выводил
+	// «работа сделана» из кода ошибки, строил необратимый шаг на утверждении,
+	// которого не делали.
+	//
+	// Здесь право анкорится на `project` — ТОМ ЖЕ якоре, что у CreateOwnedAddress, —
+	// поэтому пообъектной пробы существования у глагола нет вовсе, а вместе с ней
+	// нет и полосы скрытия. Неоднозначность устраняется не тем, что её научились
+	// различать, а тем, что её больше нечем породить.
+	//
+	// Принадлежность КОНКРЕТНОЙ аренды решает не отношение вызывающего к адресу, а
+	// сверка предъявленной пары (referrer_type, referrer_id) и project_id внутри
+	// собственной транзакции vpc — одним стейтментом с проверкой кардинальности.
+	// Право звать глагол и право снять ЭТУ аренду — разные вопросы, и второй не
+	// решается моделью прав.
+	//
+	// Синхронный, в отличие от CreateOwnedAddress: исход обязан приехать ПОЛЕМ, а
+	// форма Operation унесла бы его за опрос публичного OperationService — то есть
+	// за ту самую поверхность, с которой глагол уходит. Отступление от ban #9
+	// записано в services/vpc/docs/engineering/architecture/07-known-divergences.md.
+	//
+	// NOT_FOUND этот глагол НЕ ПРОИЗВОДИТ НИ НА ОДНОМ ВХОДЕ: отсутствие — законный
+	// исход, и он назван (ALREADY_RELEASED / ALREADY_DETACHED).
+	//
+	// Errors:
+	//   - InvalidArgument: пустое любое из четырёх полей; негодный address_id.
+	//   - FailedPrecondition: аренда принадлежит другому потребителю ЛИБО адрес
+	//     принадлежит другому проекту.
+	//   - Unavailable: хранилище недоступно (fail-closed — НИКОГДА не успех).
+	ReleaseOwnedAddress(context.Context, *ReleaseOwnedAddressRequest) (*ReleaseOwnedAddressResponse, error)
 	mustEmbedUnimplementedInternalAddressServiceServer()
 }
 
@@ -388,6 +473,9 @@ func (UnimplementedInternalAddressServiceServer) MarkAddressEphemeralInUse(conte
 }
 func (UnimplementedInternalAddressServiceServer) CreateOwnedAddress(context.Context, *CreateOwnedAddressRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateOwnedAddress not implemented")
+}
+func (UnimplementedInternalAddressServiceServer) ReleaseOwnedAddress(context.Context, *ReleaseOwnedAddressRequest) (*ReleaseOwnedAddressResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseOwnedAddress not implemented")
 }
 func (UnimplementedInternalAddressServiceServer) mustEmbedUnimplementedInternalAddressServiceServer() {
 }
@@ -573,6 +661,24 @@ func _InternalAddressService_CreateOwnedAddress_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalAddressService_ReleaseOwnedAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseOwnedAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalAddressServiceServer).ReleaseOwnedAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalAddressService_ReleaseOwnedAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalAddressServiceServer).ReleaseOwnedAddress(ctx, req.(*ReleaseOwnedAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalAddressService_ServiceDesc is the grpc.ServiceDesc for InternalAddressService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -615,6 +721,10 @@ var InternalAddressService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateOwnedAddress",
 			Handler:    _InternalAddressService_CreateOwnedAddress_Handler,
+		},
+		{
+			MethodName: "ReleaseOwnedAddress",
+			Handler:    _InternalAddressService_ReleaseOwnedAddress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

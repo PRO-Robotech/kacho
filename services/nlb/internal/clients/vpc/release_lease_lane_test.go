@@ -15,12 +15,15 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// Полосы ответа владельца на снятие привязки
-// (`InternalAddressService.ClearAddressReference`).
+// Полосы ответа владельца на СНЯТИЕ АРЕНДЫ
+// (`InternalAddressService.ReleaseOwnedAddress`).
 //
-// Полосу ПРИВЯЗКИ уже развела соседняя проба (`attach_existing_lane_test.go`,
-// задача #434). Здесь — полоса СНЯТИЯ, и у неё другой производитель отказа: не
-// скрытие существования, а недоступность модели прав.
+// Файл переименован из полосы `ClearAddressReference` вместе со своим предметом:
+// пара «снять ссылку» + «удалить адрес» заменена одним глаголом (#439). Все
+// утверждения ниже пережили замену и относятся к нему; меняется вызываемый
+// метод и ОДНО существенное различие, названное у своей пробы: полосы «нет
+// ресурса» у нового глагола нет, потому что отсутствие он сообщает ПОЛЕМ ответа,
+// а не кодом ошибки.
 //
 // Разбор ответа здесь был рукописным `switch` по кодам с веткой «всё остальное»,
 // а корзины «прочее» у классификатора чужого отказа не бывает: она не нейтральна,
@@ -34,25 +37,30 @@ import (
 // Что где утверждается, чтобы не утверждать дважды:
 //   - полоса → sentinel — здесь;
 //   - sentinel → судьба строки (транзиент оставляет строку на повтор, терминальное
-//     изолирует) — уже утверждено в `jobs/free_ip_runner_integration_test.go`
-//     (`TestFreeIP_TransientReleaseErrorLeavesRowForRetry` и соседняя проба про
-//     отравленную строку). Шов между половинами — сам sentinel.
+//     изолирует) — уже утверждено в `jobs/free_ip_runner_integration_test.go`.
+//     Шов между половинами — сам sentinel.
 //
 // У каждой отрицательной полосы есть парный положительный контроль: без него
 // «не тот sentinel» зеленело бы на клиенте, который свёл все ответы в один.
 
-func clearReq() string { return "adr7tp1q22pfqey44m4m" }
+func releaseReq() ReleaseLeaseRequest {
+	return ReleaseLeaseRequest{
+		ProjectID: "prj-1",
+		AddressID: "adr7tp1q22pfqey44m4m",
+		Owner:     AddressOwner{Kind: OwnerKindLoadBalancer, ID: "nlb7tp1q22pfqey44m4m"},
+	}
+}
 
 // Недоступность модели прав у владельца — переходное состояние, а не приговор
-// привязке. Полоса обязана быть транзиентной, иначе освобождение аренды
+// аренде. Полоса обязана быть транзиентной, иначе освобождение аренды
 // прекращается навсегда из-за перебоя длиной в доли секунды.
-func TestClearReference_AuthzOutage_IsTransientLane(t *testing.T) {
+func TestReleaseLease_AuthzOutage_IsTransientLane(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.Unavailable, "authorization service unavailable"),
+		releaseErr: status.Error(codes.Unavailable, "authorization service unavailable"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	_, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrUnavailable),
@@ -65,13 +73,13 @@ func TestClearReference_AuthzOutage_IsTransientLane(t *testing.T) {
 // запроса его не изменит. Полоса обязана быть НАЗВАННОЙ, а не проваливаться в
 // корзину «прочее»: у корзины нет ни имени, ни контракта, и следующий код,
 // попавший в неё, унаследует политику, которую никто не выбирал.
-func TestClearReference_PermissionDenied_IsNamedTerminalLane(t *testing.T) {
+func TestReleaseLease_PermissionDenied_IsNamedTerminalLane(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.PermissionDenied, "permission denied"),
+		releaseErr: status.Error(codes.PermissionDenied, "permission denied"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	_, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrFailedPrecondition),
@@ -80,15 +88,15 @@ func TestClearReference_PermissionDenied_IsNamedTerminalLane(t *testing.T) {
 		"отказ в правах НЕ транзиентный — вечный повтор был бы ошибкой в другую сторону")
 }
 
-// Состояние чужого ресурса не позволяет снять привязку — тоже терминально и тоже
-// названо.
-func TestClearReference_FailedPrecondition_IsNamedTerminalLane(t *testing.T) {
+// Предъявленное владение не подтвердилось (аренда чужая либо адрес другого
+// проекта) — терминально и названо.
+func TestReleaseLease_FailedPrecondition_IsNamedTerminalLane(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.FailedPrecondition, "address is not linkable"),
+		releaseErr: status.Error(codes.FailedPrecondition, "address is not leased by network_load_balancer nlb-x"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	_, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrFailedPrecondition))
@@ -99,7 +107,7 @@ func TestClearReference_FailedPrecondition_IsNamedTerminalLane(t *testing.T) {
 // исчерпание бюджета проверок, нереализованный метод), — это СОСТОЯНИЕ «ответ не
 // понят», а не третья политика повтора. Он обязан быть терминальным и НЕ выдавать
 // себя ни за недоступность (вечный повтор), ни за успех (тихая потеря аренды).
-func TestClearReference_UnclassifiedPeerAnswer_IsNeitherTransientNorSuccess(t *testing.T) {
+func TestReleaseLease_UnclassifiedPeerAnswer_IsNeitherTransientNorSuccess(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		peer error
@@ -109,66 +117,82 @@ func TestClearReference_UnclassifiedPeerAnswer_IsNeitherTransientNorSuccess(t *t
 		{"метод не реализован", status.Error(codes.Unimplemented, "no such method")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			intAddr := &fakeInternalAddressService{clearErr: tc.peer}
+			intAddr := &fakeInternalAddressService{releaseErr: tc.peer}
 			conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-			err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+			out, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
-			require.Error(t, err, "непонятый ответ не может означать «привязка снята»")
+			require.Error(t, err, "непонятый ответ не может означать «аренда снята»")
 			assert.False(t, errors.Is(err, domain.ErrUnavailable),
 				"непонятый ответ не объявляется повторяемым: вечный повтор дороже отказа")
+			assert.Empty(t, out, "исход не называется там, где работа не сделана")
 		})
 	}
 }
 
-// Положительный контроль набора #1: привязки уже нет — постусловие выполнено.
-// Без него все отрицания выше зеленели бы на клиенте, который отвечает ошибкой
-// вообще всегда.
-func TestClearReference_NotFound_StaysIdempotentSuccess(t *testing.T) {
+// ЗДЕСЬ ПОЛОСА ПЕРЕВЁРНУТА ОТНОСИТЕЛЬНО СНЯТОГО ПРЕДМЕТА, и это главное различие
+// между старым глаголом и новым.
+//
+// У `ClearAddressReference` ответ «не найдено» законно означал «снимать нечего»:
+// постусловие выполнено. У `ReleaseOwnedAddress` он не означает НИЧЕГО о
+// состоянии аренды — глагол этой полосы не производит вовсе, а «аренды уже нет»
+// приезжает НАЗВАННЫМ ИСХОДОМ в поле ответа. Значит получить `NOT_FOUND` можно
+// только говоря не с тем глаголом (владелец не перекатан, поверхность не та), и
+// это НАСТРОЙКА. Прочитать её как «уже снято» значит вернуть ровно тот дефект,
+// ради которого глагол заведён (#439).
+func TestReleaseLease_NotFound_IsRefusalNotSilentSuccess(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.NotFound, "no address"),
+		releaseErr: status.Error(codes.NotFound, "unknown method"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	out, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
-	assert.NoError(t, err, "снимать нечего — постусловие выполнено, это успех, а не отказ")
+	require.Error(t, err, "«не найдено» НЕ доказывает, что аренда снята")
+	assert.True(t, errors.Is(err, domain.ErrFailedPrecondition))
+	assert.Empty(t, out, "исход не называется там, где работа не сделана")
 }
 
-// Положительный контроль набора #2: негодная ссылка остаётся негодной.
-func TestClearReference_InvalidArgument_StaysIllegalArgument(t *testing.T) {
+// Положительный контроль набора: негодная ссылка остаётся негодной.
+func TestReleaseLease_InvalidArgument_StaysIllegalArgument(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.InvalidArgument, "bad address id"),
+		releaseErr: status.Error(codes.InvalidArgument, "bad address id"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	_, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
 	assert.False(t, errors.Is(err, domain.ErrUnavailable))
 }
 
-// Положительный контроль набора #3: чистый ответ — чистый успех.
-func TestClearReference_Success(t *testing.T) {
+// Положительный контроль набора: чистый ответ — НАЗВАННЫЙ исход.
+//
+// Без него все отрицания выше зеленели бы на клиенте, который отвечает ошибкой
+// вообще всегда.
+func TestReleaseLease_Success(t *testing.T) {
 	intAddr := &fakeInternalAddressService{}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	require.NoError(t, NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq()))
-	assert.Equal(t, 1, intAddr.clearCallCount())
+	out, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
+
+	require.NoError(t, err)
+	assert.Equal(t, LeaseReleased, out)
+	require.Len(t, intAddr.releaseCalls, 1)
 }
 
-// Проза владельца наружу через sentinel-обёртку не течёт: адрес назван, внутренности
-// решения о доступе — нет (security.md §Hardening-инварианты п.1).
-func TestClearReference_PeerProseDoesNotLeak(t *testing.T) {
+// Проза владельца наружу через sentinel-обёртку не течёт: адрес назван,
+// внутренности решения о доступе — нет (security.md §Hardening-инварианты п.1).
+func TestReleaseLease_PeerProseDoesNotLeak(t *testing.T) {
 	intAddr := &fakeInternalAddressService{
-		clearErr: status.Error(codes.PermissionDenied, "relation v_update on vpc_address denied"),
+		releaseErr: status.Error(codes.PermissionDenied, "relation editor on project denied"),
 	}
 	conn := startFakeVPC(t, nil, nil, nil, intAddr, nil)
 
-	err := NewInternalAddressClient(conn, conn).ClearReference(ctxBackground(), clearReq())
+	_, err := NewInternalAddressClient(conn, conn).ReleaseLease(ctxBackground(), releaseReq())
 
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "v_update",
+	assert.NotContains(t, err.Error(), "relation editor",
 		"полоса отказа не пересказывает внутренности решения о доступе у владельца")
 }

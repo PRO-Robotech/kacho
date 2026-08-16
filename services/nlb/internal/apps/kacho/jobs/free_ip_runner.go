@@ -267,13 +267,13 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 	}
 
 	// Per-family release VIP по address_id (детерминированно, раздельно v4/v6).
-	// Idempotent: NotFound трактуется клиентом как успех. Транзиентная ошибка
-	// (peer недоступен) прерывает тик (retry); permanent-ошибка изолирует
-	// ядовитую строку, не блокируя очередь (см. handleReleaseErr).
-	if err := r.releaseFamily(ctx, lb.addressIDV4, lb.originV4); err != nil {
+	// Владелец называет исход полем; ЛЮБОЙ отказ означает, что аренда не снята.
+	// Транзиентная ошибка (peer недоступен) прерывает тик (retry); permanent
+	// изолирует ядовитую строку, не блокируя очередь (см. handleReleaseErr).
+	if err := r.releaseFamily(ctx, lb.projectID, lb.id, lb.addressIDV4); err != nil {
 		return r.handleReleaseErr(ctx, tx, &committed, lb, "v4", lb.addressIDV4, lb.originV4, err)
 	}
-	if err := r.releaseFamily(ctx, lb.addressIDV6, lb.originV6); err != nil {
+	if err := r.releaseFamily(ctx, lb.projectID, lb.id, lb.addressIDV6); err != nil {
 		return r.handleReleaseErr(ctx, tx, &committed, lb, "v6", lb.addressIDV6, lb.originV6, err)
 	}
 	if lb.addressIDV4 == "" && lb.addressIDV6 == "" {
@@ -358,26 +358,29 @@ func isTransientReleaseErr(err error) bool {
 		errors.Is(err, context.DeadlineExceeded)
 }
 
-// releaseFamily освобождает VIP одного семейства (§3.9): пустой address_id → no-op;
-// vip_origin='linked' → ClearReference (tenant-адрес уцелевает); 'auto' (owned) →
-// two-step owner-scoped ClearReference → FreeIP (иначе FreeIP==Delete упрётся в
-// собственный Delete-guard). Идемпотентно (NotFound → успех); окно cleared-but-not-
-// deleted доедет на следующем тике (re-drive Delete).
-func (r *FreeIPRunner) releaseFamily(ctx context.Context, addressID, origin string) error {
+// releaseFamily снимает аренду VIP одного семейства ОДНИМ глаголом владельца:
+// пустой address_id → no-op; исход читается из поля ответа, а не выводится из
+// кода ошибки.
+//
+// Прежде это была пара пообъектных вызовов, у которой ответ «не найдено»
+// означал успех. Для реконсайлера это было особенно дорого: он ходит под
+// системной личностью, и потеря принципала на этом пути давала ровно тот же
+// ответ — то есть «аренда освобождена» отвечалось там, где не было сделано
+// ничего, после чего строка потребителя сносилась вместе с последней
+// координатой аренды.
+func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addressID string) error {
 	if addressID == "" {
 		return nil
 	}
-	// System-reconcile детачнут от tenant-request — идём под system-principal, чтобы
-	// vpc-вызовы release (ClearReference/FreeIP) несли identity (иначе authz_no_principal).
+	// System-reconcile детачнут от tenant-request — идём под system-principal,
+	// чтобы вызов к vpc нёс identity (иначе authz_no_principal).
 	ctx = operations.WithPrincipal(ctx, operations.SystemPrincipal())
-	if domain.VipOrigin(origin) == domain.VipOriginLinked {
-		return r.addrs.ClearReference(ctx, addressID)
-	}
-	// owned (auto): снять собственный owned-референс, затем удалить адрес.
-	if err := r.addrs.ClearReference(ctx, addressID); err != nil {
-		return err
-	}
-	return r.addrs.FreeIP(ctx, addressID)
+	_, err := r.addrs.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
+		ProjectID: projectID,
+		AddressID: addressID,
+		Owner:     vpcclient.AddressOwner{Kind: vpcclient.OwnerKindLoadBalancer, ID: lbID},
+	})
+	return err
 }
 
 // emitReconcileFinalize эмитит в текущей TX outbox DELETED (nlb_load_balancer) +

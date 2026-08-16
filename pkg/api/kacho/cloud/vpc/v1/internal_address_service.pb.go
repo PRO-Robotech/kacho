@@ -27,6 +27,69 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Исход. У каждого «сделал сейчас» есть свой «сделано ранее»: без этого повтор
+// после DETACHED попал бы в отказ, а отказ на полосе освобождения перманентен и
+// заклинил бы снос потребителя навсегда.
+type ReleaseOwnedAddressResponse_Outcome int32
+
+const (
+	// Сервер, вернувший это, дефектен: исход обязателен.
+	ReleaseOwnedAddressResponse_OUTCOME_UNSPECIFIED ReleaseOwnedAddressResponse_Outcome = 0
+	// ЭТИМ вызовом: ссылка снята, адрес удалён, IP возвращён в свободный список.
+	ReleaseOwnedAddressResponse_RELEASED ReleaseOwnedAddressResponse_Outcome = 1
+	// Строки адреса у владельца нет — аренда снята ранее.
+	ReleaseOwnedAddressResponse_ALREADY_RELEASED ReleaseOwnedAddressResponse_Outcome = 2
+	// ЭТИМ вызовом: адрес арендатора (owned=false) — ссылка снята, адрес оставлен.
+	ReleaseOwnedAddressResponse_DETACHED ReleaseOwnedAddressResponse_Outcome = 3
+	// Адрес есть, ссылки этого потребителя на нём нет — снята ранее.
+	ReleaseOwnedAddressResponse_ALREADY_DETACHED ReleaseOwnedAddressResponse_Outcome = 4
+)
+
+// Enum value maps for ReleaseOwnedAddressResponse_Outcome.
+var (
+	ReleaseOwnedAddressResponse_Outcome_name = map[int32]string{
+		0: "OUTCOME_UNSPECIFIED",
+		1: "RELEASED",
+		2: "ALREADY_RELEASED",
+		3: "DETACHED",
+		4: "ALREADY_DETACHED",
+	}
+	ReleaseOwnedAddressResponse_Outcome_value = map[string]int32{
+		"OUTCOME_UNSPECIFIED": 0,
+		"RELEASED":            1,
+		"ALREADY_RELEASED":    2,
+		"DETACHED":            3,
+		"ALREADY_DETACHED":    4,
+	}
+)
+
+func (x ReleaseOwnedAddressResponse_Outcome) Enum() *ReleaseOwnedAddressResponse_Outcome {
+	p := new(ReleaseOwnedAddressResponse_Outcome)
+	*p = x
+	return p
+}
+
+func (x ReleaseOwnedAddressResponse_Outcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ReleaseOwnedAddressResponse_Outcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_vpc_v1_internal_address_service_proto_enumTypes[0].Descriptor()
+}
+
+func (ReleaseOwnedAddressResponse_Outcome) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_vpc_v1_internal_address_service_proto_enumTypes[0]
+}
+
+func (x ReleaseOwnedAddressResponse_Outcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ReleaseOwnedAddressResponse_Outcome.Descriptor instead.
+func (ReleaseOwnedAddressResponse_Outcome) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescGZIP(), []int{12, 0}
+}
+
 type AllocateInternalIPRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AddressId     string                 `protobuf:"bytes,1,opt,name=address_id,json=addressId,proto3" json:"address_id,omitempty"`
@@ -664,6 +727,133 @@ func (x *CreateOwnedAddressRequest) GetOwned() bool {
 	return false
 }
 
+// ReleaseOwnedAddressRequest — предъявление владения арендой.
+//
+// `owned` здесь НЕ передаётся намеренно: ветку «удалить адрес» либо «оставить
+// адрес арендатора» выбирает vpc по СВОЕЙ колонке address_references.owned.
+// Один ограниченный источник вместо решения, принимаемого потребителем по
+// собственной копии признака.
+type ReleaseOwnedAddressRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Якорь авторизации — тот же, что у CreateOwnedAddress. Required.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Адрес, аренду которого снимают. Required.
+	AddressId string `protobuf:"bytes,2,opt,name=address_id,json=addressId,proto3" json:"address_id,omitempty"`
+	// Тип потребителя, предъявляющего владение, напр. "nlb_network_load_balancer".
+	// Required.
+	ReferrerType string `protobuf:"bytes,3,opt,name=referrer_type,json=referrerType,proto3" json:"referrer_type,omitempty"`
+	// ID потребителя. Required.
+	ReferrerId    string `protobuf:"bytes,4,opt,name=referrer_id,json=referrerId,proto3" json:"referrer_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseOwnedAddressRequest) Reset() {
+	*x = ReleaseOwnedAddressRequest{}
+	mi := &file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseOwnedAddressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseOwnedAddressRequest) ProtoMessage() {}
+
+func (x *ReleaseOwnedAddressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseOwnedAddressRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseOwnedAddressRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReleaseOwnedAddressRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ReleaseOwnedAddressRequest) GetAddressId() string {
+	if x != nil {
+		return x.AddressId
+	}
+	return ""
+}
+
+func (x *ReleaseOwnedAddressRequest) GetReferrerType() string {
+	if x != nil {
+		return x.ReferrerType
+	}
+	return ""
+}
+
+func (x *ReleaseOwnedAddressRequest) GetReferrerId() string {
+	if x != nil {
+		return x.ReferrerId
+	}
+	return ""
+}
+
+// ReleaseOwnedAddressResponse — ИСХОД НАЗВАН ПОЛЕМ, а не выведен из кода ошибки.
+//
+// Прецедент в этом же контракте — AllocateIPResponse.already_allocated: повтор
+// выражается полем, а не молчаливым «как будто выделили».
+type ReleaseOwnedAddressResponse struct {
+	state         protoimpl.MessageState              `protogen:"open.v1"`
+	Outcome       ReleaseOwnedAddressResponse_Outcome `protobuf:"varint,1,opt,name=outcome,proto3,enum=kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse_Outcome" json:"outcome,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseOwnedAddressResponse) Reset() {
+	*x = ReleaseOwnedAddressResponse{}
+	mi := &file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseOwnedAddressResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseOwnedAddressResponse) ProtoMessage() {}
+
+func (x *ReleaseOwnedAddressResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseOwnedAddressResponse.ProtoReflect.Descriptor instead.
+func (*ReleaseOwnedAddressResponse) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ReleaseOwnedAddressResponse) GetOutcome() ReleaseOwnedAddressResponse_Outcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return ReleaseOwnedAddressResponse_OUTCOME_UNSPECIFIED
+}
+
 var File_kacho_cloud_vpc_v1_internal_address_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
@@ -718,7 +908,23 @@ const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\vreferrer_id\x18\x03 \x01(\tR\n" +
 	"referrerId\x12#\n" +
 	"\rreferrer_name\x18\x04 \x01(\tR\freferrerName\x12\x14\n" +
-	"\x05owned\x18\x05 \x01(\bR\x05owned2\x82\x0e\n" +
+	"\x05owned\x18\x05 \x01(\bR\x05owned\"\xa0\x01\n" +
+	"\x1aReleaseOwnedAddressRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1d\n" +
+	"\n" +
+	"address_id\x18\x02 \x01(\tR\taddressId\x12#\n" +
+	"\rreferrer_type\x18\x03 \x01(\tR\freferrerType\x12\x1f\n" +
+	"\vreferrer_id\x18\x04 \x01(\tR\n" +
+	"referrerId\"\xdc\x01\n" +
+	"\x1bReleaseOwnedAddressResponse\x12Q\n" +
+	"\aoutcome\x18\x01 \x01(\x0e27.kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse.OutcomeR\aoutcome\"j\n" +
+	"\aOutcome\x12\x17\n" +
+	"\x13OUTCOME_UNSPECIFIED\x10\x00\x12\f\n" +
+	"\bRELEASED\x10\x01\x12\x14\n" +
+	"\x10ALREADY_RELEASED\x10\x02\x12\f\n" +
+	"\bDETACHED\x10\x03\x12\x14\n" +
+	"\x10ALREADY_DETACHED\x10\x042\xc3\x0f\n" +
 	"\x16InternalAddressService\x12\xbf\x01\n" +
 	"\x12AllocateInternalIP\x12-.kacho.cloud.vpc.v1.AllocateInternalIPRequest\x1a&.kacho.cloud.vpc.v1.AllocateIPResponse\"R\x8a\xb5\x18 vpc.addresses.allocateInternalIp\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\vvpc_address\x12\n" +
@@ -745,7 +951,10 @@ const file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc = "" +
 	"\vvpc_address\x12\n" +
 	"address_id\xa2\xb5\x18\x011\x12\xb4\x01\n" +
 	"\x12CreateOwnedAddress\x12-.kacho.cloud.vpc.v1.CreateOwnedAddressRequest\x1a .kacho.cloud.operation.Operation\"M\x8a\xb5\x18\x19vpc.addresses.createOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x1d\n" +
-	"\aproject\x12\x12address.project_id\xa2\xb5\x18\x011B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
+	"\aproject\x12\x12address.project_id\xa2\xb5\x18\x011\x12\xbe\x01\n" +
+	"\x13ReleaseOwnedAddress\x12..kacho.cloud.vpc.v1.ReleaseOwnedAddressRequest\x1a/.kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse\"F\x8a\xb5\x18\x1avpc.addresses.releaseOwned\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"\aproject\x12\n" +
+	"project_id\xa2\xb5\x18\x011B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"
 
 var (
 	file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescOnce sync.Once
@@ -759,49 +968,56 @@ func file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescGZIP() []byte
 	return file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_kacho_cloud_vpc_v1_internal_address_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kacho_cloud_vpc_v1_internal_address_service_proto_goTypes = []any{
-	(*AllocateInternalIPRequest)(nil),         // 0: kacho.cloud.vpc.v1.AllocateInternalIPRequest
-	(*AllocateExternalIPRequest)(nil),         // 1: kacho.cloud.vpc.v1.AllocateExternalIPRequest
-	(*AllocateIPResponse)(nil),                // 2: kacho.cloud.vpc.v1.AllocateIPResponse
-	(*AddressReference)(nil),                  // 3: kacho.cloud.vpc.v1.AddressReference
-	(*SetAddressReferenceRequest)(nil),        // 4: kacho.cloud.vpc.v1.SetAddressReferenceRequest
-	(*ClearAddressReferenceRequest)(nil),      // 5: kacho.cloud.vpc.v1.ClearAddressReferenceRequest
-	(*ClearAddressReferenceResponse)(nil),     // 6: kacho.cloud.vpc.v1.ClearAddressReferenceResponse
-	(*GetAddressReferenceRequest)(nil),        // 7: kacho.cloud.vpc.v1.GetAddressReferenceRequest
-	(*MarkAddressEphemeralInUseRequest)(nil),  // 8: kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest
-	(*MarkAddressEphemeralInUseResponse)(nil), // 9: kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse
-	(*CreateOwnedAddressRequest)(nil),         // 10: kacho.cloud.vpc.v1.CreateOwnedAddressRequest
-	(*timestamppb.Timestamp)(nil),             // 11: google.protobuf.Timestamp
-	(*CreateAddressRequest)(nil),              // 12: kacho.cloud.vpc.v1.CreateAddressRequest
-	(*operation.Operation)(nil),               // 13: kacho.cloud.operation.Operation
+	(ReleaseOwnedAddressResponse_Outcome)(0),  // 0: kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse.Outcome
+	(*AllocateInternalIPRequest)(nil),         // 1: kacho.cloud.vpc.v1.AllocateInternalIPRequest
+	(*AllocateExternalIPRequest)(nil),         // 2: kacho.cloud.vpc.v1.AllocateExternalIPRequest
+	(*AllocateIPResponse)(nil),                // 3: kacho.cloud.vpc.v1.AllocateIPResponse
+	(*AddressReference)(nil),                  // 4: kacho.cloud.vpc.v1.AddressReference
+	(*SetAddressReferenceRequest)(nil),        // 5: kacho.cloud.vpc.v1.SetAddressReferenceRequest
+	(*ClearAddressReferenceRequest)(nil),      // 6: kacho.cloud.vpc.v1.ClearAddressReferenceRequest
+	(*ClearAddressReferenceResponse)(nil),     // 7: kacho.cloud.vpc.v1.ClearAddressReferenceResponse
+	(*GetAddressReferenceRequest)(nil),        // 8: kacho.cloud.vpc.v1.GetAddressReferenceRequest
+	(*MarkAddressEphemeralInUseRequest)(nil),  // 9: kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest
+	(*MarkAddressEphemeralInUseResponse)(nil), // 10: kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse
+	(*CreateOwnedAddressRequest)(nil),         // 11: kacho.cloud.vpc.v1.CreateOwnedAddressRequest
+	(*ReleaseOwnedAddressRequest)(nil),        // 12: kacho.cloud.vpc.v1.ReleaseOwnedAddressRequest
+	(*ReleaseOwnedAddressResponse)(nil),       // 13: kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse
+	(*timestamppb.Timestamp)(nil),             // 14: google.protobuf.Timestamp
+	(*CreateAddressRequest)(nil),              // 15: kacho.cloud.vpc.v1.CreateAddressRequest
+	(*operation.Operation)(nil),               // 16: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_internal_address_service_proto_depIdxs = []int32{
-	11, // 0: kacho.cloud.vpc.v1.AddressReference.attached_at:type_name -> google.protobuf.Timestamp
-	12, // 1: kacho.cloud.vpc.v1.CreateOwnedAddressRequest.address:type_name -> kacho.cloud.vpc.v1.CreateAddressRequest
-	0,  // 2: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIP:input_type -> kacho.cloud.vpc.v1.AllocateInternalIPRequest
-	0,  // 3: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIPv6:input_type -> kacho.cloud.vpc.v1.AllocateInternalIPRequest
-	1,  // 4: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIP:input_type -> kacho.cloud.vpc.v1.AllocateExternalIPRequest
-	1,  // 5: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIPv6:input_type -> kacho.cloud.vpc.v1.AllocateExternalIPRequest
-	4,  // 6: kacho.cloud.vpc.v1.InternalAddressService.SetAddressReference:input_type -> kacho.cloud.vpc.v1.SetAddressReferenceRequest
-	5,  // 7: kacho.cloud.vpc.v1.InternalAddressService.ClearAddressReference:input_type -> kacho.cloud.vpc.v1.ClearAddressReferenceRequest
-	7,  // 8: kacho.cloud.vpc.v1.InternalAddressService.GetAddressReference:input_type -> kacho.cloud.vpc.v1.GetAddressReferenceRequest
-	8,  // 9: kacho.cloud.vpc.v1.InternalAddressService.MarkAddressEphemeralInUse:input_type -> kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest
-	10, // 10: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:input_type -> kacho.cloud.vpc.v1.CreateOwnedAddressRequest
-	2,  // 11: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIP:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
-	2,  // 12: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIPv6:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
-	2,  // 13: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIP:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
-	2,  // 14: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIPv6:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
-	3,  // 15: kacho.cloud.vpc.v1.InternalAddressService.SetAddressReference:output_type -> kacho.cloud.vpc.v1.AddressReference
-	6,  // 16: kacho.cloud.vpc.v1.InternalAddressService.ClearAddressReference:output_type -> kacho.cloud.vpc.v1.ClearAddressReferenceResponse
-	3,  // 17: kacho.cloud.vpc.v1.InternalAddressService.GetAddressReference:output_type -> kacho.cloud.vpc.v1.AddressReference
-	9,  // 18: kacho.cloud.vpc.v1.InternalAddressService.MarkAddressEphemeralInUse:output_type -> kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse
-	13, // 19: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:output_type -> kacho.cloud.operation.Operation
-	11, // [11:20] is the sub-list for method output_type
-	2,  // [2:11] is the sub-list for method input_type
-	2,  // [2:2] is the sub-list for extension type_name
-	2,  // [2:2] is the sub-list for extension extendee
-	0,  // [0:2] is the sub-list for field type_name
+	14, // 0: kacho.cloud.vpc.v1.AddressReference.attached_at:type_name -> google.protobuf.Timestamp
+	15, // 1: kacho.cloud.vpc.v1.CreateOwnedAddressRequest.address:type_name -> kacho.cloud.vpc.v1.CreateAddressRequest
+	0,  // 2: kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse.outcome:type_name -> kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse.Outcome
+	1,  // 3: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIP:input_type -> kacho.cloud.vpc.v1.AllocateInternalIPRequest
+	1,  // 4: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIPv6:input_type -> kacho.cloud.vpc.v1.AllocateInternalIPRequest
+	2,  // 5: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIP:input_type -> kacho.cloud.vpc.v1.AllocateExternalIPRequest
+	2,  // 6: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIPv6:input_type -> kacho.cloud.vpc.v1.AllocateExternalIPRequest
+	5,  // 7: kacho.cloud.vpc.v1.InternalAddressService.SetAddressReference:input_type -> kacho.cloud.vpc.v1.SetAddressReferenceRequest
+	6,  // 8: kacho.cloud.vpc.v1.InternalAddressService.ClearAddressReference:input_type -> kacho.cloud.vpc.v1.ClearAddressReferenceRequest
+	8,  // 9: kacho.cloud.vpc.v1.InternalAddressService.GetAddressReference:input_type -> kacho.cloud.vpc.v1.GetAddressReferenceRequest
+	9,  // 10: kacho.cloud.vpc.v1.InternalAddressService.MarkAddressEphemeralInUse:input_type -> kacho.cloud.vpc.v1.MarkAddressEphemeralInUseRequest
+	11, // 11: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:input_type -> kacho.cloud.vpc.v1.CreateOwnedAddressRequest
+	12, // 12: kacho.cloud.vpc.v1.InternalAddressService.ReleaseOwnedAddress:input_type -> kacho.cloud.vpc.v1.ReleaseOwnedAddressRequest
+	3,  // 13: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIP:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
+	3,  // 14: kacho.cloud.vpc.v1.InternalAddressService.AllocateInternalIPv6:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
+	3,  // 15: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIP:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
+	3,  // 16: kacho.cloud.vpc.v1.InternalAddressService.AllocateExternalIPv6:output_type -> kacho.cloud.vpc.v1.AllocateIPResponse
+	4,  // 17: kacho.cloud.vpc.v1.InternalAddressService.SetAddressReference:output_type -> kacho.cloud.vpc.v1.AddressReference
+	7,  // 18: kacho.cloud.vpc.v1.InternalAddressService.ClearAddressReference:output_type -> kacho.cloud.vpc.v1.ClearAddressReferenceResponse
+	4,  // 19: kacho.cloud.vpc.v1.InternalAddressService.GetAddressReference:output_type -> kacho.cloud.vpc.v1.AddressReference
+	10, // 20: kacho.cloud.vpc.v1.InternalAddressService.MarkAddressEphemeralInUse:output_type -> kacho.cloud.vpc.v1.MarkAddressEphemeralInUseResponse
+	16, // 21: kacho.cloud.vpc.v1.InternalAddressService.CreateOwnedAddress:output_type -> kacho.cloud.operation.Operation
+	13, // 22: kacho.cloud.vpc.v1.InternalAddressService.ReleaseOwnedAddress:output_type -> kacho.cloud.vpc.v1.ReleaseOwnedAddressResponse
+	13, // [13:23] is the sub-list for method output_type
+	3,  // [3:13] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_internal_address_service_proto_init() }
@@ -815,13 +1031,14 @@ func file_kacho_cloud_vpc_v1_internal_address_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_internal_address_service_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   11,
+			NumEnums:      1,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_kacho_cloud_vpc_v1_internal_address_service_proto_goTypes,
 		DependencyIndexes: file_kacho_cloud_vpc_v1_internal_address_service_proto_depIdxs,
+		EnumInfos:         file_kacho_cloud_vpc_v1_internal_address_service_proto_enumTypes,
 		MessageInfos:      file_kacho_cloud_vpc_v1_internal_address_service_proto_msgTypes,
 	}.Build()
 	File_kacho_cloud_vpc_v1_internal_address_service_proto = out.File
