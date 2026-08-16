@@ -49,18 +49,7 @@ type RouteTable struct {
 	// ID of the network the route table belongs to.
 	NetworkId string `protobuf:"bytes,7,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
 	// List of static routes.
-	StaticRoutes []*StaticRoute `protobuf:"bytes,8,rep,name=static_routes,json=staticRoutes,proto3" json:"static_routes,omitempty"`
-	// Состояние применения намерения ТЕКУЩЕЙ ревизии ресурса — только чтение.
-	//
-	// Незаполненное поле означает «платформа не делает утверждения об этом
-	// объекте» (намерение снимается) и НЕ означает «не применено».
-	//
-	// Заполняется чтениями ресурса этого сервиса: `Get` и списочный RPC.
-	// НЕ заполняется: `Operation.response`, поток намерения исполнителя
-	// (`DataplaneIntent`), внутренние проекции (`GetInternalNetworkResponse`) и
-	// ответы привязки/отвязки интерфейса — там отчёта по новой ревизии заведомо
-	// ещё нет, а поток намерения вернул бы исполнителю его же отчёт.
-	ApplyState    *ApplyState `protobuf:"bytes,9,opt,name=apply_state,json=applyState,proto3" json:"apply_state,omitempty"`
+	StaticRoutes  []*StaticRoute `protobuf:"bytes,8,rep,name=static_routes,json=staticRoutes,proto3" json:"static_routes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,13 +136,6 @@ func (x *RouteTable) GetNetworkId() string {
 func (x *RouteTable) GetStaticRoutes() []*StaticRoute {
 	if x != nil {
 		return x.StaticRoutes
-	}
-	return nil
-}
-
-func (x *RouteTable) GetApplyState() *ApplyState {
-	if x != nil {
-		return x.ApplyState
 	}
 	return nil
 }
@@ -304,7 +286,7 @@ var File_kacho_cloud_vpc_v1_route_table_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_route_table_proto_rawDesc = "" +
 	"\n" +
-	"$kacho/cloud/vpc/v1/route_table.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kacho/cloud/vpc/v1/apply_state.proto\"\xd1\x03\n" +
+	"$kacho/cloud/vpc/v1/route_table.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa3\x03\n" +
 	"\n" +
 	"RouteTable\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -317,12 +299,11 @@ const file_kacho_cloud_vpc_v1_route_table_proto_rawDesc = "" +
 	"\x06labels\x18\x06 \x03(\v2*.kacho.cloud.vpc.v1.RouteTable.LabelsEntryR\x06labels\x12\x1d\n" +
 	"\n" +
 	"network_id\x18\a \x01(\tR\tnetworkId\x12D\n" +
-	"\rstatic_routes\x18\b \x03(\v2\x1f.kacho.cloud.vpc.v1.StaticRouteR\fstaticRoutes\x12?\n" +
-	"\vapply_state\x18\t \x01(\v2\x1e.kacho.cloud.vpc.v1.ApplyStateR\n" +
-	"applyState\x1a9\n" +
+	"\rstatic_routes\x18\b \x03(\v2\x1f.kacho.cloud.vpc.v1.StaticRouteR\fstaticRoutes\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa6\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\t\x10\n" +
+	"R\vapply_state\"\xa6\x02\n" +
 	"\vStaticRoute\x12/\n" +
 	"\x12destination_prefix\x18\x01 \x01(\tH\x00R\x11destinationPrefix\x12*\n" +
 	"\x10next_hop_address\x18\x02 \x01(\tH\x01R\x0enextHopAddress\x12\x1f\n" +
@@ -355,19 +336,17 @@ var file_kacho_cloud_vpc_v1_route_table_proto_goTypes = []any{
 	nil,                           // 2: kacho.cloud.vpc.v1.RouteTable.LabelsEntry
 	nil,                           // 3: kacho.cloud.vpc.v1.StaticRoute.LabelsEntry
 	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
-	(*ApplyState)(nil),            // 5: kacho.cloud.vpc.v1.ApplyState
 }
 var file_kacho_cloud_vpc_v1_route_table_proto_depIdxs = []int32{
 	4, // 0: kacho.cloud.vpc.v1.RouteTable.created_at:type_name -> google.protobuf.Timestamp
 	2, // 1: kacho.cloud.vpc.v1.RouteTable.labels:type_name -> kacho.cloud.vpc.v1.RouteTable.LabelsEntry
 	1, // 2: kacho.cloud.vpc.v1.RouteTable.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	5, // 3: kacho.cloud.vpc.v1.RouteTable.apply_state:type_name -> kacho.cloud.vpc.v1.ApplyState
-	3, // 4: kacho.cloud.vpc.v1.StaticRoute.labels:type_name -> kacho.cloud.vpc.v1.StaticRoute.LabelsEntry
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	3, // 3: kacho.cloud.vpc.v1.StaticRoute.labels:type_name -> kacho.cloud.vpc.v1.StaticRoute.LabelsEntry
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_route_table_proto_init() }
@@ -375,7 +354,6 @@ func file_kacho_cloud_vpc_v1_route_table_proto_init() {
 	if File_kacho_cloud_vpc_v1_route_table_proto != nil {
 		return
 	}
-	file_kacho_cloud_vpc_v1_apply_state_proto_init()
 	file_kacho_cloud_vpc_v1_route_table_proto_msgTypes[1].OneofWrappers = []any{
 		(*StaticRoute_DestinationPrefix)(nil),
 		(*StaticRoute_NextHopAddress)(nil),

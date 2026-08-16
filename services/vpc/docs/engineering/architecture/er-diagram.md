@@ -440,7 +440,8 @@ inline в `CREATE TABLE` базовой схемы:
 - **description**: `length(description) ≤ 256`.
 - **status** (NIC): enum-проверка `{ACTIVE,AVAILABLE,STATUS_UNSPECIFIED}|NULL` (0039). Три
   значения, заявлявшие программирование сети, сняты вместе с контрактом: производителя у них
-  не было ни одного, а их предмет выражает `apply_state`.
+  не было ни одного. Поле, принявшее тогда на себя их предмет, снято позже тем же порядком и
+  по той же причине — вместе со швом исполнителя датаплейна.
 - **mac_address** (NIC): regex `^[0-9a-f]{2}(:[0-9a-f]{2}){5}$` (lowercase, colon-separated).
 - **labels** (все 7 ресурсов): `CHECK (kacho_labels_valid(labels))` — helper-функция
   `kacho_vpc.kacho_labels_valid(jsonb) IMMUTABLE` проверяет cardinality ≤ 64,

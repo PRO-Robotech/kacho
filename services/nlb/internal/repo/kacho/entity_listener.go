@@ -31,6 +31,6 @@ type ListenerRecord struct {
 type ListenerFilter struct {
 	ProjectID      string
 	LoadBalancerID string
-	Name           string
+	Name           *NameFilter
 	Filter         string
 }

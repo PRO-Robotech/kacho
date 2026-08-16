@@ -4,6 +4,8 @@
 package shared
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/filter"
+
 	"testing"
 
 	"google.golang.org/grpc/codes"
@@ -17,30 +19,46 @@ import (
 // `filter` — kacho-corelib/filter.Parse с whitelist полей).
 //
 // Contract (reconciled from three divergent local parsers — see review report):
-//   - empty input            → ("", nil)               // no filter
-//   - name="value"           → ("value", nil)
-//   - name = "value" (spaced) → ("value", nil)
+//   - empty input            → (nil, nil)              // no filter
+//   - name="value"           → (узел `=`, nil)
+//   - name = "value" (spaced) → (узел `=`, nil)
+//   - name CONTAINS "value"  → (узел CONTAINS, nil)     // оператор ДОЕЗЖАЕТ до репозитория
 //   - name=value (unquoted)  → InvalidArgument          // strict: value must be quoted
 //   - unknown="x"            → InvalidArgument          // whitelist rejects unknown field
 //   - garbage                → InvalidArgument
 func TestParseNameFilter(t *testing.T) {
 	t.Parallel()
 	t.Run("valid", func(t *testing.T) {
-		cases := map[string]string{
-			``:                "",
-			`name="edge"`:     "edge",
-			`name="api-1"`:    "api-1",
-			`name = "spaced"`: "spaced",
-			`name=""`:         "",
+		// Утверждается ПАРА «оператор + значение», а не одно значение: пока
+		// проверялось только значение, потеря оператора была невидима (#460).
+		cases := map[string]struct{ op, value string }{
+			`name="edge"`:         {filter.OpEquals, "edge"},
+			`name="api-1"`:        {filter.OpEquals, "api-1"},
+			`name = "spaced"`:     {filter.OpEquals, "spaced"},
+			`name=""`:             {filter.OpEquals, ""},
+			`name CONTAINS "edg"`: {filter.OpContains, "edg"},
+			`name CONTAINS "a-1"`: {filter.OpContains, "a-1"},
 		}
 		for in, want := range cases {
 			got, err := ParseNameFilter(in)
 			if err != nil {
 				t.Fatalf("ParseNameFilter(%q): unexpected err: %v", in, err)
 			}
-			if got != want {
-				t.Fatalf("ParseNameFilter(%q) = %q, want %q", in, got, want)
+			if got == nil {
+				t.Fatalf("ParseNameFilter(%q) = nil, ожидался узел", in)
 			}
+			if got.Op != want.op || got.Value != want.value {
+				t.Fatalf("ParseNameFilter(%q) = {%s %q}, want {%s %q}",
+					in, got.Op, got.Value, want.op, want.value)
+			}
+		}
+		// Пустое выражение — отсутствие сужения, а не узел с пустым значением.
+		got, err := ParseNameFilter(``)
+		if err != nil {
+			t.Fatalf("ParseNameFilter(``): unexpected err: %v", err)
+		}
+		if got != nil {
+			t.Fatalf("ParseNameFilter(``) = %#v, ожидался nil (сужения нет)", got)
 		}
 	})
 

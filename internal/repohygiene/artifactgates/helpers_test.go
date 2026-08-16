@@ -11,11 +11,12 @@ package artifactgates
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // repoRoot — поднимаемся от каталога теста до каталога с go.mod (корень репо).
@@ -49,8 +50,7 @@ func repoRoot(t *testing.T) string {
 func synthTrack(t *testing.T, root string) {
 	t.Helper()
 	for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = root
+		cmd := gitenv.Command(root, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v в синтетическом дереве: %v\n%s", args, err, out)
 		}

@@ -12,7 +12,7 @@ import { ResourceFormBody } from "@/components/organisms/form/ResourceFormBody";
 import { api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { setByPath } from "@/lib/path";
-import { buildCreateBody } from "@/components/organisms/ResourceFormDialog";
+import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";

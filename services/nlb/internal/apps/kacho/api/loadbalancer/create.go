@@ -811,7 +811,7 @@ func (u *CreateLoadBalancerUseCase) assertNameUnique(ctx context.Context, projec
 	defer func() { _ = rd.Close() }()
 
 	existing, _, err := rd.LoadBalancers().List(ctx,
-		kachorepo.LoadBalancerFilter{ProjectID: projectID, Name: name},
+		kachorepo.LoadBalancerFilter{ProjectID: projectID, Name: kachorepo.ExactName(name)},
 		kachorepo.Pagination{},
 	)
 	if err != nil {

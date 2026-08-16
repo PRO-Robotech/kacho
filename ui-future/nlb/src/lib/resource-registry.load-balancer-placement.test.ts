@@ -20,7 +20,7 @@
 // buildCreateBody — because that is what decides the bytes.
 
 import { REGISTRY, applyFieldDefaults } from "./resource-registry";
-import { buildCreateBody } from "@/components/organisms/ResourceFormDialog";
+import { buildCreateBody } from "@shared/lib/update-mask";
 
 const spec = REGISTRY["load-balancers"];
 const asObj = (v: unknown) => v as Record<string, unknown>;

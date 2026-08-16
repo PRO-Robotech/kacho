@@ -202,6 +202,13 @@ type outboxInventory struct {
 	// доставляемого предшественника, возврат — доставленного преемника, и на
 	// разных ключах каждая половина стережёт партицию, которой не стережёт другая.
 	redrivePartition map[string]string
+	// retryPermanent — таблица → координаты проводок дренажа, объявивших
+	// `PermanentPolicy: drainer.RetryPermanent`, то есть отказавшихся травить
+	// ПОСТОЯННЫЙ отказ применения. Такая очередь возврата отравленных строк не
+	// требует: травление покупает разблокировку партиции, и там, где партиции
+	// нет, покупать нечего. Читается гейтом возврата
+	// (outboxredrivekeygate_test.go).
+	retryPermanent map[string][]string
 	// unresolved — координаты проводок, чьё поле Table не резолвится разбором.
 	unresolved []string
 	// notes — таблица → комментарии, стоящие ВНУТРИ литерала настроек её дренажа.
@@ -326,6 +333,7 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 		partition:        map[string]string{},
 		redrive:          map[string][]string{},
 		redrivePartition: map[string]string{},
+		retryPermanent:   map[string][]string{},
 		notes:            map[string][]wiringNote{},
 	}
 
@@ -479,6 +487,7 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		var hasDirections bool
 		var partition string
 		var hasPartitionKey bool
+		var retryPermanent bool
 		for _, elt := range cl.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -497,6 +506,15 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 			case "PartitionColumn":
 				hasPartitionKey = true
 				partition = resolveStringExpr(kv.Value, consts)
+			case "PermanentPolicy":
+				// Значение — не строка, а константа пакета, поэтому резолвится
+				// по ХВОСТУ селектора, а не через resolveStringExpr. Всё, что не
+				// названо RetryPermanent, читается как умолчание «травить»:
+				// нулевое значение поля означает именно его.
+				if selv, ok := kv.Value.(*ast.SelectorExpr); ok &&
+					selv.Sel.Name == "RetryPermanent" {
+					retryPermanent = true
+				}
 			}
 		}
 		if table == "" {
@@ -515,6 +533,9 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		}
 		if kind == "дренаж" {
 			inv.drained[table] = append(inv.drained[table], coord)
+			if retryPermanent {
+				inv.retryPermanent[table] = append(inv.retryPermanent[table], coord)
+			}
 			for _, cg := range f.Comments {
 				if cg.Pos() < cl.Pos() || cg.End() > cl.End() {
 					continue

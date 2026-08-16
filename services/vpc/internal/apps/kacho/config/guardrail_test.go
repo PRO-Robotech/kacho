@@ -52,7 +52,15 @@ func prodCfg(mode Mode, iamEndpoint string) Config {
 		GuaranteedPayloadBytes:              1450,
 		GuaranteedBandwidthPerInterfaceMbps: 1000,
 		ConnectionLimitPerInterface:         65536,
-		TenantSettableBandwidthLimit:        false,
+		// Темп и всплеск — величины того же профиля и объявлены здесь по той же
+		// причине, что и остальные: фикстура не вправе быть снисходительнее
+		// продукта. Числа взяты ЗАВЕДОМО ВЫШЕ опубликованных потолков (2 000 и
+		// 8 000), потому что законная боевая посадка обязана нести исполнителя,
+		// который держит обещанное продуктом, — фикстура ровно на потолке проходила
+		// бы и не отличала «граница включающая» от «граница не проверяется».
+		ConnectionRateLimitPerInterfacePerSecond: 4000,
+		ConnectionRateBurstPerInterface:          16000,
+		TenantSettableBandwidthLimit:             false,
 	}
 	// Перечень служебных диапазонов объявлен — по той же причине и с той же
 	// оговоркой: фикстура обязана быть не снисходительнее продукта. Пока страж

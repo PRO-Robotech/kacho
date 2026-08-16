@@ -72,7 +72,14 @@ func productionEnv() map[string]string {
 		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_PAYLOAD_BYTES":                "1450",
 		"KACHO_VPC_DATAPLANE__EXECUTOR__GUARANTEED_BANDWIDTH_PER_INTERFACE_MBPS": "1000",
 		"KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_LIMIT_PER_INTERFACE":          "65536",
-		"KACHO_VPC_DATAPLANE__EXECUTOR__TENANT_SETTABLE_BANDWIDTH_LIMIT":         "false",
+		// Темп установления соединений и его всплеск — те же величины профиля и по
+		// той же причине: боевая посадка обязана объявить каждую, и без них КАЖДЫЙ
+		// случай ниже падал бы на них, а не на своём предмете. Числа выше
+		// опубликованных потолков (2 000 и 8 000) — фикстура не вправе быть
+		// снисходительнее продукта.
+		"KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_LIMIT_PER_INTERFACE_PER_SECOND": "4000",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__CONNECTION_RATE_BURST_PER_INTERFACE":            "16000",
+		"KACHO_VPC_DATAPLANE__EXECUTOR__TENANT_SETTABLE_BANDWIDTH_LIMIT":                "false",
 		// Перечень служебных диапазонов объявлен — по той же причине, что и профиль
 		// выше: без него окружение перестало бы быть тем, «в котором боевой vpc
 		// обязан подниматься», и каждый случай падал бы по чужой причине. Значения —

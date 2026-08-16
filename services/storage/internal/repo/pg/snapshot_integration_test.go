@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/pkg/filter"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
@@ -233,8 +234,33 @@ func TestSnapshotListCursorFilter(t *testing.T) {
 		require.Equal(t, "prj-1", s.ProjectID, "project-scope excludes prj-2")
 	}
 
-	filtered, _, err := sr.List(ctx, snapshot.Pagination{PageSize: 50, ProjectID: "prj-1", Filter: "snap-b"})
+	// Репозиторий получает РАЗОБРАННЫЙ узел, а не голое значение: оператор — часть
+	// выражения (#460). Узел строится тем же Parse, что зовёт use-case, — фикстура
+	// не вправе быть снисходительнее продукта.
+	nameEq, perr := filter.Parse(`name="snap-b"`, []string{"name"})
+	require.NoError(t, perr)
+	filtered, _, err := sr.List(ctx, snapshot.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameEq})
 	require.NoError(t, err)
 	require.Len(t, filtered, 1)
 	require.Equal(t, "snap-b", filtered[0].Name)
+
+	// CONTAINS — подстрока. Равенство выше сузило до ОДНОЙ строки, поэтому три
+	// строки здесь пришли от оператора, а не от предиката, которого нет.
+	nameSub, perr := filter.Parse(`name CONTAINS "snap-"`, []string{"name"})
+	require.NoError(t, perr)
+	subset, _, err := sr.List(ctx, snapshot.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameSub})
+	require.NoError(t, err)
+	require.Len(t, subset, 3, "подстрока обязана вернуть все три снимка проекта")
+	for _, s := range subset {
+		// snap-other из prj-2 подстроке ТОЖЕ отвечает — и не приходит.
+		require.Equal(t, "prj-1", s.ProjectID)
+	}
+
+	// Совпадение ВНУТРИ имени, а не префикс.
+	nameMid, perr := filter.Parse(`name CONTAINS "p-b"`, []string{"name"})
+	require.NoError(t, perr)
+	mid, _, err := sr.List(ctx, snapshot.Pagination{PageSize: 50, ProjectID: "prj-1", FilterAST: nameMid})
+	require.NoError(t, err)
+	require.Len(t, mid, 1)
+	require.Equal(t, "snap-b", mid[0].Name)
 }

@@ -650,22 +650,17 @@ func (d *Drainer[T]) markRow(parentCtx context.Context, tx pgx.Tx, r claimedRow,
 	dbCtx, dbCancel := context.WithTimeout(context.WithoutCancel(parentCtx), d.cfg.ApplyTimeout)
 	defer dbCancel()
 
-	// Decode-fail = permanent (malformed payload, no retry helps).
-	if out.decodeErr != nil {
-		d.logger.Warn("decode_failed_poison",
-			slog.Int64("id", r.id),
-			slog.String("err", out.decodeErr.Error()))
-		d.poison(dbCtx, tx, r.id, out.decodeErr.Error())
-		return false
+	// Единственная точка принятия решения — DecideOutcome: она читает ОБА исхода
+	// (разбор и применение) и политику очереди. Ветвление здесь только исполняет
+	// принятое: временные отказы (Unavailable/timeout/conn) НИКОГДА не травят
+	// (markTransientFailure держит attempt_count ниже порога), а постоянный отказ
+	// применения травит либо повторяется — по политике (см. PermanentPolicy).
+	failErr := out.decodeErr
+	if failErr == nil {
+		failErr = out.applyErr
 	}
-
-	// Classify + mark. The classifier is the single decision point: transient
-	// errors (Unavailable/timeout/conn) NEVER poison — they retry unbounded with
-	// backoff (markTransientFailure caps attempt_count below the poison gate).
-	// Only ErrPermanent / gRPC InvalidArgument poison; ErrAlreadyApplied is
-	// idempotent success.
-	switch Classify(out.applyErr) {
-	case ClassSuccess, ClassAlreadyApplied:
+	switch DecideOutcome(out.decodeErr, out.applyErr, d.cfg.PermanentPolicy) {
+	case DispositionDeliver:
 		if Classify(out.applyErr) == ClassAlreadyApplied {
 			d.logger.Debug("target_already_applied",
 				slog.Int64("id", r.id), slog.String("event_type", r.eventType))
@@ -675,19 +670,35 @@ func (d *Drainer[T]) markRow(parentCtx context.Context, tx pgx.Tx, r claimedRow,
 				slog.Int64("id", r.id), slog.String("err", err.Error()))
 		}
 		return false
-	case ClassPermanent:
-		d.logger.Warn("apply_permanent_poison",
+	case DispositionPoison:
+		event := "apply_permanent_poison"
+		if out.decodeErr != nil {
+			event = "decode_failed_poison"
+		}
+		d.logger.Warn(event,
 			slog.Int64("id", r.id),
 			slog.String("event_type", r.eventType),
-			slog.String("err", out.applyErr.Error()))
-		d.poison(dbCtx, tx, r.id, out.applyErr.Error())
+			slog.String("err", failErr.Error()))
+		d.poison(dbCtx, tx, r.id, failErr.Error())
 		return false
-	default: // ClassTransient — never poison; retry unbounded with backoff.
-		d.logger.Debug("apply_transient_retry",
-			slog.Int64("id", r.id),
-			slog.Int("attempt", r.attemptCount),
-			slog.String("err", out.applyErr.Error()))
-		if err := d.markTransientFailure(dbCtx, tx, r.id, out.applyErr.Error()); err != nil {
+	default: // DispositionRetry — не травим; повтор с отступом.
+		// Постоянный отказ у очереди с политикой повтора обязан быть ГРОМЧЕ
+		// временного: он и есть та настройка, которую чинят руками, а частота
+		// повторов сама по себе о нём не сообщает (security.md §8 — «мягкий
+		// проход обязан отличать настройку от сбоя»).
+		if Classify(out.applyErr) == ClassPermanent {
+			d.logger.Warn("apply_permanent_retry",
+				slog.Int64("id", r.id),
+				slog.String("event_type", r.eventType),
+				slog.Int("attempt", r.attemptCount),
+				slog.String("err", failErr.Error()))
+		} else {
+			d.logger.Debug("apply_transient_retry",
+				slog.Int64("id", r.id),
+				slog.Int("attempt", r.attemptCount),
+				slog.String("err", failErr.Error()))
+		}
+		if err := d.markTransientFailure(dbCtx, tx, r.id, failErr.Error()); err != nil {
 			d.logger.Error("mark_transient_failed",
 				slog.Int64("id", r.id), slog.String("err", err.Error()))
 		}

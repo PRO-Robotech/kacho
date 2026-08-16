@@ -5,6 +5,7 @@ package quota_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -157,4 +158,65 @@ func TestStates_PeerUnavailableIsRefusalNotEmptyAnswer(t *testing.T) {
 	states, err := g.States(context.Background(), "prj-fresh")
 	require.Error(t, err, "недоступность владельца величин обязана быть отказом")
 	require.Empty(t, states, "при отказе набор не отдаётся частично")
+}
+
+// Арендатору не приезжает вид, считаемый В РОДИТЕЛЬСКОМ РЕСУРСЕ — ни на одной
+// из двух полос чтения.
+//
+// ПРЕДМЕТ. Каталог держит у домена двенадцать видов; четыре из них считаются не
+// в проекте, а в родителе (сколько подсетей в сети, сколько интерфейсов в
+// подсети). Обе полосы чтения — сборка резолвом у свежего проекта и чтение
+// собственных строк после первой мутации — проставляют носителем ПРОЕКТ
+// константой. Пока резолв отдавал все двенадцать, арендатор получал четыре
+// строки, которые:
+//   - называют носителем проект, тогда как каталог называет родительский тип;
+//   - показывают потребление, которое не наполнится никогда: списание идёт по
+//     настоящему носителю, и строки, заведённой на проект, оно не касается.
+//
+// ОГОВОРКА, ВАЖНАЯ ДЛЯ СЛЕДУЮЩЕГО ЧИТАТЕЛЯ — проба уже дважды теряла предмет.
+// Первая редакция утверждала, что СОСТАВ ответа расходится между полосами:
+// двенадцать у свежего проекта против восьми у материализованного. Неверно —
+// материализация заводит строку на КАЖДЫЙ вид, что отдал резолв, и обе полосы
+// давали двенадцать.
+//
+// Второй раз предмет ушёл тихо: фикстурой стоял `eightKinds()`, в котором
+// вложенных видов НЕТ ВОВСЕ, — то есть проба требовала не отдавать арендатору
+// то, чего ей и не давали. Инъекция это показала: со снятым отбором по носителю
+// в `guard.go` и `states.go` проба оставалась ЗЕЛЁНОЙ. Отсюда полный набор
+// входа ниже: вход обязан содержать то, чьё отсутствие в ответе утверждается,
+// иначе утверждать нечего.
+func TestStates_NeverCarriesAParentCountedKind(t *testing.T) {
+	t.Parallel()
+
+	res := &fakeResolver{limits: twelveKindsWithNested()}
+	acc := &fakeAccounts{account: "acc-1"}
+
+	nested := func(kind string) bool { return strings.Count(kind, ".") > 1 }
+
+	// Полоса резолва: строк учёта нет.
+	fresh := kachomock.NewRepository()
+	freshStates, err := newGuard(t, fresh, res, acc).States(context.Background(), "prj-x")
+	require.NoError(t, err)
+	require.NotEmpty(t, freshStates)
+	for _, st := range freshStates {
+		require.False(t, nested(st.Kind),
+			"свежему проекту приехал вид %s, считаемый в родителе: его потребление не наполнится никогда", st.Kind)
+	}
+
+	// Полоса базы: те же величины материализованы первой мутацией.
+	seeded := kachomock.NewRepository()
+	g := newGuard(t, seeded, res, acc)
+	require.NoError(t, g.Admit(context.Background(), "prj-x", "vpc.network"))
+	seededStates, err := g.States(context.Background(), "prj-x")
+	require.NoError(t, err)
+	require.NotEmpty(t, seeded.QuotaRows(), "материализация не завела ни одной строки — полосы не различить")
+	for _, st := range seededStates {
+		require.False(t, nested(st.Kind),
+			"материализованному проекту приехал вид %s, считаемый в родителе", st.Kind)
+	}
+
+	// Положительный контроль: полосы не опустели — иначе отрицание выше
+	// закрепляло бы поломку вместо свойства.
+	require.NotEmpty(t, freshStates)
+	require.NotEmpty(t, seededStates)
 }

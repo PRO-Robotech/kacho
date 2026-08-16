@@ -38,7 +38,6 @@ import (
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	cidrgroupapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/cidrgroup"
-	dataplaneapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/dataplane"
 	gatewayapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/gateway"
 	networkapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	niapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/networkinterface"
@@ -51,7 +50,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/addressref"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/networkinternal"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/applystate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
@@ -63,7 +61,6 @@ import (
 	vpcmetrics "github.com/PRO-Robotech/kacho/services/vpc/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
-	dataplanepg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/dataplane"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
@@ -167,15 +164,6 @@ type services struct {
 	// «внутреннего адреса соседа нет», и тогда сервис этого RPC не выставляет —
 	// а не выставляет отвечающий пустотой (см. регистрацию ниже).
 	quotaHandler *quotaapp.Handler
-	// dataplaneHandler — шов с исполнителем датаплейна: поток намерения и приём
-	// подтверждения применения (:9091, запрет #6). На публичный слушатель НЕ
-	// регистрируется: поток несёт намерение по всем арендаторам сразу и
-	// координату изоляции сети.
-	dataplaneHandler *dataplaneapp.Handler
-	// dataplaneCompactor — уплотнение снятых намерений. Без него журнал растёт
-	// на каждый удалённый ресурс и не убывает никогда, а исход «твоя ревизия
-	// слишком стара» остаётся веткой без производителя.
-	dataplaneCompactor *dataplaneapp.Compactor
 }
 
 func runServe(cfg config.Config) error {
@@ -235,6 +223,8 @@ func runServe(cfg config.Config) error {
 		"product_payload_floor_bytes", domain.GuaranteedPayloadFloorBytes,
 		"guaranteed_bandwidth_per_interface_mbps", cfg.Dataplane.Executor.GuaranteedBandwidthPerInterfaceMbps,
 		"connection_limit_per_interface", cfg.Dataplane.Executor.ConnectionLimitPerInterface,
+		"connection_rate_limit_per_interface_per_second", cfg.Dataplane.Executor.ConnectionRateLimitPerInterfacePerSecond,
+		"connection_rate_burst_per_interface", cfg.Dataplane.Executor.ConnectionRateBurstPerInterface,
 		"tenant_settable_bandwidth_limit", cfg.Dataplane.Executor.TenantSettableBandwidthLimit,
 	)
 
@@ -460,8 +450,7 @@ func runServe(cfg config.Config) error {
 			"administrator raising or lowering a ceiling has no effect on this process")
 	}
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger,
-		metricsAdapter.IncApplyStateMissingIntent)
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger)
 
 	// Fail-closed boot-gate: при KACHO_VPC_REQUIRE_IAM мутирующий Create отвергается,
 	// а readiness = NotReady, пока register-drainer не подключен к IAM. Стартует
@@ -672,18 +661,6 @@ func runServe(cfg config.Config) error {
 				logger.Error("grpc listeners stopped", "err", serr)
 				return fmt.Errorf("grpc: %w", serr)
 			}
-			return nil
-		},
-		// Уплотнение журнала намерения. Ставится задачей носителя, а не «горутиной
-		// в стороне»: у неё тот же контекст, что у слушателей, поэтому гашение
-		// процесса гасит и её, а не оставляет читать базу после закрытия портов.
-		//
-		// Отказ уплотнения процесс НЕ роняет: журнал растёт, но доставка
-		// намерения работает. Отказ громкий и со счётом подряд идущих — «не
-		// уплотняется месяц» обязано быть заметно, иначе горизонт стоит, таблица
-		// растёт, и узнают об этом по месту на диске.
-		func() error {
-			svcs.dataplaneCompactor.Run(serveCtx)
 			return nil
 		},
 		// Счёт допущенных и отвергнутых по каждому листенеру. Ставится задачей
@@ -966,11 +943,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
-// applyStateMissing зовётся на КАЖДОЕ чтение живого ресурса, о котором проекция
-// подтверждений ничего не сказала. Функция, а не адаптер наблюдаемости целиком:
-// сборщику сервисов нужен ровно один счётчик, и приносить сюда весь реестр
-// значило бы отдать ему право трогать чужие метрики.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, cfg config.Config, logger *slog.Logger, applyStateMissing func()) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, quotaLimits quota.LimitResolver, quotaAccounts quota.AccountLocator, cfg config.Config, logger *slog.Logger) *services {
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kacho-iam
@@ -1012,19 +985,6 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// per-resource читателям значило бы читать курсор и тела разными
 	// транзакциями — то есть отдавать пару, которой ни в один момент не
 	// существовало.
-	dataplaneStore := dataplanepg.New(pool)
-	// applyStateFiller — единственный путь, которым состояние применения попадает
-	// в публичный контракт. Провязывается ВСЕМ семи ресурсам, у которых есть
-	// строка намерения; отсутствие строки у живого ресурса — штатная гонка
-	// удаления, и она СЧИТАЕТСЯ: «ноль за всю жизнь» обязано быть так же
-	// заметно, как установившийся ненулевой темп.
-	applyStateFiller := applystate.NewFiller(dataplaneStore, applyStateMissing)
-	dataplaneObserver := dataplaneapp.NewObserver(logger.With("component", "dataplane-intent"))
-	dataplaneHandler := dataplaneapp.NewHandler(
-		dataplaneapp.NewWatchIntentUseCase(dataplaneStore, dataplaneObserver),
-		dataplaneapp.NewReportAppliedUseCase(dataplaneStore, dataplaneObserver),
-		dataplaneObserver,
-	)
 
 	// AddressPool — admin-only use-case-структура (см.
 	// `internal/apps/kacho/api/addresspool/`). Composition root собирает use-case'ы +
@@ -1074,7 +1034,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		netCreateUC, netUpdateUC, netDeleteUC,
 		netGetUC, netListUC, netAddCidrUC, netRemoveCidrUC,
 		netListSubUC, netListSGUC, netListRTUC, netListOpsUC,
-	).WithApplyState(applyStateFiller)
+	)
 
 	// Gateway use-case'ы работают через CQRS-Repository (kachoRepo) — конструктор
 	// принимает Repository, каждый use-case открывает Reader/Writer внутри.
@@ -1087,7 +1047,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		gatewayapp.NewGetGatewayUseCase(kachoRepo),
 		gatewayapp.NewListGatewaysUseCase(kachoRepo, listFilter),
 		gatewayapp.NewListOperationsUseCase(opsRepo),
-	).WithApplyState(applyStateFiller)
+	)
 
 	// RouteTable use-case'ы работают через CQRS-Repository. routeTableAdapter
 	// передается Network.Delete для child-check.
@@ -1100,7 +1060,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		routetableapp.NewGetRouteTableUseCase(kachoRepo),
 		routetableapp.NewListRouteTablesUseCase(kachoRepo, listFilter),
 		routetableapp.NewListOperationsUseCase(opsRepo),
-	).WithApplyState(applyStateFiller)
+	)
 
 	// Subnet use-case'ы работают через CQRS-Repository (kachoRepo). niAdapter
 	// передается в Delete для precondition-check «нет привязанных NIC».
@@ -1126,7 +1086,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		subnetapp.NewRemoveCidrBlocksUseCase(kachoRepo, opsRepo),
 		subnetapp.NewListUsedAddressesUseCase(kachoRepo, addressAdapter),
 		subnetapp.NewListOperationsUseCase(opsRepo),
-	).WithApplyState(applyStateFiller)
+	)
 
 	// Address — use-case-структура. Composition с AddressPoolService для IPAM cascade
 	// resolve. Internal Allocate UC отделен — принимается
@@ -1152,7 +1112,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressHandler := addressapp.NewHandler(
 		addressCreateUC, addressUpdateUC, addressDeleteUC,
 		addressGetUC, addressGetByValueUC, addressListUC, addressListBySubnetUC, addressListOpsUC,
-	).WithApplyState(applyStateFiller)
+	)
 
 	// SecurityGroup — use-case-структура. Split-endpoint Update / UpdateRules /
 	// UpdateRule (OCC через xmin в repo). Все DML + outbox-emit идут в одной writer-TX.
@@ -1172,7 +1132,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		sgapp.NewGetSecurityGroupUseCase(kachoRepo),
 		sgapp.NewListSecurityGroupsUseCase(kachoRepo, listFilter),
 		sgapp.NewListOperationsUseCase(kachoRepo, opsRepo),
-	).WithApplyState(applyStateFiller)
+	)
 
 	// NetworkInterface — use-case-структура. Все use-case'ы работают через
 	// CQRS-Repository (`kachoRepo`). У NIC нет Move RPC (NIC привязан к Subnet).
@@ -1203,7 +1163,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo),
 		niapp.NewListNetworkInterfacesUseCase(kachoRepo, listFilter),
 		niapp.NewListOperationsUseCase(opsRepo),
-	).WithApplyState(applyStateFiller)
+	)
 
 	// CidrGroup — use-case-структура. Форма ровно та же, что у сети: чтение
 	// синхронно, мутации через операцию, состав правится глаголами. Потолок
@@ -1244,10 +1204,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		networkInterfaceInternal: nicinternal.NewService(kachoRepo).
 			WithZoneRegistry(geoClient).
 			WithListFilter(listFilter),
-		cidrGroupHandler:   cgHandler,
-		quotaHandler:       quotaHandlerOrNil(quotaGuard),
-		dataplaneHandler:   dataplaneHandler,
-		dataplaneCompactor: dataplaneapp.NewCompactor(dataplaneStore, logger.With("component", "dataplane-compaction")),
+		cidrGroupHandler: cgHandler,
+		quotaHandler:     quotaHandlerOrNil(quotaGuard),
 	}
 }
 
@@ -1302,12 +1260,6 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// external mux (INV-2). Регистрируется на internalSrv → та же authz-Check-цепочка
 	// интерсепторов (internalUnary + authzIntr), что и прочие internal RPC (INV-2a).
 	vpcv1.RegisterInternalNetworkInterfaceServiceServer(srv, handler.NewInternalNetworkInterfaceHandler(svcs.networkInterfaceInternal))
-	// InternalDataplaneService — доставка намерения исполнителю датаплейна и
-	// приём подтверждения применения. Только internal listener: и поток, и
-	// подтверждение оперируют намерением по ВСЕМ арендаторам, а поток вдобавок
-	// несёт координату изоляции сети — инфра-чувствительное поле, которого нет и
-	// не может быть на публичной поверхности.
-	vpcv1.RegisterInternalDataplaneServiceServer(srv, svcs.dataplaneHandler)
 }
 
 // maskDSN отдает DSN с замаскированным паролем — для безопасного логирования
