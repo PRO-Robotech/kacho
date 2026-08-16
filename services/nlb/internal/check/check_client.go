@@ -32,8 +32,10 @@ import (
 //     наружу (interceptor → DecisionNoPath → handler → NOT_FOUND из БД).
 //   - peer-client возвращает обёрнутый sentinel domain-ошибок
 //     (`ErrUnavailable`, `ErrInvalidArg`) → adapter транзитом передаёт
-//     наружу (interceptor → DecisionUnavailable → PermissionDenied
-//     fail-closed для других error'ов или DecisionDenied для invalid args).
+//     наружу (interceptor → DecisionUnavailable → UNAVAILABLE fail-closed для
+//     других error'ов или DecisionDenied для invalid args). Недоступность
+//     модели прав отвечает СВОИМ кодом, а не кодом отказа: запрос отвергнут в
+//     обоих случаях, но повторять осмысленно только первый.
 type IAMCheckClient struct {
 	peer iamclient.CheckClient
 }

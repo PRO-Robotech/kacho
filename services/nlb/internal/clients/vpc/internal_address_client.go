@@ -144,8 +144,22 @@ type InternalAddressClient interface {
 	//   - Unavailable/DeadlineExceeded                   → domain.ErrUnavailable
 	SetReference(ctx context.Context, addressID string, owner AddressOwner, owned bool) error
 
-	// ClearReference — снимает used_by с Address (Listener.Delete release BYO).
-	// Идемпотентно: NotFound → успех. Unavailable/DeadlineExceeded → domain.ErrUnavailable.
+	// ClearReference — снимает used_by с Address (release-путь: Delete
+	// балансировщика, компенсация неудавшегося создания, реконсайлер аренды).
+	//
+	// Полосы ответа владельца разведены носителем `pkg/peer`, корзины «прочее»
+	// у них нет — она выбирала бы политику повтора за вызывающего:
+	//   - OK / NotFound                    → nil: снимать нечего, постусловие
+	//     выполнено (идемпотентность release-пути)
+	//   - PermissionDenied/Unauthenticated → domain.ErrFailedPrecondition:
+	//     решение владельца, терминально — повтор идентичного запроса его не изменит
+	//   - FailedPrecondition               → domain.ErrFailedPrecondition
+	//   - InvalidArgument/OutOfRange       → domain.ErrInvalidArg
+	//   - Unavailable/DeadlineExceeded     → domain.ErrUnavailable: ЕДИНСТВЕННАЯ
+	//     повторяемая полоса; реконсайлер оставляет строку на следующий тик
+	//     (`jobs.isTransientReleaseErr`)
+	//   - ответ не классифицирован         → domain.ErrInternal + строка журнала:
+	//     состояние «не понят», а не третья политика повтора
 	ClearReference(ctx context.Context, addressID string) error
 }
 
@@ -545,23 +559,62 @@ func (c *internalAddressClient) ClearReference(ctx context.Context, addressID st
 		if rerr == nil {
 			return nil
 		}
-		st, ok := status.FromError(rerr)
-		if !ok {
-			return fmt.Errorf("vpc clear address reference %q: %w", addressID, rerr)
-		}
-		switch st.Code() {
-		case codes.NotFound:
-			// Idempotent: уже снят / address удалён.
+		// Полосы классифицирует носитель — тот же, что у привязки
+		// (`setAddressReferenceOnce`) и у публичного `AddressClient.Get`. Прежде
+		// здесь стоял свой разбор кодов с веткой «всё остальное», а корзины «прочее»
+		// у классификатора чужого отказа не бывает: она не нейтральна, она ВЫБИРАЕТ
+		// политику — и выбирала терминальную для всего, что в её список не попало.
+		//
+		// Цена ровно этой корзины наблюдалась на стенде. Владелец отвечал на СВОЮ
+		// недоступность кодом отказа в правах, код падал в корзину, а реконсайлер
+		// считает транзиентным ровно один sentinel (`jobs.isTransientReleaseErr` →
+		// `ErrUnavailable`). Перебой модели прав длиной в доли секунды изолировал
+		// балансировщик как отравленный — на пути освобождения аренды это
+		// необратимо. Вторая половина той же корзины: `%w` от статуса соседа
+		// проходит `shared.MapDomainErr` НАСКВОЗЬ (там pass-through для любого
+		// статуса с известным кодом), то есть проза чужого решения о доступе
+		// доезжала до вызывающего дословно.
+		switch peer.Classify(rerr) {
+		case peer.OutcomeOK, peer.OutcomeMissing:
+			// Снимать нечего: привязки уже нет либо адреса нет вовсе. Постусловие
+			// выполнено — это успех, а не отказ (идемпотентность release-пути).
 			return nil
-		case codes.InvalidArgument:
-			return fmt.Errorf("%w: vpc clear address reference %s: %s", domain.ErrInvalidArg, addressID, st.Message())
-		case codes.Unavailable, codes.DeadlineExceeded:
-			// fail-closed для мутации (api-conventions.md); также покрывает
+		case peer.OutcomeDenied:
+			// Решение владельца. Терминально: повтор идентичного запроса его не
+			// изменит (data-integrity.md §Межсервисное намерение — отказ в правах НЕ
+			// временный), поэтому полоса не выдаёт себя за недоступность. Текст
+			// фиксирован: прозу чужого решения наружу не несём.
+			return fmt.Errorf("%w: address %s reference cannot be released", domain.ErrFailedPrecondition, addressID)
+		case peer.OutcomeStateRefused:
+			return fmt.Errorf("%w: address %s state does not allow releasing its reference",
+				domain.ErrFailedPrecondition, addressID)
+		case peer.OutcomeMalformed:
+			return fmt.Errorf("%w: vpc clear address reference %s: %s",
+				domain.ErrInvalidArg, addressID, peer.PeerMessage(rerr))
+		case peer.OutcomeUnavailable:
+			// fail-closed для мутации (api-conventions.md); покрывает и
 			// DeadlineExceeded от per-call c.withCallTimeout на зависшем peer'е.
-			return fmt.Errorf("%w: vpc clear address reference %s: %s", domain.ErrUnavailable, addressID, st.Message())
-		default:
-			return fmt.Errorf("vpc clear address reference %q: %w", addressID, rerr)
+			// Единственная полоса, где владелец не установил НИЧЕГО, — значит
+			// единственная, где повтор осмыслен: строка доживёт до следующего тика
+			// реконсайлера.
+			return fmt.Errorf("%w: vpc clear address reference %s: %s",
+				domain.ErrUnavailable, addressID, peer.PeerMessage(rerr))
 		}
+		// Ответ, которому носитель полосы не назначил (внутренняя ошибка владельца,
+		// исчерпание бюджета проверок, нереализованный метод, не-статус вовсе), —
+		// это СОСТОЯНИЕ «ответ не понят», а не третья политика повтора. Он не
+		// объявляется повторяемым (вечный повтор дороже отказа) и не выдаётся за
+		// успех (тихая потеря аренды), а звучит отдельной строкой журнала: «ноль
+		// непонятых за всю жизнь» обязано быть отличимо от «мы их не считаем».
+		//
+		// Стоит ПОСЛЕ switch, а не веткой в нём, намеренно: полоса, добавленная в
+		// носитель завтра, попадёт сюда — то есть в самый тихий из осмысленных
+		// исходов. Веткой `case OutcomeUnclassified` она вернула бы nil, и снятие
+		// привязки молча считалось бы выполненным.
+		c.logger.Error("vpc clear address reference: peer answer not classified",
+			"address_id", addressID, "err", rerr)
+		return fmt.Errorf("%w: vpc clear address reference %s: peer answer not classified",
+			domain.ErrInternal, addressID)
 	})
 }
 

@@ -46,7 +46,8 @@ type CheckClient interface {
 	//     (ресурс скорее всего не существует; interceptor → DecisionNoPath →
 	//     handler вернёт NOT_FOUND из DB).
 	//   - allowed=false, err=domain.ErrUnavailable — FGA / kacho-iam недоступен
-	//     (fail-closed: interceptor → DecisionUnavailable → PermissionDenied).
+	//     (fail-closed: interceptor → DecisionUnavailable → UNAVAILABLE; это не
+	//     решение о правах, поэтому и код не тот, которым отвечает отказ).
 	//   - allowed=false, err=domain.ErrInvalidArg — bad subject/relation/object.
 	Check(ctx context.Context, subjectID, relation, object string) (bool, error)
 }

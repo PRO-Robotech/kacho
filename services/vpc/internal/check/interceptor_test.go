@@ -105,7 +105,12 @@ func TestInterceptor_Unary_Deny_NetworkDelete(t *testing.T) {
 }
 
 // TestInterceptor_Unary_Unavailable_FailClosed — Check вернул transport-error
-// (например iam недоступен) → fail-closed PermissionDenied.
+// (например iam недоступен) → fail-closed, кодом НЕДОСТУПНОСТИ.
+//
+// Ожидание сменилось с PermissionDenied вместе с задачей #497. Утверждение не
+// ослаблено: запрос отвергнут, обработчик не вызван. Менялось то, что сказано
+// вызывающему: «тебе нельзя» означает «повторять бессмысленно», и перебой модели
+// прав длиной в доли секунды становился у потребителя терминальным отказом.
 func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	intr, _ := newTestInterceptor(t, func(_ context.Context, subject, relation, object string) (bool, error) {
 		return false, errors.New("iam unavailable: connection refused")
@@ -124,7 +129,8 @@ func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.PermissionDenied, st.Code(), "Unavailable должен мапиться в PermissionDenied (fail-closed)")
+	require.Equal(t, codes.Unavailable, st.Code(),
+		"недоступность модели отвечает своим кодом: fail-closed, но повторяемо")
 }
 
 // TestInterceptor_Unary_NoPrincipal_Denied — нет Principal'а в ctx → fail-closed.
