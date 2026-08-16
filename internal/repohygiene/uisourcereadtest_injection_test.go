@@ -120,6 +120,78 @@ describe("реестр консоли против контракта ствол
 });
 `
 
+// ЗАКОННЫЙ БЛИЗНЕЦ 4 — МЕТКА синтетического исходника, а не координата. Форма
+// снята с `set-replacement-draft-composition.test.ts` (#498): разбор строится из
+// строки В ПАМЯТИ, а первый аргумент служит именем для AST и выбора диалекта. За
+// `"bad.ts"` нет ни файла, ни обращения к диску. Ровно на этой форме прежний
+// предикат давал ложную находку (#523).
+//
+// Близнец НАМЕРЕННО не обходит дерево: обход — отдельная ветка прощения, и на
+// обходящем близнеце молчание объяснялось бы ею, а не тем, что мы доказываем.
+// Читает он контракт ствола — законное чтение, исполнить `.proto` проба не может.
+const synthProbeSyntheticLabels = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
+
+const SITE_WITHOUT_DECLARATION = "const body = { targets: draft.targets };";
+const SITE_WITH_DECLARATION = "// SetReplacementDraft\nconst body = { targets: draft.targets };";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const contract = readFileSync(path.resolve(here, "../../../proto/kacho/cloud/nlb/v1/target_group.proto"), "utf8");
+
+function inspectSource(fileName: string, source: string) {
+  return ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+}
+
+describe("состав черновика набора против контракта ствола", () => {
+  it("набор объявлен контрактом", () => {
+    expect(contract).toMatch(/repeated Target targets = \d+;/);
+  });
+
+  it("место без объявления распознаётся", () => {
+    const bad = inspectSource("bad.ts", SITE_WITHOUT_DECLARATION);
+    const good = inspectSource("good.ts", SITE_WITH_DECLARATION);
+    expect(bad.statements.length).toBeGreaterThan(0);
+    expect(good.statements.length).toBeGreaterThan(0);
+  });
+});
+`
+
+// ДЕФЕКТ третьего вида — та же метка, но уехавшая В ЧТЕНИЕ. Пара с близнецом
+// выше держит дискриминатор с обеих сторон: имя одно и то же, вердикты разные,
+// значит гейт различает МЕСТО литерала, а не его вид.
+const synthProbeLabelThatIsReallyRead = `import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import ts from "typescript";
+
+const src = readFileSync(join(__dirname, "bad.ts"), "utf8");
+const scan = ts.createSourceFile("bad.ts", src, ts.ScriptTarget.Latest, true);
+
+describe("состав черновика набора", () => {
+  it("объявление на месте", () => {
+    expect(scan.statements.length).toBeGreaterThan(0);
+  });
+});
+`
+
+// ДЕФЕКТ четвёртого вида — путь собран СТРОКОЙ ВЫШЕ. Без него у запрета была бы
+// дыра шириной в одну строку: literal в `join`, чтение по переменной.
+const synthProbeIndirectPath = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const target = path.join(here, "IndirectWidget.tsx");
+const source = readFileSync(target, "utf8");
+
+describe("IndirectWidget", () => {
+  it("declares its public component exports", () => {
+    expect(source).toContain("IndirectWidget");
+  });
+});
+`
+
 // ЗАКОННЫЙ БЛИЗНЕЦ 3 — проба, утверждающая наблюдаемое. Файловой системы не
 // касается вовсе.
 const synthProbeBehaviour = `import { render, screen } from "@testing-library/react";
@@ -214,6 +286,77 @@ func TestUISourceReadPredicateSeparatesDefectFromCensus(t *testing.T) {
 		}
 		if walks != 1 {
 			t.Errorf("обходящих проб насчитано %d, ожидалось 1 — распознавание переписи сломано", walks)
+		}
+	})
+}
+
+// TestUISourceReadPredicateTellsCoordinateFromLabel — дискриминатор различает
+// МЕСТО литерала, а не его вид.
+//
+// Пара держится с обеих сторон одним и тем же именем `bad.ts`: уехавшее в
+// произвольную функцию — метка (молчание), уехавшее в чтение — координата
+// (краснеет). Разойдись эти два вердикта в одну сторону, и гейт мерил бы вид
+// имени: тогда он либо снова краснел бы на синтетике соседа, либо перестал бы
+// видеть чтение по имени, похожему на метку.
+//
+// Третий случай — путь, собранный СТРОКОЙ ВЫШЕ: без него сужение оставило бы
+// дыру шириной в одну строку.
+func TestUISourceReadPredicateTellsCoordinateFromLabel(t *testing.T) {
+	const (
+		labelPath    = "ui-future/shared/src/test/injected-synthetic-labels.test.ts"
+		labelReadRel = "ui-future/shared/src/test/injected-label-really-read.test.ts"
+		indirectRel  = "ui-future/compute/src/injected-indirect-path.test.ts"
+	)
+
+	findings, reads, walks := auditUISourceReads(map[string]string{
+		labelPath:    synthProbeSyntheticLabels,
+		labelReadRel: synthProbeLabelThatIsReallyRead,
+		indirectRel:  synthProbeIndirectPath,
+	})
+
+	got := map[string]uiSourceFinding{}
+	for _, f := range findings {
+		got[f.File] = f
+	}
+
+	t.Run("метка синтетического исходника молчит", func(t *testing.T) {
+		if f, ok := got[labelPath]; ok {
+			t.Errorf("имя синтетического исходника объявлено координатой (%s, %v).\n"+
+				"За `bad.ts`/`good.ts` здесь нет ни файла, ни обращения к диску: разбор строится "+
+				"из строки в памяти, имя служит меткой AST. Это ложная находка #523.", f.Why, f.Coords)
+		}
+	})
+
+	t.Run("то же имя, уехавшее в чтение, краснеет", func(t *testing.T) {
+		f, ok := got[labelReadRel]
+		if !ok {
+			t.Fatal("чтение файла по литералу НЕ поймано — сужение отняло у гейта предмет, " +
+				"а не ложную находку: молчание выше тогда ничего не стоит")
+		}
+		if !strings.Contains(strings.Join(f.Coords, ","), "bad.ts") {
+			t.Errorf("координата не названа: %v", f.Coords)
+		}
+	})
+
+	t.Run("путь, собранный строкой выше, краснеет", func(t *testing.T) {
+		f, ok := got[indirectRel]
+		if !ok {
+			t.Fatal("литерал в `path.join(…)`, прочитанный через переменную, НЕ пойман — " +
+				"у запрета осталась дыра шириной в одну строку")
+		}
+		if !strings.Contains(strings.Join(f.Coords, ","), "IndirectWidget.tsx") {
+			t.Errorf("координата не названа: %v", f.Coords)
+		}
+	})
+
+	t.Run("перепись различает виды", func(t *testing.T) {
+		// Все три читают с диска, ни одна не обходит дерево: значит молчание
+		// первой объясняется дискриминатором координаты, а НЕ ветвью переписи.
+		if reads != 3 {
+			t.Errorf("читающих проб насчитано %d, ожидалось 3 — распознавание чтения сломано", reads)
+		}
+		if walks != 0 {
+			t.Errorf("обходящих проб насчитано %d, ожидалось 0 — близнец прощён не тем, чем мы думаем", walks)
 		}
 	})
 }
