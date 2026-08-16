@@ -1090,9 +1090,31 @@ CASES.append(Case(
     title="Create with name length=63 (upper bound) → OK",
     classes=["BVA"], priority="P2",
     steps=[
+        # Тот же дефект, что был у нижней границы тремя кейсами выше, и та же починка.
+        # Там его нашли и закрыли, здесь — нет: имя оставалось литералом `n63…`, то есть
+        # НЕ run-scoped, при `UNIQUE(project_id, name)` на балансировщиках. Уборка в конце
+        # кейса спасает только полностью завершившийся прогон; оборванный (или второй против
+        # того же стенда — это задокументированный путь отладки) занимает имя насовсем, и
+        # следующий получает 409 против строгого `assert_status(200)`.
+        #
+        # Шесть символов из runId вшиты В ПРЕДЕЛАХ лимита: длина остаётся ровно 63, иначе
+        # кейс перестал бы проверять границу, ради которой существует.
         Step(name="cr-63char", method="POST", path=_CREATE_BASE,
-             body={**_LB_BODY, "name": "n63" + "abcdefghij" * 6},
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+             pre_script=[
+                 "var __r = (pm.environment.get('runId') || 'x0');",
+                 "var __h = 0; for (var i = 0; i < __r.length; i++) "
+                 "{ __h = ((__h << 5) - __h + __r.charCodeAt(i)) | 0; }",
+                 "var __t = Math.abs(__h).toString(36);",
+                 "while (__t.length < 6) { __t = '0' + __t; }",
+                 "__t = __t.slice(0, 6);",
+                 # 3 + 6 + 50 + 4 = 63
+                 "pm.environment.set('_lbName63', 'n63' + __t + "
+                 "'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghij' + 'abcd');",
+             ],
+             body={**_LB_BODY, "name": "{{_lbName63}}"},
+             test_script=["pm.test('the fixture name sits exactly on the 63-character bound', "
+                          "() => pm.expect((pm.environment.get('_lbName63') || '').length).to.eql(63));",
+                          *assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
