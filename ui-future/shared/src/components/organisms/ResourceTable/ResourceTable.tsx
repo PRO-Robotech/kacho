@@ -37,6 +37,17 @@ interface Props<T> {
    * а читается как первая вообще.
    */
   sortable?: boolean;
+  /**
+   * Выделение строк. Не задано — столбца флажков нет вовсе.
+   *
+   * Вызывающий обязан объявить его ЯВНО: столбец флажков — приглашение к
+   * групповому действию, и заводить его там, где действия нет, значит обещать
+   * возможность, которой не существует.
+   */
+  selection?: {
+    selected: string[];
+    onChange: (next: string[]) => void;
+  };
 }
 
 export function ResourceTable<T extends object>({
@@ -48,6 +59,7 @@ export function ResourceTable<T extends object>({
   defaultSort,
   onRowClick,
   sortable = true,
+  selection,
 }: Props<T>) {
   const antColumns: ColumnType<T>[] = useMemo(
     () =>
@@ -146,6 +158,14 @@ export function ResourceTable<T extends object>({
     locale: {
       emptyText: empty ?? "Ресурсов не найдено",
     },
+    // Ключ выделения — тот же, что ключ строки: иначе «выделено три» и
+    // «удаляем три» относились бы к разным множествам.
+    rowSelection: selection
+      ? {
+          selectedRowKeys: selection.selected,
+          onChange: (keys) => selection.onChange(keys.map(String)),
+        }
+      : undefined,
     onRow: onRowClick
       ? (row) => ({
           onClick: (e) => {

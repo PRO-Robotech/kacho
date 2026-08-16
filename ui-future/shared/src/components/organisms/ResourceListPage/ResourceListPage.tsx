@@ -5,11 +5,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Segmented, Select, Typography, Tag } from "antd";
+import { Button, Checkbox, Input, Modal, Segmented, Select, Typography, Tag } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { REGISTRY, getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { useMutation } from "@tanstack/react-query";
+import { REGISTRY, getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
@@ -76,6 +77,16 @@ export function ResourceListPage({
   // загруженную страницу: клиентский фильтр поверх курсорной страницы отфильтровал
   // бы только то, что успело приехать, и выдал бы это за весь список.
   const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
+
+  // Выделение строк и групповое снятие.
+  //
+  // Столбец флажков появляется ТОЛЬКО у ресурса, который вообще можно удалять:
+  // выделение без действия — приглашение к тому, чего нет. Снимаются ровно
+  // выделенные строки, а не «всё, что подошло под фильтр»: второе снесло бы и
+  // то, что осталось за курсором и на экран не приезжало.
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const canBulkDelete = spec.ops.delete;
 
   // Строка поиска: у владельца, разбирающего выражение, она уходит ЗАПРОСОМ и
   // спрашивает про весь список; у остальных остаётся клиентским срезом по
@@ -145,6 +156,20 @@ export function ResourceListPage({
   const basePath = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 
   const items = data?.[spec.payloadKey] ?? [];
+
+  const bulkDelete = useMutation({
+    // По запросу на строку: группового снятия у края нет, и собирать его из
+    // одного запроса значило бы придумать контракт, которого не существует.
+    // Ошибка на одной строке не отменяет остальных — снятие идемпотентно.
+    mutationFn: async (ids: string[]) => {
+      const base = mutationBasePath(spec);
+      await Promise.allSettled(ids.map((id) => api.delete(`${base}/${id}`)));
+    },
+    onSettled: () => {
+      setSelected([]);
+      setConfirming(false);
+    },
+  });
 
   // Дополнительный фильтр "Зона доступности" — для ресурсов, у которых есть
   // понятие zone. Subnet хранит zone напрямую, Address — внутри
@@ -384,6 +409,16 @@ export function ResourceListPage({
                 ]}
               />
             )}
+            {canBulkDelete && selected.length > 0 && (
+              <>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Выделено: {selected.length}
+                </Typography.Text>
+                <Button danger size="small" onClick={() => setConfirming(true)}>
+                  Удалить выделенные
+                </Button>
+              </>
+            )}
             <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
           </>,
         )}
@@ -406,9 +441,36 @@ export function ResourceListPage({
             // бы первую строку прочитанного за первую вообще. Порядок серверу
             // не заказывается: поле порядка снято с контракта осознанно.
             sortable={!hasMore}
+            selection={
+              canBulkDelete
+                ? {
+                    selected,
+                    onChange: setSelected,
+                  }
+                : undefined
+            }
           />
         )}
       </div>
+
+      {/* Подтверждение называет ЧИСЛО, а не перечень имён: перечень из сорока
+          строк не читают — его прокручивают до кнопки. Число же отвечает на
+          единственный вопрос, который здесь задают себе: «столько я и
+          выделял?» Ошибка выделения проявляется именно в числе. */}
+      <Modal
+        open={confirming}
+        title={`Удалить ${selected.length} ${spec.plural.toLowerCase()}?`}
+        okText="Удалить"
+        cancelText="Отмена"
+        okButtonProps={{ danger: true }}
+        confirmLoading={bulkDelete.isPending}
+        onCancel={() => setConfirming(false)}
+        onOk={() => bulkDelete.mutate(selected)}
+      >
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          Действие необратимо. Снимаются ровно выделенные строки — {selected.length}.
+        </Typography.Paragraph>
+      </Modal>
 
       {/* Курсорная пагинация: общего числа у List нет, поэтому «ещё» — это
           наличие next_page_token, а не арифметика по общему числу. */}
