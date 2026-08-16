@@ -21,8 +21,8 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	vpcpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
 // # Предмет

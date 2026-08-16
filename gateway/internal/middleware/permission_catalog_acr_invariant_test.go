@@ -494,10 +494,25 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// выполнимо подстановочным кортежем глобальных справочников и ответило бы
 	// «да» каждому аутентифицированному, а эти числа принадлежат одному
 	// арендатору. 264→265 routine, итог 326→327; sensitive и exempt не тронуты.
+	// #439 — снятие аренды адреса: ОДНА запись,
+	// `vpc.v1.InternalAddressService/ReleaseOwnedAddress`, рутинная.
+	//
+	// Рутинная потому, что это освобождение СВОЕЙ аренды, а не изменение того,
+	// сколько ресурса доступно арендатору: следующее заведение аренды отменяет
+	// её действие целиком.
+	//
+	// Ярус — `editor` НА ПРОЕКТЕ, в точности как у парного заведения аренды
+	// (`CreateOwnedAddress`). Пообъектный якорь на самом адресе был бы здесь не
+	// строгостью, а дефектом: он включает пробу существования, а её отказ
+	// платформа обязана делать неотличимым от «объекта нет» — и вызывающий,
+	// прочитав этот ответ как «аренда снята», строил на нём необратимый шаг.
+	// Якорь-коллекция такой пробы не запускает, поэтому неоднозначность не
+	// различается, а перестаёт порождаться. 263→264 routine, итог 325→326;
+	// sensitive и exempt не тронуты.
 	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 263, n1, "routine count")
+	assert.Equal(t, 264, n1, "routine count")
 	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 325, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 326, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
