@@ -41,6 +41,7 @@ import { api } from "@/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
 import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-list";
+import { clientScope, noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
 import { createActionLabel } from "@shared/lib/resource-label";
@@ -89,6 +90,11 @@ function RelatedTable({
   );
   const allQ = useResourceListAllPages(childSpecResolved, { enabled: wantAll });
   const { data, isLoading, isError, error } = wantAll ? allQ : singleQ;
+  // Область, о которой судят ручки вкладки (#373). Чтение здесь двоякое:
+  // `allQ` дочитывает курсор до конца (facet обязан видеть весь набор), а
+  // `singleQ` берёт одну страницу — и продолжения у этой вкладки нет вовсе,
+  // поэтому её набор полон ровно тогда, когда за курсором пусто.
+  const scope: NarrowingScope = wantAll ? "whole" : clientScope(singleQ.hasMore);
   const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
   const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
@@ -172,7 +178,7 @@ function RelatedTable({
             ]}
           />
         )}
-        <TableSearch value={search} onChange={setSearch} />
+        <TableSearch value={search} onChange={setSearch} scope={scope} />
         <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </HeaderSlotPortal>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
@@ -182,7 +188,10 @@ function RelatedTable({
             columns={columns}
             loading={isLoading}
             rowKey={(r) => getByPath<string>(r, "id") ?? getByPath<string>(r, "name") ?? Math.random().toString()}
-            empty={q || facetVal ? "По запросу ничего не найдено." : undefined}
+            // Сужение здесь клиентское, поэтому порядок законен ровно тогда,
+            // когда прочитан весь набор.
+            complete={rowsAreComplete(scope)}
+            empty={q || facetVal ? noMatchesText(scope) : undefined}
           />
         </div>
       </div>

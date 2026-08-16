@@ -21,6 +21,14 @@ import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
+import {
+  clientScope,
+  narrowingTitle,
+  noMatchesText,
+  rowsAreComplete,
+  searchPlaceholder,
+  type NarrowingScope,
+} from "@shared/lib/list-scope";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 
 export function NetworkDetailPage() {
@@ -74,7 +82,7 @@ export function NetworkDetailPage() {
   const { data: subnetData } = useQuery({
     queryKey: ["subnets", "list", projectId],
     queryFn: () =>
-      api.list<{ subnets: Array<Record<string, unknown>> }>(subnetSpec.apiPath, {
+      api.list<{ subnets: Array<Record<string, unknown>>; next_page_token?: string }>(subnetSpec.apiPath, {
         project_id: projectId!,
         pageSize: "500",
       }),
@@ -85,7 +93,7 @@ export function NetworkDetailPage() {
   const { data: rtData } = useQuery({
     queryKey: ["route-tables", "list", projectId],
     queryFn: () =>
-      api.list<{ route_tables: Array<Record<string, unknown>> }>(rtSpec.apiPath, {
+      api.list<{ route_tables: Array<Record<string, unknown>>; next_page_token?: string }>(rtSpec.apiPath, {
         project_id: projectId!,
         pageSize: "500",
       }),
@@ -96,7 +104,7 @@ export function NetworkDetailPage() {
   const { data: sgData } = useQuery({
     queryKey: ["security-groups", "list", projectId],
     queryFn: () =>
-      api.list<{ security_groups: Array<Record<string, unknown>> }>(sgSpec.apiPath, {
+      api.list<{ security_groups: Array<Record<string, unknown>>; next_page_token?: string }>(sgSpec.apiPath, {
         project_id: projectId!,
         pageSize: "500",
       }),
@@ -116,6 +124,15 @@ export function NetworkDetailPage() {
     () => (sgData?.security_groups ?? []).filter((r) => r.network_id === networkId),
     [sgData, networkId],
   );
+
+  // Область каждой вкладки — по её СОБСТВЕННОМУ курсору: три списка читаются
+  // тремя запросами, и усечён может оказаться любой из них по отдельности.
+  // Курсор при этом относится к списку ПРОЕКТА, а не к строкам этой сети:
+  // отбор по `network_id` идёт уже в браузере, поэтому непрочитанная страница
+  // проекта может нести подсети именно этой сети.
+  const subnetScope = clientScope(!!subnetData?.next_page_token);
+  const rtScope = clientScope(!!rtData?.next_page_token);
+  const sgScope = clientScope(!!sgData?.next_page_token);
 
   // RowActionsMenu Edit-кнопка ведёт на `${basePath}/${id}/edit` — для child-resources
   // на network-detail передаём nested basePath, чтобы edit URL остался под networks/.
@@ -142,6 +159,7 @@ export function NetworkDetailPage() {
           <ChildSection
             title="Подсети"
             rows={networkSubnets}
+            scope={subnetScope}
             columns={subnetColumns}
             emptyText="В сети нет подсетей."
             storageKey="network-subnets"
@@ -149,7 +167,7 @@ export function NetworkDetailPage() {
         </Space>
       );
     },
-    [networkSubnets, subnetColumns, networkId],
+    [networkSubnets, subnetColumns, networkId, subnetScope],
   );
 
   const extraTabs = useMemo(
@@ -162,6 +180,7 @@ export function NetworkDetailPage() {
           <ChildSection
             title="Таблицы маршрутизации"
             rows={networkRouteTables}
+            scope={rtScope}
             columns={rtColumns}
             emptyText="К сети не привязано ни одной таблицы маршрутизации."
             storageKey="network-route-tables"
@@ -176,6 +195,7 @@ export function NetworkDetailPage() {
           <ChildSection
             title="Группы безопасности"
             rows={networkSGs}
+            scope={sgScope}
             columns={sgColumns}
             emptyText="В сети нет групп безопасности."
             storageKey="network-security-groups"
@@ -195,7 +215,7 @@ export function NetworkDetailPage() {
       // tab "Операции" автоматически добавляется ResourceDetailPage —
       // не дублируем здесь.
     ],
-    [networkRouteTables, networkSGs, rtColumns, sgColumns],
+    [networkRouteTables, networkSGs, rtColumns, sgColumns, rtScope, sgScope],
   );
 
   const headerActionsByTab = useCallback(
@@ -285,6 +305,7 @@ function ChildSection({
   columns,
   emptyText,
   storageKey,
+  scope,
 }: {
   title: string;
   rows: Array<Record<string, unknown>>;
@@ -292,6 +313,15 @@ function ChildSection({
   emptyText: string;
   /** Ключ, под которым запоминается выбор столбцов этой таблицы. */
   storageKey: string;
+  /**
+   * Область, о которой судят фильтр и стрелка сортировки (#373).
+   *
+   * Эта вкладка читает список проекта ОДНИМ запросом и продолжения не
+   * предлагает, поэтому за курсором может остаться то, чего фильтр никогда не
+   * увидит: «по фильтру ничего не найдено» означало бы отсутствие, которого
+   * никто не проверял.
+   */
+  scope: NarrowingScope;
 }) {
   const [query, setQuery] = useState("");
   // Где есть фильтр — есть и выбор столбцов: обе ручки про то, что показывать,
@@ -320,7 +350,8 @@ function ChildSection({
       </Typography.Title>
       <Space size={8} style={{ width: "100%" }}>
         <Input.Search
-          placeholder="Фильтр по имени или идентификатору"
+          placeholder={searchPlaceholder(scope)}
+          title={narrowingTitle(scope)}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: 360 }}
@@ -330,13 +361,14 @@ function ChildSection({
       </Space>
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          {query ? "По фильтру ничего не найдено." : emptyText}
+          {query ? noMatchesText(scope) : emptyText}
         </div>
       ) : (
         <ResourceTable
           rows={filtered}
           columns={shown}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
+          complete={rowsAreComplete(scope)}
         />
       )}
     </Space>

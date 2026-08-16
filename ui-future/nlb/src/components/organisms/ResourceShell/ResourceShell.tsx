@@ -41,6 +41,7 @@ import { api } from "@/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
 import { useResourceList } from "@/lib/use-resource-list";
+import { clientScope, noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
 import { createActionLabel } from "@shared/lib/resource-label";
@@ -69,7 +70,11 @@ function RelatedTable({
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${childSpec.id}`);
-  const { data, isLoading, isError, error } = useResourceList(childSpec, "project_id", projectId);
+  const { data, isLoading, isError, error, hasMore } = useResourceList(childSpec, "project_id", projectId);
+  // Область, о которой судят ручки вкладки (#373): вкладка показывает одну
+  // страницу и продолжения не предлагает, поэтому набор полон ровно тогда,
+  // когда за курсором пусто.
+  const scope: NarrowingScope = clientScope(hasMore);
   const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
   const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
@@ -126,7 +131,7 @@ function RelatedTable({
       {/* Фильтры (поиск/колонки) поднимаются на уровень имени ресурса (зона 3,
           правый слот) через HeaderSlotPortal — req3. */}
       <HeaderSlotPortal>
-        <TableSearch value={search} onChange={setSearch} />
+        <TableSearch value={search} onChange={setSearch} scope={scope} />
         <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </HeaderSlotPortal>
       <ResourceTable
@@ -134,7 +139,10 @@ function RelatedTable({
         columns={columns}
         loading={isLoading}
         rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
-        empty={q ? "По запросу ничего не найдено." : undefined}
+        // Сужение здесь клиентское, поэтому порядок законен ровно тогда,
+        // когда прочитан весь набор.
+        complete={rowsAreComplete(scope)}
+        empty={q ? noMatchesText(scope) : undefined}
       />
     </div>
   );

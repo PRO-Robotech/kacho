@@ -326,6 +326,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         // выглядел на этой вкладке иначе, чем везде.
         <ResourceTable<SgRule>
           rows={rules}
+          // Правила приезжают полем группы, а не списком у края: курсора нет,
+          // набор полон by construction.
+          complete
           rowKey={(r) => r.id ?? String(rules.indexOf(r))}
           columns={[
             {

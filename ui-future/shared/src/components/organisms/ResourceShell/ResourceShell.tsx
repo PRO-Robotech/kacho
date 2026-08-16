@@ -54,6 +54,7 @@ import { relatedListQuery } from "@shared/lib/related-list-query";
 import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
+import { clientScope, noMatchesText, rowsAreComplete } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { DetailOverviewActions } from "@shared/components/molecules/DetailOverviewActions";
 import { createActionLabel } from "@shared/lib/resource-label";
@@ -114,6 +115,10 @@ function RelatedTable({
   // фильтра не выражаются вовсе. Сам по себе он судит только о ПРОЧИТАННЫХ
   // страницах — поэтому ниже обязателен видимый курсор.
   const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
+
+  // Область, о которой судят ручки этой вкладки. Поиск здесь клиентский всегда
+  // (см. выше), поэтому вопрос ровно один — дочитан ли курсор.
+  const scope = clientScope(hasMore);
 
   // Поиск по имени или идентификатору (client-side).
   const q = search.trim().toLowerCase();
@@ -177,7 +182,7 @@ function RelatedTable({
       {/* Фильтры (поиск/колонки) поднимаются на уровень имени ресурса (зона 3,
           правый слот) через HeaderSlotPortal — req3. */}
       <HeaderSlotPortal>
-        <TableSearch value={search} onChange={setSearch} />
+        <TableSearch value={search} onChange={setSearch} scope={scope} />
         <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </HeaderSlotPortal>
       <ResourceTable
@@ -185,9 +190,12 @@ function RelatedTable({
         columns={columns}
         loading={isLoading}
         rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
+        // Сужение здесь клиентское (см. `ownRows`), поэтому и порядок законен
+        // ровно тогда, когда курсор дочитан.
+        complete={rowsAreComplete(scope)}
         empty={
           q
-            ? "По запросу ничего не найдено."
+            ? noMatchesText(scope)
             : ownRows.length === 0
               ? "На прочитанных страницах списка таких ресурсов нет — за курсором есть ещё."
               : undefined

@@ -38,7 +38,7 @@ describe("ResourceTable — закрепление краёв при прокр�
       { header: "CIDR", cell: (r) => r.cidr },
       { header: "", cell: () => "⋯" },
     ];
-    render(<ResourceTable rows={rows} columns={withSelect} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={withSelect} rowKey={(r) => r.id} complete />);
     const h = headers();
     expect(h[0]).toHaveAttribute("data-fixed", "left");
     expect(h[0]).toHaveAttribute("data-width", "48");
@@ -48,12 +48,12 @@ describe("ResourceTable — закрепление краёв при прокр�
   });
 
   it("колонка идентичности закреплена слева", () => {
-    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} complete />);
     expect(headers()[0]).toHaveAttribute("data-fixed", "left");
   });
 
   it("столбец действий закреплён справа", () => {
-    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} complete />);
     const h = headers();
     expect(h[h.length - 1]).toHaveAttribute("data-fixed", "right");
   });
@@ -63,7 +63,7 @@ describe("ResourceTable — закрепление краёв при прокр�
     // смотрящая только на `fixed`, этого не видит. Знание оплачено в registry
     // (там оно записано комментарием у своей копии таблицы) — здесь оно держится
     // проверкой, а не комментарием.
-    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} complete />);
     const h = headers();
     expect(h[0]).toHaveAttribute("data-width");
     expect(h[h.length - 1]).toHaveAttribute("data-width");
@@ -73,7 +73,7 @@ describe("ResourceTable — закрепление краёв при прокр�
     // Положительный контроль: без него оба утверждения выше зеленели бы и на
     // таблице, закрепившей вообще всё, — то есть на таблице, которая вбок не
     // прокручивается по построению.
-    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={cols(true)} rowKey={(r) => r.id} complete />);
     expect(headers()[1]).not.toHaveAttribute("data-fixed");
     // Ширина назначается только закреплённым: остальные держат натуральную.
     expect(headers()[1]).not.toHaveAttribute("data-width");
@@ -83,7 +83,7 @@ describe("ResourceTable — закрепление краёв при прокр�
     // Закрепляется именно столбец действий, узнаваемый по пустому заголовку.
     // Обычная последняя колонка данных закрепления не получает: иначе на узком
     // экране закреплённые края съели бы всю видимую ширину.
-    render(<ResourceTable rows={rows} columns={cols(false)} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={cols(false)} rowKey={(r) => r.id} complete />);
     const h = headers();
     expect(h[h.length - 1]).not.toHaveAttribute("data-fixed");
   });

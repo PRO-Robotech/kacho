@@ -21,6 +21,14 @@ import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
+import {
+  clientScope,
+  narrowingTitle,
+  noMatchesText,
+  rowsAreComplete,
+  scopeSuffix,
+  type NarrowingScope,
+} from "@shared/lib/list-scope";
 
 export function SubnetDetailPage() {
   const { uid: subnetId, projectId, networkId } = useParams();
@@ -57,7 +65,7 @@ export function SubnetDetailPage() {
   const { data: addrList } = useQuery({
     queryKey: ["addresses", "list", projectId],
     queryFn: () =>
-      api.list<{ addresses: Array<Record<string, unknown>> }>(addrSpec.apiPath, {
+      api.list<{ addresses: Array<Record<string, unknown>>; next_page_token?: string }>(addrSpec.apiPath, {
         project_id: projectId!,
         pageSize: "500",
       }),
@@ -97,6 +105,7 @@ export function SubnetDetailPage() {
         count: subnetAddresses.length,
         render: () => (
           <AddressesSection
+            scope={clientScope(!!addrList?.next_page_token)}
             rows={subnetAddresses}
             columns={addrColumns}
             onReserve={subnetId ? openReserveModal : null}
@@ -151,10 +160,17 @@ function AddressesSection({
   rows,
   columns,
   onReserve,
+  scope,
 }: {
   rows: Array<Record<string, unknown>>;
   columns: Column<Record<string, unknown>>[];
   onReserve: (() => void) | null;
+  /**
+   * Область фильтра и стрелки сортировки (#373). Адреса читаются списком
+   * ПРОЕКТА одним запросом, отбор по подсети идёт в браузере — значит адрес
+   * этой подсети может лежать на непрочитанной странице проекта.
+   */
+  scope: NarrowingScope;
 }) {
   const [query, setQuery] = useState("");
   // Где есть фильтр — есть и выбор столбцов (требование владельца 2026-08-12).
@@ -184,7 +200,8 @@ function AddressesSection({
       </Typography.Title>
       <Space size={8}>
         <Input.Search
-          placeholder="Фильтр по имени, идентификатору или IP"
+          placeholder={`Фильтр по имени, идентификатору или IP ${scopeSuffix(scope)}`}
+          title={narrowingTitle(scope)}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: 360 }}
@@ -195,7 +212,7 @@ function AddressesSection({
       {filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-10 text-center space-y-3">
           <div className="text-base font-medium">
-            {query ? "По фильтру ничего не найдено" : "У вас пока нет IP-адресов"}
+            {query ? noMatchesText(scope) : "У вас пока нет IP-адресов"}
           </div>
           {!query && (
             <div className="text-xs text-muted-foreground">
@@ -213,6 +230,7 @@ function AddressesSection({
           rows={filtered}
           columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
+          complete={rowsAreComplete(scope)}
         />
       )}
     </Space>

@@ -168,6 +168,9 @@ export function InstanceDisksTab({
           rows={rows}
           columns={columns}
           rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()}
+          // Диски приезжают полем самой машины, а не отдельным списком: курсора
+          // здесь нет, набор полон by construction.
+          complete
         />
       )}
       <OperationToastWatcher

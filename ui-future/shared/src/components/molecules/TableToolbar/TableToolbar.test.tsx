@@ -32,7 +32,7 @@ beforeEach(() => {
 describe("TableSearch", () => {
   it("отдаёт введённое вызывающему", () => {
     const onChange = jest.fn<(v: string) => void>();
-    render(<TableSearch value="" onChange={onChange} />);
+    render(<TableSearch value="" onChange={onChange} scope="whole" />);
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "front" } });
 
@@ -40,7 +40,7 @@ describe("TableSearch", () => {
   });
 
   it("показывает текущее значение и подсказку", () => {
-    render(<TableSearch value="front" onChange={() => {}} placeholder="Найти" />);
+    render(<TableSearch value="front" onChange={() => {}} scope="whole" placeholder="Найти" />);
     expect(screen.getByRole("textbox")).toHaveValue("front");
     expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Найти");
   });

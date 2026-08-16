@@ -21,6 +21,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { useContext } from "@shared/lib/context-store";
 import { IamListShell } from "@/components/organisms/iam/IamListShell";
 import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
+import { clientScope, rowsAreComplete } from "@shared/lib/list-scope";
 import {
   AccessBindingCreateForm,
   type SubjectType,
@@ -88,7 +89,12 @@ export function AccessBindingsPage() {
     refetchInterval: 5_000,
     staleTime: 0,
   });
-  const bindings = (bindingsQ.data as AccessBindingList | undefined)?.access_bindings ?? [];
+  const bindingsList = bindingsQ.data as AccessBindingList | undefined;
+  const bindings = bindingsList?.access_bindings ?? [];
+  // Читается ОДНА страница на 200 строк, продолжения у этой таблицы нет (#373).
+  // Пока за курсором есть ещё, порядок предлагать нельзя: стрелка упорядочила
+  // бы первые двести выдач и выдала бы их за все.
+  const scope = clientScope(!!bindingsList?.next_page_token);
 
   // Колонки — из REGISTRY + kebab-колонка. revoke = Delete (RowActionsMenu,
   // spec.ops.delete); by-account query имеет refetchInterval 5s, строка уходит ≤5s.
@@ -193,6 +199,7 @@ export function AccessBindingsPage() {
           columns={shownColumns}
           rowKey={(r) => getByPath<string>(r, "id") ?? Math.random().toString()}
           loading={bindingsQ.isLoading}
+          complete={rowsAreComplete(scope)}
         />
       </div>
     </IamListShell>
