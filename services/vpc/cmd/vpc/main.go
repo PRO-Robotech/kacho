@@ -153,6 +153,7 @@ type services struct {
 	securityGroupHandler     *sgapp.Handler
 	gatewayHandler           *gatewayapp.Handler
 	addressPoolHandler       *addresspoolapp.Handler
+	addressPoolPublic        *addresspoolapp.PublicHandler
 	networkInternal          *networkinternal.Service
 	networkInterfaceHandler  *niapp.Handler
 	networkInterfaceInternal *nicinternal.Service
@@ -995,18 +996,47 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressPoolResolver := addresspoolapp.NewResolverService(
 		kachoRepo, addressAdapter, subnetAdapter,
 	)
+	//
+	// Use-case'ы собираются ОДИН раз и передаются в ОБА транспорта — внутренний
+	// (ответ ресурсом, :9091) и публичный (ответ `Operation`, :9090). Именно так
+	// «два пути записи делают одно» держится построением: разойтись валидацией,
+	// умолчаниями или набором заполняемых полей им нечем — тело одно.
+	// Собрать второй набор здесь значило бы завести дубль, который разъедется
+	// молча и станет наблюдаемым только когда консоль уже на публичном пути, а
+	// оператор ещё на внутреннем.
+	poolCreate := addresspoolapp.NewCreateAddressPoolUseCase(kachoRepo, geoClient)
+	poolUpdate := addresspoolapp.NewUpdateAddressPoolUseCase(kachoRepo)
+	poolDelete := addresspoolapp.NewDeleteAddressPoolUseCase(kachoRepo)
+	poolBind := addresspoolapp.NewBindAsNetworkDefaultUseCase(kachoRepo, networkAdapter)
+	poolUnbind := addresspoolapp.NewUnbindNetworkDefaultUseCase(kachoRepo)
+	poolAddCidr := addresspoolapp.NewAddCidrBlocksUseCase(kachoRepo)
+	poolRemoveCidr := addresspoolapp.NewRemoveCidrBlocksUseCase(kachoRepo)
+
 	addressPoolHandler := addresspoolapp.NewHandler(
-		addresspoolapp.NewCreateAddressPoolUseCase(kachoRepo, geoClient),
-		addresspoolapp.NewUpdateAddressPoolUseCase(kachoRepo),
-		addresspoolapp.NewDeleteAddressPoolUseCase(kachoRepo),
+		poolCreate,
+		poolUpdate,
+		poolDelete,
 		addresspoolapp.NewGetAddressPoolUseCase(kachoRepo),
 		addresspoolapp.NewListAddressPoolsUseCase(kachoRepo),
-		addresspoolapp.NewBindAsNetworkDefaultUseCase(kachoRepo, networkAdapter),
-		addresspoolapp.NewUnbindNetworkDefaultUseCase(kachoRepo),
+		poolBind,
+		poolUnbind,
 		addresspoolapp.NewGetPoolUtilizationUseCase(kachoRepo),
 		addresspoolapp.NewListPoolAddressesUseCase(kachoRepo),
-		addresspoolapp.NewAddCidrBlocksUseCase(kachoRepo),
-		addresspoolapp.NewRemoveCidrBlocksUseCase(kachoRepo),
+		poolAddCidr,
+		poolRemoveCidr,
+	)
+	addressPoolPublicHandler := addresspoolapp.NewPublicHandler(
+		addressPoolHandler,
+		addresspoolapp.NewAsyncMutations(
+			opsRepo,
+			poolCreate,
+			poolUpdate,
+			poolDelete,
+			poolBind,
+			poolUnbind,
+			poolAddCidr,
+			poolRemoveCidr,
+		),
 	)
 
 	addressRefSvc := addressref.NewService(addressAdapter)
@@ -1192,6 +1222,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		securityGroupHandler:    sgHandler,
 		gatewayHandler:          gwHandler,
 		addressPoolHandler:      addressPoolHandler,
+		addressPoolPublic:       addressPoolPublicHandler,
 		networkInternal:         networkinternal.NewService(networkAdapter, sgAdapter),
 		networkInterfaceHandler: niHandler,
 		// InternalNetworkInterfaceService — NIC↔Instance attach-CAS (:9091, §3a).
@@ -1234,6 +1265,11 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	vpcv1.RegisterGatewayServiceServer(srv, svcs.gatewayHandler)
 	vpcv1.RegisterNetworkInterfaceServiceServer(srv, svcs.networkInterfaceHandler)
 	vpcv1.RegisterCidrGroupServiceServer(srv, svcs.cidrGroupHandler)
+	// AddressPoolService — административная поверхность пула на ПУБЛИЧНОМ
+	// слушателе под правом `system_admin` @ `cluster` (ADM-1 S1). Не нарушение
+	// запрета 6: `Internal*`-сервис на внешний край не выставлен и предикат,
+	// который это ловит, не тронут — переехал ГЛАГОЛ, а не разрешение.
+	vpcv1.RegisterAddressPoolServiceServer(srv, svcs.addressPoolPublic)
 	// Чтение квот выставляется, ТОЛЬКО когда полоса учёта собрана. Иначе метод
 	// отвечал бы пустым набором на каждый запрос — то есть «квот нет», ровно то
 	// утверждение, которое контракт запрещает делать (`ListQuotasResponse`:

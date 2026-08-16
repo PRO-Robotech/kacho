@@ -64,9 +64,22 @@ func TestRestRouter_Resolve_KnownRoutes(t *testing.T) {
 		{"GET", "/iam/v1/projects?accountId=acc1", "kacho.cloud.iam.v1.ProjectService/List"},
 		// vpc resource
 		{"GET", "/vpc/v1/networks/enp0000000000000001", "kacho.cloud.vpc.v1.NetworkService/Get"},
-		// InternalAddressPoolService CIDR-block suffix-actions (internal mux).
-		{"POST", "/vpc/v1/addressPools/apl0000000000000001:addCidrBlocks", "kacho.cloud.vpc.v1.InternalAddressPoolService/AddCidrBlocks"},
-		{"POST", "/vpc/v1/addressPools/apl0000000000000001:removeCidrBlocks", "kacho.cloud.vpc.v1.InternalAddressPoolService/RemoveCidrBlocks"},
+		// Суффиксные действия над CIDR-блоками пула адресов.
+		//
+		// ЭТУ ПАРУ ОБЪЯВЛЯЮТ ДВА СЕРВИСА, и ожидание сменилось с внутреннего FQN на
+		// публичный не подгонкой, а вслед за предметом. Административная поверхность
+		// пула опубликована (ADM-1 S1) на ТОМ ЖЕ каноническом пути — второго адреса
+		// у ресурса быть не должно, — а внутренний глагол живёт рядом до стадии S3.
+		// Разрешение возвращает первое совпадение, и порядок таблицы теперь тотален
+		// (шаблон, метод, FQN), поэтому публичный идёт раньше внутреннего.
+		//
+		// ЧТО ЭТО МЕНЯЕТ ДЛЯ РЕШЕНИЯ О ДОСТУПЕ — НИЧЕГО, и это не совпадение, а
+		// охраняемое свойство: обе записи каталога требуют `system_admin` @
+		// `cluster` при одном и том же подтверждении личности. Разойдись они хоть в
+		// одном поле — покраснеет `TestSharedRestPair_CannotChangeAnAccessDecision`,
+		// который для того и заведён.
+		{"POST", "/vpc/v1/addressPools/apl0000000000000001:addCidrBlocks", "kacho.cloud.vpc.v1.AddressPoolService/AddCidrBlocks"},
+		{"POST", "/vpc/v1/addressPools/apl0000000000000001:removeCidrBlocks", "kacho.cloud.vpc.v1.AddressPoolService/RemoveCidrBlocks"},
 	}
 	for _, c := range cases {
 		fqn, ok := r.Resolve(c.method, c.path)

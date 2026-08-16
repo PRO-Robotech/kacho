@@ -14,6 +14,12 @@ import (
 )
 
 // muxAddrs — full backend address map so all Internal* routes are registered.
+//
+// `storage`/`storageInternal` are load-bearing: mux.go registers
+// InternalStorageBackendService only under `storageInternal != ""`, and that
+// service is the representative of the descriptor-classified class below. Omit
+// the key and the storage row 404s on the INTERNAL listener too, which turns the
+// census red for the wrong reason.
 func muxAddrs() map[string]string {
 	return map[string]string{
 		"vpc":                  "127.0.0.1:1",
@@ -24,6 +30,8 @@ func muxAddrs() map[string]string {
 		"iamInternal":          "127.0.0.1:1",
 		"loadbalancer":         "127.0.0.1:1",
 		"loadbalancerInternal": "127.0.0.1:1",
+		"storage":              "127.0.0.1:1",
+		"storageInternal":      "127.0.0.1:1",
 	}
 }
 
@@ -68,7 +76,21 @@ var internalRESTPaths = []struct{ method, path string }{
 	// isInternalRoute to return false for this exact path turns the internal
 	// half of this census red and names the pair.
 	{"POST", "/iam/v1/internal/interactiveClients"},
-	{"GET", "/vpc/v1/addressPools"},
+	// InternalStorageBackendService.List — the representative of the class that
+	// carries NO `/internal` segment and is matched by NONE of the hand-written
+	// path rules. It is classified by the DESCRIPTOR half,
+	// `matchesInternalRESTBinding`, keyed on the service NAME through the
+	// generated route table. Naming the MECHANISM rather than the bucket is the
+	// point: a reader who removes the hand-written rules must be able to see that
+	// this row does not rest on them.
+	//
+	// It replaced `/vpc/v1/addressPools` when the address-pool admin surface was
+	// published (ADM-1 S1). A representative has to outlive what it represents;
+	// the storage backend carries the backend coordinate and a reference to its
+	// credentials, so it stays internal under any continuation of that work. The
+	// coexistence the publication creates is pinned separately, by
+	// TestExternalListener_PublishedAdminPathReachesPublicBackendOnly below.
+	{"GET", "/storage/v1/storageBackends"},
 	// :internal verb-suffix (InternalNetworkService.GetNetwork REST path) — the
 	// real internal projection route. isInternalPath must match this too.
 	{"GET", "/vpc/v1/networks/net-1:internal"},

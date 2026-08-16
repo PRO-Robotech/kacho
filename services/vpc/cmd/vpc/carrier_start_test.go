@@ -79,6 +79,7 @@ func emptyServices() *services {
 		securityGroupHandler:     &sgapp.Handler{},
 		gatewayHandler:           &gatewayapp.Handler{},
 		addressPoolHandler:       &addresspoolapp.Handler{},
+		addressPoolPublic:        &addresspoolapp.PublicHandler{},
 		networkInternal:          &networkinternal.Service{},
 		networkInterfaceHandler:  &niapp.Handler{},
 		networkInterfaceInternal: &nicinternal.Service{},
