@@ -133,6 +133,11 @@ def _provision_subnet(placement, suffix, save_var="vpcSubnetId", dualstack=False
         # finishes done:true WITH an error, so an unguarded capture publishes the id of a
         # subnet that does not exist. Naming it makes the poll unset it and FAIL here.
         poll_operation_until_done(fixture_ids=[save_var]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_SUBNETS, save_var, f"subnet-{suffix}"),
     ]
 
 
@@ -185,6 +190,11 @@ def _provision_internal_address(subnet_var, suffix, save_var="vpcAddrId", family
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_ADDRESSES, save_var, f"intaddr-{suffix}"),
     ]
 
 
@@ -209,6 +219,11 @@ def _provision_external_address(suffix, save_var="vpcAddrId"):
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_ADDRESSES, save_var, f"extaddr-{suffix}"),
     ]
 
 

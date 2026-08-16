@@ -432,6 +432,11 @@ CASES.append(Case(
                  "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=["xresSubnetId"]),
+        # Прогрев чужого свежего ресурса ДО того, как его идентификатор уедет в
+        # асинхронную мутацию nlb: на ней ограниченный повтор ключуется на коде
+        # ответа шага, а он всегда `200`+`Operation` (issue #351). Разбор — в
+        # шапке `warm_peer_fixture`; свойство держит гейт по дереву.
+        warm_peer_fixture(_VPC_SUBNETS, "xresSubnetId", "xres-subnet"),
         # The just-provisioned vpc subnet can be briefly invisible to nlb's vpc peer-read
         # under parallel load → sync create rejects `subnet <id> not found` (400) BEFORE the
         # Operation is minted. Bounded create-retry re-POSTs (leak-free) until the subnet
