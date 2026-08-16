@@ -12,8 +12,17 @@
 // input-cells occupy the exact same row height — nothing shifts when toggling edit.
 //
 // The SectionHeader title stays «Статические маршруты (N)» in BOTH modes.
+//
 // save() does a full-replace update (static_routes + update_mask) and starts an async
-// Operation, exactly as before — no behaviour change to the save payload.
+// Operation. ЗАМЕНА ВСЕГО СПИСКА — несущее свойство, и из него следуют два
+// требования, каждое со своей пробой:
+//
+//   * черновик обязан нести ВСЕ поля `StaticRoute` контракта, в том числе те,
+//     которых редактор не показывает (`labels`): отсутствующее поле стирается у
+//     всех строк разом — `RoutesPanel.contract.test.ts`;
+//   * неполная строка НЕ отбрасывается перед отправкой — она называется, а
+//     «Сохранить» выключается: отброшенная строка при полной замене означает
+//     удалённый маршрут, о котором оператору отвечают успехом — `routeGaps`.
 
 import { useState } from "react";
 import { Button, Input, Space, Typography } from "antd";
@@ -32,6 +41,13 @@ export interface StaticRoute {
   destination_prefix?: string;
   next_hop_address?: string;
   gateway_id?: string;
+  /**
+   * Метки маршрута. Редактор их не показывает и не правит, но ОБЯЗАН пронести:
+   * сохранение заменяет весь список, поэтому поле, которого нет в черновике,
+   * стирается у всех строк разом — включая нетронутые. Состав черновика против
+   * состава контракта держит `RoutesPanel.contract.test.ts`.
+   */
+  labels?: Record<string, string>;
 }
 
 interface RoutesPanelProps {
@@ -51,7 +67,20 @@ export interface DraftRoute {
    * the arm.
    */
   gateway_id?: string;
+  /** Проносится нетронутым по той же причине, что и ветвь шлюза. */
+  labels?: Record<string, string>;
 }
+
+/** Чего не хватает в строке, которую оператор ещё не дописал. */
+export interface RouteGap {
+  /** Номер строки, как её видит оператор, — с единицы. */
+  row: number;
+  /** Названия недостающего — словами подписей столбцов таблицы. */
+  missing: string[];
+}
+
+const MISSING_DESTINATION = "префикс назначения";
+const MISSING_NEXT_HOP = "следующий узел";
 
 // Экспортированы для тестов.
 export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
@@ -59,21 +88,48 @@ export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
     destination_prefix: r.destination_prefix ?? "",
     next_hop_address: r.next_hop_address ?? "",
     ...(r.gateway_id ? { gateway_id: r.gateway_id } : {}),
+    ...(r.labels ? { labels: r.labels } : {}),
   }));
 }
 
 export function routesFromDrafts(drafts: DraftRoute[]): StaticRoute[] {
-  return drafts
-    .map((r) => {
-      const destination_prefix = r.destination_prefix.trim();
-      const address = r.next_hop_address.trim();
-      // An address the operator typed wins over the gateway the route came with —
-      // that is them switching the arm on purpose. Exactly one arm is emitted.
-      if (address) return { destination_prefix, next_hop_address: address };
-      if (r.gateway_id) return { destination_prefix, gateway_id: r.gateway_id };
-      return { destination_prefix };
-    })
-    .filter((r) => r.destination_prefix !== "" && (r.next_hop_address || r.gateway_id));
+  return drafts.map((r) => {
+    const destination_prefix = r.destination_prefix.trim();
+    const address = r.next_hop_address.trim();
+    const labels = r.labels ? { labels: r.labels } : {};
+    // An address the operator typed wins over the gateway the route came with —
+    // that is them switching the arm on purpose. Exactly one arm is emitted.
+    if (address) return { destination_prefix, next_hop_address: address, ...labels };
+    if (r.gateway_id) return { destination_prefix, gateway_id: r.gateway_id, ...labels };
+    return { destination_prefix, ...labels };
+  });
+}
+
+/**
+ * Строки, которые край не примет, — названные, а НЕ отброшенные.
+ *
+ * Прежде такие строки отсеивались перед отправкой. Сохранение заменяет весь
+ * список, поэтому «не отправлена» и «удалена» — одно и то же: оператор, стерев
+ * адрес существующего маршрута, чтобы набрать его заново, терял маршрут целиком
+ * и получал сообщение об успехе. Отбор при этом не оберегал вызов от отказа —
+ * он ПОДМЕНЯЛ точный отказ края (`static_routes[i]: next_hop_address or
+ * gateway_id is required`) потерей данных.
+ */
+export function routeGaps(drafts: DraftRoute[]): RouteGap[] {
+  const gaps: RouteGap[] = [];
+  drafts.forEach((r, i) => {
+    const missing: string[] = [];
+    if (r.destination_prefix.trim() === "") missing.push(MISSING_DESTINATION);
+    // Ветвь шлюза — тоже следующий узел: пустое поле адреса у такой строки
+    // претензией не является.
+    if (r.next_hop_address.trim() === "" && !r.gateway_id) missing.push(MISSING_NEXT_HOP);
+    if (missing.length > 0) gaps.push({ row: i + 1, missing });
+  });
+  return gaps;
+}
+
+export function routeGapText(gap: RouteGap): string {
+  return `Строка ${gap.row}: не указан ${gap.missing.join(" и ")}`;
 }
 
 const MONO_FONT = "ui-monospace, monospace";
@@ -148,7 +204,13 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
     setDrafts((prev) => (prev ?? []).map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
 
+  const gaps = editing ? routeGaps(drafts ?? []) : [];
+
   async function save() {
+    // Кнопка уже выключена; проверка повторена здесь, потому что защита от
+    // отправки неполного набора обязана стоять там, где отправка происходит, —
+    // иначе она держится тем, что второго вызывающего не появится.
+    if (gaps.length > 0) return;
     try {
       await mutation.mutateAsync();
       cancel();
@@ -162,7 +224,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
 
   const headerRight = editing ? (
     <Space>
-      <Button type="primary" loading={mutation.isPending} onClick={save}>
+      <Button type="primary" loading={mutation.isPending} disabled={gaps.length > 0} onClick={save}>
         Сохранить
       </Button>
       <Button disabled={mutation.isPending} onClick={cancel}>
@@ -321,6 +383,16 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
           }}
         >
           Статических маршрутов нет — нажмите «Редактировать», чтобы добавить.
+        </div>
+      )}
+
+      {gaps.length > 0 && (
+        // Каждая неполная строка названа отдельной строкой: перечень через
+        // запятую скрывал бы, сколько их, за первой же.
+        <div role="alert" style={{ marginTop: 8, fontSize: 12, color: "var(--kc-error)" }}>
+          {gaps.map((g) => (
+            <div key={g.row}>{routeGapText(g)}</div>
+          ))}
         </div>
       )}
     </div>
