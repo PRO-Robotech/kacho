@@ -40,7 +40,7 @@ const SECTIONS: AdminSection[] = [
     visible: (p) => p.isSystemAdmin,
   },
   {
-    key: "/system/limits",
+    path: "/system/limits",
     label: "Пределы",
     // Величины квот меняет только администратор облака (#364);
     // /iam/v1/internal/limits требует system_admin на кластере. Тенантская
