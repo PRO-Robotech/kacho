@@ -55,11 +55,11 @@ function requestUrl(input: RequestInfo | URL): string {
 
 /** Отвечает на чтение карточки; всё прочее — пустой список. */
 function stubApi() {
-  globalThis.fetch = ((input: RequestInfo | URL) => {
+  globalThis.fetch = (input: RequestInfo | URL) => {
     const url = new URL(requestUrl(input), "http://console.test");
     if (url.pathname === "/vpc/v1/networks/net-1") return jsonOk(NETWORK);
     return jsonOk({ networks: [], subnets: [], zones: [], operations: [], nextPageToken: "" });
-  }) as typeof fetch;
+  };
 }
 
 /** Вкладка, которая ставит своё действие в шапку — как это делает панель правил. */

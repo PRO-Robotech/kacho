@@ -59,14 +59,14 @@ function requestUrl(input: RequestInfo | URL): string {
  */
 function stubList(apiPath: string, payloadKey: string, rowsFor: (filter: string) => Row[]) {
   const calls: URL[] = [];
-  globalThis.fetch = ((input: RequestInfo | URL) => {
+  globalThis.fetch = (input: RequestInfo | URL) => {
     const u = new URL(requestUrl(input), "http://console.test");
     calls.push(u);
     if (u.pathname === apiPath) {
       return jsonOk({ [payloadKey]: rowsFor(u.searchParams.get("filter") ?? ""), nextPageToken: "" });
     }
     return jsonOk({ nextPageToken: "" });
-  }) as typeof fetch;
+  };
   return calls;
 }
 
