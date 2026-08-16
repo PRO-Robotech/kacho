@@ -1685,10 +1685,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // Static Routes — в самом низу формы (объёмный блок, не должен
       // мешать редактированию основных полей).
       //
-      // ⚠️ Gateway-режим (next_hop oneof = gateway_id) пока НЕ поддержан
-      // backend'ом kacho-vpc: proto-поле есть, но domain.StaticRoute хранит
-      // только NextHopAddress; handler требует next_hop_address. Поэтому
-      // UI оставляет только IP-режим — до KAC-issue на поддержку gateway_id.
+      // Следующий узел — взаимоисключающая группа: адрес ЛИБО шлюз. Выразимы
+      // обе (#375). Здесь стояло, что сервер ветвь шлюза не поддерживает; это
+      // было неверно и работало как причина не делать — разбор в шапке
+      // `RoutesEditor.tsx`.
       {
         name: "static_routes",
         label: "Статические маршруты",
@@ -1717,12 +1717,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       static_routes: [],
     }),
-    // Выкидываем пустые строки маршрутов (без префикса/next-hop) перед POST.
+    // Выкидываем НЕДОЗАПОЛНЕННЫЕ строки маршрутов перед отправкой.
+    //
+    // Полнота считается по ВЫБРАННОЙ ветви: прежде она считалась по адресу, и
+    // маршрут на шлюз выбрасывался как пустой — то есть форма приняла бы ввод,
+    // ничего не сказала и отправила бы таблицу без него.
     sanitize: (obj) => {
       const routes = Array.isArray(obj.static_routes)
-        ? (obj.static_routes as RouteEntry[]).filter(
-            (r) => (r?.destination_prefix ?? "").trim() !== "" && (r?.next_hop_address ?? "").trim() !== "",
-          )
+        ? (obj.static_routes as RouteEntry[]).filter((r) => {
+            if ((r?.destination_prefix ?? "").trim() === "") return false;
+            return r?.gateway_id !== undefined
+              ? r.gateway_id.trim() !== ""
+              : (r?.next_hop_address ?? "").trim() !== "";
+          })
         : [];
       return { ...obj, static_routes: routes };
     },
@@ -3962,12 +3969,53 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
       {
+        // Дискриминатор взаимоисключающей группы `HealthCheck.options`. Поле
+        // ФОРМЫ, а не контракта (отсюда подчёркивание): на проводе ветвь
+        // называет себя сама — тем, что она единственная заполненная. Без
+        // дискриминатора выбрать ветвь нечем, и три из четырёх были невыразимы
+        // (#375): проверка умела только TCP, а пути, коды ответа, заголовки и
+        // имя службы объявлены контрактом и недостижимы из консоли.
+        name: "_health_check_protocol",
+        label: "HC: протокол",
+        type: "enum",
+        required: true,
+        default: "tcp",
+        options: [
+          { value: "tcp", label: "TCP — соединение установилось" },
+          { value: "http", label: "HTTP — ответ по пути" },
+          { value: "https", label: "HTTPS — ответ по пути, шифрованно" },
+          { value: "grpc", label: "gRPC — служба отвечает здоровой" },
+        ],
+        description:
+          "Чем проверяется живость цели. TCP отвечает только за установленное соединение; остальные три спрашивают приложение.",
+      },
+      {
         name: "health_check.tcp.port",
         label: "HC: TCP-порт",
         type: "int",
         required: true,
         default: 80,
+        visibleWhen: { field: "_health_check_protocol", equals: "tcp" },
         description: "TCP-порт для health-check'а (1..65535). По умолчанию 80.",
+      },
+      ...healthCheckAppFields("http"),
+      ...healthCheckAppFields("https"),
+      {
+        name: "health_check.grpc.port",
+        label: "HC: gRPC-порт",
+        type: "int",
+        required: false,
+        visibleWhen: { field: "_health_check_protocol", equals: "grpc" },
+        description: "Порт проверки. Пусто — берётся порт бэкенда группы.",
+      },
+      {
+        name: "health_check.grpc.service_name",
+        label: "HC: имя службы",
+        type: "string",
+        required: false,
+        visibleWhen: { field: "_health_check_protocol", equals: "grpc" },
+        placeholder: "grpc.health.v1.Health",
+        description: "Имя службы в протоколе проверки здоровья. Пусто — спрашивается сервер целиком.",
       },
       {
         name: "health_check.interval",
@@ -4011,6 +4059,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       region_id: "",
       port: 80,
       deregistration_delay: "300s",
+      _health_check_protocol: "tcp",
       health_check: {
         tcp: { port: 80 },
         interval: "2s",
@@ -4020,9 +4069,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       labels: {},
     }),
-    // Форма правит секунды числом; контракт принимает Duration.
+    // Форма правит секунды числом; контракт принимает Duration. Плюс ветвь
+    // проверки живости: форма держит поля всех четырёх, в теле остаётся одна.
     sanitize: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = sanitizeHealthCheck(obj);
       const raw = out["deregistration_delay"];
       // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
       // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
@@ -4036,9 +4086,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       else delete out["deregistration_delay"];
       return out;
     },
-    // Duration → число, которое рендерит int-поле формы.
+    // Duration → число, которое рендерит int-поле формы; заполненная ветвь
+    // проверки живости → выбор в дискриминаторе.
     hydrate: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = hydrateHealthCheck(obj);
       const raw = out["deregistration_delay"];
       if (typeof raw === "string" && raw.endsWith("s")) {
         const n = Number(raw.slice(0, -1));
@@ -4048,6 +4099,124 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 };
+
+/** Ветви проверки живости, спрашивающие приложение (`http` и `https`), различаются
+ *  только шифрованием — поля у них одни и те же, и выписывать их дважды значило бы
+ *  завести два места об одном предмете. */
+export const HEALTH_CHECK_APP_BRANCHES = ["http", "https"] as const;
+
+/** Имена ветвей проверки живости, ЕДИНСТВЕННЫЙ перечень в консоли. */
+export const HEALTH_CHECK_BRANCHES = ["tcp", "http", "https", "grpc"] as const;
+
+function healthCheckAppFields(branch: "http" | "https"): FormField[] {
+  const у = branch === "https" ? "HTTPS" : "HTTP";
+  const when = { field: "_health_check_protocol", equals: branch } as const;
+  return [
+    {
+      name: `health_check.${branch}.port`,
+      label: `HC: ${у}-порт`,
+      type: "int",
+      required: false,
+      visibleWhen: when,
+      description: "Порт проверки. Пусто — берётся порт бэкенда группы.",
+    },
+    {
+      name: `health_check.${branch}.path`,
+      label: `HC: путь`,
+      type: "string",
+      required: false,
+      visibleWhen: when,
+      placeholder: "/healthz",
+      description: "Путь запроса проверки. Пусто — корень «/».",
+    },
+    {
+      name: `health_check.${branch}.expected_codes`,
+      label: "HC: коды ответа",
+      type: "string",
+      required: false,
+      visibleWhen: when,
+      placeholder: "200-299",
+      description: "Какие коды считать здоровыми: диапазон «200-299» или перечень «200,204». Пусто — любой 2xx.",
+    },
+    {
+      name: `health_check.${branch}.host`,
+      label: branch === "https" ? "HC: имя узла (Host / SNI)" : "HC: имя узла (Host)",
+      type: "string",
+      required: false,
+      visibleWhen: when,
+      description:
+        branch === "https"
+          ? "Заголовок Host и имя в рукопожатии TLS. Пусто — берётся адрес цели."
+          : "Заголовок Host запроса проверки. Пусто — берётся адрес цели.",
+    },
+    {
+      name: `health_check.${branch}.headers`,
+      label: "HC: заголовки",
+      type: "labels",
+      required: false,
+      visibleWhen: when,
+      description: "Дополнительные заголовки запроса проверки.",
+    },
+  ];
+}
+
+/**
+ * Ветвь проверки живости, названная формой, остаётся в теле ОДНА.
+ *
+ * Группа взаимоисключающая (`exactly_one`): две заполненные ветви — отказ
+ * сервера. Форма держит поля всех четырёх, поэтому лишние обязана срезать сама,
+ * а не надеяться, что пользователь их не тронул.
+ *
+ * Пустые строки внутри выбранной ветви не отправляются: у пути, кодов ответа и
+ * имени узла есть СЕРВЕРНЫЕ умолчания, и пустая строка означала бы «пусто», а не
+ * «как по умолчанию». Числа сохраняются целиком, включая 0: у порта это законное
+ * значение со смыслом «взять порт группы».
+ */
+export function sanitizeHealthCheck(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...obj };
+  const hc = out["health_check"];
+  const выбор = out["_health_check_protocol"];
+  delete out["_health_check_protocol"];
+  if (!hc || typeof hc !== "object") return out;
+
+  const src = hc as Record<string, unknown>;
+  const ветвь =
+    typeof выбор === "string" && (HEALTH_CHECK_BRANCHES as readonly string[]).includes(выбор)
+      ? выбор
+      : (HEALTH_CHECK_BRANCHES.find((b) => src[b] !== undefined) ?? "tcp");
+
+  const next: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if ((HEALTH_CHECK_BRANCHES as readonly string[]).includes(k)) continue;
+    next[k] = v;
+  }
+  const тело = src[ветвь];
+  if (тело && typeof тело === "object") {
+    const очищенное: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(тело as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim() === "") continue;
+      if (v === undefined || v === null) continue;
+      if (typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0) continue;
+      очищенное[k] = v;
+    }
+    next[ветвь] = очищенное;
+  } else {
+    next[ветвь] = {};
+  }
+  out["health_check"] = next;
+  return out;
+}
+
+/** Обратное: по заполненной ветви ответа восстановить выбор формы. */
+export function hydrateHealthCheck(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...obj };
+  const hc = out["health_check"];
+  if (hc && typeof hc === "object") {
+    const src = hc as Record<string, unknown>;
+    out["_health_check_protocol"] = HEALTH_CHECK_BRANCHES.find((b) => src[b] !== undefined) ?? "tcp";
+  }
+  return out;
+}
 
 /**
  * hasProtocolNumber — protocol_number is an int64, and protojson renders a 64-bit
