@@ -35,8 +35,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -89,8 +89,17 @@ type fgaOutboxScan struct {
 	constantRelationInserts []string
 }
 
-func scanFGAOutboxRenderers(t *testing.T, root string) fgaOutboxScan {
+// scanFGAOutboxRenderers reads the tree by its GIT INDEX, never by walking the disk:
+// under the repository root lie directories the repository does not contain (agent
+// worktrees, run reports, build output), and reading them would make this gate's verdict
+// a property of somebody's working directory instead of the commit — red on a file that
+// is not in the repository, silent in a fresh checkout where it must speak.
+//
+// A synthetic tree (the injection twins) is not a repository and has no index, so it is
+// read from disk — there the filesystem is the only authority there is.
+func scanFGAOutboxRenderers(t *testing.T, tree *trackedTree) fgaOutboxScan {
 	t.Helper()
+	root := tree.root
 	var (
 		filesScanned            int
 		literalsSeen            int
@@ -101,28 +110,20 @@ func scanFGAOutboxRenderers(t *testing.T, root string) fgaOutboxScan {
 		ownerDirFound           bool
 	)
 
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "ui-future":
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, rerr := filepath.Rel(root, path)
-		if rerr != nil {
-			return rerr
+	rels := make([]string, 0, len(tree.files))
+	for rel := range tree.files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels) // детерминированный порядок находок и переписи
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
 		}
 		// Сгенерированные стабы форму очереди не рендерят и в предмет не входят.
 		if strings.HasPrefix(rel, filepath.Join("pkg", "api")) {
-			return nil
+			continue
 		}
+		path := filepath.Join(root, rel)
 		filesScanned++
 
 		fset := token.NewFileSet()
@@ -174,10 +175,6 @@ func scanFGAOutboxRenderers(t *testing.T, root string) fgaOutboxScan {
 				rel+":"+strconv.Itoa(fset.Position(lit.Pos()).Line))
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
 	return fgaOutboxScan{
 		filesScanned: filesScanned, literalsSeen: literalsSeen, insertsFound: insertsFound,
@@ -187,7 +184,7 @@ func scanFGAOutboxRenderers(t *testing.T, root string) fgaOutboxScan {
 }
 
 func TestFGAOutboxRowsAreRenderedOnlyByTheirOwner(t *testing.T) {
-	sc := scanFGAOutboxRenderers(t, repoRoot(t))
+	sc := scanFGAOutboxRenderers(t, newTrackedTree(t, repoRoot(t)))
 	filesScanned, literalsSeen := sc.filesScanned, sc.literalsSeen
 	insertsFound, ownerInserts := sc.insertsFound, sc.ownerInserts
 	ownerDirFound, offenders := sc.ownerDirFound, sc.offenders

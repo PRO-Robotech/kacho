@@ -4,7 +4,13 @@
 // fgaoutboxrowowner_injection_test.go — доказательство, что гейт формы строки
 // `kacho_iam.fga_outbox` СПОСОБЕН упасть, и что он падает на существе, а не на форме.
 //
-// Инъекция в ОБЕ стороны на синтетическом дереве:
+// Инъекция в ОБЕ стороны на СИНТЕТИЧЕСКОМ дереве: репозиторием оно не является, индекса
+// у него нет, и состав берётся у `newSyntheticTree` — там файловая система и есть
+// единственный авторитет. На настоящем дереве гейт читает индекс, и это не деталь: под
+// корнем лежат каталоги, которых в репозитории нет, и обход диска сделал бы вердикт
+// свойством чужой рабочей копии.
+//
+// Инъекция в ОБЕ стороны:
 //
 //   - вернуть нарушение (файл вне владельца, вставляющий строку и работающий с
 //     кортежем как с типом) → гейт находит его и НАЗЫВАЕТ координату;
@@ -58,7 +64,7 @@ func emitRogue(tuples []clients.RelationTuple) string {
 }
 `)
 
-	sc := scanFGAOutboxRenderers(t, root)
+	sc := scanFGAOutboxRenderers(t, newSyntheticTree(t, root))
 	if len(sc.offenders) != 1 {
 		t.Fatalf("возвращённое нарушение обязано быть найдено ровно одно, найдено %d: %v",
 			len(sc.offenders), sc.offenders)
@@ -92,7 +98,7 @@ func pending() (string, []clients.RelationTuple) {
 }
 `)
 
-	sc := scanFGAOutboxRenderers(t, root)
+	sc := scanFGAOutboxRenderers(t, newSyntheticTree(t, root))
 	if len(sc.offenders) != 0 {
 		t.Fatalf("гейт обязан молчать на законных близнецах, получено: %v", sc.offenders)
 	}
