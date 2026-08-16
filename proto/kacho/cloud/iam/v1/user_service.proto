@@ -240,8 +240,16 @@ message ListUsersRequest {
   // Page token.
   string page_token = 2 [(length) = "<=100"];
 
-  // A filter expression. Supports filtering by [User.email] / [User.external_id] /
-  // [User.invite_status].
+  // A filter expression. Exactly one term, in the form `field="value"`.
+  //
+  //   email="a@b.io"          exact match, case-insensitive
+  //   external_id="..."       exact match
+  //   invite_status="ACTIVE"  exact match
+  //   search="min.ops"        case-insensitive SUBSTRING over email AND id
+  //
+  // `search` is the term a console types into: a User has no `name`, and the
+  // exact-match terms above only answer someone who already knows the whole
+  // value. `%` and `_` in its value are matched literally, not as wildcards.
   string filter = 3 [(length) = "<=1000"];
 }
 

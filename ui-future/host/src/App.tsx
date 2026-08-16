@@ -84,6 +84,14 @@ const AppRoutes: FC<{
           <Route path="/projects/:projectId/storage/*" element={<StorageRemote context={context} />} />
           <Route path="/projects/:projectId/nlb/*" element={<NlbRemote context={context} />} />
           <Route path="/projects/:projectId/registry/*" element={<RegistryRemote context={context} />} />
+          {/* Квоты — свойство ПРОЕКТА, а не сервиса, поэтому раздела в адресе у
+              них нет. Маршрут обязан стоять ВЫШЕ ловушки «всё остальное» ниже:
+              она принимает любой первый сегмент, поэтому `quotas` попадал в неё
+              и раздел отвечал заглушкой «страница будет позже» — при живой
+              странице, объявленной внутри vpc. Поверхность названа явно: адрес
+              не лежит под точкой монтирования vpc, и остаток пути у модуля пуст
+              (см. `RemotePageProps.surface`). */}
+          <Route path="/projects/:projectId/quotas" element={<VpcRemote context={context} surface="quotas" />} />
           <Route path="/projects/:projectId/:moduleKey/*" element={<ModulePlaceholderPage />} />
           <Route path="/iam/*" element={<IamRemote context={context} />} />
           <Route path="/system/*" element={<SystemRemote context={context} />} />

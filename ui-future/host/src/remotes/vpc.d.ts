@@ -5,6 +5,7 @@ declare module "vpc/VpcPage" {
   export interface VpcPageProps {
     context?: HostContext;
     navigate?: (path: string) => void | Promise<void>;
+    surface?: string;
   }
 
   const VpcPage: FC<VpcPageProps>;

@@ -58,7 +58,7 @@ const IAM_PAGES: PageSpec[] = [
   { name: "AccessPage", iam: "iam/src/pages/iam/AccessPage/AccessPage.tsx" },
   { name: "GroupsPage", iam: "iam/src/pages/iam/GroupsPage/GroupsPage.tsx" },
   { name: "RolesPage", iam: "iam/src/pages/iam/RolesPage/RolesPage.tsx" },
-  { name: "UsersPage", iam: "iam/src/pages/iam/UsersPage/UsersPage.tsx" },
+  { name: "InviteUserPage", iam: "iam/src/pages/iam/InviteUserPage/InviteUserPage.tsx" },
 ];
 
 // The gating hook and the IAM mutation wrapper must never be re-declared

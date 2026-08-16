@@ -13,6 +13,7 @@ import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@shared/components/organisms/ResourceShell";
 import { NetworkInterfaceCreatePage } from "@/pages/NetworkInterfaceCreatePage";
 import { OperationsPage } from "@/pages/OperationsPage";
+import { QuotasPage } from "@/pages/QuotasPage";
 import { SubnetCreatePage } from "@/pages/SubnetCreatePage";
 import { contextApi } from "@shared/lib/context-store";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -26,6 +27,18 @@ export interface VpcPageProps {
     project: { id: string; name: string; accountId: string } | null;
   };
   navigate?: (path: string) => void | Promise<void>;
+  /**
+   * Поверхность, названная оболочкой. Пусто — обычный раздел vpc со своим
+   * деревом маршрутов; `"quotas"` — витрина пределов проекта.
+   *
+   * Витрина стоит НЕ под сегментом сервиса (`/projects/:id/quotas`), поэтому
+   * маршрутам этого модуля она не видна: они потомки точки монтирования vpc и
+   * получают лишь остаток пути после неё, а у этого адреса остаток пуст —
+   * совпал бы корневой маршрут и увёл на список сетей. Разбирать полный адрес
+   * здесь вторым правилом нельзя: оболочка уже знает свой маршрут, и второе
+   * место об одном предмете разошлось бы с первым молча.
+   */
+  surface?: string;
 }
 
 // Перечень берётся из `lib/scoped-resources`, а не выписывается здесь второй
@@ -34,7 +47,7 @@ export interface VpcPageProps {
 // (или наоборот), а `filter(Boolean)` не сказал бы об этом ни слова.
 const VPC_SCOPED = VPC_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
 
-export const VpcPage: FC<VpcPageProps> = ({ context }) => {
+export const VpcPage: FC<VpcPageProps> = ({ context, surface }) => {
   const queryClient = useMemo(
     () =>
       new QueryClient({
@@ -64,6 +77,9 @@ export const VpcPage: FC<VpcPageProps> = ({ context }) => {
         <QueryClientProvider client={queryClient}>
           <PageHeaderSlotProvider>
             <VpcFrame>
+              {surface === "quotas" ? (
+                <QuotasPage />
+              ) : (
               <Routes>
                 <Route index element={<ProjectVpcDefaultRedirect />} />
                 {VPC_SCOPED.map((spec) => (
@@ -88,6 +104,7 @@ export const VpcPage: FC<VpcPageProps> = ({ context }) => {
                 <Route path="operations" element={<OperationsPage />} />
                 <Route path="*" element={<ProjectVpcDefaultRedirect />} />
               </Routes>
+              )}
             </VpcFrame>
           </PageHeaderSlotProvider>
         </QueryClientProvider>

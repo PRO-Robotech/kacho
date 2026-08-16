@@ -13,7 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@/components/organisms/form/ResourceFormBody";
-import { buildUpdateBody, computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
+import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";

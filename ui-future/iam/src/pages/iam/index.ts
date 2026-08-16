@@ -9,4 +9,4 @@ export type { AccessBindingPreset } from "./AccessBindingsPage";
 export { AccessGrantPage, AccessPage } from "./AccessPage";
 export { GroupCreatePage, GroupEditPage, GroupsPage } from "./GroupsPage";
 export { RoleCreatePage, RolesPage } from "./RolesPage";
-export { InviteUserPage, UsersPage } from "./UsersPage";
+export { InviteUserPage } from "./InviteUserPage";

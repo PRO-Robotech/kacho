@@ -61,6 +61,7 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
       name={row?.name ?? ""}
       projectId={projectId}
       icon
+      copy
       maxChars={maxChars}
       plain
     />

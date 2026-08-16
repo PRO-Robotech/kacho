@@ -5,11 +5,18 @@
 //
 // Текущая поддержка:
 //
-//	<field> = "<value>"
+//	<field> = "<value>"           — точное равенство
+//	<field> CONTAINS "<value>"    — подстрока (LIKE %…%, подстановочные знаки
+//	                                значения экранируются)
 //
 // Где <field> — whitelisted set (например "name"), <value> — double-quoted
 // строка. Возвращает (FilterAST, error). FilterAST использует SQL-binding
 // (без string concat) при превращении в WHERE clause.
+//
+// CONTAINS заведён под строку поиска в списке: точное равенство ей бесполезно
+// (набирающий имя по частям не совпадёт никогда), поэтому без него поиск
+// оставался бы клиентским — то есть отвечал бы про загруженную страницу, а не
+// про список.
 //
 // Формат сообщений об ошибках:
 //
@@ -17,7 +24,7 @@
 //	"Bad expression at column N. Expected an operator"
 //	"Bad expression at column N. Expected a string, integer, date-time or boolean value"
 //
-// Поддержка AND/OR/STARTS_WITH/IN — отложена.
+// Поддержка AND/OR/STARTS_WITH/IN — не заведена: у неё нет вызывающего.
 package filter
 
 import (
@@ -35,10 +42,22 @@ import (
 // подлежит защитному quoting'у.
 var safeFieldRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*$`)
 
-// FilterAST — узел AST. Для текущего узла-минимума: одно equals.
+// OpEquals / OpContains — операторы, которые эмитит Parse. Значение Op вне этого
+// набора ToSQL трактует как равенство: расширять набор надо в обоих местах разом.
+const (
+	OpEquals   = "="
+	OpContains = "CONTAINS"
+)
+
+// likeEscaper экранирует подстановочные знаки LIKE, пришедшие ЗНАЧЕНИЕМ.
+// Обратная косая — первой: иначе экранирующие символы, добавленные для % и _,
+// были бы экранированы повторно.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// FilterAST — узел AST. Для текущего узла-минимума: одно сравнение.
 type FilterAST struct {
 	Field string
-	Op    string // "="
+	Op    string // OpEquals | OpContains
 	Value string
 }
 
@@ -96,11 +115,23 @@ func Parse(input string, allowedFields []string) (*FilterAST, error) {
 		i++
 	}
 
-	// 3. Оператор: единственный поддерживаемый сейчас — `=`
-	if i >= len(input) || input[i] != '=' {
-		return nil, &ParseError{Column: i + 1, Message: "Expected an operator"}
+	// 3. Оператор: `=` либо ключевое слово CONTAINS.
+	//
+	// Ключевое слово требует пробела после себя (`CONTAINS"x"` — не оператор):
+	// иначе `CONTAINS` склеивался бы со значением и разбор зависел бы от того,
+	// где именно вызывающий поставил кавычку.
+	opCol := i + 1
+	var op string
+	switch {
+	case i < len(input) && input[i] == '=':
+		op = OpEquals
+		i++
+	case strings.HasPrefix(input[i:], OpContains+" "):
+		op = OpContains
+		i += len(OpContains)
+	default:
+		return nil, &ParseError{Column: opCol, Message: "Expected an operator"}
 	}
-	i++
 
 	// 4. Опциональные пробелы
 	for i < len(input) && input[i] == ' ' {
@@ -130,7 +161,7 @@ func Parse(input string, allowedFields []string) (*FilterAST, error) {
 		return nil, &ParseError{Column: i + 1, Message: "Unexpected token"}
 	}
 
-	return &FilterAST{Field: field, Op: "=", Value: value}, nil
+	return &FilterAST{Field: field, Op: op, Value: value}, nil
 }
 
 func isLetter(b byte) bool {
@@ -159,6 +190,13 @@ func (a *FilterAST) ToSQL(argStartIdx int) (string, []any) {
 	field := a.Field
 	if !safeFieldRe.MatchString(field) {
 		field = pgx.Identifier{a.Field}.Sanitize()
+	}
+	if a.Op == OpContains {
+		// Подстановочные знаки, пришедшие ЗНАЧЕНИЕМ, экранируются: иначе `%` в
+		// поисковой строке совпадает со всем подряд, и ответ приходит про другой
+		// набор строк, чем спросили. Экранирующий символ — обратная косая,
+		// умолчание LIKE в Postgres.
+		return fmt.Sprintf("%s LIKE $%d", field, argStartIdx), []any{"%" + likeEscaper.Replace(a.Value) + "%"}
 	}
 	return fmt.Sprintf("%s = $%d", field, argStartIdx), []any{a.Value}
 }

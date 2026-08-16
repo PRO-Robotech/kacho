@@ -44,7 +44,7 @@ export const RESOURCE_LABELS: Record<string, string> = {
   // РАЗДЕЛ, потому что крошка строится по ПЕРВОМУ сегменту после `/system/`.
   access: "Управление доступом",
   search: "Поиск",
-  cluster: "Cluster admins",
+  cluster: "Администраторы кластера",
   tokens: "Токены и ключи",
 };
 

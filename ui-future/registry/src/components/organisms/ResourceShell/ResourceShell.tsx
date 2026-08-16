@@ -180,14 +180,14 @@ function RelatedTable({
       </HeaderSlotPortal>
       {/* Split-зона: таблица (сжимается) слева + встроенная панель тегов справа.
           Панель раздвигает таблицу вбок (не оверлей), живёт внутри лайаута. При
-          сжатии у таблицы появляется h-скролл, а колонка «Имя» залипает (stickyFirst). */}
+          сжатии у таблицы появляется h-скролл, а начальный отрезок до колонки
+          идентичности залипает — общая таблица делает это безусловно. */}
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <ResourceTable
             rows={rows}
             columns={columns}
             loading={isLoading}
-            stickyFirst={!!tagsRepo}
             selectedRowKey={tagsRepo}
             rowKey={(r) => getByPath<string>(r, "id") ?? getByPath<string>(r, "name") ?? Math.random().toString()}
             empty={q || facetVal ? "По запросу ничего не найдено." : undefined}
