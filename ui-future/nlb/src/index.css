@@ -26,8 +26,9 @@ body.ant-modal-open {
  * компоненты (StatusBadge / Toaster / ServiceSidebar / ResourceTable) были
  * theme-aware через var(--…), а не хардкодили dark/light-цвет.
  *
- * Значения палитры синхронизированы с AntD-токенами в src/lib/theme.ts —
- * меняешь там, меняй здесь.
+ * Значения палитры синхронизированы с AntD-токенами в ../shared/src/lib/theme.ts —
+ * меняешь там, меняй здесь. Модульные src/lib/theme.ts и src/lib/theme-context.tsx —
+ * ре-экспорты общей реализации, а не копии: править их незачем (#405, #479).
  *
  * Tailwind hsl-vars (--background / --foreground / …) сохранены для shadcn-
  * слоя (tailwind.config.js → hsl(var(--…))).

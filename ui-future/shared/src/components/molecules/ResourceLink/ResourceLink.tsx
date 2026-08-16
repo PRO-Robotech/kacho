@@ -78,7 +78,12 @@ export function ResourceLink({
   );
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }} title={full}>
+    // `group` — ЯКОРЬ появления значка копирования: он не виден в покое и
+    // раскрывается наведением на эту обёртку, то есть на имя. Прежде якорем
+    // была сама кнопка (текст имени лежал внутри неё); разведя ссылку и
+    // кнопку, мы забрали у правила предка, и значку назначили постоянную
+    // видимость — она и оказалась слишком заметной (#480).
+    <span className="group" style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }} title={full}>
       {target ? (
         <Link to={target} className={plain ? "text-primary hover:underline" : "text-primary hover:underline font-medium"}>
           {label}

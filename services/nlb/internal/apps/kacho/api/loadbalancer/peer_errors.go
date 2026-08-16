@@ -93,11 +93,33 @@ func allocAcquireErr(err error, subnetRef string) error {
 	return status.Error(codes.FailedPrecondition, "could not allocate load balancer address")
 }
 
-// linkAcquireErr — анти-oracle маппинг ошибок link-CAS (адрес занят → generic).
+// linkAcquireErr — полосы link-CAS в АСИНХРОННОМ воркере. Зеркало
+// `linkedAddressErr` (sync-предпроверка той же ссылки): один и тот же вопрос
+// задаётся дважды — сначала чтением адреса, потом привязкой, — и оба раза
+// обязан получать различимый ответ.
+//
+// Прежде здесь стоял один `FAILED_PRECONDITION "Illegal argument addressId"` на
+// ВСЁ, кроме недоступности: промах, отказ в правах, негодная ссылка и
+// проигранный CAS отвечали неразличимо. На синхронной полосе это уже разведено,
+// на асинхронной — нет, и цена у асинхронной выше: её ответ клиент читает из
+// `Operation.error`, где прозу не парсят by construction, а токен — единственный
+// машинный признак. Схлопывание отнимало у вызывающего не секрет (проза во всех
+// полосах одна и та же), а возможность отличить «повтори» от «исправь ввод».
 func linkAcquireErr(err error) error {
-	if errors.Is(err, domain.ErrUnavailable) {
+	switch {
+	case errors.Is(err, domain.ErrUnavailable):
 		return status.Error(codes.Unavailable, "address lookup unavailable")
+	case errors.Is(err, domain.ErrNotFound):
+		// Ссылка не резолвится у владельца — переходная полоса окна
+		// материализации; признак едет в details, проза остаётся генерической.
+		return peerResourceMissing("vpc.address", "Illegal argument addressId")
+	case errors.Is(err, domain.ErrInvalidArg):
+		// Терминально: повтор идентичного запроса не пройдёт никогда.
+		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
 	}
+	// Проигранный CAS (адрес уже занят) и всё прочее — состояние чужого ресурса:
+	// код полосы состояния БЕЗ токена промаха, иначе клиентский повтор залипнет
+	// на отказе, который успехом не станет.
 	return status.Error(codes.FailedPrecondition, "Illegal argument addressId")
 }
 
