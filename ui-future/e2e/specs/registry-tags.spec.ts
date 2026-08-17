@@ -33,10 +33,24 @@ test("вкладка тегов репозитория читает адрес �
   // verifies #627
   const { projectId } = await registerAndSignIn(page);
 
+  // Регион — УСЛОВИЕ пробы, а не её предмет: реестр размещается регионально, и
+  // край требует `regionId` на создании. Без него прогон отвечает 400 и о вкладке
+  // тегов не говорит ничего. Берём из справочника, а не литералом: имя региона —
+  // произвольная строка стенда, и выписанное значение разошлось бы с посевом молча.
+  const справочникРегионов = await page.request.get("/geo/v1/regions");
+  expect(
+    справочникРегионов.ok(),
+    "справочник регионов недоступен — условие пробы не создано: реестр разместить " +
+      "негде, и о вкладке тегов такой прогон не говорит ничего",
+  ).toBeTruthy();
+  const регион =
+    ((await справочникРегионов.json()) as { regions?: Array<{ id: string }> }).regions?.[0]?.id ?? "";
+  expect(регион, "справочник регионов пуст — стенд не засеян, условие пробы не создано").not.toBe("");
+
   const registryId = await createdResourceId(
     page,
     await page.request.post("/registry/v1/registries", {
-      data: { projectId, name: `reg-tags-${runTag()}` },
+      data: { projectId, regionId: регион, name: `reg-tags-${runTag()}` },
     }),
     "registryId",
     (id) => `/registry/v1/registries/${id}`,
