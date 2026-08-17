@@ -18,6 +18,7 @@ import { OperationsTable, operationColumnTitles, type Op, statusOf, type Operati
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 // Подписи ресурсов — из единственного источника: выписанная здесь копия уже
 // разошлась с ним (была английской при русском реестре), см. продукт #478.
 import { ENTITIES } from "@shared/lib/entity-names";
@@ -172,6 +173,14 @@ export function OperationsPage() {
   const isLoading =
     listQueries.some((q) => q.isLoading) || (allOps.length === 0 && opsQueries.some((q) => q.isLoading));
 
+  // Область ручек (#373). Страница СТРОИТ свой набор из двух ярусов чтения:
+  // списки ресурсов проекта по 200 и операции каждого ресурса по 50. Ни у
+  // одного яруса продолжения здесь нет, поэтому «по фильтру ничего не
+  // найдено» означает «нет среди собранного», а не «нет такой операции».
+  // Область объявлена прочитанной частью безусловно: доказать полноту этого
+  // веера нечем — курсор каждого из сотен запросов пришлось бы проверить
+  // отдельно, и любой один непрочитанный делает набор неполным.
+  const scope = clientScope(true);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return allOps.filter((o) => {
@@ -237,13 +246,20 @@ export function OperationsPage() {
           right={
             <>
               <Input
-                placeholder="Фильтр по идентификатору"
+                placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
+                title={narrowingTitle(scope)}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 allowClear
                 style={{ width: 280 }}
               />
-              <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
+              <Select
+                value={status}
+                onChange={setStatus}
+                options={STATUS_OPTIONS}
+                title={narrowingTitle(scope)}
+                style={{ width: 180 }}
+              />
               <Select value={kind} onChange={setKind} options={KIND_OPTIONS} style={{ width: 180 }} />
               {/* Где есть фильтр — есть и выбор столбцов. */}
               <ColumnSettings

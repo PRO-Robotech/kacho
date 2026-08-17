@@ -15,6 +15,7 @@ import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { OperationsTable, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
 import { useContext } from "@shared/lib/context-store";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 
 interface ListAllResp {
   operations?: Op[];
@@ -71,6 +72,9 @@ export function IamOperationsPage() {
   }, [data, pageToken]);
 
   const nextToken = data?.next_page_token || null;
+  // Область ручек (#373): у этой страницы продолжение ЕСТЬ, поэтому вопрос
+  // сводится к тому, дотянут ли курсор до конца.
+  const scope = clientScope(!!nextToken);
 
   const headerRight = useMemo(
     () => (
@@ -162,13 +166,20 @@ export function IamOperationsPage() {
           right={
             <>
               <Input
-                placeholder="Фильтр по идентификатору"
+                placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
+                title={narrowingTitle(scope)}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 allowClear
                 style={{ width: 280 }}
               />
-              <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
+              <Select
+                value={status}
+                onChange={setStatus}
+                options={STATUS_OPTIONS}
+                title={narrowingTitle(scope)}
+                style={{ width: 180 }}
+              />
             </>
           }
         />

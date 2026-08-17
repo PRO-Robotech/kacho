@@ -28,6 +28,7 @@ import { api, ApiError } from "@shared/api/client";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { kindLabel } from "@shared/lib/quota-view";
+import { clientScope, rowsAreComplete } from "@shared/lib/list-scope";
 
 /** Внутренний слушатель: раздел администратора, не публичная поверхность. */
 export const LIMITS_PATH = "/iam/v1/internal/limits";
@@ -96,6 +97,10 @@ export default function LimitsPage() {
     },
   });
 
+  // Читается ОДНА страница, продолжения у этой таблицы нет: пока за курсором
+  // есть ещё, порядок предлагать нельзя (#373). Поле `next_page_token` было
+  // объявлено в типе ответа и не читалось ни разу.
+  const scope = clientScope(!!data?.next_page_token);
   const rows = useMemo(() => {
     const limits = data?.limits ?? [];
     // Устойчивый порядок: ответ его не обещает, а список поллится.
@@ -128,7 +133,14 @@ export default function LimitsPage() {
 
   return (
     <>
-      <ResourceTable rows={rows} loading={isLoading} rowKey={(l) => l.id} columns={columns} empty="Пределов нет" />
+      <ResourceTable
+        rows={rows}
+        loading={isLoading}
+        rowKey={(l) => l.id}
+        columns={columns}
+        complete={rowsAreComplete(scope)}
+        empty="Пределов нет"
+      />
 
       <Modal
         open={!!editing}

@@ -7,6 +7,7 @@ import type { ServiceModule } from "../../lib/service-modules";
 import { useModuleCounts } from "../../hooks/use-module-counts";
 import { apiList, loadHostContext } from "../../utils";
 import type { AccountRef, HostContext, ProjectRef } from "../../utils";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 
 export interface DashboardPageProps {
   context?: HostContext;
@@ -28,6 +29,12 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
   const loadedAccounts = useRef<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
+  // Область строки поиска (#373). Аккаунты и проекты читаются одной страницей
+  // на тысячу строк каждый, продолжения у дерева нет — поиск судит о
+  // прочитанном. `truncated` поднимается, как только хотя бы один из этих
+  // ответов оставил за собой курсор.
+  const [truncated, setTruncated] = useState(false);
+  const scope = clientScope(truncated);
 
   // loadProjects — догружает проекты одного аккаунта (идемпотентно: повторно не
   // ходит). Вызывается из loadData (раскрытие) и при поиске (догрузка всех).
@@ -35,10 +42,11 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
     if (loadedAccounts.current.has(accId)) return;
     loadedAccounts.current.add(accId);
     try {
-      const pr = await apiList<{ projects?: Array<{ id: string; name?: string; accountId?: string }> }>(
-        "/iam/v1/projects",
-        { account_id: accId, pageSize: "1000" },
-      );
+      const pr = await apiList<{
+        projects?: Array<{ id: string; name?: string; accountId?: string }>;
+        next_page_token?: string;
+      }>("/iam/v1/projects", { account_id: accId, pageSize: "1000" });
+      if (pr.next_page_token) setTruncated(true);
       const projects = (pr.projects ?? []).map((p) => ({
         id: p.id,
         name: p.name || p.id,
@@ -56,9 +64,11 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
     let cancelled = false;
     void (async () => {
       try {
-        const accResp = await apiList<{ accounts?: Array<{ id: string; name?: string }> }>("/iam/v1/accounts", {
-          pageSize: "1000",
-        });
+        const accResp = await apiList<{
+          accounts?: Array<{ id: string; name?: string }>;
+          next_page_token?: string;
+        }>("/iam/v1/accounts", { pageSize: "1000" });
+        if (accResp.next_page_token) setTruncated(true);
         const accs = (accResp.accounts ?? []).map((a) => ({ id: a.id, name: a.name || a.id }));
         if (cancelled) return;
         setAccounts(accs);
@@ -175,7 +185,8 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
           size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Поиск аккаунта или проекта"
+          placeholder={`Поиск аккаунта или проекта ${scopeSuffix(scope)}`}
+          title={narrowingTitle(scope)}
           prefix={<Search size={13} style={{ opacity: 0.5 }} />}
           className="dash-tree-search"
         />
