@@ -120,15 +120,113 @@ interface MenuProps {
   [key: string]: unknown;
 }
 
+/**
+ * Пункт выпадающего меню. Настоящий `Dropdown` доносит решение оператора именно
+ * этим пропом: детьми он получает только ТРИГГЕР (кнопку с многоточием), а состав
+ * меню — `menu.items`. Поэтому заменитель-`<div>` показывал кнопку и ни одного
+ * пункта.
+ */
+interface DropdownMenuItem {
+  key?: string;
+  label?: React.ReactNode;
+  icon?: React.ReactNode;
+  type?: string;
+  disabled?: boolean;
+  onClick?: (info: { key: string; domEvent: React.MouseEvent }) => void;
+}
+
+interface DropdownProps {
+  children?: React.ReactNode;
+  menu?: {
+    items?: DropdownMenuItem[];
+    onClick?: (info: { key: string; domEvent: React.MouseEvent }) => void;
+  };
+  /** Вторая форма подачи содержимого: произвольный узел вместо списка пунктов. */
+  dropdownRender?: () => React.ReactNode;
+  disabled?: boolean;
+}
+
 interface PopconfirmProps {
   children?: React.ReactNode;
   title?: React.ReactNode;
   description?: React.ReactNode;
   okText?: React.ReactNode;
   cancelText?: React.ReactNode;
+  onConfirm?: (e?: React.MouseEvent) => void;
+  onCancel?: (e?: React.MouseEvent) => void;
   disabled?: boolean;
-  onConfirm?: () => void;
-  onCancel?: () => void;
+  okButtonProps?: { disabled?: boolean; loading?: boolean };
+}
+
+interface TreeNodeData {
+  key?: string | number;
+  title?: React.ReactNode;
+  children?: TreeNodeData[];
+}
+
+interface TreeProps {
+  treeData?: TreeNodeData[];
+  selectedKeys?: (string | number)[];
+  onSelect?: (keys: (string | number)[], info: { node: TreeNodeData }) => void;
+}
+
+interface TabItem {
+  key?: string;
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface TabsProps {
+  items?: TabItem[];
+  activeKey?: string;
+  defaultActiveKey?: string;
+  onChange?: (key: string) => void;
+}
+
+interface ListProps {
+  dataSource?: unknown[];
+  renderItem?: (item: unknown, index: number) => React.ReactNode;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
+  locale?: { emptyText?: React.ReactNode };
+  children?: React.ReactNode;
+}
+
+interface CollapseItem {
+  key?: string | number;
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+  extra?: React.ReactNode;
+}
+
+interface CollapseProps {
+  items?: CollapseItem[];
+  activeKey?: string | number | (string | number)[];
+  defaultActiveKey?: string | number | (string | number)[];
+  onChange?: (key: (string | number)[]) => void;
+  children?: React.ReactNode;
+}
+
+interface StatisticProps {
+  title?: React.ReactNode;
+  value?: React.ReactNode;
+  prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
+}
+
+interface BadgeProps {
+  count?: number | React.ReactNode;
+  showZero?: boolean;
+  overflowCount?: number;
+  dot?: boolean;
+  children?: React.ReactNode;
+}
+
+interface SpinProps {
+  children?: React.ReactNode;
+  /** Подпись загрузки. Настоящий `Spin` ПОКАЗЫВАЕТ её рядом с вертушкой. */
+  tip?: React.ReactNode;
   [key: string]: unknown;
 }
 
@@ -526,6 +624,237 @@ export function antdStub(): Record<string, unknown> {
   // компоненте разворачивается в `undefined` и падает весь рендер, то есть
   // проба не доходит до утверждений вовсе.
   const Space = Object.assign(Component, { Compact: Component });
+
+  // ─────────── компоненты, чьё видимое приходит ПРОПОМ, а не детьми ───────────
+  //
+  // Общее у всех восьми: настоящий компонент показывает оператору то, что ему
+  // передали пропом (`menu`, `items`, `treeData`, `dataSource`, `title`,
+  // `count`), а детьми получает либо триггер, либо ничего. Заменитель-`<div>`
+  // рисовал детей и ронял проп, поэтому проба о СОСТАВЕ меню, вкладок, дерева,
+  // списка была истинна при любом составе — включая пустой.
+  //
+  // ФОРМА ВЗЯТА У НАСТОЯЩЕГО (роли rc-menu / rc-tabs / rc-tree / antd), а не
+  // изобретена: роль или атрибут, которых настоящий компонент не производит,
+  // прибили бы утверждение к форме дублёра, и оно пережило бы продукт (#418).
+  // Отсюда `role="menuitem"` у пункта, `role="tab"` у вкладки, `role="treeitem"`
+  // у узла, `<h4>` у заголовка строки списка.
+  //
+  // ОДНО ОСОЗНАННОЕ УПРОЩЕНИЕ, общее для `Dropdown`, `Popconfirm` и `Tabs`:
+  // всплывающее содержимое рисуется СРАЗУ, а не после открытия. Настоящий antd
+  // держит его в портале и своей машине состояний; дублёр, её повторяющий,
+  // заставил бы пробу утверждать СВОЮ машину состояний вместо продуктовой.
+  // Упрощение снисходительно ровно в одну сторону — «видно, не открыв», — и она
+  // не наша: открывает меню antd, а не консоль.
+
+  const Dropdown = ({ children, menu, dropdownRender, disabled }: DropdownProps) => {
+    const overlay = dropdownRender
+      ? dropdownRender()
+      : menu
+        ? React.createElement(
+            "ul",
+            { role: "menu" },
+            (menu.items ?? []).map((item, i) =>
+              item.type === "divider"
+                ? React.createElement("li", { key: item.key ?? `d${i}`, role: "separator" })
+                : React.createElement(
+                    "li",
+                    {
+                      key: item.key ?? i,
+                      role: "menuitem",
+                      // Настоящий пункт в состоянии `disabled` НЕ вызывает обработчик.
+                      // Дублёр, принимающий больше настоящего, сделал бы достижимым
+                      // действие, которого у оператора нет.
+                      "aria-disabled": item.disabled ? true : undefined,
+                      onClick: (e: React.MouseEvent) => {
+                        if (item.disabled) return;
+                        item.onClick?.({ key: item.key ?? "", domEvent: e });
+                        menu.onClick?.({ key: item.key ?? "", domEvent: e });
+                      },
+                    },
+                    item.icon,
+                    item.label,
+                  ),
+            ),
+          )
+        : null;
+    return React.createElement("div", null, children, disabled ? null : overlay);
+  };
+
+
+  const treeNodes = (
+    nodes: TreeNodeData[],
+    selected: Set<string>,
+    onSelect: TreeProps["onSelect"],
+  ): React.ReactNode =>
+    nodes.map((n, i) =>
+      React.createElement(
+        "li",
+        {
+          key: n.key ?? i,
+          role: "treeitem",
+          "aria-selected": selected.has(String(n.key)) ? true : undefined,
+        },
+        React.createElement("span", { onClick: () => onSelect?.([n.key ?? ""], { node: n }) }, n.title),
+        n.children?.length
+          ? React.createElement("ul", { role: "group" }, treeNodes(n.children, selected, onSelect))
+          : null,
+      ),
+    );
+  const Tree = ({ treeData, selectedKeys, onSelect }: TreeProps) =>
+    React.createElement(
+      "ul",
+      { role: "tree" },
+      treeNodes(treeData ?? [], new Set((selectedKeys ?? []).map(String)), onSelect),
+    );
+
+  // Настоящие вкладки рисуют ВСЕ подписи и содержимое ТОЛЬКО активной. Обе
+  // половины несущие: по подписям оператор видит, что ему предложено, а по
+  // содержимому — что он сейчас читает. Заменитель не показывал ни того, ни другого.
+  const Tabs = ({ items, activeKey, defaultActiveKey, onChange }: TabsProps) => {
+    const keyAt = (it: TabItem, i: number) => it.key ?? String(i);
+    const current = activeKey ?? defaultActiveKey ?? (items?.length ? keyAt(items[0], 0) : undefined);
+    const active = (items ?? []).find((it, i) => keyAt(it, i) === current);
+    return React.createElement(
+      "div",
+      null,
+      React.createElement(
+        "div",
+        { role: "tablist" },
+        (items ?? []).map((it, i) => {
+          const k = keyAt(it, i);
+          return React.createElement(
+            "div",
+            {
+              key: k,
+              role: "tab",
+              "aria-selected": k === current,
+              "aria-disabled": it.disabled ? true : undefined,
+              onClick: () => {
+                if (!it.disabled) onChange?.(k);
+              },
+            },
+            it.label,
+          );
+        }),
+      ),
+      active ? React.createElement("div", { role: "tabpanel" }, active.children) : null,
+    );
+  };
+
+  // Настоящий список строит строки из `dataSource` функцией `renderItem`; детьми
+  // он не получает НИЧЕГО. Заменитель-`<div>` показывал пустоту при любом списке —
+  // в т.ч. при списке ключей доступа, где каждая строка несёт кнопку удаления.
+  const ListItemMeta = ({
+    avatar,
+    title,
+    description,
+  }: {
+    avatar?: React.ReactNode;
+    title?: React.ReactNode;
+    description?: React.ReactNode;
+  }) =>
+    React.createElement(
+      "div",
+      null,
+      avatar,
+      React.createElement("h4", null, title),
+      React.createElement("div", null, description),
+    );
+  const ListItem = ({ children, actions }: { children?: React.ReactNode; actions?: React.ReactNode[] }) =>
+    React.createElement(
+      "li",
+      null,
+      children,
+      actions?.length
+        ? React.createElement(
+            "ul",
+            null,
+            actions.map((a, i) => React.createElement("li", { key: i }, a)),
+          )
+        : null,
+    );
+  const ListRoot = ({ dataSource, renderItem, header, footer, locale, children }: ListProps) =>
+    React.createElement(
+      "div",
+      null,
+      header,
+      React.createElement(
+        "ul",
+        null,
+        (dataSource ?? []).length === 0
+          ? locale?.emptyText === undefined
+            ? null
+            : React.createElement("li", null, locale.emptyText)
+          : (dataSource ?? []).map((it, i) =>
+              React.createElement(React.Fragment, { key: i }, renderItem?.(it, i)),
+            ),
+      ),
+      footer,
+      children,
+    );
+  const List = Object.assign(ListRoot, { Item: Object.assign(ListItem, { Meta: ListItemMeta }) });
+
+  // Настоящая гармошка показывает подписи ВСЕХ панелей и содержимое РАСКРЫТЫХ.
+  // Раскрытость берётся из `activeKey`/`defaultActiveKey` — как у настоящей:
+  // дублёр, раскрывающий всё, делал бы наблюдаемым то, чего оператор не видит.
+  const Collapse = ({ items, activeKey, defaultActiveKey, onChange, children }: CollapseProps) => {
+    const raw = activeKey ?? defaultActiveKey ?? [];
+    const active = new Set((Array.isArray(raw) ? raw : [raw]).map(String));
+    return React.createElement(
+      "div",
+      null,
+      (items ?? []).map((it, i) => {
+        const k = String(it.key ?? i);
+        const open = active.has(k);
+        return React.createElement(
+          "div",
+          { key: k },
+          React.createElement(
+            "div",
+            {
+              role: "button",
+              "aria-expanded": open,
+              onClick: () => onChange?.(open ? [...active].filter((x) => x !== k) : [...active, k]),
+            },
+            it.label,
+            it.extra,
+          ),
+          open ? React.createElement("div", null, it.children) : null,
+        );
+      }),
+      children,
+    );
+  };
+
+  const Statistic = ({ title, value, prefix, suffix }: StatisticProps) =>
+    React.createElement(
+      "div",
+      null,
+      React.createElement("div", null, title),
+      React.createElement("div", null, prefix, value, suffix),
+    );
+
+  // Настоящий значок показывает ЧИСЛО, и правила его показа — часть того, что
+  // видит оператор: ноль скрыт (если не просили обратного), перебор порога
+  // рисуется как «N+». Дублёр, показывающий сырое число, зеленел бы там, где
+  // пользователь видит «99+», и молчал бы там, где он не видит ничего.
+  const Badge = ({ count, showZero, overflowCount = 99, dot, children }: BadgeProps) => {
+    const numeric = typeof count === "number";
+    const hidden = dot ? false : numeric ? count === 0 && !showZero : count === undefined || count === null;
+    const text = dot ? null : numeric ? (count > overflowCount ? `${overflowCount}+` : String(count)) : count;
+    return React.createElement(
+      "span",
+      null,
+      children,
+      hidden ? null : React.createElement("sup", numeric ? { title: String(count) } : null, text),
+    );
+  };
+
+  // Настоящая вертушка ПОКАЗЫВАЕТ свою подпись (`tip`) — «Загрузка…», «Выходим из
+  // аккаунта …». Заменитель ронял её в атрибут, и состояние ожидания было
+  // неотличимо от пустого экрана.
+  const Spin = ({ children, tip, ...rest }: SpinProps) =>
+    React.createElement("div", domAttrs(rest), tip, children);
   const theme = {
     useToken: () => ({
       token: {
@@ -549,7 +878,7 @@ export function antdStub(): Record<string, unknown> {
     App: Component,
     AutoComplete: Input,
     Avatar: Component,
-    Badge: Component,
+    Badge,
     // Поставщик темы обёртывает КАЖДЫЙ remote (`shared/src/lib/theme-context`).
     // Пока его в наборе не было, любая проба, чей граф импортов доходит до темы,
     // падала ссылкой на отсутствующий экспорт — и падала СУИТОЙ ЦЕЛИКОМ, ещё до
@@ -571,7 +900,7 @@ export function antdStub(): Record<string, unknown> {
     Cascader: Select,
     Checkbox,
     Col: Component,
-    Collapse: Component,
+    Collapse,
     // Настоящий список свойств рисует ПАРЫ подпись→значение, и на карточке
     // ресурса это весь обзор целиком. Заменитель-`<div>` ронял `items` в
     // атрибут: ни одна строка обзора не была наблюдаема, поэтому «карточка
@@ -608,7 +937,7 @@ export function antdStub(): Record<string, unknown> {
       },
     ),
     Divider: Component,
-    Dropdown: Component,
+    Dropdown,
     // Настоящий `Empty` рисует своё пояснение; заменитель-`<div>` прятал его в
     // атрибут, и утверждение о тексте пустого списка было недостижимо.
     Empty: ({ children, description }: React.PropsWithChildren<{ description?: React.ReactNode }>) =>
@@ -618,7 +947,7 @@ export function antdStub(): Record<string, unknown> {
     Input: Object.assign(Input, { TextArea: Textarea, Search }),
     InputNumber,
     Layout,
-    List: Component,
+    List,
     // Настоящее меню рисует свои пункты. На карточке ресурса это рейл вкладок:
     // пока пункты уезжали в атрибут, «какие вкладки обещаны» было ненаблюдаемо,
     // и утверждение «вкладки, которой быть не должно, нет» зеленело на пустом
@@ -845,8 +1174,8 @@ export function antdStub(): Record<string, unknown> {
     // ESM-линкер валил бы суиту целиком до первого утверждения.
     Skeleton: Component,
     Space,
-    Spin: Component,
-    Statistic: Component,
+    Spin,
+    Statistic,
     // Настоящий переключатель отдаёт в `onChange` НОВОЕ СОСТОЯНИЕ (`boolean`),
     // а не событие DOM. Заменитель-поле ввода отдавал событие: оно истинно
     // всегда, поэтому «выключить» не срабатывало НИ РАЗУ, а проба, написанная
@@ -861,7 +1190,7 @@ export function antdStub(): Record<string, unknown> {
         ...domAttrs(rest),
       }),
     Table,
-    Tabs: Component,
+    Tabs,
     // Настоящий закрываемый `Tag` рисует крестик с доступным именем `close`
     // (aria-label самого antd). Заменитель-`<div>` его не рисовал вовсе, и
     // снятие элемента из набора было ненаблюдаемо — то есть проверялась
@@ -896,7 +1225,7 @@ export function antdStub(): Record<string, unknown> {
       const text = typeof title === "string" || typeof title === "number" ? String(title) : undefined;
       return React.createElement("span", text ? { title: text } : {}, children, text === undefined ? title : null);
     },
-    Tree: Component,
+    Tree,
     Typography,
     theme,
   };

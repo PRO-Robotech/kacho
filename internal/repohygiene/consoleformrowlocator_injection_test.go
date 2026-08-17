@@ -36,6 +36,32 @@ function поле(page: Page, подпись: string) {
 	}
 }
 
+// TestFormRowLocatorFindsTheAncestorAxisWithoutIndex — ось `ancestor` БЕЗ
+// индекса возвращает всех предков-рядов, и `.first()` снова берёт самого
+// внешнего: тот же дефект, записанный второй формой.
+//
+// Проба заведена вместе с распознаванием этой формы: до него разбор её не видел
+// вовсе — ни как находку, ни как законную, — и объявил себя вакуумным (гейт
+// упал на собственной предпосылке, а не на находке). Форма записи менялась,
+// класс — нет.
+func TestFormRowLocatorFindsTheAncestorAxisWithoutIndex(t *testing.T) {
+	const src = `
+function ряд(page: Page, подпись: string) {
+  return page
+    .getByText(подпись, { exact: true })
+    .locator('xpath=ancestor::*[contains(@class, " ant-form-item ")]')
+    .first();
+}
+`
+	got, examined := FindUnguardedFormRowLocators(src)
+	if examined != 1 {
+		t.Fatalf("рассмотрено выражений %d, ожидалось 1 — разбор не видит ось `ancestor` как адресацию ряда", examined)
+	}
+	if len(got) != 1 {
+		t.Fatalf("находок %d, ожидалась 1: ось без индекса берёт самого внешнего предка", len(got))
+	}
+}
+
 func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
 	for _, c := range []struct{ имя, src string }{
 		{
@@ -52,6 +78,18 @@ func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
 			// текст, по которому их можно спутать.
 			"строка формы выбирается не по тексту",
 			`const все = page.locator(".ant-form-item");`,
+		},
+		{
+			// Ближайший предок по оси `ancestor` — второй законный способ
+			// назвать ряд, и он СИЛЬНЕЕ отсечения: не выбрасывает лишние
+			// совпадения, а с самого начала называет одно. Разбор, знавший
+			// только `hasNot`, объявил бы эту форму находкой — то есть
+			// потребовал бы вернуть худшую ради зелёного гейта.
+			"ряд взят ближайший по оси ancestor",
+			`return page
+  .getByText(подпись, { exact: true })
+  .locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-form-item ")][1]')
+  .first();`,
 		},
 		{
 			// Подполя строки списка — обычные блоки, не строки формы.

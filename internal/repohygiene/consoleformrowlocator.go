@@ -82,7 +82,49 @@ func StripTSComments(src string) string {
 	return out.String()
 }
 
-const formRowSelector = `".ant-form-item"`
+// formRowClass — имя ряда формы.
+//
+// Здесь стояла вторая константа — тот же класс В КАВЫЧКАХ СЕЛЕКТОРА. Она сузила
+// разбор до одной формы записи и осталась мёртвой, как только разбор научился
+// второй; линт это и поймал. Форма записи — дело выражения, а не константы:
+// проверять надо принадлежность к ряду, а не то, каким синтаксисом её выразили.
+//
+// ЗАЧЕМ ВТОРАЯ ФОРМА. Ряд адресуют двумя способами, и оба живут в спеках:
+// селектором класса (`locator(".ant-form-item")`) и осью xpath
+// (`ancestor::*[contains(@class, " ant-form-item ")]`). Разбор, знающий только
+// первую, ослеп ровно тогда, когда пробы перешли на вторую, — и сказал об этом
+// сам (предпосылка «распознано ноль выражений» — отказ, а не молчание). Это и
+// есть цена узкого предиката: он мерит ФОРМУ ЗАПИСИ, а предмет — адресацию ряда.
+const formRowClass = "ant-form-item"
+
+// mentionsFormRow — выражение адресует ряд формы в любой из двух форм записи.
+func mentionsFormRow(stmt string) bool {
+	return strings.Contains(stmt, "locator(") && strings.Contains(stmt, formRowClass)
+}
+
+// nearestAncestorRow — ряд взят БЛИЖАЙШИЙ по оси `ancestor`, то есть который
+// именно из вложенных рядов имеется в виду, сказано явно.
+//
+// Ось `ancestor` идёт в ОБРАТНОМ порядке документа, поэтому `[1]` — ближайший
+// предок, а не самый внешний. Это отсечение СИЛЬНЕЕ, чем `hasNot`: оно не
+// «выбрасывает лишние совпадения», а с самого начала называет одно.
+//
+// Без индекса ось возвращает ВСЕХ предков-рядов, и `.first()` снова берёт
+// самого внешнего — то есть исходный дефект, только записанный иначе.
+func nearestAncestorRow(stmt string) bool {
+	for _, at := range indexesOf(stmt, "ancestor::") {
+		tail := stmt[at:]
+		if !strings.Contains(tail, formRowClass) {
+			continue
+		}
+		if i := strings.Index(tail, formRowClass); i >= 0 {
+			if rest := tail[i:]; strings.Contains(rest, "][1]") || strings.Contains(rest, ")][1]") {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // FindUnguardedFormRowLocators — выражения, которые выбирают строку формы ПО
 // ТЕКСТУ и не отсекают вложенные строки.
@@ -100,11 +142,11 @@ func FindUnguardedFormRowLocators(src string) (findings []FormRowLocatorFinding,
 		// заголовком функции, и «начало оператора» уводило бы читателя на
 		// строку выше предмета.
 		start := line
-		if at := strings.Index(stmt, formRowSelector); at >= 0 {
+		if at := strings.Index(stmt, formRowClass); at >= 0 {
 			start += strings.Count(stmt[:at], "\n")
 		}
 		line += strings.Count(stmt, "\n")
-		if !strings.Contains(stmt, "locator(") || !strings.Contains(stmt, formRowSelector) {
+		if !mentionsFormRow(stmt) {
 			continue
 		}
 		// Выбор ПО ТЕКСТУ — только он и создаёт неоднозначность предок/потомок:
@@ -121,15 +163,22 @@ func FindUnguardedFormRowLocators(src string) (findings []FormRowLocatorFinding,
 	return findings, examined
 }
 
-// guardsNestedRows — цепочка отсекает вложенные строки формы, то есть несёт
-// `hasNot` с тем же селектором.
+// guardsNestedRows — цепочка однозначно называет, КОТОРЫЙ из вложенных рядов
+// имеется в виду. Законных способов два, и оба встречаются в спеках:
+//
+//   - отсечь вложенные — `hasNot` с тем же селектором;
+//   - взять ближайший — ось `ancestor` с индексом `[1]`.
+//
+// Второй появился позже и строго сильнее первого; разбор, знавший только
+// первый, объявил бы его находкой — то есть потребовал бы вернуть худшую форму
+// ради зелёного гейта.
 func guardsNestedRows(stmt string) bool {
 	for _, at := range indexesOf(stmt, "hasNot") {
-		if strings.Contains(stmt[at:], formRowSelector) {
+		if strings.Contains(stmt[at:], formRowClass) {
 			return true
 		}
 	}
-	return false
+	return nearestAncestorRow(stmt)
 }
 
 func indexesOf(s, sub string) []int {
@@ -160,6 +209,8 @@ func DescribeFormRowFinding(file string, f FormRowLocatorFinding) string {
   `+"`.ant-form-item`"+` вкладываются, и обход дерева ставит ПРЕДКА раньше потомка: при вложенности
   такое выражение берёт ОБЪЕМЛЮЩИЙ блок, а не строку. Промах не даёт отказа — он даёт действие
   над чужой строкой, и видно это лишь по последствию через несколько шагов (#636).
-  Исход: добавить отсечение вложенных строк — `+"`.filter({ hasNot: page.locator(\".ant-form-item\") })`"+`.`,
+  Исход — назвать, КОТОРЫЙ ряд имеется в виду, одним из двух способов:
+    взять ближайший  — `+"`.locator('xpath=ancestor::*[contains(@class, \" ant-form-item \")][1]')`"+`
+    отсечь вложенные — `+"`.filter({ hasNot: page.locator(\".ant-form-item\") })`"+`.`,
 		file, f.Line, f.Text)
 }

@@ -5,57 +5,25 @@
 // путь на запись не смаршрутизирован), а клик по пункту не должен всплывать до
 // строки — иначе таблица уводит на карточку раньше, чем откроется диалог.
 //
-// antd переопределён локально: общий стенд подменяет `Dropdown` пустым div'ом и
-// пункты меню вообще не рисует — на нём проба зеленела бы при любом составе.
+// Состав меню приходит пропом `menu`, а не детьми, поэтому его рисует общий
+// стенд-заменитель (`antdStub`) — ровно в той форме, что и настоящий antd:
+// `<ul role="menu">` с `<li role="menuitem">`. Своей копии заменителя здесь
+// больше нет: обход, написанный один раз рядом с пробой, не переиспользуется, и
+// соседние пробы того же меню оставались без наблюдения (#570).
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface MockItem {
-  key?: string;
-  label?: React.ReactNode;
-  type?: string;
-  onClick?: (info: { domEvent: { stopPropagation: () => void } }) => void;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  // Пункты меню рисуются кнопками: их состав и обработчики — предмет пробы.
-  Dropdown: ({ children, menu }: React.PropsWithChildren<{ menu?: { items?: MockItem[] } }>) =>
-    React.createElement(
-      "div",
-      null,
-      children,
-      React.createElement(
-        "div",
-        { "data-testid": "menu" },
-        (menu?.items ?? []).map((item, i) =>
-          item.type === "divider"
-            ? React.createElement("hr", { key: `d${i}` })
-            : React.createElement(
-                "button",
-                {
-                  key: item.key ?? i,
-                  type: "button",
-                  onClick: (e: React.MouseEvent) =>
-                    item.onClick?.({ domEvent: { stopPropagation: () => e.stopPropagation() } }),
-                },
-                item.label,
-              ),
-        ),
-      ),
-    ),
-}));
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { REGISTRY } = await import("@shared/lib/resource-registry");
 const { RowActionsMenu, resourceHasRowActions } = await import("./RowActionsMenu");
 
 function menuLabels(): string[] {
-  return [...screen.getByTestId("menu").querySelectorAll("button")].map((b) => b.textContent ?? "");
+  return screen.getAllByRole("menuitem").map((b) => b.textContent ?? "");
 }
 
 /** Диалог удаления внутри меню зовёт инвалидацию списка — ей нужен клиент. */
@@ -93,6 +61,24 @@ describe("RowActionsMenu — состав меню", () => {
     // нет, значит обещать операцию, которой не существует.
     renderMenu("regions", { id: "ru-central1", name: "ru-central1" });
     expect(menuLabels()).not.toContain("Переместить");
+  });
+
+  it("пользователю перемещение не предлагается — глагола нет ни на контракте, ни на крае", () => {
+    // В этом меню рядом стоят настоящее действие-глагол («Запретить участие»,
+    // за ним POST на крае) и заглушка перемещения, печатающая вызов, которого
+    // не существует. На вид они неотличимы, поэтому состав утверждается
+    // ДОСЛОВНО: `not.toContain` пропустил бы подмену одного пункта другим.
+    renderMenu("users", { id: "usr-1", email: "a@b.c", invite_status: "ACTIVE" });
+    expect(menuLabels()).toEqual(["Просмотр", "Запретить участие", "Удалить"]);
+  });
+
+  it("перемещаемому ресурсу пункт «Переместить» остаётся", () => {
+    // Положительный контроль к предыдущему, привязанный к тому, что живёт
+    // НЕЗАВИСИМО от списка подавления: у балансировщика глагол объявлен
+    // контрактом (`/nlb/v1/networkLoadBalancers/{id}:move`). Без такой пары
+    // утверждение «пункта нет» зеленело бы и на сплошном снятии пункта у всех.
+    renderMenu("load-balancers", { id: "lb-1", name: "edge" });
+    expect(menuLabels()).toContain("Переместить");
   });
 
   it("группе безопасности по умолчанию удаление не предлагается", () => {

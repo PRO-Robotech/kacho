@@ -25,7 +25,12 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GROUP="${1:-all}"
+# ВСЕ аргументы, а не первый. Ветка разбора ниже принимает несколько групп через
+# пробел, и хук отправки зовёт скрипт именно так («proto go»), — но `${1}` брал
+# только первое слово, поэтому вторая группа не исполнялась НИ РАЗУ, а итог
+# «отказов 0» относился к меньшему, чем читатель полагал. Найдено 2026-08-17:
+# запрос четырёх групп дал три проверки контрактов и зелёный итог.
+GROUP="${*:-all}"
 WORK="${CI_LOCAL_WORK:-${TMPDIR:-/tmp}/kacho-ci-local}"
 mkdir -p "$WORK"
 cd "$ROOT"
@@ -381,11 +386,53 @@ helm_group() {
     if ! command -v helm > /dev/null; then
         skip "helm" "не установлен"; return
     fi
+    # ПЕРЕЧЕНЬ — ТОТ ЖЕ, ЧТО В КОНВЕЙЕРЕ (`ci.yaml`, шаг «lint сервисных чартов»),
+    # и это не косметика: он разошёлся в ОБЕ стороны сразу.
+    #
+    #  - лишним был зонтичный чарт. Конвейер его НЕ линтит — он проверяет его
+    #    РЕНДЕРОМ С ПРОФИЛЕМ, потому что голый линт красен на исправном дереве:
+    #    локальные подчарты лежат в `charts/` каталогами и не объявлены
+    #    зависимостями, а `.Values.<сервис>.networkPolicy` без профиля пуст.
+    #    Локальный прогон изобрёл проверку, которой в конвейере нет, и она
+    #    краснела всегда — то есть переставала быть сигналом;
+    #  - недоставало чарта консоли (`ui-future/deploy`): конвейер его линтит, а
+    #    локальный прогон не смотрел вовсе. Расхождение в эту сторону тише и
+    #    хуже: оно не краснеет, оно молчит.
     local c
-    for c in "$ROOT"/services/*/deploy "$ROOT"/gateway/deploy "$ROOT"/deploy/helm/umbrella; do
+    for c in "$ROOT"/services/*/deploy "$ROOT"/gateway/deploy "$ROOT"/ui-future/deploy; do
         [ -f "$c/Chart.yaml" ] || continue
         run "helm lint $(basename "$(dirname "$c")")" helm lint "$c"
     done
+
+    # Зонтичный чарт — РЕНДЕРОМ ПО ТАБЛИЦЕ СТЕКОВ, как в конвейере. Зависимости
+    # материализует ЕДИНСТВЕННЫЙ ВЛАДЕЛЕЦ (`deploy/scripts/helm-umbrella-deps.sh`),
+    # а не голый `helm dependency build`: подкачка сетевая и полная (22
+    # объявления, полный проход около трёх с половиной минут), владелец её
+    # пропускает, когда подкачивать нечего. Свойство «владелец один» держит
+    # гейт `deploy/helm_deps_single_owner_test.go` — звать helm здесь напрямую
+    # значит завести седьмое место и уронить его.
+    #
+    # Сеть может быть недоступна, и это «условие не создано», а не отказ:
+    # пропуск назван причиной и виден третьим числом итога.
+    local umb="$ROOT/deploy/helm/umbrella"
+    if [ -f "$umb/Chart.yaml" ] && [ -x "$ROOT/deploy/scripts/helm-umbrella-deps.sh" ]; then
+        if bash "$ROOT/deploy/scripts/helm-umbrella-deps.sh" > "$WORK/umbrella-deps.txt" 2>&1; then
+            run "umbrella template — каждый стек таблицы" bash -c "
+                set -euo pipefail
+                cd '$umb'
+                n=0
+                for stack in \$(bash ../../tests/helm/stacks.sh --names); do
+                    args=\"\$(bash ../../tests/helm/stacks.sh --args \"\$stack\")\"
+                    # shellcheck disable=SC2086
+                    helm template ci . \$args > /dev/null
+                    n=\$((n + 1))
+                done
+                [ \"\$n\" -ge 1 ] || { echo 'не отрендерено НИ ОДНОГО стека'; exit 1; }
+                echo \"осмотрено: стеков \$n\""
+        else
+            skip "umbrella template" "зависимости умбреллы не материализованы (сеть?) — см. $WORK/umbrella-deps.txt"
+        fi
+    fi
     # Манифест-проверки посадки — здесь нас ловило чаще всего: они читают ДЕРЕВО
     # (классификацию отказов, круг отправителей, привязку пода к настройкам), а не
     # только рендер, поэтому краснеют на правках скриптов и профилей.
@@ -403,6 +450,59 @@ has_npm_script() { # has_npm_script <каталог> <скрипт>
         "$1/package.json" "$2" 2> /dev/null
 }
 
+# Готов ли пакет к прогону — ВЫВОДИТСЯ ИЗ ДЕРЕВА, а не по наличию собственного
+# `node_modules`.
+#
+# Консоль — npm-workspaces: у членов (`shared`, `vpc`, `iam`, `system`) своего
+# каталога зависимостей НЕТ by construction, всё лежит в корне `ui-future`.
+# Проверка «есть ли node_modules у модуля» объявляла их неустановленными ВСЕГДА
+# — то есть четыре модуля, включая три единственных исполнителя проб общего
+# кода, не проверялись ни разу, а итог честно печатал их в «не выполнено», и это
+# читалось как временная нехватка зависимостей.
+#
+# Перечень членов берётся из корневого package.json: выписанный список разошёлся
+# бы с деревом молча, как уже расходились три рукописных перечня репозиториев.
+npm_deps_ready() { # npm_deps_ready <каталог модуля>
+    local dir="$1" name root
+    name="$(basename "$dir")"
+    root="$ROOT/ui-future"
+    if node -e '
+        const ws = (require(process.argv[1]).workspaces) || [];
+        process.exit(ws.includes(process.argv[2]) ? 0 : 1)
+    ' "$root/package.json" "$name" 2> /dev/null; then
+        [ -d "$root/node_modules" ]
+    else
+        [ -d "$dir/node_modules" ]
+    fi
+}
+
+# ui_types_group — ТОЛЬКО проверка типов консоли, без проб и сборки.
+#
+# ЗАЧЕМ ОТДЕЛЬНО ОТ `ui`. Полная группа медленная (пробы трёх модулей — минуты),
+# поэтому в хук отправки её не поставишь, и правка консоли уезжала в конвейер
+# вообще без проверки. Дважды подряд это стоило круга: пробы были зелёными на
+# 5443 утверждениях, а строгая проверка типов роняла линт, typecheck и сборку
+# СЕМИ модулей плюс образ консоли — из-за одного объявления, оставшегося без
+# читателя. Пробы такого не ловят by construction: они типы не проверяют.
+#
+# Проверка типов дешёвая (десятки секунд) и ловит ровно этот класс, поэтому
+# место ей — перед отправкой, а не в конвейере.
+ui_types_group() {
+    local m
+    if ! command -v node > /dev/null; then
+        skip "ui-types" "node не установлен"; return
+    fi
+    for m in "$ROOT"/ui-future/*/package.json; do
+        local dir name; dir="$(dirname "$m")"; name="$(basename "$dir")"
+        npm_deps_ready "$dir" || { skip "ui-types $name" "зависимости не установлены (npm ci --prefix)"; continue; }
+        if has_npm_script "$dir" typecheck; then
+            run "ui-types $name" bash -c "cd '$dir' && npm run typecheck"
+        else
+            skip "ui-types $name" "скрипта нет в package.json"
+        fi
+    done
+}
+
 ui_group() {
     local m
     if ! command -v node > /dev/null; then
@@ -410,7 +510,7 @@ ui_group() {
     fi
     for m in "$ROOT"/ui-future/*/package.json; do
         local dir name; dir="$(dirname "$m")"; name="$(basename "$dir")"
-        [ -d "$dir/node_modules" ] || { skip "ui $name" "зависимости не установлены (npm ci --prefix)"; continue; }
+        npm_deps_ready "$dir" || { skip "ui $name" "зависимости не установлены (npm ci --prefix)"; continue; }
         # Прогон проб НЕ заменяет сборку: сборка гоняет строгую проверку типов и
         # роняет то, что пробы пропускают (неиспользованный импорт — реальный
         # случай). Поэтому обе, и в этом порядке.
@@ -428,6 +528,22 @@ ui_group() {
         # исчезнуть из прогона он не может.
         local s
         for s in typecheck test build; do
+            # ПРОБЫ БРАУЗЕРОМ ТРЕБУЮТ РАЗВЁРНУТОГО СТЕНДА, и его отсутствие — это
+            # «условие не создано», а НЕ отказ. Их конфигурация отказывается
+            # стартовать без адреса намеренно (умолчание увело бы пробы на
+            # несуществующий адрес, и «не выполнилось» читалось бы как «красное»)
+            # — значит в прогоне без стенда этот шаг красный ВСЕГДА, на любом
+            # дереве. Тот же класс, что двумя абзацами выше: прогон, красный по
+            # построению, перестаёт быть сигналом.
+            #
+            # Признак читается ИЗ ДЕРЕВА — наличие конфигурации проб браузером, —
+            # а не из имени пакета: выписанное имя разошлось бы с деревом молча.
+            # Пропуск виден третьим числом итога и назван причиной, поэтому
+            # «стенда не было» нельзя прочитать как «пробы прошли».
+            if [ "$s" = "test" ] && [ -f "$dir/playwright.config.ts" ] && [ -z "${KACHO_CONSOLE_URL:-}" ]; then
+                skip "ui $name: $s" "стенда нет: KACHO_CONSOLE_URL не задан — пробы браузером требуют развёрнутой консоли"
+                continue
+            fi
             if has_npm_script "$dir" "$s"; then
                 run "ui $name: $s" bash -c "cd '$dir' && npm run $s"
             else
@@ -443,6 +559,7 @@ case "$GROUP" in
     terraform) terraform_group ;;
     helm)      helm_group ;;
     ui)        ui_group ;;
+    ui-types)  ui_types_group ;;
     all)       proto_group; go_group; terraform_group; helm_group; ui_group ;;
     # Несколько групп через пробел: хук отправки гоняет быстрые, но не медленные.
     *)
@@ -454,7 +571,8 @@ case "$GROUP" in
                 terraform) terraform_group ;;
                 helm)      helm_group ;;
                 ui)        ui_group ;;
-                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|all)" >&2; ok=0 ;;
+                ui-types)  ui_types_group ;;
+                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|ui-types|all)" >&2; ok=0 ;;
             esac
         done
         [ "$ok" = "1" ] || exit 2

@@ -4,39 +4,15 @@
 // сохраняется, дети сгруппированы по типу со счётчиком, удерживающие помечены и
 // вынесены в предупреждение, а «связей нет» отличимо от «связи не загрузились».
 //
-// antd переопределён локально: общий заменитель подменяет `Tree` и `Alert`
-// пустыми div'ами, которые своих данных не рисуют, — на нём проба зеленела бы
-// при любом дереве.
-
 import { jest } from "@jest/globals";
-import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface Node {
-  key: string;
-  title?: React.ReactNode;
-  children?: Node[];
-}
-
-function renderNodes(nodes: Node[] = []): React.ReactNode {
-  return nodes.map((n) =>
-    React.createElement(
-      "li",
-      { key: n.key },
-      n.title,
-      n.children ? React.createElement("ul", null, renderNodes(n.children)) : null,
-    ),
-  );
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Tree: ({ treeData }: { treeData?: Node[] }) => React.createElement("ul", null, renderNodes(treeData ?? [])),
-  Alert: ({ message, description }: { message?: React.ReactNode; description?: React.ReactNode }) =>
-    React.createElement("div", { role: "alert" }, message, description),
-}));
+// Узлы дерева приходят пропом `treeData`, а не детьми, — их рисует общий
+// стенд-заменитель в форме настоящего antd (`role="tree"` / `role="treeitem"`).
+// Своей копии здесь больше нет (#570); `Alert` общий заменитель тоже рисует.
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { DependencyTreePanel } = await import("./DependencyTreePanel");
 
