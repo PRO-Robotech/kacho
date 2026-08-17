@@ -2,6 +2,14 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  UNRESOLVED,
+  collectVerbRouteUses,
+  verbTail,
+  type ConsoleSource,
+  type VerbRouteUse,
+} from "./console-verb-literals";
+
 /**
  * Гейт: ни одна кнопка консоли не адресует действие-глагол, которого край не
  * обслуживает.
@@ -20,10 +28,18 @@ import { fileURLToPath } from "node:url";
  * переписанный руками рядом с тестом: список разъезжается с контрактом молча,
  * ровно так же, как разъехалась консоль.
  *
- * Вердикт — по СОДЕРЖИМОМУ. Отдельно утверждается количество осмотренного: «ноль
- * находок» обязано быть отличимо от «ноль прочитанных файлов». И отдельно
- * проверяется сам сопоставитель — на заведомо несуществующем пути он обязан
- * дать находку, на заведомо существующем — не дать.
+ * Вердикт — по СОДЕРЖИМОМУ. Отдельно утверждается количество осмотренного, и
+ * отдельно — по файлам И по литералам: «ноль находок» обязано быть отличимо не
+ * только от «ноль прочитанных файлов», но и от «файлы прочитаны, а литералы в
+ * них разобраны не все». Второе — предмет #559: разбор ЛИТЕРАЛОВ шёл по сырому
+ * тексту парным счётом обратных кавычек, слеп после нечётной кавычки в
+ * комментарии и одновременно принимал за вызов путь, стоящий В комментарии.
+ * Теперь литералы берутся у компилятора TypeScript
+ * (`./console-verb-literals.ts`), а способность разбора не ослепнуть доказана
+ * инъекцией в `./console-verb-literals.test.ts`.
+ *
+ * И отдельно проверяется сам сопоставитель — на заведомо несуществующем пути он
+ * обязан дать находку, на заведомо существующем — не дать.
  */
 
 // ui-future/ — корень консоли (файл лежит в shared/src/test/).
@@ -110,139 +126,10 @@ function routeMatcher(route: string): RegExp {
 
 // ───────────────────────────── консоль ─────────────────────────────
 
-// verbTail — путь-действие: `:verb` ПРИКЛЕЕН к предыдущему сегменту
-// (`…/{id}:start`). Обязательный не-слэш перед двоеточием отделяет действие от
-// параметра маршрута браузера (`/projects/:projectId`), который выглядит так же
-// и REST-путём не является вовсе.
-const verbTail = /[^/:]:[a-zA-Z][A-Za-z0-9-]*$/;
-// stringLiteral — строковые и шаблонные литералы (без вложенных backtick'ов).
-const stringLiteral = /`([^`\\]*)`|"([^"\\]*)"/g;
-// stringConst — `const NAME = "…";` / `export const NAME = "…";`
-const stringConst =
-  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)"\s*;/g;
-// objectStringEntry — `key: "…"` внутри объектной константы путей.
-const objectConst =
-  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\{([^}]*)\}\s*as const;/g;
-const objectEntry = /([A-Za-z_$][\w$]*)\s*:\s*"([^"]*)"/g;
-// registryAlias — `const SPEC = REGISTRY["compute-instances"];`
-const registryAlias =
-  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*REGISTRY\[\s*"([^"]+)"\s*\]/g;
-// registrySpec — `id: "x"` … `apiPath: "/y"` в файле реестра ресурсов.
-const registrySpecId = /\n\s*id:\s*"([^"]+)",\n\s*route:/g;
-const registryApiPath = /\n\s*apiPath:\s*"([^"]+)"/;
-
 // appOf — приложение консоли, которому принадлежит файл (первый сегмент пути
 // от корня консоли).
 function appOf(file: string): string {
   return path.relative(consoleRoot, file).split(path.sep)[0];
-}
-
-// specApiPaths — приложение → (id ресурса → apiPath). Копия реестра у каждого
-// приложения СВОЯ и намеренно расходится (например `disk-types` живёт и в
-// compute, и в storage, пока раскол блочного хранения не доведён), поэтому
-// склеивать их в один словарь нельзя — путь резолвится реестром СВОЕГО
-// приложения.
-function specApiPaths(files: string[]): Map<string, Map<string, string>> {
-  const out = new Map<string, Map<string, string>>();
-  for (const file of files) {
-    if (path.basename(file) !== "resource-registry.tsx") continue;
-    const app = appOf(file);
-    const byID = out.get(app) ?? new Map<string, string>();
-    out.set(app, byID);
-    const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(registrySpecId)) {
-      const tail = src.slice(m.index ?? 0, (m.index ?? 0) + 2000);
-      const api = registryApiPath.exec(tail);
-      if (!api) continue;
-      byID.set(m[1], api[1]);
-    }
-  }
-  return out;
-}
-
-// objectPathConsts — `IAM.accessBindings` и подобные, собранные по всему дереву
-// (объявлены в одном модуле, используются из другого).
-function objectPathConsts(files: string[]): Map<string, string> {
-  const out = new Map<string, string>();
-  for (const file of files) {
-    const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(objectConst)) {
-      for (const e of m[2].matchAll(objectEntry)) {
-        if (!e[2].startsWith("/")) continue;
-        out.set(`${m[1]}.${e[1]}`, e[2]);
-      }
-    }
-  }
-  return out;
-}
-
-export interface VerbRouteUse {
-  file: string;
-  literal: string;
-  resolved: string;
-}
-
-/**
- * Плейсхолдер неразрешённого `${…}`-сегмента пути.
- *
- * Символ выбран так, чтобы не столкнуться ни с одним настоящим сегментом URL.
- * Записан ЭКРАНИРОВАННО и ровно в одном месте: сырой управляющий байт в
- * исходнике невидим — его не показывает ни diff, ни обзор, и он молча теряется
- * при копировании строки, после чего сверка маршрутов начинает сравнивать не то,
- * что думает.
- */
-const UNRESOLVED = "\u0000";
-
-// resolveLiteral — подстановка констант в выражение пути. Неразрешённая
-// интерполяция становится ОДНИМ сегментом: это всегда подставленный id.
-function resolveLiteral(
-  literal: string,
-  locals: Map<string, string>,
-  objects: Map<string, string>,
-): string | null {
-  const resolved = literal.replace(/\$\{([^}]*)\}/g, (_all, expr: string) => {
-    const key = expr.trim();
-    const local = locals.get(key);
-    if (local !== undefined) return local;
-    const obj = objects.get(key);
-    if (obj !== undefined) return obj;
-    return UNRESOLVED;
-  });
-  return resolved.startsWith("/") ? resolved : null;
-}
-
-// collectVerbRoutes — все места консоли, адресующие действие-глагол.
-function collectVerbRoutes(
-  files: string[],
-  objects: Map<string, string>,
-  specs: Map<string, Map<string, string>>,
-): VerbRouteUse[] {
-  const uses: VerbRouteUse[] = [];
-  for (const file of files) {
-    if (file.includes(".test.")) continue;
-    const src = readFileSync(file, "utf8");
-    const ownSpecs = specs.get(appOf(file));
-
-    const locals = new Map<string, string>();
-    for (const m of src.matchAll(stringConst)) locals.set(m[1], m[2]);
-    for (const m of src.matchAll(registryAlias)) {
-      const api = ownSpecs?.get(m[2]);
-      if (api !== undefined) locals.set(`${m[1]}.apiPath`, api);
-    }
-
-    for (const m of src.matchAll(stringLiteral)) {
-      const literal = m[1] ?? m[2];
-      if (!literal || !/:[a-zA-Z][A-Za-z0-9-]*$/.test(literal)) continue;
-      if (!literal.includes("/") && !literal.startsWith("${")) continue;
-      const resolved = resolveLiteral(literal, locals, objects);
-      // Проверка `verbTail` идёт по РАЗРЕШЁННОМУ пути: до подстановки перед
-      // двоеточием стоит `}` у обеих форм, и действие от параметра маршрута
-      // так не отличить.
-      if (resolved === null || !verbTail.test(resolved)) continue;
-      uses.push({ file: path.relative(consoleRoot, file), literal, resolved });
-    }
-  }
-  return uses;
 }
 
 // unmatched — выражения пути, не совпавшие ни с одним связыванием контракта.
@@ -257,16 +144,36 @@ function unmatched(uses: VerbRouteUse[], matchers: RegExp[]): VerbRouteUse[] {
 
 const consoleFiles = CONSOLE_APPS.flatMap((app) =>
   walk(path.join(consoleRoot, app, "src"), [], [".ts", ".tsx"]),
-);
+).filter((f) => !f.includes(".test."));
+
+const sources: ConsoleSource[] = consoleFiles.map((file) => ({
+  file: path.relative(consoleRoot, file),
+  app: appOf(file),
+  isResourceRegistry: path.basename(file) === "resource-registry.tsx",
+  source: readFileSync(file, "utf8"),
+}));
+
 const routes = contractRoutes();
 const matchers = routes.map(routeMatcher);
-const objects = objectPathConsts(consoleFiles);
-const specs = specApiPaths(consoleFiles);
-const uses = collectVerbRoutes(consoleFiles, objects, specs);
+const scan = collectVerbRouteUses(sources);
+const uses = scan.uses;
 
 describe("console addresses only verb-routes the contract serves", () => {
   it("reads the contract and the console (a silent zero is not a pass)", () => {
-    expect(consoleFiles.length).toBeGreaterThan(500);
+    // eslint-disable-next-line no-console
+    console.log(
+      `перепись: исходников консоли ${scan.filesParsed}, литералов разобрано ` +
+        `${scan.literalsParsed}, связываний контракта ${routes.length} ` +
+        `(из них действий-глаголов ${routes.filter((r) => verbTail.test(r)).length}), ` +
+        `мест консоли ${uses.length} по ${new Set(uses.map((u) => u.resolved)).size} маршрутам`,
+    );
+
+    expect(scan.filesParsed).toBeGreaterThan(500);
+    // Литералы — ОТДЕЛЬНАЯ перепись, а не следствие первой. Пока её не было,
+    // «ноль находок в этом файле» было неотличимо от «этот файл не разбирался»:
+    // разбор молча терял всё после нечётной обратной кавычки, и число мест это
+    // не показывало (см. #559 и шапку ./console-verb-literals.ts).
+    expect(scan.literalsParsed).toBeGreaterThan(15000);
     expect(routes.length).toBeGreaterThan(150);
     expect(routes.filter((r) => verbTail.test(r)).length).toBeGreaterThan(40);
     // Столько мест консоли адресуют действие-глагол. Число обязано меняться
@@ -322,12 +229,27 @@ describe("console addresses only verb-routes the contract serves", () => {
     // (абзац выше): возможность край подавал всё это время, а обращения к ней
     // из консоли не было.
     //
-    // Путь строится в `@shared/api/iam` (`userBlockPath`/`userUnblockPath`), а
-    // не в реестре: разбор литералов здесь ПАРНЫЙ по обратным кавычкам, и файл
-    // реестра к этому месту накопил их нечётное число — литерал, записанный
-    // там, этим разбором не читается вовсе. Слепое пятно заведено предметом,
-    // а не обойдено молча; поверхность API домена и без того законный дом
-    // такого литерала (так же устроены глаголы машины в compute).
+    // Было 32/29, и осталось 32/29 — но СОСТАВ изменился на одно место (#559).
+    // Разбор литералов переведён с парного счёта обратных кавычек по сырому
+    // тексту на синтаксическое дерево, и это сняло ДВЕ ошибки сразу, которые
+    // до сих пор гасили друг друга в счёте:
+    //   · ушло `shared/src/lib/resource-spec.ts` — путь `…/{id}:internal` стоит
+    //     там в объясняющем комментарии («Пример: …»), то есть считался вызов,
+    //     которого нет;
+    //   · прибавилось `shared/src/lib/resource-registry.tsx` — тот же путь, но
+    //     НАСТОЯЩИМ литералом (`internalGetPath`), которого прежний разбор не
+    //     видел вовсе: до места объявления в файле стоит нечётное число
+    //     обратных кавычек.
+    // То есть «прибавка законна и ровно одна» из абзаца про `internalGetPath`
+    // выше относилась к КОММЕНТАРИЮ, а живое обращение всё это время не
+    // считалось. Числа совпали случайно; проверять состав, а не только счёт.
+    //
+    // Оба глагола пользователя (`:block`/`:unblock`) строятся в
+    // `@shared/api/iam` (`userBlockPath`/`userUnblockPath`), а не в реестре.
+    // Прежде это было ОБХОДОМ слепого пятна (в реестре литерал не читался);
+    // слепого пятна больше нет, а место остаётся — поверхность API домена и без
+    // того законный дом такого литерала (так же устроены глаголы машины в
+    // compute).
     const distinct = new Set(uses.map((u) => u.resolved));
     expect(distinct.size).toBe(29);
     expect(uses.length).toBe(32);
