@@ -680,47 +680,6 @@ export function antdStub(): Record<string, unknown> {
     return React.createElement("div", null, children, disabled ? null : overlay);
   };
 
-  // Настоящее подтверждение показывает вопрос, пояснение и ДВЕ кнопки; за кнопкой
-  // «да» стоит необратимое действие. Пока их не было, ни отзыв ключа, ни удаление
-  // тега не были достижимы из пробы вовсе.
-  const Popconfirm = ({
-    children,
-    title,
-    description,
-    okText,
-    cancelText,
-    onConfirm,
-    onCancel,
-    disabled,
-    okButtonProps,
-  }: PopconfirmProps) =>
-    React.createElement(
-      "div",
-      null,
-      children,
-      disabled
-        ? null
-        : React.createElement(
-            "div",
-            { role: "tooltip" },
-            React.createElement("div", null, title),
-            description === undefined ? null : React.createElement("div", null, description),
-            React.createElement(
-              "button",
-              { type: "button", onClick: (e: React.MouseEvent) => onCancel?.(e) },
-              cancelText ?? "Cancel",
-            ),
-            React.createElement(
-              "button",
-              {
-                type: "button",
-                disabled: Boolean(okButtonProps?.disabled) || Boolean(okButtonProps?.loading),
-                onClick: (e: React.MouseEvent) => onConfirm?.(e),
-              },
-              okText ?? "OK",
-            ),
-          ),
-    );
 
   const treeNodes = (
     nodes: TreeNodeData[],
