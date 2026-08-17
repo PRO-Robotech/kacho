@@ -786,7 +786,7 @@
       ]
     },
     {
-      "name": "INST-RD-CR-VAL-CONTAINER-REGISTRY-SOURCE-REFUSED — Create CONTAINER с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля 'bootSource.type registry.image is not accepted yet'. СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ НЕ КОНСТРУИРУЕТСЯ: у образа реестра нет durable-координаты (у репозитория нет неизменяемого идентификатора), а иного источника у контейнера не бывает. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт вместо счастливого пути — и обязан покраснеть в тот день, когда ветвь откроется. [verifies COMP-1-02/15 частично · ECP формы источника]",
+      "name": "INST-RD-CR-VAL-CONTAINER-KIND-REFUSED — Create CONTAINER → sync 400 INVALID_ARGUMENT ПО ВИДУ: поле 'instance_kind', текст 'instanceKind CONTAINER is not creatable yet: a registry image has no durable address today'. СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ НЕ КОНСТРУИРУЕТСЯ, и отказ висит на ВИДЕ, а не на источнике ОС: пока отказывал источник, пара «вид CONTAINER + образ ХРАНИЛИЩА» проходила проверку целиком и создавала машину, не описываемую ни одной ветвью модели. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт вместо счастливого пути — и обязан покраснеть в тот день, когда ветвь откроется. [verifies COMP-1-02/15 частично · decision-table вид×источник]",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -1055,15 +1055,81 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
-                  "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"
+                  "pm.test('текст называет ВИД и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('instanceKind CONTAINER is not creatable yet'); pm.expect(m).to.include('durable address'); });",
+                  "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cleanup-mt-rya32",
+          "name": "create-container-storage-source-refused-rya32",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insctst{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"CONTAINER\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"containerSpec\": {\"command\": [\"python\", \"train.py\"], \"args\": [\"--epochs=3\"], \"env\": {\"WANDB_MODE\": \"offline\"}, \"restartPolicy\": \"ON_FAILURE\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('вид отвергнут и при образе ХРАНИЛИЩА', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('instanceKind CONTAINER is not creatable yet'); });",
+                  "pm.test('поле по-прежнему вид, а не источник', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt-rya33",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1217,6 +1283,61 @@
       ]
     },
     {
+      "name": "INST-RD-CR-VAL-VM-REGISTRY-SOURCE-REFUSED — Create VM с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля 'boot_source.type': 'bootSource.type registry.image is not accepted yet: a registry image has no durable address today'. ОТКАЗ ПО ИСТОЧНИКУ ЖИВ И ДОСТИЖИМ — просто не через вид CONTAINER, который короткозамыкается раньше. Кейс держит эту ветвь под утверждением: без него отказ по источнику перестал бы проверяться сквозной пробой вовсе, а он остаётся частью контракта. [verifies COMP-1-10 · ECP формы источника]",
+      "description": "class:VAL | class:NEG | priority:P0",
+      "item": [
+        {
+          "name": "cr-vm-registry-source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmregsrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"registry.image\", \"id\": \"ml/bert-trainer:cu121\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\"}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
+                  "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "INST-RD-CR-VAL-KIND-REQUIRED — COMP-1-03: Create без instanceKind → sync 400 INVALID_ARGUMENT 'instanceKind is required' (сильный первый required-дискриминатор). [verifies COMP-1-03 · ECP required-field]",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
@@ -1325,7 +1446,7 @@
       ]
     },
     {
-      "name": "INST-RD-CR-VAL-KIND-CONTAINER-WITH-VMSPEC — COMP-1-03: Create instanceKind=CONTAINER с ТОЛЬКО vmSpec (wrong-arm, containerSpec опущен) → sync 400 'vmSpec is not allowed when instanceKind is CONTAINER'. containerSpec СНЯТ (иначе оба spec-arm'а → protojson 'oneof already set', а не app-контракт). [verifies COMP-1-03 · decision-table kind×spec]",
+      "name": "INST-RD-CR-VAL-KIND-CONTAINER-WITH-VMSPEC — COMP-1-03: Create instanceKind=CONTAINER с чужой ветвью spec (vmSpec, containerSpec опущен) → sync 400 ПО ВИДУ: 'instanceKind CONTAINER is not creatable yet'. Клетка «вид CONTAINER × чужая ветвь» решается ВИДОМ: отказ по виду короткозамыкает раньше сверки ветви, и проверки «vmSpec не разрешён при CONTAINER» в коде НЕТ — ветвь, до которой нет достижимого пути, была бы документацией несуществующего поведения. Живая клетка зеркала (VM × containerSpec) проверяется своим кейсом INST-RD-CR-VAL-KIND-VM-WITH-CONTAINERSPEC. containerSpec СНЯТ из тела (иначе оба spec-arm'а → protojson 'oneof already set', а не app-контракт). [verifies COMP-1-03 · decision-table kind×spec]",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -1370,7 +1491,8 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: vmSpec not allowed when CONTAINER', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('vmspec is not allowed when instancekind is container'));"
+                  "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind container is not creatable yet'));",
+                  "pm.test('деталь несёт имя поля вида', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"
                 ]
               }
             }
@@ -1521,7 +1643,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya33",
+          "name": "assert-op-success-rya34",
           "request": {
             "method": "GET",
             "header": [
@@ -1591,7 +1713,7 @@
           ]
         },
         {
-          "name": "create-rya34",
+          "name": "create-rya35",
           "request": {
             "method": "POST",
             "header": [
@@ -1714,7 +1836,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya35",
+          "name": "assert-op-success-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -1819,7 +1941,7 @@
           ]
         },
         {
-          "name": "del-inst-rya36",
+          "name": "del-inst-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1934,7 +2056,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya37",
+          "name": "cleanup-mt-rya38",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2295,7 +2417,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya38",
+          "name": "assert-op-error-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -2593,7 +2715,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya39",
+          "name": "assert-op-success-rya40",
           "request": {
             "method": "GET",
             "header": [
@@ -2663,7 +2785,7 @@
           ]
         },
         {
-          "name": "cr-boot-bare-id-ok-rya40",
+          "name": "cr-boot-bare-id-ok-rya41",
           "request": {
             "method": "POST",
             "header": [
@@ -2786,7 +2908,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya41",
+          "name": "assert-op-success-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -2838,7 +2960,7 @@
           ]
         },
         {
-          "name": "del-inst-rya42",
+          "name": "del-inst-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2953,7 +3075,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya43",
+          "name": "cleanup-mt-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3356,7 +3478,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya44",
+          "name": "assert-op-success-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -3426,7 +3548,7 @@
           ]
         },
         {
-          "name": "create-rya45",
+          "name": "create-rya46",
           "request": {
             "method": "POST",
             "header": [
@@ -3549,7 +3671,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya46",
+          "name": "assert-op-success-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -3655,7 +3777,7 @@
           ]
         },
         {
-          "name": "del-inst-rya47",
+          "name": "del-inst-rya48",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3770,7 +3892,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya48",
+          "name": "cleanup-mt-rya49",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4173,7 +4295,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya49",
+          "name": "assert-op-success-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -4243,7 +4365,7 @@
           ]
         },
         {
-          "name": "create-rya50",
+          "name": "create-rya51",
           "request": {
             "method": "POST",
             "header": [
@@ -4366,7 +4488,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya51",
+          "name": "assert-op-success-rya52",
           "request": {
             "method": "GET",
             "header": [
@@ -4471,7 +4593,7 @@
           ]
         },
         {
-          "name": "del-inst-rya52",
+          "name": "del-inst-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4586,7 +4708,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya53",
+          "name": "cleanup-mt-rya54",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4935,7 +5057,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya54",
+          "name": "assert-op-success-rya55",
           "request": {
             "method": "GET",
             "header": [
@@ -5005,7 +5127,7 @@
           ]
         },
         {
-          "name": "create-rya55",
+          "name": "create-rya56",
           "request": {
             "method": "POST",
             "header": [
@@ -5128,7 +5250,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya56",
+          "name": "assert-op-success-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -5233,7 +5355,7 @@
           ]
         },
         {
-          "name": "del-inst-rya57",
+          "name": "del-inst-rya58",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5348,7 +5470,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya58",
+          "name": "cleanup-mt-rya59",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6267,7 +6389,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya59",
+          "name": "assert-op-success-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -6337,7 +6459,7 @@
           ]
         },
         {
-          "name": "create-1-rya60",
+          "name": "create-1-rya61",
           "request": {
             "method": "POST",
             "header": [
@@ -6460,7 +6582,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya61",
+          "name": "assert-op-success-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -6512,7 +6634,7 @@
           ]
         },
         {
-          "name": "create-2-dup-rya62",
+          "name": "create-2-dup-rya63",
           "request": {
             "method": "POST",
             "header": [
@@ -6624,7 +6746,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya63",
+          "name": "assert-op-error-rya64",
           "request": {
             "method": "GET",
             "header": [
@@ -6676,7 +6798,7 @@
           ]
         },
         {
-          "name": "del-inst-rya64",
+          "name": "del-inst-rya65",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6791,7 +6913,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya65",
+          "name": "cleanup-mt-rya66",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7044,7 +7166,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya66",
+          "name": "assert-op-error-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -7241,7 +7363,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya67",
+          "name": "assert-op-success-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -7311,7 +7433,7 @@
           ]
         },
         {
-          "name": "seed-inst-upd-rya68",
+          "name": "seed-inst-upd-rya69",
           "request": {
             "method": "POST",
             "header": [
@@ -7434,7 +7556,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya69",
+          "name": "assert-op-success-rya70",
           "request": {
             "method": "GET",
             "header": [
@@ -7651,7 +7773,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya70",
+          "name": "assert-op-success-rya71",
           "request": {
             "method": "GET",
             "header": [
@@ -7703,7 +7825,7 @@
           ]
         },
         {
-          "name": "get-rya71",
+          "name": "get-rya72",
           "request": {
             "method": "GET",
             "header": [
@@ -7758,7 +7880,7 @@
           ]
         },
         {
-          "name": "del-inst-rya72",
+          "name": "del-inst-rya73",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7873,7 +7995,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya73",
+          "name": "cleanup-mt-rya74",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8168,7 +8290,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya74",
+          "name": "assert-op-success-rya75",
           "request": {
             "method": "GET",
             "header": [
@@ -8238,7 +8360,7 @@
           ]
         },
         {
-          "name": "seed-inst-imm-rya75",
+          "name": "seed-inst-imm-rya76",
           "request": {
             "method": "POST",
             "header": [
@@ -8361,7 +8483,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya76",
+          "name": "assert-op-success-rya77",
           "request": {
             "method": "GET",
             "header": [
@@ -8465,7 +8587,7 @@
           ]
         },
         {
-          "name": "upd-kind-immutable-rya77",
+          "name": "upd-kind-immutable-rya78",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8531,7 +8653,7 @@
           ]
         },
         {
-          "name": "upd-zone-immutable-rya78",
+          "name": "upd-zone-immutable-rya79",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8597,7 +8719,7 @@
           ]
         },
         {
-          "name": "upd-bootsource-reinstall-rya79",
+          "name": "upd-bootsource-reinstall-rya80",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8663,7 +8785,7 @@
           ]
         },
         {
-          "name": "upd-unknown-mask-rya80",
+          "name": "upd-unknown-mask-rya81",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8728,7 +8850,7 @@
           ]
         },
         {
-          "name": "upd-stopped-gate-rya81",
+          "name": "upd-stopped-gate-rya82",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8794,7 +8916,7 @@
           ]
         },
         {
-          "name": "del-inst-rya82",
+          "name": "del-inst-rya83",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8909,7 +9031,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya83",
+          "name": "cleanup-mt-rya84",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9204,7 +9326,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya84",
+          "name": "assert-op-success-rya85",
           "request": {
             "method": "GET",
             "header": [
@@ -9274,7 +9396,7 @@
           ]
         },
         {
-          "name": "seed-inst-nb-rya85",
+          "name": "seed-inst-nb-rya86",
           "request": {
             "method": "POST",
             "header": [
@@ -9397,7 +9519,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya86",
+          "name": "assert-op-success-rya87",
           "request": {
             "method": "GET",
             "header": [
@@ -9614,7 +9736,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya87",
+          "name": "assert-op-success-rya88",
           "request": {
             "method": "GET",
             "header": [
@@ -9666,7 +9788,7 @@
           ]
         },
         {
-          "name": "get-rya88",
+          "name": "get-rya89",
           "request": {
             "method": "GET",
             "header": [
@@ -9719,7 +9841,7 @@
           ]
         },
         {
-          "name": "del-inst-rya89",
+          "name": "del-inst-rya90",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9834,7 +9956,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya90",
+          "name": "cleanup-mt-rya91",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10129,7 +10251,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya91",
+          "name": "assert-op-success-rya92",
           "request": {
             "method": "GET",
             "header": [
@@ -10199,7 +10321,7 @@
           ]
         },
         {
-          "name": "seed-inst-sshpub-rya92",
+          "name": "seed-inst-sshpub-rya93",
           "request": {
             "method": "POST",
             "header": [
@@ -10322,7 +10444,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya93",
+          "name": "assert-op-success-rya94",
           "request": {
             "method": "GET",
             "header": [
@@ -10499,7 +10621,7 @@
           ]
         },
         {
-          "name": "del-inst-rya94",
+          "name": "del-inst-rya95",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10614,7 +10736,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya95",
+          "name": "cleanup-mt-rya96",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10909,7 +11031,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya96",
+          "name": "assert-op-success-rya97",
           "request": {
             "method": "GET",
             "header": [
@@ -10979,7 +11101,7 @@
           ]
         },
         {
-          "name": "seed-inst-networ-rya97",
+          "name": "seed-inst-networ-rya98",
           "request": {
             "method": "POST",
             "header": [
@@ -11102,7 +11224,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya98",
+          "name": "assert-op-success-rya99",
           "request": {
             "method": "GET",
             "header": [
@@ -11279,7 +11401,7 @@
           ]
         },
         {
-          "name": "del-inst-rya99",
+          "name": "del-inst-rya100",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11394,7 +11516,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya100",
+          "name": "cleanup-mt-rya101",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11689,7 +11811,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya101",
+          "name": "assert-op-success-rya102",
           "request": {
             "method": "GET",
             "header": [
@@ -11759,7 +11881,7 @@
           ]
         },
         {
-          "name": "seed-inst-serial-rya102",
+          "name": "seed-inst-serial-rya103",
           "request": {
             "method": "POST",
             "header": [
@@ -11882,7 +12004,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya103",
+          "name": "assert-op-success-rya104",
           "request": {
             "method": "GET",
             "header": [
@@ -12059,7 +12181,7 @@
           ]
         },
         {
-          "name": "del-inst-rya104",
+          "name": "del-inst-rya105",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12174,7 +12296,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya105",
+          "name": "cleanup-mt-rya106",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12469,7 +12591,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya106",
+          "name": "assert-op-success-rya107",
           "request": {
             "method": "GET",
             "header": [
@@ -12539,7 +12661,7 @@
           ]
         },
         {
-          "name": "seed-inst-serp-rya107",
+          "name": "seed-inst-serp-rya108",
           "request": {
             "method": "POST",
             "header": [
@@ -12662,7 +12784,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya108",
+          "name": "assert-op-success-rya109",
           "request": {
             "method": "GET",
             "header": [
@@ -12829,7 +12951,7 @@
           ]
         },
         {
-          "name": "del-inst-rya109",
+          "name": "del-inst-rya110",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12944,7 +13066,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya110",
+          "name": "cleanup-mt-rya111",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13239,7 +13361,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya111",
+          "name": "assert-op-success-rya112",
           "request": {
             "method": "GET",
             "header": [
@@ -13309,7 +13431,7 @@
           ]
         },
         {
-          "name": "seed-inst-fa-rya112",
+          "name": "seed-inst-fa-rya113",
           "request": {
             "method": "POST",
             "header": [
@@ -13432,7 +13554,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya113",
+          "name": "assert-op-success-rya114",
           "request": {
             "method": "GET",
             "header": [
@@ -13536,7 +13658,7 @@
           ]
         },
         {
-          "name": "get-rya114",
+          "name": "get-rya115",
           "request": {
             "method": "GET",
             "header": [
@@ -13595,7 +13717,7 @@
           ]
         },
         {
-          "name": "del-inst-rya115",
+          "name": "del-inst-rya116",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13710,7 +13832,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya116",
+          "name": "cleanup-mt-rya117",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14005,7 +14127,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya117",
+          "name": "assert-op-success-rya118",
           "request": {
             "method": "GET",
             "header": [
@@ -14075,7 +14197,7 @@
           ]
         },
         {
-          "name": "seed-inst-lst-rya118",
+          "name": "seed-inst-lst-rya119",
           "request": {
             "method": "POST",
             "header": [
@@ -14198,7 +14320,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya119",
+          "name": "assert-op-success-rya120",
           "request": {
             "method": "GET",
             "header": [
@@ -14407,7 +14529,7 @@
           ]
         },
         {
-          "name": "del-inst-rya120",
+          "name": "del-inst-rya121",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14522,7 +14644,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya121",
+          "name": "cleanup-mt-rya122",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15029,7 +15151,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya122",
+          "name": "assert-op-success-rya123",
           "request": {
             "method": "GET",
             "header": [
@@ -15099,7 +15221,7 @@
           ]
         },
         {
-          "name": "seed-inst-del-rya123",
+          "name": "seed-inst-del-rya124",
           "request": {
             "method": "POST",
             "header": [
@@ -15222,7 +15344,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya124",
+          "name": "assert-op-success-rya125",
           "request": {
             "method": "GET",
             "header": [
@@ -15326,7 +15448,7 @@
           ]
         },
         {
-          "name": "delete-1-rya125",
+          "name": "delete-1-rya126",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15476,7 +15598,7 @@
           ]
         },
         {
-          "name": "recreate-same-name-rya126",
+          "name": "recreate-same-name-rya127",
           "request": {
             "method": "POST",
             "header": [
@@ -15599,7 +15721,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya127",
+          "name": "assert-op-success-rya128",
           "request": {
             "method": "GET",
             "header": [
@@ -15651,7 +15773,7 @@
           ]
         },
         {
-          "name": "delete-2-rya128",
+          "name": "delete-2-rya129",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15766,7 +15888,7 @@
           ]
         },
         {
-          "name": "cleanup-mt-rya129",
+          "name": "cleanup-mt-rya130",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16144,7 +16266,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya130",
+          "name": "assert-op-success-rya131",
           "request": {
             "method": "GET",
             "header": [
@@ -16214,7 +16336,7 @@
           ]
         },
         {
-          "name": "seed-inst-mtfk-rya131",
+          "name": "seed-inst-mtfk-rya132",
           "request": {
             "method": "POST",
             "header": [
@@ -16337,7 +16459,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya132",
+          "name": "assert-op-success-rya133",
           "request": {
             "method": "GET",
             "header": [
@@ -16441,7 +16563,7 @@
           ]
         },
         {
-          "name": "del-mt-inuse-rya133",
+          "name": "del-mt-inuse-rya134",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16584,7 +16706,7 @@
           ]
         },
         {
-          "name": "assert-op-error-rya134",
+          "name": "assert-op-error-rya135",
           "request": {
             "method": "GET",
             "header": [
@@ -16655,7 +16777,7 @@
           ]
         },
         {
-          "name": "mt-still-readable-rya135",
+          "name": "mt-still-readable-rya136",
           "request": {
             "method": "GET",
             "header": [
@@ -16708,7 +16830,7 @@
           ]
         },
         {
-          "name": "del-inst-mtfk-rya136",
+          "name": "del-inst-mtfk-rya137",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16823,7 +16945,7 @@
           ]
         },
         {
-          "name": "del-mt-freed-rya137",
+          "name": "del-mt-freed-rya138",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16966,7 +17088,7 @@
           ]
         },
         {
-          "name": "assert-op-success-rya138",
+          "name": "assert-op-success-rya139",
           "request": {
             "method": "GET",
             "header": [

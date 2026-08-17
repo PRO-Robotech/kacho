@@ -208,13 +208,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "raw": "{{baseUrl}}/operations/{{adm1PoolOp}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{opId}}"
+                "{{adm1PoolOp}}"
               ]
             }
           },
@@ -224,7 +224,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId')) {",
+                  "if (!pm.environment.get('adm1PoolOp')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
@@ -781,13 +781,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "raw": "{{baseUrl}}/operations/{{adm1EqOp}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{opId}}"
+                "{{adm1EqOp}}"
               ]
             }
           },
@@ -797,7 +797,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId')) {",
+                  "if (!pm.environment.get('adm1EqOp')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
@@ -1337,13 +1337,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "raw": "{{baseUrl}}/operations/{{adm1DelOp}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{opId}}"
+                "{{adm1DelOp}}"
               ]
             }
           },
@@ -1353,7 +1353,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId')) {",
+                  "if (!pm.environment.get('adm1DelOp')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",

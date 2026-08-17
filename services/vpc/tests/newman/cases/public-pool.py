@@ -59,7 +59,7 @@ CASES.append(Case(
                           "pm.environment.set('adm1PoolOp', j.id);",
                           "pm.environment.set('adm1PoolId', "
                           "(j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id)) || '');"]),
-        poll_operation_until_done(id_expr="pm.environment.get('adm1PoolOp')"),
+        poll_operation_until_done(op_var="adm1PoolOp"),
         Step(name="get-after-create", method="GET", path=POOLS + "/{{adm1PoolId}}",
              auth="jwtBootstrap",
              test_script=[*assert_status(200),
@@ -164,7 +164,7 @@ CASES.append(Case(
                           "pm.environment.set('adm1EqOp', j.id);",
                           "pm.environment.set('adm1EqPubId', "
                           "(j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id)) || '');"]),
-        poll_operation_until_done(id_expr="pm.environment.get('adm1EqOp')"),
+        poll_operation_until_done(op_var="adm1EqOp"),
         # Созданное ПУБЛИЧНЫМ глаголом видно ВНУТРЕННИМ чтением — те же поля.
         Step(name="read-internal", method="GET", path=POOLS + "/{{adm1EqPubId}}", internal=True,
              auth="jwtBootstrap",
@@ -222,7 +222,7 @@ CASES.append(Case(
              auth="jwtBootstrap",
              test_script=[*assert_status(200), *assert_operation_envelope(),
                           "pm.environment.set('adm1DelOp', pm.response.json().id);"]),
-        poll_operation_until_done(id_expr="pm.environment.get('adm1DelOp')"),
+        poll_operation_until_done(op_var="adm1DelOp"),
         Step(name="get-after-delete", method="GET", path=POOLS + "/{{adm1PoolId}}",
              auth="jwtBootstrap",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
