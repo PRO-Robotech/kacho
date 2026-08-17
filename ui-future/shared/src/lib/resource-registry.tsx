@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 import { Tag } from "antd";
+import { StopOutlined, UnlockOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
@@ -32,6 +33,8 @@ import {
   roleIsSystem,
   targetKind,
   targetResources,
+  userBlockPath,
+  userUnblockPath,
   type AccessBindingTarget,
   type DefinitionTier,
 } from "@shared/api/iam";
@@ -54,7 +57,7 @@ import {
   targetsField,
 } from "@shared/lib/target-group-form";
 import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
-import type { ResourceColumn, ResourceSpec } from "./resource-spec";
+import type { ResourceColumn, ResourceSpec, RowVerbState } from "./resource-spec";
 // Подписи сущностей и разделов — из единственного источника (см. entity-names.ts):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "./entity-names";
@@ -657,6 +660,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 
   // User — read+delete only (создаётся через signup / InternalUserService).
+  //
+  // Запрет участия и его возврат — ДЕЙСТВИЯ (`:block` / `:unblock`), а не
+  // правка поля: у действия нет маски, поэтому «забыть поле» и выключить всех,
+  // кого коснулся, здесь невозможно by construction. Права решает край
+  // (`v_update` на этом пользователе); консоль ничего не предугадывает — при
+  // отказе прилетит 403, и его покажет общий механизм исхода операции.
+  //
+  // Объявление живёт ЗДЕСЬ, а не своей страницей: страница мимо общей оболочки
+  // у этого ресурса уже была, её не рендерил ни один маршрут, и вместе с ней с
+  // экрана ушли оба глагола (#421 → #440).
   // Registry-запись нужна для ref-резолва (Account.owner_user_id) и RefNameLink;
   // отдельная generic-страница не используется — UI остаётся кастомным.
   users: {
@@ -688,6 +701,71 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "ID", path: "id", format: "uid-short" },
       { header: "Внешний идентификатор", path: "external_id", format: "uid-short" },
       { header: "Создан", path: "created_at", format: "datetime" },
+    ],
+    rowVerbs: [
+      {
+        // ОДИН пункт на три состояния, а не пара кнопок: состояние здесь —
+        // предмет, и предлагать «запретить» уже запрещённому значит предлагать
+        // вызов, который ничего не изменит.
+        key: "participation",
+        resolve: (row, ctx): RowVerbState | null => {
+          const id = (row.id as string | undefined) ?? "";
+          const who = (row.email as string | undefined) || id;
+          const status = row.invite_status as string | undefined;
+
+          // Неподтверждённое приглашение край отвергает: внешней личности у
+          // него ещё нет, а перевод в действующее — это активация при первом
+          // входе, другой путь. Пункт остаётся ВИДИМЫМ и называет причину:
+          // скрытый пункт неотличим от возможности, которой нет.
+          if (status === "PENDING") {
+            return {
+              label: "Запретить участие",
+              icon: <StopOutlined />,
+              disabledReason:
+                "Приглашение ещё не подтверждено — запрещать нечего. Отзовите приглашение.",
+              path: userBlockPath(id),
+              confirmTitle: "Запретить участие?",
+              confirmText: "",
+              okText: "Запретить",
+              progressTitle: "Запрет участия",
+            };
+          }
+
+          if (status === "BLOCKED") {
+            return {
+              label: "Вернуть участие",
+              icon: <UnlockOutlined />,
+              path: userUnblockPath(id),
+              confirmTitle: "Вернуть участие?",
+              confirmText: `Разрешить «${who}» снова входить в этот аккаунт.`,
+              okText: "Вернуть",
+              progressTitle: "Возврат участия",
+            };
+          }
+
+          // Самоблокировка НЕ запрещается, но предупреждение говорит прямо, чем
+          // она кончится: самостоятельного пути снятия не существует по
+          // построению (восстановление пароля запрет не снимает). Промолчать —
+          // значит дать оператору выключить себя одним нажатием и узнать цену
+          // потом.
+          const isSelf = !!ctx.selfId && ctx.selfId === id;
+          return {
+            label: "Запретить участие",
+            icon: <StopOutlined />,
+            danger: true,
+            path: userBlockPath(id),
+            confirmTitle: isSelf ? "Запретить участие СЕБЕ?" : "Запретить участие?",
+            confirmText: isSelf
+              ? `Вы запрещаете участие себе («${who}»). Снять запрет самостоятельно будет НЕЛЬЗЯ: ` +
+                `восстановление пароля запрет не снимает. Вернуть доступ сможет только ` +
+                `администратор аккаунта или администратор облака.`
+              : `«${who}» больше не сможет входить в этот аккаунт. Уже выданный токен доживёт свой срок; ` +
+                `новый не выдадут. Участие в других аккаунтах не затрагивается.`,
+            okText: isSelf ? "Да, запретить себе" : "Запретить",
+            progressTitle: "Запрет участия",
+          };
+        },
+      },
     ],
     docs: [
       { label: "Пользователи и приглашения", href: "#" },

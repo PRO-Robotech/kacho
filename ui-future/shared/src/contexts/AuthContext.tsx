@@ -220,6 +220,24 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/**
+ * Идентификатор строки членства ВЫЗЫВАЮЩЕГО — либо `undefined`.
+ *
+ * Отдельно от `useAuth` НАМЕРЕННО, и различие не стилистическое. `useAuth`
+ * отказывает вне провайдера, и это верно для страниц, которым личность
+ * необходима. Здесь личность — уточнение предупреждения («это вы»), и её
+ * отсутствие обязано означать «предупреждения не будет», а не «список не
+ * отрисуется»: общий вид строки живёт и в поддеревьях, где провайдера нет
+ * (встроенные таблицы, пробы модулей).
+ *
+ * `user_id` в `/iam/v1/me` и есть каноническая действующая строка вызывающего;
+ * у машинного принципала его нет вовсе — тогда «своей строки» не существует, и
+ * это правильный `undefined`, а не пропущенный случай.
+ */
+export function useSelfUserId(): string | undefined {
+  return useContext(AuthContext)?.whoami?.user_id;
+}
+
 /** True если MFA свежий (для RequireMFAFresh guard). */
 export function isMfaFresh(value: { mfaFreshUntil: number }): boolean {
   return value.mfaFreshUntil > Math.floor(Date.now() / 1000);
