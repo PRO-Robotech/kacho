@@ -578,21 +578,49 @@ export function antdStub(): Record<string, unknown> {
     // пока пункты уезжали в атрибут, «какие вкладки обещаны» было ненаблюдаемо,
     // и утверждение «вкладки, которой быть не должно, нет» зеленело на пустом
     // заменителе — то есть на всём сразу.
+    //
+    // ФОРМА ВЗЯТА У НАСТОЯЩЕГО, а не изобретена (#588). Прежде заменитель рисовал
+    // пункты `<button>` с `aria-current="page"` — ни того, ни другого меню antd
+    // не производит НИКОГДА, и это ровно та ловушка, которую этот файл называет
+    // абзацем про `Segmented` (#418): утверждение оказывается прибито к форме
+    // дублёра и переживает продукт. Переход на настоящий рендер оставил бы такие
+    // пробы зелёными на разметке, которой в консоли нет.
+    //
+    // Сверено с собранным `antd` в дереве: корень — `<ul role="menu">`; пункт —
+    // `<li role="menuitem">` с `aria-disabled` и классами
+    // `ant-menu-item{,-selected,-disabled}`; разделитель — `<li role="separator"
+    // class="ant-menu-item-divider">`. Выбранность помечается КЛАССОМ, а не
+    // `aria-selected`: его настоящий пункт ставит только при `role="option"`.
+    //
+    // Отклонение допускается одно и только в сторону строгости: запрещённый пункт
+    // не зовёт обработчик — как и у настоящего.
     Menu: ({ items, selectedKeys, onClick, children }: MenuProps) =>
       React.createElement(
-        "nav",
-        null,
+        "ul",
+        { role: "menu" },
         (items ?? []).map((item, i) =>
           item.type === "divider"
-            ? React.createElement("hr", { key: item.key ?? `d${i}` })
+            ? React.createElement("li", {
+                key: item.key ?? `d${i}`,
+                role: "separator",
+                className: "ant-menu-item-divider",
+              })
             : React.createElement(
-                "button",
+                "li",
                 {
                   key: item.key ?? i,
-                  type: "button",
-                  disabled: Boolean(item.disabled),
-                  "aria-current": (selectedKeys ?? []).includes(item.key ?? "") ? "page" : undefined,
-                  onClick: () => onClick?.({ key: item.key ?? "" }),
+                  role: "menuitem",
+                  "aria-disabled": Boolean(item.disabled),
+                  className: [
+                    "ant-menu-item",
+                    (selectedKeys ?? []).includes(item.key ?? "") ? "ant-menu-item-selected" : "",
+                    item.disabled ? "ant-menu-item-disabled" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" "),
+                  onClick: () => {
+                    if (!item.disabled) onClick?.({ key: item.key ?? "" });
+                  },
                 },
                 item.label,
               ),
