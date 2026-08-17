@@ -50,7 +50,7 @@ import {
   type ResourceSpec,
 } from "@shared/lib/resource-registry";
 import { operationsListPath } from "@shared/lib/operations-subroute";
-import { childListPathScope, relatedListQuery } from "@shared/lib/related-list-query";
+import { childListPathScope, hasUnresolvedPathSegment, relatedListQuery } from "@shared/lib/related-list-query";
 import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
@@ -207,7 +207,7 @@ function RelatedTable({
   // значит пустота здесь означает «ещё не спрашивали», а не «детей нет». Выдать
   // её за отсутствие значило бы предложить создать первый тег поверх непрочитанного
   // списка.
-  const pathBlocked = /\{[^}]+\}/.test(childSpec.apiPath) && !pathScoped;
+  const pathBlocked = hasUnresolvedPathSegment(childSpec.apiPath) && !pathScoped;
 
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
   // показывается внутри таблицы). createLabel передаём отдельно (тот же текст).
@@ -293,10 +293,24 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
       ? location.pathname.slice(0, mIdx + marker.length)
       : `${resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`}/${uid}`;
 
+  // Адрес карточки собирается склейкой, а адрес ресурса бывает АДРЕСУЕМЫМ ЧЕРЕЗ
+  // РОДИТЕЛЯ (`/registry/v1/registries/{registryId}/repositories`). Тогда в
+  // склеенном пути остаётся подстановка, закрыть которую этот маршрут не может:
+  // родителя URL карточки не называет.
+  //
+  // Списочное чтение той же оболочки это уже охраняет (`resolveListPath` →
+  // `resolved:false` ⇒ запрос не уходит). Детальное чтение охраны не имело, и
+  // подстановка уезжала в адрес ЛИТЕРАЛОМ — два чтения ОДНОГО ресурса с разной
+  // дисциплиной, из которых верно одно. Ответ края на такой адрес неотличим от
+  // «ресурса нет», поэтому дефект тих: пользователь видит отказ, а не то, что
+  // спросили не то.
+  const detailPath = `${spec.apiPath}/${uid}`;
+  const detailAddressable = !hasUnresolvedPathSegment(detailPath);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "shell-detail", uid],
-    queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
-    enabled: !!uid,
+    queryFn: () => api.get<Record<string, unknown>>(detailPath),
+    enabled: !!uid && detailAddressable,
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -402,6 +416,24 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     return (
       <div style={{ padding: 48, textAlign: "center" }}>
         <Spin />
+      </div>
+    );
+  }
+  // Запроса НЕ БЫЛО — и сказать об этом надо именно так. Ветка стоит ПЕРЕД
+  // отказом: `ErrorResult` здесь сообщил бы, что ресурс не найден, то есть
+  // утверждение о ресурсе, которого никто не спрашивал. «Не спрашивали» и
+  // «спросили и не нашли» — разные факты о мире, и путать их нельзя ни в
+  // сообщении пользователю, ни в собственной отладке.
+  if (!detailAddressable) {
+    return (
+      <div style={{ padding: 48, maxWidth: 640 }}>
+        <Typography.Title level={4} style={{ marginTop: 0 }}>
+          Адрес неполон — запрос не отправлялся
+        </Typography.Title>
+        <Typography.Paragraph type="secondary">
+          {spec.singular} адресуется через родителя, а адрес этой страницы родителя не называет. Запрос не отправлен:
+          ответ на неполный адрес был бы утверждением о ресурсе, которого никто не спрашивал.
+        </Typography.Paragraph>
       </div>
     );
   }

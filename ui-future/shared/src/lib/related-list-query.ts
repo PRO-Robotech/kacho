@@ -30,6 +30,36 @@ export function relatedListQuery(
 /** snake_case поле спеки → camelCase подстановка пути (registry_id → registryId). */
 const toPathCamel = (s: string) => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
 
+/**
+ * Что такое подстановка адреса — ОДНО объявление на всю консоль.
+ *
+ * Предикат читают три разных решения: чем сужается дочерний список
+ * (`childListPathScope` ниже), уходит ли списочный запрос (`resolveListPath`) и
+ * уходит ли запрос КАРТОЧКИ (`ResourceShell`). Каждый держал свою копию
+ * выражения, и это ровно тот случай, когда копии расходятся молча: на валидном
+ * входе все три согласны, а разойдутся они на форме подстановки, которую кто-то
+ * один научится читать.
+ *
+ * Выражение объявлено глобальным намеренно — им пользуется `pathPlaceholders`;
+ * `String.prototype.match` с глобальным выражением состояния не хранит, поэтому
+ * общий экземпляр здесь безопасен.
+ */
+const PATH_PLACEHOLDER = /\{[^}]+\}/g;
+
+/** Подстановки адреса по порядку: `["{registryId}", "{repository}"]`. */
+export function pathPlaceholders(apiPath: string): string[] {
+  return apiPath.match(PATH_PLACEHOLDER) ?? [];
+}
+
+/**
+ * В адресе осталась подстановка — значит закрыть её нечем, и запрос по нему
+ * отправлять НЕЛЬЗЯ: он уйдёт с литералом `{registryId}` и вернётся отказом,
+ * неотличимым от «такого ресурса нет».
+ */
+export function hasUnresolvedPathSegment(apiPath: string): boolean {
+  return pathPlaceholders(apiPath).length > 0;
+}
+
 export interface ChildListPathScope {
   /** Значения подстановок пути, названные связью и найденные у родителя. */
   pathParams: Record<string, string>;
@@ -73,7 +103,7 @@ export function childListPathScope(
   parentRow: Record<string, unknown> | undefined,
   parentId: string,
 ): ChildListPathScope {
-  const placeholders: string[] = apiPath.match(/\{[^}]+\}/g) ?? [];
+  const placeholders = pathPlaceholders(apiPath);
   if (placeholders.length === 0) return { pathParams: {}, pathScoped: false };
 
   const pathParams: Record<string, string> = {};
