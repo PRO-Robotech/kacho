@@ -8,13 +8,21 @@
 //   • EXTERNAL:
 //       — «Публичный (авто)»   → public {}: платформенный public IP;
 //       — «Линк адреса»        → address_id: линк заранее созданного public Address.
+//   • обе схемы:
+//       — «Не задавать»        → семейство опускается в wire целиком.
 //
 // Раскладка — одна строка на семейство: слева единый label («IPv4 Адрес» /
 // «IPv6 Адрес»), справа — переключатель режима (segmented) и соответствующий
-// селектор (без собственных под-лейблов). Отдельного enable-тоглера семейства
-// НЕТ: семейство считается заданным, если у активного режима есть значение
-// (subnet_id / address_id непусты, либо режим public). Пустое семейство целиком
-// опускается в wire — так пустой addressId/subnetId никогда не уходит на бэкенд.
+// селектор (без собственных под-лейблов).
+//
+// ОТКАЗ ОТ СЕМЕЙСТВА — ОТДЕЛЬНЫЙ РЕЖИМ, а не пустое значение источника.
+// Сервис требует источник хотя бы для ОДНОГО семейства, поэтому балансировщик
+// только на IPv4 законен. Прежде отказ выражался лишь косвенно — выбрать ветвь
+// ссылки и оставить её пустой, — и для EXTERNAL это был единственный путь:
+// режим «публичный» источник даёт БЕЗУСЛОВНО и стоял умолчанием у обоих
+// семейств, так что на провод уезжали оба. Пустая ссылка семейство по-прежнему
+// опускает (пустой addressId/subnetId на бэкенд не уходит), но НАЗЫВАЕТСЯ отказ
+// теперь своим именем.
 //
 // Кандидаты фильтруются по placement балансировщика:
 //   • подсеть-источник — только подсети совпадающего placement_type;
@@ -43,8 +51,9 @@ type Family = "v4" | "v6";
 // VipMode — режим источника VIP семейства:
 //   subnet  — авто-аллокация из подсети (INTERNAL);
 //   address — линк существующего Address (INTERNAL internal / EXTERNAL public);
-//   public  — платформенный public IP (EXTERNAL).
-export type VipMode = "subnet" | "address" | "public";
+//   public  — платформенный public IP (EXTERNAL);
+//   off     — семейство НЕ задаётся (источник в тело не уезжает).
+export type VipMode = "subnet" | "address" | "public" | "off";
 
 interface Props {
   value: Record<string, unknown>;
@@ -98,39 +107,39 @@ export function lbPlacementTypeFromPlacement(placement: string | undefined): "RE
 }
 
 // effectiveVipMode — нормализует режим под схему балансировщика: INTERNAL
-// допускает {subnet, address} (default subnet), EXTERNAL — {public, address}
-// (default public). Устаревший режим (после смены type) схлопывается в валидный.
+// допускает {subnet, address, off} (default subnet), EXTERNAL — {public,
+// address, off} (default public). Устаревший режим (после смены type)
+// схлопывается в валидный.
+//
+// `off` законен при ЛЮБОЙ схеме: это не источник, а отказ от семейства, и
+// зависеть от схемы ему не от чего.
 export function effectiveVipMode(type: string, mode: string | undefined): VipMode {
-  const valid: VipMode[] = type === "EXTERNAL" ? ["public", "address"] : ["subnet", "address"];
+  const valid: VipMode[] = type === "EXTERNAL" ? ["public", "address", "off"] : ["subnet", "address", "off"];
   const def: VipMode = type === "EXTERNAL" ? "public" : "subnet";
   return valid.includes(mode as VipMode) ? (mode as VipMode) : def;
 }
 
-// buildVipSource — собирает wire-oneof одного семейства из UI-представления:
-// ровно один из subnet_id / address_id / public {}. Режим нормализуется под type.
-// Не проверяет непустоту значения (см. buildVipSourceOrNull для guard).
-export function buildVipSource(
-  type: string,
-  mode: string | undefined,
-  fam: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  const em = effectiveVipMode(type, mode);
-  if (em === "public") return { public: {} };
-  if (em === "address") return { address_id: (fam?.address_id as string) || "" };
-  return { subnet_id: (fam?.subnet_id as string) || "" };
-}
-
-// buildVipSourceOrNull — как buildVipSource, но возвращает null, если активный
-// режим не заполнен (пустой subnet_id / address_id). Так семейство без выбора
-// целиком опускается в wire, а не уходит как {address_id:""} / {subnet_id:""},
-// который бэкенд отвергает («Illegal argument addressId»). Режим public всегда
-// валиден (VIP выделяется платформой).
+// buildVipSourceOrNull — wire-ветвь oneof одного семейства, либо null, если
+// семейство не задано. Режим нормализуется под type.
+//
+// Не задано — это ТРИ случая, и все они дают null:
+//   • `off` — арендатор ЯВНО отказался от семейства (балансировщик только на
+//     IPv4 или только на IPv6 — законный ресурс: сервис требует источник хотя
+//     бы для одного семейства, не для обоих);
+//   • пустой subnet_id / address_id — ветвь ссылки без ссылки; уйди она телом
+//     как {address_id:""}, сервис ответил бы жалобой на поле, которого
+//     оператор не называл;
+//   • ничего не выбрано вовсе.
+// Режим `public` источник даёт ВСЕГДА — VIP выделяет платформа, называть
+// нечего. Именно поэтому явный `off` необходим: без него внешний
+// балансировщик по умолчанию слал ОБА семейства, и отказаться было нечем.
 export function buildVipSourceOrNull(
   type: string,
   mode: string | undefined,
   fam: Record<string, unknown> | undefined,
 ): Record<string, unknown> | null {
   const em = effectiveVipMode(type, mode);
+  if (em === "off") return null;
   if (em === "public") return { public: {} };
   if (em === "address") return (fam?.address_id as string) ? { address_id: fam!.address_id } : null;
   return (fam?.subnet_id as string) ? { subnet_id: fam!.subnet_id } : null;
@@ -210,16 +219,15 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
 
   const set = (path: string, v: unknown) => onChange(setByPath(value, path, v));
 
+  // «Не задавать» стоит рядом с источниками, потому что это такой же исход
+  // выбора, как они: балансировщик только на одном семействе — законный ресурс.
+  // Пока варианта не было, отказ от семейства выражался лишь косвенно (выбрать
+  // «линк адреса» и оставить пусто), а умолчание внешней схемы слало оба.
+  const OFF_OPTION = { label: "Не задавать", value: "off" };
   const modeOptions =
     type === "EXTERNAL"
-      ? [
-          { label: "Публичный (авто)", value: "public" },
-          { label: "Линк адреса", value: "address" },
-        ]
-      : [
-          { label: "Из подсети (авто)", value: "subnet" },
-          { label: "Линк адреса", value: "address" },
-        ];
+      ? [{ label: "Публичный (авто)", value: "public" }, { label: "Линк адреса", value: "address" }, OFF_OPTION]
+      : [{ label: "Из подсети (авто)", value: "subnet" }, { label: "Линк адреса", value: "address" }, OFF_OPTION];
 
   // Server-side фильтр подсетей по placement (whitelist vpc — {name,
   // placement_type}); клиентский subnetPlacementMatches остаётся как guard.
@@ -255,11 +263,7 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
   return (
     <Form.Item label={FAMILY_LABEL[family]} style={{ marginBottom: family === "v4" ? 12 : 0 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Segmented
-          value={mode}
-          onChange={(m) => set(`vip_source._${family}_mode`, String(m))}
-          options={modeOptions}
-        />
+        <Segmented value={mode} onChange={(m) => set(`vip_source._${family}_mode`, String(m))} options={modeOptions} />
 
         {mode === "subnet" && (
           <RefSelect
@@ -268,7 +272,7 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
             refFilter={subnetPlacementMatches(placement)}
             value={getByPath(value, `${base}.subnet_id`) as string | undefined}
             onChange={(uid) => set(`${base}.subnet_id`, uid || undefined)}
-            placeholder={`Подсеть (${placement}) для авто-аллокации VIP — оставьте пустым, чтобы не задавать ${FAMILY_LABEL[family]}`}
+            placeholder={`Подсеть (${placement}) для авто-аллокации VIP`}
           />
         )}
 
@@ -279,13 +283,19 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
             addressFilter={addressFilter}
             value={getByPath(value, `${base}.address_id`) as string | undefined}
             onChange={(uid) => set(`${base}.address_id`, uid || undefined)}
-            placeholder={`Сеть (VPC) → адрес — оставьте пустым, чтобы не задавать ${FAMILY_LABEL[family]}`}
+            placeholder="Сеть (VPC) → адрес"
           />
         )}
 
         {mode === "public" && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             Публичный VIP выделяется платформой автоматически.
+          </Typography.Text>
+        )}
+
+        {mode === "off" && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {FAMILY_LABEL[family]} не задаётся — балансировщик будет работать без этого семейства.
           </Typography.Text>
         )}
       </div>

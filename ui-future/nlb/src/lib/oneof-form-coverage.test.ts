@@ -119,6 +119,65 @@ describe("балансировщик: каждая ветвь источника
     const body = тело("address", "EXTERNAL_REGIONAL", {});
     expect(body).not.toHaveProperty("v4_source");
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ОТКАЗ ОТ СЕМЕЙСТВА — тоже исход, и он обязан быть выразим.
+  //
+  // Сервер требует источник хотя бы для ОДНОГО семейства
+  // (`services/nlb/.../vip_source.go`, «at least one ip family»), то есть
+  // балансировщик только на IPv4 — законный ресурс. Форма этого модуля сказать
+  // «не задавать это семейство» не давала: у внешнего размещения режимы были
+  // только «публичный» и «линк адреса», а «публичный» — умолчание — источник
+  // даёт ВСЕГДА. Значит оба семейства уезжали на провод, и отказаться было
+  // нечем. Общий реестр такой вариант несёт («Не задавать это семейство»), но
+  // `/nlb/*` рисует ЭТОТ модуль — тот же форк, что и у ветвей проверки живости.
+  it("семейство можно НЕ ЗАДАВАТЬ — внешний балансировщик только на IPv4", () => {
+    const body = spec.sanitize!({
+      project_id: "prj-1",
+      region_id: "reg-1",
+      placement: "EXTERNAL_REGIONAL",
+      vip_source: { _v4_mode: "public", v4: {}, _v6_mode: "off", v6: {} },
+    }) as Record<string, unknown>;
+
+    expect(body).toHaveProperty("v4_source");
+    expect(body).not.toHaveProperty("v6_source");
+  });
+
+  it("и наоборот — только на IPv6, отказом от IPv4", () => {
+    // Зеркало: без него «не задавать» могло бы означать «не задавать шестое»,
+    // то есть свойство одного слота, а не режима.
+    const body = spec.sanitize!({
+      project_id: "prj-1",
+      region_id: "reg-1",
+      placement: "EXTERNAL_REGIONAL",
+      vip_source: { _v4_mode: "off", v4: {}, _v6_mode: "public", v6: {} },
+    }) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty("v4_source");
+    expect(body).toHaveProperty("v6_source");
+  });
+
+  it("умолчание формы не задаёт ОБА семейства сразу", () => {
+    // Умолчание — то, что получает арендатор, не тронувший переключатель.
+    // Пока оно шлёт оба, «отказаться можно» остаётся свойством, до которого
+    // надо догадаться дойти.
+    const body = spec.sanitize!({
+      ...(spec.template({ projectId: "prj-1" }) as Record<string, unknown>),
+      region_id: "reg-1",
+    }) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty("v6_source");
+  });
+
+  it("отказаться от ОБОИХ нельзя — форма говорит это сама, до отправки", () => {
+    // Положительный контроль к трём отрицаниям выше: «опускает семейство» не
+    // должно означать «опускает всё и отправляет тело, которое сервер отвергнет».
+    const err = spec.validate!({
+      placement: "EXTERNAL_REGIONAL",
+      vip_source: { _v4_mode: "off", v4: {}, _v6_mode: "off", v6: {} },
+    });
+    expect(err).toMatch(/хотя бы для одного семейства/);
+  });
 });
 
 describe("цели группы задаются при СОЗДАНИИ, а не только после него", () => {
@@ -134,10 +193,7 @@ describe("цели группы задаются при СОЗДАНИИ, а н�
         { _identity_kind: "external_ip", external_ip: { address: "203.0.113.7" }, instance_id: "ins-2" },
       ],
     }) as { targets: Array<Record<string, unknown>> };
-    expect(body.targets).toEqual([
-      { instance_id: "ins-1", weight: 5 },
-      { external_ip: { address: "203.0.113.7" } },
-    ]);
+    expect(body.targets).toEqual([{ instance_id: "ins-1", weight: 5 }, { external_ip: { address: "203.0.113.7" } }]);
   });
 
   it("пустой перечень целей не уезжает вовсе — положительный контроль", () => {

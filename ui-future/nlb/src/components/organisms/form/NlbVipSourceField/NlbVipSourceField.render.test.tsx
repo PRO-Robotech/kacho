@@ -29,13 +29,13 @@ const withProviders = (ui: ReactNode) => {
 };
 
 /** The form object as the create page holds it: placement, and the default picker state. */
-function formValue(placement: string) {
+function formValue(placement: string, modes: { v4?: string; v6?: string } = {}) {
   return {
     placement,
     vip_source: {
-      _v4_mode: "subnet",
+      _v4_mode: modes.v4 ?? "subnet",
       v4: { subnet_id: "", address_id: "" },
-      _v6_mode: "subnet",
+      _v6_mode: modes.v6 ?? "subnet",
       v6: { subnet_id: "", address_id: "" },
     },
   };
@@ -69,5 +69,29 @@ describe("VIP source picker follows the chosen placement", () => {
   it("narrows subnet candidates to REGIONAL on a regional internal placement", () => {
     withProviders(<NlbVipSourceField value={formValue("INTERNAL_REGIONAL")} onChange={() => {}} />);
     expect(screen.getAllByText(/Подсеть \(REGIONAL\)/).length).toBeGreaterThan(0);
+  });
+
+  // Declining a family is an arm of its own, and it renders no selector at all.
+  //
+  // On an EXTERNAL placement the `public` arm yields a source UNCONDITIONALLY,
+  // so with no `off` arm both families always went on the wire and an IPv4-only
+  // load balancer was inexpressible — while the service accepts a source for
+  // just one family.
+  //
+  // WHAT THIS PROBE DOES NOT REACH. The mode arms are an antd `Segmented`, whose
+  // options this harness's double does not render, so "the operator can pick it"
+  // is asserted by the browser probe instead. Reachable here — and asserted —
+  // is what the chosen arm produces: the explanation, and the absence of a
+  // selector to fill in.
+  it("declining a family renders an explanation and no selector", () => {
+    withProviders(<NlbVipSourceField value={formValue("EXTERNAL_REGIONAL", { v6: "off" })} onChange={() => {}} />);
+
+    expect(screen.getAllByText(/IPv6 Адрес не задаётся/).length).toBeGreaterThan(0);
+    // (+) paired positive control: the v4 family, left on its auto arm, still
+    // renders its own line. Without it "the off arm renders" could equally mean
+    // "the picker collapsed for every family".
+    expect(screen.getAllByText(/Публичный VIP выделяется платформой автоматически/).length).toBeGreaterThan(0);
+    // The IPv4 line must not be the declined one.
+    expect(screen.queryByText(/IPv4 Адрес не задаётся/)).toBeNull();
   });
 });
