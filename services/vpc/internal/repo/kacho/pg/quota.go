@@ -9,9 +9,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 )
+
+// quotaSchema — схема, в которой у этого владельца лежит таблица учёта.
+const quotaSchema = "kacho_vpc"
 
 // Доступ к строкам учёта числа ресурсов.
 //
@@ -63,31 +67,13 @@ func (q *quotaReader) Admit(ctx context.Context, carrierType, carrierID, kind st
 // Пустой срез здесь означает «строк учёта ещё нет» и НИЧЕГО не говорит о
 // пределах: различать это состояние и отвечать арендатору полным набором обязан
 // вызывающий. Репозиторий сообщает только то, что видит в своей таблице.
+// Оператор ОБЩИЙ (`pkg/quota.ListStates`): таблица у всех владельцев одна и та
+// же с точностью до имени схемы. Прежде он стоял здесь своей копией, и это было
+// верно ровно до появления второго владельца — дальше пять копий одного запроса
+// расходились бы на составе столбцов или на порядке, то есть там, где
+// расхождение не ломает сборку и не видно глазом.
 func (q *quotaReader) ListStates(ctx context.Context, carrierType, carrierID string) ([]kacho.QuotaState, error) {
-	const stmt = `
-		SELECT kind, limit_value, used, source_scope, source_scope_id
-		  FROM kacho_vpc.project_resource_quotas
-		 WHERE carrier_type = $1 AND carrier_id = $2
-		 ORDER BY kind`
-
-	rows, err := q.tx.Query(ctx, stmt, carrierType, carrierID)
-	if err != nil {
-		return nil, helpers.WrapPgErr(err, "Quota", "")
-	}
-	defer rows.Close()
-
-	out := make([]kacho.QuotaState, 0, 8)
-	for rows.Next() {
-		st := kacho.QuotaState{CarrierType: carrierType, CarrierID: carrierID}
-		if err := rows.Scan(&st.Kind, &st.Limit, &st.Used, &st.SourceScope, &st.SourceScopeID); err != nil {
-			return nil, helpers.WrapPgErr(err, "Quota", "")
-		}
-		out = append(out, st)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, helpers.WrapPgErr(err, "Quota", "")
-	}
-	return out, nil
+	return corequota.ListStates(ctx, q.tx, quotaSchema, carrierType, carrierID)
 }
 
 // quotaWriter — материализация поверх write-TX.

@@ -50,6 +50,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/guestaccesskey"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
@@ -102,6 +103,9 @@ type services struct {
 	realization    *realization.Service
 	nodeOwnership  *nodeownership.Service
 	placementGroup *placementgroup.Service
+	// quota — арендаторское чтение квот. ТОЛЬКО чтение: величины назначает
+	// администратор облака на внутреннем слушателе владельца величин.
+	quota *handler.QuotaHandler
 }
 
 func runServe(cfg config.Config) error {
@@ -208,13 +212,28 @@ func runServe(cfg config.Config) error {
 	// перестаёт принимать создание, и это видно с первой же мутации, а не тихо.
 	var quotaLimits quota.LimitResolver
 	if authzConn != nil {
-		quotaLimits = clients.NewLimitClient(authzConn)
+		limitClient := clients.NewLimitClient(authzConn)
+		quotaLimits = limitClient
 		logger.Info("resource-count quota: limits resolver wired",
 			"endpoint", cfg.AuthZIAMGRPCAddr, "service", "compute")
+
+		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
+		// заведённая один раз, живёт со своей величиной вечно, и смена предела
+		// администратором не доезжает до проекта никогда. Показывать арендатору
+		// такой снимок значило бы громко назвать число, которое не догонит
+		// назначенное, — поэтому чтение и тянущий едут вместе.
+		stopQuotaSync, qerr := corequota.StartLimitSyncer(
+			ctx, pool, limitClient, repo.QuotaSchema, corequota.Config{}, logger)
+		if qerr != nil {
+			return fmt.Errorf("start quota limit syncer: %w", qerr)
+		}
+		defer stopQuotaSync()
 	} else {
-		logger.Warn("resource-count quota: no internal kacho-iam endpoint, limits resolver is OFF. " +
+		logger.Warn("resource-count quota: no internal kacho-iam endpoint, limits resolver is OFF " +
+			"and the limit snapshot will NEVER catch up with the authority. " +
 			"The charging trigger still enforces, so creates are refused with " +
-			"\"no ceiling stated\" until the endpoint is configured")
+			"\"no ceiling stated\" until the endpoint is configured, and an administrator " +
+			"raising or lowering a ceiling has no effect on this process")
 	}
 
 	// Сборка use-case'ов идёт ПОСЛЕ объявления резолва величин: полоса учёта —
@@ -944,6 +963,9 @@ func buildServices(pool *pgxpool.Pool, projectClient ports.ProjectAccountClient,
 	}
 
 	return &services{
+		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
+		// у полосы ровно два источника, и они одни и те же.
+		quota:       quotaHandlerOrNil(quotaGuard),
 		machineType: machinetype.NewMachineTypeService(machineTypeRepo, opsRepo),
 		instance: instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo).
 			WithQuotaGuard(quotaGuard),
@@ -970,6 +992,15 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	computev1.RegisterGuestAccessKeyServiceServer(srv, handler.NewGuestAccessKeyHandler(svcs.guestAccessKey, listFilter))
 	computev1.RegisterPlacementGroupServiceServer(srv, handler.NewPlacementGroupHandler(svcs.placementGroup, listFilter))
+	// Чтение квот выставляется, ТОЛЬКО когда полоса учёта собрана. Иначе метод
+	// отвечал бы пустым набором на каждый запрос — то есть «квот нет», ровно то
+	// утверждение, которое контракт запрещает делать (`ListQuotasResponse`:
+	// пустой массив зарезервирован за состоянием, которого этот сервис не
+	// сообщает). Незарегистрированный метод отвечает `Unimplemented`, и это
+	// честно: возможности здесь действительно нет.
+	if svcs.quota != nil {
+		computev1.RegisterQuotaServiceServer(srv, svcs.quota)
+	}
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
@@ -1173,4 +1204,17 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *p
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))
+}
+
+// quotaHandlerOrNil возвращает обработчик чтения квот ЛИБО настоящий nil.
+//
+// Возврат `*handler.QuotaHandler(nil)` в поле структуры был бы не тем же самым:
+// проверка `svcs.quota != nil` на типизированном nil ИСТИННА, и метод
+// зарегистрировался бы, чтобы отвечать отказом на первом же вызове. Решение
+// принимается здесь, где тип ещё конкретен.
+func quotaHandlerOrNil(g *quota.Guard) *handler.QuotaHandler {
+	if g == nil {
+		return nil
+	}
+	return handler.NewQuotaHandler(g)
 }

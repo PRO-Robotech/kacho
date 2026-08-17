@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
 )
 
@@ -27,6 +29,12 @@ import (
 // use-case-слое и не знает про pgx; `QuotaRow` — контракт адаптера. Один тип на
 // оба слоя означал бы, что use-case импортирует адаптер (запрещено
 // dependency-rule), либо что адаптер диктует форму use-case'у.
+
+// QuotaSchema — схема, в которой у этого владельца лежит таблица учёта.
+//
+// Экспортируется ради composition root: подъём синхронизатора величин работает
+// над той же таблицей, и второе имя схемы разошлось бы с первым молча.
+const QuotaSchema = schema
 
 // QuotaStore — реализация порта совещательной полосы поверх пула.
 type QuotaStore struct {
@@ -50,6 +58,20 @@ func NewQuotaStore(pool *pgxpool.Pool) *QuotaStore {
 // QuotaAdmit — совещательный вопрос: есть ли место, НЕ занимая его.
 func (s *QuotaStore) QuotaAdmit(ctx context.Context, carrierType, carrierID, kind string) error {
 	return QuotaAdmit(ctx, s.pool, carrierType, carrierID, kind)
+}
+
+// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+// квоты.
+//
+// Оператор ОБЩИЙ (`pkg/quota.ListStates`): таблица у всех владельцев одна и та
+// же с точностью до имени схемы, и своя копия здесь разошлась бы с соседями на
+// составе столбцов или на порядке — то есть там, где расхождение не ломает
+// сборку и не видно глазом. Имя схемы берётся из той же константы, которой
+// пользуются остальные операторы этого пакета.
+func (s *QuotaStore) ListStates(
+	ctx context.Context, carrierType, carrierID string,
+) ([]quotaread.State, error) {
+	return corequota.ListStates(ctx, s.pool, schema, carrierType, carrierID)
 }
 
 // MaterializeQuotas заводит отсутствующие строки учёта.

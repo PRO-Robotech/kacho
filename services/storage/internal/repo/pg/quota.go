@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 )
 
@@ -74,6 +76,25 @@ func (r *QuotaRepo) Admit(ctx context.Context, carrierType, carrierID, kind stri
 		return mapQuotaRepoErr(err)
 	}
 	return nil
+}
+
+// QuotaSchema — схема, в которой у этого владельца лежит таблица учёта.
+//
+// Названа константой, а не литералом в каждом операторе: имя схемы стоит в
+// каждом из них, и разойтись они могут только молча.
+const QuotaSchema = "kacho_storage"
+
+// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+// квоты.
+//
+// Оператор ОБЩИЙ (`pkg/quota.ListStates`): таблица у всех владельцев одна и та
+// же с точностью до имени схемы, и своя копия здесь разошлась бы с соседями на
+// составе столбцов или на порядке — то есть там, где расхождение не ломает
+// сборку и не видно глазом.
+func (r *QuotaRepo) ListStates(
+	ctx context.Context, carrierType, carrierID string,
+) ([]quotaread.State, error) {
+	return corequota.ListStates(ctx, r.pool, QuotaSchema, carrierType, carrierID)
 }
 
 // Materialize заводит строки учёта по всем видам, которые назвал владелец

@@ -119,6 +119,10 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.GatewayService/Update":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/Delete":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/ListOperations": {},
+	// compute.v1 — QuotaService (только чтение: величины администрируются на
+	// внутреннем слушателе через iam.v1.InternalLimitService)
+	"/kacho.cloud.compute.v1.QuotaService/List": {},
+
 	// compute.v1 — InstanceService
 	"/kacho.cloud.compute.v1.InstanceService/Get":                      {},
 	"/kacho.cloud.compute.v1.InstanceService/List":                     {},
@@ -161,6 +165,10 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.PlacementGroupService/ListOperations": {},
 	// compute.v1 — Geography (Region/Zone) НЕ публичная поверхность compute:
 	// выделена в leaf-сервис kacho-geo (см. geo.v1 ниже).
+
+	// storage.v1 — QuotaService (только чтение: величины администрируются на
+	// внутреннем слушателе через iam.v1.InternalLimitService)
+	"/kacho.cloud.storage.v1.QuotaService/List": {},
 
 	// storage.v1 — VolumeService (kacho-storage; Volume — block-storage ресурс,
 	// выделен из compute Disk). Read — sync; мутации — async Operation (sop-prefix).
@@ -328,6 +336,10 @@ var AllowedMethods = map[string]struct{}{
 	// ВНЕШНИЙ listener: на внутреннем у части этих RPC есть и REST-маршрут
 	// (restmux заводит их на internalMux), и это запрету #6 не противоречит.
 
+	// loadbalancer.v1 — QuotaService (только чтение: величины администрируются на
+	// внутреннем слушателе через iam.v1.InternalLimitService)
+	"/kacho.cloud.loadbalancer.v1.QuotaService/List": {},
+
 	// loadbalancer.v1 — NetworkLoadBalancerService (kacho-nlb)
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get":             {},
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List":            {},
@@ -357,6 +369,10 @@ var AllowedMethods = map[string]struct{}{
 	// loadbalancer.v1 — InternalResourceLifecycleService.* — НЕ в allowlist
 	// (HasInternalSuffix блокирует автоматически; запрет #6). gRPC-direct only;
 	// streaming Subscribe не имеет HTTP-аннотаций, REST не регистрируется.
+
+	// registry.v1 — QuotaService (только чтение: величины администрируются на
+	// внутреннем слушателе через iam.v1.InternalLimitService)
+	"/kacho.cloud.registry.v1.QuotaService/List": {},
 
 	// registry.v1 — RegistryService (kacho-registry, control-plane реестра)
 	// Read — sync; мутации (Create/Update/Delete/DeleteTag) — async Operation.
