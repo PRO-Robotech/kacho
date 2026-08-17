@@ -236,6 +236,9 @@ type fakeUserRepo struct {
 	existingActive []domain.User
 	fgaEmitted     []service.RelationTuple
 	fgaDeleted     []service.RelationTuple
+	// activateErr — отказ, который вернёт ActivateInvite. Дублёр обязан уметь
+	// отказывать так же, как настоящий: без этого путь отказа не наблюдаем ничем.
+	activateErr error
 }
 
 func newFakeUserRepo() *fakeUserRepo { return &fakeUserRepo{} }
@@ -411,7 +414,19 @@ func (fakeABW) DeleteSubject(context.Context, domain.AccessBindingID, domain.Sub
 
 type fakeUserUR struct{ parent *fakeUserRepo }
 
-func (fakeUserUR) Get(context.Context, domain.UserID) (domain.User, error) {
+// Get отдаёт засеянную строку, если она есть: путь активации приглашения
+// продолжается в bootstrap уже СУЩЕСТВУЮЩЕЙ строки и загружает её именно так.
+// Дублёр, отказывающий там, где настоящий отвечает, делает целые ветки
+// недостижимыми для проб — оборотная сторона дублёра, принимающего больше
+// настоящего.
+func (r fakeUserUR) Get(_ context.Context, id domain.UserID) (domain.User, error) {
+	if r.parent != nil {
+		for _, u := range r.parent.existingActive {
+			if u.ID == id {
+				return u, nil
+			}
+		}
+	}
 	return domain.User{}, stderrors.New("not stubbed")
 }
 func (fakeUserUR) GetByEmail(context.Context, domain.Email) (domain.User, error) {
@@ -508,6 +523,9 @@ func (w *fakeUserUW) InsertPending(_ context.Context, u domain.User) (domain.Use
 	return u, true, nil
 }
 func (w *fakeUserUW) ActivateInvite(_ context.Context, userID domain.UserID, ext domain.ExternalSubject, dn domain.DisplayName) (domain.User, error) {
+	if w.parent != nil && w.parent.activateErr != nil {
+		return domain.User{}, w.parent.activateErr
+	}
 	return domain.User{ID: userID, ExternalID: ext, DisplayName: dn, InviteStatus: domain.InviteStatusActive}, nil
 }
 

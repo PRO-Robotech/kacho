@@ -322,7 +322,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	userDelete := userapp.NewDeleteUserUseCase(kachoRepo, opsRepo)
 	userUpsert := userapp.NewUpsertFromIdentityUseCase(kachoRepo, opsRepo).
 		WithRelationStore(relationStore, logger).
-		WithReconciler(rsabReconciler)
+		WithReconciler(rsabReconciler).
+		WithActivationObserver(metricsReg.InviteActivationRecorder())
 	userInvite := userapp.NewInviteUserUseCase(kachoRepo, opsRepo, relationStore).
 		WithRelationStore(relationStore, logger).
 		WithObjectReconciler(rsabReconciler)
