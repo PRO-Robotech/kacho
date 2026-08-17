@@ -10,9 +10,6 @@ import { TokenIssuancePage, type SubjectOption, type CredentialRow, type TokenKi
 
 const SA_KEYS_CONFIG: TokenKindConfig = {
   kind: "sa",
-  pageTitle: "Ключи сервисных аккаунтов",
-  pageSubtitle:
-    "Static OAuth-ключи (Class A workload identity). Приватный ключ выдаётся один раз и подписывает client_assertion для получения kacho-JWT через Hydra.",
   subjectSingular: "сервисный аккаунт",
   subjectLabel: "Сервисный аккаунт",
   credentialSingular: "ключ",

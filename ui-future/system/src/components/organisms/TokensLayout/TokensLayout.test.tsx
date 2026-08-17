@@ -1,0 +1,82 @@
+// «Токены и ключи» — раздел администрирования, а не отдельное место продукта.
+//
+// Предмет (#447). Владелец на живом стенде: раздел администрирования выглядит
+// иначе, чем прочие разделы консоли, и несёт лишний поясняющий текст.
+//
+// Перепись по дереву нашла ДВА места, где вкладки раздела нарисованы своей
+// вёрсткой вместо общей оболочки, и это одно из них: горизонтальный ряд antd
+// поверх содержимого плюс свой заголовок с абзацем. Соседний раздел того же
+// адресного пространства (`/system/{regions,zones,…}`) рисует пункты
+// ВЕРТИКАЛЬНЫМ рейлом общей оболочки — тем же, что карточка ресурса. Два вида
+// одного предмета пользователь читает как «другое место продукта» (правило 8
+// `ui.md`).
+//
+// Абзац снят вместе с рядом: он пересказывал название раздела («Выпуск и отзыв
+// креденшалов» под заголовком «Токены и ключи»), а единственный факт, который в
+// нём был — секрет показывается один раз, — живёт там, где он нужен: в окне
+// выпуска (`OneTimeSecretModal`, «Секрет показывается один раз — сохраните его
+// сейчас»). Пересказ на уровне раздела ничего не добавлял и отодвигал предмет
+// страницы вниз.
+import { jest } from "@jest/globals";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { antdStub } from "@shared/test/antd-stub";
+
+jest.unstable_mockModule("antd", () => antdStub());
+
+const { TokensLayout } = await import("./TokensLayout");
+
+/** Раздел, открытый по адресу одного из своих пунктов. */
+function show(at: string) {
+  return render(
+    <MemoryRouter initialEntries={[at]}>
+      <Routes>
+        <Route element={<TokensLayout />}>
+          <Route path="/system/tokens/service-account-keys" element={<div>содержимое ключей</div>} />
+          <Route path="/system/tokens/user-tokens" element={<div>содержимое токенов</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+const ПУНКТЫ = ["Ключи сервисных аккаунтов", "Токены пользователей"];
+
+describe("раздел «Токены и ключи»", () => {
+  it("рисует пункты тем же рейлом, что карточка ресурса", () => {
+    // Наблюдаемое различие, а не разбор исходника: общий рейл РИСУЕТ свои
+    // пункты (заменитель antd повторяет это поведение настоящего меню), а
+    // горизонтальный ряд отдавал их атрибутом и на экран не выводил.
+    show("/system/tokens/service-account-keys");
+
+    for (const п of ПУНКТЫ) {
+      expect(screen.getByRole("button", { name: п })).toBeInTheDocument();
+    }
+  });
+
+  it("отмечает открытый пункт", () => {
+    show("/system/tokens/user-tokens");
+
+    expect(screen.getByRole("button", { name: "Токены пользователей" })).toHaveAttribute("aria-current", "page");
+    // Отрицание в паре: отмечен ровно открытый, а не все подряд.
+    expect(screen.getByRole("button", { name: "Ключи сервисных аккаунтов" })).not.toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("показывает содержимое открытого пункта", () => {
+    show("/system/tokens/service-account-keys");
+
+    expect(screen.getByText("содержимое ключей")).toBeInTheDocument();
+  });
+
+  it("не пересказывает своё название поясняющим абзацем", () => {
+    show("/system/tokens/service-account-keys");
+
+    expect(screen.queryByText(/Выпуск и отзыв/)).toBeNull();
+    // Положительный контроль: раздел отрисован, и утверждение об отсутствии
+    // абзаца сделано не на пустом экране.
+    expect(screen.getByText("Токены и ключи")).toBeInTheDocument();
+  });
+});

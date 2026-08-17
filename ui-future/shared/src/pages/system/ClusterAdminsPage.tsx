@@ -205,20 +205,12 @@ export default function ClusterAdminsPage() {
   }
 
   return (
+    // Своего заголовка страница НЕ печатает: её называет рейл раздела и шапка
+    // общей оболочки — до #447 имя стояло на экране дважды. Абзац под ним снят
+    // вместе с заголовком: он пересказывал внутреннее устройство (объект модели
+    // прав по его идентификатору, конверт асинхронной операции) — то есть
+    // отвечал на вопрос, которого на этой странице не задают.
     <Space direction="vertical" size={16} style={{ width: "100%" }} data-testid="cluster-admins-page">
-      <div>
-        <Typography.Title level={3} style={{ margin: 0 }} data-testid="cluster-admins-page-title">
-          Администраторы кластера
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          Управление permanent cluster-admin grants на singleton{" "}
-          <Typography.Text code style={{ fontSize: 12 }}>
-            cluster:cluster_kacho_root
-          </Typography.Text>
-          . Все мутации идут через async Operation envelope.
-        </Typography.Text>
-      </div>
-
       <Space size={8} wrap>
         <Button
           type="primary"

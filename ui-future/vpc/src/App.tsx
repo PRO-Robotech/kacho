@@ -41,6 +41,10 @@ import { AuthProvider } from "@shared/contexts/AuthContext";
 
 // KAC-196: cluster admins UI — лениво подгружаемая страница.
 const ClusterAdminsPage = lazy(() => import("@/pages/system/ClusterAdminsPage"));
+// Пределы (#364) — пункт раздела администрирования. Маршрут заведён вместе со
+// сведением оболочки раздела к общей (#447): пункт рисует общий рейл, и без
+// маршрута он уводил бы в ловушку «всё остальное» этого приложения.
+const LimitsPage = lazy(() => import("@shared/pages/system/LimitsPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -275,11 +279,11 @@ export function AppRoutes() {
           />
 
           {/* === System (admin-only, kacho-only) === */}
-          {/* Region/Zone/AddressPool — глобальные ресурсы. Не публикуются на
-                external TLS endpoint, см. CLAUDE.md kacho-vpc §16.
-                List-страницы обёрнуты в AdminLayout с горизонтальными табами
-                навигации между admin-сущностями + кнопкой "Создать <singular>"
-                в правом header-slot. */}
+          {/* Region/Zone/AddressPool — глобальные ресурсы. List-страницы обёрнуты
+                в общую оболочку раздела (`@shared/…/AdminLayout`): вертикальный
+                рейл пунктов, тот же, что на карточке ресурса. Своя копия этой
+                оболочки жила здесь и успела разойтись с оригиналом — см. её
+                прослойку и #447. */}
           <Route element={<AdminLayout />}>
             <Route path="/system/regions" element={<ResourceListPage spec={REGISTRY.regions} panelForms />} />
             <Route path="/system/zones" element={<ResourceListPage spec={REGISTRY.zones} panelForms />} />
@@ -295,6 +299,14 @@ export function AppRoutes() {
               element={
                 <Suspense fallback={null}>
                   <ClusterAdminsPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/system/limits"
+              element={
+                <Suspense fallback={null}>
+                  <LimitsPage />
                 </Suspense>
               }
             />
