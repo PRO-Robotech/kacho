@@ -723,7 +723,7 @@ export function antdStub(): Record<string, unknown> {
                     onCancel?.();
                   },
                 },
-                (cancelText as React.ReactNode) ?? "Отмена",
+                cancelText ?? "Отмена",
               ),
               React.createElement(
                 "button",
@@ -734,7 +734,7 @@ export function antdStub(): Record<string, unknown> {
                     onConfirm?.();
                   },
                 },
-                (okText as React.ReactNode) ?? "OK",
+                okText ?? "OK",
               ),
             )
           : null,
