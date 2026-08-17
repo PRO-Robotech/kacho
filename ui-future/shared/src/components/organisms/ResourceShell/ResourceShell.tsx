@@ -50,7 +50,12 @@ import {
   type ResourceSpec,
 } from "@shared/lib/resource-registry";
 import { operationsListPath } from "@shared/lib/operations-subroute";
-import { childListPathScope, hasUnresolvedPathSegment, relatedListQuery } from "@shared/lib/related-list-query";
+import {
+  childListPathScope,
+  fillPathFromParams,
+  hasUnresolvedPathSegment,
+  relatedListQuery,
+} from "@shared/lib/related-list-query";
 import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
@@ -74,6 +79,7 @@ function RelatedTable({
   narrowBy,
   parentId,
   parentRow,
+  routeParams,
   projectId,
   detailBase,
 }: {
@@ -86,6 +92,9 @@ function RelatedTable({
   parentId: string;
   /** Строка родителя — из неё берутся сегменты адреса ребёнка, адресуемого путём. */
   parentRow?: Record<string, unknown>;
+  /** Параметры адреса страницы — первый источник сегментов: что знает маршрут,
+   *  то он знает точно, тогда как строка родителя может поля и не нести. */
+  routeParams: Record<string, string | undefined>;
   projectId: string;
   detailBase: string;
 }) {
@@ -96,9 +105,13 @@ function RelatedTable({
   // Третий механизм сужения — АДРЕС: репозитории лежат под реестром, теги — под
   // репозиторием реестра. Тогда сужает сам путь, и параметр родителя в запросе
   // не нужен вовсе. Чем закрываются сегменты — решает одна функция.
+  const childFromRoute = useMemo(
+    () => fillPathFromParams(childSpec.apiPath, routeParams),
+    [childSpec.apiPath, routeParams],
+  );
   const { pathParams, pathScoped } = useMemo(
-    () => childListPathScope(childSpec.apiPath, filterFields, parentRow, parentId),
-    [childSpec.apiPath, filterFields, parentRow, parentId],
+    () => childListPathScope(childFromRoute, filterFields, parentRow, parentId),
+    [childFromRoute, filterFields, parentRow, parentId],
   );
   // Дочерний список тянется в scope своего родителя: account-scoped ресурсы
   // (Project/ServiceAccount) требуют account_id = uid аккаунта-родителя; прочие —
@@ -122,7 +135,11 @@ function RelatedTable({
     pathScoped ? null : accountScoped ? parentId : projectId,
     undefined,
     extraQuery,
-    { pathParams, loadAllPages: wantAll },
+    // Сегменты адреса — из ОБОИХ источников: что закрыл маршрут и что закрыла
+    // строка родителя. Отдать только вторые значило бы уронить первые: резолвер
+    // читает исходный `spec.apiPath`, и незакрытый сегмент запретил бы запрос —
+    // то есть охрана сработала бы против уже известного адреса.
+    { pathParams: { ...routeParams, ...pathParams }, loadAllPages: wantAll },
   );
   const all = data?.[childSpec.payloadKey] ?? [];
   // Клиентское сужение — ПОДСТРАХОВКА, а не основной путь. Когда серверное поле
@@ -207,7 +224,7 @@ function RelatedTable({
   // значит пустота здесь означает «ещё не спрашивали», а не «детей нет». Выдать
   // её за отсутствие значило бы предложить создать первый тег поверх непрочитанного
   // списка.
-  const pathBlocked = hasUnresolvedPathSegment(childSpec.apiPath) && !pathScoped;
+  const pathBlocked = hasUnresolvedPathSegment(childFromRoute) && !pathScoped;
 
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
   // показывается внутри таблицы). createLabel передаём отдельно (тот же текст).
@@ -274,7 +291,8 @@ function RelatedTable({
 }
 
 export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: ResourceShellMode }) {
-  const { projectId, uid, childRoute } = useParams();
+  const routeParams = useParams();
+  const { projectId, uid, childRoute } = routeParams;
   const navigate = useNavigate();
   // `DetailExtCtx.navigate` объявлен как переход без результата, а react-router
   // возвращает из него промис. Передать сам `navigate` значило бы отдать
@@ -304,11 +322,24 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   // дисциплиной, из которых верно одно. Ответ края на такой адрес неотличим от
   // «ресурса нет», поэтому дефект тих: пользователь видит отказ, а не то, что
   // спросили не то.
-  const detailPath = `${spec.apiPath}/${uid}`;
+  // Сегменты, которые знает АДРЕС СТРАНИЦЫ, закрываются им: ресурс под родителем
+  // существует только в области родителя, и родителя называет маршрут, а не
+  // догадка консоли. Остальное по-прежнему охраняется ниже.
+  //
+  // Выражение адреса остаётся ЦЕЛЬНЫМ (`${spec.apiPath}/${uid}`), а подстановка
+  // применяется к нему снаружи. Это не стиль: перепись поверхности API
+  // (`api-path-surface.test.ts`) резолвит голову выражения по имени `spec.apiPath`
+  // и путь, спрятанный за промежуточную переменную, перестаёт для неё
+  // существовать. Первая редакция этой правки так и сделала — и увела из-под
+  // наблюдения 28 путей, показав это УМЕНЬШЕНИЕМ остатка, то есть «стало лучше».
+  const detailPath = fillPathFromParams(`${spec.apiPath}/${uid}`, routeParams);
   const detailAddressable = !hasUnresolvedPathSegment(detailPath);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: [spec.id, "shell-detail", uid],
+    // Разрешённый путь — часть ключа: у ресурса под родителем имя уникально
+    // только внутри родителя, и два одноимённых ребёнка разных родителей без
+    // него делили бы один кэш, показывая друг друга.
+    queryKey: [spec.id, "shell-detail", detailPath],
     queryFn: () => api.get<Record<string, unknown>>(detailPath),
     enabled: !!uid && detailAddressable,
     refetchInterval: 5_000,
@@ -498,6 +529,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
           narrowBy={r}
           parentId={getByPath<string>(data, "id") ?? uid ?? ""}
           parentRow={data}
+          routeParams={routeParams}
           projectId={projectId ?? ""}
           detailBase={detailBase}
         />
@@ -512,7 +544,10 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   // Прежде решала ручка `hideOperations` расширения, которую не выставлял никто,
   // — то есть вкладка появлялась у всех, включая каталожные и админские ресурсы
   // без подмаршрута. Здесь решает контракт: нет пути — нет вкладки.
-  const operationsPath = operationsListPath(spec.apiPath, getByPath<string>(data, "id") ?? uid ?? "");
+  // `operationsListPath` отвечает `null` там, где подмаршрута операций у ресурса
+  // нет, и это законный исход — подставлять в него нечего.
+  const operationsBase = operationsListPath(spec.apiPath, getByPath<string>(data, "id") ?? uid ?? "");
+  const operationsPath = operationsBase === null ? null : fillPathFromParams(operationsBase, routeParams);
   if (operationsPath) {
     tabs.push({
       id: "operations",

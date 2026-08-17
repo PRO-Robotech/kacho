@@ -27,8 +27,15 @@ export function relatedListQuery(
   return undefined;
 }
 
-/** snake_case поле спеки → camelCase подстановка пути (registry_id → registryId). */
-const toPathCamel = (s: string) => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+/**
+ * snake_case поле спеки → camelCase подстановка пути (registry_id → registryId).
+ *
+ * Экспортируется, потому что ту же связь между именем поля и именем сегмента
+ * читает чтение списка. Своя копия там уже жила: одна и та же связь, объявленная
+ * дважды, — то самое «два места об одном предмете», и разошлись бы они на первом
+ * же имени, которое кто-то один научится разбирать иначе.
+ */
+export const toPathCamel = (s: string) => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
 
 /**
  * Что такое подстановка адреса — ОДНО объявление на всю консоль.
@@ -58,6 +65,39 @@ export function pathPlaceholders(apiPath: string): string[] {
  */
 export function hasUnresolvedPathSegment(apiPath: string): boolean {
   return pathPlaceholders(apiPath).length > 0;
+}
+
+/**
+ * Закрыть подстановки адреса ОДНОИМЁННЫМИ параметрами маршрута.
+ *
+ * Правило одно и без исключений: `{registryId}` закрывает параметр маршрута
+ * `registryId`. Никакого отображения «имя в адресе → имя в маршруте» не
+ * заводится намеренно — таблица соответствий это второе место об одном предмете,
+ * и расходиться она начала бы молча, на ресурсе, который в неё забыли внести.
+ * Совпадение имён проверяемо глазом прямо в объявлении маршрута.
+ *
+ * Ресурс под родителем существует ровно в области родителя: репозиторий — в
+ * своём реестре, тег — в своём репозитории этого реестра. Поэтому родителя несёт
+ * АДРЕС СТРАНИЦЫ, а не догадка консоли: два репозитория с одним именем в разных
+ * реестрах — это два разных ресурса, и различает их только реестр в адресе.
+ *
+ * Пустое значение заполнением НЕ считается: подставившись, оно дало бы `//` и
+ * увело бы запрос по чужому адресу, а охрана незакрытой подстановки при этом
+ * замолчала бы — то есть защита выглядела бы исполненной.
+ */
+export function fillPathFromParams(apiPath: string, params: Record<string, string | undefined>): string {
+  let path = apiPath;
+  for (const placeholder of pathPlaceholders(apiPath)) {
+    const name = placeholder.slice(1, -1);
+    // Ключ принимается в ОБЕИХ формах — `registryId` и `registry_id`, — потому
+    // что параметры маршрута названы как сегменты (camelCase), а поля спеки —
+    // как поля ответа (snake_case). Требовать от вызывающего знать, какую форму
+    // ждёт резолвер, значило бы завести второе правило об одном предмете; тот же
+    // договор уже у чтения списка.
+    const value = params[name] ?? params[Object.keys(params).find((k) => toPathCamel(k) === name) ?? ""];
+    if (typeof value === "string" && value !== "") path = path.split(placeholder).join(value);
+  }
+  return path;
 }
 
 export interface ChildListPathScope {

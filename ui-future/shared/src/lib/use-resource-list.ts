@@ -11,11 +11,8 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { hasMorePages, mergeCursorPages, type CursorPage } from "./cursor-pages";
-import { hasUnresolvedPathSegment } from "./related-list-query";
+import { hasUnresolvedPathSegment, toPathCamel } from "./related-list-query";
 import type { ResourceSpec } from "./resource-registry";
-
-/** snake_case filter field → camelCase path placeholder (registry_id → registryId). */
-const toPathCamel = (s: string) => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
 
 export interface ResolvedListPath {
   path: string;
