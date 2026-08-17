@@ -188,10 +188,16 @@ export interface SecurityGroupRule {
   ports?: { from_port?: number; to_port?: number };
   protocol_name?: string;
   protocol_number?: number;
-  // oneof target — РОВНО ОДНА ветвь. Предустановленная цель снята с контракта
-  // (была принимаемым, но нечитаемым полем); сервис отвергает и ноль целей, и две.
+  // oneof target — РОВНО ОДНА ветвь, и ветвей в контракте ТРИ. Предустановленная
+  // цель снята (номер и имя зарезервированы); сервис отвергает и ноль целей, и две.
+  //
+  // `cidr_group_id` до #512 здесь не объявлялся, хотя край его отдаёт: тип
+  // описывал контракт БЕДНЕЕ, чем он есть, и всякий, кто читал правило через этот
+  // тип, не знал о третьей цели вовсе — то же расхождение «два места об одном
+  // предмете», что и лишняя ветвь, только с другой стороны.
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
+  cidr_group_id?: string;
 }
 
 export interface SecurityGroup {

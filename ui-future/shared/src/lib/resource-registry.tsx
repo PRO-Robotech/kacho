@@ -2148,8 +2148,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "rule_specs",
         label: "Правила",
         type: "sg-rules",
+        // Перечень адресатов обязан совпадать с `oneof target` контракта: их три
+        // — блоки адресов, другая группа, набор префиксов. До #512 здесь стоял
+        // «предустановленный набор» (поле снято с контракта, номер и имя
+        // зарезервированы), а живой «набор префиксов» не назывался вовсе. То
+        // есть подпись предлагала выбор, которого нет, и умалчивала о том,
+        // который есть, — и заметить это можно было только попыткой.
         description:
-          "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или предустановленный набор. Без правил трафик запрещён.",
+          "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или набор префиксов. Без правил трафик запрещён.",
         // В edit-форме скрываем — правила меняются через спец-RPC UpdateRules /
         // UpdateRule на отдельной вкладке.
         editHidden: true,
@@ -4321,17 +4327,16 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
   // `cidr_group_id` стоит в этой цепочке наравне с двумя прежними ветвями —
   // иначе правило, приехавшее с сервера со ссылкой на набор, вычищалось бы как
   // «CIDR-блоки» и теряло цель при первом же сохранении.
+  //
+  // Ветвей РОВНО ТРИ — столько же, сколько в `oneof target` контракта. Четвёртая
+  // здесь стояла до #512 и выбиралась по полю, снятому с контракта: у сообщения
+  // его номер и имя зарезервированы, значит ни один ответ края его не несёт и
+  // ветвь не выбиралась НИКОГДА. Такая ветвь не «запас на будущее», а
+  // утверждение, пережившее свой предмет: она выглядит как поддержка ещё одного
+  // вида цели и не является ею.
   const targetKind =
     (r._target_kind as string | undefined) ??
-    (r.cidr_blocks
-      ? "cidr"
-      : r.security_group_id
-        ? "sg"
-        : r.cidr_group_id
-          ? "cidr-group"
-          : r.predefined_target
-            ? "predefined"
-            : "cidr");
+    (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.cidr_group_id ? "cidr-group" : "cidr");
 
   // Copy the persistent fields, dropping the form-only discriminators at EVERY
   // depth: the caller spreads a fetched SecurityGroupRule into this, and
@@ -4358,7 +4363,6 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
     cidr: "cidr_blocks",
     sg: "security_group_id",
     "cidr-group": "cidr_group_id",
-    predefined: "predefined_target",
   };
   const keep = TARGET_FIELD[targetKind];
   for (const [kind, field] of Object.entries(TARGET_FIELD)) {
