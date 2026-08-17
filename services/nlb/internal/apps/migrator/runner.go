@@ -68,10 +68,6 @@ func (r *Runner) Status(out io.Writer) error {
 	return r.cfg.Dialect.Status(context.Background(), r.cfg.DSN, r.cfg.FS, r.cfg.MigrationsDir, out)
 }
 
-func (r *Runner) Create(physDir, name string) error {
-	return r.cfg.Dialect.Create(physDir, name)
-}
-
 // parseTargetVersion — goose использует int64 для версии (timestamp или
 // 4-digit prefix файла). Принимаем строку с CLI, чтобы пользователь мог
 // написать "0001" как в имени файла; конвертация — fmt.Sscanf (устойчив

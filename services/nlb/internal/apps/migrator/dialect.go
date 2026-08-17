@@ -35,10 +35,6 @@ type Dialect interface {
 	// Status печатает применённые/неприменённые миграции (через goose-logger).
 	Status(ctx context.Context, dsn string, fsys fs.FS, dir string, out io.Writer) error
 
-	// Create создаёт пустой.sql-файл миграции на физическом диске (embed.FS
-	// read-only). physDir — directory относительно cwd; name — суффикс.
-	Create(physDir, name string) error
-
 	// Spec — описательная метадата для CLI / help / тестов.
 	Spec() DialectSpec
 }

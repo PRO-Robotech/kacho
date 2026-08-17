@@ -86,25 +86,3 @@ func TestParseTargetVersion(t *testing.T) {
 		})
 	}
 }
-
-func TestRunner_CreateRejectsEmptyNameOrDir(t *testing.T) {
-	pg, err := NewDialect("postgres")
-	if err != nil {
-		t.Fatalf("NewDialect(postgres) failed: %v", err)
-	}
-	r, err := New(Config{
-		Dialect:       pg,
-		DSN:           "x",
-		FS:            fstest.MapFS{},
-		MigrationsDir: ".",
-	})
-	if err != nil {
-		t.Fatalf("New failed: %v", err)
-	}
-	if err := r.Create("", "foo"); err == nil {
-		t.Fatal("expected error for empty dir")
-	}
-	if err := r.Create("/tmp", ""); err == nil {
-		t.Fatal("expected error for empty name")
-	}
-}

@@ -42,10 +42,29 @@ func TestRootCmd_HelpDoesNotError(t *testing.T) {
 	if !strings.Contains(stdout, "kacho-migrator") {
 		t.Fatalf("expected help output to mention kacho-migrator, got: %q", stdout)
 	}
-	for _, sub := range []string{"up", "down", "status", "create"} {
-		if !strings.Contains(stdout, sub) {
-			t.Errorf("help output missing subcommand %q: %q", sub, stdout)
+	// Перечень утверждается ПО БЛОКУ «Available Commands», а не подстрокой во
+	// всём выводе: пока проба искала слово «create» где угодно, её удовлетворяла
+	// ПРОЗА в Long («и создание новой миграции (create)») — то есть после снятия
+	// глагола она осталась бы зелёной, а помощь продолжала бы обещать команду,
+	// которой нет.
+	block := stdout
+	if i := strings.Index(block, "Available Commands:"); i >= 0 {
+		block = block[i:]
+		if j := strings.Index(block, "\nFlags:"); j >= 0 {
+			block = block[:j]
 		}
+	} else {
+		t.Fatalf("в помощи нет блока перечня команд: %q", stdout)
+	}
+	for _, sub := range []string{"up", "down", "status"} {
+		if !strings.Contains(block, sub) {
+			t.Errorf("в перечне команд нет %q: %q", sub, block)
+		}
+	}
+	// Глагол create снят (#566): имя миграции выводится из номера задачи и
+	// пишется рукой. Обещать его в помощи нельзя — обещание не исполнимо.
+	if strings.Contains(block, "create") {
+		t.Errorf("в перечне команд снова есть create: %q", block)
 	}
 }
 
@@ -81,17 +100,20 @@ func TestDownCmd_ParsesTargetFlag(t *testing.T) {
 	}
 }
 
-func TestCreateCmd_RequiresNameArg(t *testing.T) {
-	// `create` без позиционного аргумента → cobra-валидация падает на Args.
+func TestCreateVerbIsGone(t *testing.T) {
+	// Замок на снятие (#566). Глагол выдавал имя с меткой времени — форму,
+	// которой дерево не принимает: гейт пространства номеров отвергает номер
+	// больше номера всякой возможной задачи. Вернуть его молча нельзя.
 	_, _, err := runCommand(t, []string{
 		"--dsn", "postgres://x:y@z:1/d?sslmode=disable",
-		"create",
+		"create", "probe_name",
 	}, nil)
 	if err == nil {
-		t.Fatal("expected error for missing name arg, got nil")
+		t.Fatal("глагол create снова принимается — имя миграции выводится из номера " +
+			"задачи и пишется рукой, см. docs/architecture/migration-version-namespace.md")
 	}
-	if !strings.Contains(err.Error(), "accepts 1 arg") {
-		t.Fatalf("expected cobra Args error, got: %v", err)
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("ожидался отказ cobra «unknown command», получено: %v", err)
 	}
 }
 

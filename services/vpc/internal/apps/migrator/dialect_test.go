@@ -53,16 +53,6 @@ func TestPostgresDialect_Spec(t *testing.T) {
 	}
 }
 
-func TestPostgresDialect_CreateRejectsEmpty(t *testing.T) {
-	d, _ := NewDialect("postgres")
-	if err := d.Create("", "foo"); err == nil {
-		t.Error("expected error for empty physDir")
-	}
-	if err := d.Create("/tmp", ""); err == nil {
-		t.Error("expected error for empty name")
-	}
-}
-
 // Compile-time assertion: built-in dialect удовлетворяет интерфейсу.
 var _ Dialect = (*postgresDialect)(nil)
 

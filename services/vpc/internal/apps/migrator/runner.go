@@ -11,7 +11,7 @@
 // `postgres.go`); Runner — тонкая обертка, которая:
 //   - валидирует Config до обращения к goose (friendly-error на FS==nil и т.п. —
 //     иначе goose упадет где-нибудь в недрах с малопонятным сообщением);
-//   - проксирует Up/Down/Status/Create на Dialect-impl.
+//   - проксирует Up/Down/Status на Dialect-impl.
 //
 // Это позволяет добавлять новые диалекты без if-ветвей в Runner.
 //
@@ -96,12 +96,6 @@ func (r *Runner) Down(target string) error {
 // Status печатает примененные/непримененные миграции.
 func (r *Runner) Status(out io.Writer) error {
 	return r.cfg.Dialect.Status(context.Background(), r.cfg.DSN, r.cfg.FS, r.cfg.MigrationsDir, out)
-}
-
-// Create создает новый sql-файл миграции на диске (в указанной директории).
-// embed.FS read-only, поэтому cobra передает сюда явный physDir.
-func (r *Runner) Create(physDir, name string) error {
-	return r.cfg.Dialect.Create(physDir, name)
 }
 
 // parseTargetVersion — goose использует int64 для версии (timestamp или

@@ -13,7 +13,20 @@
 //	kacho-nlb-migrator up      [--target <version>]
 //	kacho-nlb-migrator down    [--target <version>]
 //	kacho-nlb-migrator status
-//	kacho-nlb-migrator create  <name> [--dir <path>]
+//
+// # Глагола `create` здесь НЕТ — и это решение, а не пропуск (#566)
+//
+// Он был и выдавал `goose.Create` без `SetSequential`, то есть имя с 14-значной
+// меткой времени (`20260817042704_имя.sql`). Файлов такой формы в дереве ноль:
+// глаголом ни разу не пользовались, а если бы воспользовались — гейт
+// пространства номеров отверг бы результат, потому что метка времени превышает
+// номер всякой возможной задачи на три порядка.
+//
+// Новая миграция называется рукой: `<задача><порядковый:3>_<что_делает>.sql`
+// (например `539001_...`), номер задачи — тот же, что в имени ветки. Выводить
+// его инструментом нечем и незачем: он уже известен автору, а установленный
+// инструмент работает ровно у тех, кто его установил. Разбор —
+// docs/architecture/migration-version-namespace.md.
 //
 // Global flags:
 //
@@ -44,9 +57,6 @@ import (
 const (
 	defaultDialect       = "postgres"
 	defaultMigrationsDir = "."
-	// defaultPhysDir — куда `create` пишет новые миграции по умолчанию.
-	// На внешнем диске (relative cwd); embed FS — read-only.
-	defaultPhysDir = "internal/migrations"
 )
 
 // rootOptions — shared параметры всех subcommand'ов (persistent flags).
@@ -70,9 +80,13 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	opts := &rootOptions{}
 
 	root := &cobra.Command{
-		Use:          "kacho-nlb-migrator",
-		Short:        "Database migrations runner for kacho-nlb (KAC-160)",
-		Long:         "kacho-nlb-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb.\nПостроено по pattern'у kacho-vpc/cmd/migrator (skill evgeniy §9 K.1–K.3).",
+		Use:   "kacho-nlb-migrator",
+		Short: "Database migrations runner for kacho-nlb (KAC-160)",
+		Long: "kacho-nlb-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb.\n" +
+			"Построено по pattern'у kacho-vpc/cmd/migrator (skill evgeniy §9 K.1–K.3).\n\n" +
+			"Новая миграция заводится РУКОЙ: internal/migrations/<задача><порядковый:3>_<что>.sql\n" +
+			"(например 539001_add_index.sql; номер задачи — тот же, что в имени ветки).\n" +
+			"Подробности — docs/architecture/migration-version-namespace.md.",
 		SilenceUsage: true,
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
@@ -86,7 +100,6 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		newUpCmd(opts, migrationsFS),
 		newDownCmd(opts, migrationsFS),
 		newStatusCmd(opts, migrationsFS),
-		newCreateCmd(opts, migrationsFS),
 	)
 	return root
 }
@@ -137,25 +150,6 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 			return r.Status(cmd.OutOrStdout())
 		},
 	}
-}
-
-func newCreateCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
-	var dir string
-	cmd := &cobra.Command{
-		Use:   "create <name>",
-		Short: "Create a new empty SQL migration file (on disk, not in embed FS)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := buildRunner(opts, migrationsFS)
-			if err != nil {
-				return err
-			}
-			return r.Create(dir, args[0])
-		},
-	}
-	cmd.Flags().StringVar(&dir, "dir", defaultPhysDir,
-		"physical directory to place the new .sql file (cannot be embed FS)")
-	return cmd
 }
 
 // buildRunner собирает migrator.Runner из persistent-флагов + ENV + config-fallback.
