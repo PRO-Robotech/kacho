@@ -1,9 +1,9 @@
 import { jest } from "@jest/globals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Operation } from "@shared/api/types";
 import type { UserTokensPanel as UserTokensPanelExport } from "./UserTokensPanel";
-import { antdDouble } from "@/test/antd-double";
+import { antdStub } from "@shared/test/antd-stub";
 
 interface MutationOpts {
   method: string;
@@ -17,9 +17,10 @@ const listUserTokens = jest.fn<(id: string, q?: Record<string, string>) => Promi
 const run = jest.fn<(body: unknown) => Promise<unknown>>();
 const mutations: MutationOpts[] = [];
 
-// Свой дублёр antd — общий бросает на `rowKey="id"` и не подставляет значение
-// ячейки; разбор — в шапке @/test/antd-double.
-jest.unstable_mockModule("antd", () => antdDouble);
+// Общий заменитель antd — ОДИН на дерево (#587). Свой дублёр iam снят: он
+// реализовал те же виды по-своему, и правка, доехавшая до одной копии, не
+// доезжала до другой.
+jest.unstable_mockModule("antd", () => antdStub());
 
 jest.unstable_mockModule("@shared/api/iam", () => ({
   iamApi: { listUserTokens },
@@ -151,8 +152,11 @@ describe("UserTokensPanel", () => {
     await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
     expect(run).not.toHaveBeenCalled();
 
-    const [, confirmButton] = screen.getAllByRole("button", { name: "Отозвать" });
-    fireEvent.click(confirmButton);
+    // Подтверждение появляется ТОЛЬКО после нажатия на триггер — как у
+    // настоящего antd. Прежний дублёр iam рисовал его всегда, и проба брала
+    // вторую кнопку с тем же именем.
+    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
+    fireEvent.click(within(screen.getByRole("tooltip")).getByRole("button", { name: "Отозвать" }));
 
     expect(run).toHaveBeenCalledWith({ tokenId: "tok-9" });
   });
