@@ -421,6 +421,67 @@ check("близнец-11: умолчание не изменилось — пр�
       and any("pm.environment.get('opId')" in ln for ln in _default.test_script))
 
 # ---------------------------------------------------------------------------
+# 9б. АКТОР ОПРОСА ВЫВОДИТСЯ ИЗ ТОГО, КТО ОПЕРАЦИЮ СОЗДАЛ.
+#
+#     ПРЕДМЕТ. `OperationService.Get` энфорсит владение и отвечает чужому
+#     `NotFound`, а не отказом. Опрос под другим актором получает 404, и
+#     выглядит это как задержка материализации в продукте — диагноз оказывается
+#     в шести шагах от причины. Наблюдалось: администратор облака создавал пул,
+#     опрос уходил дефолтным проектным актором, `operation … not found`, и за
+#     ним каскадом падали ещё девять шагов, ни один из которых виноват не был.
+#
+#     Актор опроса — СЛЕДСТВИЕ, а не решение автора кейса, поэтому он выводится.
+#     Аргумент можно забыть, и забвение молчаливо; вывод забыть нельзя.
+# ---------------------------------------------------------------------------
+def _poll_actor(steps):
+    for st in gen.normalize_steps(steps):
+        if st.name.startswith("poll-op"):
+            return st.auth
+    return "шага опроса нет"
+
+
+_админ_издатель = [
+    Step(name="create", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
+         body={"name": "p"},
+         test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
+    gen.poll_operation_until_done(),
+]
+check("инъекция: опрос наследует актора издателя операции",
+      _poll_actor(_админ_издатель) == "jwtBootstrap",
+      f"получено {_poll_actor(_админ_издатель)!r}")
+
+_дефолтный_издатель = [
+    Step(name="create", method="POST", path="/vpc/v1/networks", body={"name": "n"},
+         test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
+    gen.poll_operation_until_done(),
+]
+check("близнец-12: издатель под умолчанием коллекции — опрос актора НЕ получает",
+      _poll_actor(_дефолтный_издатель) is None,
+      f"получено {_poll_actor(_дефолтный_издатель)!r}")
+
+_явный_актор = [
+    Step(name="create", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
+         body={"name": "p"},
+         test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
+    gen.poll_operation_until_done(auth="jwtProjectAdminB1"),
+]
+check("близнец-13: явно заданный актор опроса сильнее вывода — кейс о ЧУЖОЙ операции",
+      _poll_actor(_явный_актор) == "jwtProjectAdminB1",
+      f"получено {_poll_actor(_явный_актор)!r}")
+
+_последний_издатель = [
+    Step(name="create-admin", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
+         body={"name": "p"},
+         test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
+    Step(name="create-tenant", method="POST", path="/vpc/v1/networks", body={"name": "n"},
+         test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
+    gen.poll_operation_until_done(),
+]
+check("близнец-14: берётся ПОСЛЕДНИЙ издатель имени, а не первый",
+      _poll_actor(_последний_издатель) is None,
+      f"получено {_poll_actor(_последний_издатель)!r}")
+
+# ---------------------------------------------------------------------------
 # 10. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».
 # ---------------------------------------------------------------------------
 _ALL = (injected, neg, poll, manual, foreign, multi, multi404, authzfirst, grpccodes,
