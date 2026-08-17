@@ -7,7 +7,7 @@
 // Postgres-only (rules: Postgres 16, database-per-service), поэтому реализация
 // одна — [postgresDialect] (`postgres.go`); фабрика [NewDialect] резолвит ее по
 // имени из CLI/конфига. Интерфейс — тонкий seam вокруг goose-конфигурации
-// (goose-имя / driver / Up-Down-Status-Create), а не задел под мульти-БД: второй
+// (goose-имя / driver / Up-Down-Status), а не задел под мульти-БД: второй
 // диалект добавляется только когда станет реальным требованием (non-negotiable
 // #11 — без speculative-абстракций).
 //
@@ -44,19 +44,15 @@ type Dialect interface {
 	// out зарезервирован под будущий redirect (goose v3 пишет в свой logger).
 	Status(ctx context.Context, dsn string, fsys fs.FS, dir string, out io.Writer) error
 
-	// Create создает пустой .sql-файл миграции на физическом диске (embed.FS
-	// read-only). physDir — directory относительно cwd; name — суффикс имени.
-	Create(physDir, name string) error
-
 	// Spec возвращает CLI-метадату диалекта (имя, goose-имя, driver-имя для
 	// sql.Open). Используется CLI для help / validation; runtime-логика
-	// инкапсулирована в самих методах Up/Down/Status/Create.
+	// инкапсулирована в самих методах Up/Down/Status.
 	Spec() DialectSpec
 }
 
 // DialectSpec — описательная метадата диалекта для CLI-резолва и тестов.
 //
-// Это НЕ runtime-behaviour: реальная Up/Down/Status/Create логика живет в
+// Это НЕ runtime-behaviour: реальная Up/Down/Status логика живет в
 // реализации [Dialect]-интерфейса. Spec нужен, чтобы:
 //   - CLI мог напечатать имя/driver диалекта в help;
 //   - тесты могли проверить, что `--dialect postgres` правильно резолвится.

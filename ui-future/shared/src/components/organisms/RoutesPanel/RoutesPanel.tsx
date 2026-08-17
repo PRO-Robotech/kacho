@@ -25,7 +25,7 @@
 //     удалённый маршрут, о котором оператору отвечают успехом — `routeGaps`.
 
 import { useState } from "react";
-import { Button, Input, Space, Typography } from "antd";
+import { Button, Input, Select, Space, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -33,9 +33,23 @@ import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+
+/**
+ * Место полной замены набора. Состав обоих типов, через которые проходит
+ * маршрут, сверяется с `StaticRoute` контракта гейтом
+ * `test/set-replacement-draft-composition`.
+ */
+export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
+  field: "static_routes",
+  contract: "kacho/cloud/vpc/v1/route_table.proto",
+  message: "StaticRoute",
+  drafts: ["StaticRoute", "DraftRoute"],
+};
 
 export interface StaticRoute {
   destination_prefix?: string;
@@ -56,19 +70,33 @@ interface RoutesPanelProps {
   routes: StaticRoute[];
 }
 
+/** Ветвь `StaticRoute.next_hop`, выбранная строкой. Поле ФОРМЫ, не контракта. */
+export type RouteNextHopKind = "address" | "gateway";
+
 export interface DraftRoute {
   destination_prefix: string;
   next_hop_address: string;
   /**
-   * The gateway arm of the route, preserved verbatim. StaticRoute.next_hop is a
-   * oneof — `next_hop_address` XOR `gateway_id` — and saving REPLACES the whole
-   * list, so a gateway route must survive a save it was not part of. The editor
-   * does not author gateways; typing an address over one deliberately switches
-   * the arm.
+   * Выбранная ветвь `StaticRoute.next_hop` (`next_hop_address` XOR `gateway_id`).
+   *
+   * Прежде ветви у черновика не было: редактор шлюзы не авторил, а строка со
+   * шлюзом лишь ПЕРЕЖИВАЛА сохранение (оно заменяет весь список). Сменить ветвь
+   * можно было только набрав адрес поверх, и обратного пути не существовало —
+   * снятый шлюз не возвращался ничем, кроме пересоздания таблицы (#375). Ветвь
+   * выбирается явно, и выбор — то, что делает пользователь, а не побочный
+   * эффект набора.
    */
+  _kind?: RouteNextHopKind;
+  /** Ветвь шлюза. Пустая строка означает «шлюз выбран, но не назван». */
   gateway_id?: string;
   /** Проносится нетронутым по той же причине, что и ветвь шлюза. */
   labels?: Record<string, string>;
+}
+
+/** Ветвь строки: выбор, если он назван, иначе — та, что заполнена. */
+function kindOf(r: DraftRoute): RouteNextHopKind {
+  if (r._kind) return r._kind;
+  return r.gateway_id ? "gateway" : "address";
 }
 
 /** Чего не хватает в строке, которую оператор ещё не дописал. */
@@ -87,6 +115,7 @@ export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
   return routes.map((r) => ({
     destination_prefix: r.destination_prefix ?? "",
     next_hop_address: r.next_hop_address ?? "",
+    _kind: r.gateway_id ? ("gateway" as const) : ("address" as const),
     ...(r.gateway_id ? { gateway_id: r.gateway_id } : {}),
     ...(r.labels ? { labels: r.labels } : {}),
   }));
@@ -95,12 +124,16 @@ export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
 export function routesFromDrafts(drafts: DraftRoute[]): StaticRoute[] {
   return drafts.map((r) => {
     const destination_prefix = r.destination_prefix.trim();
-    const address = r.next_hop_address.trim();
     const labels = r.labels ? { labels: r.labels } : {};
-    // An address the operator typed wins over the gateway the route came with —
-    // that is them switching the arm on purpose. Exactly one arm is emitted.
+    // Ровно одна ветвь на строку, и её называет ВЫБОР строки: группа
+    // взаимоисключающая, а две заполненные ветви — отказ края.
+    if (kindOf(r) === "gateway") {
+      const gateway = (r.gateway_id ?? "").trim();
+      if (gateway) return { destination_prefix, gateway_id: gateway, ...labels };
+      return { destination_prefix, ...labels };
+    }
+    const address = r.next_hop_address.trim();
     if (address) return { destination_prefix, next_hop_address: address, ...labels };
-    if (r.gateway_id) return { destination_prefix, gateway_id: r.gateway_id, ...labels };
     return { destination_prefix, ...labels };
   });
 }
@@ -120,9 +153,12 @@ export function routeGaps(drafts: DraftRoute[]): RouteGap[] {
   drafts.forEach((r, i) => {
     const missing: string[] = [];
     if (r.destination_prefix.trim() === "") missing.push(MISSING_DESTINATION);
-    // Ветвь шлюза — тоже следующий узел: пустое поле адреса у такой строки
-    // претензией не является.
-    if (r.next_hop_address.trim() === "" && !r.gateway_id) missing.push(MISSING_NEXT_HOP);
+    // Нехватка считается ПО ВЫБРАННОЙ ВЕТВИ: у строки со шлюзом пустое поле
+    // адреса претензией не является, а вот невыбранный шлюз — является. Счёт по
+    // одному полю уже однажды дал молчаливую потерю маршрута.
+    const заполнена =
+      kindOf(r) === "gateway" ? (r.gateway_id ?? "").trim() !== "" : r.next_hop_address.trim() !== "";
+    if (!заполнена) missing.push(MISSING_NEXT_HOP);
     if (missing.length > 0) gaps.push({ row: i + 1, missing });
   });
   return gaps;
@@ -193,7 +229,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
   }
 
   function addRow() {
-    setDrafts((prev) => [...(prev ?? []), { destination_prefix: "", next_hop_address: "" }]);
+    setDrafts((prev) => [...(prev ?? []), { destination_prefix: "", next_hop_address: "", _kind: "address" }]);
   }
 
   function removeRow(index: number) {
@@ -320,19 +356,52 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
                         />
                       </td>
                       <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
-                        <Input
-                          variant="borderless"
-                          // Строка со шлюзовым next-hop показывает его в плейсхолдере:
-                          // поле адреса у неё пустое (это другая ветвь oneof), и без
-                          // подписи выглядело бы как маршрут вовсе без next-hop.
-                          // Введённый адрес осознанно заменяет ветвь.
-                          placeholder={
-                            row.gateway_id ? `шлюз ${row.gateway_id} — введите адрес, чтобы заменить` : "10.0.0.1"
-                          }
-                          value={row.next_hop_address}
-                          onChange={(e) => setRow(i, { next_hop_address: e.target.value })}
-                          style={cellInputStyle}
-                        />
+                        {/* Ветвь `next_hop` выбирается ЯВНО и правится здесь же.
+                            Прежде выбора не было вовсе: шлюз лишь переживал
+                            сохранение, а сменить ветвь можно было только набрав
+                            адрес поверх — и обратно шлюз не возвращался ничем,
+                            кроме пересоздания таблицы (#375). Обе ячейки стоят в
+                            одном столбце: число столбцов таблицы — часть её
+                            договора об отсутствии прыжка при входе в правку. */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <Select
+                            aria-label="Вид следующего узла"
+                            variant="borderless"
+                            value={kindOf(row)}
+                            onChange={(v) =>
+                              setRow(
+                                i,
+                                v === "gateway"
+                                  ? { _kind: "gateway", next_hop_address: "" }
+                                  : { _kind: "address", gateway_id: "" },
+                              )
+                            }
+                            style={{ width: 108, flexShrink: 0 }}
+                            options={[
+                              { value: "address", label: "Адрес" },
+                              { value: "gateway", label: "Шлюз" },
+                            ]}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {kindOf(row) === "gateway" ? (
+                              <RefSelect
+                                refResource="gateways"
+                                refProjectScoped
+                                value={row.gateway_id ?? ""}
+                                onChange={(id) => setRow(i, { gateway_id: id })}
+                                placeholder="Выберите шлюз"
+                              />
+                            ) : (
+                              <Input
+                                variant="borderless"
+                                placeholder="10.0.0.1"
+                                value={row.next_hop_address}
+                                onChange={(e) => setRow(i, { next_hop_address: e.target.value })}
+                                style={cellInputStyle}
+                              />
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
                         <Button

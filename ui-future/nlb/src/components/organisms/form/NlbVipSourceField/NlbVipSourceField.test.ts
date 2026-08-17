@@ -4,14 +4,8 @@ import { jest } from "@jest/globals";
 // теста хелперов мокаем RefSelect (в этом тесте компонент не рендерится).
 jest.unstable_mockModule("@/components/organisms/form/RefSelect", () => ({ RefSelect: () => null }));
 
-const {
-  effectiveVipMode,
-  buildVipSource,
-  buildVipSourceOrNull,
-  familyIpVersion,
-  subnetPlacementMatches,
-  linkAddressFilter,
-} = await import("./NlbVipSourceField");
+const { effectiveVipMode, buildVipSourceOrNull, familyIpVersion, subnetPlacementMatches, linkAddressFilter } =
+  await import("./NlbVipSourceField");
 
 describe("NlbVipSourceField helpers", () => {
   it("effectiveVipMode — нормализует режим под схему", () => {
@@ -23,25 +17,37 @@ describe("NlbVipSourceField helpers", () => {
     expect(effectiveVipMode("EXTERNAL", undefined)).toBe("public");
     expect(effectiveVipMode("EXTERNAL", "subnet")).toBe("public"); // невалидный → default
     expect(effectiveVipMode("EXTERNAL", "address")).toBe("address");
-  });
-
-  it("buildVipSource — ровно один кейс oneof на семейство", () => {
-    expect(buildVipSource("INTERNAL", "subnet", { subnet_id: "sub-1" })).toEqual({ subnet_id: "sub-1" });
-    expect(buildVipSource("INTERNAL", "address", { address_id: "adr-1" })).toEqual({ address_id: "adr-1" });
-    expect(buildVipSource("EXTERNAL", "public", {})).toEqual({ public: {} });
-    // Устаревший режим схлопывается в валидный дефолт схемы.
-    expect(buildVipSource("EXTERNAL", "subnet", {})).toEqual({ public: {} });
+    // «Не задавать» законен при ОБЕИХ схемах: это отказ от семейства, а не
+    // источник, поэтому схлопываться ему не во что.
+    expect(effectiveVipMode("EXTERNAL", "off")).toBe("off");
+    expect(effectiveVipMode("INTERNAL", "off")).toBe("off");
   });
 
   it("buildVipSourceOrNull — пустое значение семейства → null (не шлём пустой id)", () => {
-    // Задано значение → oneof, как buildVipSource.
+    // Задано значение → ровно один кейс oneof.
     expect(buildVipSourceOrNull("INTERNAL", "subnet", { subnet_id: "sub-1" })).toEqual({ subnet_id: "sub-1" });
     expect(buildVipSourceOrNull("INTERNAL", "address", { address_id: "adr-1" })).toEqual({ address_id: "adr-1" });
+    // Устаревший режим схлопывается в валидный дефолт схемы.
+    expect(buildVipSourceOrNull("EXTERNAL", "subnet", {})).toEqual({ public: {} });
     // Пустой выбор → null (семейство опускается, а не уходит как {address_id:""}).
     expect(buildVipSourceOrNull("INTERNAL", "address", { address_id: "" })).toBeNull();
     expect(buildVipSourceOrNull("INTERNAL", "subnet", { subnet_id: "" })).toBeNull();
     expect(buildVipSourceOrNull("INTERNAL", "address", undefined)).toBeNull();
     // public всегда валиден (VIP выделяет платформа).
+    expect(buildVipSourceOrNull("EXTERNAL", "public", {})).toEqual({ public: {} });
+  });
+
+  it("режим «не задавать» опускает семейство при ЛЮБОЙ схеме", () => {
+    // Ровно тот исход, которого форме не хватало: у внешней схемы «публичный»
+    // источник даёт всегда, поэтому без явного отказа оба семейства уезжали на
+    // провод и балансировщик только на IPv4 был невыразим.
+    expect(buildVipSourceOrNull("EXTERNAL", "off", {})).toBeNull();
+    expect(buildVipSourceOrNull("INTERNAL", "off", {})).toBeNull();
+    // Отказ сильнее оставшегося в виджете значения — иначе черновик, набранный
+    // до отказа, продолжал бы уезжать телом.
+    expect(buildVipSourceOrNull("INTERNAL", "off", { subnet_id: "sub-1", address_id: "adr-1" })).toBeNull();
+    // (+) положительный контроль: без него «off → null» могло бы означать
+    // «null при любом режиме».
     expect(buildVipSourceOrNull("EXTERNAL", "public", {})).toEqual({ public: {} });
   });
 

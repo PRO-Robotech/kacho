@@ -43,8 +43,13 @@ interface SelectProps {
   children?: React.ReactNode;
   options?: SelectOption[];
   onChange?: (value: string, option?: SelectOption) => void;
+  onSearch?: (value: string) => void;
   value?: string;
   placeholder?: React.ReactNode;
+  showSearch?: boolean;
+  notFoundContent?: React.ReactNode;
+  filterOption?: unknown;
+  optionFilterProp?: unknown;
   [key: string]: unknown;
 }
 
@@ -123,6 +128,20 @@ interface RadioGroupProps {
   value?: unknown;
   onChange?: (e: { target: { value: unknown } }) => void;
   children?: React.ReactNode;
+}
+
+/** Вариант переключателя. Настоящий принимает и объект, и голое значение. */
+interface SegmentedOption {
+  value: unknown;
+  label?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface SegmentedProps {
+  options?: Array<SegmentedOption | string | number>;
+  value?: unknown;
+  onChange?: (value: unknown) => void;
+  [key: string]: unknown;
 }
 
 interface SwitchProps {
@@ -312,8 +331,32 @@ export function antdStub(): Record<string, unknown> {
   // показывал ни одного варианта и передавал событие: состав списка был
   // ненаблюдаем, а выбор — невоспроизводим, поэтому проба поневоле утверждала
   // бы форму дублёра.
-  const Select = ({ children, options, onChange, value, placeholder, ...props }: SelectProps) =>
-    React.createElement(
+  //
+  // `showSearch` у настоящего `Select` — это ПОЛЕ ВВОДА внутри списка, и ввод в
+  // него уезжает в `onSearch`. Дублёр обязан выполнять контракт настоящего в
+  // той части, которая и есть предмет пробы: без поля ввода нельзя утверждать
+  // ни что ввод уходит запросом на сервер, ни что он не уходит (#528). Поле
+  // добавляется РЯДОМ с `<select>` (внутрь нельзя — это невалидная разметка), а
+  // роль `combobox` остаётся у `<select>`, поэтому прежние пробы не меняются.
+  //
+  // `notFoundContent` рисуется, когда вариантов нет: именно там и живёт
+  // утверждение об области поиска, ради которого дублёр расширен.
+  const Select = ({
+    children,
+    options,
+    onChange,
+    onSearch,
+    value,
+    placeholder,
+    showSearch,
+    notFoundContent,
+    filterOption,
+    optionFilterProp,
+    ...props
+  }: SelectProps) => {
+    void filterOption;
+    void optionFilterProp;
+    const select = React.createElement(
       "select",
       {
         ...props,
@@ -329,6 +372,24 @@ export function antdStub(): Record<string, unknown> {
       ),
       children,
     );
+    if (!showSearch && notFoundContent === undefined) return select;
+    return React.createElement(
+      "div",
+      null,
+      showSearch
+        ? React.createElement("input", {
+            key: "__search__",
+            type: "search",
+            "aria-label": "select-search",
+            onChange: (e: { target: { value: string } }) => onSearch?.(e.target.value),
+          })
+        : null,
+      select,
+      (options ?? []).length === 0 && notFoundContent !== undefined
+        ? React.createElement("div", { key: "__empty__" }, notFoundContent as React.ReactNode)
+        : null,
+    );
+  };
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема
@@ -587,7 +648,47 @@ export function antdStub(): Record<string, unknown> {
       },
     ),
     Row: Component,
-    Segmented: Component,
+    // Настоящий переключатель рисует варианты ВИДИМЫМ ТЕКСТОМ — по ним оператор
+    // и выбирает. Варианты приходят пропом `options`, детьми он их не получает,
+    // поэтому заменитель-`<div>` не показывал НИ ОДНОГО: свойство «какой выбор
+    // предложен» было ненаблюдаемо во всех девяти местах, где переключатель
+    // стоит (реестры ресурсов, ветвь спецификации интерфейса, панели ключей и
+    // токенов, страница ролей, источник VIP балансировщика, вид списка). Проба
+    // на таком дублёре зелена при любом составе вариантов — то есть хуже
+    // отсутствующей: слот занят, уверенность создана, предмета нет.
+    //
+    // ФОРМА ВЗЯТА У НАСТОЯЩЕГО, а не изобретена: `rc-segmented` рисует на
+    // вариант `<label>` с радио-полем внутри, и подпись — текст этого label'а.
+    // Отсюда доступное имя варианта, по которому проба его и находит. Роль или
+    // атрибут, которых настоящий компонент не производит, добавлять НЕЛЬЗЯ:
+    // утверждение окажется прибито к форме дублёра и переживёт продукт — так
+    // уже вышло с подписью-подсказкой у `Select` (#418).
+    //
+    // Отклонение допускается одно и только в сторону строгости: `disabled`
+    // варианта попадает на поле ввода, поэтому выбрать запрещённое нельзя — как
+    // и у настоящего. Дублёр, принимающий больше настоящего, прячет ровно тот
+    // дефект, ради которого его подставляют.
+    Segmented: ({ options, value, onChange, ...rest }: SegmentedProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        (options ?? []).map((raw) => {
+          const o: SegmentedOption =
+            typeof raw === "object" && raw !== null ? raw : { value: raw, label: String(raw) };
+          return React.createElement(
+            "label",
+            { key: String(o.value) },
+            React.createElement("input", {
+              type: "radio",
+              value: String(o.value),
+              checked: value === o.value,
+              disabled: Boolean(o.disabled),
+              onChange: () => onChange?.(o.value),
+            }),
+            o.label ?? String(o.value),
+          );
+        }),
+      ),
     Select,
     // `Skeleton` стоит на пути монтирования страниц реестра (заглушка загрузки
     // в `RepositoryTagsPanel`). Приехал сюда вместе со сведением окружения проб

@@ -34,6 +34,17 @@ type Handler struct {
 	list           *ListAddressesUseCase
 	listBySubnet   *ListBySubnetUseCase
 	listOperations *ListOperationsUseCase
+	release        *ReleaseOwnedAddressUseCase
+}
+
+// WithLeaseReleaser подключает путь `ReleaseOwnedAddress`.
+//
+// Отдельным методом, а не девятым аргументом конструктора: так уже
+// существующие сборки (в том числе тестовые) не переписываются, а непровязанный
+// путь честно отвечает Unimplemented вместо тихого «освободили».
+func (h *Handler) WithLeaseReleaser(r *ReleaseOwnedAddressUseCase) *Handler {
+	h.release = r
+	return h
 }
 
 // NewHandler собирает Handler из готовых use-case'ов. Конструктор намеренно
@@ -150,6 +161,43 @@ func (h *Handler) CreateOwnedAddress(ctx context.Context, req *vpcv1.CreateOwned
 		return nil, err
 	}
 	return pbconv.OperationToProto(op), nil
+}
+
+// ReleaseOwnedAddress — снятие аренды по предъявлению владения ею; исход
+// НАЗЫВАЕТСЯ полем ответа, а не выводится вызывающим из кода ошибки.
+//
+// Отображение исхода закрыто: неизвестное значение даёт фиксированный
+// INTERNAL, а не молчаливый `OUTCOME_UNSPECIFIED` — вызывающий прочёл бы ноль
+// как «ничего не произошло» и повторял бы по кругу.
+func (h *Handler) ReleaseOwnedAddress(
+	ctx context.Context, req *vpcv1.ReleaseOwnedAddressRequest,
+) (*vpcv1.ReleaseOwnedAddressResponse, error) {
+	if h.release == nil {
+		return nil, status.Error(codes.Unimplemented, "owned address release is not wired")
+	}
+	outcome, err := h.release.Execute(ctx, ReleaseLeaseInput{
+		ProjectID:    req.GetProjectId(),
+		AddressID:    req.GetAddressId(),
+		ReferrerType: req.GetReferrerType(),
+		ReferrerID:   req.GetReferrerId(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var pb vpcv1.ReleaseOwnedAddressResponse_Outcome
+	switch outcome {
+	case kachorepo.LeaseReleased:
+		pb = vpcv1.ReleaseOwnedAddressResponse_RELEASED
+	case kachorepo.LeaseAlreadyReleased:
+		pb = vpcv1.ReleaseOwnedAddressResponse_ALREADY_RELEASED
+	case kachorepo.LeaseDetached:
+		pb = vpcv1.ReleaseOwnedAddressResponse_DETACHED
+	case kachorepo.LeaseAlreadyDetached:
+		pb = vpcv1.ReleaseOwnedAddressResponse_ALREADY_DETACHED
+	default:
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+	return &vpcv1.ReleaseOwnedAddressResponse{Outcome: pb}, nil
 }
 
 // createInputFromProto — единственный разбор тела создания адреса; общий для

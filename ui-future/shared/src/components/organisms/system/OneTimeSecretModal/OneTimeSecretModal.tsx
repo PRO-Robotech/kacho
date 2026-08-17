@@ -153,14 +153,14 @@ export function OneTimeSecretModal({ open, onClose, credential, title, subjectLa
           </Paragraph>
         )}
 
-        <CopyField label="Client ID" value={credential.client_id} />
-        <CopyField label="Key ID (kid)" value={credential.key_id} />
-        <CopyField label="Algorithm" value={credential.algorithm} mono={false} />
+        <CopyField label="Идентификатор клиента" value={credential.client_id} />
+        <CopyField label="Идентификатор ключа (kid)" value={credential.key_id} />
+        <CopyField label="Алгоритм" value={credential.algorithm} mono={false} />
 
         <div>
           <Space style={{ width: "100%", justifyContent: "space-between" }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              Private key (PEM, PKCS#8)
+              Приватный ключ (PEM, PKCS#8)
             </Text>
             <Button
               size="small"

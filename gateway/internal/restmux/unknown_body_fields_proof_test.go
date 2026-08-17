@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -183,17 +184,43 @@ func TestHTTPBindingsMatchGeneratedRouteTable(t *testing.T) {
 	if len(bindings) == 0 {
 		t.Fatal("binding table is empty: proto descriptors are not linked into the test binary")
 	}
+	// Пара (метод, путь) отображается в МНОЖЕСТВО FQN, а не в один.
+	//
+	// Прежде здесь стояло сравнение с единственным значением, и предпосылка была
+	// верна ровно до тех пор, пока один путь объявлял один сервис. Окно расширения
+	// ADM-1 (S1→S3) её сняло: административная поверхность публикуется на ТОМ ЖЕ
+	// каноническом пути, что несёт внутренняя, и одну пару объявляют два FQN.
+	//
+	// Сравнение единственных значений на этом не просто краснело — оно краснело
+	// НЕДЕТЕРМИНИРОВАННО, в обе стороны: обе таблицы выбирали своего кандидата
+	// сами, и какой из двух выпадет, решал порядок обхода. То есть проба измеряла
+	// собственный недетерминизм, а не расхождение таблиц.
+	//
+	// Предмет пробы от этого не изменился: сканер не должен ТЕРЯТЬ маршруты, иначе
+	// тела на них молча выпадут из проверки. Поэтому утверждается принадлежность
+	// множеству: FQN, который сканер видит на этой паре, обязан быть среди тех,
+	// что таблица на ней объявляет.
+	tableByPair := map[string]map[string]bool{}
+	for _, r := range middleware.RestRoutesForProof() {
+		key := r.Method + " " + r.Template
+		if tableByPair[key] == nil {
+			tableByPair[key] = map[string]bool{}
+		}
+		tableByPair[key][r.FQN] = true
+	}
+
 	known := make(map[string]bool, len(bindings))
 	for _, b := range bindings {
 		known[b.fqn] = true
 		concrete := concretePath(b.template)
-		fqn, ok := router.Resolve(b.method, concrete)
-		if !ok {
+		if _, ok := router.Resolve(b.method, concrete); !ok {
 			t.Errorf("%s %s (%s): the generated route table does not resolve it", b.method, concrete, b.fqn)
 			continue
 		}
-		if fqn != b.fqn {
-			t.Errorf("%s %s: scanner says %s, generated route table says %s", b.method, concrete, b.fqn, fqn)
+		if fqns := tableByPair[b.method+" "+b.template]; !fqns[b.fqn] {
+			t.Errorf("%s %s: сканер видит %s, а таблица маршрутов на этой паре объявляет %v — "+
+				"маршрут потерян одной из таблиц, и тела на нём выпадут из проверки",
+				b.method, concrete, b.fqn, keysOf(fqns))
 		}
 	}
 
@@ -240,4 +267,15 @@ func concretePath(template string) string {
 		parts[i] = p[:open] + value + p[closeIdx+1:]
 	}
 	return "/" + strings.Join(parts, "/")
+}
+
+// keysOf — имена FQN пары в устойчивом порядке, чтобы текст отказа не плавал
+// между прогонами и его можно было сравнить глазами.
+func keysOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

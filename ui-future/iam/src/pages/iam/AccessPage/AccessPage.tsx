@@ -22,8 +22,31 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
 import { errorText } from "@shared/lib/error-presentation";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope } from "@shared/lib/picker-search";
 
 type ScopeTab = "cloud" | "folder";
+
+/**
+ * Чем сужается список пользователей у владельца (#528).
+ *
+ * Выделенным словом `search`: подстрока по почте И по идентификатору сразу.
+ * Подставить сюда общий ключ полей нельзя — `CONTAINS` на пользователе iam
+ * отвергает ЯВНО (`InvalidArgument` на всю страницу, с текстом, называющим
+ * правильное написание). Причина различия не в стиле: у пользователя имени нет
+ * вовсе, его узнают по почте, поэтому владелец и завёл отдельное слово вместо
+ * `name`.
+ *
+ * Прежде ввод не покидал вкладку: список читался ОДНОЙ страницей
+ * (`pageSize: 1000`) и сужался по загруженной метке, а поле отвечало «нет
+ * совпадений» — то есть утверждало об отсутствии человека то, чего не
+ * спрашивало, и предлагало пригласить того, кто в организации уже есть.
+ *
+ * Цена, которую надо назвать, а не спрятать: отображаемое имя в это слово НЕ
+ * входит — владелец ищет по почте и идентификатору. Поэтому подпись поля
+ * говорит именно про них.
+ */
+const USERS_SCOPE = pickerScope({ serverTerm: "search" });
 
 export function AccessPage() {
   const account = useContext((s) => s.account);
@@ -240,9 +263,19 @@ export function AccessGrantPage() {
     ),
   );
 
+  // Ввод и есть значение поля: `onSearch` кладёт набранное в `subjectInput`, а
+  // выбор кладёт туда идентификатор. Оба уезжают одним и тем же `search=` — и
+  // выбранный пользователь остаётся в суженном ответе, потому что владелец
+  // смотрит этим словом И на почту, И на идентификатор. Поэтому метку выбранного
+  // здесь запоминать не нужно: выпасть из ответа она не может.
+  const debouncedSubject = useDebouncedValue(subjectInput, USERS_SCOPE.asksServer ? 250 : 0);
+  const subjectQuery = USERS_SCOPE.query(debouncedSubject);
+
   const users = useQuery({
-    queryKey: ["iam", "users", "for-invite", accountId],
-    queryFn: () => iamApi.listUsers({ pageSize: "1000", account_id: accountId }),
+    // Ключ несёт ввод: без него react-query отдал бы прежний ответ на новый
+    // вопрос, и сужение выглядело бы сломанным именно там, где оно работает.
+    queryKey: ["iam", "users", "for-invite", accountId, subjectQuery.filter ?? ""],
+    queryFn: () => iamApi.listUsers({ pageSize: "1000", account_id: accountId, ...subjectQuery }),
     enabled: !!accountId,
     staleTime: 30_000,
   });
@@ -365,20 +398,30 @@ export function AccessGrantPage() {
           label="Кому выдать доступ"
           name="subject_id"
           required
-          tooltip="Имя, идентификатор или email. Если email не найден — будет создано приглашение."
+          // Подсказка называет то, чем ИЩЕТСЯ, а не то, что показано. Прежняя
+          // обещала поиск по имени — владелец по нему не ищет, и обещание было
+          // невыполнимо при любом вводе.
+          tooltip="Почта или идентификатор — ищется по всему списку. Если почта не найдена — будет создано приглашение."
         >
           <Select
-            placeholder="Имя, идентификатор или email"
+            placeholder="Почта или usr-… — ищется по всему списку"
             options={subjectOptions}
             value={subjectInput || undefined}
             onChange={(v) => setSubjectInput((v as string) || "")}
             onSearch={(v) => setSubjectInput(v)}
-            filterOption={(input, option) =>
-              ((option?.label as string) || "").toLowerCase().includes(input.toLowerCase())
-            }
+            // Сузил сервер — клиент НЕ пересеивает: `search` смотрит на почту и
+            // идентификатор, а метка варианта собрана из имени, почты и
+            // идентификатора, и повторное сужение вычло бы из ответа строки,
+            // присланные краем именно по этому вводу.
+            filterOption={false}
             showSearch
             allowClear
             loading={users.isLoading}
+            title={USERS_SCOPE.notice}
+            // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила ложь:
+            // «нет совпадений» на месте «нет среди загруженных» — и на ней
+            // строилось предложение пригласить уже существующего человека.
+            notFoundContent={users.isLoading ? undefined : USERS_SCOPE.emptyText}
           />
         </Form.Item>
 
@@ -399,7 +442,7 @@ export function AccessGrantPage() {
             message="Приглашение создано!"
             description={
               <Space direction="vertical" style={{ width: "100%" }} size={4}>
-                <Typography.Text>Скопируйте magic-link и отправьте пользователю:</Typography.Text>
+                <Typography.Text>Скопируйте ссылку для входа и отправьте пользователю:</Typography.Text>
                 <Input.TextArea value={magicLink} rows={3} readOnly />
               </Space>
             }

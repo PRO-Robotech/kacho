@@ -3,7 +3,7 @@
 Каталог тест-кейсов по ресурсам. Источник истины — `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`. Здесь — обзорный перечень + уникальные паттерны.
 
-Всего (по `gen.py`): **121 кейс** — instance-redesign 48, authz-deny 42,
+Всего (по `gen.py`): **122 кейса** — instance-redesign 49, authz-deny 42,
 machine-type 12, operation 8, instance-nic-attach 5, list-filter 4, sec-d 2. Здесь стояло «111 — 43» — число
 дрейфует само, потому что переписано рукой; сверяется одной командой
 (`python3 scripts/gen.py` печатает счётчик по каждой коллекции, стенд не нужен), и

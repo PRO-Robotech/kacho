@@ -39,4 +39,26 @@ describe("sanitizeSgRule protocol arm", () => {
     expect(out).not.toHaveProperty("protocol_number");
     expect(out).not.toHaveProperty("_protocol_mode");
   });
+
+  // Выбранная ветвь номера без номера — НАЗВАННАЯ нехватка, а не молчаливое
+  // расширение (#375). Ключ с `undefined` не переживает сериализацию тела:
+  // ветвь исчезает, правило означает «любой протокол», и вызывающий получает
+  // 200 на правило, которого не задавал. Ноль сервер отвергает явно, называя
+  // поле («номер 0 неотличим от незаданного протокола»), и форма показывает
+  // этот отказ подписью «Номер IANA».
+  it("выбранная ветвь номера без значения доезжает нулём — отказ края назван, а не проглочен", () => {
+    const out = sanitizeSgRule({ direction: "INGRESS", _protocol_mode: "number" });
+    expect(out.protocol_number).toBe(0);
+    expect(out).not.toHaveProperty("protocol_name");
+  });
+
+  it("законный номер по-прежнему доезжает как есть — положительный контроль", () => {
+    // Без него «пустая ветвь даёт 0» могло бы означать «ветвь всегда даёт 0».
+    expect(sanitizeSgRule({ direction: "INGRESS", _protocol_mode: "number", protocol_number: 47 })).toMatchObject({
+      protocol_number: 47,
+    });
+    expect(sanitizeSgRule({ direction: "INGRESS", _protocol_mode: "number", protocol_number: "47" })).toMatchObject({
+      protocol_number: "47",
+    });
+  });
 });

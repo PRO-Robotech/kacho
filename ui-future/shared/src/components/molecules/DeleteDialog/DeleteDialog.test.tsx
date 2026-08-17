@@ -116,6 +116,11 @@ describe("DeleteDialog — запрос", () => {
     expect(del.url).toContain("/vpc/v1/subnets/sub-1");
   });
 
+  // Тексты ниже сменились вместе с единым механизмом сигнала об исходе
+  // (`lib/mutation-signal.ts`). Прежние — «Подсеть frontend удалён», «Удалить
+  // Подсеть frontend: …» — закрепляли ДЕФЕКТ: причастие было впаяно в мужском
+  // роде, а «Подсеть» женского. Класс держался на том, что у мужского рода
+  // форма совпадает с верной, поэтому половина сообщений выглядела исправной.
   it("успешная операция закрывает окно и сообщает об удалении", async () => {
     const successSpy = jest.spyOn(toast, "success").mockReturnValue("t");
     stubServer({ operation: { id: "op-1" } }, { "op-1": { id: "op-1", done: true } });
@@ -123,7 +128,7 @@ describe("DeleteDialog — запрос", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
 
-    await waitFor(() => expect(successSpy).toHaveBeenCalledWith("Подсеть frontend удалён"));
+    await waitFor(() => expect(successSpy).toHaveBeenCalledWith("Подсеть frontend удалена"));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -138,7 +143,7 @@ describe("DeleteDialog — запрос", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
 
-    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Удалить Подсеть frontend: subnet is not empty"));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Подсеть frontend не удалена: subnet is not empty"));
     expect(successSpy).not.toHaveBeenCalled();
   });
 
@@ -153,7 +158,7 @@ describe("DeleteDialog — запрос", () => {
     fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
 
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
-    expect(String(errorSpy.mock.calls[0][0])).toContain("Удалить Подсеть frontend:");
+    expect(String(errorSpy.mock.calls[0][0])).toContain("Подсеть frontend не удалена:");
     expect(successSpy).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });

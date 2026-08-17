@@ -3,10 +3,10 @@ import type { FC } from "react";
 import { Button, Space, Tag, Typography } from "antd";
 
 const probes = [
-  { label: "API gateway", path: "/healthz" },
-  { label: "IAM bootstrap", path: "/iam/v1/me" },
-  { label: "VPC networks", path: "/vpc/v1/networks" },
-  { label: "Compute instances", path: "/compute/v1/instances" },
+  { label: "Шлюз API", path: "/healthz" },
+  { label: "Начальная настройка IAM", path: "/iam/v1/me" },
+  { label: "Сети VPC", path: "/vpc/v1/networks" },
+  { label: "Виртуальные машины", path: "/compute/v1/instances" },
   { label: "Kratos", path: "/.ory/kratos/public/health/ready" },
   { label: "Hydra", path: "/.ory/hydra/public/health/ready" },
 ];
@@ -37,9 +37,9 @@ export const ReachabilityPage: FC = () => {
     <section className="workbench">
       <div className="panel-heading">
         <div>
-          <Typography.Title level={3}>API reachability</Typography.Title>
+          <Typography.Title level={3}>Доступность API</Typography.Title>
           <Typography.Text type="secondary">
-            These calls use relative URLs. Vite proxies them to the kind stack.
+            Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
           </Typography.Text>
         </div>
         <Button
@@ -48,7 +48,7 @@ export const ReachabilityPage: FC = () => {
             void Promise.all(probes.map((p) => runProbe(p.path)));
           }}
         >
-          Probe all
+          Проверить все
         </Button>
       </div>
 
@@ -67,7 +67,7 @@ export const ReachabilityPage: FC = () => {
                   {result.status ? `${result.state} ${result.status}` : result.state}
                 </Tag>
                 <Button size="small" onClick={() => void runProbe(probe.path)}>
-                  Probe
+                  Проверить
                 </Button>
               </Space>
             </div>

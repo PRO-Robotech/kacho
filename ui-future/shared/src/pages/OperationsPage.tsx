@@ -18,16 +18,20 @@ import { OperationsTable, operationColumnTitles, type Op, statusOf, type Operati
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
+// Подписи ресурсов — из единственного источника: выписанная здесь копия уже
+// разошлась с ним (была английской при русском реестре), см. продукт #478.
+import { ENTITIES } from "@shared/lib/entity-names";
 
 // Список VPC-ресурсов, у которых есть per-resource ListOperations.
 const VPC_RESOURCES = [
-  { id: "networks", label: "Network" },
-  { id: "subnets", label: "Subnet" },
-  { id: "network-interfaces", label: "Network Interface" },
-  { id: "addresses", label: "Address" },
-  { id: "route-tables", label: "Route Table" },
-  { id: "security-groups", label: "Security Group" },
-  { id: "gateways", label: "Gateway" },
+  { id: "networks", label: ENTITIES.networks.singular },
+  { id: "subnets", label: ENTITIES.subnets.singular },
+  { id: "network-interfaces", label: ENTITIES["network-interfaces"].singular },
+  { id: "addresses", label: ENTITIES.addresses.singular },
+  { id: "route-tables", label: ENTITIES["route-tables"].singular },
+  { id: "security-groups", label: ENTITIES["security-groups"].singular },
+  { id: "gateways", label: ENTITIES.gateways.singular },
 ] as const;
 
 const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
@@ -169,6 +173,14 @@ export function OperationsPage() {
   const isLoading =
     listQueries.some((q) => q.isLoading) || (allOps.length === 0 && opsQueries.some((q) => q.isLoading));
 
+  // Область ручек (#373). Страница СТРОИТ свой набор из двух ярусов чтения:
+  // списки ресурсов проекта по 200 и операции каждого ресурса по 50. Ни у
+  // одного яруса продолжения здесь нет, поэтому «по фильтру ничего не
+  // найдено» означает «нет среди собранного», а не «нет такой операции».
+  // Область объявлена прочитанной частью безусловно: доказать полноту этого
+  // веера нечем — курсор каждого из сотен запросов пришлось бы проверить
+  // отдельно, и любой один непрочитанный делает набор неполным.
+  const scope = clientScope(true);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return allOps.filter((o) => {
@@ -234,13 +246,20 @@ export function OperationsPage() {
           right={
             <>
               <Input
-                placeholder="Фильтр по идентификатору"
+                placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
+                title={narrowingTitle(scope)}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 allowClear
                 style={{ width: 280 }}
               />
-              <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} style={{ width: 180 }} />
+              <Select
+                value={status}
+                onChange={setStatus}
+                options={STATUS_OPTIONS}
+                title={narrowingTitle(scope)}
+                style={{ width: 180 }}
+              />
               <Select value={kind} onChange={setKind} options={KIND_OPTIONS} style={{ width: 180 }} />
               {/* Где есть фильтр — есть и выбор столбцов. */}
               <ColumnSettings

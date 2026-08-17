@@ -19,7 +19,10 @@ import { NlbVipCell } from "@/components/molecules/NlbVipCell";
 import { getByPath } from "@/lib/resource-registry";
 
 export interface DescItem {
-  label: string;
+  /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
+   *  именем — поле, которое заполняет система, иначе читается как пустое,
+   *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
+  label: ReactNode;
   value: ReactNode;
 }
 
@@ -174,7 +177,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       }
       items.push(
         { label: "Административное состояние", value: adminStateTag(getByPath<string>(data, "admin_state")) },
-        { label: "Session affinity", value: code(getByPath<string>(data, "session_affinity")) },
+        { label: "Привязка сессий", value: code(getByPath<string>(data, "session_affinity")) },
         { label: "IPv4-адрес", value: <NlbVipCell v4AddressId={getByPath<string>(data, "v4_address_id")} /> },
         { label: "IPv6-адрес", value: <NlbVipCell v6AddressId={getByPath<string>(data, "v6_address_id")} /> },
       );
@@ -227,7 +230,11 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       },
       { label: "Протокол", value: code(getByPath<string>(data, "protocol")) },
       { label: "Порт", value: code(getByPath<number>(data, "port")) },
-      { label: "Порт на target", value: code(getByPath<number>(data, "target_port")) },
+      // Строка «Порт на цели» снята (#512): она читала `target_port`, чьи номер и
+      // имя у сообщения `Listener` зарезервированы. Край такого поля не отдаёт
+      // никогда, поэтому строка показывала прочерк ВСЕГДА — и прочерк на карточке
+      // читается как «у слушателя это не задано», а не как «такого у слушателя
+      // нет». Порт на цели задаётся составом целевой группы.
       // Целевая группа листенера: привязка перешла сюда со снятых глаголов
       // балансировщика (:attachTargetGroup / :detachTargetGroup). Строка одна, и
       // групп тоже одна: на текущем шаге контракта `target_group_id` и
@@ -257,12 +264,12 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       { label: "Порт бэкенда", value: code(getByPath<number>(data, "port")) },
       // Duration приходит строкой секунд с хвостовым «s» («300s») — своей
       // единицы подпись не называет, иначе она противоречила бы значению.
-      { label: "Drain timeout", value: code(getByPath<string>(data, "deregistration_delay")) },
-      { label: "Slow start", value: code(getByPath<string>(data, "slow_start")) },
+      { label: "Время вывода из-под нагрузки", value: code(getByPath<string>(data, "deregistration_delay")) },
+      { label: "Медленный старт", value: code(getByPath<string>(data, "slow_start")) },
       // У пробы нет имени (оно снято с контракта: HealthCheck — встроенный
       // объект-значение, а не адресуемый ресурс). Содержательны выбранная ветвь
       // (tcp|http|https|grpc) и разрешённый порт, а не идентичность.
-      { label: "Health-check", value: code(healthCheckSummary(data)) },
+      { label: "Проверка состояния", value: code(healthCheckSummary(data)) },
       { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
     ],
     // Управление backend-таргетами (add/remove через :addTargets/:removeTargets)

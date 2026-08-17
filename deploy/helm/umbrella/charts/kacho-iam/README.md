@@ -155,7 +155,7 @@ extraSecrets:
 | `OPA sidecar /health returns {"bundles":{"...":{"active_revision":""}}}` | First bundle pull pending | Wait ≤90s on dev / ≤65min on prod (OPA pollMinDelaySeconds). |
 | `OPA sidecar logs: signature verification failed: invalid key` | Public-key ConfigMap stale | `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`. |
 | `kacho-iam logs: KACHO_IAM_OPENFGA_MODEL_ID is empty` | bootstrap-job hasn't run yet | `kubectl get job -n kacho-system openfga-bootstrap` — check completion status. |
-| `Backend gRPC returns PermissionDenied: "authz unavailable"` | FGA engine down | `kubectl get po -n kacho-system -l app.kubernetes.io/name=openfga` — restart if not Ready 3/3. |
+| `Backend gRPC returns Unavailable: "authorization service unavailable"` | FGA engine down | `kubectl get po -n kacho-system -l app.kubernetes.io/name=openfga` — restart if not Ready 3/3. The code is `UNAVAILABLE`, not `PERMISSION_DENIED`: nothing was decided, so the same call is worth retrying once the engine is back. A `PERMISSION_DENIED` here means the model answered — look at grants, not at pods. |
 | `Backend gRPC returns PermissionDenied: "policy: <msg>"` | OPA deny-rule fired (expected) | Review `<msg>` against acceptance §4.6 Rego rules. |
 
 ## See also

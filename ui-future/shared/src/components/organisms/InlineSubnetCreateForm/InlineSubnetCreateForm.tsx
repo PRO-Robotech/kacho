@@ -18,6 +18,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Select, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { useKeptLabel } from "@shared/lib/kept-choice";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -54,11 +57,27 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   const [networkId, setNetworkId] = useState<string | undefined>(presetNetworkId);
   const networkLocked = !!presetNetworkId;
 
+  // Введённое в селекторе сети. Область поиска решает, что с ним делать:
+  // спросить владельца (vpc сужает по имени) либо честно сказать, что сужаются
+  // только загруженные варианты (#528). Прежде ввод не покидал вкладку: сети
+  // читались одной страницей в 500 строк, а поле отвечало «нет совпадений» —
+  // то есть утверждало об отсутствии сети то, чего не спрашивало, и у
+  // пользователя не было способа это опровергнуть: «показать ещё» у
+  // выпадающего списка нет.
+  const networkScope = pickerScopeOfSpec(networkSpec);
+  const [networkTerm, setNetworkTerm] = useState("");
+  const debouncedNetworkTerm = useDebouncedValue(networkTerm, networkScope.asksServer ? 250 : 0);
+  const networkServerQuery = networkScope.asksServer ? networkScope.query(debouncedNetworkTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const networkTermKey = networkScope.asksServer ? (networkServerQuery.filter ?? "") : "";
+
   // Список Networks для RefSelect (когда preset не задан).
-  const { data: netData } = useQuery({
-    queryKey: ["networks", "list", projectId],
+  const { data: netData, isLoading: networksLoading } = useQuery({
+    queryKey: ["networks", "list", projectId, networkTermKey],
     queryFn: () =>
       api.list<{ networks: Array<{ id: string; name?: string }> }>(networkSpec.apiPath, {
+        ...networkServerQuery,
         project_id: projectId,
         pageSize: "500",
       }),
@@ -73,6 +92,15 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
       })),
     [netData],
   );
+
+  // Выбранная сеть обязана пережить сужение: сервер отвечает по ВВОДУ, и уже
+  // сделанный выбор в этот ответ попадать не обязан. Без запоминания метки поле
+  // показало бы `net-…` вместо имени — идентификатор вместо имени, что канон
+  // консоли (правило 2) запрещает. Сеть при этом остаётся ВЫБРАННОЙ: значение
+  // формы от сужения списка не зависит.
+  const chosenNetwork = networkOptions.find((o) => o.value === networkId);
+  const keptNetworkLabel = useKeptLabel(networkId, chosenNetwork ? chosenNetwork.label : null);
+  const keptNetwork = networkId && keptNetworkLabel ? [{ value: networkId, label: keptNetworkLabel }] : [];
 
   const [name, setName] = useState(() => autoName());
   const [description, setDescription] = useState("");
@@ -255,9 +283,17 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             showSearch
             value={networkId}
             onChange={(v) => setNetworkId(v)}
-            options={networkOptions}
+            onSearch={setNetworkTerm}
+            options={[...keptNetwork, ...networkOptions]}
             placeholder="Выберите сеть"
-            optionFilterProp="label"
+            title={networkScope.notice}
+            // Сузил сервер — клиент НЕ пересеивает: повторное сужение по метке
+            // вычло бы из ответа края строки, которые он прислал именно по
+            // этому вводу.
+            {...(networkScope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+            // Пустой ответ обязан называть свою ОБЛАСТЬ. Здесь и жила ложь:
+            // «нет совпадений» на месте «нет среди загруженных».
+            notFoundContent={networksLoading ? undefined : networkScope.emptyText}
             disabled={networkLocked}
           />
         </Form.Item>

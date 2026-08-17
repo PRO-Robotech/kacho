@@ -31,7 +31,7 @@ export function CopyableName({ name, fallback, className, iconOnly }: Props) {
   const value = name || fallback || "";
   const isFallback = !name && !!fallback;
 
-  if (!value) return <span className="text-muted-foreground italic">(unnamed)</span>;
+  if (!value) return <span className="text-muted-foreground italic">(без имени)</span>;
 
   const onCopy = async (e: React.MouseEvent) => {
     e.preventDefault();

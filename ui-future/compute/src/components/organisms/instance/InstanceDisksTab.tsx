@@ -153,7 +153,7 @@ export function InstanceDisksTab({
           disabled={busy}
         />
         <Checkbox checked={autoDelete} onChange={(e) => setAutoDelete(e.target.checked)} disabled={busy}>
-          Auto-delete
+          Автоудаление
         </Checkbox>
         <Button type="primary" icon={<PlusOutlined />} onClick={onAttach} disabled={!draftVolume || busy}>
           Подключить
@@ -168,6 +168,9 @@ export function InstanceDisksTab({
           rows={rows}
           columns={columns}
           rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()}
+          // Диски приезжают полем самой машины, а не отдельным списком: курсора
+          // здесь нет, набор полон by construction.
+          complete
         />
       )}
       <OperationToastWatcher

@@ -15,6 +15,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -51,42 +52,36 @@ func TestDelete_DeletionProtection(t *testing.T) {
 	require.Equal(t, "load balancer has deletion protection enabled", status.Convert(err).Message())
 }
 
-// 8.1-28: release VIP по ownership — owned (auto) → two-step ClearReference→FreeIP;
-// linked → ClearReference без Delete.
-func TestDelete_ReleaseByOwnership(t *testing.T) {
+// Снятие аренды предъявляет ВЛАДЕНИЕ, а решение принимает ВЛАДЕЛЕЦ.
+//
+// Прежде эта проба стерегла ветку потребителя: `auto` → снять ссылку и удалить
+// адрес, `linked` → только снять ссылку. Ветки больше нет — потребитель не
+// читает свой дискриминатор, а владелец решает по своей колонке `owned`
+// (#439). Здесь стережётся то, что пережило правку: предъявление уходит ровно
+// одно на семейство и несёт ту же пару, какой аренда заводилась.
+//
+// Разведение исходов (удалить адрес модуля / оставить адрес арендатора)
+// проверяется там, где оно теперь принимается, — на стороне владельца.
+func TestDelete_PresentsOwnershipToTheOwner(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name        string
-		origin      domain.VipOrigin
-		wantFreed   bool
-		wantCleared bool
-	}{
-		{"owned auto two-step", domain.VipOriginAuto, true, true},
-		{"linked clear only", domain.VipOriginLinked, false, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := newFakeRepo()
-			lbID := seedLB(t, repo, "prj-a", "edge")
-			repo.lbs[lbID].AddressIDV4 = "adr-v4"
-			repo.lbs[lbID].VipOriginV4 = tc.origin
-			opsRepo := newFakeOpsRepo()
-			addr := &fakeAddressClient{}
-			uc := NewDeleteLoadBalancerUseCase(repo, opsRepo, addr, slog.Default())
-			op, err := uc.Execute(context.Background(), &lbv1.DeleteNetworkLoadBalancerRequest{
-				NetworkLoadBalancerId: lbID,
-			})
-			require.NoError(t, err)
-			require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
-			if tc.wantFreed {
-				require.Equal(t, []string{"adr-v4"}, addr.freed)
-			} else {
-				require.Empty(t, addr.freed)
-			}
-			if tc.wantCleared {
-				require.Equal(t, []string{"adr-v4"}, addr.cleared)
-			}
-		})
-	}
+	repo := newFakeRepo()
+	lbID := seedLB(t, repo, "prj-a", "edge")
+	repo.lbs[lbID].AddressIDV4 = "adr-v4"
+	opsRepo := newFakeOpsRepo()
+	addr := &fakeAddressClient{}
+	uc := NewDeleteLoadBalancerUseCase(repo, opsRepo, addr, slog.Default())
+	op, err := uc.Execute(context.Background(), &lbv1.DeleteNetworkLoadBalancerRequest{
+		NetworkLoadBalancerId: lbID,
+	})
+	require.NoError(t, err)
+	require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
+
+	reqs := addr.releaseReqs()
+	require.Len(t, reqs, 1, "одно семейство — одно предъявление владения")
+	require.Equal(t, "adr-v4", reqs[0].AddressID)
+	require.Equal(t, "prj-a", reqs[0].ProjectID)
+	require.Equal(t, vpcclient.OwnerKindLoadBalancer, reqs[0].Owner.Kind)
+	require.Equal(t, lbID, reqs[0].Owner.ID)
 }
 
 func TestDelete_HasListeners(t *testing.T) {

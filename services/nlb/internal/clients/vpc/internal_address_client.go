@@ -131,10 +131,32 @@ type InternalAddressClient interface {
 	// Возвращает resolved-значение привязанного Address (Get после успеха).
 	AttachExisting(ctx context.Context, req AttachExistingRequest) (*AllocateResponse, error)
 
-	// FreeIP освобождает Address (idempotent через AddressService.Delete →
-	// NotFound трактуется как успех). ClearReference вызывается автоматически
-	// kacho-vpc при Delete.
-	FreeIP(ctx context.Context, addressID string) error
+	// ReleaseLease снимает аренду адреса ПО ПРЕДЪЯВЛЕНИЮ ВЛАДЕНИЯ ею и
+	// возвращает НАЗВАННЫЙ владельцем исход.
+	//
+	// Заменяет пару `ClearReference` + `FreeIP`. Та пара спрашивала владельца
+	// пообъектно — про сам адрес, — а на пообъектном вопросе ответ «не найдено»
+	// НЕ несёт утверждения «аренды нет»: тем же ответом владелец намеренно
+	// отвечает на промах чужого проекта и на опрос операции без ключа владельца.
+	// Пара читала его как «работа сделана» и возвращала успех, после которого
+	// строка потребителя сносилась, а координаты аренды не оставалось ни у кого.
+	//
+	// Здесь вопрос задан так, что этого ответа не бывает: право анкорится на
+	// проекте, исход приезжает ПОЛЕМ. Ни один код ошибки больше не читается как
+	// доказательство отсутствия аренды.
+	//
+	// Полосы отказа разведены носителем `pkg/peer`, корзины «прочее» у них нет —
+	// она выбирала бы политику повтора за вызывающего. ЛЮБОЙ отказ означает
+	// «работа НЕ сделана», аренду не трогаем:
+	//   - Denied/StateRefused          → domain.ErrFailedPrecondition, терминально
+	//   - Malformed                    → domain.ErrInvalidArg
+	//   - Unavailable/DeadlineExceeded → domain.ErrUnavailable — ЕДИНСТВЕННАЯ
+	//     повторяемая полоса (реконсайлер оставляет строку на следующий тик)
+	//   - Missing                      → domain.ErrFailedPrecondition: глагол этой
+	//     полосы не производит, значит мы говорим не с тем глаголом — настройка,
+	//     а не «уже снято»
+	//   - ответ не классифицирован     → domain.ErrInternal + строка журнала
+	ReleaseLease(ctx context.Context, req ReleaseLeaseRequest) (LeaseOutcome, error)
 
 	// SetReference — атомарный CAS Set used_by=owner на существующем Address.
 	// owned помечает референс как owned (auto-alloc, lifecycle связан) либо
@@ -143,11 +165,43 @@ type InternalAddressClient interface {
 	//   - NotFound                                       → domain.ErrInvalidArg
 	//   - Unavailable/DeadlineExceeded                   → domain.ErrUnavailable
 	SetReference(ctx context.Context, addressID string, owner AddressOwner, owned bool) error
-
-	// ClearReference — снимает used_by с Address (Listener.Delete release BYO).
-	// Идемпотентно: NotFound → успех. Unavailable/DeadlineExceeded → domain.ErrUnavailable.
-	ClearReference(ctx context.Context, addressID string) error
 }
+
+// OwnerKindLoadBalancer — значение `referrer_type`, под которым балансировщик
+// владеет арендой адреса у vpc.
+//
+// Живёт ЗДЕСЬ, а не у вызывающего, потому что это значение на ПРОВОДЕ: им
+// заводится аренда и им же она предъявляется при снятии. Разойдись эти два
+// места — сверка владения не совпала бы НИ РАЗУ, и снятие отвечало бы «аренда
+// не твоя» на собственную аренду. Один источник вместо двух — не стиль, а
+// условие того, что полоса вообще работает.
+const OwnerKindLoadBalancer = "network_load_balancer"
+
+// ReleaseLeaseRequest — предъявление владения арендой.
+//
+// `owned` здесь нет намеренно: ветку «удалить адрес» либо «оставить адрес
+// арендатора» выбирает ВЛАДЕЛЕЦ по своей колонке. Прежде это решение принимал
+// потребитель по собственной копии признака (`vip_origin`), и три места,
+// принимавших его, спрашивали по-разному.
+type ReleaseLeaseRequest struct {
+	ProjectID string
+	AddressID string
+	Owner     AddressOwner
+}
+
+// LeaseOutcome — исход, НАЗВАННЫЙ владельцем.
+type LeaseOutcome string
+
+const (
+	// LeaseReleased — ЭТИМ вызовом: ссылка снята, адрес удалён, аренда в пуле.
+	LeaseReleased LeaseOutcome = "RELEASED"
+	// LeaseAlreadyReleased — аренда снята ранее (законный повтор).
+	LeaseAlreadyReleased LeaseOutcome = "ALREADY_RELEASED"
+	// LeaseDetached — ЭТИМ вызовом: адрес арендатора, ссылка снята, адрес жив.
+	LeaseDetached LeaseOutcome = "DETACHED"
+	// LeaseAlreadyDetached — ссылки этого потребителя уже не было.
+	LeaseAlreadyDetached LeaseOutcome = "ALREADY_DETACHED"
+)
 
 // internalAddressClient — реализация InternalAddressClient через gRPC.
 //
@@ -422,41 +476,119 @@ func validateInternalReq(req AllocateInternalIPRequest) error {
 	return nil
 }
 
-// FreeIP — см. контракт InternalAddressClient.FreeIP.
-func (c *internalAddressClient) FreeIP(ctx context.Context, addressID string) error {
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+// ReleaseLease — см. контракт InternalAddressClient.ReleaseLease.
+//
+// Ни одна ветка здесь не превращает ответ владельца в успех: успех приезжает
+// ТОЛЬКО как названный исход в поле. Это и есть предмет метода — код ошибки
+// перестаёт быть источником суждения о том, что стало с арендой.
+func (c *internalAddressClient) ReleaseLease(
+	ctx context.Context, req ReleaseLeaseRequest,
+) (LeaseOutcome, error) {
+	switch {
+	case req.ProjectID == "":
+		return "", fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
+	case req.AddressID == "":
+		return "", fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
 	}
 
 	callCtx, cancel := c.withCallTimeout(ctx)
-	var op *operationpb.Operation
+	defer cancel()
+	var resp *vpcpb.ReleaseOwnedAddressResponse
 	err := retry.OnUnavailable(callCtx, func(ctx context.Context) error {
 		var rerr error
-		op, rerr = c.addrs.Delete(auth.PropagateOutgoing(ctx), &vpcpb.DeleteAddressRequest{AddressId: addressID})
-		if rerr != nil {
-			if st, ok := status.FromError(rerr); ok && st.Code() == codes.NotFound {
-				// Idempotent: уже удалён.
-				op = nil
-				return nil
-			}
-			return rerr
-		}
-		return nil
+		resp, rerr = c.internal.ReleaseOwnedAddress(auth.PropagateOutgoing(ctx),
+			&vpcpb.ReleaseOwnedAddressRequest{
+				ProjectId:    req.ProjectID,
+				AddressId:    req.AddressID,
+				ReferrerType: req.Owner.Kind,
+				ReferrerId:   req.Owner.ID,
+			})
+		return rerr
 	})
-	cancel()
 	if err != nil {
-		return mapAllocErr(addressID, err)
+		return "", c.mapReleaseLeaseErr(req.AddressID, err)
 	}
-	if op == nil {
-		return nil
+	out, ok := leaseOutcomeFromProto(resp.GetOutcome())
+	if !ok {
+		// Владелец не назвал исход. Это НЕ «наверное сделано»: неназванный исход
+		// разбирается как отказ, иначе мы вернулись бы ровно к выводу, который
+		// метод и устраняет.
+		return "", fmt.Errorf("%w: vpc release lease %s: outcome is unnamed", domain.ErrFailedPrecondition, req.AddressID)
 	}
-	if _, err := c.waitOperation(ctx, op); err != nil {
-		if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
-			return nil
-		}
-		return mapAllocErr(addressID, err)
+	return out, nil
+}
+
+// leaseOutcomeFromProto — закрытое отображение. Неизвестное значение (в том
+// числе `OUTCOME_UNSPECIFIED`) возвращает ok=false, а не корзину «прочее».
+func leaseOutcomeFromProto(o vpcpb.ReleaseOwnedAddressResponse_Outcome) (LeaseOutcome, bool) {
+	switch o {
+	case vpcpb.ReleaseOwnedAddressResponse_RELEASED:
+		return LeaseReleased, true
+	case vpcpb.ReleaseOwnedAddressResponse_ALREADY_RELEASED:
+		return LeaseAlreadyReleased, true
+	case vpcpb.ReleaseOwnedAddressResponse_DETACHED:
+		return LeaseDetached, true
+	case vpcpb.ReleaseOwnedAddressResponse_ALREADY_DETACHED:
+		return LeaseAlreadyDetached, true
+	default:
+		return "", false
 	}
-	return nil
+}
+
+// mapReleaseLeaseErr — полосы отказа снятия аренды, разведённые ОБЩИМ носителем
+// `pkg/peer` (тем же, что у привязки и у публичного чтения адреса).
+//
+// Корзины «прочее» здесь нет намеренно. Она не нейтральна: она ВЫБИРАЕТ политику
+// повтора за вызывающего — и на этой полосе выбирала бы терминальную для всего,
+// что в её список не попало. Цена наблюдалась на стенде: недоступность модели
+// прав приезжала кодом отказа, падала в корзину, а реконсайлер считает
+// транзиентным ровно один sentinel — перебой в доли секунды изолировал
+// балансировщик как отравленный, что на пути освобождения аренды необратимо.
+//
+// ОТСУТСТВИЕ ИСХОДА `nil` — предмет этого метода. У соседа по файлу полоса
+// `OutcomeMissing` законно означала «снимать нечего»; здесь её нет и быть не
+// может: глагол `NOT_FOUND` не производит, поэтому «нет ресурса» приезжает
+// ПОЛЕМ ответа, а не кодом ошибки. Ни один код здесь не читается как
+// доказательство снятой аренды.
+func (c *internalAddressClient) mapReleaseLeaseErr(addressID string, rerr error) error {
+	switch peer.Classify(rerr) {
+	case peer.OutcomeOK:
+		// Носитель счёл ответ успешным, а мы попали сюда только с ошибкой —
+		// значит ответ не тот, за который себя выдаёт. Успехом это не называем.
+		return fmt.Errorf("%w: vpc release lease %s: refusal classified as success",
+			domain.ErrInternal, addressID)
+	case peer.OutcomeMissing:
+		// Глагол этой полосы не производит. Получить её можно, только говоря не с
+		// тем глаголом (владелец не перекатан, поверхность не та) — это
+		// НАСТРОЙКА, а не «аренды уже нет». Терминально и громко.
+		return fmt.Errorf("%w: address %s: owner does not serve the release verb",
+			domain.ErrFailedPrecondition, addressID)
+	case peer.OutcomeDenied:
+		// Решение владельца. Терминально: повтор идентичного запроса его не
+		// изменит. Текст ФИКСИРОВАН — прозу чужого решения о доступе наружу не
+		// несём (её pass-through был отдельной находкой на этой же полосе).
+		return fmt.Errorf("%w: address %s lease cannot be released", domain.ErrFailedPrecondition, addressID)
+	case peer.OutcomeStateRefused:
+		// Предъявленное владение не подтвердилось: аренда чужая либо адрес из
+		// другого проекта. Аренду НЕ трогаем.
+		return fmt.Errorf("%w: address %s lease is not held as presented", domain.ErrFailedPrecondition, addressID)
+	case peer.OutcomeMalformed:
+		return fmt.Errorf("%w: vpc release lease %s: %s", domain.ErrInvalidArg, addressID, peer.PeerMessage(rerr))
+	case peer.OutcomeUnavailable:
+		// Единственная повторяемая полоса: владелец не установил НИЧЕГО.
+		// fail-closed для мутации — недоступность не есть «уже снято».
+		return fmt.Errorf("%w: vpc release lease %s: %s", domain.ErrUnavailable, addressID, peer.PeerMessage(rerr))
+	}
+	// Ответ, которому носитель полосы не назначил, — СОСТОЯНИЕ «не понят», а не
+	// третья политика повтора. Стоит ПОСЛЕ switch, а не веткой в нём: полоса,
+	// добавленная в носитель завтра, попадёт сюда — в самый тихий из осмысленных
+	// исходов, а не в тихий успех.
+	c.logger.Error("vpc release lease: peer answer not classified",
+		"address_id", addressID, "err", rerr)
+	return fmt.Errorf("%w: vpc release lease %s: peer answer not classified",
+		domain.ErrInternal, addressID)
 }
 
 // SetReference — см. контракт InternalAddressClient.SetReference.
@@ -528,41 +660,6 @@ func mapSetReferenceErr(addressID string, rerr error) error {
 	default:
 		return fmt.Errorf("vpc set address reference %q: %w", addressID, rerr)
 	}
-}
-
-// ClearReference — см. контракт InternalAddressClient.ClearReference.
-func (c *internalAddressClient) ClearReference(ctx context.Context, addressID string) error {
-	if addressID == "" {
-		return fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
-	}
-
-	callCtx, cancel := c.withCallTimeout(ctx)
-	defer cancel()
-	return retry.OnUnavailable(callCtx, func(ctx context.Context) error {
-		_, rerr := c.internal.ClearAddressReference(auth.PropagateOutgoing(ctx), &vpcpb.ClearAddressReferenceRequest{
-			AddressId: addressID,
-		})
-		if rerr == nil {
-			return nil
-		}
-		st, ok := status.FromError(rerr)
-		if !ok {
-			return fmt.Errorf("vpc clear address reference %q: %w", addressID, rerr)
-		}
-		switch st.Code() {
-		case codes.NotFound:
-			// Idempotent: уже снят / address удалён.
-			return nil
-		case codes.InvalidArgument:
-			return fmt.Errorf("%w: vpc clear address reference %s: %s", domain.ErrInvalidArg, addressID, st.Message())
-		case codes.Unavailable, codes.DeadlineExceeded:
-			// fail-closed для мутации (api-conventions.md); также покрывает
-			// DeadlineExceeded от per-call c.withCallTimeout на зависшем peer'е.
-			return fmt.Errorf("%w: vpc clear address reference %s: %s", domain.ErrUnavailable, addressID, st.Message())
-		default:
-			return fmt.Errorf("vpc clear address reference %q: %w", addressID, rerr)
-		}
-	})
 }
 
 // AttachExisting — см. контракт InternalAddressClient.AttachExisting.

@@ -4,6 +4,7 @@
 
 import type { ReactNode } from "react";
 import { Tag } from "antd";
+import { StopOutlined, UnlockOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
@@ -32,6 +33,8 @@ import {
   roleIsSystem,
   targetKind,
   targetResources,
+  userBlockPath,
+  userUnblockPath,
   type AccessBindingTarget,
   type DefinitionTier,
 } from "@shared/api/iam";
@@ -43,7 +46,18 @@ import {
   guestAccessKeyTemplate,
 } from "@shared/lib/guest-access-key-form";
 import { resourceListPath as resourceListPathImpl } from "@shared/lib/service-prefix";
-import type { ResourceColumn, ResourceSpec } from "./resource-spec";
+// Форма группы целей — ОДНА реализация на оба реестра (`@shared` и `nlb`):
+// пока она жила внутри одного, ветви проверки живости доехали до vpc/iam/system
+// и не доехали до `/nlb/*`, который эту группу и рисует (#375).
+import {
+  healthCheckFields,
+  hydrateHealthCheck,
+  sanitizeHealthCheck,
+  sanitizeTargets,
+  targetsField,
+} from "@shared/lib/target-group-form";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+import type { ResourceColumn, ResourceSpec, RowVerbState } from "./resource-spec";
 // Подписи сущностей и разделов — из единственного источника (см. entity-names.ts):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "./entity-names";
@@ -54,6 +68,30 @@ import { ENTITIES, SERVICES } from "./entity-names";
 // здесь запрещено (KAC #132) — его ловит scripts/check-resource-spec-single-source.mjs.
 
 export type { ResourceColumn, ResourceSpec };
+
+// ── Наборы, которые форма правит ПОЛНОЙ ЗАМЕНОЙ ─────────────────────────────
+//
+// Схема формы уносит набор на край целиком, поэтому поле контракта, которого не
+// назвал тип-черновик, исчезает у ВСЕХ элементов — включая нетронутые. Состав
+// черновиков сверяется с контрактом гейтом
+// `test/set-replacement-draft-composition`, а перепись мест он берёт обходом
+// дерева: новое такое место без объявления рядом уронит его с координатой.
+
+/** Строки маршрутов формы таблицы маршрутизации (`render` + `sanitize` ниже). */
+export const STATIC_ROUTES_REPLACEMENT: SetReplacementDraft = {
+  field: "static_routes",
+  contract: "kacho/cloud/vpc/v1/route_table.proto",
+  message: "StaticRoute",
+  drafts: ["RouteEntry"],
+};
+
+/** Правила формы группы безопасности (`sanitize` ниже). */
+export const SG_RULE_SPECS_REPLACEMENT: SetReplacementDraft = {
+  field: "rule_specs",
+  contract: "kacho/cloud/vpc/v1/security_group_service.proto",
+  message: "SecurityGroupRuleSpec",
+  drafts: ["RuleExt"],
+};
 
 // ── Geography (Region / Zone) — общие куски их спеков ────────────────────────
 
@@ -117,7 +155,7 @@ function BlockedReasonCell({
 // Pool kinds — единственный валидный тип. KAC-70 удалил EXTERNAL_TEST/
 // RESERVED_INTERNAL из proto enum kacho.cloud.vpc.v1.AddressPoolKind
 // (`reserved 2, 100`).
-const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "External" }];
+const POOL_KINDS = [{ value: "EXTERNAL_PUBLIC", label: "Внешний публичный" }];
 
 // Правило группы размещения названо СЛЕДСТВИЕМ, а не машинным значением: «SPREAD»
 // не говорит ни что группа разнесена, ни зачем. Словарь один и тот же в списке и
@@ -191,7 +229,7 @@ const FIELD_DESCRIPTION: FormField = {
 // Hidden поле для project-context
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -199,7 +237,7 @@ const FIELD_PROJECT_ID: FormField = {
 // Hidden поле для account-context (IAM: Project / ServiceAccount scoped по Account).
 const FIELD_ACCOUNT_ID: FormField = {
   name: "account_id",
-  label: "Account",
+  label: "Аккаунт",
   type: "string",
   hidden: true,
 };
@@ -395,15 +433,15 @@ function targetCell(row: Record<string, unknown>): ReactNode {
   if (kind === "resources") {
     const n = targetResources(t).length;
     return (
-      <Tag color="geekblue" title="Per-object least-priv">
+      <Tag color="geekblue" title="Права только на перечисленные объекты">
         {n} объект{n === 1 ? "" : "а/ов"}
       </Tag>
     );
   }
   if (kind === "allInScope")
     return (
-      <Tag title="Весь scope (явный opt-in)" color="default">
-        весь scope
+      <Tag title="Вся область — выбрано явно" color="default">
+        вся область
       </Tag>
     );
   return IAM_DASH;
@@ -522,7 +560,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { label: "Управление доступом", href: "#" },
     ],
     emptyState: {
-      title: "Создайте первый Account",
+      title: "Создайте первый аккаунт",
       body:
         "Account — верхнеуровневый tenant Kachō: владелец, проекты, пользователи и роли живут внутри него. " +
         "Создайте Account, чтобы начать выдавать доступ и заводить проекты.",
@@ -566,7 +604,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME,
       {
         name: "account_id",
-        label: "Account",
+        label: "Аккаунт",
         type: "string",
         hidden: true,
         immutable: true,
@@ -622,6 +660,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 
   // User — read+delete only (создаётся через signup / InternalUserService).
+  //
+  // Запрет участия и его возврат — ДЕЙСТВИЯ (`:block` / `:unblock`), а не
+  // правка поля: у действия нет маски, поэтому «забыть поле» и выключить всех,
+  // кого коснулся, здесь невозможно by construction. Права решает край
+  // (`v_update` на этом пользователе); консоль ничего не предугадывает — при
+  // отказе прилетит 403, и его покажет общий механизм исхода операции.
+  //
+  // Объявление живёт ЗДЕСЬ, а не своей страницей: страница мимо общей оболочки
+  // у этого ресурса уже была, её не рендерил ни один маршрут, и вместе с ней с
+  // экрана ушли оба глагола (#421 → #440).
   // Registry-запись нужна для ref-резолва (Account.owner_user_id) и RefNameLink;
   // отдельная generic-страница не используется — UI остаётся кастомным.
   users: {
@@ -645,14 +693,85 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Эл. почта", path: "email", format: "text" },
       { header: "Отображаемое имя", path: "display_name", format: "text" },
       { header: "Статус", path: "invite_status", format: "status" },
-      {
-        header: "Аккаунт",
-        path: "account_id",
-        render: (row) => <IamRefLink specId="accounts" refId={row.account_id as string | undefined} />,
-      },
+      // Столбца «Аккаунт» здесь нет намеренно (#473). Строка `users` — это
+      // ЧЛЕНСТВО: одна личность держит по строке на каждый аккаунт, поэтому
+      // «аккаунты человека» столбцом не выражаются, а показать их нечем —
+      // такого поля нет ни на одном чтении контракта. Жёсткое предусловие
+      // ветви «список аккаунтов» не выполнено by construction, и решение
+      // автоматически становится «убрать столбец».
+      //
+      // Ответ «к какому аккаунту относится это членство» остаётся на КАРТОЧКЕ
+      // пользователя: значение одно, сверено прямым чтением и не повторяется в
+      // каждой строке. Список членств вернётся сюда вместе с ресурсом членства,
+      // а не раньше — поле без источника показывать запрещено.
       { header: "ID", path: "id", format: "uid-short" },
-      { header: "External ID", path: "external_id", format: "uid-short" },
+      { header: "Внешний идентификатор", path: "external_id", format: "uid-short" },
       { header: "Создан", path: "created_at", format: "datetime" },
+    ],
+    rowVerbs: [
+      {
+        // ОДИН пункт на три состояния, а не пара кнопок: состояние здесь —
+        // предмет, и предлагать «запретить» уже запрещённому значит предлагать
+        // вызов, который ничего не изменит.
+        key: "participation",
+        resolve: (row, ctx): RowVerbState | null => {
+          const id = (row.id as string | undefined) ?? "";
+          const who = (row.email as string | undefined) || id;
+          const status = row.invite_status as string | undefined;
+
+          // Неподтверждённое приглашение край отвергает: внешней личности у
+          // него ещё нет, а перевод в действующее — это активация при первом
+          // входе, другой путь. Пункт остаётся ВИДИМЫМ и называет причину:
+          // скрытый пункт неотличим от возможности, которой нет.
+          if (status === "PENDING") {
+            return {
+              label: "Запретить участие",
+              icon: <StopOutlined />,
+              disabledReason:
+                "Приглашение ещё не подтверждено — запрещать нечего. Отзовите приглашение.",
+              path: userBlockPath(id),
+              confirmTitle: "Запретить участие?",
+              confirmText: "",
+              okText: "Запретить",
+              progressTitle: "Запрет участия",
+            };
+          }
+
+          if (status === "BLOCKED") {
+            return {
+              label: "Вернуть участие",
+              icon: <UnlockOutlined />,
+              path: userUnblockPath(id),
+              confirmTitle: "Вернуть участие?",
+              confirmText: `Разрешить «${who}» снова входить в этот аккаунт.`,
+              okText: "Вернуть",
+              progressTitle: "Возврат участия",
+            };
+          }
+
+          // Самоблокировка НЕ запрещается, но предупреждение говорит прямо, чем
+          // она кончится: самостоятельного пути снятия не существует по
+          // построению (восстановление пароля запрет не снимает). Промолчать —
+          // значит дать оператору выключить себя одним нажатием и узнать цену
+          // потом.
+          const isSelf = !!ctx.selfId && ctx.selfId === id;
+          return {
+            label: "Запретить участие",
+            icon: <StopOutlined />,
+            danger: true,
+            path: userBlockPath(id),
+            confirmTitle: isSelf ? "Запретить участие СЕБЕ?" : "Запретить участие?",
+            confirmText: isSelf
+              ? `Вы запрещаете участие себе («${who}»). Снять запрет самостоятельно будет НЕЛЬЗЯ: ` +
+                `восстановление пароля запрет не снимает. Вернуть доступ сможет только ` +
+                `администратор аккаунта или администратор облака.`
+              : `«${who}» больше не сможет входить в этот аккаунт. Уже выданный токен доживёт свой срок; ` +
+                `новый не выдадут. Участие в других аккаунтах не затрагивается.`,
+            okText: isSelf ? "Да, запретить себе" : "Запретить",
+            progressTitle: "Запрет участия",
+          };
+        },
+      },
     ],
     docs: [
       { label: "Пользователи и приглашения", href: "#" },
@@ -734,7 +853,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "is_system",
         // IAM-1 F4/F6: isSystem° derived (definitionTier.tierType==iam.cluster);
         // fallback на хранимый is_system/isSystem (AS-IS до миграции).
-        render: (row) => (roleIsSystem(row) ? <Tag color="purple">system</Tag> : <Tag color="default">custom</Tag>),
+        render: (row) => (roleIsSystem(row) ? <Tag color="purple">Системная</Tag> : <Tag color="default">Пользовательская</Tag>),
       },
       COL_ID,
       {
@@ -848,8 +967,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => scopeTypeCell(row),
       },
       {
-        // Anchor — scopeId, ссылка по типу якоря.
-        header: "Anchor",
+        // Якорь — scopeId, ссылка по типу якоря.
+        header: "Якорь",
         path: "scope_id",
         render: (row) => scopeAnchorCell(row),
       },
@@ -879,8 +998,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "deletion_protection",
         render: (row) =>
           row.deletion_protection || row.deletionProtection ? (
-            <Tag color="gold" title="Защита от удаления (owner-привязка)">
-              Owner
+            <Tag color="gold" title="Защита от удаления: привязка владельца">
+              Владелец
             </Tag>
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -1212,7 +1331,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       {
         name: "network_id",
-        label: "Network",
+        label: "Облачная сеть",
         type: "ref",
         refResource: "networks",
         refProjectScoped: true,
@@ -1270,7 +1389,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "route_table_id",
-        label: "Route Table",
+        label: "Таблица маршрутов",
         type: "ref",
         refResource: "route-tables",
         refProjectScoped: true,
@@ -1912,7 +2031,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Address",
+            label: "IP-адрес",
             type: "ref",
             refResource: "addresses",
             required: true,
@@ -1946,7 +2065,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Address",
+            label: "IP-адрес",
             type: "ref",
             refResource: "addresses",
             required: true,
@@ -1979,7 +2098,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         itemFields: [
           {
             name: "value",
-            label: "Security Group",
+            label: "Группа безопасности",
             type: "ref",
             refResource: "security-groups",
             refProjectScoped: true,
@@ -2101,7 +2220,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "network_id",
         // Create-only: UpdateSecurityGroupRequest не несёт network_id.
         immutable: true,
-        label: "Network",
+        label: "Облачная сеть",
         type: "ref",
         refResource: "networks",
         refProjectScoped: true,
@@ -2121,10 +2240,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // сообщений нет вовсе: правила, набранные в форме создания, край
         // выбрасывал молча, и группа создавалась пустой (default-deny) с 200.
         name: "rule_specs",
-        label: "Rules",
+        label: "Правила",
         type: "sg-rules",
+        // Перечень адресатов обязан совпадать с `oneof target` контракта: их три
+        // — блоки адресов, другая группа, набор префиксов. До #512 здесь стоял
+        // «предустановленный набор» (поле снято с контракта, номер и имя
+        // зарезервированы), а живой «набор префиксов» не назывался вовсе. То
+        // есть подпись предлагала выбор, которого нет, и умалчивала о том,
+        // который есть, — и заметить это можно было только попыткой.
         description:
-          "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или предустановленный набор. Без правил трафик запрещён.",
+          "Направление, протокол с портами и адресат: диапазон адресов, другая группа безопасности или набор префиксов. Без правил трафик запрещён.",
         // В edit-форме скрываем — правила меняются через спец-RPC UpdateRules /
         // UpdateRule на отдельной вкладке.
         editHidden: true,
@@ -2444,7 +2569,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "zones",
     singular: "Зона",
     accusative: "зону",
-    plural: "Зоны (Compute)",
+    plural: `Зоны (${SERVICES.compute.title})`,
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
@@ -2481,7 +2606,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     payloadKey: "regions",
     singular: "Регион",
     accusative: "регион",
-    plural: "Регионы (Compute)",
+    plural: `Регионы (${SERVICES.compute.title})`,
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
@@ -2729,7 +2854,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "vm_spec.metadata_options.metadata_endpoint",
-        label: "Metadata endpoint",
+        label: "Адрес службы метаданных",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "VM" },
@@ -2738,7 +2863,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           { value: "ENABLED", label: "ENABLED — доступен из гостя" },
           { value: "DISABLED", label: "DISABLED — недоступен" },
         ],
-        description: "Доступность metadata-эндпоинта из гостевой ОС.",
+        description: "Доступность службы метаданных из гостевой ОС.",
       },
       {
         name: "assign_external_address",
@@ -2761,14 +2886,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // --- CONTAINER-only (instance_kind = CONTAINER) ---
       {
         name: "container_spec.restart_policy",
-        label: "Restart policy",
+        label: "Политика перезапуска",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "CONTAINER" },
         default: "NEVER",
         options: [
           { value: "NEVER", label: "NEVER — не перезапускать" },
-          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом exit" },
+          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом коде возврата" },
           { value: "ALWAYS", label: "ALWAYS — всегда" },
         ],
         description: "Политика перезапуска контейнер-джобы.",
@@ -2840,7 +2965,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             itemFields: [
               {
                 name: "value",
-                label: "Security Group",
+                label: "Группа безопасности",
                 type: "ref",
                 refResource: "security-groups",
                 refProjectScoped: true,
@@ -2854,7 +2979,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "hostname",
-        label: "Hostname",
+        label: "Имя хоста",
         type: "string",
         placeholder: "(= id если пусто)",
         pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
@@ -2892,6 +3017,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // подборщика образов у этой ветки нет by construction, и без пояснения
     // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
     validate: (obj) => {
+      // Порядок тот же, что у сервиса: вид — сильный первый дискриминатор, и
+      // отвергается он ПО СЕБЕ, а не через источник ОС. Прежде здесь стерёгся
+      // только источник, поэтому пара «вид CONTAINER + образ ХРАНИЛИЩА» уходила
+      // на сервер и проходила: получалась машина вида «контейнер» с корневой
+      // файловой системой из образа диска.
+      if (obj.instance_kind === "CONTAINER") {
+        return (
+          "Вид «контейнер» пока не создаётся: корень контейнера берётся из образа реестра, а у него нет " +
+          "неизменяемого адреса — ссылка в машине сломалась бы после чужого переименования. Выберите VM."
+        );
+      }
       const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
       if (bs.type === "registry.image") {
         return (
@@ -3475,7 +3611,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "infra.underlay_anchor",
-        label: "Якорь underlay",
+        label: "Якорь транспортной сети",
         type: "string",
         placeholder: "spine-1",
         description: "Транспортная координата зоны. Никогда не показывается тенанту.",
@@ -3624,15 +3760,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     fields: [
       {
         name: "name",
-        label: "Name",
+        label: "Имя",
         type: "string",
         placeholder: "<pool-name>",
       },
-      { name: "description", label: "Description", type: "text", rows: 2 },
+      { name: "description", label: "Описание", type: "text", rows: 2 },
       {
         // kind — UI ограничен одним значением, скрыт; backend требует поле в payload.
         name: "kind",
-        label: "Kind",
+        label: "Вид",
         type: "enum",
         options: POOL_KINDS,
         required: true,
@@ -3642,7 +3778,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "zone_id",
-        label: "Zone",
+        label: "Зона",
         type: "ref",
         refResource: "zones",
         immutable: true,
@@ -3655,7 +3791,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // через ResourceFormModal custom-ветку.
       {
         name: "v4_cidr_blocks",
-        label: "IPv4 CIDR blocks",
+        label: "Блоки IPv4 CIDR",
         type: "array",
         itemLabel: "v4-CIDR",
         description: "IPv4 CIDR-блоки, из которых аллоцируются внешние v4 адреса.",
@@ -3676,7 +3812,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "v6_cidr_blocks",
-        label: "IPv6 CIDR blocks",
+        label: "Блоки IPv6 CIDR",
         type: "array",
         itemLabel: "v6-CIDR",
         description: "IPv6 CIDR-блоки, из которых аллоцируются внешние v6 адреса.",
@@ -3694,14 +3830,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "is_default",
-        label: "Default for zone+kind",
+        label: "По умолчанию для зоны и вида",
         type: "bool",
         default: false,
         description: "Пул по умолчанию — один на пару «зона + семейство адресов».",
       },
       {
         name: "selector_priority",
-        label: "Selector priority",
+        label: "Приоритет выбора",
         type: "int",
         default: 0,
         description: "Tie-break при равенстве specificity. Higher wins.",
@@ -4015,7 +4151,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // int-секундное имя deregistration_delay_seconds — reserved и на Create,
         // и на Update. Форма редактирует число, sanitize/hydrate переводят.
         name: "deregistration_delay",
-        label: "Drain timeout (с)",
+        label: "Время вывода из-под нагрузки (с)",
         type: "int",
         required: false,
         default: 300,
@@ -4024,87 +4160,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description:
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
-      {
-        // Дискриминатор взаимоисключающей группы `HealthCheck.options`. Поле
-        // ФОРМЫ, а не контракта (отсюда подчёркивание): на проводе ветвь
-        // называет себя сама — тем, что она единственная заполненная. Без
-        // дискриминатора выбрать ветвь нечем, и три из четырёх были невыразимы
-        // (#375): проверка умела только TCP, а пути, коды ответа, заголовки и
-        // имя службы объявлены контрактом и недостижимы из консоли.
-        name: "_health_check_protocol",
-        label: "HC: протокол",
-        type: "enum",
-        required: true,
-        default: "tcp",
-        options: [
-          { value: "tcp", label: "TCP — соединение установилось" },
-          { value: "http", label: "HTTP — ответ по пути" },
-          { value: "https", label: "HTTPS — ответ по пути, шифрованно" },
-          { value: "grpc", label: "gRPC — служба отвечает здоровой" },
-        ],
-        description:
-          "Чем проверяется живость цели. TCP отвечает только за установленное соединение; остальные три спрашивают приложение.",
-      },
-      {
-        name: "health_check.tcp.port",
-        label: "HC: TCP-порт",
-        type: "int",
-        required: true,
-        default: 80,
-        visibleWhen: { field: "_health_check_protocol", equals: "tcp" },
-        description: "TCP-порт для health-check'а (1..65535). По умолчанию 80.",
-      },
-      ...healthCheckAppFields("http"),
-      ...healthCheckAppFields("https"),
-      {
-        name: "health_check.grpc.port",
-        label: "HC: gRPC-порт",
-        type: "int",
-        required: false,
-        visibleWhen: { field: "_health_check_protocol", equals: "grpc" },
-        description: "Порт проверки. Пусто — берётся порт бэкенда группы.",
-      },
-      {
-        name: "health_check.grpc.service_name",
-        label: "HC: имя службы",
-        type: "string",
-        required: false,
-        visibleWhen: { field: "_health_check_protocol", equals: "grpc" },
-        placeholder: "grpc.health.v1.Health",
-        description: "Имя службы в протоколе проверки здоровья. Пусто — спрашивается сервер целиком.",
-      },
-      {
-        name: "health_check.interval",
-        label: "HC: интервал",
-        type: "string",
-        required: true,
-        default: "2s",
-        description: "Интервал между health-check'ами (Duration в формате 'Ns', range 1s-600s). По умолчанию 2s.",
-      },
-      {
-        name: "health_check.timeout",
-        label: "HC: таймаут",
-        type: "string",
-        required: true,
-        default: "1s",
-        description: "Таймаут одного health-check'а (Duration). По умолчанию 1s.",
-      },
-      {
-        name: "health_check.unhealthy_threshold",
-        label: "HC: failure threshold",
-        type: "int",
-        required: true,
-        default: 2,
-        description: "Сколько failed checks подряд до перевода в UNHEALTHY (2..10). По умолчанию 2.",
-      },
-      {
-        name: "health_check.healthy_threshold",
-        label: "HC: success threshold",
-        type: "int",
-        required: true,
-        default: 2,
-        description: "Сколько успешных checks подряд до перевода в HEALTHY (2..10). По умолчанию 2.",
-      },
+      ...healthCheckFields(),
+      targetsField(),
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -4126,9 +4183,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       labels: {},
     }),
     // Форма правит секунды числом; контракт принимает Duration. Плюс ветвь
-    // проверки живости: форма держит поля всех четырёх, в теле остаётся одна.
+    // проверки живости и ветвь идентичности каждой цели: форма держит поля всех
+    // ветвей, в теле остаётся по одной.
     sanitize: (obj) => {
-      const out: Record<string, unknown> = sanitizeHealthCheck(obj);
+      const out: Record<string, unknown> = sanitizeTargets(sanitizeHealthCheck(obj));
       const raw = out["deregistration_delay"];
       // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
       // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
@@ -4156,124 +4214,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 };
 
-/** Ветви проверки живости, спрашивающие приложение (`http` и `https`), различаются
- *  только шифрованием — поля у них одни и те же, и выписывать их дважды значило бы
- *  завести два места об одном предмете. */
-export const HEALTH_CHECK_APP_BRANCHES = ["http", "https"] as const;
-
-/** Имена ветвей проверки живости, ЕДИНСТВЕННЫЙ перечень в консоли. */
-export const HEALTH_CHECK_BRANCHES = ["tcp", "http", "https", "grpc"] as const;
-
-function healthCheckAppFields(branch: "http" | "https"): FormField[] {
-  const у = branch === "https" ? "HTTPS" : "HTTP";
-  const when = { field: "_health_check_protocol", equals: branch } as const;
-  return [
-    {
-      name: `health_check.${branch}.port`,
-      label: `HC: ${у}-порт`,
-      type: "int",
-      required: false,
-      visibleWhen: when,
-      description: "Порт проверки. Пусто — берётся порт бэкенда группы.",
-    },
-    {
-      name: `health_check.${branch}.path`,
-      label: `HC: путь`,
-      type: "string",
-      required: false,
-      visibleWhen: when,
-      placeholder: "/healthz",
-      description: "Путь запроса проверки. Пусто — корень «/».",
-    },
-    {
-      name: `health_check.${branch}.expected_codes`,
-      label: "HC: коды ответа",
-      type: "string",
-      required: false,
-      visibleWhen: when,
-      placeholder: "200-299",
-      description: "Какие коды считать здоровыми: диапазон «200-299» или перечень «200,204». Пусто — любой 2xx.",
-    },
-    {
-      name: `health_check.${branch}.host`,
-      label: branch === "https" ? "HC: имя узла (Host / SNI)" : "HC: имя узла (Host)",
-      type: "string",
-      required: false,
-      visibleWhen: when,
-      description:
-        branch === "https"
-          ? "Заголовок Host и имя в рукопожатии TLS. Пусто — берётся адрес цели."
-          : "Заголовок Host запроса проверки. Пусто — берётся адрес цели.",
-    },
-    {
-      name: `health_check.${branch}.headers`,
-      label: "HC: заголовки",
-      type: "labels",
-      required: false,
-      visibleWhen: when,
-      description: "Дополнительные заголовки запроса проверки.",
-    },
-  ];
-}
-
-/**
- * Ветвь проверки живости, названная формой, остаётся в теле ОДНА.
- *
- * Группа взаимоисключающая (`exactly_one`): две заполненные ветви — отказ
- * сервера. Форма держит поля всех четырёх, поэтому лишние обязана срезать сама,
- * а не надеяться, что пользователь их не тронул.
- *
- * Пустые строки внутри выбранной ветви не отправляются: у пути, кодов ответа и
- * имени узла есть СЕРВЕРНЫЕ умолчания, и пустая строка означала бы «пусто», а не
- * «как по умолчанию». Числа сохраняются целиком, включая 0: у порта это законное
- * значение со смыслом «взять порт группы».
- */
-export function sanitizeHealthCheck(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...obj };
-  const hc = out["health_check"];
-  const выбор = out["_health_check_protocol"];
-  delete out["_health_check_protocol"];
-  if (!hc || typeof hc !== "object") return out;
-
-  const src = hc as Record<string, unknown>;
-  const ветвь =
-    typeof выбор === "string" && (HEALTH_CHECK_BRANCHES as readonly string[]).includes(выбор)
-      ? выбор
-      : (HEALTH_CHECK_BRANCHES.find((b) => src[b] !== undefined) ?? "tcp");
-
-  const next: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(src)) {
-    if ((HEALTH_CHECK_BRANCHES as readonly string[]).includes(k)) continue;
-    next[k] = v;
-  }
-  const тело = src[ветвь];
-  if (тело && typeof тело === "object") {
-    const очищенное: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(тело as Record<string, unknown>)) {
-      if (typeof v === "string" && v.trim() === "") continue;
-      if (v === undefined || v === null) continue;
-      if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-      очищенное[k] = v;
-    }
-    next[ветвь] = очищенное;
-  } else {
-    next[ветвь] = {};
-  }
-  out["health_check"] = next;
-  return out;
-}
-
-/** Обратное: по заполненной ветви ответа восстановить выбор формы. */
-export function hydrateHealthCheck(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...obj };
-  const hc = out["health_check"];
-  if (hc && typeof hc === "object") {
-    const src = hc as Record<string, unknown>;
-    out["_health_check_protocol"] = HEALTH_CHECK_BRANCHES.find((b) => src[b] !== undefined) ?? "tcp";
-  }
-  return out;
-}
-
 /**
  * hasProtocolNumber — protocol_number is an int64, and protojson renders a 64-bit
  * integer as a JSON STRING. A rule read back from the server therefore carries
@@ -4285,6 +4225,23 @@ export function hasProtocolNumber(v: unknown): boolean {
   if (typeof v === "string") return v.trim() !== "" && Number.isFinite(Number(v));
   return false;
 }
+
+/**
+ * Вид цели правила → поле контракта. ЕДИНСТВЕННЫЙ перечень ветвей `oneof target`
+ * в консоли; сверяется с контрактом пробой `oneof-form-coverage`.
+ *
+ * Здесь стояла четвёртая запись — `predefined: "predefined_target"`. Эта ветвь
+ * СНЯТА с контракта (`security_group_service.proto`: номер и имя в `reserved`),
+ * то есть форма умела назвать цель, которой у контракта нет: край такой ключ
+ * молча выбрасывает, и правило уезжало бы без цели вовсе. Ветвь, которой нет у
+ * контракта, — находка того же рода, что ветвь контракта без формы, только с
+ * другой стороны (#375).
+ */
+export const SG_RULE_TARGET_FIELD: Record<string, string> = {
+  cidr: "cidr_blocks",
+  sg: "security_group_id",
+  "cidr-group": "cidr_group_id",
+};
 
 // Экспортирована для тестов.
 export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unknown> {
@@ -4298,15 +4255,7 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
   // «CIDR-блоки» и теряло цель при первом же сохранении.
   const targetKind =
     (r._target_kind as string | undefined) ??
-    (r.cidr_blocks
-      ? "cidr"
-      : r.security_group_id
-        ? "sg"
-        : r.cidr_group_id
-          ? "cidr-group"
-          : r.predefined_target
-            ? "predefined"
-            : "cidr");
+    (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.cidr_group_id ? "cidr-group" : "cidr");
 
   // Copy the persistent fields, dropping the form-only discriminators at EVERY
   // depth: the caller spreads a fetched SecurityGroupRule into this, and
@@ -4321,6 +4270,11 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
     delete out.protocol_number;
   } else if (protoMode === "number") {
     delete out.protocol_name;
+    // Ветвь выбрана, номер не назван: ключ со значением `undefined` не переживёт
+    // сериализацию тела, ветвь исчезнет, и правило будет означать «любой
+    // протокол» — расширение, о котором никто не просил. Ноль сервер отвергает
+    // ЯВНО, называя поле; форма показывает этот отказ подписью «Номер IANA».
+    if (!hasProtocolNumber(out.protocol_number)) out.protocol_number = 0;
   }
   // ports
   if (portsAny) {
@@ -4329,14 +4283,8 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
   // target oneof — оставляем ровно одну ветвь. Список ветвей ведётся ОДНИМ
   // перечнем, а не тремя ветками `if`: ветвь, забытая в одной из веток, уезжает
   // вместе с выбранной, и сервис отвергает правило целиком («ровно одна цель»).
-  const TARGET_FIELD: Record<string, string> = {
-    cidr: "cidr_blocks",
-    sg: "security_group_id",
-    "cidr-group": "cidr_group_id",
-    predefined: "predefined_target",
-  };
-  const keep = TARGET_FIELD[targetKind];
-  for (const [kind, field] of Object.entries(TARGET_FIELD)) {
+  const keep = SG_RULE_TARGET_FIELD[targetKind];
+  for (const [kind, field] of Object.entries(SG_RULE_TARGET_FIELD)) {
     if (kind !== targetKind || keep === undefined) delete out[field];
   }
   return out;

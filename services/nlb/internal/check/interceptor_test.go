@@ -344,7 +344,13 @@ func TestAZD011_OperationCancel_Public_HandlerOwnsCreatorCheck(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// FGA unavailable → fail-closed PermissionDenied.
+// FGA unavailable → fail-closed, кодом НЕДОСТУПНОСТИ.
+//
+// Приёмка §AZD-012 требует fail-closed — «запрос не исполняется, когда модель не
+// ответила», — и это утверждение осталось. Код при этом сменился с
+// PermissionDenied (задача #497): отказ в правах означает «повторять
+// бессмысленно», а здесь про права не сказано ничего, и через мгновение ответ
+// будет. Полосы целиком — pkg/authz/decision_lane_codes_test.go.
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
@@ -358,8 +364,8 @@ func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
 		func(context.Context, any) (any, error) { t.Fatal("must not run"); return nil, nil },
 	)
 	st, _ := status.FromError(err)
-	require.Equal(t, codes.PermissionDenied, st.Code(),
-		"FGA-unavailable → fail-closed PermissionDenied (acceptance §AZD-012)")
+	require.Equal(t, codes.Unavailable, st.Code(),
+		"FGA-unavailable → fail-closed UNAVAILABLE (acceptance §AZD-012: запрос не исполняется)")
 }
 
 // ────────────────────────────────────────────────────────────────────────────

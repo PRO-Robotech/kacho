@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,16 +40,32 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// fakeReleaser — in-memory vpcclient.InternalAddressClient: считает FreeIP /
-// ClearReference (release-ветка reconciler'а). Alloc/SetReference не нужны.
+// fakeReleaser — in-memory vpcclient.InternalAddressClient: считает вызовы
+// снятия аренды (release-ветка reconciler'а). Alloc/SetReference не нужны.
+//
+// Два счётчика — это ДВА РАЗНЫХ ИСХОДА одного глагола, а не две прежние ручки:
+//   - clearCalls — вызов состоялся; ссылка снята в ОБОИХ исходах;
+//   - freeCalls  — аренда вернулась в пул (RELEASED), то есть адрес удалён.
+//
+// Арендаторский адрес в freeCalls не попадает НИКОГДА: владелец отвечает на нём
+// DETACHED (ссылка снята, адрес жив). Дублёр обязан отвечать так же — иначе он
+// снисходительнее продукта ровно в том измерении, которое пробы и стерегут:
+// он объявлял бы возврат в пул арендаторского адреса законным исходом.
 type fakeReleaser struct {
-	mu          sync.Mutex
-	freeCalls   []string
-	clearCalls  []string
-	freeErr     error
-	clearErr    error
-	errByAddr   map[string]error // per-address override (poison-row tests); nil → no override
-	onFirstFree func()           // coordination-hook (multi-replica): держит lock пока B тикает
+	mu         sync.Mutex
+	freeCalls  []string
+	clearCalls []string
+	freeErr    error
+	clearErr   error
+	errByAddr  map[string]error // per-address override (poison-row tests); nil → no override
+	// tenantOwned — адреса, которые ВЛАДЕЛЕЦ считает арендаторскими. Зеркалит
+	// vpc-колонку `address_references.owned`: именно по ней vpc выбирает ветку
+	// «оставить адрес арендатора» либо «удалить адрес модуля». Потребитель эту
+	// ветку больше не выводит (#439), поэтому и дублёр выводить её не вправе —
+	// он её МОДЕЛИРУЕТ. Заполняется теми же address_id, что вставлены с
+	// vip_origin='linked'.
+	tenantOwned map[string]bool
+	onFirstFree func() // coordination-hook (multi-replica): держит lock пока B тикает
 	firstFired  bool
 }
 
@@ -71,7 +88,21 @@ func (f *fakeReleaser) AttachExisting(context.Context, vpcclient.AttachExistingR
 	return &vpcclient.AllocateResponse{}, nil
 }
 
-func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
+// ReleaseLease — ОДИН глагол вместо прежней пары. Дублёр отвергает
+// незаполненное предъявление владения так же, как настоящий: без этого проба
+// зеленела бы на вызове, который боевой владелец отверг бы синхронно.
+func (f *fakeReleaser) ReleaseLease(
+	_ context.Context, req vpcclient.ReleaseLeaseRequest,
+) (vpcclient.LeaseOutcome, error) {
+	switch {
+	case req.ProjectID == "":
+		return "", fmt.Errorf("%w: project_id is empty", domain.ErrInvalidArg)
+	case req.AddressID == "":
+		return "", fmt.Errorf("%w: address_id is empty", domain.ErrInvalidArg)
+	case req.Owner.Kind == "" || req.Owner.ID == "":
+		return "", fmt.Errorf("%w: owner is empty", domain.ErrInvalidArg)
+	}
+	addressID := req.AddressID
 	f.mu.Lock()
 	hook := f.onFirstFree
 	if hook != nil && !f.firstFired {
@@ -79,8 +110,16 @@ func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
 	} else {
 		hook = nil
 	}
-	f.freeCalls = append(f.freeCalls, addressID)
+	// Ветку выбирает ВЛАДЕЛЕЦ по своей колонке — здесь её зеркалит tenantOwned.
+	tenant := f.tenantOwned[addressID]
+	f.clearCalls = append(f.clearCalls, addressID)
+	if !tenant {
+		f.freeCalls = append(f.freeCalls, addressID)
+	}
 	err := f.freeErr
+	if err == nil {
+		err = f.clearErr
+	}
 	if e, ok := f.errByAddr[addressID]; ok {
 		err = e
 	}
@@ -88,17 +127,13 @@ func (f *fakeReleaser) FreeIP(_ context.Context, addressID string) error {
 	if hook != nil {
 		hook()
 	}
-	return err
-}
-
-func (f *fakeReleaser) ClearReference(_ context.Context, addressID string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.clearCalls = append(f.clearCalls, addressID)
-	if e, ok := f.errByAddr[addressID]; ok {
-		return e
+	if err != nil {
+		return "", err
 	}
-	return f.clearErr
+	if tenant {
+		return vpcclient.LeaseDetached, nil
+	}
+	return vpcclient.LeaseReleased, nil
 }
 
 func (f *fakeReleaser) frees() []string {
@@ -124,9 +159,58 @@ func newFreeIPRunner(t testing.TB, pool *pgxpool.Pool, addrs vpcclient.InternalA
 	return NewFreeIPRunner(pool, addrs, logger, time.Second, age)
 }
 
+// vipFixtureSeq — счётчик синтетических адресов фикстуры.
+//
+// Уникальность адреса держится СЧЁТЧИКОМ, а не совпадением литералов: partial
+// UNIQUE (region_id, address_vN) по непустым адресам (миграция 0009) отверг бы
+// две строки одного теста с одним адресом, а все строки этой фикстуры лежат в
+// одном регионе. Со счётчиком новая строка фикстуры не обязана помнить про
+// соседние.
+var vipFixtureSeq atomic.Uint32
+
+// vipAddrFor — синтетический адрес семейства для ключа аренды addressID.
+//
+// Пустой ключ → пустой адрес: схема требует ЭКВИВАЛЕНТНОСТИ «адрес пуст ⟺ ключ
+// аренды пуст» (миграция 0035), то есть запрещены ОБА перекоса. Непустой адрес
+// обязан вдобавок нести своё семейство в `ip_families` (миграция 0011) — это
+// делает insertStuckLB.
+//
+// Значение берётся из диапазонов, зарезервированных под документацию (RFC 5737
+// для v4, RFC 3849 для v6): оно IP-образно, но заведомо не совпадает ни с одним
+// настоящим адресом, поэтому не может быть принято за живые данные.
+//
+// Адрес НАМЕРЕННО не равен ключу аренды: reconcile ключуется по `address_id_vN`,
+// и совпадение значений сделало бы неразличимым освобождение по неверной колонке.
+func vipAddrFor(t testing.TB, family domain.IPVersion, addressID string) string {
+	t.Helper()
+	if addressID == "" {
+		return ""
+	}
+	n := vipFixtureSeq.Add(1)
+	// Предпосылка помощника: адреса берутся из одного /24, значит их не может
+	// быть больше 254 за прогон пакета. Когда предпосылка перестанет
+	// выполняться, об этом скажет проба, а не молчаливая коллизия per-region
+	// UNIQUE — та выглядела бы как «фикстура вдруг не вставляется».
+	require.Lessf(t, n, uint32(255),
+		"фикстура исчерпала документационный /24 (выдано адресов: %d) — расширь диапазон", n)
+	if family == domain.IPVersionV6 {
+		return fmt.Sprintf("2001:db8::%x", n)
+	}
+	return fmt.Sprintf("203.0.113.%d", n)
+}
+
 // insertStuckLB — durable-handle LB в нетерминальном статусе с заданным возрастом
-// (updated_at = now() - age) и per-family binding. address_v4/v6 оставляем пустыми
-// (status-aware CHECK пропускает), reconcile ключуется по address_id_v4/v6.
+// (updated_at = now() - age) и per-family binding. reconcile ключуется по
+// address_id_v4/v6, поэтому предмет проб задают именно они.
+//
+// Адрес и ключ его аренды пишутся ПАРОЙ, и это не оформление. Прежняя редакция
+// оставляла адрес пустым при непустом ключе, объясняя это тем, что «status-aware
+// CHECK пропускает». Такого состояния продукт не производит: все три полосы
+// получения VIP возвращают адрес и ключ ОДНИМ ответом vpc, а `Insert` и
+// `AttachVIP` пишут их одним стейтментом. То есть фикстура была снисходительнее
+// продукта — строила состояние, которого в жизни не бывает, — и с появлением
+// миграции 0035 («адрес пуст ⟺ ключ аренды пуст») перестала вставляться вовсе:
+// `PRO-Robotech/kacho#495`.
 func insertStuckLB(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 	status domain.LBStatus, originV4, addrIDV4, originV6, addrIDV6 string, age time.Duration) (id, projectID string) {
 	t.Helper()
@@ -135,14 +219,33 @@ func insertStuckLB(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 	// Учёт числа ресурсов: строка учёта заводится ЗДЕСЬ, потому что здесь
 	// придумана идентичность проекта (см. `quota_fixture_test.go`).
 	seedQuotaForProject(t, ctx, pool, projectID)
+
+	addrV4 := vipAddrFor(t, domain.IPVersionV4, addrIDV4)
+	addrV6 := vipAddrFor(t, domain.IPVersionV6, addrIDV6)
+	// Семейство объявляется ровно тогда, когда у него есть адрес: непустой
+	// address_vN без своего токена в ip_families отвергает миграция 0011.
+	families := make([]string, 0, 2)
+	if addrV4 != "" {
+		families = append(families, string(domain.IPVersionV4))
+	}
+	if addrV6 != "" {
+		families = append(families, string(domain.IPVersionV6))
+	}
+
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers
-			(id, project_id, region_id, type, status, placement_type,
-			 address_id_v4, vip_origin_v4, address_id_v6, vip_origin_v6,
+			(id, project_id, region_id, type, status, placement_type, ip_families,
+			 address_v4, address_id_v4, vip_origin_v4,
+			 address_v6, address_id_v6, vip_origin_v6,
 			 created_at, updated_at)
-		VALUES ($1, $2, 'region-1', 'INTERNAL', $3, 'REGIONAL',
-		        $4, $5, $6, $7, now() - $8::interval, now() - $8::interval)
-	`, id, projectID, string(status), addrIDV4, originV4, addrIDV6, originV6, age.String())
+		VALUES ($1, $2, 'region-1', 'INTERNAL', $3, 'REGIONAL', $4,
+		        $5, $6, $7,
+		        $8, $9, $10,
+		        now() - $11::interval, now() - $11::interval)
+	`, id, projectID, string(status), families,
+		addrV4, addrIDV4, originV4,
+		addrV6, addrIDV6, originV6,
+		age.String())
 	require.NoError(t, err)
 	return id, projectID
 }
@@ -273,14 +376,14 @@ func TestFreeIP_LinkedClearReference(t *testing.T) {
 	const addrID = "adr000000LINKSTUCK01"
 	insertStuckLB(t, ctx, pool, domain.LBStatusDeleting, "linked", addrID, "", "", 10*time.Minute)
 
-	rel := &fakeReleaser{}
+	rel := &fakeReleaser{tenantOwned: map[string]bool{addrID: true}}
 	r := newFreeIPRunner(t, pool, rel, time.Minute)
 
 	n, err := r.reconcileOnce(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
-	assert.Equal(t, []string{addrID}, rel.clears(), "ClearReference called by address_id_v4")
-	assert.Empty(t, rel.frees(), "FreeIP must NOT be called for linked (anti data-loss)")
+	assert.Equal(t, []string{addrID}, rel.clears(), "аренда снята по address_id_v4")
+	assert.Empty(t, rel.frees(), "адрес арендатора НЕ возвращается в пул (anti data-loss)")
 	assert.Equal(t, 0, countLoadBalancers(t, ctx, pool))
 }
 
@@ -301,14 +404,14 @@ func TestFreeIP_DualstackSeparateRelease(t *testing.T) {
 	const addrV6 = "adr0000000DUALV60001"
 	insertStuckLB(t, ctx, pool, domain.LBStatusDeleting, "auto", addrV4, "linked", addrV6, 10*time.Minute)
 
-	rel := &fakeReleaser{}
+	rel := &fakeReleaser{tenantOwned: map[string]bool{addrV6: true}}
 	r := newFreeIPRunner(t, pool, rel, time.Minute)
 
 	n, err := r.reconcileOnce(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
-	assert.Equal(t, []string{addrV4}, rel.frees(), "v4 auto → FreeIP (after clear)")
-	assert.Equal(t, []string{addrV4, addrV6}, rel.clears(), "v4 owned two-step clear + v6 linked clear")
+	assert.Equal(t, []string{addrV4}, rel.frees(), "v4 модульный → RELEASED, аренда в пул")
+	assert.Equal(t, []string{addrV4, addrV6}, rel.clears(), "оба семейства сняты: v4 RELEASED, v6 DETACHED")
 	assert.Equal(t, 0, countLoadBalancers(t, ctx, pool))
 }
 
@@ -464,9 +567,12 @@ func TestFreeIP_PoisonRowDoesNotBlockQueue(t *testing.T) {
 	healthyID, _ := insertStuckLB(t, ctx, pool, domain.LBStatusDeleting, "linked", healthyAddr, "", "", 10*time.Minute)
 
 	var poisoned []string
-	rel := &fakeReleaser{errByAddr: map[string]error{
-		poisonAddr: fmt.Errorf("%w: address %s not found", domain.ErrInvalidArg, poisonAddr),
-	}}
+	rel := &fakeReleaser{
+		tenantOwned: map[string]bool{poisonAddr: true, healthyAddr: true},
+		errByAddr: map[string]error{
+			poisonAddr: fmt.Errorf("%w: address %s not found", domain.ErrInvalidArg, poisonAddr),
+		},
+	}
 	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
 		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) }))
 
@@ -503,9 +609,12 @@ func TestFreeIP_TransientReleaseErrorLeavesRowForRetry(t *testing.T) {
 	lbID, _ := insertStuckLB(t, ctx, pool, domain.LBStatusDeleting, "linked", addr, "", "", 10*time.Minute)
 
 	var poisoned []string
-	rel := &fakeReleaser{errByAddr: map[string]error{
-		addr: fmt.Errorf("%w: vpc clear address reference %s", domain.ErrUnavailable, addr),
-	}}
+	rel := &fakeReleaser{
+		tenantOwned: map[string]bool{addr: true},
+		errByAddr: map[string]error{
+			addr: fmt.Errorf("%w: vpc clear address reference %s", domain.ErrUnavailable, addr),
+		},
+	}
 	r := NewFreeIPRunner(pool, rel, observability.NewSlogger(discardWriter{}), time.Second, time.Minute,
 		WithPoisonObserver(func(id string) { poisoned = append(poisoned, id) }))
 

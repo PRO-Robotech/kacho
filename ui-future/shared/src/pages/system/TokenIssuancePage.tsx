@@ -46,6 +46,10 @@ import { useAuth } from "@shared/contexts/AuthContext";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { resolveMutationResponse } from "@shared/lib/operation-outcome";
+import { getResource } from "@shared/lib/resource-registry";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope, pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { useKeptLabels } from "@shared/lib/kept-choice";
 
 /** Унифицированная строка credential'а (общая форма SAKey и UserToken). */
 export interface CredentialRow {
@@ -65,10 +69,6 @@ export interface SubjectOption {
 export interface TokenKindConfig {
   /** Discriminator для query-ключей. */
   kind: "sa" | "user";
-  /** Заголовок страницы. */
-  pageTitle: string;
-  /** Подзаголовок страницы. */
-  pageSubtitle: string;
   /** «сервисный аккаунт» / «пользователь». */
   subjectSingular: string;
   /** «Сервисный аккаунт» / «Пользователь» (для label поля). */
@@ -79,8 +79,15 @@ export interface TokenKindConfig {
   credentialPlural: string;
   /** Заголовок one-time модалки. */
   issuedTitle: string;
-  /** Загрузка списка субъектов (best-effort). */
-  listSubjects: () => Promise<SubjectOption[]>;
+  /**
+   * Загрузка списка субъектов (best-effort).
+   *
+   * `query` — параметры сужения, собранные областью поиска поля (#528):
+   * реализация ОБЯЗАНА донести их до края. Реализация, объявленная БЕЗ
+   * параметра, тем самым говорит, что сужать не умеет, — и поле не станет
+   * утверждать обратное (см. `subjectScope`).
+   */
+  listSubjects: (query?: Record<string, string>) => Promise<SubjectOption[]>;
   /** Загрузка credential'ов субъекта. */
   listCredentials: (subjectId: string) => Promise<CredentialRow[]>;
   /** POST issue → Operation. */
@@ -100,6 +107,17 @@ function isStepUpError(err: unknown): boolean {
 const STEP_UP_MESSAGE =
   "Действие требует усиленной аутентификации (step-up MFA, ACR≥2). Подтвердите вход через passkey (Touch ID / Windows Hello / security key) и повторите выпуск.";
 
+/**
+ * Ресурс субъекта в реестре — чтобы область поиска читалась ОТТУДА.
+ *
+ * Чем владелец умеет сужать список, объявлено один раз в реестре и сверено с
+ * его деревом (`lib/list-server-search-parity.test.ts`): у пользователя имени
+ * нет вовсе (его знают по почте), у сервисного аккаунта — есть. Переписывать
+ * это здесь значило бы завести второе место об одном предмете, из которых
+ * верно одно.
+ */
+const SUBJECT_SPEC_ID: Record<TokenKindConfig["kind"], string> = { sa: "service-accounts", user: "users" };
+
 export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -115,19 +133,53 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   const [form] = Form.useForm<{ description?: string; ttl_seconds?: number }>();
 
   // ---- Субъекты (best-effort) ----
+  //
+  // Область поиска субъекта (#528). Ввод уходит запросом при ДВУХ условиях
+  // сразу: владелец умеет сужать (объявление реестра) И получатель списка
+  // объявил параметр под запрос. Второе — не педантизм: `listSubjects` без
+  // параметра молча выбросит переданное, и поле утверждало бы «искали по всему
+  // списку», не спросив никого, — ровно тот класс, ради которого поле и
+  // правится. Арность передачу не доказывает, но объявить параметр и не
+  // воспользоваться им здесь нельзя: `noUnusedParameters` не даст собраться.
+  //
+  // Пока страница списка не сужает, поле говорит правду о своей области —
+  // «нет среди загруженных», — вместо «Ничего не найдено», которое стояло здесь
+  // и утверждало отсутствие пользователя, чью почту никто не спрашивал.
+  const subjectScope =
+    config.listSubjects.length > 0
+      ? pickerScopeOfSpec(getResource(SUBJECT_SPEC_ID[config.kind]))
+      : pickerScope(undefined);
+  const [subjectTerm, setSubjectTerm] = useState("");
+  const debouncedSubjectTerm = useDebouncedValue(subjectTerm, subjectScope.asksServer ? 250 : 0);
+  const subjectServerQuery = subjectScope.asksServer ? subjectScope.query(debouncedSubjectTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const subjectTermKey = subjectScope.asksServer ? (subjectServerQuery.filter ?? "") : "";
+
   const subjectsQ = useQuery({
-    queryKey: [config.kind, "token-subjects"],
-    queryFn: config.listSubjects,
+    queryKey: [config.kind, "token-subjects", subjectTermKey],
+    queryFn: () => config.listSubjects(subjectServerQuery),
     retry: false,
     staleTime: 30_000,
   });
   const subjectOptions = subjectsQ.data ?? [];
-  const subjectLabelById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const o of subjectOptions) m.set(o.value, o.label);
-    return m;
-  }, [subjectOptions]);
-  const currentSubjectLabel = subjectLabelById.get(subjectId) ?? subjectId;
+
+  // Метка выбранного субъекта обязана пережить сужение: сервер отвечает по
+  // ВВОДУ, и уже выбранный субъект в этот ответ попадать не обязан. Без
+  // запоминания заголовок окна выпуска («Выпустить ключ для «…»») и сам
+  // селектор показали бы сырой идентификатор вместо почты или имени.
+  // Зависимость — ОТВЕТ запроса, а не выражение `?? []`: у пустого литерала
+  // каждый рендер своя идентичность, и пересчёт шёл бы всегда.
+  const seenSubjects = useMemo(
+    () => (subjectsQ.data ?? []).map((o) => [o.value, o.label] as const),
+    [subjectsQ.data],
+  );
+  const subjectLabelOf = useKeptLabels(seenSubjects);
+  const currentSubjectLabel = subjectLabelOf(subjectId);
+  const keptSubject =
+    subjectId && !subjectOptions.some((o) => o.value === subjectId) && currentSubjectLabel !== subjectId
+      ? [{ value: subjectId, label: currentSubjectLabel }]
+      : [];
 
   // ---- Credential'ы выбранного субъекта ----
   const credsQ = useQuery({
@@ -308,16 +360,11 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   ];
 
   return (
+    // Своего заголовка страница НЕ печатает: её называет рейл раздела и шапка
+    // общей оболочки — до #447 имя стояло на экране дважды, а под ним висел
+    // абзац о внутреннем устройстве выпуска. Единственный факт того абзаца —
+    // секрет показывается один раз — сказан в окне выпуска, где он и нужен.
     <Space direction="vertical" size={16} style={{ width: "100%" }} data-testid={`token-page-${config.kind}`}>
-      <div>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {config.pageTitle}
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          {config.pageSubtitle}
-        </Typography.Text>
-      </div>
-
       <Space size={8} wrap style={{ width: "100%" }}>
         <Select
           showSearch
@@ -325,10 +372,23 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
           placeholder={`Выберите ${config.subjectSingular}`}
           value={subjectId || undefined}
           onChange={(v) => setSubjectId(v)}
+          onSearch={setSubjectTerm}
           loading={subjectsQ.isLoading}
-          options={subjectOptions}
-          optionFilterProp="label"
-          notFoundContent={subjectsQ.isError ? "Список недоступен — введите ID вручную ниже" : "Ничего не найдено"}
+          options={[...keptSubject, ...subjectOptions]}
+          title={subjectScope.notice}
+          // Сузил сервер — клиент НЕ пересеивает: метка субъекта склеена из
+          // имени и идентификатора, и повторное сужение по ней вычло бы из
+          // ответа края строки, которые он прислал именно по этому вводу.
+          {...(subjectScope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+          // Пустой ответ обязан называть свою ОБЛАСТЬ. Отказ края — отдельный
+          // случай: там списка нет вовсе, и сказать надо про ручной ввод.
+          notFoundContent={
+            subjectsQ.isError
+              ? "Список недоступен — введите ID вручную ниже"
+              : subjectsQ.isLoading
+                ? undefined
+                : subjectScope.emptyText
+          }
           data-testid="token-subject-select"
         />
         <Input

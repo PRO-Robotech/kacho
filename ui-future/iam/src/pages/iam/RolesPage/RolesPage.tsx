@@ -19,6 +19,7 @@ import { InlineRoleCreateForm } from "@/components/organisms/iam/InlineRoleCreat
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
+import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 
 export function RolesPage() {
   const navigate = useNavigate();
@@ -44,6 +45,9 @@ export function RolesPage() {
   });
 
   const roles = useMemo(() => data?.roles ?? [], [data?.roles]);
+  // Область ручек (#373): читается ОДНА страница, продолжения у этой
+  // страницы нет — и поиск, и переключатель сферы судят о прочитанном.
+  const scope = clientScope(!!data?.next_page_token);
   const systemRoles = useMemo(() => roles.filter((r) => r.is_system), [roles]);
   const customRoles = useMemo(() => roles.filter((r) => !r.is_system), [roles]);
   const byKind = roleKind === "system" ? systemRoles : roleKind === "custom" ? customRoles : roles;
@@ -104,7 +108,7 @@ export function RolesPage() {
               {p}
             </Tag>
           ))}
-          {(v?.length ?? 0) > 4 && <Typography.Text type="secondary">+{(v?.length ?? 0) - 4} more</Typography.Text>}
+          {(v?.length ?? 0) > 4 && <Typography.Text type="secondary">ещё {(v?.length ?? 0) - 4}</Typography.Text>}
         </Space>
       ),
     },
@@ -130,7 +134,7 @@ export function RolesPage() {
             onClick={() => navigate(`/iam/roles/${row.id}/edit`)}
           />
           <Popconfirm
-            title="Удалить Role?"
+            title="Удалить роль?"
             description={`Удалить «${row.name}»? Custom role с активными AccessBinding → FailedPrecondition.`}
             okText="Удалить"
             okButtonProps={{ danger: true }}
@@ -160,7 +164,8 @@ export function RolesPage() {
       right={
         <Space size={8}>
           <Input.Search
-            placeholder="Фильтр по имени или идентификатору"
+            placeholder={`Фильтр по имени или идентификатору ${scopeSuffix(scope)}`}
+            title={narrowingTitle(scope)}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             allowClear
@@ -221,7 +226,7 @@ export function RoleCreatePage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/roles">
-            <Typography.Text type="secondary">Roles</Typography.Text>
+            <Typography.Text type="secondary">Роли</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>

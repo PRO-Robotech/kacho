@@ -61,7 +61,7 @@ describe("Dialog", () => {
     const onOpenChange = jest.fn<(v: boolean) => void>();
     render(<Sample open onOpenChange={onOpenChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть окно" }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

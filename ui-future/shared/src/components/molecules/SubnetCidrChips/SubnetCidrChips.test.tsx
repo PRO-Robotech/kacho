@@ -29,7 +29,7 @@ function type(value: string) {
 }
 
 function add() {
-  fireEvent.click(screen.getByRole("button", { name: /Add/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Добавить/ }));
 }
 
 describe("CidrSection", () => {
@@ -95,7 +95,7 @@ describe("CidrSection", () => {
 
   it("на пустом поле кнопка не активна", () => {
     renderSection("v4", []);
-    expect(screen.getByRole("button", { name: /Add/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Добавить/ })).toBeDisabled();
   });
 });
 
@@ -109,7 +109,7 @@ describe("SubnetCidrChips", () => {
 
     const inputs = screen.getAllByRole("textbox");
     fireEvent.change(inputs[0], { target: { value: "10.0.2.0/24" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /Add/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Добавить/ })[0]);
 
     expect(onV4).toHaveBeenCalledWith(["10.0.1.0/24", "10.0.2.0/24"]);
     expect(onV6).not.toHaveBeenCalled();

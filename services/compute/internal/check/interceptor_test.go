@@ -97,6 +97,15 @@ func TestInterceptor_Unary_Deny_InstanceStop(t *testing.T) {
 	require.Equal(t, 1, *calls)
 }
 
+// TestInterceptor_Unary_Unavailable_FailClosed — модель прав не ответила: запрос
+// отвергнут (обработчик не вызван) и отвергнут кодом НЕДОСТУПНОСТИ.
+//
+// Ожидание прежде называло отказ в правах, и утверждение этой правкой не
+// ослаблено: fail-closed проверяется прямо. Менялось то, что сказано вызывающему.
+// «Тебе нельзя» означает «повторять бессмысленно» — решение зависит от
+// вызывающего, отношения и объекта, и повтор не меняет ни одного из трёх; здесь
+// же про права не сказано ничего, и через мгновение ответ будет. Полосы целиком —
+// pkg/authz/decision_lane_codes_test.go.
 func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	intr, _ := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
 		return false, errors.New("iam unavailable: connection refused")
@@ -115,7 +124,8 @@ func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.PermissionDenied, st.Code())
+	require.Equal(t, codes.Unavailable, st.Code(),
+		"недоступность модели — не решение о правах: вызывающий обязан прочесть её как повторяемую")
 }
 
 func TestInterceptor_Unary_MachineTypeList_ClusterCatalog(t *testing.T) {

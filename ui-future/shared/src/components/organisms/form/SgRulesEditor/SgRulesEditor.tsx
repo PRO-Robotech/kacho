@@ -51,6 +51,17 @@ type TargetKind = "cidr" | "sg" | "cidr-group";
 export interface RuleExt {
   direction?: string;
   description?: string;
+  /**
+   * Метки правила. Редактор их не показывает и не правит, но НАЗЫВАЕТ и
+   * проносит: правило пересоздаётся из черновика целиком (правка — это
+   * `deletion_rule_ids` + `addition_rule_specs`), поэтому поле, которого
+   * черновик не назвал, у правила исчезает. Прежде поле выживало ТОЛЬКО
+   * распространением объекта в `{ ...rule }` — то есть случайно, а не
+   * утверждением: первая же пересборка правила перечислением полей унесла бы
+   * его молча. Состав против контракта держит
+   * `test/set-replacement-draft-composition`.
+   */
+  labels?: Record<string, string>;
   _protocol_mode?: ProtocolMode;
   protocol_name?: string;
   // int64 on the wire → a JSON string when it comes from the server.
@@ -343,7 +354,11 @@ export function RuleBody({
               set({
                 _protocol_mode: v,
                 protocol_name: v === "name" ? (rule.protocol_name ?? "") : undefined,
-                protocol_number: v === "number" ? (rule.protocol_number ?? 0) : undefined,
+                // Ветвь номера НЕ засевается значением: ноль сервер отвергает
+                // («номер 0 неотличим от незаданного протокола»), а любой другой
+                // засев выбрал бы протокол за оператора. Поле остаётся пустым,
+                // и его заполняет тот, кто ветвь и выбрал (#375).
+                protocol_number: v === "number" ? rule.protocol_number : undefined,
               })
             }
             options={[
@@ -366,9 +381,12 @@ export function RuleBody({
         {protoMode === "number" && (
           <Field label="Номер IANA">
             <InputNumber
-              min={0}
+              // Нижняя граница — ЕДИНИЦА, а не ноль: ноль сервер отвергает как
+              // неотличимый от незаданного протокола, то есть значение, которое
+              // поле предлагало по умолчанию, не принималось никогда.
+              min={1}
               max={255}
-              placeholder="0..255"
+              placeholder="1..255"
               value={rule.protocol_number ?? undefined}
               onChange={(v) => set({ protocol_number: v === null ? undefined : Number(v) })}
               style={{ width: "100%" }}
@@ -455,7 +473,7 @@ export function RuleBody({
             }
             options={[
               { value: "cidr", label: "CIDR-блоки" },
-              { value: "sg", label: "Security Group" },
+              { value: "sg", label: "Группа безопасности" },
               { value: "cidr-group", label: "Набор префиксов" },
             ]}
             style={{ width: "100%" }}
@@ -612,7 +630,7 @@ function CidrChipList({
             }}
           />
           <AntButton type="primary" ghost icon={<PlusOutlined />} disabled={!draft.trim()} onClick={add}>
-            Add
+            Добавить
           </AntButton>
         </Space.Compact>
       </Space>

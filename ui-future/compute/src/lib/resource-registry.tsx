@@ -65,7 +65,7 @@ const FIELD_DESCRIPTION: FormField = {
   placeholder: "Краткое описание инстанса (опционально)",
 };
 
-const FIELD_PROJECT_ID: FormField = { name: "project_id", label: "Project", type: "string", hidden: true };
+const FIELD_PROJECT_ID: FormField = { name: "project_id", label: "Проект", type: "string", hidden: true };
 const FIELD_LABELS: FormField = { name: "labels", label: "Метки", type: "labels" };
 
 const MIB = 1024 * 1024;
@@ -101,8 +101,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: true, update: true, delete: true },
     docs: [
       { label: "Виртуальные машины", href: "#" },
-      { label: "Типы машин (sizing)", href: "#" },
-      { label: "Тома и снимки (Storage)", href: "#" },
+      { label: "Типы машин", href: "#" },
+      { label: "Тома и снимки", href: "#" },
     ],
     columns: [
       {
@@ -163,7 +163,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "machine-types",
         required: true,
         description:
-          "Единый канал размера инстанса (vCPU/память/GPU) — каталог MachineType. Сменить размер можно на остановленном (STOPPED) инстансе.",
+          "Единый канал размера инстанса (vCPU/память/GPU) — каталог типов машин. Сменить размер можно на остановленном (STOPPED) инстансе.",
       },
       {
         name: "boot_source.type",
@@ -259,7 +259,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "vm_spec.metadata_options.metadata_endpoint",
-        label: "Metadata endpoint",
+        label: "Адрес службы метаданных",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "VM" },
@@ -291,14 +291,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // --- CONTAINER-specific (instanceKind = CONTAINER) ---
       {
         name: "container_spec.restart_policy",
-        label: "Restart policy",
+        label: "Политика перезапуска",
         type: "enum",
         createOnly: true,
         visibleWhen: { field: "instance_kind", equals: "CONTAINER" },
         default: "NEVER",
         options: [
           { value: "NEVER", label: "NEVER — не перезапускать" },
-          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом exit" },
+          { value: "ON_FAILURE", label: "ON_FAILURE — при ненулевом коде возврата" },
           { value: "ALWAYS", label: "ALWAYS — всегда" },
         ],
         description: "Политика перезапуска контейнер-джобы.",
@@ -386,6 +386,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // подборщика образов у этой ветки нет by construction, и без пояснения
     // арендатор получил бы отказ про пустой идентификатор, а не про ветку.
     validate: (obj) => {
+      // Порядок тот же, что у сервиса: вид — сильный первый дискриминатор, и
+      // отвергается он ПО СЕБЕ, а не через источник ОС. Прежде здесь стерёгся
+      // только источник, поэтому пара «вид CONTAINER + образ ХРАНИЛИЩА» уходила
+      // на сервер и проходила: получалась машина вида «контейнер» с корневой
+      // файловой системой из образа диска.
+      if (obj.instance_kind === "CONTAINER") {
+        return "Вид «контейнер» пока не создаётся: корень контейнера берётся из образа реестра, а у него нет неизменяемого адреса — ссылка в машине сломалась бы после чужого переименования. Выберите VM.";
+      }
       const bs = (obj.boot_source as Record<string, unknown> | undefined) ?? {};
       if (bs.type === "registry.image") {
         return "Источник registry.image пока не принимается: у образа из реестра нет неизменяемого адреса, поэтому ссылка в машине сломалась бы после чужого переименования. Выберите storage.image.";

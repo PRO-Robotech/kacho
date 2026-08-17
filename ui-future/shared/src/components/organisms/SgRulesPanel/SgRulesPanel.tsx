@@ -26,11 +26,32 @@ import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resourc
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
+
+/**
+ * Место полной замены набора. Правка правила — это `deletion_rule_ids` +
+ * `addition_rule_specs`, то есть правило пересоздаётся ЦЕЛИКОМ из черновика:
+ * поле контракта, которого черновик не назвал, у этого правила исчезает.
+ * Состав обоих типов сверяется с `SecurityGroupRuleSpec` гейтом
+ * `test/set-replacement-draft-composition`.
+ */
+export const SG_RULE_SPECS_REPLACEMENT: SetReplacementDraft = {
+  field: "addition_rule_specs",
+  contract: "kacho/cloud/vpc/v1/security_group_service.proto",
+  message: "SecurityGroupRuleSpec",
+  drafts: ["SgRule", "RuleExt"],
+};
 
 export interface SgRule {
   id?: string;
   direction?: string;
   description?: string;
+  /**
+   * Метки правила — НАЗВАНЫ, а не оставлены на индексную сигнатуру ниже: правка
+   * пересоздаёт правило целиком из этого объекта, и поле, которого он не
+   * называет, у правила исчезает.
+   */
+  labels?: Record<string, string>;
   protocol_name?: string;
   // int64 on the wire → a JSON string when it comes from the server.
   protocol_number?: number | string;
@@ -326,6 +347,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
         // выглядел на этой вкладке иначе, чем везде.
         <ResourceTable<SgRule>
           rows={rules}
+          // Правила приезжают полем группы, а не списком у края: курсора нет,
+          // набор полон by construction.
+          complete
           rowKey={(r) => r.id ?? String(rules.indexOf(r))}
           columns={[
             {

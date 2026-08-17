@@ -174,6 +174,12 @@ func (f *fakeInternalAddressService) setCallCount() int {
 	return len(f.setCalls)
 }
 
+func (f *fakeInternalAddressService) clearCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.clearCalls)
+}
+
 func (f *fakeInternalAddressService) createOwnedCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

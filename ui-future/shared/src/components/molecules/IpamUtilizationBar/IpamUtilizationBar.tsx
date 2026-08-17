@@ -33,13 +33,13 @@ export function IpamUtilizationBar({ total, used, free, percent, label, classNam
       </div>
       <div className="flex gap-4 text-xs text-muted-foreground mt-1">
         <span>
-          used: <span className="font-mono text-foreground">{usedN}</span>
+          занято: <span className="font-mono text-foreground">{usedN}</span>
         </span>
         <span>
-          free: <span className="font-mono text-foreground">{freeN}</span>
+          свободно: <span className="font-mono text-foreground">{freeN}</span>
         </span>
         <span>
-          total: <span className="font-mono text-foreground">{totalN}</span>
+          всего: <span className="font-mono text-foreground">{totalN}</span>
         </span>
       </div>
     </div>
@@ -61,8 +61,8 @@ export function CIDRBreakdown({ cidrs }: { cidrs: CIDRRow[] }) {
         <thead className="bg-muted/40">
           <tr>
             <th className="text-left px-3 py-1.5 font-medium">CIDR</th>
-            <th className="text-right px-3 py-1.5 font-medium">used / total</th>
-            <th className="px-3 py-1.5 w-1/2">utilization</th>
+            <th className="text-right px-3 py-1.5 font-medium">занято / всего</th>
+            <th className="px-3 py-1.5 w-1/2">заполненность</th>
           </tr>
         </thead>
         <tbody>

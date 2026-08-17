@@ -2,7 +2,7 @@
 // inline Members-panel (раскрывается через expandedRowRender → table)
 // со списком member'ов (User/SA) + Add/Remove.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Button, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
@@ -20,7 +20,30 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
 import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope, type PickerScope } from "@shared/lib/picker-search";
 import { groupDetailPathFromOp } from "./groupNav";
+
+/**
+ * Чем сужается список кандидатов в участники у своего владельца (#528).
+ *
+ * Ключей два, и подставить один вместо другого нельзя: iam отвергает `CONTAINS`
+ * на пользователе ЯВНО (`InvalidArgument` на всю страницу), а слова `search` не
+ * знает никто, кроме пользователя. Причина различия не в стиле: у пользователя
+ * имени нет вовсе — его узнают по почте, поэтому владелец завёл выделенное
+ * слово, смотрящее на почту И на идентификатор сразу; у служебной учётки имя
+ * есть, и её белый список — настоящее поле `name`, применяемое через `ToSQL`.
+ *
+ * Прежде ввод не покидал вкладку: обе стороны читались ОДНОЙ страницей
+ * (`pageSize: 1000`) и сужались по загруженной метке, а поле отвечало «нет
+ * совпадений» — то есть утверждало об отсутствии человека или учётки то, чего
+ * не спрашивало. Тысяча первого участника нельзя было добавить в группу вовсе,
+ * и продолжения («показать ещё») у выпадающего списка нет by construction.
+ */
+const MEMBER_SCOPE: Record<"user" | "service_account", PickerScope> = {
+  user: pickerScope({ serverTerm: "search" }),
+  service_account: pickerScope({ serverSearchField: "name" }),
+};
 
 export function GroupsPage() {
   const account = useContext((s) => s.account);
@@ -34,7 +57,7 @@ export function GroupsPage() {
         disabled={!accountId}
         onClick={() => navigate("/iam/groups/create")}
       >
-        Создать Group
+        Создать группу
       </Button>
     ),
     [accountId, navigate],
@@ -98,7 +121,7 @@ export function GroupsPage() {
             onClick={() => navigate(`/iam/groups/${row.id}/edit`)}
           />
           <Popconfirm
-            title="Удалить Group?"
+            title="Удалить группу?"
             description={`Удалить «${row.name}»?`}
             okText="Удалить"
             okButtonProps={{ danger: true }}
@@ -115,7 +138,7 @@ export function GroupsPage() {
   return (
     <IamListShell specId="groups" title="Группы" count={groups.length}>
       {!accountId ? (
-        <Typography.Text type="secondary">Выберите Account, чтобы увидеть его Groups.</Typography.Text>
+        <Typography.Text type="secondary">Выберите аккаунт, чтобы увидеть его группы.</Typography.Text>
       ) : (
         <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <Table<Group>
@@ -142,7 +165,7 @@ export function GroupsPage() {
             expandable={{
               expandedRowRender: (row) => <GroupMembersPanel group={row} accountId={accountId} />,
             }}
-            locale={{ emptyText: "Group'ов нет. Создайте первую." }}
+            locale={{ emptyText: "Групп нет. Создайте первую." }}
           />
         </div>
       )}
@@ -164,7 +187,7 @@ export function GroupCreatePage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Groups</Typography.Text>
+            <Typography.Text type="secondary">Группы</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>
@@ -185,7 +208,7 @@ export function GroupCreatePage() {
   });
 
   return (
-    <FormShell specId="groups" mode="create" singular="Group">
+    <FormShell specId="groups" mode="create" singular="Группа">
       <Form
         form={form}
         layout="horizontal"
@@ -258,7 +281,7 @@ export function GroupEditPage() {
           <Typography.Text type="secondary">IAM</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Groups</Typography.Text>
+            <Typography.Text type="secondary">Группы</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Редактирование</Typography.Text>
@@ -276,7 +299,7 @@ export function GroupEditPage() {
   });
 
   return (
-    <FormShell specId="groups" mode="edit" singular="Group">
+    <FormShell specId="groups" mode="edit" singular="Группа">
       <Form
         form={form}
         layout="horizontal"
@@ -332,15 +355,29 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
     staleTime: 0,
   });
 
+  // Тип кандидата объявлен ДО списков: он решает, кого спрашивать и каким
+  // ключом. Ввод уходит запросом ТОЛЬКО тому владельцу, чей тип сейчас выбран —
+  // иначе набранное имя учётки уезжало бы ещё и в список пользователей: запрос,
+  // которого никто не просил, и сброс чужого кэша от чужого ввода.
+  const [pickerType, setPickerType] = useState<"user" | "service_account">("user");
+  const [pickerValue, setPickerValue] = useState<string | null>(null);
+  const memberScope = MEMBER_SCOPE[pickerType];
+  const [memberTerm, setMemberTerm] = useState("");
+  const debouncedMemberTerm = useDebouncedValue(memberTerm, memberScope.asksServer ? 250 : 0);
+  const userQuery = pickerType === "user" ? MEMBER_SCOPE.user.query(debouncedMemberTerm) : {};
+  const saQuery = pickerType === "service_account" ? MEMBER_SCOPE.service_account.query(debouncedMemberTerm) : {};
+
   const users = useQuery({
-    queryKey: ["iam", "users", "list"],
-    queryFn: () => iamApi.listUsers({ pageSize: "1000" }),
+    // Ключ несёт ввод: без него react-query отдал бы прежний ответ на новый
+    // вопрос, и сужение выглядело бы сломанным именно там, где оно работает.
+    queryKey: ["iam", "users", "list", userQuery.filter ?? ""],
+    queryFn: () => iamApi.listUsers({ pageSize: "1000", ...userQuery }),
     staleTime: 30_000,
   });
 
   const sas = useQuery({
-    queryKey: ["iam", "service-accounts", "list", accountId],
-    queryFn: () => iamApi.listServiceAccounts({ account_id: accountId!, pageSize: "1000" }),
+    queryKey: ["iam", "service-accounts", "list", accountId, saQuery.filter ?? ""],
+    queryFn: () => iamApi.listServiceAccounts({ account_id: accountId!, pageSize: "1000", ...saQuery }),
     enabled: !!accountId,
     staleTime: 30_000,
   });
@@ -359,10 +396,30 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
     successText: "Участник удалён",
   });
 
-  const [pickerType, setPickerType] = useState<"user" | "service_account">("user");
-  const [pickerValue, setPickerValue] = useState<string | null>(null);
-
   const memberList = members.data?.members ?? [];
+
+  const memberOptions =
+    pickerType === "user"
+      ? (users.data?.users ?? []).map((u: User) => ({
+          value: u.id,
+          label: `${u.email || u.display_name || u.id} · ${u.id}`,
+        }))
+      : (sas.data?.service_accounts ?? []).map((sa: ServiceAccount) => ({
+          value: sa.id,
+          label: `${sa.name} · ${sa.id}`,
+        }));
+
+  // Выбранный кандидат обязан пережить сужение: сервер отвечает по ВВОДУ, и уже
+  // сделанный выбор в этот ответ попадать не обязан. Без запоминания метки поле
+  // показало бы вместо почты идентификатор — ровно то, что канон консоли
+  // (правило 2) и запрещает. Тот же приём, что в `RefSelect`.
+  const chosenMemberRef = useRef<{ value: string; label: string } | null>(null);
+  const chosenMember = memberOptions.find((o) => o.value === pickerValue);
+  if (chosenMember) chosenMemberRef.current = chosenMember;
+  const memberSelectOptions =
+    pickerValue && !chosenMember && chosenMemberRef.current?.value === pickerValue
+      ? [chosenMemberRef.current, ...memberOptions]
+      : memberOptions;
 
   const MEMBER_TYPE_LABEL: Record<string, string> = { user: "пользователь", service_account: "сервисный аккаунт" };
 
@@ -385,6 +442,9 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
           onChange={(v) => {
             setPickerType(v);
             setPickerValue(null);
+            // Ввод принадлежал ПРЕЖНЕМУ типу: оставив его, мы сузили бы список
+            // служебных учёток словом, набранным про человека, — и другим ключом.
+            setMemberTerm("");
           }}
           options={[
             { value: "user", label: "Пользователь" },
@@ -396,19 +456,21 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
           value={pickerValue ?? undefined}
           onChange={(v) => setPickerValue(v)}
           placeholder={pickerType === "user" ? "Выберите пользователя" : "Выберите сервисный аккаунт"}
-          options={
-            pickerType === "user"
-              ? (users.data?.users ?? []).map((u: User) => ({
-                  value: u.id,
-                  label: `${u.email || u.display_name || u.id} · ${u.id}`,
-                }))
-              : (sas.data?.service_accounts ?? []).map((sa: ServiceAccount) => ({
-                  value: sa.id,
-                  label: `${sa.name} · ${sa.id}`,
-                }))
-          }
+          options={memberSelectOptions}
           showSearch
-          optionFilterProp="label"
+          onSearch={setMemberTerm}
+          // Сузил сервер — клиент НЕ пересеивает: у человека владелец смотрит на
+          // почту и идентификатор, у учётки — на `name`, а метка варианта склеена
+          // из имени и идентификатора. Повторное сужение вычло бы из ответа
+          // строки, присланные краем именно по этому вводу.
+          {...(memberScope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+          title={memberScope.notice}
+          // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила ложь:
+          // «нет совпадений» на месте «нет среди загруженных».
+          notFoundContent={
+            (pickerType === "user" ? users.isLoading : sas.isLoading) ? undefined : memberScope.emptyText
+          }
+          loading={pickerType === "user" ? users.isLoading : sas.isLoading}
         />
         <Button
           type="primary"

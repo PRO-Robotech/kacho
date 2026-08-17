@@ -2280,7 +2280,9 @@ def _wrap_own_fresh_reads(steps: List[Step], rename: bool = True) -> List[Step]:
 
 def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
                               id_expr: str = "", must_fail_code: int = 0,
-                              must_fail_message: str = "") -> Step:
+                              must_fail_message: str = "",
+                              op_var: str = "opId",
+                              auth: str = "") -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
     потом fail если done остался false.
@@ -2329,8 +2331,32 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
     извлечением resource-id из `metadata`», записанная в самом хелпере.
 
     `id_expr` — необязательное выражение выбора поля id из `j.metadata` (по умолчанию
-    первое поле, чьё имя оканчивается на `Id`).
+    первое поле, чьё имя оканчивается на `Id`). ЧИТАЕТСЯ ТОЛЬКО ВМЕСТЕ С
+    `capture_id_to`: без него захватывать нечего, и молча принять выражение,
+    которое никто не прочтёт, — тот самый запрещённый исход «принято и
+    проигнорировано». Поэтому такая пара отвергается ЯВНО (см. ниже).
+
+    `auth` — актор опроса. По умолчанию ПУСТ и ВЫВОДИТСЯ из того, кто операцию
+    создал: `OperationService.Get` энфорсит владение и отвечает чужому
+    `NotFound`, поэтому актор опроса — следствие, а не решение автора кейса.
+    Задавать явно нужно ровно там, где предмет кейса — чтение ЧУЖОЙ операции.
+
+    `op_var` — имя переменной окружения, в которой лежит id ОПРОСА. По умолчанию
+    `opId` — общая переменная, которую захватывает `save_from_response('j.id',
+    'opId')`. Кейс, ведущий НЕСКОЛЬКО операций одновременно, захватывает их в свои
+    переменные (`adm1PoolOp`, `adm1DelOp`) и обязан назвать нужную здесь: адрес
+    опроса и ранний выход читают ОДНО И ТО ЖЕ имя, поэтому разойтись они не могут.
+    Прежде адрес был вшит литералом `{{opId}}`, и кейс со своими переменными
+    опрашивал переменную, которую никто не заполняет: страж неразрешённой
+    подстановки отказывался отправлять запрос, а до его появления шаг уходил на
+    литеральный адрес и молча не утверждал ничего.
     """
+    if id_expr and not capture_id_to:
+        raise ValueError(
+            "id_expr без capture_id_to: выражение выбора id читается ТОЛЬКО при "
+            "захвате, поэтому принять его и не прочесть значило бы пообещать "
+            "вызывающему поведение, которого нет. Нужен другой опрос — назови "
+            "op_var; нужен захват — назови capture_id_to")
     _POLL_SEQ[0] += 1
     tail: List[str] = []
     if must_fail:
@@ -2379,7 +2405,12 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
     return Step(
         name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
-        path="/operations/{{opId}}",
+        path="/operations/{{" + op_var + "}}",
+        # Пусто — актор ВЫВОДИТСЯ из издателя операции
+        # (`_poll_reads_under_the_actor_that_published_it`). Задавать здесь
+        # что-либо нужно ровно тогда, когда предмет кейса — чтение ЧУЖОЙ
+        # операции: явный актор сильнее вывода.
+        auth=auth or None,
         pre_script=[
             # Note: cannot fully skip request in pre-script without aborting the suite.
             # Instead the test_script guards on empty opId or non-200 response.
@@ -2389,7 +2420,7 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
             # response is non-200, skip all poll assertions cleanly.
             # Nothing to poll: the preceding step was refused synchronously and minted no
             # Operation. This is the ONLY case in which the step asserts nothing.
-            "if (!pm.environment.get('opId')) {",
+            f"if (!pm.environment.get('{op_var}')) {{",
             "  pm.environment.unset('_pollCount');",
             "  return;",
             "}",
@@ -3027,6 +3058,50 @@ def _declare_supernet_where_a_subnet_is_carved(steps: List[Step]) -> List[Step]:
     return out
 
 
+_POLL_PATH_RE = re.compile(r"^/operations/\{\{(\w+)\}\}$")
+
+
+def _poll_reads_under_the_actor_that_published_it(steps: List[Step]) -> List[Step]:
+    """Опрос операции идёт ПОД ТЕМ ЖЕ актором, что её создал.
+
+    `OperationService.Get` энфорсит владение: владелец — принципал, создавший
+    операцию, и чужому он отвечает `NotFound`, а не отказом (no-leak). Значит
+    опрос под другим актором получает `404` — и выглядит это как задержка
+    материализации в продукте, то есть диагноз оказывается в шести шагах от
+    причины. Ровно так и вышло: шаг под администратором облака создавал пул, а
+    опрос уходил дефолтным проектным актором и получал
+    `operation … not found`; за ним каскадом падали ещё девять шагов, ни один из
+    которых виноват не был.
+
+    ПОЧЕМУ ВЫВОДИТСЯ, А НЕ ПЕРЕДАЁТСЯ АРГУМЕНТОМ. Актор опроса — не решение
+    автора кейса, а СЛЕДСТВИЕ того, кто операцию создал. Аргумент можно забыть
+    — и забвение молчаливо: коллекция соберётся, шаг исполнится, а упадёт он
+    только на стенде и не своим именем. Вывод забыть нельзя.
+
+    Кто «создал» — устанавливается по ИМЕНИ переменной операции: чей
+    `save_from_response` опубликовал её последним, тот актор и берётся. Явно
+    заданный актор опроса сильнее вывода: у кейса, чей предмет — чтение чужой
+    операции, он и должен быть чужим.
+
+    Замер на дереве в день заведения: из 18 наборов vpc правило меняет ТРИ шага
+    одного набора (`public-pool`), остальные семнадцать коллекций собираются
+    побайтово теми же — актор мутации и умолчание коллекции там совпадают.
+    """
+    published: Dict[str, Optional[str]] = {}
+    out: List[Step] = []
+    for st in steps:
+        for line in st.test_script:
+            if "pm.environment.set(" not in line:
+                continue
+            for name in re.findall(r"pm\.environment\.set\('(\w+)'", line):
+                published[name] = st.auth
+        m = _POLL_PATH_RE.match(st.path) if st.method == "GET" else None
+        if m and st.auth is None and published.get(m.group(1)) is not None:
+            st = replace(st, auth=published[m.group(1)])
+        out.append(st)
+    return out
+
+
 def normalize_steps(steps: List[Step]) -> List[Step]:
     """ВЕСЬ набор проходов над шагами — в одном месте.
 
@@ -3039,10 +3114,11 @@ def normalize_steps(steps: List[Step]) -> List[Step]:
     и починка сделана здесь, а не у посева: список проходов, размноженный по двум
     вызывающим, расходится молча — и расходится там, где расхождение не видно.
     """
-    return _assert_published_id_outcome(
-        _assert_delete_operation_outcome(
-            _declare_supernet_where_a_subnet_is_carved(
-                _wrap_own_fresh_reads(steps))))
+    return _poll_reads_under_the_actor_that_published_it(
+        _assert_published_id_outcome(
+            _assert_delete_operation_outcome(
+                _declare_supernet_where_a_subnet_is_carved(
+                    _wrap_own_fresh_reads(steps)))))
 
 
 def case_to_postman(case: Case) -> Dict:

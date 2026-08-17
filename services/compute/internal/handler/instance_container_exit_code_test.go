@@ -66,15 +66,33 @@ func TestInstanceHandler_Create_RejectsContainerExitCode(t *testing.T) {
 		require.Empty(t, all, "отказ обязан произойти ДО создания операции")
 	})
 
-	t.Run("нулевой exitCode проходит (положительный контроль)", func(t *testing.T) {
+	t.Run("нулевой exitCode этой проверкой не отвергается (положительный контроль)", func(t *testing.T) {
+		// ФИКСТУРА ПОЛОЖИТЕЛЬНОГО КОНТРОЛЯ ИСТЕКЛА ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ.
+		//
+		// Прежде контроль утверждал «законная контейнерная задача проходит и
+		// Operation создаётся». Такой задачи больше нет: вид CONTAINER
+		// отвергается видом (у образа реестра нет durable-координаты). Оставить
+		// прежнее утверждение значило бы держать пробу, красную не на своём
+		// предмете; снять контроль вовсе — оставить отрицание без пары, и оно
+		// зеленело бы на обработчике, отвергающем ЛЮБУЮ контейнерную задачу.
+		//
+		// Контроль сохранён на своей оси: с нулевым кодом возврата отказ
+		// приходит НЕ ОТ ЭТОЙ ПРОВЕРКИ — он называет вид, а не код возврата.
+		// Это и есть доказательство, что проверка кода возврата различает вход,
+		// а не срабатывает безусловно.
 		h, ops := newInstanceHandlerForValidation(t)
 
-		op, err := h.Create(context.Background(), containerCreateReq())
+		_, err := h.Create(context.Background(), containerCreateReq())
 
-		require.NoError(t, err, "законная контейнерная задача обязана проходить")
-		require.NotEmpty(t, op.GetId())
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		fields := violationFields(t, err)
+		require.NotContains(t, fields, "container_spec.exit_code",
+			"нулевой код возврата эта проверка не отвергает")
+		require.Contains(t, fields, "instance_kind",
+			"отказ приходит от вида — с ним контейнерная задача и вернётся")
+
 		all, _, lerr := ops.List(context.Background(), operations.ListFilter{})
 		require.NoError(t, lerr)
-		require.Len(t, all, 1)
+		require.Empty(t, all)
 	})
 }

@@ -75,7 +75,16 @@ describe("ResourceCreatePage — spec.validate", () => {
     renderCreate({ ...REGISTRY.regions, validate: () => "зона обязана принадлежать региону" });
     await submit();
 
-    expect(await screen.findByText("зона обязана принадлежать региону")).toBeInTheDocument();
+    // Отказ собственной проверки читается ТОЙ ЖЕ формой, что отказ края
+    // («<Ресурс> не создан: <причина>»): для пользователя это один и тот же
+    // исход — ресурс не создан, — и знать, на чьей стороне это выяснилось,
+    // ему незачем. Причина при этом сохраняется дословно.
+    // Имя не выписано литералом: страница подставляет автосгенерированное
+    // (`regions-NNNNNN`), и точное совпадение здесь проверяло бы генератор, а не
+    // форму сообщения.
+    expect(
+      await screen.findByText(/^Регион .+ не создан: зона обязана принадлежать региону$/),
+    ).toBeInTheDocument();
     await waitFor(() => expect(methods.includes("POST")).toBe(false));
     expect(screen.queryByText("список регионов")).not.toBeInTheDocument();
   });

@@ -117,8 +117,9 @@ export default tseslint.config(
     },
   },
   {
-    // Оснастка тестов на CommonJS (jest-singletons.cjs): свои модульная система и
-    // глобали. Type-aware правила к ней не применяются — она вне tsconfig пакета.
+    // Оснастка тестов на CommonJS (jest-singletons.cjs, jest-sequencer-by-path.cjs):
+    // свои модульная система и глобали. Type-aware правила к ней не применяются —
+    // она вне tsconfig пакета.
     files: ["**/*.cjs"],
     ...tseslint.configs.disableTypeChecked,
     languageOptions: {
@@ -126,6 +127,16 @@ export default tseslint.config(
       globals: {
         ...globals.node,
       },
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      // Блок заведён ровно потому, что модульная система этих файлов — CommonJS.
+      // Запрет `require` в них запрещал бы им существовать: jest грузит и
+      // `jest.config.cjs`, и секвенсор через `require`, ESM-формы у них нет.
+      // Правило гасилось не здесь, а храповиком долга (`eslint-debt.json`), то есть
+      // единственные два его срабатывания были не долгом, а верным кодом, записанным
+      // в долг. Запись из храповика снята тем же изменением.
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   {

@@ -55,7 +55,7 @@ const cleanNetworkSpec = `
 // findingsOf разбирает синтетический реестр и возвращает находки по нему.
 func findingsOf(t *testing.T, src string) []consoleFinding {
 	t.Helper()
-	parsed, err := parseConsoleRegistry("probe.tsx", src, nil, nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", src, consoleExterns{})
 	if err != nil {
 		t.Fatalf("parse probe registry: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestConsoleScannerRefusesWhatItCannotRead(t *testing.T) {
   },`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseConsoleRegistry("probe.tsx", probeRegistry(spec), nil, nil); err == nil {
+			if _, err := parseConsoleRegistry("probe.tsx", probeRegistry(spec), consoleExterns{}); err == nil {
 				t.Fatal("the scanner accepted a construct it does not model: it would then check nothing and say nothing")
 			}
 		})
@@ -223,13 +223,9 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 			len(files), len(byGlob), files, byGlob)
 	}
 
-	extern, err := consoleExportedStringConsts(filepath.Join(root, "ui-future"))
+	ext, err := consoleTreeExterns(filepath.Join(root, "ui-future"))
 	if err != nil {
-		t.Fatalf("collect exported string consts: %v", err)
-	}
-	externVals, err := consoleExportedValueConsts(filepath.Join(root, "ui-future"))
-	if err != nil {
-		t.Fatalf("collect exported value consts: %v", err)
+		t.Fatal(err)
 	}
 	for _, file := range files {
 		rel := mustRel(root, file)
@@ -237,7 +233,7 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
-		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
+		parsed, err := parseConsoleRegistry(rel, string(blob), ext)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
@@ -323,7 +319,7 @@ const composedSpec = `
 // полей с неразрешёнными именами, прошло бы проверку на количество и не
 // проверило бы ни одного настоящего ключа.
 func TestConsoleScannerExpandsComposedFieldSets(t *testing.T) {
-	parsed, err := parseConsoleRegistry("probe.tsx", composedRegistry(composedHelper, composedSpec), nil, nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", composedRegistry(composedHelper, composedSpec), consoleExterns{})
 	if err != nil {
 		t.Fatalf("parse composed registry: %v", err)
 	}
@@ -358,7 +354,7 @@ func TestConsoleScannerExpandsComposedFieldSets(t *testing.T) {
 // куда его только что расширили.
 func TestConsoleScannerChecksInsideAComposedFieldSet(t *testing.T) {
 	clean := composedRegistry(composedHelper, composedSpec)
-	parsed, err := parseConsoleRegistry("probe.tsx", clean, nil, nil)
+	parsed, err := parseConsoleRegistry("probe.tsx", clean, consoleExterns{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -370,7 +366,7 @@ func TestConsoleScannerChecksInsideAComposedFieldSet(t *testing.T) {
 		"    { name: `${family}_source.address_id`,",
 		"    { name: `${family}_source.bogus_ref`, label: \"x\", type: \"string\", immutable: true },\n"+
 			"    { name: `${family}_source.address_id`,", 1)
-	parsed, err = parseConsoleRegistry("probe.tsx", composedRegistry(injected, composedSpec), nil, nil)
+	parsed, err = parseConsoleRegistry("probe.tsx", composedRegistry(injected, composedSpec), consoleExterns{})
 	if err != nil {
 		t.Fatalf("parse injected: %v", err)
 	}
@@ -434,7 +430,7 @@ func TestConsoleScannerRefusesCompositionItCannotRead(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := parseConsoleRegistry("probe.tsx", composedRegistry(tc.helper, tc.spec), nil, nil); err == nil {
+			if _, err := parseConsoleRegistry("probe.tsx", composedRegistry(tc.helper, tc.spec), consoleExterns{}); err == nil {
 				t.Fatal("the scanner accepted a composition it cannot read: it would then check nothing and say nothing")
 			}
 		})
@@ -456,13 +452,9 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk ui-future: %v", err)
 	}
-	extern, err := consoleExportedStringConsts(consoleRoot)
+	ext, err := consoleTreeExterns(consoleRoot)
 	if err != nil {
-		t.Fatalf("collect exported string consts: %v", err)
-	}
-	externVals, err := consoleExportedValueConsts(consoleRoot)
-	if err != nil {
-		t.Fatalf("collect exported value consts: %v", err)
+		t.Fatal(err)
 	}
 
 	expanded := 0
@@ -473,7 +465,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 			t.Fatalf("%s: %v", file, err)
 		}
 		rel := mustRel(root, file)
-		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
+		parsed, err := parseConsoleRegistry(rel, string(blob), ext)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
@@ -497,6 +489,305 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 	}
 	sort.Strings(where)
 	t.Logf("%d field(s) reached the check through expansion of a helper: %v", expanded, where)
+}
+
+// ── Набор полей, объявленный в ОБЩЕМ модуле ─────────────────────────────────
+//
+// Реестров у консоли несколько, и один и тот же ресурс рисуют два из них. Набор
+// полей такого ресурса обязан быть объявлен ОДИН раз и в общем модуле: копии
+// расходятся молча — так уже разошлись ветви проверки живости, заведённые в
+// одном реестре и невыразимые в том, который эту форму пользователю и
+// показывает (#375).
+//
+// Для сканера это было неизвестное имя, а неизвестное имя он честно считает
+// отказом читать ВЕСЬ файл. Следствие (#554): гейт читал ОДИН реестр из пяти,
+// падал на втором и до трёх оставшихся не доходил вовсе — при том что три из
+// четырёх упавших проб существуют ровно затем, чтобы «ноль находок» было
+// отличимо от «ноль прочитанного».
+
+// sharedHelperModule — синтетический общий модуль. Форма дословно повторяет ту,
+// что несёт дерево: ЭКСПОРТИРОВАННЫЙ помощник, который сам разворачивает
+// НЕПУБЛИЧНОГО соседа с подстановкой аргумента, плюс помощник, возвращающий одно
+// поле.
+const sharedHelperModule = "import type { FormField } from \"./form-schema\";\n\n" +
+	"function branchFields(branch: \"http\" | \"https\"): FormField[] {\n" +
+	"  const when = { field: \"_hc\", equals: branch };\n" +
+	"  return [\n" +
+	"    { name: `health_check.${branch}.port`, label: \"порт\", type: \"int\", visibleWhen: when },\n" +
+	"    { name: `health_check.${branch}.path`, label: \"путь\", type: \"string\", visibleWhen: when },\n" +
+	"  ];\n" +
+	"}\n\n" +
+	"export function probeFields(): FormField[] {\n" +
+	"  return [\n" +
+	"    { name: \"_hc\", label: \"чем проверять\", type: \"enum\", options: [] },\n" +
+	"    ...branchFields(\"http\"),\n" +
+	"    ...branchFields(\"https\"),\n" +
+	"  ];\n" +
+	"}\n\n" +
+	"export function targetsFieldProbe(): FormField {\n" +
+	"  return { name: \"targets\", label: \"Цели\", type: \"array\", itemFields: [ { name: \"weight\", label: \"Вес\", type: \"int\" } ] };\n" +
+	"}\n"
+
+// sharedHelperSpec — ресурс, чьи поля собраны помощниками ОБЩЕГО модуля: набор
+// разворачивается спредом, одиночное поле стоит элементом. Обе формы живут в
+// дереве, и обе обязаны читаться.
+const sharedHelperSpec = `
+  "target-groups": {
+    id: "target-groups",
+    route: "target-groups",
+    apiPath: "/nlb/v1/targetGroups",
+    payloadKey: "targetGroups",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [],
+    fields: [
+      { name: "name", label: "Имя", type: "string", required: true },
+      ...probeFields(),
+      targetsFieldProbe(),
+      { name: "project_id", label: "Project", type: "string", hidden: true },
+    ],
+    template: ({ projectId }) => ({ project_id: projectId ?? "", name: "" }),
+  },`
+
+// sharedHelperExterns прогоняет синтетический модуль через ТОТ ЖЕ сборщик, что
+// исполняется на дереве: дублёр, собранный отдельно, принимал бы не то же самое.
+func sharedHelperExterns(modules map[string]string) consoleExterns {
+	return consoleExterns{helpers: consoleFieldHelpersFromModules(modules)}
+}
+
+// TestConsoleScannerExpandsHelperOfASharedModule — GREEN: помощник общего модуля
+// раскрывается, и раскрывается В СВОЕЙ области видимости.
+//
+// Утверждаются ИМЕНА, а не количество: раскрытие, давшее нужное число полей с
+// неразрешёнными именами, прошло бы проверку на количество и не проверило бы ни
+// одного настоящего ключа. Отдельно утверждается, что помощник дотянулся до
+// НЕПУБЛИЧНОГО соседа своего модуля: в файле-потребителе такого имени нет вовсе,
+// и чтение тела в чужой области видимости молча потеряло бы четыре поля из семи.
+func TestConsoleScannerExpandsHelperOfASharedModule(t *testing.T) {
+	ext := sharedHelperExterns(map[string]string{"shared/src/lib/probe-form.ts": sharedHelperModule})
+	parsed, err := parseConsoleRegistry("probe.tsx", probeRegistry(sharedHelperSpec), ext)
+	if err != nil {
+		t.Fatalf("parse registry using a shared helper: %v", err)
+	}
+	if len(parsed.Specs) != 1 {
+		t.Fatalf("expected 1 resource, got %d", len(parsed.Specs))
+	}
+	spec := parsed.Specs[0]
+	var got []string
+	for _, f := range spec.Fields {
+		got = append(got, f.Name)
+	}
+	want := []string{
+		"name",
+		"_hc", "health_check.http.port", "health_check.http.path", "health_check.https.port", "health_check.https.path",
+		"targets",
+		"project_id",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d fields, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("field %d: expected %q, got %q (all: %v)", i, want[i], got[i], got)
+		}
+	}
+	// Провенанс: шесть полей пришли из ДРУГОГО файла, и это обязано быть
+	// сказано — сверка с сырым текстом реестра иначе объявила бы находкой
+	// единый источник, то есть ровно то, ради чего он и заводится.
+	if spec.ExternFields != 6 {
+		t.Errorf("6 field(s) came from a shared module, the parse reports %d — the raw-text cross-check would then blame the single source", spec.ExternFields)
+	}
+	// Одно поле-массив пришло помощником, и его под-поля обязаны доехать: иначе
+	// «поле есть» означало бы «состав элемента не проверяется».
+	for _, f := range spec.Fields {
+		if f.Name != "targets" {
+			continue
+		}
+		if len(f.ItemFields) != 1 || f.ItemFields[0].Name != "weight" {
+			t.Errorf("the item fields of a helper-returned array field must reach the check, got %+v", f.ItemFields)
+		}
+	}
+}
+
+// TestConsoleScannerChecksInsideASharedHelper — ЧТО ИМЕННО СТАЛО ВИДНО.
+//
+// Красно-зелёная пара НА ОБЩЕМ МОДУЛЕ: поле, добавленное внутрь помощника,
+// проверяется в каждом реестре, который этот помощник разворачивает. Без этого
+// «помощник раскрывается» означало бы лишь «разбор не упал»: набор мог бы
+// раскрываться и не участвовать в сверке, а гейт оставался бы зелёным ровно
+// там, куда его только что расширили.
+func TestConsoleScannerChecksInsideASharedHelper(t *testing.T) {
+	clean := sharedHelperExterns(map[string]string{"shared/src/lib/probe-form.ts": sharedHelperModule})
+	parsed, err := parseConsoleRegistry("probe.tsx", probeRegistry(sharedHelperSpec), clean)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := consoleSpecFindings(parsed.Specs[0]); len(got) != 0 {
+		t.Fatalf("GREEN baseline broken: a clean shared helper produced %d finding(s): %v", len(got), got)
+	}
+
+	// Инъекция минимальна: поле той же формы, что соседи по набору, с ключом,
+	// которого сообщение не несёт. Помощник разворачивается для ДВУХ ветвей —
+	// значит и находок по нему две, с разными подставленными именами.
+	injected := strings.Replace(sharedHelperModule,
+		"    { name: `health_check.${branch}.path`,",
+		"    { name: `health_check.${branch}.bogus`, label: \"x\", type: \"string\" },\n"+
+			"    { name: `health_check.${branch}.path`,", 1)
+	ext := sharedHelperExterns(map[string]string{"shared/src/lib/probe-form.ts": injected})
+	parsed, err = parseConsoleRegistry("probe.tsx", probeRegistry(sharedHelperSpec), ext)
+	if err != nil {
+		t.Fatalf("parse injected: %v", err)
+	}
+	got := consoleSpecFindings(parsed.Specs[0])
+	seen := map[string]bool{}
+	for _, f := range got {
+		seen[f.Key] = true
+	}
+	for _, want := range []string{"health_check.http.bogus", "health_check.https.bogus"} {
+		if !seen[want] {
+			t.Fatalf("a field added inside the shared helper must be reported, expected %q among %v", want, got)
+		}
+	}
+	// Координата ведёт в файл ПОМОЩНИКА, а не в реестр: этих строк в реестре нет
+	// вовсе, и адрес находки, указывающий туда, посылает искать не там.
+	for _, f := range got {
+		if strings.HasSuffix(f.Key, ".bogus") && f.File != "shared/src/lib/probe-form.ts" {
+			t.Errorf("finding %q must address the file that declares the field, got %q", f.Key, f.File)
+		}
+	}
+}
+
+// TestConsoleScannerRefusesSharedCompositionItCannotRead — граница модели.
+//
+// Расширение области видимости до общих модулей — не послабление: за пределами
+// узкой формы разбор обязан по-прежнему ЛОМАТЬСЯ. Каждый случай ниже — это
+// набор полей, состав которого в исходнике не виден, а значит и объявить его
+// проверенным нельзя.
+func TestConsoleScannerRefusesSharedCompositionItCannotRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		modules map[string]string
+		spec    string
+	}{
+		// Помощник объявлен, но НЕ экспортирован: импортировать его нельзя, и
+		// принять такую ссылку значило бы разрешить чтение того, чего в файле
+		// не видно.
+		"helper is not exported from its module": {
+			modules: map[string]string{"shared/src/lib/probe-form.ts": strings.Replace(sharedHelperModule, "export function probeFields", "function probeFields", 1)},
+			spec:    sharedHelperSpec,
+		},
+		// Ни одного общего модуля в области — тот самый дефект #554 дословно.
+		"no shared module in scope at all": {
+			modules: map[string]string{},
+			spec:    sharedHelperSpec,
+		},
+		// Одно имя в двух общих модулях: какое из двух импортирует реестр,
+		// сканер знать не может, и догадка сделала бы его тихо неверным.
+		"the same helper name in two shared modules": {
+			modules: map[string]string{
+				"shared/src/lib/probe-form.ts": sharedHelperModule,
+				"shared/src/lib/other-form.ts": strings.Replace(sharedHelperModule, "probe.${branch}", "other.${branch}", -1),
+			},
+			spec: sharedHelperSpec,
+		},
+		// Набор РАЗВОРАЧИВАЮТ спредом, одиночное поле СТАВЯТ элементом. Перепутав
+		// их, получаешь либо поле-массив вместо набора, либо набор, свёрнутый в
+		// одно поле, — и то и другое молча меняет состав тела.
+		"a set is called as an entry instead of being spread": {
+			modules: map[string]string{"shared/src/lib/probe-form.ts": sharedHelperModule},
+			spec:    strings.Replace(sharedHelperSpec, "...probeFields(),", "probeFields(),", 1),
+		},
+		"a single field is spread instead of being called": {
+			modules: map[string]string{"shared/src/lib/probe-form.ts": sharedHelperModule},
+			spec:    strings.Replace(sharedHelperSpec, "targetsFieldProbe(),", "...targetsFieldProbe(),", 1),
+		},
+		// Тело помощника с ветвлением: состав зависит не от аргументов, и в
+		// исходнике его не видно.
+		"shared helper branches instead of returning a literal": {
+			modules: map[string]string{"shared/src/lib/probe-form.ts": "export function probeFields(): FormField[] {\n  if (x) return [];\n  return [{ name: \"y\", label: \"y\", type: \"string\" }];\n}\n" +
+				"export function targetsFieldProbe(): FormField {\n  return { name: \"targets\", label: \"Цели\", type: \"array\", itemFields: [] };\n}\n"},
+			spec: sharedHelperSpec,
+		},
+		// Вычисленный аргумент: набор зависит от того, чего в исходнике нет.
+		"argument to a shared helper is computed": {
+			modules: map[string]string{"shared/src/lib/probe-form.ts": strings.Replace(sharedHelperModule, "export function probeFields(): FormField[] {", "export function probeFields(kind: string): FormField[] {", 1)},
+			spec:    strings.Replace(sharedHelperSpec, "...probeFields(),", "...probeFields(pickKind()),", 1),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseConsoleRegistry("probe.tsx", probeRegistry(tc.spec), sharedHelperExterns(tc.modules))
+			if err == nil {
+				t.Fatal("the scanner accepted a composition it cannot read: it would then check nothing and say nothing")
+			}
+			// Отказ обязан НАЗЫВАТЬ место: отказ без координаты равносилен
+			// молчанию — искать его предмет негде.
+			if !strings.Contains(err.Error(), "probe.tsx:") {
+				t.Errorf("the refusal must address a place in the source, got: %v", err)
+			}
+		})
+	}
+}
+
+// TestConsoleSharedFieldHelpersAreReadFromTheTree — на РЕАЛЬНОМ дереве, а не
+// только на синтетике: общие помощники собираются, реестры их разворачивают, и
+// БЕЗ них дерево читается не полностью.
+//
+// Вторая половина — воспроизведение дефекта #554 на живом дереве: изъяв из
+// области видимости общие модули, обязаны получить отказ, и отказ обязан
+// назвать помощника. Иначе «сборщик что-то собрал» неотличимо от «сборщик не
+// нужен», и при следующем переносе набора в общий модуль всё повторится.
+//
+// Проба ИСТЕКАЕТ САМА: если однажды ни один реестр не станет брать набор полей
+// из общего модуля, она скажет, что предмет исчез, и решение снять её будет
+// принято явно, а не по недосмотру.
+func TestConsoleSharedFieldHelpersAreReadFromTheTree(t *testing.T) {
+	root := repoRoot(t)
+	consoleRoot := filepath.Join(root, "ui-future")
+	files, err := consoleRegistryFiles(consoleRoot)
+	if err != nil {
+		t.Fatalf("walk ui-future: %v", err)
+	}
+	ext, err := consoleTreeExterns(consoleRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Та же область МИНУС общие помощники — состояние сканера до #554.
+	without := consoleExterns{strings: ext.strings, values: ext.values}
+
+	externFields, consumers := 0, 0
+	var blindWithout []string
+	for _, file := range files {
+		rel := mustRel(root, file)
+		blob, rerr := os.ReadFile(file)
+		if rerr != nil {
+			t.Fatalf("%s: %v", rel, rerr)
+		}
+		parsed, perr := parseConsoleRegistry(rel, string(blob), ext)
+		if perr != nil {
+			t.Fatalf("%s: %v", rel, perr)
+		}
+		uses := 0
+		for _, spec := range parsed.Specs {
+			uses += spec.ExternHelperFields
+		}
+		if uses > 0 {
+			consumers++
+			externFields += uses
+		}
+		if _, berr := parseConsoleRegistry(rel, string(blob), without); berr != nil {
+			blindWithout = append(blindWithout, rel)
+		}
+	}
+
+	if externFields == 0 {
+		t.Fatal("not one registry in the tree takes its field set from a shared module any more: this proof has lost its subject — remove it deliberately rather than let it pass on nothing")
+	}
+	if len(blindWithout) == 0 {
+		t.Error("dropping the shared-module helpers from scope changed nothing: either they are not load-bearing, or the scanner stopped reading them — both mean this gate no longer proves what it claims")
+	}
+	sort.Strings(blindWithout)
+	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+	t.Logf("перепись: реестров %d, помощников из общих модулей собрано %d, реестров-потребителей %d, полей пришло оттуда %d; без этой области нечитаемы %v",
+		len(files), len(ext.helpers), consumers, externFields, blindWithout)
 }
 
 // TestSanitizeReshapeIsNotRemoval — снятие ключа с последующим присваиванием
@@ -568,13 +859,9 @@ func TestConsoleSharedRefsResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk ui-future: %v", err)
 	}
-	extern, err := consoleExportedStringConsts(consoleRoot)
+	ext, err := consoleTreeExterns(consoleRoot)
 	if err != nil {
-		t.Fatalf("collect exported string consts: %v", err)
-	}
-	externVals, err := consoleExportedValueConsts(consoleRoot)
-	if err != nil {
-		t.Fatalf("collect exported value consts: %v", err)
+		t.Fatal(err)
 	}
 
 	// Что объявляет ОБЩИЙ реестр — цель всех ссылок.
@@ -589,7 +876,7 @@ func TestConsoleSharedRefsResolve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
-		parsed, err := parseConsoleRegistry(rel, string(blob), extern, externVals)
+		parsed, err := parseConsoleRegistry(rel, string(blob), ext)
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}

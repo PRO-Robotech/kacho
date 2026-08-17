@@ -80,6 +80,11 @@ var (
 
 	exportedStringConst = regexp.MustCompile(`(?m)^export const ([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)";`)
 
+	// exportedFuncName — `export function NAME(` любого модуля консоли.
+	// Импортировать можно ровно экспортированное; внутренние помощники модуля
+	// видны только внутри него (см. consoleExportedFieldHelpers).
+	exportedFuncName = regexp.MustCompile(`(?m)^export function ([A-Za-z_$][\w$]*)`)
+
 	// sanitizeCarrier — переменная, в которую `sanitize` копирует тело
 	// (`const out: … = { ...obj };`). Дальнейшие правки идут по ней.
 	sanitizeCarrier = regexp.MustCompile(`(?:const|let|var)\s+([A-Za-z_$][\w$]*)[^=;]*=\s*\{\s*\.\.\.\s*obj\s*\}`)
@@ -192,13 +197,9 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		// Пустой набор входов — это НЕ «зелено».
 		t.Fatal("no console resource registry found under ui-future: the gate has nothing to check, which is a failure, not a pass")
 	}
-	extern, err := consoleExportedStringConsts(consoleRoot)
+	ext, err := consoleTreeExterns(consoleRoot)
 	if err != nil {
-		t.Fatalf("collect exported string consts: %v", err)
-	}
-	externVals, err := consoleExportedValueConsts(consoleRoot)
-	if err != nil {
-		t.Fatalf("collect exported value consts: %v", err)
+		t.Fatal(err)
 	}
 
 	var findings []consoleFinding
@@ -213,7 +214,7 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		text := string(blob)
 		rel := mustRel(root, file)
 
-		parsed, err := parseConsoleRegistry(rel, text, extern, externVals)
+		parsed, err := parseConsoleRegistry(rel, text, ext)
 		if err != nil {
 			// Непонятая конструкция — отказ, а не пропуск: разбор, который
 			// «не смог» и промолчал, и есть тот самый ноль без содержания.
@@ -423,6 +424,154 @@ func consoleExportedValueConsts(root string) (map[string]jsValue, error) {
 	return out, nil
 }
 
+// consoleExterns — всё, что реестр берёт из ДРУГИХ файлов дерева.
+type consoleExterns struct {
+	// strings — `export const NAME = "…"` (пути ресурсов geo и родня).
+	strings map[string]string
+	// values — экспортированные ЗНАЧЕНИЯ (массив полей, объект пустого состояния).
+	values map[string]jsValue
+	// helpers — экспортированные ПОМОЩНИКИ-наборы полей вместе с областью
+	// видимости своего модуля.
+	helpers map[string]jsFuncRef
+}
+
+// consoleTreeExterns собирает всё импортируемое ОДНИМ вызовом.
+//
+// Собирается по дереву, а не по перечню модулей: перечень разошёлся бы с
+// деревом молча, и следующий общий модуль оказался бы невидим — ровно так
+// сканер и перестал читать реестр nlb целиком (#554).
+func consoleTreeExterns(consoleRoot string) (consoleExterns, error) {
+	strs, err := consoleExportedStringConsts(consoleRoot)
+	if err != nil {
+		return consoleExterns{}, fmt.Errorf("collect exported string consts: %w", err)
+	}
+	vals, err := consoleExportedValueConsts(consoleRoot)
+	if err != nil {
+		return consoleExterns{}, fmt.Errorf("collect exported value consts: %w", err)
+	}
+	helpers, err := consoleExportedFieldHelpers(consoleRoot)
+	if err != nil {
+		return consoleExterns{}, fmt.Errorf("collect exported field helpers: %w", err)
+	}
+	return consoleExterns{strings: strs, values: vals, helpers: helpers}, nil
+}
+
+// consoleExportedFieldHelpers — ПОМОЩНИКИ-наборы полей, экспортированные общими
+// модулями консоли.
+//
+// ЗАЧЕМ. Набор полей, который рисуют ДВА реестра, обязан быть объявлен один раз
+// и в общем месте — выписанный дважды, он расходится молча (так уже разошлись
+// ветви проверки живости: они были заведены в одном реестре и остались
+// невыразимыми в том, который эту форму пользователю и показывает, #375).
+// Единый источник вынесли в общий модуль — и сканер перестал читать реестр
+// ЦЕЛИКОМ: имя помощника ему было неизвестно, а неизвестное имя он честно
+// считает отказом. Четыре пробы края покраснели разом, и три из них — те, чья
+// работа как раз в том, чтобы «ноль находок» было отличимо от «ноль
+// прочитанного» (#554). То есть про поля всего реестра не утверждалось ничего.
+//
+// ГРАНИЦЫ, БЕЗ КОТОРЫХ ЭТО СТАЛО БЫ ПОСЛАБЛЕНИЕМ:
+//
+//   - состав модулей ВЫВОДИТСЯ из дерева (индекс git под `shared/src`), а не
+//     выписывается: выписанный перечень разойдётся с деревом молча, и следующий
+//     общий модуль окажется невидим ровно так же, как этот;
+//   - форма помощника прежняя и узкая — `const…; return [ … ]` либо
+//     `const…; return { … }`, литеральные аргументы; всё за её пределами
+//     по-прежнему ЛОМАЕТ разбор с координатой;
+//   - наружу отдаются только ЭКСПОРТИРОВАННЫЕ имена (импортировать можно ровно
+//     их), а тело помощника читается в области видимости СВОЕГО модуля: его
+//     непубличные соседи видны там и нигде больше;
+//   - имя, объявленное в двух общих модулях, из таблицы выводится — сканер не
+//     может знать, какое из двух импортирует реестр, и догадка сделала бы его
+//     тихо неверным. Выведенное имя остаётся неразрешимым, то есть даёт громкий
+//     отказ ровно тогда, когда двусмысленность действительно мешает.
+func consoleExportedFieldHelpers(root string) (map[string]jsFuncRef, error) {
+	// Область та же, что у значений, и по той же причине: единый источник живёт
+	// в `shared` by construction, а сбор по всему дереву объявлял бы расхождением
+	// одноимённых помощников разных приложений, которые никто друг у друга не
+	// импортирует.
+	shared := filepath.Join(root, "shared", "src")
+	files, err := treecorpus.UnderWithSuffix(shared, ".ts", ".tsx")
+	if err != nil {
+		return nil, err
+	}
+	sources := make(map[string]string, len(files))
+	for _, path := range files {
+		// Сами реестры пропускаем: их содержимое разбирается своим путём.
+		if filepath.Base(path) == consoleRegistryFileName {
+			continue
+		}
+		blob, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil, rerr
+		}
+		rel, rerr := filepath.Rel(filepath.Dir(root), path)
+		if rerr != nil {
+			rel = path
+		}
+		sources[filepath.ToSlash(rel)] = string(blob)
+	}
+	return consoleFieldHelpersFromModules(sources), nil
+}
+
+// consoleFieldHelpersFromModules — та же сборка, но по исходникам в памяти.
+//
+// Вынесено затем, чтобы пробы кормили сборщик СВОИМИ модулями, проходя через
+// ТОТ ЖЕ код, что исполняется на дереве. Дублёр, собранный отдельно, принимал бы
+// не то же самое, что настоящий, и прятал бы ровно тот дефект, ради которого его
+// подставляют.
+func consoleFieldHelpersFromModules(sources map[string]string) map[string]jsFuncRef {
+	out := make(map[string]jsFuncRef)
+	origin := make(map[string]string)
+	clashing := make(map[string]bool)
+
+	paths := make([]string, 0, len(sources))
+	for p := range sources {
+		paths = append(paths, p)
+	}
+	// Детерминизм входа — часть контракта проверки: порядок обхода не должен
+	// решать, чьё объявление окажется в таблице последним.
+	sort.Strings(paths)
+
+	for _, path := range paths {
+		text := sources[path]
+		module := jsTopLevelFieldSetFuncs(path, text)
+		if len(module) == 0 {
+			continue
+		}
+		// Область модуля: его константы и ВСЕ его помощники, включая
+		// непубличные. Именно в ней читается тело — сосед, на которого оно
+		// ссылается, живёт здесь и в файле-потребителе не виден вовсе.
+		consts, cerr := jsTopLevelConsts(text)
+		if cerr != nil {
+			// Файл вне понимаемого подмножества: помощники из него не
+			// собираются, и ссылка на них останется громким отказом.
+			continue
+		}
+		base := &consoleScope{consts: consts, funcs: make(map[string]jsFuncRef, len(module))}
+		for name, fn := range module {
+			base.funcs[name] = jsFuncRef{fn: fn, base: base}
+		}
+
+		exported := make(map[string]bool)
+		for _, m := range exportedFuncName.FindAllStringSubmatch(text, -1) {
+			exported[m[1]] = true
+		}
+		for name := range module {
+			if !exported[name] {
+				continue
+			}
+			if prev, ok := origin[name]; ok && prev != path {
+				clashing[name] = true
+			}
+			out[name], origin[name] = base.funcs[name], path
+		}
+	}
+	for n := range clashing {
+		delete(out, n)
+	}
+	return out
+}
+
 func consoleExportedStringConsts(root string) (map[string]string, error) {
 	out := make(map[string]string)
 	clashing := make(map[string]bool)
@@ -491,10 +640,11 @@ func consoleSpecFindings(spec consoleSpec) []consoleFinding {
 func checkConsoleBody(spec consoleSpec, op, method, path string, body map[string]any) []consoleFinding {
 	var out []consoleFinding
 	for _, f := range analyzeRequestBody(method, path, body) {
+		file, line := consoleFieldSite(spec, f.Key)
 		out = append(out, consoleFinding{
 			bodyFinding: f,
-			File:        spec.File,
-			Line:        consoleFieldLine(spec, f.Key),
+			File:        file,
+			Line:        line,
 			SpecID:      spec.ID,
 			Op:          op,
 		})
@@ -502,24 +652,35 @@ func checkConsoleBody(spec consoleSpec, op, method, path string, body map[string
 	return out
 }
 
-// consoleFieldLine адресует находку строкой объявления поля; для ключа, пришедшего
+// consoleFieldSite адресует находку МЕСТОМ объявления поля; для ключа, пришедшего
 // из `template`, адресом остаётся сам ресурс.
-func consoleFieldLine(spec consoleSpec, key string) int {
+//
+// Возвращается пара «файл + строка», а не одна строка: поле, объявленное в общем
+// модуле, живёт в другом файле, и адрес «файл реестра + строка помощника» —
+// координата, которой не существует. Читателя она отправляет искать не туда, а
+// выглядит при этом точной.
+func consoleFieldSite(spec consoleSpec, key string) (string, int) {
 	head := key
 	if i := strings.IndexAny(head, ".["); i >= 0 {
 		head = head[:i]
 	}
+	site := func(f consoleField) (string, int) {
+		if f.File != "" {
+			return f.File, f.Line
+		}
+		return spec.File, f.Line
+	}
 	for _, f := range spec.Fields {
 		if f.Name == key || f.Name == head || strings.HasPrefix(f.Name, head+".") {
-			return f.Line
+			return site(f)
 		}
 		for _, it := range f.ItemFields {
 			if it.Name == key {
-				return it.Line
+				return site(it)
 			}
 		}
 	}
-	return spec.Line
+	return spec.File, spec.Line
 }
 
 // consoleCreateBody воспроизводит тело создания:

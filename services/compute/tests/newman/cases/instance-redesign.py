@@ -171,23 +171,49 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="INST-RD-CR-VAL-CONTAINER-REGISTRY-SOURCE-REFUSED",
-    title="Create CONTAINER с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля "
-          "'bootSource.type registry.image is not accepted yet'. СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ "
-          "НЕ КОНСТРУИРУЕТСЯ: у образа реестра нет durable-координаты (у репозитория нет неизменяемого "
-          "идентификатора), а иного источника у контейнера не бывает. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт "
+    id="INST-RD-CR-VAL-CONTAINER-KIND-REFUSED",
+    title="Create CONTAINER → sync 400 INVALID_ARGUMENT ПО ВИДУ: поле 'instance_kind', текст "
+          "'instanceKind CONTAINER is not creatable yet: a registry image has no durable address today'. "
+          "СЧАСТЛИВЫЙ ПУТЬ КОНТЕЙНЕРА СЕГОДНЯ НЕ КОНСТРУИРУЕТСЯ, и отказ висит на ВИДЕ, а не на источнике "
+          "ОС: пока отказывал источник, пара «вид CONTAINER + образ ХРАНИЛИЩА» проходила проверку целиком "
+          "и создавала машину, не описываемую ни одной ветвью модели. Кейс утверждает ДЕЙСТВУЮЩИЙ контракт "
           "вместо счастливого пути — и обязан покраснеть в тот день, когда ветвь откроется. "
-          "[verifies COMP-1-02/15 частично · ECP формы источника]",
+          "[verifies COMP-1-02/15 частично · decision-table вид×источник]",
     classes=["VAL", "NEG"], priority="P0",
     steps=[
         *_seed_mt("ctok", family="GPU", vcpu=8, mem=98304, gpus=8),
         Step(name="create-container-refused", method="POST", path=INSTANCES,
              body=_container_body("ok"),
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
-                          "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"]),
+                          "pm.test('текст называет ВИД и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('instanceKind CONTAINER is not creatable yet'); pm.expect(m).to.include('durable address'); });",
+                          "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"]),
+        # ВТОРОЙ ПРИЗНАК, РАЗВЕДЁННЫЙ С ПЕРВЫМ. Пока отказывал только источник,
+        # фикстура несла оба признака сразу и зеленела бы при любом из двух; здесь
+        # вид тот же, а источник — образ ХРАНИЛИЩА, и отказ обязан остаться прежним.
+        # Без этого шага «отвергается по виду» неотличимо от «отвергается по источнику».
+        Step(name="create-container-storage-source-refused", method="POST", path=INSTANCES,
+             body={**_container_body("st"), "bootSource": dict(_BOOT_STORAGE)},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('вид отвергнут и при образе ХРАНИЛИЩА', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('instanceKind CONTAINER is not creatable yet'); });",
+                          "pm.test('поле по-прежнему вид, а не источник', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"]),
         *_cleanup_mt(),
     ],
+))
+
+CASES.append(Case(
+    id="INST-RD-CR-VAL-VM-REGISTRY-SOURCE-REFUSED",
+    title="Create VM с bootSource registry.image → sync 400 INVALID_ARGUMENT по имени поля "
+          "'boot_source.type': 'bootSource.type registry.image is not accepted yet: a registry image has "
+          "no durable address today'. ОТКАЗ ПО ИСТОЧНИКУ ЖИВ И ДОСТИЖИМ — просто не через вид CONTAINER, "
+          "который короткозамыкается раньше. Кейс держит эту ветвь под утверждением: без него отказ по "
+          "источнику перестал бы проверяться сквозной пробой вовсе, а он остаётся частью контракта. "
+          "[verifies COMP-1-10 · ECP формы источника]",
+    classes=["VAL", "NEG"], priority="P0",
+    steps=[Step(name="cr-vm-registry-source", method="POST", path=INSTANCES,
+                body=_vm_body("regsrc", mt=_PLACEHOLDER_MT, boot=_BOOT_REGISTRY),
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('текст называет ПОЛЕ и причину, а не общий отказ', () => { const m=(pm.response.json().message||''); pm.expect(m).to.include('bootSource.type registry.image is not accepted yet'); pm.expect(m).to.include('durable address'); });",
+                             "pm.test('деталь несёт имя поля', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('boot_source.type'); });"])],
 ))
 
 CASES.append(Case(
@@ -218,15 +244,20 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-KIND-CONTAINER-WITH-VMSPEC",
-    title="COMP-1-03: Create instanceKind=CONTAINER с ТОЛЬКО vmSpec (wrong-arm, containerSpec опущен) → sync 400 "
-          "'vmSpec is not allowed when instanceKind is CONTAINER'. containerSpec СНЯТ (иначе оба spec-arm'а → "
+    title="COMP-1-03: Create instanceKind=CONTAINER с чужой ветвью spec (vmSpec, containerSpec опущен) → sync "
+          "400 ПО ВИДУ: 'instanceKind CONTAINER is not creatable yet'. Клетка «вид CONTAINER × чужая ветвь» "
+          "решается ВИДОМ: отказ по виду короткозамыкает раньше сверки ветви, и проверки «vmSpec не разрешён "
+          "при CONTAINER» в коде НЕТ — ветвь, до которой нет достижимого пути, была бы документацией "
+          "несуществующего поведения. Живая клетка зеркала (VM × containerSpec) проверяется своим кейсом "
+          "INST-RD-CR-VAL-KIND-VM-WITH-CONTAINERSPEC. containerSpec СНЯТ из тела (иначе оба spec-arm'а → "
           "protojson 'oneof already set', а не app-контракт). [verifies COMP-1-03 · decision-table kind×spec]",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-ct-vm", method="POST", path=INSTANCES,
                 body={**{k: v for k, v in _container_body("ctvm", mt=_PLACEHOLDER_MT).items() if k != "containerSpec"},
                       "vmSpec": {"userData": "x"}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: vmSpec not allowed when CONTAINER', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('vmspec is not allowed when instancekind is container'));"])],
+                             "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind container is not creatable yet'));",
+                             "pm.test('деталь несёт имя поля вида', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"])],
 ))
 
 

@@ -7,6 +7,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Select, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { useKeptLabel } from "@shared/lib/kept-choice";
 import { ResourceRefChips } from "@shared/components/molecules/ResourceRefChips";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -54,11 +57,27 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
   const [v6, setV6] = useState<string[]>([]);
   const [sgs, setSgs] = useState<string[]>([]);
 
+  // Введённое в селекторе подсети. Область поиска решает, что с ним делать:
+  // спросить владельца (vpc сужает по имени) либо честно сказать, что сужаются
+  // только загруженные варианты (#528). Прежде ввод не покидал вкладку: список
+  // читался одной страницей в 500 строк, а поле отвечало «нет совпадений» —
+  // утверждение об отсутствии подсети, которого никто не проверял. Продолжения
+  // («показать ещё») у выпадающего списка нет, поэтому проверить это нечем и
+  // самому пользователю.
+  const subnetScope = pickerScopeOfSpec(subnetSpec);
+  const [subnetTerm, setSubnetTerm] = useState("");
+  const debouncedSubnetTerm = useDebouncedValue(subnetTerm, subnetScope.asksServer ? 250 : 0);
+  const subnetServerQuery = subnetScope.asksServer ? subnetScope.query(debouncedSubnetTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const subnetTermKey = subnetScope.asksServer ? (subnetServerQuery.filter ?? "") : "";
+
   // Subnets для RefSelect.
-  const { data: subnetList } = useQuery({
-    queryKey: ["subnets", "list", projectId],
+  const { data: subnetList, isLoading: subnetsLoading } = useQuery({
+    queryKey: ["subnets", "list", projectId, subnetTermKey],
     queryFn: () =>
       api.list<{ subnets: Array<{ id: string; name?: string }> }>(subnetSpec.apiPath, {
+        ...subnetServerQuery,
         project_id: projectId,
         pageSize: "500",
       }),
@@ -73,6 +92,14 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
       })),
     [subnetList],
   );
+
+  // Выбранная подсеть обязана пережить сужение: сервер отвечает по ВВОДУ, и уже
+  // сделанный выбор в этот ответ не обязан попадать. Без запоминания метки поле
+  // показало бы `sub-…` вместо имени — идентификатор вместо имени, ровно то,
+  // что канон консоли (правило 2) и запрещает.
+  const chosenSubnet = subnetOptions.find((o) => o.value === subnetId);
+  const keptSubnetLabel = useKeptLabel(subnetId, chosenSubnet ? chosenSubnet.label : null);
+  const keptSubnet = subnetId && keptSubnetLabel ? [{ value: subnetId, label: keptSubnetLabel }] : [];
 
   // Выбранная подсеть → network_id: SG фильтруем по сети подсети.
   const { data: selectedSubnet } = useQuery({
@@ -154,9 +181,17 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
             showSearch
             value={subnetId}
             onChange={setSubnetId}
-            options={subnetOptions}
+            onSearch={setSubnetTerm}
+            options={[...keptSubnet, ...subnetOptions]}
             placeholder="Выберите подсеть"
-            optionFilterProp="label"
+            title={subnetScope.notice}
+            // Сузил сервер — клиент НЕ пересеивает: повторное сужение по метке
+            // вычло бы из ответа края строки, которые он прислал именно по
+            // этому вводу.
+            {...(subnetScope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+            // Пустой ответ обязан называть свою ОБЛАСТЬ. Здесь и жила ложь:
+            // «нет совпадений» на месте «нет среди загруженных».
+            notFoundContent={subnetsLoading ? undefined : subnetScope.emptyText}
             disabled={subnetLocked}
           />
         </Form.Item>
@@ -176,7 +211,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>
           <ResourceRefChips
             titleHidden
-            title="IPv4 Address"
+            title="IPv4-адрес"
             refResource="addresses"
             projectId={projectId}
             tagColor="blue"
@@ -202,7 +237,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         >
           <ResourceRefChips
             titleHidden
-            title="IPv6 Address"
+            title="IPv6-адрес"
             refResource="addresses"
             projectId={projectId}
             tagColor="geekblue"
@@ -221,10 +256,10 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
           />
         </Form.Item>
 
-        <Form.Item label={labelWithInfo("Группы безопасности", "Security Groups, прилинкованные к NIC.")}>
+        <Form.Item label={labelWithInfo("Группы безопасности", "Группы безопасности, привязанные к этому интерфейсу.")}>
           <ResourceRefChips
             titleHidden
-            title="Security Group"
+            title="Группа безопасности"
             refResource="security-groups"
             projectId={projectId}
             tagColor="purple"

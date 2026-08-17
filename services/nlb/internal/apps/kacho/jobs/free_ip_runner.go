@@ -19,15 +19,22 @@
 // В обоих случаях VIP остаётся аллоцированным в vpc, а строка-handle висит в
 // нетерминальном статусе. Reconciler периодически сканирует такие строки старше
 // age-порога (свежий in-flight не трогаем — легитимный worker дорабатывает) и
-// детерминированно по address_id освобождает VIP КАЖДОГО семейства РАЗДЕЛЬНО
-// (vip_origin='auto' owned → two-step ClearReference→FreeIP; 'linked' →
-// ClearReference — tenant-адрес уцелевает), затем финализирует/удаляет handle.
+// детерминированно по address_id снимает аренду VIP КАЖДОГО семейства РАЗДЕЛЬНО
+// ОДНИМ глаголом владельца (#439), затем финализирует/удаляет handle. Ветку
+// «удалить адрес модуля» (RELEASED — аренда уходит в пул) либо «оставить адрес
+// арендатора» (DETACHED — ссылка снята, адрес жив) выбирает vpc по СВОЕЙ
+// колонке `address_references.owned`; реконсайлер её не выводит и по
+// vip_origin не ветвится — эта колонка остаётся здесь только для наблюдаемости.
 //
-// Идемпотентность: release client'а трактует NotFound как успех (повторный
-// проход безопасен). Multi-replica-safety: claim строки — FOR UPDATE SKIP
+// Идемпотентность: повторный проход безопасен — владелец отвечает
+// ALREADY_RELEASED/ALREADY_DETACHED. «Не найдено» на этой полосе — ОТКАЗ, а не
+// успех: глагол его не производит, поэтому получить его можно только говоря не
+// с тем глаголом (гейт `leaserefusalassuccess`). Multi-replica-safety: claim строки — FOR UPDATE SKIP
 // LOCKED, release+DELETE по строке выполняет ровно одна реплика. Узкий auto-only
-// known-gap (пустой address_id из-за краха в окне «alloc-ответ ↔ persist») —
-// handle удаляется без release; подробности — docs/architecture/15-free-ip-runner.md.
+// known-gap (крах в окне «alloc-ответ ↔ persist» — в строке НЕТ ни адреса, ни его
+// ключа) — handle удаляется без release. Строка, у которой адрес ЕСТЬ, а ключ
+// аренды потерян, — другое состояние: она не захватывается и переписывается
+// (`censusLostLeases`, #467). Подробности — docs/architecture/15-free-ip-runner.md.
 //
 // Архитектура (как TargetDrainRunner): admin-job поверх *pgxpool.Pool, минуя
 // CQRS Repository (pure SQL reconcile). Failure isolation: транзиентные ошибки
@@ -64,15 +71,37 @@ const freeIPMaxPerTick = 100
 // FOR UPDATE SKIP LOCKED (exactly-once между репликами). make_interval(secs=>$1)
 // — age в секундах; ORDER BY updated_at — старейшие первыми (partial index
 // load_balancers_reconcile_idx).
+//
+// Строки с ПОТЕРЯННЫМ ключом аренды (адрес выдан, `address_id` пуст) выборкой не
+// клеймятся — `leaseCoherent` ниже; перепись по ним — `censusLostLeaseSQL`.
 const selectStuckSQL = `
 SELECT id, project_id, region_id,
        address_id_v4, address_id_v6, vip_origin_v4, vip_origin_v6, status
   FROM kacho_nlb.load_balancers
  WHERE status IN ('DELETING','CREATING')
    AND updated_at < now() - make_interval(secs => $1::double precision)
+   AND ` + leaseCoherent + `
  ORDER BY updated_at ASC
  LIMIT 1
  FOR UPDATE SKIP LOCKED`
+
+// leaseCoherent — «у каждого семейства адрес и ключ аренды либо оба есть, либо
+// обоих нет». Тот же предикат, что закрепляет схема (миграция 0035,
+// `(адрес = ”) = (ключ = ”)`), выраженный здесь как условие ОТБОРА.
+const leaseCoherent = `((address_v4 = '') = (address_id_v4 = '')
+                        AND (address_v6 = '') = (address_id_v6 = ''))`
+
+// censusLostLeaseSQL — перепись строк, у которых адрес выдан, а ключ аренды
+// потерян. Освободить их нечем, сносить нельзя, и они не клеймятся — значит
+// обязаны быть ЗАМЕТНЫ, иначе «реконсайлер ничего не находит» станет неотличимо
+// от «реконсайлеру нечего находить». Обоснование — у `censusLostLeases`.
+const censusLostLeaseSQL = `
+SELECT id, status
+  FROM kacho_nlb.load_balancers
+ WHERE status IN ('DELETING','CREATING')
+   AND NOT ` + leaseCoherent + `
+ ORDER BY updated_at ASC
+ LIMIT $1`
 
 // FreeIPRunner — фоновый reconciler застрявших LoadBalancer'ов (durable handle).
 type FreeIPRunner struct {
@@ -188,6 +217,7 @@ func (r *FreeIPRunner) reconcileOnce(ctx context.Context) (int, error) {
 	if r.addrs == nil {
 		return 0, nil
 	}
+	r.censusLostLeases(ctx)
 	reconciled := 0
 	for i := 0; i < freeIPMaxPerTick; i++ {
 		outcome, err := r.reconcileOne(ctx)
@@ -205,6 +235,55 @@ func (r *FreeIPRunner) reconcileOnce(ctx context.Context) (int, error) {
 		}
 	}
 	return reconciled, nil
+}
+
+// censusLostLeases — перепись строк с потерянным ключом аренды (адрес выдан,
+// `address_id` пуст), выполняемая раз в тик ДО свипа.
+//
+// Такая строка не клеймится (`selectStuckSQL`), и это не «пропуск», а
+// единственный неразрушающий исход из трёх возможных:
+//
+//   - освободить — НЕЧЕМ: ключа аренды в строке нет;
+//   - снести строку — НЕЛЬЗЯ: она единственная зацепка к висящей аренде
+//     (выборка идёт по `load_balancers` в DELETING/CREATING, а обратного поиска
+//     «что принадлежит этому балансировщику» у vpc нет). Ровно поэтому путь
+//     удаления такую строку СОХРАНЯЕТ (#467, `api/loadbalancer/delete.go`) —
+//     снеся её здесь, реконсайлер обесценил бы тот отказ;
+//   - изолировать отметкой времени — НЕВОЗМОЖНО: строку запрещает ограничение
+//     миграции 0035, а Postgres перепроверяет CHECK на ЛЮБОМ обновлении строки,
+//     поэтому отвергается даже `SET updated_at = now()`. Отсюда и запрет
+//     клеймить: строка, которую нельзя ни разобрать, ни отодвинуть,
+//     переизбиралась бы первой каждый тик (`ORDER BY updated_at ASC`) и
+//     head-of-line-блокировала бы ВСЮ очередь.
+//
+// Остаётся сделать её ЗАМЕТНОЙ: перепись пишет WARN и дёргает poison-обсервер
+// (в проде — метрика). Чинит такую строку оператор: вернуть ключ аренды либо
+// освободить адрес у vpc вручную и снять строку. Ошибка самой переписи не
+// прерывает тик — она про наблюдаемость, а не про работу.
+func (r *FreeIPRunner) censusLostLeases(ctx context.Context) {
+	rows, err := r.pool.Query(ctx, censusLostLeaseSQL, freeIPMaxPerTick)
+	if err != nil {
+		r.logger.WarnContext(ctx, "free_ip_runner: lost-lease census failed", "err", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, status string
+		if err := rows.Scan(&id, &status); err != nil {
+			r.logger.WarnContext(ctx, "free_ip_runner: lost-lease census scan failed", "err", err)
+			return
+		}
+		r.logger.WarnContext(ctx,
+			"free_ip_runner: load balancer holds an address whose lease id is empty — "+
+				"the lease cannot be returned and the row is kept as its only handle; needs operator repair",
+			"load_balancer_id", id, "status", status)
+		if r.onPoison != nil {
+			r.onPoison(id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		r.logger.WarnContext(ctx, "free_ip_runner: lost-lease census failed", "err", err)
+	}
 }
 
 // stuckLB — claimed LB-handle (durable handle reconcile-вход).
@@ -267,13 +346,13 @@ func (r *FreeIPRunner) reconcileOne(ctx context.Context) (reconcileOutcome, erro
 	}
 
 	// Per-family release VIP по address_id (детерминированно, раздельно v4/v6).
-	// Idempotent: NotFound трактуется клиентом как успех. Транзиентная ошибка
-	// (peer недоступен) прерывает тик (retry); permanent-ошибка изолирует
-	// ядовитую строку, не блокируя очередь (см. handleReleaseErr).
-	if err := r.releaseFamily(ctx, lb.addressIDV4, lb.originV4); err != nil {
+	// Владелец называет исход полем; ЛЮБОЙ отказ означает, что аренда не снята.
+	// Транзиентная ошибка (peer недоступен) прерывает тик (retry); permanent
+	// изолирует ядовитую строку, не блокируя очередь (см. handleReleaseErr).
+	if err := r.releaseFamily(ctx, lb.projectID, lb.id, lb.addressIDV4); err != nil {
 		return r.handleReleaseErr(ctx, tx, &committed, lb, "v4", lb.addressIDV4, lb.originV4, err)
 	}
-	if err := r.releaseFamily(ctx, lb.addressIDV6, lb.originV6); err != nil {
+	if err := r.releaseFamily(ctx, lb.projectID, lb.id, lb.addressIDV6); err != nil {
 		return r.handleReleaseErr(ctx, tx, &committed, lb, "v6", lb.addressIDV6, lb.originV6, err)
 	}
 	if lb.addressIDV4 == "" && lb.addressIDV6 == "" {
@@ -358,26 +437,34 @@ func isTransientReleaseErr(err error) bool {
 		errors.Is(err, context.DeadlineExceeded)
 }
 
-// releaseFamily освобождает VIP одного семейства (§3.9): пустой address_id → no-op;
-// vip_origin='linked' → ClearReference (tenant-адрес уцелевает); 'auto' (owned) →
-// two-step owner-scoped ClearReference → FreeIP (иначе FreeIP==Delete упрётся в
-// собственный Delete-guard). Идемпотентно (NotFound → успех); окно cleared-but-not-
-// deleted доедет на следующем тике (re-drive Delete).
-func (r *FreeIPRunner) releaseFamily(ctx context.Context, addressID, origin string) error {
+// releaseFamily снимает аренду VIP одного семейства ОДНИМ глаголом владельца:
+// пустой address_id → no-op; исход читается из поля ответа, а не выводится из
+// кода ошибки.
+//
+// Прежде это была пара пообъектных вызовов, у которой ответ «не найдено»
+// означал успех. Для реконсайлера это было особенно дорого: он ходит под
+// системной личностью, и потеря принципала на этом пути давала ровно тот же
+// ответ — то есть «аренда освобождена» отвечалось там, где не было сделано
+// ничего, после чего строка потребителя сносилась вместе с последней
+// координатой аренды.
+//
+// Пустой address_id здесь означает ровно «этого семейства у балансировщика
+// нет»: строку, где адрес ВЫДАН, а ключ аренды потерян, выборка НЕ КЛЕЙМИТ
+// вовсе (`selectStuckSQL` + `censusLostLeases`, #467), поэтому такой вход сюда
+// не доходит и различать его здесь нечем и незачем.
+func (r *FreeIPRunner) releaseFamily(ctx context.Context, projectID, lbID, addressID string) error {
 	if addressID == "" {
 		return nil
 	}
-	// System-reconcile детачнут от tenant-request — идём под system-principal, чтобы
-	// vpc-вызовы release (ClearReference/FreeIP) несли identity (иначе authz_no_principal).
+	// System-reconcile детачнут от tenant-request — идём под system-principal,
+	// чтобы вызов к vpc нёс identity (иначе authz_no_principal).
 	ctx = operations.WithPrincipal(ctx, operations.SystemPrincipal())
-	if domain.VipOrigin(origin) == domain.VipOriginLinked {
-		return r.addrs.ClearReference(ctx, addressID)
-	}
-	// owned (auto): снять собственный owned-референс, затем удалить адрес.
-	if err := r.addrs.ClearReference(ctx, addressID); err != nil {
-		return err
-	}
-	return r.addrs.FreeIP(ctx, addressID)
+	_, err := r.addrs.ReleaseLease(ctx, vpcclient.ReleaseLeaseRequest{
+		ProjectID: projectID,
+		AddressID: addressID,
+		Owner:     vpcclient.AddressOwner{Kind: vpcclient.OwnerKindLoadBalancer, ID: lbID},
+	})
+	return err
 }
 
 // emitReconcileFinalize эмитит в текущей TX outbox DELETED (nlb_load_balancer) +

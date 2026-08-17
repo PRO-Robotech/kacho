@@ -60,7 +60,8 @@ export function SystemRoutes() {
     <Routes>
       <Route index element={<Navigate to="regions" replace />} />
 
-      {/* List/cluster страницы — в AdminLayout (горизонтальные табы). */}
+      {/* List/cluster страницы — в общей оболочке раздела (вертикальный рейл
+          пунктов, тот же, что на карточке ресурса). */}
       <Route element={<AdminLayout />}>
         <Route path="regions" element={<ResourceListPage spec={regionsSpec} panelForms />} />
         <Route path="zones" element={<ResourceListPage spec={zonesSpec} panelForms />} />
@@ -83,7 +84,7 @@ export function SystemRoutes() {
         />
       </Route>
 
-      {/* Create/Detail/Edit — страница-формы (без AdminLayout-табов). */}
+      {/* Create/Detail/Edit — страница-формы (без рейла раздела). */}
       <Route path="regions/create" element={<ResourceCreatePage spec={regionsSpec} />} />
       <Route path="regions/:uid" element={<ResourceDetailPage spec={regionsSpec} />} />
       <Route path="regions/:uid/edit" element={<ResourceEditPage spec={regionsSpec} />} />

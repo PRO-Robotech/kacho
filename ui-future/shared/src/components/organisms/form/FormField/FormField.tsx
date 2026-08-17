@@ -286,7 +286,25 @@ function ArrayFieldRenderer({
           — пусто —
         </Typography.Text>
       )}
-      {items.map((_, idx) => (
+      {items.map((_, idx) => {
+        // Колонки считаются по ПОКАЗЫВАЕМЫМ подполям, а не по объявленным.
+        // Строка со взаимоисключающей группой объявляет поля ВСЕХ ветвей, а
+        // показывает поля одной: счёт по объявленным нарезал бы строку на
+        // столько колонок, сколько ветвей, и каждое видимое поле получало бы
+        // долю ширины, которой ему не хватает (цели группы — восемь объявленных
+        // подполей против трёх-четырёх видимых, #375).
+        const visible = field.itemFields.filter((sub) => {
+          // visibleWhen — резолвится FormFieldRenderer'ом; здесь фильтруем,
+          // чтобы не оставить пустую mini-label-обёртку.
+          if (!sub.visibleWhen) return true;
+          const rel = sub.visibleWhen.field;
+          const relPath = `${path}[${idx}].${rel}`;
+          const cur =
+            (getByPath(value, relPath) as string | undefined) ?? (getByPath(value, rel) as string | undefined);
+          const want = sub.visibleWhen.equals;
+          return Array.isArray(want) ? want.includes(cur ?? "") : cur === want;
+        });
+        return (
         <div
           key={idx}
           style={{
@@ -301,24 +319,12 @@ function ArrayFieldRenderer({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns:
-                field.itemFields.length > 1 ? `repeat(${field.itemFields.length}, minmax(0, 1fr))` : "1fr",
+              gridTemplateColumns: visible.length > 1 ? `repeat(${visible.length}, minmax(0, 1fr))` : "1fr",
               gap: 8,
               flex: 1,
             }}
           >
-            {field.itemFields.map((sub) => {
-              // visibleWhen — резолвится FormFieldRenderer'ом; здесь
-              // фильтруем чтобы не оставить пустую mini-label-обёртку.
-              if (sub.visibleWhen) {
-                const rel = sub.visibleWhen.field;
-                const relPath = `${path}[${idx}].${rel}`;
-                const cur =
-                  (getByPath(value, relPath) as string | undefined) ?? (getByPath(value, rel) as string | undefined);
-                const want = sub.visibleWhen.equals;
-                const matched = Array.isArray(want) ? want.includes(cur ?? "") : cur === want;
-                if (!matched) return null;
-              }
+            {visible.map((sub) => {
               const input = (
                 <FormFieldRenderer
                   field={sub}
@@ -347,7 +353,8 @@ function ArrayFieldRenderer({
             style={{ flexShrink: 0, marginTop: 2 }}
           />
         </div>
-      ))}
+        );
+      })}
     </>
   );
 

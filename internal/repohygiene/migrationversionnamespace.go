@@ -1,0 +1,359 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// migrationversionnamespace.go — разбор пространства номеров миграций.
+//
+// # Предмет: номер выбирался из каталога, поэтому две линии выбирали одинаково
+//
+// Прежняя процедура была такой: автор смотрит на последний файл в каталоге
+// миграций своего сервиса и прибавляет единицу. Две ветки, отведённые от одной
+// базы, видят ОДИН И ТОТ ЖЕ последний файл — значит выбирают один и тот же
+// номер. Это не невнимательность: при такой процедуре столкновение случается
+// всякий раз, когда две линии трогают один сервис между слияниями, и
+// вероятность его не уменьшается ни аккуратностью, ни обзором.
+//
+// Слияние при этом проходит ЧИСТО: файлы разные, общих строк нет, конфликта
+// содержимого git не видит. Столкновение появляется в накопительной ветке уже
+// слитым — то есть в момент, когда чинить дороже всего, и чинить приходится
+// осознанно: применённую миграцию переномеровывать нельзя.
+//
+// # Механизм: номер ВЫВОДИТСЯ из номера задачи, а не выбирается из каталога
+//
+// Имя новой миграции — `<задача><порядковый:3>_<что_делает>.sql`:
+//
+//	539001_migration_version_namespace.sql
+//	└┬┘└┬┘
+//	 │  └── порядковый номер внутри ЭТОЙ задачи и ЭТОГО каталога, с 001
+//	 └───── номер задачи в PRO-Robotech/kacho (та же, что в имени ветки)
+//
+// Почему столкновение при этом невозможно, а не «маловероятно»: номер перестаёт
+// быть СЛОТОМ в общем каталоге, за который линии соревнуются, и становится
+// производной от величины, которую выдаёт ОДИН распределитель — трекер. Две
+// линии имеют разные номера задач by construction: задача берётся назначением на
+// себя, ветка называется по её номеру, и одна задача — один предмет. Внутри
+// одной задачи соревноваться не с кем: там одна линия, и она видит обе свои
+// миграции сразу.
+//
+// Ставить при этом нечего и запускать нечего: номер уже известен автору из имени
+// собственной ветки. Механизм, который надо предварительно установить, работает
+// ровно у тех, кто его установил; этот не требует установки вовсе.
+//
+// # Цена, названная честно
+//
+//  1. ПОРЯДОК — это порядок заведения задач, а не порядок слияния. Если
+//     миграция задачи с бо́льшим номером доехала до долгоживущей базы раньше, то
+//     миграция с меньшим номером, приехавшая следом, будет отвергнута
+//     мигратором («found N missing migrations before current version») — громко,
+//     на выкатке. Прежняя процедура такого не давала: переномерование при
+//     слиянии само поднимало номер выше всего применённого. Радиус ограничен
+//     тем, что работа сходится в одну накопительную ветку и доезжает до базы
+//     одним слиянием; между двумя релизами случай возможен.
+//  2. МИГРАЦИЯ ТЕПЕРЬ ТРЕБУЕТ ЗАВЕДЁННОЙ ЗАДАЧИ. Стоит одной команды и уже
+//     требуется регламентом, но раньше не было предусловием вовсе.
+//  3. `ls` БОЛЬШЕ НЕ ЧИТАЕТСЯ КАК ПОРЯДОК, когда номера задач получат ещё один
+//     разряд: `1000001` лексикографически меньше `539001`. Порядок применения
+//     ЧИСЛОВОЙ — его так и берёт мигратор; человеку нужен `ls | sort -n`.
+//  4. НОМЕРА ПЕРЕСТАЛИ БЫТЬ ПЛОТНЫМИ. «Сколько миграций у сервиса» больше не
+//     читается из последнего имени — это счёт файлов.
+//
+// # Что держит переход
+//
+// Прежняя, порядковая форма ЗАМОРОЖЕНА: перечень её номеров по каждому каталогу
+// закреплён здесь ([frozenLegacyMigrations]) и обязан совпадать с деревом
+// дословно. Прибавка означает, что кто-то снова выбрал номер рукой; убыль
+// означает, что применённую миграцию переименовали или удалили. Оба — находки,
+// и оба называют координату.
+//
+// Гейт уникальности (`TestMigrationVersionsAreUniquePerDirectory`) остаётся
+// backstop'ом: он ловит столкновение, если оно всё-таки образуется. Этот разбор
+// ловит ПРОЦЕДУРУ, которая его порождает. Гейтов там было два, и оба брали
+// каталоги выпиской пути, поэтому видели 263 файла из 268; каталоги теперь
+// выводятся из дерева тем же способом, что и здесь (#567).
+package repohygiene
+
+import (
+	"fmt"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// firstIssuedMigrationVersion — граница между замороженной порядковой формой и
+// формой, выведенной из номера задачи.
+//
+// Величина не произвольна: она равна наименьшему номеру, который может дать
+// задача (`minIssueNumber` × `migrationOrdinalSpan`). Наибольший порядковый
+// номер в дереве на день заведения — 100, то есть между формами лежит запас в
+// три разряда, и предпосылка «граница выше всей порядковой эры» проверяется
+// самим гейтом, а не подразумевается.
+// Верхняя граница нужна не для симметрии: различение форм обязано быть ПОЛНЫМ.
+// Есть ТРЕТЬЯ форма — имя с 14-значной меткой времени (`20260817042704_имя.sql`),
+// которое выдаёт `goose.Create` без `SetSequential`. Без верхней границы такое
+// имя прошло бы под видом «выведено из задачи»: порядковый разряд у метки
+// времени почти всегда ненулевой. Задача номер десять миллионов на этом
+// репозитории не появится раньше, чем правило перепишут; метка времени
+// превышает границу на три порядка.
+//
+// Производителя этой формы в дереве БОЛЬШЕ НЕТ: глагол `migrator create` снят
+// (#566) — он был у трёх сервисов из семи, ни одного файла в дерево не привёл и
+// предлагал форму, которую дерево не принимает. Его отсутствие держит гейт
+// `TestNoToolProducesAMigrationFileName`. Граница остаётся не «на всякий
+// случай»: номер больше номера всякой возможной задачи не является номером
+// задачи, кем бы он ни был написан, — и классификация, которая этого не
+// говорит, неполна.
+const (
+	migrationOrdinalSpan        = 1000
+	minIssueNumber              = 100
+	maxIssueNumber              = 10_000_000
+	firstIssuedMigrationVersion = minIssueNumber * migrationOrdinalSpan
+	lastIssuedMigrationVersion  = maxIssueNumber*migrationOrdinalSpan - 1
+)
+
+// migrationVersionFileRe — имя файла миграции. Ведущие нули — часть записи, а не
+// значения (`0098` и `98` — один ключ для мигратора), поэтому они срезаются
+// разбором, а не сравнением строк.
+var migrationVersionFileRe = regexp.MustCompile(`^0*(\d+)_[^/]*\.sql$`)
+
+// frozenLegacyMigrations — порядковая эра, закрытая по факту.
+//
+// Ключ — каталог относительно корня репозитория (со слэшем-разделителем, чтобы
+// перечень не зависел от платформы). Значение — номера в компактной записи
+// диапазонов; пробел в compute (нет 35) записан пропуском, а не «примерно
+// 1-38»: перечень обязан совпадать с деревом дословно, иначе он перестаёт что-
+// либо утверждать.
+//
+// Перечень ПИННЫЙ намеренно — в этом и состоит утверждение «эра закрыта». Он не
+// выводится из дерева, потому что дерево содержит и то, что в него добавили бы
+// в обход правила; выводимый перечень принял бы такую прибавку молча.
+var frozenLegacyMigrations = map[string]string{
+	"pkg/migrations/common":                 "1-4",
+	"services/compute/internal/migrations":  "1-34,36-38",
+	"services/compute/migrations":           "1",
+	"services/geo/internal/migrations":      "1-4",
+	"services/iam/internal/migrations":      "1-100",
+	"services/nlb/internal/migrations":      "1-35",
+	"services/registry/internal/migrations": "1-17",
+	"services/storage/internal/migrations":  "1-25",
+	"services/vpc/internal/migrations":      "1-45",
+}
+
+// migrationVersionCensus — объём осмотренного. Отдельное утверждение: «ноль
+// находок» обязано быть отличимо от «ноль прочитанного».
+type migrationVersionCensus struct {
+	Dirs      int
+	Files     int
+	Legacy    int
+	Issued    int
+	MaxLegacy int64
+}
+
+// migrationDirVersions — номера миграций одного каталога, разложенные по формам.
+type migrationDirVersions struct {
+	Legacy []int64
+	Issued []int64
+}
+
+// collectMigrationVersions раскладывает пути файлов по каталогам и формам.
+//
+// Вход — перечень путей ОТНОСИТЕЛЬНО корня дерева: у настоящего дерева его даёт
+// индекс git (свойство КОММИТА, а не рабочего каталога), у синтетического дерева
+// пробы — обход временного каталога. Разбор при этом ОДИН, поэтому фикстура не
+// может оказаться снисходительнее того, что судит настоящее дерево.
+func collectMigrationVersions(files []string) (map[string]*migrationDirVersions, migrationVersionCensus) {
+	byDir := map[string]*migrationDirVersions{}
+	var census migrationVersionCensus
+
+	for _, rel := range files {
+		m := migrationVersionFileRe.FindStringSubmatch(path.Base(rel))
+		if m == nil {
+			continue
+		}
+		v, err := strconv.ParseInt(m[1], 10, 64)
+		if err != nil || v < 1 {
+			// Мигратор такое имя тоже не примет (версия обязана быть больше
+			// нуля) — но его отказ случится на стенде, а не здесь. Молча
+			// пропустить нельзя: файл выпал бы из-под всякого надзора.
+			continue
+		}
+		dir := path.Dir(filepath.ToSlash(rel))
+
+		d := byDir[dir]
+		if d == nil {
+			d = &migrationDirVersions{}
+			byDir[dir] = d
+		}
+		census.Files++
+		if v < firstIssuedMigrationVersion {
+			d.Legacy = append(d.Legacy, v)
+			census.Legacy++
+			if v > census.MaxLegacy {
+				census.MaxLegacy = v
+			}
+			continue
+		}
+		d.Issued = append(d.Issued, v)
+		census.Issued++
+	}
+	for _, d := range byDir {
+		sort.Slice(d.Legacy, func(i, j int) bool { return d.Legacy[i] < d.Legacy[j] })
+		sort.Slice(d.Issued, func(i, j int) bool { return d.Issued[i] < d.Issued[j] })
+	}
+	census.Dirs = len(byDir)
+	return byDir, census
+}
+
+// migrationVersionFindings — находки разбора. Каждая называет координату:
+// каталог, номер и то, что с ним не так.
+func migrationVersionFindings(byDir map[string]*migrationDirVersions, frozen map[string]string) []string {
+	var out []string
+
+	dirs := make([]string, 0, len(byDir))
+	for d := range byDir {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+
+	for _, dir := range dirs {
+		got := byDir[dir]
+
+		spec, known := frozen[dir]
+		if !known {
+			out = append(out, fmt.Sprintf(
+				"%s: каталог миграций не внесён в перепись замороженной порядковой эры "+
+					"(номера в дереве: %s).\n"+
+					"    Новый сервис вносится сюда ОСОЗНАННО: пока записи нет, его номера "+
+					"не под надзором, и «ноль находок» по нему означает «не смотрели».",
+				dir, formatVersionList(append(append([]int64{}, got.Legacy...), got.Issued...))))
+		} else {
+			want, err := expandVersionRanges(spec)
+			if err != nil {
+				out = append(out, fmt.Sprintf("%s: перепись записана неразборчиво (%q): %v", dir, spec, err))
+			} else {
+				added, removed := diffVersions(want, got.Legacy)
+				if len(added) > 0 {
+					out = append(out, fmt.Sprintf(
+						"%s: в порядковой форме появились номера %s.\n"+
+							"    Порядковая эра ЗАКРЫТА: номер, выбранный из каталога, две линии "+
+							"выбирают одинаково, и слияние примет это молча.\n"+
+							"    Назови миграцию по своей задаче: `<задача><порядковый:3>_<что_делает>.sql` "+
+							"(например 539001_…). Номер задачи — тот же, что в имени ветки.",
+						dir, formatVersionList(added)))
+				}
+				if len(removed) > 0 {
+					out = append(out, fmt.Sprintf(
+						"%s: из порядковой формы ИСЧЕЗЛИ номера %s.\n"+
+							"    Применённую миграцию править и переименовывать нельзя: её ключ "+
+							"записан в базе. Если убыль осознанна (схлопывание базовой линии), "+
+							"поправь перепись в frozenLegacyMigrations тем же изменением.",
+						dir, formatVersionList(removed)))
+				}
+			}
+		}
+
+		for _, v := range got.Issued {
+			if ord := v % migrationOrdinalSpan; ord == 0 {
+				out = append(out, fmt.Sprintf(
+					"%s: номер %d не несёт порядкового разряда (последние три цифры — 000).\n"+
+						"    Форма: `<задача><порядковый:3>`; первая миграция задачи — 001, "+
+						"вторая — 002. Ноль означал бы, что задача не назвала ни одной.",
+					dir, v))
+			}
+			if v > lastIssuedMigrationVersion {
+				out = append(out, fmt.Sprintf(
+					"%s: номер %d больше всякого возможного (задача №%d не существует).\n"+
+						"    Так выглядит метка времени — её выдаёт `goose.Create` без "+
+						"`SetSequential`. Это ТРЕТЬЯ форма, которой в дереве нет ни одного "+
+						"файла, и производителя у неё в дереве тоже нет (#566).\n"+
+						"    Метка времени столкновение не исключает, а делает менее вероятным: "+
+						"две линии в одну секунду попадают редко, но попадают. Назови миграцию "+
+						"по своей задаче: `<задача><порядковый:3>_<что_делает>.sql`.",
+					dir, v, v/migrationOrdinalSpan))
+			}
+		}
+	}
+
+	// Запись, которой больше нечего замораживать, — находка: она унаследует
+	// следующую слепую зону. Послабление обязано истекать само.
+	specs := make([]string, 0, len(frozen))
+	for d := range frozen {
+		specs = append(specs, d)
+	}
+	sort.Strings(specs)
+	for _, dir := range specs {
+		if _, ok := byDir[dir]; !ok {
+			out = append(out, fmt.Sprintf(
+				"%s: запись переписи есть, а каталога миграций в дереве нет — "+
+					"замораживать нечего. Сними запись либо восстанови каталог.", dir))
+		}
+	}
+	return out
+}
+
+// expandVersionRanges разбирает компактную запись `1-34,36-38` в перечень.
+func expandVersionRanges(spec string) ([]int64, error) {
+	var out []int64
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		lo, hi, ok := strings.Cut(part, "-")
+		a, err := strconv.ParseInt(strings.TrimSpace(lo), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("не число: %q", lo)
+		}
+		b := a
+		if ok {
+			b, err = strconv.ParseInt(strings.TrimSpace(hi), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("не число: %q", hi)
+			}
+		}
+		if b < a {
+			return nil, fmt.Errorf("диапазон наоборот: %q", part)
+		}
+		for v := a; v <= b; v++ {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+// diffVersions возвращает то, чего нет в want (added), и то, чего нет в got (removed).
+func diffVersions(want, got []int64) (added, removed []int64) {
+	inWant := map[int64]bool{}
+	for _, v := range want {
+		inWant[v] = true
+	}
+	inGot := map[int64]bool{}
+	for _, v := range got {
+		inGot[v] = true
+	}
+	for _, v := range got {
+		if !inWant[v] {
+			added = append(added, v)
+		}
+	}
+	for _, v := range want {
+		if !inGot[v] {
+			removed = append(removed, v)
+		}
+	}
+	sort.Slice(added, func(i, j int) bool { return added[i] < added[j] })
+	sort.Slice(removed, func(i, j int) bool { return removed[i] < removed[j] })
+	return added, removed
+}
+
+func formatVersionList(vs []int64) string {
+	if len(vs) == 0 {
+		return "(нет)"
+	}
+	parts := make([]string, 0, len(vs))
+	for _, v := range vs {
+		parts = append(parts, strconv.FormatInt(v, 10))
+	}
+	return strings.Join(parts, ", ")
+}

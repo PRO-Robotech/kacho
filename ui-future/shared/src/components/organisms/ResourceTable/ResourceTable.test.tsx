@@ -34,7 +34,9 @@ const rows: Row[] = [
 
 function renderTable(over: Partial<Parameters<typeof ResourceTable<Row>>[0]> = {}) {
   const onRowClick = jest.fn<(row: Row) => void>();
-  render(<ResourceTable rows={rows} columns={columns} rowKey={(r) => r.id} onRowClick={onRowClick} {...over} />);
+  render(
+    <ResourceTable rows={rows} columns={columns} rowKey={(r) => r.id} onRowClick={onRowClick} complete {...over} />,
+  );
   return { onRowClick };
 }
 
@@ -64,18 +66,24 @@ describe("ResourceTable", () => {
   });
 
   it("без обработчика строка кликом ничего не делает", () => {
-    render(<ResourceTable rows={rows} columns={columns} rowKey={(r) => r.id} />);
+    render(<ResourceTable rows={rows} columns={columns} rowKey={(r) => r.id} complete />);
     const row = screen.getByText("frontend").closest("tr")!;
     expect(row.style.cursor).toBe("");
   });
 
   it("пустой список объясняет себя словами вызывающего", () => {
-    const { unmount } = render(<ResourceTable rows={[]} columns={columns} rowKey={(r: Row) => r.id} />);
+    const { unmount } = render(<ResourceTable rows={[]} columns={columns} rowKey={(r: Row) => r.id} complete />);
     expect(screen.getByText("Ресурсов не найдено")).toBeInTheDocument();
     unmount();
 
     render(
-      <ResourceTable rows={[]} columns={columns} rowKey={(r: Row) => r.id} empty={<span>Подсетей пока нет</span>} />,
+      <ResourceTable
+        rows={[]}
+        columns={columns}
+        rowKey={(r: Row) => r.id}
+        complete
+        empty={<span>Подсетей пока нет</span>}
+      />,
     );
     expect(screen.getByText("Подсетей пока нет")).toBeInTheDocument();
   });
@@ -84,7 +92,7 @@ describe("ResourceTable", () => {
     // Ключ по индексу перемешал бы состояние строк при сортировке и обновлении
     // списка — раскрытая строка «переехала» бы на соседний ресурс.
     const rowKey = jest.fn((r: Row) => r.id);
-    render(<ResourceTable rows={rows} columns={columns} rowKey={rowKey} />);
+    render(<ResourceTable rows={rows} columns={columns} rowKey={rowKey} complete />);
     expect(rowKey).toHaveBeenCalledWith(rows[0]);
     expect(rowKey).toHaveBeenCalledWith(rows[1]);
   });

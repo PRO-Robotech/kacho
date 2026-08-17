@@ -499,6 +499,24 @@ func NewMux(
 		if err := vpcpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
 			return nil, fmt.Errorf("register QuotaService: %w", err)
 		}
+		// AddressPool — административная поверхность на ПУБЛИЧНОМ бэкенде (ADM-1
+		// S1). Регистрируется на ОБА mux'а, как любой публичный сервис.
+		//
+		// ЗАПРЕТ 6 НЕ СМЯГЧЁН: на внешний край выставлен `AddressPoolService`, а не
+		// `InternalAddressPoolService`; предикат `HasInternalSuffix`, который ловит
+		// второе, не тронут. Переехал ГЛАГОЛ, а не разрешение для `Internal.*`.
+		// Закрывает не место вызова, а вызывающий без права: каждый RPC гейтится
+		// `system_admin` @ `cluster` — отношением, которое подстановочный кортеж
+		// `user:*` НЕ выполняет.
+		//
+		// Пути совпадают с внутренними НАМЕРЕННО (второго адреса у ресурса быть не
+		// должно). Расщепление даёт диспетчер: снаружи обе его ветки ведут в
+		// `publicMux`, поэтому виден публичный глагол; изнутри `runtime.ServeMux`
+		// предваряет список, а внутренние регистрации идут ниже — поэтому виден
+		// внутренний. Окно сосуществования закрывает стадия S3.
+		if err := vpcpb.RegisterAddressPoolServiceHandlerFromEndpoint(ctx, mux, vpcAddr, optsFor("vpc")); err != nil {
+			return nil, fmt.Errorf("register AddressPoolService: %w", err)
+		}
 
 		// --- vpc admin (AddressPool) — kacho-only, internal-port (9091) ---
 		// Эти сервисы экспонируются через apiGW REST для UI/админ-tooling;

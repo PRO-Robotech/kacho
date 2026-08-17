@@ -56,7 +56,12 @@ import (
 // consoleField — одно поле формы ресурса консоли.
 type consoleField struct {
 	Name string
-	// Line — строка объявления поля (для адресуемости находки).
+	// File / Line — координата ОБЪЯВЛЕНИЯ поля.
+	//
+	// Файл хранится рядом со строкой, а не берётся у ресурса: поле, пришедшее из
+	// общего модуля, объявлено в другом файле, и адрес «файл реестра + строка
+	// помощника» посылает читателя искать в место, где этих строк нет.
+	File string
 	Line int
 	// Hidden — поле не рендерится, но значение в теле есть (project_id из контекста).
 	Hidden bool
@@ -100,6 +105,12 @@ type consoleSpec struct {
 	// своего файла нет, и без вычитания сверка краснела бы на единственном
 	// источнике.
 	ExternFields int
+	// ExternHelperFields — из них пришедших раскрытием ПОМОЩНИКА общего модуля.
+	//
+	// Считается отдельно от ExternFields намеренно: тот включает и целый массив,
+	// взятый по имени, и перепись по нему отвечала бы на другой вопрос, чем
+	// заданный. Число, верное для другого предиката, — не число.
+	ExternHelperFields int
 	// SharedRef — идентификатор в ОБЩЕМ реестре, если запись не объявляет спеку,
 	// а ссылается на уже объявленную (`SHARED_REGISTRY["<id>"]`).
 	//
@@ -143,8 +154,26 @@ type consoleParse struct {
 // раскрыть — а именно так реестр выражает симметричные наборы.
 type consoleScope struct {
 	consts map[string]jsValue
-	funcs  map[string]jsFunc
+	funcs  map[string]jsFuncRef
 	local  map[string]jsValue
+}
+
+// jsFuncRef — помощник-набор полей вместе с областью, в которой читается ЕГО тело.
+//
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ВИД, а не просто функция. Набор полей, который объявляют два
+// реестра, обязан быть объявлен ОДИН раз и в общем модуле — иначе копии
+// расходятся молча (так уже разошлись ветви проверки живости, #375). Реестр
+// тогда разворачивает помощника, объявленного НЕ ЗДЕСЬ, и его тело обязано
+// читаться в области видимости СВОЕГО файла: соседний помощник, на который оно
+// ссылается, живёт там и в файле-потребителе не виден вовсе.
+//
+// Прежде такой помощник был для сканера просто неизвестным именем, и разбор
+// отказывался читать ВЕСЬ файл — то есть переставал проверять реестр целиком.
+// «Не прочитал» выглядело как «нет находок».
+type jsFuncRef struct {
+	fn jsFunc
+	// base — область модуля, объявившего помощника. nil означает «тот же файл».
+	base *consoleScope
 }
 
 func (s consoleScope) lookup(name string) (jsValue, bool) {
@@ -170,11 +199,17 @@ func (s consoleScope) with(local map[string]jsValue) consoleScope {
 
 // parseConsoleRegistry разбирает один `resource-registry.tsx`.
 //
-// extern — строковые константы, экспортированные другими модулями консоли
-// (`GEO_REGIONS_PATH` и родня). Реестр импортирует их, а разбор одного файла о
+// ext — всё, что реестр берёт ИЗ ДРУГИХ файлов дерева: строковые константы
+// путей, значения-наборы полей и помощники-наборы полей. Разбор одного файла о
 // них знать не может; неразрешённое имя остаётся ошибкой, а не пропуском.
-func parseConsoleRegistry(file, src string, extern map[string]string, externVals map[string]jsValue) (consoleParse, error) {
+//
+// Один аргумент, а не три: каждый новый вид импортируемого прежде добавлял
+// параметр во все девять точек вызова, и пропущенная точка выглядела бы не
+// ошибкой сборки, а тихо суженной областью видимости — то есть ровно тем
+// «прочитал не всё», ради невозможности которого сканер и написан.
+func parseConsoleRegistry(file, src string, ext consoleExterns) (consoleParse, error) {
 	out := consoleParse{File: file}
+	extern, externVals, externFuncs := ext.strings, ext.values, ext.helpers
 
 	consts, err := jsTopLevelConsts(src)
 	if err != nil {
@@ -202,7 +237,20 @@ func parseConsoleRegistry(file, src string, extern map[string]string, externVals
 		}
 		consts[name] = v
 	}
-	scope := consoleScope{consts: consts, funcs: jsTopLevelArrayFuncs(src)}
+	// Помощники ЭТОГО файла держатся отдельно от импортированных: по ним, и
+	// только по ним, считается независимый счётчик объявлений поля — тела
+	// импортированных в сыром тексте этого файла не видны by construction.
+	ownFuncs := jsTopLevelFieldSetFuncs(file, src)
+	funcs := make(map[string]jsFuncRef, len(ownFuncs)+len(externFuncs))
+	for name, ref := range externFuncs {
+		funcs[name] = ref
+	}
+	// Своё объявление файла всегда сильнее импортированного — тот же порядок,
+	// что у констант выше.
+	for name, fn := range ownFuncs {
+		funcs[name] = jsFuncRef{fn: fn}
+	}
+	scope := consoleScope{consts: consts, funcs: funcs}
 
 	registry, ok := consts["REGISTRY"]
 	if !ok {
@@ -223,8 +271,9 @@ func parseConsoleRegistry(file, src string, extern map[string]string, externVals
 	}
 	// То же и для помощников: набор, вынесенный в функцию, объявлен ОДИН раз,
 	// сколько бы раз его ни разворачивали. Считать по разворотам значило бы
-	// сверять число объявлений с числом употреблений.
-	for _, fn := range scope.funcs {
+	// сверять число объявлений с числом употреблений. Берутся ТОЛЬКО свои:
+	// импортированный помощник объявлен в другом файле и считается там.
+	for _, fn := range ownFuncs {
 		out.FieldDecls += countFieldDecls(fn.body)
 	}
 
@@ -329,14 +378,17 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 	}
 
 	if fieldsV, ok := v.prop("fields"); ok {
-		var fieldsExtern bool
-		s.Fields, s.ExpandedFields, fieldsExtern, err = parseConsoleFields(file, id, fieldsV, scope)
+		set, err := parseConsoleFields(file, id, fieldsV, scope)
 		if err != nil {
 			return consoleSpec{}, jsValue{}, err
 		}
-		if fieldsExtern {
-			// Набор пришёл из общего модуля: в сыром тексте ЭТОГО файла его
-			// объявлений нет, и сверка счётчиков обязана это знать.
+		s.Fields, s.ExpandedFields = set.fields, set.expanded
+		// Пришедшее из общего модуля: в сыром тексте ЭТОГО файла его объявлений
+		// нет, и сверка счётчиков обязана это знать. Считается и целый массив,
+		// взятый по имени, и отдельный набор, раскрытый импортированным
+		// помощником, — источник у них один, и провенанс обязан быть один.
+		s.ExternFields, s.ExternHelperFields = set.extern, set.extern
+		if set.whole {
 			s.ExternFields = len(s.Fields)
 		}
 	}
@@ -373,56 +425,91 @@ func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSp
 // ссылка на константу того же файла либо развёрнутый набор от помощника этого же
 // файла. Всё прочее — ошибка: молча пропущенный элемент это ровно то «ничего не
 // нашли», ради невозможности которого гейт и пишется.
-func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]consoleField, int, bool, error) {
+func parseConsoleFields(file, id string, v jsValue, scope consoleScope) (consoleFieldSet, error) {
+	var set consoleFieldSet
 	// Набор полей, объявленный ОДИН раз в общем модуле и импортированный сюда:
 	// тот же ресурс монтируют два приложения, и выписанные дважды поля разошлись
 	// бы молча. Резолв — тот же, что у прочих ссылок на константы; неразрешимое
 	// имя остаётся громким отказом строкой ниже.
-	extern := false
 	if v.kind == jsIdent {
 		if resolved, ok := scope.lookup(v.str); ok {
-			v, extern = resolved, true
+			v, set.whole = resolved, true
 		}
 	}
 	if v.kind != jsArray {
-		return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
+		return consoleFieldSet{}, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
 	}
 	// want считается ОТДЕЛЬНО от построения out и по другому источнику: длина
 	// литерала (для развёрнутого набора — длина массива, который возвращает
 	// помощник). Иначе сверка была бы тавтологией и пропуск элемента остался бы
 	// незамеченным: дерево значений при таком дефекте полное, и сверка с сырым
 	// текстом на него не реагирует.
-	want, expanded := 0, 0
+	want := 0
 	out := make([]consoleField, 0, len(v.arr))
 	for _, elem := range v.arr {
 		if elem.kind == jsSpread {
-			fields, n, err := expandConsoleFieldSpread(file, id, elem, scope)
+			fields, n, extern, err := expandConsoleFieldSpread(file, id, elem, scope)
 			if err != nil {
-				return nil, 0, false, err
+				return consoleFieldSet{}, err
 			}
 			want += n
-			expanded += n
+			set.expanded += n
+			if extern {
+				set.extern += n
+			}
 			out = append(out, fields...)
 			continue
 		}
 		want++
+		// Помощник, возвращающий ОДНО поле, стоит элементом, а не спредом:
+		// `targetsField()`. Форма та же и по той же причине — поле объявляют два
+		// реестра, значит объявить его надо один раз. Ветка стоит ДО резолва
+		// константы: вызов — не идентификатор, и без неё он доехал бы до отказа
+		// «это не объект», указывающего на форму записи вместо её источника.
+		if f, n, extern, ok, err := expandConsoleFieldCall(file, id, elem, scope); ok {
+			if err != nil {
+				return consoleFieldSet{}, err
+			}
+			set.expanded += n
+			if extern {
+				set.extern += n
+			}
+			out = append(out, f)
+			continue
+		}
 		resolved, err := resolveConst(elem, scope)
 		if err != nil {
-			return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
+			return consoleFieldSet{}, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
 		}
 		if resolved.kind != jsObject {
-			return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object, a const naming one, or a spread of a helper of this file", file, resolved.line, id, resolved.kind)
+			return consoleFieldSet{}, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object, a const naming one, or a call of a helper declared in this file or in a shared module", file, resolved.line, id, resolved.kind)
 		}
 		f, err := parseConsoleField(file, id, resolved, scope)
 		if err != nil {
-			return nil, 0, false, err
+			return consoleFieldSet{}, err
 		}
 		out = append(out, f)
 	}
 	if len(out) != want {
-		return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` declares %d field(s), extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, want, len(out))
+		return consoleFieldSet{}, fmt.Errorf("%s:%d: resource %q: `fields` declares %d field(s), extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, want, len(out))
 	}
-	return out, expanded, extern, nil
+	set.fields = out
+	return set, nil
+}
+
+// consoleFieldSet — разобранный `fields` вместе с провенансом.
+//
+// Провенанс нужен не для отчёта: «раскрытие работает» и «раскрытие дало пусто»
+// выглядят одинаково зелёными, а сверка с сырым текстом файла обязана знать,
+// какие объявления в этом тексте отсутствуют by construction.
+type consoleFieldSet struct {
+	fields []consoleField
+	// expanded — сколько полей пришло раскрытием помощника (своего или общего).
+	expanded int
+	// extern — сколько пришло из ДРУГОГО файла.
+	extern int
+	// whole — весь массив взят по имени из общего модуля (`fields: SHARED_FIELDS`).
+	whole bool
 }
 
 // expandConsoleFieldSpread раскрывает `...helper(args)` в набор полей.
@@ -440,46 +527,121 @@ func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]conso
 // только от аргументов. Всё, что за пределами формы — помощник из другого
 // модуля, вычисляемый аргумент, тело с ветвлением, имя поля из выражения, —
 // по-прежнему ЛОМАЕТ разбор с указанием места.
-func expandConsoleFieldSpread(file, id string, elem jsValue, scope consoleScope) ([]consoleField, int, error) {
-	fail := func(format string, args ...any) ([]consoleField, int, error) {
-		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` spreads %s",
+func expandConsoleFieldSpread(file, id string, elem jsValue, scope consoleScope) ([]consoleField, int, bool, error) {
+	fail := func(format string, args ...any) ([]consoleField, int, bool, error) {
+		return nil, 0, false, fmt.Errorf("%s:%d: resource %q: `fields` spreads %s",
 			file, elem.line, id, fmt.Sprintf(format, args...))
 	}
-	call, err := jsParseCall(elem.raw)
+	ref, inner, err := consoleHelperCall(elem.raw, scope)
 	if err != nil {
 		return fail("%v", err)
 	}
-	fn, ok := scope.funcs[call.callee]
-	if !ok {
-		return fail("%s(…), which is not a helper of this file whose body is `const…; return [ … ]` — a set of fields assembled anywhere else is not declared where it is used", call.callee)
-	}
-	if len(call.args) != len(fn.params) {
-		return fail("%s(…) with %d argument(s), but it declares %d parameter(s)", call.callee, len(call.args), len(fn.params))
+	if ref.fn.body.kind != jsArray {
+		return fail("%s(…), whose body returns %s — a spread needs the set itself", ref.fn.name, ref.fn.body.kind)
 	}
 
-	local := make(map[string]jsValue, len(fn.params)+len(fn.locals))
-	for i, p := range fn.params {
+	// Тело помощника читается в области видимости ЕГО файла (см. jsFuncRef):
+	// соседний помощник и константы модуля видны там, и только там.
+	set, err := parseConsoleFields(helperFile(file, ref), id, ref.fn.body, inner)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	// Возвращается ПРОВЕРЕННОЕ рекурсией число, а не длина массива-литерала:
+	// помощник сам вправе разворачивать помощника (симметричные ветви `http` и
+	// `https` объявлены один раз и подставляются именем), и тогда элементов в
+	// литерале меньше, чем полей. Свойство сверки при этом не теряется: длину
+	// СВОЕГО литерала каждый уровень сверяет со своим извлечением сам, и
+	// пропущенный элемент остаётся находкой на том уровне, где он пропущен.
+	return set.fields, len(set.fields), ref.base != nil, nil
+}
+
+// expandConsoleFieldCall раскрывает `helper()` СТОЯЩИЙ ЭЛЕМЕНТОМ — помощника,
+// возвращающего одно поле.
+//
+// Возвращает ok=false, если элемент вообще не похож на вызов помощника: тогда
+// решает общий путь (объект, ссылка на константу), и отказ приходит оттуда с его
+// формулировкой. Если элемент вызовом ЯВЛЯЕТСЯ, но раскрыть его нельзя, —
+// ok=true и ошибка: пропустить такой элемент значило бы потерять поле молча.
+func expandConsoleFieldCall(file, id string, elem jsValue, scope consoleScope) (consoleField, int, bool, bool, error) {
+	if elem.kind != jsOpaque {
+		return consoleField{}, 0, false, false, nil
+	}
+	call, err := jsParseCall(elem.raw)
+	if err != nil {
+		return consoleField{}, 0, false, false, nil
+	}
+	if _, known := scope.funcs[call.callee]; !known {
+		// Незнакомое имя — не наша ветка: общий путь скажет о нём точнее.
+		return consoleField{}, 0, false, false, nil
+	}
+	fail := func(format string, args ...any) (consoleField, int, bool, bool, error) {
+		return consoleField{}, 0, false, true, fmt.Errorf("%s:%d: resource %q: `fields` calls %s",
+			file, elem.line, id, fmt.Sprintf(format, args...))
+	}
+	ref, inner, err := consoleHelperCall(elem.raw, scope)
+	if err != nil {
+		return fail("%v", err)
+	}
+	if ref.fn.body.kind != jsObject {
+		return fail("%s(…), whose body returns %s — an entry needs one field object; a set is spread, not called", ref.fn.name, ref.fn.body.kind)
+	}
+	f, err := parseConsoleField(helperFile(file, ref), id, ref.fn.body, inner)
+	if err != nil {
+		return consoleField{}, 0, false, true, err
+	}
+	return f, 1, ref.base != nil, true, nil
+}
+
+// helperFile — чей файл называть в находке внутри помощника: его собственный,
+// если помощник импортирован. Иначе координата вела бы в файл-потребитель, где
+// этих строк нет вовсе.
+func helperFile(file string, ref jsFuncRef) string {
+	if ref.base != nil && ref.fn.file != "" {
+		return ref.fn.file
+	}
+	return file
+}
+
+// consoleHelperCall разрешает вызов помощника и связывает его параметры.
+//
+// Область возвращается ГОТОВОЙ к чтению тела: для помощника своего файла это
+// текущая область, для импортированного — область его модуля. Смешивать их
+// нельзя: имя, видимое в одном файле, в другом означает другое или ничего.
+func consoleHelperCall(raw string, scope consoleScope) (jsFuncRef, consoleScope, error) {
+	call, err := jsParseCall(raw)
+	if err != nil {
+		return jsFuncRef{}, consoleScope{}, err
+	}
+	ref, ok := scope.funcs[call.callee]
+	if !ok {
+		return jsFuncRef{}, consoleScope{}, fmt.Errorf("%s(…), which is neither a helper of this file nor an exported helper of a shared module, whose body is `const…; return [ … ]` — a set of fields assembled anywhere else is not declared where it is used", call.callee)
+	}
+	if len(call.args) != len(ref.fn.params) {
+		return jsFuncRef{}, consoleScope{}, fmt.Errorf("%s(…) with %d argument(s), but it declares %d parameter(s)", call.callee, len(call.args), len(ref.fn.params))
+	}
+
+	base := scope
+	if ref.base != nil {
+		base = *ref.base
+	}
+	local := make(map[string]jsValue, len(ref.fn.params)+len(ref.fn.locals))
+	for i, p := range ref.fn.params {
 		local[p] = call.args[i]
 	}
-	inner := scope.with(local)
+	inner := base.with(local)
 	// Связывания раскрываются по порядку: следующее видит предыдущие.
-	for _, l := range fn.locals {
+	for _, l := range ref.fn.locals {
 		v := l.val
 		if v.kind == jsTemplate {
 			s, err := jsResolveTemplate(v.raw, inner.lookupString)
 			if err != nil {
-				return fail("%s(…): local %s: %v", call.callee, l.name, err)
+				return jsFuncRef{}, consoleScope{}, fmt.Errorf("%s(…): local %s: %v", call.callee, l.name, err)
 			}
 			v = jsValue{kind: jsString, str: s, line: l.val.line}
 		}
 		local[l.name] = v
 	}
-
-	fields, _, _, err := parseConsoleFields(file, id, fn.body, inner)
-	if err != nil {
-		return nil, 0, err
-	}
-	return fields, len(fn.body.arr), nil
+	return ref, inner, nil
 }
 
 func parseConsoleField(file, id string, v jsValue, scope consoleScope) (consoleField, error) {
@@ -491,7 +653,7 @@ func parseConsoleField(file, id string, v jsValue, scope consoleScope) (consoleF
 	if err != nil {
 		return consoleField{}, fmt.Errorf("%s:%d: resource %q: field `name`: %w", file, nameV.line, id, err)
 	}
-	f := consoleField{Name: name, Line: nameV.line}
+	f := consoleField{Name: name, File: file, Line: nameV.line}
 	for _, flag := range []struct {
 		key string
 		dst *bool
@@ -512,10 +674,11 @@ func parseConsoleField(file, id string, v jsValue, scope consoleScope) (consoleF
 		*flag.dst = fv.boolV
 	}
 	if itemsV, ok := v.prop("itemFields"); ok {
-		f.ItemFields, _, _, err = parseConsoleFields(file, id, itemsV, scope)
+		set, err := parseConsoleFields(file, id, itemsV, scope)
 		if err != nil {
 			return consoleField{}, err
 		}
+		f.ItemFields = set.fields
 	}
 	return f, nil
 }

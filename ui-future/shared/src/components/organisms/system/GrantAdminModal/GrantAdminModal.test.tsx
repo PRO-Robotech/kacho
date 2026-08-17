@@ -189,4 +189,32 @@ describe("GrantAdminModal", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId("grant-admin-modal-body")).toBeInTheDocument();
   });
+
+  // ── область поиска (#528) ───────────────────────────────────────────────────
+
+  it("ввод уходит запросом выделенным словом владельца, а не сужается в браузере", async () => {
+    listUsers.mockResolvedValue({ users: [user({ id: "usr-1", email: "ops@example.com" })] });
+    show();
+    await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText(/ищется по всему списку/i), { target: { value: "ops" } });
+
+    // `search="…"`, а НЕ `email CONTAINS "…"`: iam отвергает CONTAINS явно, и
+    // подстановка общего механизма списков уронила бы страницу целиком.
+    await waitFor(() => expect(listUsers).toHaveBeenCalledWith({ pageSize: "20", filter: 'search="ops"' }));
+  });
+
+  it("край сузил — в браузере не пересеиваем: показано то, что он прислал", async () => {
+    // Имя из профиля с введённым не совпадает; сужай мы ещё раз по нему, край
+    // ответил бы, а поле показало бы «нет совпадений» — то есть отрицание при
+    // положительном ответе сервера.
+    listUsers.mockResolvedValue({ users: [user({ id: "usr-9", email: "ops@example.com", display_name: "Иван" })] });
+    show();
+    await waitFor(() => expect(optionLabels().join(" ")).toContain("ops@example.com"));
+
+    fireEvent.change(screen.getByLabelText(/ищется по всему списку/i), { target: { value: "usr-9" } });
+
+    await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(2));
+    expect(optionLabels().join(" ")).toContain("ops@example.com");
+  });
 });

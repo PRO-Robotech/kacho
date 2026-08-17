@@ -20,6 +20,16 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Форма группы целей — ОДНА реализация на оба реестра (`@shared` и этот):
+// ветви проверки живости были заведены только в `@shared`, а `/nlb/*` рисует
+// этот модуль, поэтому три ветви из четырёх до пользователя не доезжали (#375).
+import {
+  healthCheckFields,
+  hydrateHealthCheck,
+  sanitizeHealthCheck,
+  sanitizeTargets,
+  targetsField,
+} from "@shared/lib/target-group-form";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
@@ -80,7 +90,7 @@ const FIELD_DESCRIPTION: FormField = {
 
 const FIELD_PROJECT_ID: FormField = {
   name: "project_id",
-  label: "Project",
+  label: "Проект",
   type: "string",
   hidden: true,
 };
@@ -338,12 +348,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "session_affinity",
-        label: "Session affinity",
+        label: "Привязка сессий",
         type: "enum",
         default: "FIVE_TUPLE",
         options: [
-          { value: "FIVE_TUPLE", label: "5-tuple (src ip+port, dst ip+port, proto)" },
-          { value: "CLIENT_IP_ONLY", label: "Client IP only (src ip)" },
+          { value: "FIVE_TUPLE", label: "По пяти полям (src ip+port, dst ip+port, proto)" },
+          { value: "CLIENT_IP_ONLY", label: "Только по адресу клиента" },
         ],
         description:
           "Привязка соединений к target: FIVE_TUPLE — по 5-tuple, CLIENT_IP_ONLY — только по IP клиента. Control-plane намерение (распределение трафика — data-plane).",
@@ -368,13 +378,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       deletion_protection: false,
       disabled_announce_zones: [],
       // vip_source — UI-представление источника VIP per-family (NlbVipSourceField).
-      // По умолчанию оба семейства в режиме «из подсети» с пустым выбором:
-      // семейство уходит в wire, только если у него задан источник. sanitize
-      // собирает oneof v4_source/v6_source (ровно один кейс на непустое семейство).
+      //
+      // IPv4 — в авто-режиме своей схемы («из подсети» для INTERNAL,
+      // нормализуется в «публичный» для EXTERNAL). IPv6 — ЯВНО не задаётся:
+      // двойной стек включается по решению арендатора, а не по умолчанию.
+      //
+      // Прежде оба семейства стояли в режиме «из подсети». Для INTERNAL это
+      // означало «пусто → семейство опущено», а для EXTERNAL (умолчание
+      // размещения!) режим схлопывался в «публичный», который источник даёт
+      // ВСЕГДА, — то есть внешний балансировщик по умолчанию уезжал с ОБОИМИ
+      // семействами, и отказаться от одного было нечем.
       vip_source: {
         _v4_mode: "subnet",
         v4: { subnet_id: "", address_id: "" },
-        _v6_mode: "subnet",
+        _v6_mode: "off",
         v6: { subnet_id: "", address_id: "" },
       },
       labels: {},
@@ -444,7 +461,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     accusative: "обработчик",
     plural: ENTITIES.listeners.plural,
     docs: [
-      { label: "Обработчики (Listeners)", href: "#" },
+      { label: "Обработчики", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     serviceTitle: SERVICES.nlb.title,
@@ -511,7 +528,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "default_target_group_id",
-        label: "Target group по умолчанию",
+        label: "Целевая группа по умолчанию",
         type: "ref",
         refResource: "target-groups",
         refProjectScoped: true,
@@ -545,7 +562,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     accusative: "целевую группу",
     plural: ENTITIES["target-groups"].plural,
     docs: [
-      { label: "Целевые группы (Target Groups)", href: "#" },
+      { label: "Целевые группы", href: "#" },
       { label: "Балансировщики нагрузки", href: "#" },
     ],
     genitive: "Целевой группы",
@@ -601,7 +618,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // int-секундное имя deregistration_delay_seconds — reserved и на Create,
         // и на Update. Форма редактирует число, sanitize/hydrate переводят.
         name: "deregistration_delay",
-        label: "Drain timeout (с)",
+        label: "Время вывода из-под нагрузки (с)",
         type: "int",
         required: false,
         default: 300,
@@ -610,52 +627,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description:
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
-      {
-        name: "health_check.tcp.port",
-        label: "HC: TCP-порт",
-        type: "int",
-        required: true,
-        default: 80,
-        min: 1,
-        max: 65535,
-        description: "TCP-порт для health-check'а (1..65535). По умолчанию 80.",
-      },
-      {
-        name: "health_check.interval",
-        label: "HC: интервал",
-        type: "string",
-        required: true,
-        default: "2s",
-        description: "Интервал между health-check'ами (Duration в формате 'Ns', range 1s-600s). По умолчанию 2s.",
-      },
-      {
-        name: "health_check.timeout",
-        label: "HC: таймаут",
-        type: "string",
-        required: true,
-        default: "1s",
-        description: "Таймаут одного health-check'а (Duration). По умолчанию 1s.",
-      },
-      {
-        name: "health_check.unhealthy_threshold",
-        label: "HC: failure threshold",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 2,
-        max: 10,
-        description: "Сколько failed checks подряд до перевода в UNHEALTHY (2..10). По умолчанию 2.",
-      },
-      {
-        name: "health_check.healthy_threshold",
-        label: "HC: success threshold",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 2,
-        max: 10,
-        description: "Сколько успешных checks подряд до перевода в HEALTHY (2..10). По умолчанию 2.",
-      },
+      ...healthCheckFields(),
+      targetsField(),
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -666,6 +639,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       region_id: "",
       port: 80,
       deregistration_delay: "300s",
+      _health_check_protocol: "tcp",
       health_check: {
         tcp: { port: 80 },
         interval: "2s",
@@ -675,9 +649,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       labels: {},
     }),
-    // Форма правит секунды числом; контракт принимает Duration.
+    // Форма правит секунды числом; контракт принимает Duration. Плюс ветвь
+    // проверки живости и ветвь идентичности каждой цели: форма держит поля всех
+    // ветвей, в теле остаётся по одной.
     sanitize: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = sanitizeTargets(sanitizeHealthCheck(obj));
       const raw = out["deregistration_delay"];
       // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
       // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
@@ -691,9 +667,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       else delete out["deregistration_delay"];
       return out;
     },
-    // Duration → число, которое рендерит int-поле формы.
+    // Duration → число, которое рендерит int-поле формы; заполненная ветвь
+    // проверки живости → выбор в дискриминаторе.
     hydrate: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = hydrateHealthCheck(obj);
       const raw = out["deregistration_delay"];
       if (typeof raw === "string" && raw.endsWith("s")) {
         const n = Number(raw.slice(0, -1));

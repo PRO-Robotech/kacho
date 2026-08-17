@@ -43,6 +43,11 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 	// Чтение квот арендатором (#365). Публичный слушатель, только чтение:
 	// величины назначает администратор облака на внутреннем слушателе iam.
 	vpcv1.QuotaService_ServiceDesc,
+	// Административная поверхность пула адресов на ПУБЛИЧНОМ слушателе (ADM-1
+	// S1): закрыто не место вызова, а вызывающий без права — каждый глагол
+	// гейтится `system_admin` @ `cluster`. Внутренний сервис остаётся на :9091
+	// на время окна расширения и снимается стадией S3.
+	vpcv1.AddressPoolService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 

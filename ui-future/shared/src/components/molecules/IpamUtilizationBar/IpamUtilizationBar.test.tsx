@@ -18,7 +18,7 @@ describe("IpamUtilizationBar", () => {
     const { container } = render(<IpamUtilizationBar total={256} used={64} />);
 
     expect(screen.getByText("64 / 256 (25%)")).toBeInTheDocument();
-    expect(within(screen.getByText("free:").parentElement!).getByText("192")).toBeInTheDocument();
+    expect(within(screen.getByText("свободно:").parentElement!).getByText("192")).toBeInTheDocument();
     expect(fillOf(container).style.width).toBe("25%");
   });
 
@@ -31,7 +31,7 @@ describe("IpamUtilizationBar", () => {
 
   it("уважает свободный остаток, присланный сервером, вместо своей разности", () => {
     render(<IpamUtilizationBar total={256} used={64} free={100} />);
-    expect(within(screen.getByText("free:").parentElement!).getByText("100")).toBeInTheDocument();
+    expect(within(screen.getByText("свободно:").parentElement!).getByText("100")).toBeInTheDocument();
   });
 
   it("пустой блок не делит на ноль", () => {

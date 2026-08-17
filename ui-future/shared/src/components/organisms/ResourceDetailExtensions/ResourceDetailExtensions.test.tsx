@@ -38,9 +38,9 @@ function draw(node: React.ReactNode) {
 }
 
 /** Дополнительные строки обзора, отрисованные как «подпись → значение». */
-function drawOverviewExtra(specId: string, data: Record<string, unknown>) {
+function drawOverviewExtra(specId: string, data: Record<string, unknown>): string[] {
   const items = detailExtension(specId)!.overviewExtra!(ctx(data));
-  draw(
+  const view = draw(
     <dl>
       {items.map((it, i) => (
         <div key={i}>
@@ -50,7 +50,10 @@ function drawOverviewExtra(specId: string, data: Record<string, unknown>) {
       ))}
     </dl>,
   );
-  return items.map((it) => it.label);
+  // Подпись строки — ReactNode (в неё кладут ⓘ-подсказку), поэтому возвращается
+  // ПОКАЗАННЫЙ текст, а не сам узел: `String(<узел>)` дал бы «[object Object]»
+  // для любой подписи, и сравнения ниже стали бы истинными при любой.
+  return [...view.container.querySelectorAll("dt")].map((dt) => dt.textContent ?? "");
 }
 
 describe("detailExtension — разрешение дополнения", () => {
