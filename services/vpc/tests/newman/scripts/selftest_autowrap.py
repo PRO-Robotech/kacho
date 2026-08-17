@@ -385,6 +385,42 @@ check("близнец-9: 403 объявлен исходом шага — НЕ �
       not wrapped(steps_of(bodydeny)[1]))
 
 # ---------------------------------------------------------------------------
+# 9а. АДРЕС ОПРОСА ОПЕРАЦИИ: шаг опрашивает ТУ переменную, которую назвали, и
+#     `id_expr` без захвата ОТВЕРГАЕТСЯ, а не принимается молча.
+#
+#     ПРЕДМЕТ. `id_expr` — выражение выбора id РЕСУРСА из `metadata`, и читается
+#     оно только вместе с `capture_id_to`. Кейс публичного пула передал его,
+#     рассчитывая перенаправить ОПРОС на свою переменную; генератор выражение
+#     принял, не прочёл и оставил в адресе литерал `{{opId}}`, которого в той
+#     суите не заполняет никто. Три шага опроса не утверждали ничего, пока
+#     страж неразрешённой подстановки не отказался отправлять запрос.
+#
+#     Исходов у такого поля три, и «принять и выбросить» — не один из них.
+# ---------------------------------------------------------------------------
+try:
+    gen.poll_operation_until_done(id_expr="pm.environment.get('adm1PoolOp')")
+    check("инъекция: id_expr без capture_id_to отвергается", False,
+          "выражение принято молча — вызывающий уверен, что опрос перенаправлен")
+except ValueError:
+    check("инъекция: id_expr без capture_id_to отвергается", True)
+
+_twin = gen.poll_operation_until_done(capture_id_to="zcAddrId",
+                                      id_expr="j.metadata && j.metadata.addressId")
+check("близнец-10: id_expr ВМЕСТЕ с захватом — законная пара, проходит",
+      _twin.path == "/operations/{{opId}}")
+
+_named = gen.poll_operation_until_done(op_var="adm1PoolOp")
+check("op_var меняет АДРЕС опроса", _named.path == "/operations/{{adm1PoolOp}}")
+check("op_var меняет и РАННИЙ ВЫХОД — адрес и страж читают одно имя",
+      any("pm.environment.get('adm1PoolOp')" in ln for ln in _named.test_script)
+      and not any("pm.environment.get('opId')" in ln for ln in _named.test_script))
+
+_default = gen.poll_operation_until_done()
+check("близнец-11: умолчание не изменилось — прочие суиты опрашивают opId",
+      _default.path == "/operations/{{opId}}"
+      and any("pm.environment.get('opId')" in ln for ln in _default.test_script))
+
+# ---------------------------------------------------------------------------
 # 10. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».
 # ---------------------------------------------------------------------------
 _ALL = (injected, neg, poll, manual, foreign, multi, multi404, authzfirst, grpccodes,

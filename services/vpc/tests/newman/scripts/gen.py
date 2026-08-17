@@ -2280,7 +2280,8 @@ def _wrap_own_fresh_reads(steps: List[Step], rename: bool = True) -> List[Step]:
 
 def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
                               id_expr: str = "", must_fail_code: int = 0,
-                              must_fail_message: str = "") -> Step:
+                              must_fail_message: str = "",
+                              op_var: str = "opId") -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
     потом fail если done остался false.
@@ -2329,8 +2330,27 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
     извлечением resource-id из `metadata`», записанная в самом хелпере.
 
     `id_expr` — необязательное выражение выбора поля id из `j.metadata` (по умолчанию
-    первое поле, чьё имя оканчивается на `Id`).
+    первое поле, чьё имя оканчивается на `Id`). ЧИТАЕТСЯ ТОЛЬКО ВМЕСТЕ С
+    `capture_id_to`: без него захватывать нечего, и молча принять выражение,
+    которое никто не прочтёт, — тот самый запрещённый исход «принято и
+    проигнорировано». Поэтому такая пара отвергается ЯВНО (см. ниже).
+
+    `op_var` — имя переменной окружения, в которой лежит id ОПРОСА. По умолчанию
+    `opId` — общая переменная, которую захватывает `save_from_response('j.id',
+    'opId')`. Кейс, ведущий НЕСКОЛЬКО операций одновременно, захватывает их в свои
+    переменные (`adm1PoolOp`, `adm1DelOp`) и обязан назвать нужную здесь: адрес
+    опроса и ранний выход читают ОДНО И ТО ЖЕ имя, поэтому разойтись они не могут.
+    Прежде адрес был вшит литералом `{{opId}}`, и кейс со своими переменными
+    опрашивал переменную, которую никто не заполняет: страж неразрешённой
+    подстановки отказывался отправлять запрос, а до его появления шаг уходил на
+    литеральный адрес и молча не утверждал ничего.
     """
+    if id_expr and not capture_id_to:
+        raise ValueError(
+            "id_expr без capture_id_to: выражение выбора id читается ТОЛЬКО при "
+            "захвате, поэтому принять его и не прочесть значило бы пообещать "
+            "вызывающему поведение, которого нет. Нужен другой опрос — назови "
+            "op_var; нужен захват — назови capture_id_to")
     _POLL_SEQ[0] += 1
     tail: List[str] = []
     if must_fail:
@@ -2379,7 +2399,7 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
     return Step(
         name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
-        path="/operations/{{opId}}",
+        path="/operations/{{" + op_var + "}}",
         pre_script=[
             # Note: cannot fully skip request in pre-script without aborting the suite.
             # Instead the test_script guards on empty opId or non-200 response.
@@ -2389,7 +2409,7 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
             # response is non-200, skip all poll assertions cleanly.
             # Nothing to poll: the preceding step was refused synchronously and minted no
             # Operation. This is the ONLY case in which the step asserts nothing.
-            "if (!pm.environment.get('opId')) {",
+            f"if (!pm.environment.get('{op_var}')) {{",
             "  pm.environment.unset('_pollCount');",
             "  return;",
             "}",
