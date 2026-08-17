@@ -40,7 +40,18 @@ cd "$ROOT"
 # а он-то как раз и стоит непосредственно перед отправкой.
 [ -n "${CI:-}" ] || bash "$ROOT/scripts/hooks/install.sh" notice || true
 
-fails=(); ran=0
+fails=(); skips=(); ran=0
+
+# ИСХОДОВ ТРИ, И ТРЕТИЙ НЕ ВЫЧИТАЕТСЯ ИЗ ВЕРДИКТА (#589). «Не выполнено» — это не
+# «прошло»: инструмента нет, зависимости не поставлены, у пакета нет предмета
+# проверки. Прежде такие случаи печатались строкой на экран и НЕ входили в итог,
+# поэтому «исполнено 24, отказов 2» молчало о трёх пакетах, которых никто не
+# смотрел. Считать их успехом нельзя, отказом — тоже: отказ означает, что предмет
+# есть и он сломан.
+skip() { # skip <имя> <причина>
+    printf '\n== %s\n   ПРОПУСК: %s — НЕ выполнено\n' "$1" "$2"
+    skips+=("$1 ($2)")
+}
 
 run() { # run <имя> <команда...>
     local name="$1"; shift
@@ -178,7 +189,7 @@ go_group() {
         mkdir -p "$ROOT/.cache/golangci-lint"
         GOLANGCI_LINT_CACHE=$PWD/.cache/golangci-lint run "golangci-lint" golangci-lint run
     else
-        echo -e "\n== golangci-lint\n   ПРОПУСК: не установлен — проверка НЕ выполнена"
+        skip "golangci-lint" "не установлен"
     fi
 
     # gosec запускается В ТОЙ ЖЕ ФОРМЕ, что в конвейере, и «та же форма» — это ТРИ
@@ -208,7 +219,7 @@ go_group() {
         # Без jq предикат конвейера не вычислить, а откатываться на код возврата
         # нельзя: он отвечает на другой вопрос и даёт ложное красное. Пропуск
         # называется пропуском — «не выполнено» не есть «находок нет».
-        echo -e "\n== gosec\n   ПРОПУСК: нет jq, предикат конвейера (SARIF level=error) не вычислить."
+        skip "gosec" "нет jq, предикат конвейера (SARIF level=error) не вычислить"
         echo "   Проверка НЕ выполнена. Поставьте jq — откат на код возврата дал бы"
         echo "   красное на находках ниже порога, то есть вердикт о другом вопросе."
     elif [ -z "$gosec_pin" ]; then
@@ -274,12 +285,12 @@ terraform_group() {
         case "$(uname -s)" in
             Linux)  os=linux ;;
             Darwin) os=darwin ;;
-            *) echo -e "\n== tofu\n   ПРОПУСК: $(uname -s) не поддержан этим прогоном — проверки НЕ выполнены"; return ;;
+            *) skip "tofu" "$(uname -s) не поддержан этим прогоном"; return ;;
         esac
         case "$(uname -m)" in
             x86_64|amd64)  arch=amd64 ;;
             aarch64|arm64) arch=arm64 ;;
-            *) echo -e "\n== tofu\n   ПРОПУСК: $(uname -m) не поддержан этим прогоном — проверки НЕ выполнены"; return ;;
+            *) skip "tofu" "$(uname -m) не поддержан этим прогоном"; return ;;
         esac
 
         printf '\n== tofu %s (%s_%s) — тот же артефакт, что ставит конвейер\n' "$TOFU_VERSION" "$os" "$arch"
@@ -368,7 +379,7 @@ tofu_examples() {
 
 helm_group() {
     if ! command -v helm > /dev/null; then
-        echo -e "\n== helm\n   ПРОПУСК: не установлен — проверки НЕ выполнены"; return
+        skip "helm" "не установлен"; return
     fi
     local c
     for c in "$ROOT"/services/*/deploy "$ROOT"/gateway/deploy "$ROOT"/deploy/helm/umbrella; do
@@ -383,17 +394,46 @@ helm_group() {
     fi
 }
 
+# Есть ли у пакета такой скрипт. ВЫВОДИТСЯ ИЗ package.json, а не из списка имён
+# пакетов: выписанный перечень («shared — библиотека») разошёлся бы с деревом
+# молча, ровно как разошлись три рукописных списка репозиториев до него. Пакет
+# сам объявляет, что у него есть; прогонщику остаётся это прочитать.
+has_npm_script() { # has_npm_script <каталог> <скрипт>
+    node -e 'const s=(require(process.argv[1]).scripts)||{};process.exit(s[process.argv[2]]?0:1)' \
+        "$1/package.json" "$2" 2> /dev/null
+}
+
 ui_group() {
     local m
+    if ! command -v node > /dev/null; then
+        skip "ui" "node не установлен"; return
+    fi
     for m in "$ROOT"/ui-future/*/package.json; do
-        local dir; dir="$(dirname "$m")"
-        [ -d "$dir/node_modules" ] || { echo -e "\n== ui $(basename "$dir")\n   ПРОПУСК: зависимости не установлены (npm ci --prefix) — НЕ выполнено"; continue; }
+        local dir name; dir="$(dirname "$m")"; name="$(basename "$dir")"
+        [ -d "$dir/node_modules" ] || { skip "ui $name" "зависимости не установлены (npm ci --prefix)"; continue; }
         # Прогон проб НЕ заменяет сборку: сборка гоняет строгую проверку типов и
         # роняет то, что пробы пропускают (неиспользованный импорт — реальный
         # случай). Поэтому обе, и в этом порядке.
-        run "ui $(basename "$dir"): typecheck" bash -c "cd '$dir' && npm run typecheck"
-        run "ui $(basename "$dir"): test" bash -c "cd '$dir' && npm test"
-        run "ui $(basename "$dir"): build" bash -c "cd '$dir' && npm run build"
+        #
+        # ОТСУТСТВИЕ СКРИПТА — НЕ ОТКАЗ (#589). `shared` — библиотека: своей сборки
+        # у него нет, а его пробы исполняются модулями-workspace (vpc, iam, system),
+        # которые включают `../shared/src` в свои roots. Прогонщик звал у него все
+        # три скрипта и получал два «Missing script» — то есть краснел ВСЕГДА, на
+        # исправном дереве. Прогон, красный по построению, перестаёт быть сигналом:
+        # следующий, кто увидит его красным, спишет на «оно и так красное».
+        #
+        # Пропуск при этом ВИДЕН: он идёт третьим числом итога и назван поимённо,
+        # поэтому «у пакета нет скрипта» нельзя прочитать как «пакет проверен».
+        # Снятый по ошибке `test` у продуктового модуля тоже попадёт сюда — молча
+        # исчезнуть из прогона он не может.
+        local s
+        for s in typecheck test build; do
+            if has_npm_script "$dir" "$s"; then
+                run "ui $name: $s" bash -c "cd '$dir' && npm run $s"
+            else
+                skip "ui $name: $s" "скрипта нет в package.json"
+            fi
+        done
     done
 }
 
@@ -421,7 +461,14 @@ case "$GROUP" in
         ;;
 esac
 
-printf '\n== итог: проверок исполнено %d, отказов %d\n' "$ran" "${#fails[@]}"
+printf '\n== итог: проверок исполнено %d, отказов %d, НЕ выполнено %d\n' \
+    "$ran" "${#fails[@]}" "${#skips[@]}"
+if [ "${#skips[@]}" -gt 0 ]; then
+    # Третье число печатается ВСЕГДА, когда оно ненулевое, и называет пропущенное
+    # поимённо: две цифры вместо трёх не сообщали, что часть предметов никто не
+    # смотрел, и «исполнено 24, отказов 0» читалось как полный зелёный.
+    printf '   не выполнено: %s\n' "${skips[*]}"
+fi
 if [ "${#fails[@]}" -gt 0 ]; then
     printf '   красное: %s\n' "${fails[*]}"
     exit 1
