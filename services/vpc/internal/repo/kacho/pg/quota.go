@@ -5,6 +5,7 @@ package pg
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -178,4 +179,82 @@ func MaterializeQuotas(ctx context.Context, ex QuotaExecutor, rows []kacho.Quota
 		return 0, helpers.WrapPgErr(err, "Quota", "")
 	}
 	return tag.RowsAffected(), nil
+}
+
+// nestedParentTable — таблица родителя для носителя вложенного вида.
+//
+// Отображение ЯВНОЕ и закрытое. Вывести таблицу из имени носителя нельзя:
+// `vpc.network` → `networks` совпадает, а `vpc.networkInterface` →
+// `network_interfaces` уже нет, и догадка здесь не отказывает громко — она
+// заводит догоняющие строки не для тех родителей либо ни для кого.
+//
+// Носитель, которого здесь нет, — отказ, а не тишина: молчание означало бы
+// вложенный предел, который объявлен и не действует, то есть ровно тот дефект,
+// ради которого эта ось и заводится.
+var nestedParentTable = map[string]string{
+	"vpc.network": "kacho_vpc.networks",
+}
+
+// MaterializeNestedDefaults заводит проектный резолв вложенных видов и
+// догоняющие строки учёта для УЖЕ существующих родителей.
+//
+// Догоняющие — вторая половина предмета, а не удобство. Строку учёта родителя
+// заводит триггер жизненного цикла на вставке родителя; сеть, созданная раньше
+// этой оси, такой строки не имеет и получить её задним числом не может. Списание
+// такую сеть пропускает (иначе оно отвергало бы подсети у всех существующих
+// арендаторов), поэтому без догоняющей записи предел не наступил бы там НИКОГДА.
+func (q *quotaWriter) MaterializeNestedDefaults(
+	ctx context.Context, rows []kacho.QuotaRow,
+) (int64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	var total int64
+	for _, r := range rows {
+		parent, ok := nestedParentTable[r.CarrierType]
+		if !ok {
+			return total, fmt.Errorf(
+				"quota: nested kind %s names carrier %q with no parent table — "+
+					"the ceiling would be stated and never applied", r.Kind, r.CarrierType)
+		}
+
+		const upsert = `
+			INSERT INTO kacho_vpc.nested_quota_defaults
+			    (project_id, kind, limit_value, source_scope, source_scope_id,
+			     limit_revision, account_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (project_id, kind) DO UPDATE
+			   SET limit_value     = EXCLUDED.limit_value,
+			       source_scope    = EXCLUDED.source_scope,
+			       source_scope_id = EXCLUDED.source_scope_id,
+			       limit_revision  = EXCLUDED.limit_revision,
+			       synced_at       = now(),
+			       updated_at      = now()`
+		if _, err := q.tx.Exec(ctx, upsert,
+			r.CarrierID, r.Kind, r.Limit, r.SourceScope, r.SourceScopeID,
+			r.LimitRevision, r.AccountID); err != nil {
+			return total, helpers.WrapPgErr(err, "Quota", "")
+		}
+
+		// Догоняющие строки. `ON CONFLICT DO NOTHING` сохраняет потребление уже
+		// заведённых: перезапись обнулила бы счёт родителя, который уже что-то
+		// держит.
+		backfill := fmt.Sprintf(`
+			INSERT INTO kacho_vpc.project_resource_quotas
+			    (carrier_type, carrier_id, kind, used, limit_value,
+			     source_scope, source_scope_id, limit_revision, account_id)
+			SELECT $1, p.id, $1, 0, $2, $3, $4, $5, $6
+			  FROM %s p
+			 WHERE p.project_id = $7
+			ON CONFLICT (carrier_type, carrier_id, kind) DO NOTHING`, parent)
+		tag, err := q.tx.Exec(ctx, backfill,
+			r.Kind, r.Limit, r.SourceScope, r.SourceScopeID, r.LimitRevision,
+			r.AccountID, r.CarrierID)
+		if err != nil {
+			return total, helpers.WrapPgErr(err, "Quota", "")
+		}
+		total += tag.RowsAffected()
+	}
+	return total, nil
 }
