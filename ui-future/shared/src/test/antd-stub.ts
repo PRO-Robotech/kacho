@@ -130,6 +130,20 @@ interface RadioGroupProps {
   children?: React.ReactNode;
 }
 
+/** Вариант переключателя. Настоящий принимает и объект, и голое значение. */
+interface SegmentedOption {
+  value: unknown;
+  label?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface SegmentedProps {
+  options?: Array<SegmentedOption | string | number>;
+  value?: unknown;
+  onChange?: (value: unknown) => void;
+  [key: string]: unknown;
+}
+
 interface SwitchProps {
   checked?: boolean;
   onChange?: (checked: boolean) => void;
@@ -634,7 +648,47 @@ export function antdStub(): Record<string, unknown> {
       },
     ),
     Row: Component,
-    Segmented: Component,
+    // Настоящий переключатель рисует варианты ВИДИМЫМ ТЕКСТОМ — по ним оператор
+    // и выбирает. Варианты приходят пропом `options`, детьми он их не получает,
+    // поэтому заменитель-`<div>` не показывал НИ ОДНОГО: свойство «какой выбор
+    // предложен» было ненаблюдаемо во всех девяти местах, где переключатель
+    // стоит (реестры ресурсов, ветвь спецификации интерфейса, панели ключей и
+    // токенов, страница ролей, источник VIP балансировщика, вид списка). Проба
+    // на таком дублёре зелена при любом составе вариантов — то есть хуже
+    // отсутствующей: слот занят, уверенность создана, предмета нет.
+    //
+    // ФОРМА ВЗЯТА У НАСТОЯЩЕГО, а не изобретена: `rc-segmented` рисует на
+    // вариант `<label>` с радио-полем внутри, и подпись — текст этого label'а.
+    // Отсюда доступное имя варианта, по которому проба его и находит. Роль или
+    // атрибут, которых настоящий компонент не производит, добавлять НЕЛЬЗЯ:
+    // утверждение окажется прибито к форме дублёра и переживёт продукт — так
+    // уже вышло с подписью-подсказкой у `Select` (#418).
+    //
+    // Отклонение допускается одно и только в сторону строгости: `disabled`
+    // варианта попадает на поле ввода, поэтому выбрать запрещённое нельзя — как
+    // и у настоящего. Дублёр, принимающий больше настоящего, прячет ровно тот
+    // дефект, ради которого его подставляют.
+    Segmented: ({ options, value, onChange, ...rest }: SegmentedProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        (options ?? []).map((raw) => {
+          const o: SegmentedOption =
+            typeof raw === "object" && raw !== null ? raw : { value: raw, label: String(raw) };
+          return React.createElement(
+            "label",
+            { key: String(o.value) },
+            React.createElement("input", {
+              type: "radio",
+              value: String(o.value),
+              checked: value === o.value,
+              disabled: Boolean(o.disabled),
+              onChange: () => onChange?.(o.value),
+            }),
+            o.label ?? String(o.value),
+          );
+        }),
+      ),
     Select,
     // `Skeleton` стоит на пути монтирования страниц реестра (заглушка загрузки
     // в `RepositoryTagsPanel`). Приехал сюда вместе со сведением окружения проб

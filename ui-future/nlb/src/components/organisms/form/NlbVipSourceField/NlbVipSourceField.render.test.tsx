@@ -13,7 +13,7 @@
 // auto arm renders a subnet selector with the placement in its placeholder. Both
 // are asserted from the rendered output, not from the props of a mocked widget.
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import type { ReactNode } from "react";
@@ -78,11 +78,10 @@ describe("VIP source picker follows the chosen placement", () => {
   // load balancer was inexpressible — while the service accepts a source for
   // just one family.
   //
-  // WHAT THIS PROBE DOES NOT REACH. The mode arms are an antd `Segmented`, whose
-  // options this harness's double does not render, so "the operator can pick it"
-  // is asserted by the browser probe instead. Reachable here — and asserted —
-  // is what the chosen arm produces: the explanation, and the absence of a
-  // selector to fill in.
+  // This probe asserts what the CHOSEN arm produces. Which arms are OFFERED is
+  // asserted separately, below: until #553 the shared double drew no options at
+  // all, so that statement was unreachable here and had to be deferred to the
+  // browser probe.
   it("declining a family renders an explanation and no selector", () => {
     withProviders(<NlbVipSourceField value={formValue("EXTERNAL_REGIONAL", { v6: "off" })} onChange={() => {}} />);
 
@@ -93,5 +92,59 @@ describe("VIP source picker follows the chosen placement", () => {
     expect(screen.getAllByText(/Публичный VIP выделяется платформой автоматически/).length).toBeGreaterThan(0);
     // The IPv4 line must not be the declined one.
     expect(screen.queryByText(/IPv4 Адрес не задаётся/)).toBeNull();
+  });
+});
+
+// WHICH ARMS THE OPERATOR IS OFFERED — the statement #543 was about.
+//
+// The arms live in an antd `Segmented`, whose options arrive as a prop. The
+// shared double used to render none of them, so this was not merely hard to
+// assert here: it was unobservable by construction, and any probe claiming it
+// would have been green whatever the picker offered (#553).
+//
+// The arm set is not cosmetic. `public {}` is the only source an EXTERNAL
+// placement accepts and `subnet_id` the only auto arm an INTERNAL one does, so
+// offering the wrong set means the operator can build a body the server rejects
+// — or cannot build the one it accepts at all.
+//
+// Both directions are asserted in every case: the arm that must be there, and
+// the arm of the other placement that must NOT be. A one-sided assertion would
+// pass just as well on a picker that offers everything to everyone.
+describe("VIP source picker: which arms are offered", () => {
+  const armNames = (name: RegExp | string) => screen.queryAllByRole("radio", { name });
+
+  it("offers the public arm on an EXTERNAL placement, and not the subnet arm", () => {
+    withProviders(<NlbVipSourceField value={formValue("EXTERNAL_REGIONAL")} onChange={() => {}} />);
+
+    // Two families, one picker each — hence two of every arm.
+    expect(armNames("Публичный (авто)")).toHaveLength(2);
+    expect(armNames("Линк адреса")).toHaveLength(2);
+    expect(armNames("Не задавать")).toHaveLength(2);
+    expect(armNames("Из подсети (авто)")).toHaveLength(0);
+  });
+
+  it("offers the subnet arm on an INTERNAL placement, and not the public one", () => {
+    withProviders(<NlbVipSourceField value={formValue("INTERNAL_ZONAL")} onChange={() => {}} />);
+
+    expect(armNames("Из подсети (авто)")).toHaveLength(2);
+    expect(armNames("Линк адреса")).toHaveLength(2);
+    expect(armNames("Не задавать")).toHaveLength(2);
+    expect(armNames("Публичный (авто)")).toHaveLength(0);
+  });
+
+  // Offered and SELECTABLE are different claims: an arm that is drawn but does
+  // not move the form is exactly the defect the picker had before #543, only
+  // one step later in the chain.
+  it("picking an arm writes the family mode into the form object", () => {
+    let latest: Record<string, unknown> = formValue("EXTERNAL_REGIONAL");
+    withProviders(<NlbVipSourceField value={latest} onChange={(next) => (latest = next)} />);
+
+    // The IPv4 picker is the first of the two.
+    fireEvent.click(armNames("Не задавать")[0]);
+
+    expect((latest.vip_source as Record<string, unknown>)._v4_mode).toBe("off");
+    // (+) paired control: the other family keeps the value it started with, so
+    // "writes the mode" is not satisfied by a handler that rewrites both.
+    expect((latest.vip_source as Record<string, unknown>)._v6_mode).toBe("subnet");
   });
 });
