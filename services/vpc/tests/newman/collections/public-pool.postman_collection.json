@@ -190,8 +190,12 @@
                   "});",
                   "const j = pm.response.json();",
                   "pm.test('мутация отвечает Operation, а не ресурсом', () => pm.expect(j).to.have.property('id'));",
-                  "pm.environment.set('adm1PoolOp', j.id);",
-                  "pm.environment.set('adm1PoolId', (j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id)) || '');"
+                  "pm.environment.set('adm1PoolOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('adm1PoolOpId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -208,13 +212,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{adm1PoolOp}}",
+              "raw": "{{baseUrl}}/operations/{{adm1PoolOpId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{adm1PoolOp}}"
+                "{{adm1PoolOpId}}"
               ]
             }
           },
@@ -224,7 +228,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('adm1PoolOp')) {",
+                  "if (!pm.environment.get('adm1PoolOpId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
@@ -247,19 +251,14 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
-                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
-                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
-                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
-                  "(function () {",
-                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
-                  "  if (_po.error) {",
-                  "    pm.environment.unset('adm1PoolId');",
-                  "  }",
-                  "  pm.test('operation succeeded (no phantom adm1PoolId)', function () {",
-                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
+                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('adm1PoolId');",
+                  "} else {",
+                  "  const _cid = (j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id));",
+                  "  if (_cid) pm.environment.set('adm1PoolId', String(_cid));",
+                  "  else pm.environment.unset('adm1PoolId');",
+                  "}"
                 ]
               }
             }
@@ -762,9 +761,12 @@
                   "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
-                  "const j = pm.response.json();",
-                  "pm.environment.set('adm1EqOp', j.id);",
-                  "pm.environment.set('adm1EqPubId', (j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id)) || '');"
+                  "pm.environment.set('adm1EqOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('adm1EqOpId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -781,13 +783,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{adm1EqOp}}",
+              "raw": "{{baseUrl}}/operations/{{adm1EqOpId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{adm1EqOp}}"
+                "{{adm1EqOpId}}"
               ]
             }
           },
@@ -797,7 +799,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('adm1EqOp')) {",
+                  "if (!pm.environment.get('adm1EqOpId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
@@ -820,19 +822,14 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
-                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
-                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
-                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
-                  "(function () {",
-                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
-                  "  if (_po.error) {",
-                  "    pm.environment.unset('adm1EqPubId');",
-                  "  }",
-                  "  pm.test('operation succeeded (no phantom adm1EqPubId)', function () {",
-                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
-                  "  });",
-                  "})();"
+                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('adm1EqPubId');",
+                  "} else {",
+                  "  const _cid = (j.metadata && (j.metadata.addressPoolId || j.metadata.address_pool_id));",
+                  "  if (_cid) pm.environment.set('adm1EqPubId', String(_cid));",
+                  "  else pm.environment.unset('adm1EqPubId');",
+                  "}"
                 ]
               }
             }
@@ -1320,7 +1317,12 @@
                   "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
-                  "pm.environment.set('adm1DelOp', pm.response.json().id);"
+                  "pm.environment.set('adm1DelOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('adm1DelOpId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -1337,13 +1339,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{adm1DelOp}}",
+              "raw": "{{baseUrl}}/operations/{{adm1DelOpId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{adm1DelOp}}"
+                "{{adm1DelOpId}}"
               ]
             }
           },
@@ -1353,7 +1355,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('adm1DelOp')) {",
+                  "if (!pm.environment.get('adm1DelOpId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
