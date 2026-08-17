@@ -1,79 +1,25 @@
-// Ветвь контракта, достижимая из создания, обязана быть выразима формой (#375).
+// Ветви контракта, достижимые из создания, — против формы реестра `@shared` (#375).
 //
-// ПРЕДМЕТ. Возможность, объявленная контрактом и покрытая типами, но не имеющая
-// выражения в форме, не работает НИ ПРИ КАКОМ вводе. Это хуже отсутствия: она
-// задокументирована, её ищут и о ней спрашивают. Класс тихий — код собирается,
-// каждая сторона по отдельности выглядит исправно, а расходятся они в третьем
-// месте.
+// Этот реестр обслуживает vpc/iam/system. Модули `compute`, `nlb`, `registry`,
+// `storage` несут СВОИ реестры и спрашиваются своими пробами: правка здесь до
+// них не доезжает, и именно так три ветви проверки живости прожили в дереве
+// «исправленными» — в `@shared` они были, а `/nlb/*` рисует модуль `nlb`.
 //
-// ИСТОЧНИК ИСТИНЫ — дерево контракта. Ветви читаются из `.proto`, а не
-// выписываются здесь: добавленная в контракт ветвь роняет эту пробу сама, не
-// дожидаясь, пока кто-нибудь вспомнит про форму.
-//
-// ЧТО ЗНАЧИТ «ВЫРАЗИМА». У формы есть поле, чьё имя ведёт в эту ветвь
-// (`health_check.http.path` → ветвь `http`). Ветвь без единого поля не
-// выразима: выбрать её пользователю нечем.
-//
-// Проба несёт: перепись прочитанного, контроль в обе стороны и самоистечение —
-// запись про ветвь, которой в контракте больше нет, объявляется находкой.
+// Разбор контракта — общий (`@shared/test/oneof-branch-coverage`): два места об
+// одном предмете разошлись бы на первой же новой ветви.
 
-import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-
-import { REGISTRY } from "./resource-registry";
-import type { FormField } from "./form-schema";
-
-const REPO_ROOT = resolve(process.cwd(), "../..");
-const PROTO = join(REPO_ROOT, "proto", "kacho", "cloud");
-
-/**
- * Ветви `oneof <name>` внутри `message <msg>` — по тексту контракта.
- *
- * Разбор нарочно узкий: ищется именно объявленное сообщение и именно
- * поимённая группа внутри него. Широкий разбор («любой oneof в файле») собрал бы
- * ветви соседних сообщений и молча раздул бы ожидание.
- */
-function oneofBranches(relPath: string, message: string, oneofName: string): string[] {
-  const text = readFileSync(join(PROTO, relPath), "utf8");
-  const msgStart = text.search(new RegExp(`^message\\s+${message}\\s*\\{`, "m"));
-  if (msgStart < 0) throw new Error(`в ${relPath} нет сообщения ${message} — контракт разошёлся с этой пробой`);
-  const oneofStart = text.indexOf(`oneof ${oneofName}`, msgStart);
-  if (oneofStart < 0) throw new Error(`в ${message} нет группы ${oneofName} — контракт разошёлся с этой пробой`);
-  const open = text.indexOf("{", oneofStart);
-  const close = text.indexOf("}", open);
-  const body = text
-    .slice(open + 1, close)
-    .split("\n")
-    .map((l) => l.replace(/\/\/.*$/, "").trim())
-    .filter(Boolean);
-  const branches: string[] = [];
-  for (const line of body) {
-    // `TcpOptions tcp = 6;` — тип, имя, номер. `option (...)` веткой не является.
-    const m = /^[A-Za-z_][\w.]*\s+([a-z_][\w]*)\s*=\s*\d+\s*;/.exec(line);
-    if (m) branches.push(m[1]);
-  }
-  return branches;
-}
-
-/** Все имена полей формы ресурса — включая скрытые: они тоже уезжают в тело. */
-function fieldNames(specId: string): string[] {
-  const fields: FormField[] = REGISTRY[specId]?.fields ?? [];
-  return fields.map((f) => f.name);
-}
-
-/** Ветви, у которых нет ни одного поля формы под своим префиксом. */
-function unexpressible(specId: string, prefix: string, branches: string[]): string[] {
-  const names = fieldNames(specId);
-  return branches.filter((b) => !names.some((n) => n === `${prefix}.${b}` || n.startsWith(`${prefix}.${b}.`)));
-}
-
-// ── объём осмотренного ───────────────────────────────────────────────────────
+import { REGISTRY, SG_RULE_TARGET_FIELD, sanitizeSgRule } from "./resource-registry";
+import { oneofBranches, unexpressibleBranches } from "@shared/test/oneof-branch-coverage";
 
 describe("объём осмотренного — ветви читаются из контракта, а не из этого файла", () => {
   it("контракт проверки живости прочитан, и группа в нём найдена", () => {
-    const branches = oneofBranches("loadbalancer/v1/health_check.proto", "HealthCheck", "options");
     // Ровно четыре — если контракт заведёт пятую, ожидание ниже покраснеет само.
-    expect(branches).toEqual(["tcp", "http", "https", "grpc"]);
+    expect(oneofBranches("loadbalancer/v1/health_check.proto", "HealthCheck", "options")).toEqual([
+      "tcp",
+      "http",
+      "https",
+      "grpc",
+    ]);
   });
 
   it("контракт статического маршрута прочитан, и обе группы в нём найдены", () => {
@@ -91,26 +37,47 @@ describe("объём осмотренного — ветви читаются и
     expect(() => oneofBranches("vpc/v1/route_table.proto", "StaticRoute", "нет_такой")).toThrow(/нет группы/);
   });
 
+  it("разбор видит ветвь, объявленную С ОПЦИЕЙ — иначе «ветвей нет» зеленит всё", () => {
+    // `string subnet_id = 2 [(length) = "<=50"];` — ветвь с хвостом опции.
+    // Разбор без него возвращал для этой группы пустой список, то есть
+    // утверждал «ветвей нет», и сверка проходила при любой форме.
+    expect(oneofBranches("vpc/v1/address_service.proto", "InternalIpv4AddressSpec", "scope")).toEqual(["subnet_id"]);
+    expect(oneofBranches("vpc/v1/address_service.proto", "InternalIpv6AddressSpec", "scope")).toEqual(["subnet_id"]);
+  });
+
+  it("разбор читает ОБЪЯВЛЕНИЕ группы, а не упоминание её имени в комментарии", () => {
+    // У `SecurityGroupRuleSpec` комментарий о снятой ветви называет `oneof
+    // target` на 35 строк раньше самой группы, и поиск подстрокой уводил разбор
+    // в соседнюю группу `protocol`. Проба при этом краснела — но не о том.
+    expect(oneofBranches("vpc/v1/security_group_service.proto", "SecurityGroupRuleSpec", "target")).toEqual([
+      "cidr_blocks",
+      "security_group_id",
+      "cidr_group_id",
+    ]);
+    expect(oneofBranches("vpc/v1/security_group_service.proto", "SecurityGroupRuleSpec", "protocol")).toEqual([
+      "protocol_name",
+      "protocol_number",
+    ]);
+  });
+
   it("сопоставитель формы различает — контроль в обе стороны", () => {
     // Ветвь, поля под которую заведомо нет, обязана быть названа невыразимой.
-    expect(unexpressible("target-groups", "health_check", ["заведомо_нет"])).toEqual(["заведомо_нет"]);
+    expect(unexpressibleBranches(REGISTRY["target-groups"], "health_check", ["заведомо_нет"])).toEqual(["заведомо_нет"]);
     // А та, под которую поле есть, — не обязана.
-    expect(unexpressible("target-groups", "health_check", ["tcp"])).toEqual([]);
+    expect(unexpressibleBranches(REGISTRY["target-groups"], "health_check", ["tcp"])).toEqual([]);
   });
 });
-
-// ── сами ветви ───────────────────────────────────────────────────────────────
 
 describe("каждая ветвь проверки живости выразима формой группы целей", () => {
   it("ни одна ветвь не осталась без поля", () => {
     const branches = oneofBranches("loadbalancer/v1/health_check.proto", "HealthCheck", "options");
-    expect(unexpressible("target-groups", "health_check", branches)).toEqual([]);
+    expect(unexpressibleBranches(REGISTRY["target-groups"], "health_check", branches)).toEqual([]);
   });
 
   it("и поля непустых ветвей доходят до тела запроса", () => {
     // Ветвь `http` несёт пять полей контракта; форма, знающая одно из них
     // (порт), выразила бы ветвь формально и не дала бы задать ни путь, ни коды.
-    const names = fieldNames("target-groups");
+    const names = (REGISTRY["target-groups"].fields ?? []).map((f) => f.name);
     for (const f of ["path", "expected_codes", "host", "headers"]) {
       expect(names).toContain(`health_check.http.${f}`);
       expect(names).toContain(`health_check.https.${f}`);
@@ -145,6 +112,76 @@ describe("каждая ветвь проверки живости выразим
       health_check: { tcp: { port: 80 }, interval: "2s" },
     }) as { health_check: Record<string, unknown> };
     expect(Object.keys(body.health_check).sort()).toEqual(["interval", "tcp"]);
+  });
+});
+
+describe("цели группы задаются при СОЗДАНИИ, а не только после него", () => {
+  it("ни одна ветвь идентичности цели не осталась без поля", () => {
+    const branches = oneofBranches("loadbalancer/v1/target_group.proto", "Target", "identity");
+    expect(unexpressibleBranches(REGISTRY["target-groups"], "targets", branches)).toEqual([]);
+  });
+
+  it("выбранная ветвь идентичности уезжает в тело ОДНА", () => {
+    const body = REGISTRY["target-groups"].sanitize!({
+      targets: [
+        { _identity_kind: "ip_ref", ip_ref: { subnet_id: "sub-1", address: "10.0.0.5" }, nic_id: "nic-1", weight: 7 },
+      ],
+    }) as { targets: Array<Record<string, unknown>> };
+    expect(body.targets).toEqual([{ ip_ref: { subnet_id: "sub-1", address: "10.0.0.5" }, weight: 7 }]);
+  });
+
+  it("пустой перечень целей не уезжает вовсе — положительный контроль", () => {
+    const body = REGISTRY["target-groups"].sanitize!({ targets: [] }) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("targets");
+  });
+
+  it("недозаполненная строка цели выбрасывается, заполненная — нет", () => {
+    // Отрицание в паре с положительным: без него «выбрасывает пустые» могло бы
+    // означать «выбрасывает все». Полнота считается ПО ВЫБРАННОЙ ВЕТВИ — так же,
+    // как у статического маршрута, где счёт по одному полю молча терял шлюз.
+    const body = REGISTRY["target-groups"].sanitize!({
+      targets: [
+        { _identity_kind: "ip_ref", ip_ref: { subnet_id: "sub-1" } },
+        { _identity_kind: "instance_id", instance_id: "ins-9" },
+      ],
+    }) as { targets: Array<Record<string, unknown>> };
+    expect(body.targets).toEqual([{ instance_id: "ins-9" }]);
+  });
+});
+
+describe("зеркало: форма не называет ветви, которой у контракта НЕТ", () => {
+  it("перечень целей правила совпадает с группой контракта — по составу", () => {
+    // Направление, обратное всему остальному в этом файле. Ветвь, снятая с
+    // контракта, но оставшаяся в форме, тоже не работает ни при каком вводе:
+    // край выбрасывает незнакомый ключ молча, и правило уезжает без цели.
+    const contract = oneofBranches("vpc/v1/security_group_service.proto", "SecurityGroupRuleSpec", "target");
+    expect(Object.values(SG_RULE_TARGET_FIELD).sort()).toEqual([...contract].sort());
+  });
+
+  it("вид цели вне перечня не оставляет НИ ОДНОЙ ветви — «неизвестно» не значит «что было»", () => {
+    // `predefined` был четвёртым видом цели и снят вместе со своей ветвью
+    // контракта. Черновик, пришедший с таким видом, не вправе уехать с чужой
+    // ветвью: тело с двумя целями сервер отвергает целиком, а тело с не той
+    // целью — принимает, и правило означает не то, что показано.
+    const out = sanitizeSgRule({
+      direction: "INGRESS",
+      _target_kind: "predefined",
+      cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] },
+      security_group_id: "sg-1",
+      cidr_group_id: "cg-1",
+    }) as Record<string, unknown>;
+    for (const field of Object.values(SG_RULE_TARGET_FIELD)) expect(out).not.toHaveProperty(field);
+  });
+
+  it("известный вид цели по-прежнему оставляет СВОЮ ветвь — положительный контроль", () => {
+    const out = sanitizeSgRule({
+      direction: "INGRESS",
+      _target_kind: "cidr-group",
+      cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] },
+      cidr_group_id: "cg-1",
+    }) as Record<string, unknown>;
+    expect(out.cidr_group_id).toBe("cg-1");
+    expect(out).not.toHaveProperty("cidr_blocks");
   });
 });
 

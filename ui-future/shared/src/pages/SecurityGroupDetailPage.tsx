@@ -28,7 +28,6 @@ interface SgRule {
   security_group_id?: string;
   /** Третья ветвь `oneof target` — ссылка на именованный набор префиксов. */
   cidr_group_id?: string;
-  predefined_target?: string;
 }
 
 function protocolLabel(r: SgRule): string {
@@ -53,7 +52,11 @@ function targetParts(r: SgRule): { kind: string; value: string } {
     return { kind: "CIDR", value: [...v4, ...v6].join(", ") || "—" };
   }
   if (r.security_group_id) return { kind: "SG", value: r.security_group_id };
-  if (r.predefined_target) return { kind: "Predefined", value: r.predefined_target };
+  // Третья ветвь показывается наравне с двумя первыми. Прежде на её месте стояла
+  // ветвь, СНЯТАЯ с контракта: правило со ссылкой на именованный набор
+  // префиксов показывалось прочерком — то есть страница утверждала, что цели у
+  // правила нет, при живой цели (#375).
+  if (r.cidr_group_id) return { kind: "Набор префиксов", value: r.cidr_group_id };
   return { kind: "—", value: "—" };
 }
 
