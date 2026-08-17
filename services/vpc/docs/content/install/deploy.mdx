@@ -61,9 +61,14 @@ helm-values покрывает оба binary.
     <tr><td><code>kacho-migrator up [--target &lt;version&gt;]</code></td><td>Применить миграции до последней (или до указанной версии)</td></tr>
     <tr><td><code>kacho-migrator down [--target &lt;version&gt;]</code></td><td>Откатить последнюю миграцию (или вниз до версии)</td></tr>
     <tr><td><code>kacho-migrator status</code></td><td>Показать примененные / ожидающие миграции</td></tr>
-    <tr><td><code>kacho-migrator create &lt;name&gt; [--dir &lt;path&gt;]</code></td><td>Сгенерировать файл новой миграции</td></tr>
   </tbody>
 </table>
+
+Команды генерации файла миграции у CLI **нет**. Имя новой миграции выводится из
+номера задачи и пишется рукой — `internal/migrations/539001_add_route_table.sql`,
+где `539` — номер задачи (тот же, что в имени ветки), а `001` — порядковый номер
+миграции внутри этой задачи. Разбор решения —
+`docs/architecture/migration-version-namespace.md` в корне монорепо.
 
 Верхнеуровневые флаги: `--dialect postgres|cockroach` (по умолчанию `postgres`),
 `--dsn <connection-string>`.

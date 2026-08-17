@@ -3,14 +3,13 @@
 
 // postgres.go — основная реализация [Dialect] для PostgreSQL через goose + pgx
 // driver. Логика вынесена в отдельный тип, чтобы добавлять другие диалекты без
-// if-ветвей в Runner: Runner.Up/Down/Status/Create только делегирует в
+// if-ветвей в Runner: Runner.Up/Down/Status только делегирует в
 // Dialect-impl.
 package migrator
 
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -84,21 +83,6 @@ func (p *postgresDialect) Status(ctx context.Context, dsn string, fsys fs.FS, di
 	}
 	_ = out // goose v3 пишет в свой logger; redirect — через goose.SetLogger
 	return goose.StatusContext(ctx, db, dir)
-}
-
-func (p *postgresDialect) Create(physDir, name string) error {
-	if name == "" {
-		return errors.New("migration name is empty")
-	}
-	if physDir == "" {
-		return errors.New("physical migrations directory is empty (--dir)")
-	}
-	// goose.Create не требует подключения к БД и BaseFS — пишет на диск.
-	// SetDialect нужен только чтобы goose знал, какой шаблон комментариев писать.
-	if err := goose.SetDialect(p.Spec().GooseDialect); err != nil {
-		return fmt.Errorf("goose set dialect %q: %w", p.Spec().GooseDialect, err)
-	}
-	return goose.Create(nil, physDir, name, "sql")
 }
 
 // openPgxDB и setupGoose — helpers postgres-диалекта (pgx driver +

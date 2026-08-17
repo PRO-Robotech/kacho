@@ -124,9 +124,10 @@ func TestMigrationVersionNamespace_ProvenByInjection(t *testing.T) {
 	})
 
 	t.Run("метка времени вместо номера задачи — краснеет", func(t *testing.T) {
-		// Ровно то, что выдаёт `migrator create` (goose без SetSequential).
-		// Форма исполнима, в дереве не встречается ни разу и столкновение не
-		// исключает — только делает менее вероятным.
+		// Ровно то, что выдаёт `goose.Create` без SetSequential. Глагол
+		// `migrator create`, который его звал, снят (#566) — но форма остаётся
+		// написуемой рукой, а столкновение она не исключает, только делает
+		// менее вероятным.
 		got := synthFindings(t, synthA, synthB, synthC,
 			synthDir+"/20260817042704_from_migrator_create.sql")
 		if len(got) != 1 || !strings.Contains(got[0], "20260817042704") {
