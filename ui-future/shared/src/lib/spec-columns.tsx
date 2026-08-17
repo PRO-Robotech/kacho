@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { Typography } from "antd";
 import type { Column } from "@shared/components/organisms/ResourceTable";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
@@ -197,6 +198,18 @@ export function formatCellByFormat(
 ): ReactNode {
   const v = getByPath(row, c.path);
   switch (c.format) {
+    case "bool":
+      // Булево — ФАКТ о ресурсе, названный следствием (правило 6 `ui.md`). Без
+      // этой ветки булево уезжало в умолчание и печаталось как `true` —
+      // служебное слово вместо факта; так делал и общий реестр (колонка «По
+      // умолчанию» у типа диска).
+      //
+      // Отсутствие значения и ложь — РАЗНЫЕ утверждения: первое про ответ
+      // сервера, второе про ресурс. Поэтому непришедшее поле остаётся прочерком,
+      // а не превращается в «нет».
+      if (v == null) return <Typography.Text type="secondary">—</Typography.Text>;
+      if (!c.boolLabels) return <Typography.Text type="secondary">—</Typography.Text>;
+      return <BoolFact value={v} yes={c.boolLabels.yes} no={c.boolLabels.no} />;
     case "status":
       return <StatusBadge state={typeof v === "string" ? v : undefined} />;
     case "uid-short":

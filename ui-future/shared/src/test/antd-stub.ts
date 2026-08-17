@@ -110,6 +110,12 @@ interface MenuItemProps {
   label?: React.ReactNode;
   type?: string;
   disabled?: boolean;
+  /** Роль пункта. Настоящий пункт БЕРЁТ её из props и лишь по умолчанию ставит
+   *  `menuitem` — см. примечание у `Menu` ниже. */
+  role?: string;
+  id?: string;
+  "aria-selected"?: boolean;
+  "aria-controls"?: string;
 }
 
 interface MenuProps {
@@ -117,6 +123,10 @@ interface MenuProps {
   selectedKeys?: string[];
   onClick?: (info: { key: string }) => void;
   children?: React.ReactNode;
+  /** Роль корня. Настоящее меню кладёт свои `role: "menu"` ДО `...restProps`,
+   *  поэтому переданная роль побеждает — см. примечание у `Menu` ниже. */
+  role?: string;
+  "aria-orientation"?: "horizontal" | "vertical";
   [key: string]: unknown;
 }
 
@@ -963,15 +973,29 @@ export function antdStub(): Record<string, unknown> {
     // Сверено с собранным `antd` в дереве: корень — `<ul role="menu">`; пункт —
     // `<li role="menuitem">` с `aria-disabled` и классами
     // `ant-menu-item{,-selected,-disabled}`; разделитель — `<li role="separator"
-    // class="ant-menu-item-divider">`. Выбранность помечается КЛАССОМ, а не
-    // `aria-selected`: его настоящий пункт ставит только при `role="option"`.
+    // class="ant-menu-item-divider">`. Выбранность СВОЮ настоящий пункт помечает
+    // КЛАССОМ, а не `aria-selected`: сам он ставит его только при `role="option"`.
+    //
+    // РОЛЬ — НАСТРАИВАЕМАЯ, и это тоже форма настоящего, а не послабление дублёра.
+    // Корень кладёт `role: "menu"` ДО `...restProps`, пункт вычисляет роль как
+    // `role || "menuitem"` и спреадит остаток props на `<li>`. Значит вызывающий
+    // вправе объявить рейл набором ВКЛАДОК (`role="tablist"` + `role="tab"` +
+    // собственный `aria-selected`), и настоящее меню это донесёт. Проверено не
+    // чтением исходника, а РЕНДЕРОМ собранного antd 6.5.4 из дерева: на вход
+    // `role="tablist"` + пункты с `role="tab"`/`id`/`aria-selected`/`aria-controls`
+    // он отдаёт `<ul role="tablist" aria-orientation="vertical">` и `<li
+    // role="tab" id=… aria-selected=… aria-controls=…>` с ТЕМИ ЖЕ классами
+    // `ant-menu-item{,-selected}`. Дублёр пропускает названные атрибуты и НЕ
+    // пропускает прочие: он уже сужение настоящего (тот спреадит весь остаток),
+    // и это отклонение в сторону строгости — проба, которой понадобится ещё один
+    // атрибут, обязана добавить его сюда, а не получить молча.
     //
     // Отклонение допускается одно и только в сторону строгости: запрещённый пункт
     // не зовёт обработчик — как и у настоящего.
-    Menu: ({ items, selectedKeys, onClick, children }: MenuProps) =>
+    Menu: ({ items, selectedKeys, onClick, children, role, "aria-orientation": ariaOrientation }: MenuProps) =>
       React.createElement(
         "ul",
-        { role: "menu" },
+        { role: role ?? "menu", "aria-orientation": ariaOrientation },
         (items ?? []).map((item, i) =>
           item.type === "divider"
             ? React.createElement("li", {
@@ -983,7 +1007,10 @@ export function antdStub(): Record<string, unknown> {
                 "li",
                 {
                   key: item.key ?? i,
-                  role: "menuitem",
+                  role: item.role ?? "menuitem",
+                  id: item.id,
+                  "aria-selected": item["aria-selected"],
+                  "aria-controls": item["aria-controls"],
                   "aria-disabled": Boolean(item.disabled),
                   className: [
                     "ant-menu-item",
