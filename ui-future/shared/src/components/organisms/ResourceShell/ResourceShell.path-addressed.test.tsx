@@ -133,6 +133,27 @@ function showCard(spec: ResourceSpec, uid: string) {
   );
 }
 
+/** Тот же ресурс, но открытый по адресу, который НАЗЫВАЕТ родителя. Имя
+ *  параметра маршрута совпадает с именем подстановки — в этом всё правило
+ *  связи. */
+function showCardUnderParent(spec: ResourceSpec, registryId: string, uid: string) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[`/projects/prj-1/registry/registries/${registryId}/${spec.route}/${uid}`]}>
+        <PageHeaderSlotProvider>
+          <Routes>
+            <Route
+              path="/projects/:projectId/registry/registries/:registryId/:route/:uid/*"
+              element={<ResourceShell spec={spec} />}
+            />
+          </Routes>
+        </PageHeaderSlotProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 afterEach(() => {
   globalThis.fetch = realFetch;
   localStorage.clear();
@@ -161,6 +182,50 @@ describe("карточка ресурса, адресуемого путём", (
     // которого никто не спрашивал.
     expect(await screen.findByText(/родител/i)).toBeInTheDocument();
     expect(screen.queryByText(/не найден/i)).not.toBeInTheDocument();
+  });
+
+  it("адрес, называющий родителя, закрывает подстановку и запрос уходит", async () => {
+    // Тот же ресурс, что в отрицаниях выше, и та же спека — меняется ТОЛЬКО
+    // адрес страницы. Значит утверждение здесь про источник сегмента, а не про
+    // удачную фикстуру: маршрут назвал родителя, и запрос собрался.
+    const calls = stubApi({
+      "/registry/v1/registries/reg-1/repositories/nginx": {
+        name: "nginx",
+        registry_id: "reg-1",
+        created_at: CREATED,
+        labels: {},
+      },
+    });
+    showCardUnderParent(PATH_ADDRESSED, "reg-1", "nginx");
+
+    await waitFor(() => expect(calls).toContain("/registry/v1/registries/reg-1/repositories/nginx"));
+    expect(calls.filter((p) => p.includes("{"))).toEqual([]);
+    expect(screen.queryByText(/Адрес неполон/i)).not.toBeInTheDocument();
+  });
+
+  it("НЕ ТОТ параметр маршрута подстановку не закрывает", async () => {
+    // Связь держится совпадением имён, а не порядком сегментов. Маршрут,
+    // называющий родителя иначе, обязан оставить адрес неполным — иначе
+    // «закрылось» означало бы «подставилось хоть что-нибудь».
+    const calls = stubApi({});
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/projects/prj-1/registry/registries/reg-1/repositories/nginx"]}>
+          <PageHeaderSlotProvider>
+            <Routes>
+              <Route
+                path="/projects/:projectId/registry/registries/:someOtherName/:route/:uid/*"
+                element={<ResourceShell spec={PATH_ADDRESSED} />}
+              />
+            </Routes>
+          </PageHeaderSlotProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText(/родител/i);
+    expect(calls).toEqual([]);
   });
 
   it("обычный адрес читается как прежде — положительный контроль", async () => {

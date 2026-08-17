@@ -80,9 +80,32 @@ export const RegistryPage: FC<RegistryPageProps> = ({ context }) => {
                     <Route path={`${spec.route}/:uid/:tab`} element={<ResourceShell spec={spec} />} />
                   </Route>
                 ))}
-                {/* Теги репозитория рендерятся встроенной боковой панелью
-                    (RepositoryTagsPanel) по клику в списке репозиториев — панель
-                    раздвигает таблицу внутри лайаута, без перехода на route. */}
+                {/* Карточка репозитория живёт ПОД СВОИМ РЕЕСТРОМ (#627).
+
+                    У репозитория нет собственного идентификатора: его натуральный
+                    ключ — пара «реестр + имя», и читается он адресом
+                    `/registry/v1/registries/{registryId}/repositories/{name}`.
+                    Плоского маршрута ему поэтому не хватает: он не называет
+                    реестр, а без реестра адрес не собрать. Его дочерняя вкладка
+                    «Теги» требует ОБА сегмента, поэтому не оживала ни при каком
+                    входе — вкладка была объявлена, покрыта типами и неисполнима.
+
+                    Имя параметра совпадает с именем подстановки в адресе
+                    (`:registryId` → `{registryId}`) — это и есть всё правило
+                    связи; таблицы соответствий нет намеренно, она была бы вторым
+                    местом об одном предмете.
+
+                    Плоский `repositories/:uid` выше остаётся: он адресует список
+                    репозиториев проекта. Карточку он открыть не может и раньше
+                    не мог — здесь она получает свой адрес, а не второй. */}
+                <Route
+                  path="registries/:registryId/repositories/:uid"
+                  element={<ResourceShell spec={REGISTRY["repositories"]} />}
+                />
+                <Route
+                  path="registries/:registryId/repositories/:uid/:tab"
+                  element={<ResourceShell spec={REGISTRY["repositories"]} />}
+                />
                 <Route path="*" element={<ProjectRegistryDefaultRedirect />} />
               </Routes>
             </RegistryFrame>
