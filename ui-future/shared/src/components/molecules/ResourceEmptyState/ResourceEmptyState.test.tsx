@@ -25,6 +25,25 @@ describe("ResourceEmptyState", () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 
+  it("ресурс без создания призыва создать НЕ показывает", () => {
+    // Репозиторий материализуется `docker push`, тип диска и машины заводит
+    // администратор облака — глагола создания у них нет вовсе. Кнопка,
+    // предлагающая действие, которого не существует, обещает возможность:
+    // нажавший получает отказ края там, где консоль звала его сама.
+    // Замер: `ops.create:false` объявлен у восьми ресурсов общего реестра.
+    render(<ResourceEmptyState spec={specWith({ ops: { create: false, update: false, delete: false } })} onCreate={() => {}} />);
+
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("ресурс С созданием призыв показывает (положительный контроль)", () => {
+    // Без этой пары отрицание выше зеленело бы и на компоненте, который не
+    // показывает кнопку никогда.
+    render(<ResourceEmptyState spec={specWith({ ops: { create: true, update: true, delete: true } })} onCreate={() => {}} />);
+
+    expect(screen.getByRole("button")).toBeInTheDocument();
+  });
+
   it("подпись кнопки можно переопределить", () => {
     render(<ResourceEmptyState spec={REGISTRY["subnets"]} onCreate={() => {}} createLabel="Добавить подсеть" />);
     expect(screen.getByRole("button", { name: "Добавить подсеть" })).toBeInTheDocument();

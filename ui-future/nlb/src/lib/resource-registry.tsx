@@ -4,13 +4,14 @@
 // Balancer: LoadBalancer / Listener / TargetGroup. `compute-regions` — read-only
 // справочник для ref-полей region_id (cross-service ref → geo.Region).
 
-import type { ReactNode } from "react";
 import type { FormField } from "@shared/lib/form-schema";
 import { setByPath } from "./path";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
+// Логическое свойство — ОДИН рендер на всю консоль (правило 6 `ui.md`).
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { NlbVipCell } from "@/components/molecules/NlbVipCell";
 import {
   NlbVipSourceField,
@@ -55,10 +56,6 @@ import {
  * Отсутствие значения — НЕ «нет»: сервер, не приславший поле, ничего не
  * утверждает.
  */
-export function boolCell(v: unknown): ReactNode {
-  if (typeof v !== "boolean") return <span style={{ opacity: 0.45 }}>—</span>;
-  return v ? <span>Да</span> : <span style={{ opacity: 0.45 }}>Нет</span>;
-}
 
 // Форма ресурса объявлена ОДИН раз — в `@shared/lib/resource-spec`, и импортируется
 // сюда. Реэкспорт оставлен, чтобы потребители этого модуля не меняли импорты: у него
@@ -126,7 +123,28 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Открыт для размещения",
         path: "open_for_placement",
-        render: (row) => boolCell(row.open_for_placement),
+        // Следствие, а не ответ «Да» (правило 6 `ui.md`): заголовок задаёт
+        // вопрос, ячейка обязана дать содержательный ответ.
+        //
+        // Рисуется `render`, а не `format:"bool"`, и это НЕ обход общего
+        // словаря: словарь логический вариант уже несёт, но сборщик колонок
+        // этого модуля — форк, своей ветки `bool` у него нет, и колонка
+        // печаталась бы литералом `false` ровно там, где она заводится.
+        // `render` уважают ОБА сборщика, поэтому оба показывают одно и то же —
+        // это и утверждает `spec-columns.bool.test.tsx`. Ветка формата вернётся
+        // сюда вместе со сведением сборщика.
+        //
+        // Отсутствие значения — НЕ «закрыто»: сервер, не приславший поле, ничего
+        // не утверждает, и прочерк здесь остаётся третьим состоянием. `BoolFact`
+        // знает только истину и ложь (у него их ровно два), поэтому отсутствие
+        // отсеивается ДО него — ровно так же, как это делает логическая ветка
+        // общего словаря форматов.
+        render: (row) =>
+          typeof row.open_for_placement === "boolean" ? (
+            <BoolFact value={row.open_for_placement} yes="Размещение доступно" no="Размещение закрыто" />
+          ) : (
+            <span style={{ opacity: 0.45 }}>—</span>
+          ),
       },
     ],
     template: () => ({}),

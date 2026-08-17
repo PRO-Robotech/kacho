@@ -18,7 +18,7 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Spin, Typography } from "antd";
+import { Button, Descriptions, Select, Spin, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { DetailShell, HeaderSlotPortal, type DetailTab } from "@shared/components/organisms/DetailShell";
 import { DetailHeaderProvider } from "@shared/components/molecules/PanelHeader";
@@ -50,7 +50,7 @@ import {
   type ResourceSpec,
 } from "@shared/lib/resource-registry";
 import { operationsListPath } from "@shared/lib/operations-subroute";
-import { relatedListQuery } from "@shared/lib/related-list-query";
+import { childListPathScope, hasUnresolvedPathSegment, relatedListQuery } from "@shared/lib/related-list-query";
 import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
@@ -73,6 +73,7 @@ function RelatedTable({
   filterFields,
   narrowBy,
   parentId,
+  parentRow,
   projectId,
   detailBase,
 }: {
@@ -83,12 +84,22 @@ function RelatedTable({
    *  объявлено — сужает только клиент. */
   narrowBy: Pick<RelatedSpec, "serverFilterField" | "serverParamField">;
   parentId: string;
+  /** Строка родителя — из неё берутся сегменты адреса ребёнка, адресуемого путём. */
+  parentRow?: Record<string, unknown>;
   projectId: string;
   detailBase: string;
 }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [facetVal, setFacetVal] = useState("");
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${childSpec.id}`);
+  // Третий механизм сужения — АДРЕС: репозитории лежат под реестром, теги — под
+  // репозиторием реестра. Тогда сужает сам путь, и параметр родителя в запросе
+  // не нужен вовсе. Чем закрываются сегменты — решает одна функция.
+  const { pathParams, pathScoped } = useMemo(
+    () => childListPathScope(childSpec.apiPath, filterFields, parentRow, parentId),
+    [childSpec.apiPath, filterFields, parentRow, parentId],
+  );
   // Дочерний список тянется в scope своего родителя: account-scoped ресурсы
   // (Project/ServiceAccount) требуют account_id = uid аккаунта-родителя; прочие —
   // project_id из URL.
@@ -98,13 +109,20 @@ function RelatedTable({
   // страницы списка проекта, в которой они могли и не оказаться. Чем именно
   // просить — решает одна функция (`relatedListQuery`), а не эта разметка:
   // механизмов два, и выбор между ними принадлежит владельцу ребёнка.
-  const extraQuery = useMemo(() => relatedListQuery(narrowBy, parentId), [narrowBy, parentId]);
+  const extraQuery = useMemo(
+    () => (pathScoped ? undefined : relatedListQuery(narrowBy, parentId)),
+    [pathScoped, narrowBy, parentId],
+  );
+  // Фасетный фильтр судит по НАБОРУ, поэтому набор обязан быть прочитан целиком:
+  // судить по первой странице значит отвечать «таких нет» про то, чего не читал.
+  const wantAll = pathScoped && childSpec.loadAllPages === true;
   const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
     childSpec,
-    accountScoped ? "account_id" : "project_id",
-    accountScoped ? parentId : projectId,
+    pathScoped ? null : accountScoped ? "account_id" : "project_id",
+    pathScoped ? null : accountScoped ? parentId : projectId,
     undefined,
     extraQuery,
+    { pathParams, loadAllPages: wantAll },
   );
   const all = data?.[childSpec.payloadKey] ?? [];
   // Клиентское сужение — ПОДСТРАХОВКА, а не основной путь. Когда серверное поле
@@ -114,7 +132,14 @@ function RelatedTable({
   // (OR по нескольким полям, напр. subnet→addresses v4∪v6), которые выражением
   // фильтра не выражаются вовсе. Сам по себе он судит только о ПРОЧИТАННЫХ
   // страницах — поэтому ниже обязателен видимый курсор.
-  const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
+  //
+  // Ребёнок, сужённый АДРЕСОМ, клиентского фильтра не получает вовсе: страница
+  // уже состоит из детей этого родителя, а сверять её ещё раз пришлось бы по
+  // полю, которого в строке может не быть (тег несёт имя репозитория, но не
+  // идентификатор реестра) — и тогда фильтр вырезал бы законные строки.
+  const ownRows = pathScoped
+    ? all
+    : all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
 
   // Область, о которой судят ручки этой вкладки. Поиск здесь клиентский всегда
   // (см. выше), поэтому вопрос ровно один — дочитан ли курсор.
@@ -122,13 +147,24 @@ function RelatedTable({
 
   // Поиск по имени или идентификатору (client-side).
   const q = search.trim().toLowerCase();
-  const rows = q
+  const searched = q
     ? ownRows.filter((r) => {
         const nm = (getByPath<string>(r, "name") ?? "").toLowerCase();
         const id = (getByPath<string>(r, "id") ?? "").toLowerCase();
         return nm.includes(q) || id.includes(q);
       })
     : ownRows;
+
+  // Фасетный фильтр (`spec.facet`) — поверх поиска. Поле-массив (репозиторий со
+  // смешанным содержимым) сверяется по включению, скаляр — по равенству.
+  const facet = childSpec.facet;
+  const rows =
+    facet && facetVal
+      ? searched.filter((r) => {
+          const v = getByPath<unknown>(r, facet.path);
+          return Array.isArray(v) ? v.includes(facetVal) : v === facetVal;
+        })
+      : searched;
 
   // child-create — панель в зоне 3 shell РОДИТЕЛЯ (URI вложен под родителя).
   const createPath = `${detailBase}/${childSpec.route}/create`;
@@ -166,6 +202,13 @@ function RelatedTable({
 
   if (isError) return <ErrorResult error={error} />;
 
+  // Путь ребёнка несёт подстановку, которую закрыть нечем — списка НЕ БЫЛО.
+  // Запрос при этом не уходит (о чём и заботится `resolved` у резолвера пути), а
+  // значит пустота здесь означает «ещё не спрашивали», а не «детей нет». Выдать
+  // её за отсутствие значило бы предложить создать первый тег поверх непрочитанного
+  // списка.
+  const pathBlocked = hasUnresolvedPathSegment(childSpec.apiPath) && !pathScoped;
+
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
   // показывается внутри таблицы). createLabel передаём отдельно (тот же текст).
   //
@@ -173,7 +216,7 @@ function RelatedTable({
   // только когда список дочитан. Пока за курсором есть ещё, детей может не быть
   // на прочитанных страницах и быть на следующих: приглашение создать поверх
   // недочитанного списка сообщало бы об отсутствии, которого никто не проверял.
-  if (!isLoading && ownRows.length === 0 && !hasMore) {
+  if (!isLoading && !pathBlocked && ownRows.length === 0 && !hasMore) {
     return <ResourceEmptyState spec={childSpec} onCreate={() => navigate(createPath)} createLabel={createLabel} />;
   }
 
@@ -183,6 +226,15 @@ function RelatedTable({
           правый слот) через HeaderSlotPortal — req3. */}
       <HeaderSlotPortal>
         <TableSearch value={search} onChange={setSearch} scope={scope} />
+        {facet && (
+          <Select
+            value={facetVal}
+            onChange={setFacetVal}
+            style={{ minWidth: 180 }}
+            aria-label={facet.label}
+            options={[{ value: "", label: `${facet.label}: все` }, ...facet.options]}
+          />
+        )}
         <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </HeaderSlotPortal>
       <ResourceTable
@@ -241,10 +293,24 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
       ? location.pathname.slice(0, mIdx + marker.length)
       : `${resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`}/${uid}`;
 
+  // Адрес карточки собирается склейкой, а адрес ресурса бывает АДРЕСУЕМЫМ ЧЕРЕЗ
+  // РОДИТЕЛЯ (`/registry/v1/registries/{registryId}/repositories`). Тогда в
+  // склеенном пути остаётся подстановка, закрыть которую этот маршрут не может:
+  // родителя URL карточки не называет.
+  //
+  // Списочное чтение той же оболочки это уже охраняет (`resolveListPath` →
+  // `resolved:false` ⇒ запрос не уходит). Детальное чтение охраны не имело, и
+  // подстановка уезжала в адрес ЛИТЕРАЛОМ — два чтения ОДНОГО ресурса с разной
+  // дисциплиной, из которых верно одно. Ответ края на такой адрес неотличим от
+  // «ресурса нет», поэтому дефект тих: пользователь видит отказ, а не то, что
+  // спросили не то.
+  const detailPath = `${spec.apiPath}/${uid}`;
+  const detailAddressable = !hasUnresolvedPathSegment(detailPath);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "shell-detail", uid],
-    queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
-    enabled: !!uid,
+    queryFn: () => api.get<Record<string, unknown>>(detailPath),
+    enabled: !!uid && detailAddressable,
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -353,6 +419,24 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
       </div>
     );
   }
+  // Запроса НЕ БЫЛО — и сказать об этом надо именно так. Ветка стоит ПЕРЕД
+  // отказом: `ErrorResult` здесь сообщил бы, что ресурс не найден, то есть
+  // утверждение о ресурсе, которого никто не спрашивал. «Не спрашивали» и
+  // «спросили и не нашли» — разные факты о мире, и путать их нельзя ни в
+  // сообщении пользователю, ни в собственной отладке.
+  if (!detailAddressable) {
+    return (
+      <div style={{ padding: 48, maxWidth: 640 }}>
+        <Typography.Title level={4} style={{ marginTop: 0 }}>
+          Адрес неполон — запрос не отправлялся
+        </Typography.Title>
+        <Typography.Paragraph type="secondary">
+          {spec.singular} адресуется через родителя, а адрес этой страницы родителя не называет. Запрос не отправлен:
+          ответ на неполный адрес был бы утверждением о ресурсе, которого никто не спрашивал.
+        </Typography.Paragraph>
+      </div>
+    );
+  }
   if (isError || !data) {
     return <ErrorResult error={error} />;
   }
@@ -413,6 +497,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
           filterFields={filterFields}
           narrowBy={r}
           parentId={getByPath<string>(data, "id") ?? uid ?? ""}
+          parentRow={data}
           projectId={projectId ?? ""}
           detailBase={detailBase}
         />

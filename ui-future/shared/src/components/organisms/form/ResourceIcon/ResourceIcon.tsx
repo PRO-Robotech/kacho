@@ -11,9 +11,11 @@ import {
   CloudServerOutlined,
   ClusterOutlined,
   ContainerOutlined,
+  DatabaseOutlined,
   DeploymentUnitOutlined,
   DesktopOutlined,
   FileImageOutlined,
+  FolderOpenOutlined,
   GatewayOutlined,
   GlobalOutlined,
   HddOutlined,
@@ -23,6 +25,7 @@ import {
   RobotOutlined,
   SafetyCertificateOutlined,
   SafetyOutlined,
+  TagOutlined,
   TagsOutlined,
   TeamOutlined,
   UserOutlined,
@@ -77,6 +80,17 @@ const ICONS: Record<string, ReactNode> = {
   "load-balancers": <ApartmentOutlined />,
   listeners: <ApiOutlined />,
   "target-groups": <ClusterOutlined />,
+  // registry (OCI). Три ключа, ради которых модуль держал собственную копию
+  // карты: без них реестр, репозиторий и тег получали умолчание, то есть один
+  // глиф на троих — и тот же, каким помечено «иконки нет».
+  //
+  // Глифы выбраны РАЗНЫМИ и не отобраны у соседей: копия модуля предлагала
+  // `TagsOutlined` тегу и `ContainerOutlined` репозиторию, но первый занят
+  // набором префиксов, второй — группой размещения, и перенос копии как есть
+  // сделал бы две пары ресурсов неразличимыми.
+  registries: <DatabaseOutlined />,
+  repositories: <FolderOpenOutlined />,
+  tags: <TagOutlined />,
 };
 
 interface Props {

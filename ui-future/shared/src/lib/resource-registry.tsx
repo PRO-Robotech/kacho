@@ -3745,7 +3745,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           );
         },
       },
-      { header: "По умолчанию", path: "is_default", format: "text" },
+      // Булево — следствием, а не «true»: с форматом `text` эта колонка печатала
+      // пользователю служебное слово (правило 6 `ui.md`).
+      {
+        header: "По умолчанию",
+        path: "is_default",
+        format: "bool",
+        boolLabels: { yes: "Пул по умолчанию", no: "Обычный пул" },
+      },
       {
         header: "Метки селектора",
         path: "selector_labels",
