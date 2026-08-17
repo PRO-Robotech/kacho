@@ -69,10 +69,6 @@ export interface SubjectOption {
 export interface TokenKindConfig {
   /** Discriminator для query-ключей. */
   kind: "sa" | "user";
-  /** Заголовок страницы. */
-  pageTitle: string;
-  /** Подзаголовок страницы. */
-  pageSubtitle: string;
   /** «сервисный аккаунт» / «пользователь». */
   subjectSingular: string;
   /** «Сервисный аккаунт» / «Пользователь» (для label поля). */
@@ -364,16 +360,11 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   ];
 
   return (
+    // Своего заголовка страница НЕ печатает: её называет рейл раздела и шапка
+    // общей оболочки — до #447 имя стояло на экране дважды, а под ним висел
+    // абзац о внутреннем устройстве выпуска. Единственный факт того абзаца —
+    // секрет показывается один раз — сказан в окне выпуска, где он и нужен.
     <Space direction="vertical" size={16} style={{ width: "100%" }} data-testid={`token-page-${config.kind}`}>
-      <div>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {config.pageTitle}
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          {config.pageSubtitle}
-        </Typography.Text>
-      </div>
-
       <Space size={8} wrap style={{ width: "100%" }}>
         <Select
           showSearch

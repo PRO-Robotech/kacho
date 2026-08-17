@@ -1,42 +1,53 @@
-// TokensLayout — обёртка над страницами выпуска credential'ов
-// /system/tokens/{service-account-keys,user-tokens}. Горизонтальные табы
-// переключения между SA-ключами и персональными токенами пользователей.
+// TokensLayout — оболочка части «Токены и ключи» раздела администрирования
+// (`/system/tokens/{service-account-keys,user-tokens}`).
+//
+// Вид берётся ОБЩИЙ — `DetailShell`, тот же, что на карточке ресурса и у
+// соседней части того же раздела (`AdminLayout`): вертикальный рейл слева,
+// содержимое справа. Прежде здесь стоял свой горизонтальный ряд вкладок и свой
+// заголовок с абзацем — раздел выглядел двумя разными местами продукта
+// (правило 8 `ui.md`, решение владельца #447).
+//
+// Поясняющий абзац снят вместе с рядом: он пересказывал название раздела
+// («Выпуск и отзыв креденшалов» под заголовком «Токены и ключи»), а его
+// единственный факт — секрет показывается один раз — сказан там, где он нужен:
+// в окне выпуска (`OneTimeSecretModal`).
 
+import { useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
-import { Space, Tabs, Typography } from "antd";
+import { DetailShell, type DetailTab } from "@shared/components/organisms/DetailShell";
 
-const TABS = [
-  { key: "/system/tokens/service-account-keys", label: "Ключи сервисных аккаунтов" },
-  { key: "/system/tokens/user-tokens", label: "Токены пользователей" },
+interface TokensSection {
+  /** Идентификатор пункта и он же — адрес его страницы. */
+  path: string;
+  label: string;
+}
+
+const SECTIONS: TokensSection[] = [
+  { path: "/system/tokens/service-account-keys", label: "Ключи сервисных аккаунтов" },
+  { path: "/system/tokens/user-tokens", label: "Токены пользователей" },
 ];
 
 export function TokensLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const active = TABS.find((t) => location.pathname.startsWith(t.key))?.key ?? TABS[0].key;
+
+  const active = SECTIONS.find((s) => location.pathname.startsWith(s.path))?.path ?? SECTIONS[0].path;
+
+  // Содержимое пункта рисует маршрут, а не сам пункт: страницы части остаются
+  // самостоятельными адресами (ссылку на пункт можно дать и открыть).
+  const tabs: DetailTab[] = useMemo(
+    () => SECTIONS.map((s) => ({ id: s.path, label: s.label, render: () => <Outlet />, fill: true })),
+    [],
+  );
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div>
-        <Typography.Title level={3} className="t-page-title" style={{ margin: 0 }}>
-          Токены и ключи
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          Выпуск и отзыв OAuth-креденшалов. Приватный ключ показывается один раз при выпуске.
-        </Typography.Text>
-      </div>
-
-      <Tabs
-        activeKey={active}
-        onChange={(k) => navigate(k)}
-        items={TABS.map((t) => ({ key: t.key, label: t.label }))}
-        size="middle"
-        style={{ marginBottom: 0 }}
-        data-testid="tokens-tabs"
-      />
-
-      <Outlet />
-    </Space>
+    <DetailShell
+      resourceLabel="Токены и ключи"
+      resourceName="Токены и ключи"
+      tabs={tabs}
+      activeTabId={active}
+      onTabSelect={(id) => void navigate(id)}
+    />
   );
 }
 

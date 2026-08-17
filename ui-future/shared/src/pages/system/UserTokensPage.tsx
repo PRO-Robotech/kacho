@@ -9,9 +9,6 @@ import { TokenIssuancePage, type SubjectOption, type CredentialRow, type TokenKi
 
 const USER_TOKENS_CONFIG: TokenKindConfig = {
   kind: "user",
-  pageTitle: "Персональные токены пользователей",
-  pageSubtitle:
-    "Персональные access-токены (private_key_jwt). Приватный ключ выдаётся один раз; пользователь подписывает им client_assertion и обменивает в Hydra на kacho-JWT с принципалом user:<id>.",
   subjectSingular: "пользователь",
   subjectLabel: "Пользователь",
   credentialSingular: "токен",
