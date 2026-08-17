@@ -35,6 +35,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { parseSource } from "@shared/test/console-verb-literals";
 import { stripComments } from "@shared/test/strip-comments";
 import { REGISTRY } from "./resource-registry";
 
@@ -308,10 +309,13 @@ const composites: Composite[] = [];
 /** Хвост несёт подставляемый ГЛАГОЛ — какой именно, статически неизвестно. */
 const dynamicVerb: Composite[] = [];
 let compositeLiteralsSeen = 0;
+/** Литералов РАЗОБРАНО всего — объём осмотренного самой переписи. */
+let literalsParsed = 0;
+/** Литералы с подстановкой, как их прочла перепись — для проверки целостности. */
+const parsedWithSubstitution: { file: string; literal: string }[] = [];
 
 for (const file of sharedFiles) {
   const raw = readFileSync(file, "utf8");
-  const code = stripComments(raw);
   const strings = new Map<string, string>();
   for (const m of raw.matchAll(STRING_CONST)) strings.set(m[1], m[2]);
   const arrows = new Map<string, string>();
@@ -319,8 +323,26 @@ for (const file of sharedFiles) {
   const aliases = new Map<string, string>();
   for (const m of raw.matchAll(REGISTRY_ALIAS)) aliases.set(m[1], m[2] ?? m[3]);
 
-  for (const m of code.matchAll(/`([^`\n]*)`/g)) {
-    const literal = m[1];
+  // ЛИТЕРАЛЫ ЧИТАЕТ РАЗБОР, А НЕ РЕГЕКСП (#568). Прежде здесь стояло
+  // `code.matchAll(/`([^`\n]*)`/g)` по снятому от комментариев тексту, и класс
+  // «#559: парность обратных кавычек» этим закрыт НЕ БЫЛ: шаблон, содержащий
+  // ВЛОЖЕННЫЙ шаблон внутри подстановки, рвёт пару на первой же внутренней
+  // кавычке. Замер по дереву дал восемь мест сразу — пять литералов перепись не
+  // видела вовсе, а ещё три ВЫДУМЫВАЛА: обрубок вида «${o.name || o.uid}${o.extra ? »
+  // считался литералом и попадал в счёт. Обрубок безобиден лишь до тех пор, пока
+  // его голова не резолвится в путь; резолвится — и в поверхность уезжает
+  // склейка, которой в коде нет.
+  //
+  // `parseSource` читает синтаксическое дерево и восстанавливает шаблон вместе с
+  // подстановками, поэтому закрывает разом и вложенность, и границу строки
+  // (многострочных шаблонов в этом корпусе сегодня ноль — предикат остаётся
+  // верным и когда они появятся). Третьей редакции разборщика здесь не заводится:
+  // он один на все пробы, читающие исходный текст.
+  for (const literal of parseSource(file, raw).literals) {
+    literalsParsed++;
+    if (literal.includes("${")) {
+      parsedWithSubstitution.push({ file: file.slice(SHARED_SRC.length + 1), literal });
+    }
     const head = /^\$\{([^}]*)\}/.exec(literal);
     if (!head) continue; // цельный литерал — его читает часть выше
     compositeLiteralsSeen++;
@@ -348,6 +370,12 @@ describe("составные пути — объём осмотренного", 
     // вёрстка, и это НЕ «ноль находок»: они прочитаны и классифицированы.
     expect(compositeLiteralsSeen).toBeGreaterThan(40);
     expect(composites.length).toBeGreaterThan(10);
+    // Литералов РАЗОБРАНО — отдельное число, и оно заведомо больше числа
+    // составных: цельные строки тоже читаются. Без него «ноль составных» было бы
+    // неотличимо от «разборщик не отработал», а именно так выглядел бы возврат к
+    // регекспу, рвущему пару на вложенном шаблоне.
+    expect(literalsParsed).toBeGreaterThan(compositeLiteralsSeen);
+    expect(literalsParsed).toBeGreaterThan(1000);
   });
 
   it("остаток — только выражения с подставляемым глаголом, и он назван", () => {
@@ -374,6 +402,63 @@ describe("составные пути — объём осмотренного", 
       "components/organisms/SubnetCidrManager/SubnetCidrManager.tsx " +
         "${SUBNETS_API}/${subnetId}:${verb}-cidr-blocks",
     ]);
+  });
+});
+
+describe("перепись литералов — контроль в обе стороны (#568)", () => {
+  // Судья тот же, что читает дерево: `parseSource`. Проба, подменившая его своим
+  // разбором, доказала бы свойство своей копии, а не переписи.
+  const literalsOf = (src: string): string[] => parseSource("probe.ts", src).literals;
+
+  it("МНОГОСТРОЧНЫЙ шаблон с путём — виден", () => {
+    // Форма, на которой прежний однострочный регексп слеп by construction:
+    // `[^`\n]` обрывает совпадение на переводе строки. В сегодняшнем корпусе
+    // таких литералов ноль, поэтому свойство держится этой пробой, а не деревом:
+    // prettier переносит длинные шаблоны, и первый же перенесённый путь ушёл бы
+    // из-под надзора молча.
+    const src = "const p = `${IAM.users}/${encodeURIComponent(id)}\n  :block`;\n";
+    expect(literalsOf(src)).toContain("${IAM.users}/${encodeURIComponent(id)}\n  :block");
+  });
+
+  it("ВЛОЖЕННЫЙ шаблон читается целиком, а не обрубком", () => {
+    // Это живой механизм, а не умозрительный: в дереве он давал восемь мест —
+    // пять литералов не читались, три читались обрубками. Обрубок опаснее
+    // пропуска: он попадает в счёт и делает «перепись прочитала N» неправдой.
+    const src = 'const s = `${o.name}${o.extra ? ` · ${o.extra}` : ""}`;\n';
+    const lits = literalsOf(src);
+    expect(lits).toContain('${o.name}${o.extra ? ` · ${o.extra}` : ""}');
+    // Обрубка, который производил регексп, среди литералов быть не должно.
+    expect(lits).not.toContain("${o.name}${o.extra ? ");
+  });
+
+  it("ни один литерал ДЕРЕВА не оборван внутри подстановки", () => {
+    // Эта проба привязывает МЕСТО, а не ответ. Три предыдущие спрашивают
+    // `parseSource` напрямую и остались бы зелёными, верни кто-нибудь перепись на
+    // регексп: они закрепляют, что разборщик умеет, а не что им пользуются.
+    //
+    // Здесь проверяется свойство того, что перепись ПРОЧЛА. Обрубок регекспа
+    // всегда обрывается внутри незакрытой подстановки — после последней `}`
+    // остаётся ещё одна `${`. Настоящий разбор такого произвести не может.
+    //
+    // Проба не падает на достижении своей цели: дерево без вложенных шаблонов
+    // проходит её пусто, а не краснеет.
+    const truncated = parsedWithSubstitution.filter(({ literal }) => {
+      const lastClose = literal.lastIndexOf("}");
+      const tail = lastClose === -1 ? literal : literal.slice(lastClose + 1);
+      return tail.includes("${");
+    });
+    expect(truncated.map((t) => `${t.file}  ${JSON.stringify(t.literal)}`)).toEqual([]);
+    expect(parsedWithSubstitution.length).toBeGreaterThan(compositeLiteralsSeen);
+  });
+
+  it("путь в КОММЕНТАРИИ литералом не становится", () => {
+    // Обратная сторона: разбор обязан читать исполняемую часть. Комментарий,
+    // называющий снятый маршрут, — это объяснение, а не вызов; находка на нём
+    // запрещала бы объяснять.
+    const src = '// был `/iam/v1/users/${id}:listByResource`\nconst p = "/iam/v1/users";\n';
+    const lits = literalsOf(src);
+    expect(lits).toContain("/iam/v1/users");
+    expect(lits.some((l) => l.includes("listByResource"))).toBe(false);
   });
 });
 

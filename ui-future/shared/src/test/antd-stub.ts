@@ -65,6 +65,8 @@ interface ResultProps {
   title?: React.ReactNode;
   subTitle?: React.ReactNode;
   extra?: React.ReactNode;
+  /** Вид исхода: настоящий компонент выражает его классом корня. */
+  status?: string;
   [key: string]: unknown;
 }
 
@@ -115,6 +117,18 @@ interface MenuProps {
   selectedKeys?: string[];
   onClick?: (info: { key: string }) => void;
   children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface PopconfirmProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  okText?: React.ReactNode;
+  cancelText?: React.ReactNode;
+  disabled?: boolean;
+  onConfirm?: () => void;
+  onCancel?: () => void;
   [key: string]: unknown;
 }
 
@@ -417,10 +431,25 @@ export function antdStub(): Record<string, unknown> {
   // проба о составе формы утверждала бы форму дублёра.
   const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
     React.createElement("div", null, React.createElement("label", null, label), children);
+  // Дескриптор формы несёт ТЕ ЖЕ методы, что настоящий. Пустой объект делал
+  // заменитель СТРОЖЕ настоящего: вызывающий падал на `form.resetFields is not a
+  // function` — то есть проба умирала на монтировании, не дойдя до поведения,
+  // ради которого её и пишут. Направление отклонения у дублёра допускается одно —
+  // ближе к настоящему, никогда не мягче и не строже.
+  const formInstance = {
+    resetFields: () => undefined,
+    submit: () => undefined,
+    setFieldsValue: () => undefined,
+    getFieldsValue: () => ({}),
+    getFieldValue: () => undefined,
+    validateFields: () => Promise.resolve({}),
+    setFields: () => undefined,
+    scrollToField: () => undefined,
+  };
   const Form = Object.assign(Component, {
     Item: FormItem,
     List: Component,
-    useForm: () => [{}],
+    useForm: () => [formInstance],
     useWatch: () => undefined,
   });
   // Настоящее модальное окно СКРЫВАЕТ своё содержимое, пока `open` ложно.
@@ -547,21 +576,37 @@ export function antdStub(): Record<string, unknown> {
     // ресурса это весь обзор целиком. Заменитель-`<div>` ронял `items` в
     // атрибут: ни одна строка обзора не была наблюдаема, поэтому «карточка
     // показывает описание» проверить было нечем.
-    Descriptions: ({ items, title, children }: DescriptionsProps) =>
-      React.createElement(
-        "dl",
-        null,
-        title === undefined ? null : React.createElement("div", null, title as React.ReactNode),
-        (items ?? []).map((it, i) =>
+    // `Descriptions.Item` — ВТОРАЯ форма настоящего компонента, а не послабление:
+    // antd принимает и `items`, и вложенные `<Descriptions.Item>`. Без неё
+    // вложенная форма разрешалась в `undefined`, и React ронял всё поддерево с
+    // «Element type is invalid» — то есть заменитель был СТРОЖЕ настоящего и
+    // проба падала на монтировании, не дойдя до поведения.
+    Descriptions: Object.assign(
+      ({ items, title, children }: DescriptionsProps) =>
+        React.createElement(
+          "dl",
+          null,
+          title === undefined ? null : React.createElement("div", null, title as React.ReactNode),
+          (items ?? []).map((it, i) =>
+            React.createElement(
+              "div",
+              { key: it.key ?? i },
+              React.createElement("dt", null, it.label),
+              React.createElement("dd", null, it.children),
+            ),
+          ),
+          children,
+        ),
+      {
+        Item: ({ label, children }: { label?: React.ReactNode; children?: React.ReactNode }) =>
           React.createElement(
             "div",
-            { key: it.key ?? i },
-            React.createElement("dt", null, it.label),
-            React.createElement("dd", null, it.children),
+            null,
+            React.createElement("dt", null, label),
+            React.createElement("dd", null, children),
           ),
-        ),
-        children,
-      ),
+      },
+    ),
     Divider: Component,
     Dropdown: Component,
     // Настоящий `Empty` рисует своё пояснение; заменитель-`<div>` прятал его в
@@ -578,21 +623,49 @@ export function antdStub(): Record<string, unknown> {
     // пока пункты уезжали в атрибут, «какие вкладки обещаны» было ненаблюдаемо,
     // и утверждение «вкладки, которой быть не должно, нет» зеленело на пустом
     // заменителе — то есть на всём сразу.
+    //
+    // ФОРМА ВЗЯТА У НАСТОЯЩЕГО, а не изобретена (#588). Прежде заменитель рисовал
+    // пункты `<button>` с `aria-current="page"` — ни того, ни другого меню antd
+    // не производит НИКОГДА, и это ровно та ловушка, которую этот файл называет
+    // абзацем ниже про `Segmented` (#418): утверждение оказывается прибито к форме
+    // дублёра и переживает продукт. Переход на настоящий рендер оставил бы такие
+    // пробы зелёными на разметке, которой в консоли нет.
+    //
+    // Сверено с собранным `antd` в дереве: корень — `<ul role="menu">`; пункт —
+    // `<li role="menuitem">` с `aria-disabled` и классами
+    // `ant-menu-item{,-selected,-disabled}`; разделитель — `<li role="separator"
+    // class="ant-menu-item-divider">`. Выбранность помечается КЛАССОМ, а не
+    // `aria-selected`: его настоящий пункт ставит только при `role="option"`.
+    //
+    // Отклонение допускается одно и только в сторону строгости: запрещённый пункт
+    // не зовёт обработчик — как и у настоящего.
     Menu: ({ items, selectedKeys, onClick, children }: MenuProps) =>
       React.createElement(
-        "nav",
-        null,
+        "ul",
+        { role: "menu" },
         (items ?? []).map((item, i) =>
           item.type === "divider"
-            ? React.createElement("hr", { key: item.key ?? `d${i}` })
+            ? React.createElement("li", {
+                key: item.key ?? `d${i}`,
+                role: "separator",
+                className: "ant-menu-item-divider",
+              })
             : React.createElement(
-                "button",
+                "li",
                 {
                   key: item.key ?? i,
-                  type: "button",
-                  disabled: Boolean(item.disabled),
-                  "aria-current": (selectedKeys ?? []).includes(item.key ?? "") ? "page" : undefined,
-                  onClick: () => onClick?.({ key: item.key ?? "" }),
+                  role: "menuitem",
+                  "aria-disabled": Boolean(item.disabled),
+                  className: [
+                    "ant-menu-item",
+                    (selectedKeys ?? []).includes(item.key ?? "") ? "ant-menu-item-selected" : "",
+                    item.disabled ? "ant-menu-item-disabled" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" "),
+                  onClick: () => {
+                    if (!item.disabled) onClick?.({ key: item.key ?? "" });
+                  },
                 },
                 item.label,
               ),
@@ -600,13 +673,89 @@ export function antdStub(): Record<string, unknown> {
         children,
       ),
     Modal,
-    Popconfirm: Component,
+    // Настоящее подтверждение показывает вопрос ТОЛЬКО после нажатия на то, что
+    // оно оборачивает, и держит необратимое действие за кнопкой согласия.
+    // Заменитель-`<div>` не делал ни того, ни другого: вопрос был невидим вовсе,
+    // а `onConfirm` не вызывался НИКОГДА — то есть за одиннадцатью подтверждениями
+    // в девяти файлах (отзыв ключа, снятие тега, удаление роли) не стояло ни
+    // одного утверждения, и написать его было не на чем.
+    //
+    // Форма взята у настоящего: всплывающая часть несёт `role="tooltip"`, внутри
+    // `ant-popconfirm-title` и `ant-popconfirm-description`, ниже — кнопка отказа
+    // и кнопка согласия с текстом `cancelText`/`okText`. Ничего сверх этого не
+    // добавлено: роль или атрибут, которых настоящий не производит, прибили бы
+    // утверждение к форме дублёра (#588, #418).
+    Popconfirm: ({
+      children,
+      title,
+      description,
+      okText,
+      cancelText,
+      disabled,
+      onConfirm,
+      onCancel,
+    }: PopconfirmProps) => {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "span",
+          {
+            onClick: () => {
+              if (!disabled) setOpen(true);
+            },
+          },
+          children,
+        ),
+        open
+          ? React.createElement(
+              "div",
+              { role: "tooltip", className: "ant-popconfirm" },
+              React.createElement("div", { className: "ant-popconfirm-title" }, title),
+              React.createElement("div", { className: "ant-popconfirm-description" }, description),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    setOpen(false);
+                    onCancel?.();
+                  },
+                },
+                (cancelText as React.ReactNode) ?? "Отмена",
+              ),
+              React.createElement(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    setOpen(false);
+                    onConfirm?.();
+                  },
+                },
+                (okText as React.ReactNode) ?? "OK",
+              ),
+            )
+          : null,
+      );
+    },
     // Настоящий `Result` показывает заголовок и пояснение; заменитель ронял их
     // в атрибуты, и текст отказа (в т.ч. сообщение края) был ненаблюдаем.
-    Result: ({ children, title, subTitle, extra, ...rest }: ResultProps) =>
+    // ВИД исхода настоящий `Result` выражает КЛАССОМ корня (`ant-result
+    // ant-result-error`), а не атрибутом `status`: атрибут — проп виджета.
+    // Прежний дублёр iam ронял пропы в DOM, и проба искала `[status="error"]` —
+    // разметку, которой в консоли нет; на настоящем рендере она осталась бы
+    // зелёной ни на чём (#588).
+    Result: ({ children, title, subTitle, extra, status, ...rest }: ResultProps) =>
       React.createElement(
         "div",
-        domAttrs(rest),
+        {
+          ...domAttrs(rest),
+          className: ["ant-result", status ? `ant-result-${String(status)}` : ""]
+            .filter(Boolean)
+            .join(" "),
+        },
         React.createElement("div", null, title),
         React.createElement("div", null, subTitle),
         React.createElement("div", null, extra),
