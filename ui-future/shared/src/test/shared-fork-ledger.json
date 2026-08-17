@@ -767,23 +767,6 @@
           ]
         }
       ]
-    },
-    {
-      "id": "vpc:lib",
-      "reason": "Сборщик колонок vpc — форк общего: он тянет ССЫЛКУ модуля (ResourceLink из @/), а та резолвит спеку из реестра. Решение «как показать нескалярное значение» из него выведено в @shared/lib/display-text (#372); остальное сводится вместе с реестром.",
-      "entries": [
-        {
-          "file": "vpc/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "referrerHref",
-            "referrerMeta",
-            "reorderNameIdFirst"
-          ]
-        }
-      ]
     }
   ]
 }

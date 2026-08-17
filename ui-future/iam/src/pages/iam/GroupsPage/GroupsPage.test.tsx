@@ -6,7 +6,7 @@ import type { Operation } from "@shared/api/types";
 // самостоятельный предмет утверждения.
 import { groupDetailPathFromOp } from "./groupNav";
 import type { GroupCreatePage as GroupCreatePageExport } from "./GroupsPage";
-import { antdDouble } from "@/test/antd-double";
+import { antdStub } from "@shared/test/antd-stub";
 
 interface MutationOpts {
   method: string;
@@ -18,7 +18,7 @@ interface MutationOpts {
 const mutations: MutationOpts[] = [];
 const run = jest.fn<(body: unknown) => Promise<unknown>>();
 
-jest.unstable_mockModule("antd", () => antdDouble);
+jest.unstable_mockModule("antd", () => antdStub());
 
 jest.unstable_mockModule("@shared/api/client", () => ({ api: { get: jest.fn(), post: jest.fn() } }));
 

@@ -1,9 +1,9 @@
 import { jest } from "@jest/globals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Operation } from "@shared/api/types";
 import type { UserTokensPanel as UserTokensPanelExport } from "./UserTokensPanel";
-import { antdDouble } from "@/test/antd-double";
+import { antdStub } from "@shared/test/antd-stub";
 
 interface MutationOpts {
   method: string;
@@ -17,9 +17,10 @@ const listUserTokens = jest.fn<(id: string, q?: Record<string, string>) => Promi
 const run = jest.fn<(body: unknown) => Promise<unknown>>();
 const mutations: MutationOpts[] = [];
 
-// Свой дублёр antd — общий бросает на `rowKey="id"` и не подставляет значение
-// ячейки; разбор — в шапке @/test/antd-double.
-jest.unstable_mockModule("antd", () => antdDouble);
+// Общий заменитель antd — ОДИН на дерево (#587). Свой дублёр iam снят: он
+// реализовал те же виды по-своему, и правка, доехавшая до одной копии, не
+// доезжала до другой.
+jest.unstable_mockModule("antd", () => antdStub());
 
 jest.unstable_mockModule("@shared/api/iam", () => ({
   iamApi: { listUserTokens },
@@ -151,10 +152,38 @@ describe("UserTokensPanel", () => {
     await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
     expect(run).not.toHaveBeenCalled();
 
-    const [, confirmButton] = screen.getAllByRole("button", { name: "Отозвать" });
-    fireEvent.click(confirmButton);
+    // Подтверждение появляется ТОЛЬКО после нажатия на триггер — как у
+    // настоящего antd. Прежний дублёр iam рисовал его всегда, и проба брала
+    // вторую кнопку с тем же именем: «действие за подтверждением» было
+    // неотличимо от «действие по первому же нажатию».
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
+
+    // Вопрос назван ДОСЛОВНО: это и есть то, что видит арендатор перед
+    // необратимым шагом, и до #586 оно не было наблюдаемо ничем.
+    const confirm = screen.getByRole("tooltip");
+    expect(confirm).toHaveTextContent("Отозвать токен?");
+    expect(confirm).toHaveTextContent("Токен перестанет действовать безвозвратно.");
+    // Открытие вопроса САМО ПО СЕБЕ ничего не отзывает.
+    expect(run).not.toHaveBeenCalled();
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "Отозвать" }));
 
     expect(run).toHaveBeenCalledWith({ tokenId: "tok-9" });
+  });
+
+  it("отказ от подтверждения НЕ отзывает — отрицание в паре с положительным выше", async () => {
+    listUserTokens.mockResolvedValue({ tokens: [token({ id: "tok-9" })] });
+
+    const { container } = renderPanel("usr-42");
+    await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
+    fireEvent.click(within(screen.getByRole("tooltip")).getByRole("button", { name: "Отмена" }));
+
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("секрет показывается ОДИН раз — с ключом, предупреждением и идентификаторами", () => {

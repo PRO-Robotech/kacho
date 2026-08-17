@@ -756,6 +756,21 @@ fi
 # leak into the zones whose (deliberate) absence of a family other suites assert on —
 # vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (zone a has no v6), ADR-CR-EXT-FALLTHROUGH-V4
 # and IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP (zone b has no v4) all stay honest.
+# АВТОР ЭТОЙ СТРОКИ — ПОДЪЁМ СТЕНДА, а не этот скрипт (с 2026-08-17).
+# `make dev-up` сеет её SQL-ом (deploy/scripts/vpc-address-pool-baseline.sql,
+# цель `seed-vpc-pools`): полоса аникаста нужна не набору nlb, а СТЕНДУ — без неё
+# ни один внешний балансировщик не создаётся ни в консоли, ни у разработчика, а
+# слот `is_default` для (zone_id IS NULL, kind) — кластерный синглтон, и второй
+# его автор разошёлся бы с первым молча.
+#
+# Здесь поэтому штатно срабатывает ветка «reusing … placement verified» ниже — та
+# же, которую скрипт берёт на любом повторном прогоне. Ветка создания остаётся
+# для стендов, поднятых без посева (standalone `make seed-nlb`, боевой прогон).
+#
+# ИМЯ ИСТОРИЧЕСКОЕ: оно называет прежнего автора. Переименование потребует
+# согласованной правки двух объявлений (здесь и в SQL) и заведено отдельным
+# предметом; согласие объявлений держит гейт
+# internal/repohygiene TestStandAnycastPoolBaselineMatchesTheNlbSeeder.
 ANY_POOL_NAME="kac-nlb-seed-anycast-pool"
 ANY_POOL_V4="100.103.0.0/22"
 ANY_POOL_V6="2001:db8:e2e:1ac::/64"

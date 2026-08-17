@@ -177,7 +177,7 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
         colon={false}
         size="middle"
       >
-        <Form.Item label="Имя" required>
+        <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
 

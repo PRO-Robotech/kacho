@@ -116,7 +116,11 @@ describe("групповое удаление", () => {
     отметить("третья");
 
     fireEvent.click(screen.getByRole("button", { name: /Удалить выделенные/ }));
-    fireEvent.click(await screen.findByText("Удалить"));
+    // Подтверждение нажимается В ОКНЕ. Слово «Удалить» стоит на странице не
+    // единожды: то же слово несёт пункт меню КАЖДОЙ строки. Пока общий дублёр
+    // не рисовал состав меню, поиск по всей странице был однозначен случайно —
+    // и обещал бы то же самое на продукте, где он неоднозначен.
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Удалить" }));
 
     await waitFor(() => expect(calls.filter((c) => c.method === "DELETE")).toHaveLength(2));
     const цели = calls.filter((c) => c.method === "DELETE").map((c) => c.url.split("/").pop());
@@ -152,6 +156,10 @@ describe("групповое удаление", () => {
       </QueryClientProvider>,
     );
     await screen.findAllByText("малый");
-    expect(screen.queryAllByRole("checkbox")).toEqual([]);
+    // Флажок выделения ищется В ТАБЛИЦЕ, а не по всей странице: настройка
+    // видимости колонок — тоже флажки, и она законна на любом списке. Пока
+    // общий дублёр не рисовал содержимое выпадающего блока, «на странице нет
+    // ни одного флажка» было верно случайно и утверждало не про свой предмет.
+    expect(within(screen.getByRole("table")).queryAllByRole("checkbox")).toEqual([]);
   });
 });
