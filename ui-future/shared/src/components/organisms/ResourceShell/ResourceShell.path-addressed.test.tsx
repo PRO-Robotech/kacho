@@ -33,6 +33,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
 import type { ResourceSpec } from "@shared/lib/resource-spec";
+import { formatDateTime } from "@shared/lib/datetime";
 import { ResourceShell } from "./ResourceShell";
 
 const realFetch = globalThis.fetch;
@@ -238,7 +239,12 @@ describe("карточка ресурса, адресуемого путём", (
     // Карточка ПРОЧИТАЛАСЬ: на экране значение из ответа стенда, а не подпись
     // строки (подпись отрисовалась бы и на пустом ответе, если бы оболочка
     // вообще дошла до обзора).
-    expect(await screen.findByText("01.08.2026, в 13:00")).toBeInTheDocument();
+    // Ожидаемое ВЫЧИСЛЯЕТСЯ тем же форматтером, каким продукт его печатает, а не
+    // выписывается строкой. Выписанная строка утверждает о ЧАСОВОМ ПОЯСЕ среды, а
+    // не о коде: та же проба зеленела на машине разработчика (Москва) и краснела в
+    // конвейере (UTC) — «01.08.2026, в 13:00» против «в 10:00». Проба, меняющая
+    // вердикт от места прогона, не судит продукт вовсе.
+    expect(await screen.findByText(formatDateTime(CREATED))).toBeInTheDocument();
     // И блокирующая ветка на обычном адресе не срабатывает — иначе отрицания
     // выше зеленели бы на оболочке, которая блокирует всё подряд.
     expect(screen.queryByText(/Адрес неполон/i)).not.toBeInTheDocument();
