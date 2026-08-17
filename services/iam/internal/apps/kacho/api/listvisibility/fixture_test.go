@@ -54,6 +54,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
@@ -96,7 +98,11 @@ func newEnv(t *testing.T) *env {
 
 	pool, err := coredb.NewPool(ctx, kachopg.NewTestPostgres(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	// Закрытие С ПРЕДЕЛОМ, а не `t.Cleanup(pool.Close)`: отложенное закрытие ждёт
+	// соединение, которое проба, упавшая внутри открытой транзакции, не вернёт
+	// никогда, — и уносит с собой вердикт всего пакета. Здесь это не гипотетика:
+	// каждый сценарий берёт reader-TX и половина из них намеренно роняет запрос.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	e := &env{
 		pool: pool,

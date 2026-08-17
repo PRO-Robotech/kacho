@@ -69,6 +69,7 @@ import (
 	"context"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
@@ -224,8 +225,12 @@ func (u *ListUseCase) collectVisiblePage(
 	// One row beyond the page: a non-empty token is issued only when a visible row
 	// past this page has ALREADY been read and judged (C2).
 	need := want + 1
-	chunk := int32(need)
-	if need > int(shared.MaxListPageSize) {
+	// Насыщающее сужение, а не голое int32(need): величина здесь заведомо мала
+	// (want ≤ MaxListPageSize), но «заведомо» — рассуждение автора, а не свойство
+	// типа, и проверяющий переполнение анализатор его не знает. Общий helper
+	// делает границу свойством кода.
+	chunk := safeconv.IntToInt32(need)
+	if chunk > shared.MaxListPageSize {
 		chunk = shared.MaxListPageSize
 	}
 	candidates := scope.Candidates(fgaBindingObjectType)
