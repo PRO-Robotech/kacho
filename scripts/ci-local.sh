@@ -450,6 +450,59 @@ has_npm_script() { # has_npm_script <каталог> <скрипт>
         "$1/package.json" "$2" 2> /dev/null
 }
 
+# Готов ли пакет к прогону — ВЫВОДИТСЯ ИЗ ДЕРЕВА, а не по наличию собственного
+# `node_modules`.
+#
+# Консоль — npm-workspaces: у членов (`shared`, `vpc`, `iam`, `system`) своего
+# каталога зависимостей НЕТ by construction, всё лежит в корне `ui-future`.
+# Проверка «есть ли node_modules у модуля» объявляла их неустановленными ВСЕГДА
+# — то есть четыре модуля, включая три единственных исполнителя проб общего
+# кода, не проверялись ни разу, а итог честно печатал их в «не выполнено», и это
+# читалось как временная нехватка зависимостей.
+#
+# Перечень членов берётся из корневого package.json: выписанный список разошёлся
+# бы с деревом молча, как уже расходились три рукописных перечня репозиториев.
+npm_deps_ready() { # npm_deps_ready <каталог модуля>
+    local dir="$1" name root
+    name="$(basename "$dir")"
+    root="$ROOT/ui-future"
+    if node -e '
+        const ws = (require(process.argv[1]).workspaces) || [];
+        process.exit(ws.includes(process.argv[2]) ? 0 : 1)
+    ' "$root/package.json" "$name" 2> /dev/null; then
+        [ -d "$root/node_modules" ]
+    else
+        [ -d "$dir/node_modules" ]
+    fi
+}
+
+# ui_types_group — ТОЛЬКО проверка типов консоли, без проб и сборки.
+#
+# ЗАЧЕМ ОТДЕЛЬНО ОТ `ui`. Полная группа медленная (пробы трёх модулей — минуты),
+# поэтому в хук отправки её не поставишь, и правка консоли уезжала в конвейер
+# вообще без проверки. Дважды подряд это стоило круга: пробы были зелёными на
+# 5443 утверждениях, а строгая проверка типов роняла линт, typecheck и сборку
+# СЕМИ модулей плюс образ консоли — из-за одного объявления, оставшегося без
+# читателя. Пробы такого не ловят by construction: они типы не проверяют.
+#
+# Проверка типов дешёвая (десятки секунд) и ловит ровно этот класс, поэтому
+# место ей — перед отправкой, а не в конвейере.
+ui_types_group() {
+    local m
+    if ! command -v node > /dev/null; then
+        skip "ui-types" "node не установлен"; return
+    fi
+    for m in "$ROOT"/ui-future/*/package.json; do
+        local dir name; dir="$(dirname "$m")"; name="$(basename "$dir")"
+        npm_deps_ready "$dir" || { skip "ui-types $name" "зависимости не установлены (npm ci --prefix)"; continue; }
+        if has_npm_script "$dir" typecheck; then
+            run "ui-types $name" bash -c "cd '$dir' && npm run typecheck"
+        else
+            skip "ui-types $name" "скрипта нет в package.json"
+        fi
+    done
+}
+
 ui_group() {
     local m
     if ! command -v node > /dev/null; then
@@ -457,7 +510,7 @@ ui_group() {
     fi
     for m in "$ROOT"/ui-future/*/package.json; do
         local dir name; dir="$(dirname "$m")"; name="$(basename "$dir")"
-        [ -d "$dir/node_modules" ] || { skip "ui $name" "зависимости не установлены (npm ci --prefix)"; continue; }
+        npm_deps_ready "$dir" || { skip "ui $name" "зависимости не установлены (npm ci --prefix)"; continue; }
         # Прогон проб НЕ заменяет сборку: сборка гоняет строгую проверку типов и
         # роняет то, что пробы пропускают (неиспользованный импорт — реальный
         # случай). Поэтому обе, и в этом порядке.
@@ -506,6 +559,7 @@ case "$GROUP" in
     terraform) terraform_group ;;
     helm)      helm_group ;;
     ui)        ui_group ;;
+    ui-types)  ui_types_group ;;
     all)       proto_group; go_group; terraform_group; helm_group; ui_group ;;
     # Несколько групп через пробел: хук отправки гоняет быстрые, но не медленные.
     *)
@@ -517,7 +571,8 @@ case "$GROUP" in
                 terraform) terraform_group ;;
                 helm)      helm_group ;;
                 ui)        ui_group ;;
-                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|all)" >&2; ok=0 ;;
+                ui-types)  ui_types_group ;;
+                *) echo "неизвестная группа: $g (proto|go|terraform|helm|ui|ui-types|all)" >&2; ok=0 ;;
             esac
         done
         [ "$ok" = "1" ] || exit 2
