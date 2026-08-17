@@ -41,11 +41,15 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 
 	// Каталог контракта у домена `nlb` называется `loadbalancer` — так его назвал
 	// сам контракт, и переименовать его нельзя (сломалась бы форма на проводе).
+	// У домена `iam` служба чтения объявлена в пакете ОБЩЕЙ формы ответа
+	// (`quota`), и тоже не по вкусу: та форма уже зависит от `iam.v1`, поэтому
+	// объявление службы внутри `iam.v1` замкнуло бы пакеты друг на друга — это
+	// отвергает `buf lint`.
 	//
-	// Соответствие объявлено ЗДЕСЬ и явно, а не выведено из совпадения имён:
-	// вывод по совпадению молча пропустил бы ровно этот домен, и гейт отчитался
-	// бы «ноль находок», не осмотрев пятую часть предмета.
-	protoDirOf := map[string]string{"nlb": "loadbalancer"}
+	// Соответствия объявлены ЗДЕСЬ и явно, а не выведены из совпадения имён:
+	// вывод по совпадению молча пропустил бы ровно эти домены, и гейт отчитался
+	// бы «ноль находок», не осмотрев их.
+	protoDirOf := map[string]string{"nlb": "loadbalancer", "iam": "quota"}
 
 	sqlFiles, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".sql")
 	require.NoError(t, err, "перечень миграций берётся у индекса дерева, а не обходом диска")
@@ -89,7 +93,11 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 	require.NoError(t, err, "перечень контрактов берётся у индекса дерева")
 
 	answering := map[string]string{} // каталог контракта → файл
-	serviceRe := regexp.MustCompile(`(?m)^service QuotaService\b`)
+	// Имён у службы чтения два, и второе — не синоним: `IdentityQuotaService`
+	// отвечает о носителе, который не является ни проектом, ни аккаунтом, поэтому
+	// у него другая форма запроса (полей нет вовсе). Искать только первое имя
+	// значило бы объявить находкой домен, который читать как раз ДАЁТ.
+	serviceRe := regexp.MustCompile(`(?m)^service (Quota|IdentityQuota)Service\b`)
 	protosSeen := 0
 	for _, path := range protoFiles {
 		raw, rerr := os.ReadFile(path)
@@ -121,6 +129,32 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 			"ловить предмет, и молчание такого гейта неотличимо от согласия. Осмотрено контрактов: %d",
 		protosSeen)
 
+	// Владелец ВЕЛИЧИН — тот, чей контракт объявляет службу их выдачи. Он
+	// определяется ЗАМЕРОМ, а не именем: гейт, знающий его по написанию,
+	// продолжил бы освобождать `iam` и после того, как авторитет переехал бы
+	// в другой домен, — то есть освобождал бы того, кому освобождение больше не
+	// причитается.
+	limitOwners := map[string]string{}
+	ownerRe := regexp.MustCompile(`(?m)^service InternalLimitService\b`)
+	for _, path := range protoFiles {
+		raw, rerr := os.ReadFile(path)
+		require.NoError(t, rerr, "чтение %s", path)
+		if !ownerRe.MatchString(string(raw)) {
+			continue
+		}
+		rel := path
+		if i := strings.Index(path, "/proto/"); i >= 0 {
+			rel = path[i+1:]
+		}
+		if seg := strings.Split(rel, "/"); len(seg) > 3 {
+			limitOwners[seg[3]] = rel
+		}
+	}
+	require.Lenf(t, limitOwners, 1,
+		"владельцев величин найдено %d, а их обязан быть ровно один: освобождение "+
+			"от догоняющего опирается на то, что авторитет и снимок лежат в ОДНОЙ базе, "+
+			"и на двух владельцах эта предпосылка неверна", len(limitOwners))
+
 	protoDir := func(domain string) string {
 		if d, ok := protoDirOf[domain]; ok {
 			return d
@@ -136,6 +170,30 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 				"нет `service QuotaService` в proto/kacho/cloud/"+protoDir(domain)+"/v1/")
 		}
 		if _, ok := cursor[domain]; !ok {
+			// Владельцу ВЕЛИЧИН догоняющий не нужен, и это не послабление, а
+			// отсутствие предмета: авторитет лежит в той же базе, что снимок, и
+			// списание обновляет снимок тем же оператором. Дельты к самому себе не
+			// существует.
+			//
+			// ПРЕДПОСЫЛКА ОСВОБОЖДЕНИЯ ПРОВЕРЯЕТСЯ, а не принимается на слово: файл,
+			// определяющий списание, обязан читать таблицу величин ЭТОГО ЖЕ домена.
+			// Замени владелец живое чтение на снимок из дельты — освобождение
+			// перестанет иметь основание, и гейт скажет об этом здесь.
+			// Владелец ищется по ОБОИМ его именам: службу выдачи величин он
+			// объявляет в СВОЁМ пакете, а службу чтения — возможно, в чужом (у
+			// `iam` это ровно так). Спросить только одно имя значило бы не найти
+			// владельца ровно там, где два имени и разошлись.
+			_, ownerBySvc := limitOwners[domain]
+			_, ownerByProto := limitOwners[protoDir(domain)]
+			if ownerBySvc || ownerByProto {
+				if !localAuthorityReadByCharger(t, root, domain) {
+					findings = append(findings, domain+
+						" — владелец величин, но его списание НЕ читает таблицу величин "+
+						"своей базы: освобождение от догоняющего лишилось предпосылки, "+
+						"и снимок теперь может отставать так же, как у прочих")
+				}
+				continue
+			}
 			findings = append(findings, domain+
 				" — списывает квоту ("+where+"), но снимок величины не догоняет авторитет: "+
 				"нет таблицы `quota_sync_cursor` в его миграциях")
@@ -167,4 +225,49 @@ func TestEveryQuotaChargingOwnerAnswersTheTenantRead(t *testing.T) {
 		"предел, который ограничивает и которого не видно, неотличим для арендатора от сбоя "+
 			"платформы — он узнаёт о квоте только упершись в неё отказом:\n%s",
 		strings.Join(findings, "\n"))
+}
+
+// localAuthorityReadByCharger — читает ли механизм списания этого домена таблицу
+// величин ЕГО ЖЕ базы.
+//
+// Это ПРЕДПОСЫЛКА освобождения владельца величин от догоняющего, и проверяется
+// она, а не принимается на слово. Освобождение защитимо ровно потому, что
+// авторитет и снимок лежат в одной базе и обновляются одним оператором; замени
+// живое чтение на снимок из дельты — предпосылка исчезнет, а освобождение
+// осталось бы, и снимок отставал бы молча.
+//
+// Предмет — файл, ОПРЕДЕЛЯЮЩИЙ списание (`kacho_quota_count`), а не любой файл
+// домена: величину читают многие, а вопрос ровно один — читает ли её тот, кто
+// принимает решение о месте.
+func localAuthorityReadByCharger(t *testing.T, root, domain string) bool {
+	t.Helper()
+
+	files, err := treecorpus.UnderWithSuffix(
+		filepath.Join(root, "services", domain, "internal", "migrations"), ".sql")
+	require.NoError(t, err, "перечень миграций домена %s берётся у индекса дерева", domain)
+
+	chargeRe := regexp.MustCompile(`kacho_quota_count\(`)
+	// Таблица величин у владельца ровно одна и называется `limits` в его схеме.
+	// Имя схемы в предикат не зашивается: оно частность владельца, а предмет —
+	// «читает СВОЮ таблицу величин».
+	authorityRe := regexp.MustCompile(`\blimits\b`)
+
+	seen := 0
+	found := false
+	for _, path := range files {
+		raw, rerr := os.ReadFile(path)
+		require.NoError(t, rerr, "чтение %s", path)
+		body := string(raw)
+		if !chargeRe.MatchString(body) {
+			continue
+		}
+		seen++
+		if authorityRe.MatchString(body) {
+			found = true
+		}
+	}
+	require.NotZerof(t, seen,
+		"у домена %s не нашлось ни одного файла, определяющего списание, — предпосылка "+
+			"этой проверки сломана, и её молчание ничего не доказывает", domain)
+	return found
 }

@@ -226,8 +226,15 @@ var AllowedMethods = map[string]struct{}{
 	// (admin-CRUD на :9091; HasInternalSuffix блокирует автоматически, запрет #6).
 
 	// iam.v1 — AccountService
-	"/kacho.cloud.iam.v1.AccountService/Get":               {},
-	"/kacho.cloud.iam.v1.AccountService/List":              {},
+	"/kacho.cloud.iam.v1.AccountService/Get":  {},
+	"/kacho.cloud.iam.v1.AccountService/List": {},
+	// quota.v1 — IdentityQuotaService (только чтение, и только о СЕБЕ: поля,
+	// которым можно было бы назвать чужую личность, у запроса нет).
+	//
+	// Служба объявлена в пакете общей формы ответа, а не в `iam.v1`: та форма уже
+	// зависит от `iam.v1`, и обратная ссылка замкнула бы пакеты друг на друга.
+	"/kacho.cloud.quota.v1.IdentityQuotaService/List": {},
+
 	"/kacho.cloud.iam.v1.AccountService/Create":            {},
 	"/kacho.cloud.iam.v1.AccountService/Update":            {},
 	"/kacho.cloud.iam.v1.AccountService/Delete":            {},
