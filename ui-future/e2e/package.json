@@ -6,11 +6,13 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint ."
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@playwright/test": "1.56.1",
+    "@types/node": "^26.2.0",
     "eslint": "^9.39.5",
     "globals": "^17.6.0",
     "typescript": "^5.7.3",
