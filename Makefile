@@ -187,6 +187,7 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # не названный здесь, — находка; названный здесь без такого импорта — тоже.
 AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/access_binding \
+	./services/iam/internal/apps/kacho/api/user \
 	./services/iam/internal/apps/kacho/api/readauthz \
 	./services/iam/internal/authzcascade \
 	./services/iam/internal/authzmap \
