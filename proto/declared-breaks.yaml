@@ -45,7 +45,78 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-declared: []
+declared:
+  # Двенадцать сообщений, переживших СВОИ ГЛАГОЛЫ. Восемь методов сняты коммитом
+  # 7675925f (задачи 10, 12, 13, 45): он убрал глаголы, хендлеры, строки каталога
+  # прав, маршруты края, кейсы и пробы — и оставил их сообщения запроса и ответа.
+  # Имена самих методов уже стоят в перечне снятой поверхности
+  # (internal/repohygiene/retiredrpcsurface_test.go), поэтому вернуться молча они
+  # не могут; здесь снимается то, что от них осталось в контракте.
+  #
+  # Почему это ЗАВЕРШЕНИЕ снятия, а не новое решение: причина, по которой сняты
+  # глаголы правки маршрутов, названа тем коммитом дословно — идентичности
+  # маршрута в модели нет, адресовать правку было нечем. Сообщения, требующие
+  # такой идентификатор, ей и остались надгробием.
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: AddRouteTableRoutesRequest
+    reason: сообщение снятого глагола RouteTableService/AddRoutes — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: RemoveRouteTableRoutesRequest
+    reason: сообщение снятого глагола RouteTableService/RemoveRoutes — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/route_table_service.proto
+    symbol: UpdateRouteTableRouteRequest
+    reason: сообщение снятого глагола RouteTableService/UpdateRoute — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/address_service.proto
+    symbol: GetAddressByValueRequest
+    reason: сообщение снятого глагола AddressService/GetByValue — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/address_service.proto
+    symbol: ListAddressesBySubnetRequest
+    reason: сообщение снятого глагола AddressService/ListBySubnet — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/address_service.proto
+    symbol: ListAddressesBySubnetResponse
+    reason: сообщение снятого глагола AddressService/ListBySubnet — выход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkSubnetsRequest
+    reason: сообщение снятого глагола NetworkService/ListSubnets — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkSubnetsResponse
+    reason: сообщение снятого глагола NetworkService/ListSubnets — выход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkSecurityGroupsRequest
+    reason: сообщение снятого глагола NetworkService/ListSecurityGroups — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkSecurityGroupsResponse
+    reason: сообщение снятого глагола NetworkService/ListSecurityGroups — выход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkRouteTablesRequest
+    reason: сообщение снятого глагола NetworkService/ListRouteTables — вход без глагола
+    issue: kacho#499
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/vpc/v1/network_service.proto
+    symbol: ListNetworkRouteTablesResponse
+    reason: сообщение снятого глагола NetworkService/ListRouteTables — выход без глагола
+    issue: kacho#499
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #
