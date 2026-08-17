@@ -1,0 +1,93 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+syntax = "proto3";
+
+package kacho.cloud.loadbalancer.v1;
+
+import "google/api/annotations.proto";
+import "kacho/cloud/quota/v1/quota.proto";
+import "kacho/iam/authz/v1/authz_options.proto";
+
+option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
+
+// QuotaService — what this domain's ceilings are and how much of them is spent.
+//
+// THE SHAPE OF THE ANSWER IS STATED ONCE, in `kacho.cloud.quota.v1.Quota`, and is
+// not restated here. Each owner answers about ITS OWN kinds, from its own
+// database, because a single summary endpoint at iam would need `iam -> owner`
+// calls to learn what is spent, and that edge would close a cycle. What is
+// domain-specific is therefore only WHICH kinds this owner counts.
+//
+// WHY THE TENANT MUST BE ABLE TO READ THIS. A ceiling that constrains and cannot
+// be seen is, from the tenant's side, indistinguishable from a broken platform:
+// they learn of the quota only by hitting it. Until this service existed the whole
+// quota surface of this domain was administrative — readable on the internal
+// listener only — so a tenant meeting `RESOURCE_EXHAUSTED` could learn neither
+// their ceiling, nor their consumption, nor who states the value.
+//
+// READ ONLY. There is no Create/Update/Delete here and there will not be: the
+// value is administered through `iam.v1.InternalLimitService` under `system_admin`
+// on the internal listener. A tenant who can raise their own ceiling does not have
+// one.
+service QuotaService {
+  // List the quotas of one project for THIS domain.
+  //
+  // NO PAGINATION, DELIBERATELY. The catalogue of kinds is closed and small —
+  // three kinds for this domain — and it is bounded by a migration, not by tenant
+  // behaviour. A cursor here would add a failure mode (a tenant reading page two
+  // of their ceilings) to buy nothing. A domain that ever grows a catalogue which
+  // does not fit one answer changes this contract with its own acceptance; it does
+  // not quietly gain a field here.
+  rpc List (ListQuotasRequest) returns (ListQuotasResponse) {
+    option (google.api.http) = { get: "/nlb/v1/quotas" };
+
+    // Project-scope Check, the same shape this domain's other top-level Lists
+    // declare. `viewer` on the project named by the request — NOT a cluster-scoped
+    // relation: `viewer @ cluster` is satisfiable by the wildcard tuple the
+    // platform writes for its global catalogues, so it would answer "yes" to every
+    // authenticated caller, and these numbers are per tenant.
+    //
+    // Per-object narrowing has no place here either, and the difference is worth
+    // stating: a quota row is not an object with an owner, it is a property of the
+    // project. There is nothing to narrow — the project either is readable by this
+    // caller or it is not, and that is exactly one question.
+    option (kacho.iam.authz.v1.permission)        = "loadbalancer.quotas.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "project"
+      from_request_field: "project_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+  }
+}
+
+// Request for QuotaService.List.
+message ListQuotasRequest {
+  // Project whose quotas are read. Required, and the requirement is enforced by
+  // the handler as its FIRST statement, not by an annotation: it is both the
+  // subject of the answer and the object the authorization Check is made against,
+  // so an empty value is not "all projects" — it is an unanswerable question,
+  // refused by name with `INVALID_ARGUMENT "project_id: required"`.
+  //
+  // Left to the edge alone, an empty value would reach a scope extractor that
+  // cannot resolve it and come back as an authorization refusal — a statement
+  // about permission on a question that was never well-formed.
+  string project_id = 1;
+}
+
+// Response for QuotaService.List.
+message ListQuotasResponse {
+  // Every kind this domain counts against the project, always — one row per kind
+  // of the catalogue, never a subset and never an empty array.
+  //
+  // A project that has created nothing reads the full set with `used = 0`. The
+  // empty array is reserved for a statement this service never makes: "this
+  // project has no quotas". A tenant given `[]` would conclude they are unlimited,
+  // and they are not (api-conventions, "an empty value must mean empty").
+  //
+  // Kinds counted inside a PARENT resource of this domain are absent by
+  // construction: they have no single project-level value to state — there are so
+  // many per parent, not so many per project.
+  repeated kacho.cloud.quota.v1.Quota quotas = 1;
+}

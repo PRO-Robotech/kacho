@@ -141,10 +141,15 @@ func TestGateStatesItsCensus(t *testing.T) {
 		t.Fatalf("gate must pass against the real kacho-registry tree: %v\n--- output ---\n%s", err, out)
 	}
 	for _, want := range []string{
-		"handler file",                 // how much was read
-		"composition-root file",        // …including the wiring half
-		"List RPC",                     // how many resources were found
-		"checked RegistryHandler.List", // and which of them were judged
+		"handler file",          // how much was read
+		"composition-root file", // …including the wiring half
+		"List RPC",              // how many resources were found
+		// …и КАКИЕ именно осуждены. Имя проверяется отдельно от слова «checked»:
+		// перечень печатается отсортированным, и склейка «checked <первое имя>»
+		// краснела бы на появлении соседа, чьё имя стоит раньше по алфавиту, — то
+		// есть на добавлении RPC, а не на потере проверки.
+		"checked ",
+		"RegistryHandler.List",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("census must state %q\n--- output ---\n%s", want, out)
@@ -203,7 +208,7 @@ func TestGateInjectionOnRealTree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("a legitimate refactor of the same shape must stay silent: %v\n--- output ---\n%s", err, out)
 		}
-		if !strings.Contains(out, "checked RegistryHandler.List") {
+		if !strings.Contains(out, "checked ") || !strings.Contains(out, "RegistryHandler.List") {
 			t.Errorf("the moved method must still be judged, not merely unnoticed\n--- output ---\n%s", out)
 		}
 	})

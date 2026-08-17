@@ -3,7 +3,11 @@
 
 package kacho
 
-import "context"
+import (
+	"context"
+
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
+)
 
 // Контракт доступа к строкам учёта числа ресурсов.
 //
@@ -53,22 +57,13 @@ type QuotaRow struct {
 //
 // Порядок полей повторяет `Quota` из `kacho.cloud.quota.v1`: тип заводится под
 // один контракт, и расхождение состава было бы видно сразу.
-type QuotaState struct {
-	// Kind — вид ресурса точечным токеном платформы (`vpc.network`).
-	Kind string
-	// Limit — разрешённая величина на момент снимка.
-	Limit int64
-	// Used — сколько занято. Пишет только триггер; сюда значение приходит
-	// чтением и никуда, кроме ответа, не уходит.
-	Used int64
-	// SourceScope — область, на которой величина победила.
-	SourceScope string
-	// SourceScopeID — объект победившей области; пуст, когда победило умолчание.
-	SourceScopeID string
-	// CarrierType, CarrierID — носитель учёта.
-	CarrierType string
-	CarrierID   string
-}
+//
+// ПСЕВДОНИМ общего типа, а не своя структура: чтение квот доменно-независимо
+// целиком, и полоса, которая его исполняет, живёт в `pkg/quota/quotaread` — одна
+// на всех владельцев. Своя структура здесь означала бы переходник между ней и
+// полосой, то есть место, где снисходительность к чужому ответу заводится
+// незамеченной.
+type QuotaState = quotaread.State
 
 // QuotaReaderIface — совещательная полоса.
 type QuotaReaderIface interface {

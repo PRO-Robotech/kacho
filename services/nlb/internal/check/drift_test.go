@@ -35,6 +35,8 @@ var allPublicServiceDescs = []grpc.ServiceDesc{
 	lbv1.NetworkLoadBalancerService_ServiceDesc,
 	lbv1.ListenerService_ServiceDesc,
 	lbv1.TargetGroupService_ServiceDesc,
+	// Чтение квот арендатором: предел, потребление и источник величины.
+	lbv1.QuotaService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 
@@ -205,7 +207,7 @@ func TestDrift_EveryEntryIsExactlyOneLane(t *testing.T) {
 	t.Logf("перепись полос: %v", lanes)
 }
 
-// catalogCountRationale — почему имён 29, а не 26.
+// catalogCountRationale — почему имён 30, а не 26.
 //
 // 26 было числом РУКОПИСНОЙ карты, и оно расходилось с каталогом края в трёх
 // местах. Два имени — `loadbalancer.networkLoadBalancers.{getAnnounceState,
@@ -215,10 +217,15 @@ func TestDrift_EveryEntryIsExactlyOneLane(t *testing.T) {
 // строка потока жизненного цикла перестала быть `<exempt>` и назвала отношение,
 // которое сервис и без того требовал.
 //
+// Тридцатое — `loadbalancer.quotas.list`: арендаторское чтение квот. До него вся
+// поверхность квот этого домена была административной, и арендатор, встретив
+// отказ на пределе, не мог узнать ни своего потолка, ни своего расхода.
+//
 // Теперь имена берутся из аннотаций, то есть ровно из того, из чего собирается
 // каталог, и «домен назвал одно, каталог другое» перестало быть выразимым.
-const catalogCountRationale = "имён прав домена loadbalancer — 29: 26 прежних + два имени announce, " +
-	"которые каталог нёс, а рукописная карта не называла, + поток жизненного цикла"
+const catalogCountRationale = "имён прав домена loadbalancer — 30: 26 прежних + два имени announce, " +
+	"которые каталог нёс, а рукописная карта не называла, + поток жизненного цикла, " +
+	"+ арендаторское чтение квот"
 
 // TestDrift_CatalogCompleteness — Catalog возвращает ровно 26 уникальных
 // permission строк (NLB CONTRACT удалил loadbalancer.networkLoadBalancers.
@@ -229,12 +236,12 @@ func TestDrift_CatalogCompleteness(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Lenf(t, uniq, 29,
+	require.Lenf(t, uniq, 30,
 		catalogCountRationale+"; got %d: %v", len(uniq), sortedKeys(uniq))
 	require.Equal(t, len(cat), len(uniq), "Catalog() contains duplicates")
 }
 
-// TestDrift_CatalogRegex — все 29 имён каталога соответствуют regex
+// TestDrift_CatalogRegex — все 30 имён каталога соответствуют regex
 // (включая catalog-only `loadbalancer.operations.{get,cancel,list}`).
 func TestDrift_CatalogRegex(t *testing.T) {
 	for _, p := range check.Catalog() {
@@ -249,8 +256,8 @@ func TestDrift_CatalogRegex(t *testing.T) {
 //
 // Ожидание (после NLB CONTRACT — NLB service = 8 RPC, минус start/stop/attach/detach):
 //
-//	8 NLB + 6 Listener + 9 TG + 2 Operation = 25 public + 1 internal Subscribe +
-//	2 internal Announce (Get/Report) = 28 entries.
+//	8 NLB + 6 Listener + 9 TG + 1 Quota + 2 Operation = 26 public + 1 internal
+//	Subscribe + 2 internal Announce (Get/Report) = 29 entries.
 func TestDrift_RPCMethodCount(t *testing.T) {
 	got := len(check.PermissionMap())
 
@@ -353,6 +360,13 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/ListOperations",
 			&lbv1.ListTargetGroupOperationsRequest{TargetGroupId: id},
 			"nlb_target_group", id},
+		// Чтение квот сужается ПРОЕКТОМ, а не объектом: строка учёта — свойство
+		// проекта, а не объект с владельцем, поэтому сужать здесь нечего. Случай
+		// пинит именно это: извлечение, начавшее резолвить что-то иное, сделало бы
+		// числа арендатора видимыми по чужому вопросу.
+		{"/kacho.cloud.loadbalancer.v1.QuotaService/List",
+			&lbv1.ListQuotasRequest{ProjectId: id},
+			"project", id},
 		// Internal listener (:9091) — the SAME authz interceptor runs there, so
 		// these entries decide access exactly as the public ones do.
 		//
