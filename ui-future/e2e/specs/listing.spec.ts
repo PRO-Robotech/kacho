@@ -23,6 +23,42 @@ async function сетьВПроекте(page: Page, projectId: string): Promise<
 }
 
 /**
+ * То же для ВКЛАДКИ связанного ресурса: вкладка подсетей свежей сети рисует
+ * пустое состояние («Создайте вашу первую подсеть»), а не таблицу, поэтому
+ * строки поиска на ней нет — и не должно быть.
+ *
+ * Решение (2026-08-17): предмет списка сеет ПРОБА, а не показ фильтра на пустой
+ * вкладке. Строка поиска над пустым списком — ручка, которой нечего
+ * фильтровать: она обещает работу, которой нет, и её пустой ответ пользователь
+ * читает как «такого ресурса нет».
+ *
+ * Зона берётся из справочника, а не выписывается: имя зоны — произвольная
+ * строка, и проба, знающая его наизусть, проверяет свою копию посева, а не
+ * стенд.
+ */
+async function подсетьВСети(page: Page, projectId: string, networkId: string): Promise<string> {
+  const зоны = await page.request.get("/geo/v1/zones");
+  expect(зоны.ok(), "справочник зон недоступен — предмет вкладки создать нечем").toBeTruthy();
+  const зона = ((await зоны.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id;
+  expect(
+    зона,
+    "справочник зон ПУСТ: зональную подсеть создать нельзя, и вкладка останется пустой " +
+      "по причине стенда, а не продукта",
+  ).toBeTruthy();
+
+  const ответ = await page.request.post("/vpc/v1/subnets", {
+    data: {
+      projectId,
+      networkId,
+      name: `sub-lst-${runTag()}`,
+      zoneId: зона,
+      ipv4CidrPrimary: "10.93.7.0/24",
+    },
+  });
+  return createdResourceId(page, ответ, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под вкладку");
+}
+
+/**
  * Заходит в маршрут проекта, чтобы context-store подхватил `project_id` из
  * URL (`ContextUrlSync`) прежде, чем идти в `/system/*`.
  *
@@ -161,6 +197,7 @@ test("ручка вкладки связанного ресурса называ
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
   const networkId = await сетьВПроекте(page, projectId);
+  await подсетьВСети(page, projectId, networkId);
 
   await page.goto(`/projects/${projectId}/vpc/networks/${networkId}/subnets`, { waitUntil: "domcontentloaded" });
 
