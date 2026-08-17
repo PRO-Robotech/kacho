@@ -247,7 +247,10 @@ type ProofRoute struct {
 func RestRoutesForProof() []ProofRoute {
 	out := make([]ProofRoute, 0, len(generatedRestRoutes))
 	for _, r := range generatedRestRoutes {
-		out = append(out, ProofRoute{Method: r.Method, Template: r.Template, FQN: r.FQN})
+		// Преобразование, а не перечисление полей: `restRoute` объявлена
+		// ГЕНЕРАТОРОМ, и поле, добавленное туда, обязано сломать сборку здесь.
+		// Перечисление молча отдало бы проверкам края таблицу без него.
+		out = append(out, ProofRoute(r))
 	}
 	return out
 }
