@@ -131,7 +131,7 @@ describe("цели группы задаются при СОЗДАНИИ, а н�
   });
 
   it("пустой перечень целей не уезжает вовсе — положительный контроль", () => {
-    const body = REGISTRY["target-groups"].sanitize!({ targets: [] }) as Record<string, unknown>;
+    const body = REGISTRY["target-groups"].sanitize!({ targets: [] });
     expect(body).not.toHaveProperty("targets");
   });
 
@@ -169,7 +169,7 @@ describe("зеркало: форма не называет ветви, кото�
       cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] },
       security_group_id: "sg-1",
       cidr_group_id: "cg-1",
-    }) as Record<string, unknown>;
+    });
     for (const field of Object.values(SG_RULE_TARGET_FIELD)) expect(out).not.toHaveProperty(field);
   });
 
@@ -179,7 +179,7 @@ describe("зеркало: форма не называет ветви, кото�
       _target_kind: "cidr-group",
       cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8"] },
       cidr_group_id: "cg-1",
-    }) as Record<string, unknown>;
+    });
     expect(out.cidr_group_id).toBe("cg-1");
     expect(out).not.toHaveProperty("cidr_blocks");
   });
