@@ -538,7 +538,7 @@ func runServe(cfg config.Config) error {
 		Mode:    surfaceMode,
 		Logger:  logger,
 		Addr:    addrAxis(hooksAddr, "KACHO_IAM_HOOKS_HTTP_ADDR не задан профилем развёртывания: обогащение токена и заведение пользователя по первому входу на этой посадке не обслуживаются"),
-		Handler: buildHooksMux(pool, kachoRepo, opsRepo, openfgaClient, cfg, logger),
+		Handler: buildHooksMux(pool, kachoRepo, opsRepo, openfgaClient, metricsReg, cfg, logger),
 		Reach:   servicecontract.ReachClusterInternal,
 		Auth: servicecontract.Value[servicecontract.SurfaceAuthMech](
 			"общий секрет провайдера, проверяется обработчиком на каждом запросе"),
