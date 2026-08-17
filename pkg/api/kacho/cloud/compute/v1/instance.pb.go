@@ -43,9 +43,15 @@ const (
 	// reference pinned into a machine would therefore go stale on someone else's
 	// rename — the relaunch a month later would take a different image, or none.
 	//
-	// Create with this kind is refused synchronously, naming the field. That is
-	// the second of the three lawful outcomes: accepting the value and never
-	// resolving it would promise a capability that does not exist.
+	// Create with this kind is refused synchronously, naming THIS field —
+	// `instance_kind` — regardless of which boot_source accompanies it. The
+	// field is named explicitly here because "naming the field" once read as the
+	// OS-entry field: the refusal used to hang on boot_source.type alone, so
+	// CONTAINER paired with a storage.image passed input validation whole and
+	// produced a machine that no branch of the model describes.
+	//
+	// That is the second of the three lawful outcomes: accepting the value and
+	// never resolving it would promise a capability that does not exist.
 	//
 	// The value stays on the contract because the direction is decided and its
 	// return has a predicate: an immutable repository id lands at the owner. It

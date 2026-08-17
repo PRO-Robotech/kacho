@@ -135,29 +135,92 @@ func TestInstance_COMP_1_01_CreateVM(t *testing.T) {
 	require.Contains(t, in.Fqdn, ".auto.internal")
 }
 
-// COMP-1-02: Create CONTAINER → containerSpec present (command/restartPolicy), vmSpec absent.
-// COMP-1-02: контейнерная нагрузка ОТВЕРГАЕТСЯ — у образа реестра нет durable-
-// координаты (репозиторий не несёт неизменяемого идентификатора и адресуется
-// парой, чьё имя переименовывается отдельным глаголом). Отказ синхронный и по
-// имени поля: принять и не резолвить значило бы пообещать возможность, которой
-// нет.
+// COMP-1-02: образ РЕЕСТРА как источник ОС отвергается — своей осью, отдельно
+// от вида машины.
 //
-// Проба была «контейнер создаётся» и стала «контейнер отвергается» — предмет
-// сменился вместе с контрактом, а не исчез. Положительный контроль ниже:
-// без него отрицание зеленело бы на сломанном создании вообще.
-func TestInstance_COMP_1_02_ContainerRefusedUntilDurableImageAddress(t *testing.T) {
+// Прежняя редакция подавала сюда фикстуру, несущую ОБА признака сразу: вид
+// CONTAINER И образ реестра. Она зеленела на отказе по источнику и о виде не
+// утверждала ничего — поэтому пара «вид CONTAINER + образ ХРАНИЛИЩА» жила
+// незамеченной и создавала машину. Признаки разведены: здесь вид
+// законный (VM), отвергает источник; вид проверяется своей пробой выше.
+func TestInstance_COMP_1_02_RegistryImageSourceRefused(t *testing.T) {
 	k := newInstanceSvc(t, true)
 	ctx := context.Background()
 
-	_, err := k.svc.Create(ctx, baseContainerReq())
+	req := baseCreateReq()
+	req.BootSource = domain.BootSource{Type: bootSourceRegistryImage, ID: "ml/bert-trainer:cu121"}
+
+	_, err := k.svc.Create(ctx, req)
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "registry.image is not accepted yet")
+	require.Contains(t, fieldViolations(t, err), "boot_source.type",
+		"отказ по ИСТОЧНИКУ называет источник — не вид")
 
-	// (+) машина из образа хранилища проходит тем же путём
+	// (+) та же машина с образом хранилища проходит тем же путём.
 	op, err := k.svc.Create(ctx, baseCreateReq())
 	require.NoError(t, err)
 	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
+}
+
+// Вид «контейнер» отвергается ПО ВИДУ, а не по источнику ОС.
+//
+// ПРЕДМЕТ. Контракт объявляет `InstanceKind.CONTAINER` несоздаваемым и говорит,
+// что отказ НАЗЫВАЕТ ПОЛЕ. Названо при этом было другое поле: отказ висел на
+// `boot_source.type = registry.image`, а связки «вид ↔ источник ОС» в проверке
+// входа не было вовсе. Пара «вид CONTAINER + образ ХРАНИЛИЩА» проходила
+// проверку целиком и создавала машину — вид «контейнер» с корневой файловой
+// системой из образа диска, то есть ресурс, не описываемый ни одной ветвью
+// модели.
+//
+// ПОЧЕМУ ЭТОГО НЕ ЛОВИЛА СОСЕДНЯЯ ПРОБА (COMP-1-02). Её фикстура несёт ОБА
+// признака сразу — и вид, и образ реестра, — поэтому она зеленела на отказе по
+// источнику и о виде не утверждала ничего. Здесь признаки РАЗВЕДЕНЫ: вид
+// контейнерный, источник — законный образ хранилища, и отказать обязан именно
+// вид.
+//
+// Утверждается ИСХОД ВЫЗОВА (машина не создана и отказ называет `instance_kind`),
+// а не форма запроса: проверка формы осталась бы зелёной на любом расположении
+// отказа.
+func TestInstance_ContainerKindRefusedRegardlessOfBootSource(t *testing.T) {
+	k := newInstanceSvc(t, true)
+	ctx := context.Background()
+
+	req := baseContainerReq()
+	// Законный источник ОС: он сам по себе принимается (см. положительный
+	// контроль ниже), поэтому отказать может ТОЛЬКО вид.
+	req.BootSource = domain.BootSource{Type: bootSourceStorageImage, ID: "img-9k2m4x7q1n8p:22.04-lts"}
+
+	op, err := k.svc.Create(ctx, req)
+
+	require.Nil(t, op, "отвергнутый Create не возвращает Operation — машина не создана")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, fieldViolations(t, err), "instance_kind",
+		"контракт обещает отказ ПО ИМЕНИ ПОЛЯ, и поле это — вид, а не источник ОС")
+
+	// (+) положительный контроль: та же машина с видом VM и тем же образом
+	// хранилища создаётся. Без него отрицание зеленело бы на создании,
+	// сломанном по любой другой причине.
+	op, err = k.svc.Create(ctx, baseCreateReq())
+	require.NoError(t, err)
+	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
+}
+
+// fieldViolations — имена полей из google.rpc.BadRequest отказа. Машиночитаемая
+// часть контракта: текст сообщения стабилен, но утверждать надо поле.
+func fieldViolations(t *testing.T, err error) []string {
+	t.Helper()
+	var out []string
+	for _, d := range status.Convert(err).Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			out = append(out, v.GetField())
+		}
+	}
+	return out
 }
 
 // COMP-1-03: kind ↔ spec mismatch + missing kind → sync InvalidArgument (spoken XOR).
@@ -171,11 +234,11 @@ func TestInstance_COMP_1_03_KindSpecMismatch(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "containerSpec is not allowed when instanceKind is VM")
 
-	ctrWithVM := baseContainerReq()
-	ctrWithVM.VMSpec = &domain.VMSpec{}
-	_, err = k.svc.Create(ctx, ctrWithVM)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "vmSpec is not allowed when instanceKind is CONTAINER")
+	// Зеркальная ветвь («vmSpec при виде CONTAINER») здесь НЕ утверждается: вид
+	// CONTAINER отвергается раньше и по своему имени, поэтому до неё нет
+	// достижимого пути. Проба на неё зеленела бы, читая чужой отказ как свой, —
+	// а вернётся она вместе с самим видом. Отказ по виду держит
+	// TestInstance_ContainerKindRefusedRegardlessOfBootSource.
 
 	noKind := baseCreateReq()
 	noKind.InstanceKind = domain.InstanceKindUnspecified

@@ -245,9 +245,32 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 			return serviceerr.InvalidArg("container_spec", "containerSpec is not allowed when instanceKind is VM")
 		}
 	case domain.InstanceKindContainer:
-		if req.VMSpec != nil {
-			return serviceerr.InvalidArg("vm_spec", "vmSpec is not allowed when instanceKind is CONTAINER")
-		}
+		// ОТВЕРГАЕТСЯ ПО ВИДУ, а не по источнику ОС — и это ровно то, что
+		// объявляет контракт значения (`InstanceKind.CONTAINER`: несоздаваем,
+		// отказ синхронный и по имени поля).
+		//
+		// Прежде отказ висел ТОЛЬКО на `boot_source.type = registry.image`, а
+		// связки «вид ↔ источник ОС» в проверке входа не было вовсе. Пара
+		// «вид CONTAINER + образ хранилища» проходила целиком и создавала
+		// машину: вид «контейнер» с корневой файловой системой из образа диска —
+		// ресурс, не описываемый ни одной ветвью модели. Контракт при этом
+		// называл поле, которого отказ не называл.
+		//
+		// Причина невозможности — на стороне ВЛАДЕЛЬЦА образа, и она проверяема:
+		// у `registry.Repository` нет неизменяемого идентификатора, он адресуется
+		// парой (реестр, имя), а имя меняется отдельным глаголом. Ссылка,
+		// зафиксированная в машине, стала бы ложной после чужого переименования.
+		//
+		// Из трёх законных исходов это второй. Первый (реализовать) закрыт
+		// фактом о владельце; третий (снять с контракта) отбросил бы решённое
+		// направление, у которого назван и владелец, и предикат возврата, —
+		// ветвь открывается вместе с неизменяемым идентификатором репозитория.
+		//
+		// Проверка XOR `vmSpec ↔ вид` в этой ветви НЕ стоит: до неё нет
+		// достижимого пути, а ветвь, которой код никогда не производит, —
+		// документация несуществующего поведения.
+		return serviceerr.InvalidArg("instance_kind",
+			"instanceKind CONTAINER is not creatable yet: a registry image has no durable address today")
 	}
 	// F2 — machineTypeId — единственный канал sizing (обязателен; резолв — doCreate).
 	if req.MachineTypeID == "" {

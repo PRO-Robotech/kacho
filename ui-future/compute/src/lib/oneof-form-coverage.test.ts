@@ -6,7 +6,7 @@
 
 import { REGISTRY } from "./resource-registry";
 import { oneofBranches } from "@shared/test/oneof-branch-coverage";
-import { instanceBody, localDiskRefusal } from "@shared/test/instance-branch-coverage";
+import { instanceBody, localDiskRefusal, containerKindRefusal } from "@shared/test/instance-branch-coverage";
 
 describe("вид машины: каждая ветвь спецификации выразима формой", () => {
   const spec = REGISTRY["compute-instances"];
@@ -24,6 +24,43 @@ describe("вид машины: каждая ветвь спецификации 
   it("вторая ветвь в теле не появляется — отрицание в паре с положительным", () => {
     expect(instanceBody(spec, "VM")).not.toHaveProperty("container_spec");
     expect(instanceBody(spec, "CONTAINER")).not.toHaveProperty("vm_spec");
+  });
+});
+
+describe("вид «контейнер» форма отвергает ДО отправки — и у этого есть предикат снятия", () => {
+  const spec = REGISTRY["compute-instances"];
+
+  it("сервер отвергает вид синхронно, называя ИМЕННО его", () => {
+    // Отказ читается ИЗ ДЕРЕВА. Исчезнет он — исчезнет и основание отвергать
+    // вид в форме, и эта проба покраснеет сама.
+    //
+    // Прежде отказ висел только на источнике ОС (`registry.image`), а связки
+    // «вид ↔ источник» не было вовсе: пара «вид CONTAINER + образ ХРАНИЛИЩА»
+    // проходила проверку целиком и создавала машину. Консоль эту пару и слала —
+    // вид предлагался без условий, а клиентская проверка стерегла только
+    // источник.
+    const refusal = containerKindRefusal();
+    expect(refusal).toBeTruthy();
+    expect(refusal).toContain("not creatable");
+  });
+
+  it("форма говорит это словами, а не отправляет запрос, который не может пройти", () => {
+    const err = spec.validate!({
+      instance_kind: "CONTAINER",
+      boot_source: { type: "storage.image", id: "img-1" },
+    });
+    expect(err).toMatch(/контейнер/i);
+  });
+
+  it("вид VM тем же путём проходит — отрицание в паре с положительным", () => {
+    // Без него «форма отвергает контейнер» могло бы означать «форма отвергает
+    // любую машину».
+    expect(
+      spec.validate!({
+        instance_kind: "VM",
+        boot_source: { type: "storage.image", id: "img-1" },
+      }),
+    ).toBeNull();
   });
 });
 
