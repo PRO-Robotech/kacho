@@ -259,10 +259,16 @@ var shortGatedRunByOwnCIStep = map[string]string{
 
 	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
 	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
-	"services/iam/internal/authzcascade":                  "make test-authz-fga",
-	"services/iam/internal/authzmap":                      "make test-authz-fga",
-	"services/iam/internal/service":                       "make test-authz-fga",
-	"services/iam/internal/testsupport/fgatest":           "make test-authz-fga",
+	// Снятие кортежей объекта личности вместе со строкой человека (IAM-ID-1-61):
+	// проба спрашивает НАСТОЯЩИЙ движок прав о том, исчезли ли кортежи, — форму
+	// снятия, которую принимающая сторона молча не применяет, иначе не отличить
+	// от применённой. Остальные пробы пакета — юниты по фейкам и идут в быстрой
+	// джобе.
+	"services/iam/internal/apps/kacho/api/user": "make test-authz-fga",
+	"services/iam/internal/authzcascade":        "make test-authz-fga",
+	"services/iam/internal/authzmap":            "make test-authz-fga",
+	"services/iam/internal/service":             "make test-authz-fga",
+	"services/iam/internal/testsupport/fgatest": "make test-authz-fga",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
