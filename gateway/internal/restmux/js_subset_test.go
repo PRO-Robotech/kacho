@@ -144,9 +144,20 @@ type jsFunc struct {
 	params []string
 	// locals — связывания `const x = …` до возврата, в порядке объявления.
 	locals []jsLocal
-	// body — возвращаемый массив.
+	// body — возвращаемое значение: массив полей либо ОДНО поле объектом.
+	//
+	// Обе формы встречаются в дереве и означают одно и то же — «набор полей,
+	// объявленный один раз»: `healthCheckFields()` возвращает массив ветвей
+	// проверки живости, `targetsField()` — одно поле-массив целей. Различает их
+	// не форма записи, а место употребления: массив разворачивается спредом,
+	// объект стоит элементом. Поэтому вид возврата здесь ХРАНИТСЯ, а требование
+	// к нему предъявляется в точке употребления, где оно осмысленно.
 	body jsValue
 	line int
+	// file — файл, в котором помощник объявлен. Нужен провенансу: помощник из
+	// ОБЩЕГО модуля читается в области видимости СВОЕГО файла, а не того, куда
+	// его импортировали, и его объявления полей не считаются в чужом файле.
+	file string
 }
 
 type jsLocal struct {
@@ -154,13 +165,17 @@ type jsLocal struct {
 	val  jsValue
 }
 
-// jsTopLevelArrayFuncs собирает top-level функции описанной выше формы.
+// jsTopLevelFieldSetFuncs собирает top-level функции описанной выше формы.
 //
 // Сбор best-effort: файл полон функций-компонентов, и требовать формы от всех
 // значило бы сломать разбор на том, что к составу тела отношения не имеет.
 // Строгость наступает в точке использования: развёрнут в `fields` помощник,
 // которого здесь нет, — отказ с его именем.
-func jsTopLevelArrayFuncs(text string) map[string]jsFunc {
+//
+// `file` проставляется каждому найденному помощнику: он и есть его провенанс.
+// Без провенанса помощник из общего модуля читался бы в чужой области видимости
+// (там, куда его импортировали), а его собственные соседи — не читались бы вовсе.
+func jsTopLevelFieldSetFuncs(file, text string) map[string]jsFunc {
 	src := newJSSource(text)
 	out := make(map[string]jsFunc)
 	for _, start := range src.starts {
@@ -177,16 +192,17 @@ func jsTopLevelArrayFuncs(text string) map[string]jsFunc {
 		if name == "" {
 			continue
 		}
-		fn, ok := jsParseArrayFunc(src, name, src.line(off), after)
+		fn, ok := jsParseFieldSetFunc(src, name, src.line(off), after)
 		if !ok {
 			continue
 		}
+		fn.file = file
 		out[name] = fn
 	}
 	return out
 }
 
-func jsParseArrayFunc(src *jsSource, name string, line, i int) (jsFunc, bool) {
+func jsParseFieldSetFunc(src *jsSource, name string, line, i int) (jsFunc, bool) {
 	text := src.text
 	i = jsSkipTrivia(text, i)
 	if i >= len(text) || text[i] != '(' {
@@ -220,7 +236,7 @@ func jsParseArrayFunc(src *jsSource, name string, line, i int) (jsFunc, bool) {
 			i = next
 		case strings.HasPrefix(text[i:], "return "):
 			v, _, err := jsParseValue(src, i+len("return "))
-			if err != nil || v.kind != jsArray {
+			if err != nil || (v.kind != jsArray && v.kind != jsObject) {
 				return jsFunc{}, false
 			}
 			fn.body = v
