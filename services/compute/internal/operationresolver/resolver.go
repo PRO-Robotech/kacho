@@ -128,12 +128,12 @@ func (rs *Resolver) Resolve(ctx context.Context, op operations.Operation) (opera
 		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
 	case *computev1.DetachInstanceDiskMetadata:
 		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
-	case *computev1.AddInstanceOneToOneNatMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
-	case *computev1.RemoveInstanceOneToOneNatMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
-	case *computev1.UpdateInstanceMetadataMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
+	// Здесь стояли три ветки — добавление и снятие one-to-one NAT и правка
+	// метаданных машины. Взять их было неоткуда: глаголов `AddOneToOneNat`,
+	// `RemoveOneToOneNat` и `UpdateMetadata` в InstanceService нет, поэтому
+	// НИ ОДНА операция не могла нести такие метаданные, и ветки не исполнялись
+	// ни разу. Сами сообщения сняты с контракта (kacho#581) — ветка, документирующая
+	// исход, которого код не производит, снимается вместе с ними.
 	case *computev1.SimulateInstanceMaintenanceEventMetadata:
 		return resolveExistence(ctx, kindUpdate, m.GetInstanceId(), rs.r.Instance, marshalInstance)
 
