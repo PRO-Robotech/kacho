@@ -165,11 +165,36 @@ describe("SaKeysPanel", () => {
 
     // Подтверждение появляется ТОЛЬКО после нажатия на триггер — как у
     // настоящего antd. Прежний дублёр iam рисовал его всегда, и проба брала
-    // вторую кнопку с тем же именем.
+    // вторую кнопку с тем же именем: «действие за подтверждением» было
+    // неотличимо от «действие по первому же нажатию».
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
-    fireEvent.click(within(screen.getByRole("tooltip")).getByRole("button", { name: "Отозвать" }));
+
+    // Вопрос назван ДОСЛОВНО: это и есть то, что видит арендатор перед
+    // необратимым шагом, и до #586 оно не было наблюдаемо ничем.
+    const confirm = screen.getByRole("tooltip");
+    expect(confirm).toHaveTextContent("Отозвать токен?");
+    expect(confirm).toHaveTextContent("Токен перестанет действовать безвозвратно.");
+    // Открытие вопроса САМО ПО СЕБЕ ничего не отзывает.
+    expect(run).not.toHaveBeenCalled();
+
+    fireEvent.click(within(confirm).getByRole("button", { name: "Отозвать" }));
 
     expect(run).toHaveBeenCalledWith({ keyId: "sak-9" });
+  });
+
+  it("отказ от подтверждения НЕ отзывает — отрицание в паре с положительным выше", async () => {
+    listSaKeys.mockResolvedValue({ keys: [key({ id: "sak-9" })] });
+
+    const { container } = renderPanel("sa-42");
+    await waitFor(() => expect(table(container)).toHaveTextContent("sak-9"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
+    fireEvent.click(within(screen.getByRole("tooltip")).getByRole("button", { name: "Отмена" }));
+
+    expect(run).not.toHaveBeenCalled();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("секрет показывается ОДИН раз — с ключом, предупреждением и идентификаторами", () => {
