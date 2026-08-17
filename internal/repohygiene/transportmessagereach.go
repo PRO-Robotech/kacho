@@ -175,7 +175,7 @@ func AuditTransportMessageReach(
 	touched := map[string]bool{}      // имена, которых касается глагол или поле
 
 	for _, path := range files {
-		raw, readErr := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева контракта
+		raw, readErr := os.ReadFile(path) // #nosec G304 -- путь получен обходом дерева контракта, не извне
 		if readErr != nil {
 			return nil, census, fmt.Errorf("чтение %s: %w", path, readErr)
 		}
@@ -246,7 +246,7 @@ func AuditTransportMessageReach(
 		if a, ok := allow[name]; ok {
 			excused[name] = true
 			if log != nil {
-				fmt.Fprintf(log, "  послабление: %s — %s (%s)\n", name, a.Reason, a.Issue)
+				_, _ = fmt.Fprintf(log, "  послабление: %s — %s (%s)\n", name, a.Reason, a.Issue)
 			}
 			continue
 		}
@@ -283,7 +283,7 @@ func AuditTransportMessageReach(
 	}
 
 	if log != nil {
-		fmt.Fprintf(log, "осмотрено: файлов контракта %d; сообщений %d (вложенных транспортных %d); "+
+		_, _ = fmt.Fprintf(log, "осмотрено: файлов контракта %d; сообщений %d (вложенных транспортных %d); "+
 			"транспортных верхнего уровня %d; имён, которых касается глагол или поле, %d; послаблений %d\n",
 			census.ProtoFiles, census.Messages, census.NestedTransport,
 			census.TransportMsgs, census.TouchedNames, census.Allowances)
