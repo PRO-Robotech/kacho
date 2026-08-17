@@ -245,24 +245,3 @@ message ListRouteTableOperationsResponse {
   // Each subsequent list request will have its own [next_page_token] to continue paging through the results.
   string next_page_token = 2;
 }
-
-// Гранулярные verb-RPC для маршрутов (static_routes JSONB + id).
-message AddRouteTableRoutesRequest {
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
-  // Маршруты для добавления. StaticRoute.id присваивается сервером (входящий id игнорируется).
-  repeated StaticRoute routes = 2;
-}
-
-message RemoveRouteTableRoutesRequest {
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
-  // id маршрутов для удаления (StaticRoute.id).
-  repeated string route_ids = 2;
-}
-
-message UpdateRouteTableRouteRequest {
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
-  // id обновляемого маршрута.
-  string route_id = 2 [(required) = true, (length) = "<=50"];
-  // Новое содержимое маршрута (id берется из route_id).
-  StaticRoute route = 3;
-}

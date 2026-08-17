@@ -703,175 +703,6 @@ func (x *ListRouteTableOperationsResponse) GetNextPageToken() string {
 	return ""
 }
 
-// Гранулярные verb-RPC для маршрутов (static_routes JSONB + id).
-type AddRouteTableRoutesRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	RouteTableId string                 `protobuf:"bytes,1,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
-	// Маршруты для добавления. StaticRoute.id присваивается сервером (входящий id игнорируется).
-	Routes        []*StaticRoute `protobuf:"bytes,2,rep,name=routes,proto3" json:"routes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AddRouteTableRoutesRequest) Reset() {
-	*x = AddRouteTableRoutesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AddRouteTableRoutesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AddRouteTableRoutesRequest) ProtoMessage() {}
-
-func (x *AddRouteTableRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AddRouteTableRoutesRequest.ProtoReflect.Descriptor instead.
-func (*AddRouteTableRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_route_table_service_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *AddRouteTableRoutesRequest) GetRouteTableId() string {
-	if x != nil {
-		return x.RouteTableId
-	}
-	return ""
-}
-
-func (x *AddRouteTableRoutesRequest) GetRoutes() []*StaticRoute {
-	if x != nil {
-		return x.Routes
-	}
-	return nil
-}
-
-type RemoveRouteTableRoutesRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	RouteTableId string                 `protobuf:"bytes,1,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
-	// id маршрутов для удаления (StaticRoute.id).
-	RouteIds      []string `protobuf:"bytes,2,rep,name=route_ids,json=routeIds,proto3" json:"route_ids,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RemoveRouteTableRoutesRequest) Reset() {
-	*x = RemoveRouteTableRoutesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RemoveRouteTableRoutesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RemoveRouteTableRoutesRequest) ProtoMessage() {}
-
-func (x *RemoveRouteTableRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RemoveRouteTableRoutesRequest.ProtoReflect.Descriptor instead.
-func (*RemoveRouteTableRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_route_table_service_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *RemoveRouteTableRoutesRequest) GetRouteTableId() string {
-	if x != nil {
-		return x.RouteTableId
-	}
-	return ""
-}
-
-func (x *RemoveRouteTableRoutesRequest) GetRouteIds() []string {
-	if x != nil {
-		return x.RouteIds
-	}
-	return nil
-}
-
-type UpdateRouteTableRouteRequest struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	RouteTableId string                 `protobuf:"bytes,1,opt,name=route_table_id,json=routeTableId,proto3" json:"route_table_id,omitempty"`
-	// id обновляемого маршрута.
-	RouteId string `protobuf:"bytes,2,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
-	// Новое содержимое маршрута (id берется из route_id).
-	Route         *StaticRoute `protobuf:"bytes,3,opt,name=route,proto3" json:"route,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateRouteTableRouteRequest) Reset() {
-	*x = UpdateRouteTableRouteRequest{}
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateRouteTableRouteRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateRouteTableRouteRequest) ProtoMessage() {}
-
-func (x *UpdateRouteTableRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateRouteTableRouteRequest.ProtoReflect.Descriptor instead.
-func (*UpdateRouteTableRouteRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_route_table_service_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *UpdateRouteTableRouteRequest) GetRouteTableId() string {
-	if x != nil {
-		return x.RouteTableId
-	}
-	return ""
-}
-
-func (x *UpdateRouteTableRouteRequest) GetRouteId() string {
-	if x != nil {
-		return x.RouteId
-	}
-	return ""
-}
-
-func (x *UpdateRouteTableRouteRequest) GetRoute() *StaticRoute {
-	if x != nil {
-		return x.Route
-	}
-	return nil
-}
-
 var File_kacho_cloud_vpc_v1_route_table_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc = "" +
@@ -932,17 +763,7 @@ const file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x89\x01\n" +
-	"\x1aAddRouteTableRoutesRequest\x122\n" +
-	"\x0eroute_table_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\frouteTableId\x127\n" +
-	"\x06routes\x18\x02 \x03(\v2\x1f.kacho.cloud.vpc.v1.StaticRouteR\x06routes\"p\n" +
-	"\x1dRemoveRouteTableRoutesRequest\x122\n" +
-	"\x0eroute_table_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\frouteTableId\x12\x1b\n" +
-	"\troute_ids\x18\x02 \x03(\tR\brouteIds\"\xb2\x01\n" +
-	"\x1cUpdateRouteTableRouteRequest\x122\n" +
-	"\x0eroute_table_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\frouteTableId\x12'\n" +
-	"\broute_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\arouteId\x125\n" +
-	"\x05route\x18\x03 \x01(\v2\x1f.kacho.cloud.vpc.v1.StaticRouteR\x05route2\xb5\v\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb5\v\n" +
 	"\x11RouteTableService\x12\xc8\x01\n" +
 	"\x03Get\x12(.kacho.cloud.vpc.v1.GetRouteTableRequest\x1a\x1e.kacho.cloud.vpc.v1.RouteTable\"w\x8a\xb5\x18\x14vpc.route_tables.get\x92\xb5\x18\x05v_get\x9a\xb5\x18!\n" +
 	"\x0fvpc_route_table\x12\x0eroute_table_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/vpc/v1/routeTables/{route_table_id}\x12\xbd\x01\n" +
@@ -976,7 +797,7 @@ func file_kacho_cloud_vpc_v1_route_table_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_route_table_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_kacho_cloud_vpc_v1_route_table_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kacho_cloud_vpc_v1_route_table_service_proto_goTypes = []any{
 	(*GetRouteTableRequest)(nil),             // 0: kacho.cloud.vpc.v1.GetRouteTableRequest
 	(*ListRouteTablesRequest)(nil),           // 1: kacho.cloud.vpc.v1.ListRouteTablesRequest
@@ -989,43 +810,38 @@ var file_kacho_cloud_vpc_v1_route_table_service_proto_goTypes = []any{
 	(*DeleteRouteTableMetadata)(nil),         // 8: kacho.cloud.vpc.v1.DeleteRouteTableMetadata
 	(*ListRouteTableOperationsRequest)(nil),  // 9: kacho.cloud.vpc.v1.ListRouteTableOperationsRequest
 	(*ListRouteTableOperationsResponse)(nil), // 10: kacho.cloud.vpc.v1.ListRouteTableOperationsResponse
-	(*AddRouteTableRoutesRequest)(nil),       // 11: kacho.cloud.vpc.v1.AddRouteTableRoutesRequest
-	(*RemoveRouteTableRoutesRequest)(nil),    // 12: kacho.cloud.vpc.v1.RemoveRouteTableRoutesRequest
-	(*UpdateRouteTableRouteRequest)(nil),     // 13: kacho.cloud.vpc.v1.UpdateRouteTableRouteRequest
-	nil,                                      // 14: kacho.cloud.vpc.v1.CreateRouteTableRequest.LabelsEntry
-	nil,                                      // 15: kacho.cloud.vpc.v1.UpdateRouteTableRequest.LabelsEntry
-	(*RouteTable)(nil),                       // 16: kacho.cloud.vpc.v1.RouteTable
-	(*StaticRoute)(nil),                      // 17: kacho.cloud.vpc.v1.StaticRoute
-	(*fieldmaskpb.FieldMask)(nil),            // 18: google.protobuf.FieldMask
-	(*operation.Operation)(nil),              // 19: kacho.cloud.operation.Operation
+	nil,                                      // 11: kacho.cloud.vpc.v1.CreateRouteTableRequest.LabelsEntry
+	nil,                                      // 12: kacho.cloud.vpc.v1.UpdateRouteTableRequest.LabelsEntry
+	(*RouteTable)(nil),                       // 13: kacho.cloud.vpc.v1.RouteTable
+	(*StaticRoute)(nil),                      // 14: kacho.cloud.vpc.v1.StaticRoute
+	(*fieldmaskpb.FieldMask)(nil),            // 15: google.protobuf.FieldMask
+	(*operation.Operation)(nil),              // 16: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_route_table_service_proto_depIdxs = []int32{
-	16, // 0: kacho.cloud.vpc.v1.ListRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
-	14, // 1: kacho.cloud.vpc.v1.CreateRouteTableRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateRouteTableRequest.LabelsEntry
-	17, // 2: kacho.cloud.vpc.v1.CreateRouteTableRequest.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	18, // 3: kacho.cloud.vpc.v1.UpdateRouteTableRequest.update_mask:type_name -> google.protobuf.FieldMask
-	15, // 4: kacho.cloud.vpc.v1.UpdateRouteTableRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateRouteTableRequest.LabelsEntry
-	17, // 5: kacho.cloud.vpc.v1.UpdateRouteTableRequest.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	19, // 6: kacho.cloud.vpc.v1.ListRouteTableOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	17, // 7: kacho.cloud.vpc.v1.AddRouteTableRoutesRequest.routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	17, // 8: kacho.cloud.vpc.v1.UpdateRouteTableRouteRequest.route:type_name -> kacho.cloud.vpc.v1.StaticRoute
-	0,  // 9: kacho.cloud.vpc.v1.RouteTableService.Get:input_type -> kacho.cloud.vpc.v1.GetRouteTableRequest
-	1,  // 10: kacho.cloud.vpc.v1.RouteTableService.List:input_type -> kacho.cloud.vpc.v1.ListRouteTablesRequest
-	3,  // 11: kacho.cloud.vpc.v1.RouteTableService.Create:input_type -> kacho.cloud.vpc.v1.CreateRouteTableRequest
-	5,  // 12: kacho.cloud.vpc.v1.RouteTableService.Update:input_type -> kacho.cloud.vpc.v1.UpdateRouteTableRequest
-	7,  // 13: kacho.cloud.vpc.v1.RouteTableService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteRouteTableRequest
-	9,  // 14: kacho.cloud.vpc.v1.RouteTableService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsRequest
-	16, // 15: kacho.cloud.vpc.v1.RouteTableService.Get:output_type -> kacho.cloud.vpc.v1.RouteTable
-	2,  // 16: kacho.cloud.vpc.v1.RouteTableService.List:output_type -> kacho.cloud.vpc.v1.ListRouteTablesResponse
-	19, // 17: kacho.cloud.vpc.v1.RouteTableService.Create:output_type -> kacho.cloud.operation.Operation
-	19, // 18: kacho.cloud.vpc.v1.RouteTableService.Update:output_type -> kacho.cloud.operation.Operation
-	19, // 19: kacho.cloud.vpc.v1.RouteTableService.Delete:output_type -> kacho.cloud.operation.Operation
-	10, // 20: kacho.cloud.vpc.v1.RouteTableService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsResponse
-	15, // [15:21] is the sub-list for method output_type
-	9,  // [9:15] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	13, // 0: kacho.cloud.vpc.v1.ListRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
+	11, // 1: kacho.cloud.vpc.v1.CreateRouteTableRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateRouteTableRequest.LabelsEntry
+	14, // 2: kacho.cloud.vpc.v1.CreateRouteTableRequest.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
+	15, // 3: kacho.cloud.vpc.v1.UpdateRouteTableRequest.update_mask:type_name -> google.protobuf.FieldMask
+	12, // 4: kacho.cloud.vpc.v1.UpdateRouteTableRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateRouteTableRequest.LabelsEntry
+	14, // 5: kacho.cloud.vpc.v1.UpdateRouteTableRequest.static_routes:type_name -> kacho.cloud.vpc.v1.StaticRoute
+	16, // 6: kacho.cloud.vpc.v1.ListRouteTableOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 7: kacho.cloud.vpc.v1.RouteTableService.Get:input_type -> kacho.cloud.vpc.v1.GetRouteTableRequest
+	1,  // 8: kacho.cloud.vpc.v1.RouteTableService.List:input_type -> kacho.cloud.vpc.v1.ListRouteTablesRequest
+	3,  // 9: kacho.cloud.vpc.v1.RouteTableService.Create:input_type -> kacho.cloud.vpc.v1.CreateRouteTableRequest
+	5,  // 10: kacho.cloud.vpc.v1.RouteTableService.Update:input_type -> kacho.cloud.vpc.v1.UpdateRouteTableRequest
+	7,  // 11: kacho.cloud.vpc.v1.RouteTableService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteRouteTableRequest
+	9,  // 12: kacho.cloud.vpc.v1.RouteTableService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsRequest
+	13, // 13: kacho.cloud.vpc.v1.RouteTableService.Get:output_type -> kacho.cloud.vpc.v1.RouteTable
+	2,  // 14: kacho.cloud.vpc.v1.RouteTableService.List:output_type -> kacho.cloud.vpc.v1.ListRouteTablesResponse
+	16, // 15: kacho.cloud.vpc.v1.RouteTableService.Create:output_type -> kacho.cloud.operation.Operation
+	16, // 16: kacho.cloud.vpc.v1.RouteTableService.Update:output_type -> kacho.cloud.operation.Operation
+	16, // 17: kacho.cloud.vpc.v1.RouteTableService.Delete:output_type -> kacho.cloud.operation.Operation
+	10, // 18: kacho.cloud.vpc.v1.RouteTableService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListRouteTableOperationsResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_route_table_service_proto_init() }
@@ -1040,7 +856,7 @@ func file_kacho_cloud_vpc_v1_route_table_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_route_table_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

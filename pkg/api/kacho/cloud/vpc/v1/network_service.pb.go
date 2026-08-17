@@ -705,387 +705,6 @@ func (x *DeleteNetworkMetadata) GetNetworkId() string {
 	return ""
 }
 
-type ListNetworkSubnetsRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Network resource to list subnets for.
-	NetworkId string `protobuf:"bytes,1,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
-	// The maximum number of results per page that should be returned. If the number of available
-	// results is larger than [page_size],
-	// the service returns a [ListNetworkSubnetsResponse.next_page_token]
-	// that can be used to get the next page of results in subsequent list requests. Default value: 100.
-	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Page token. Set [page_token]
-	// to the [ListNetworkSubnetsResponse.next_page_token]
-	// returned by a previous list request to get the next page of results.
-	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkSubnetsRequest) Reset() {
-	*x = ListNetworkSubnetsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkSubnetsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkSubnetsRequest) ProtoMessage() {}
-
-func (x *ListNetworkSubnetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkSubnetsRequest.ProtoReflect.Descriptor instead.
-func (*ListNetworkSubnetsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *ListNetworkSubnetsRequest) GetNetworkId() string {
-	if x != nil {
-		return x.NetworkId
-	}
-	return ""
-}
-
-func (x *ListNetworkSubnetsRequest) GetPageSize() int64 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListNetworkSubnetsRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-type ListNetworkSubnetsResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of subnets that belong to the network which is specified in the request.
-	Subnets []*Subnet `protobuf:"bytes,1,rep,name=subnets,proto3" json:"subnets,omitempty"`
-	// This token allows you to get the next page of results for list requests. If the number of results
-	// is larger than [ListNetworkSubnetsRequest.page_size], use
-	// the [next_page_token] as the value
-	// for the [ListNetworkSubnetsRequest.page_token] query parameter
-	// in the next list request. Subsequent list requests will have their own
-	// [next_page_token] to continue paging through the results.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkSubnetsResponse) Reset() {
-	*x = ListNetworkSubnetsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkSubnetsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkSubnetsResponse) ProtoMessage() {}
-
-func (x *ListNetworkSubnetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkSubnetsResponse.ProtoReflect.Descriptor instead.
-func (*ListNetworkSubnetsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *ListNetworkSubnetsResponse) GetSubnets() []*Subnet {
-	if x != nil {
-		return x.Subnets
-	}
-	return nil
-}
-
-func (x *ListNetworkSubnetsResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
-type ListNetworkSecurityGroupsRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Network resource to list security groups for.
-	NetworkId string `protobuf:"bytes,1,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
-	// The maximum number of results per page that should be returned. If the number of available
-	// results is larger than [page_size],
-	// the service returns a [ListNetworkSecurityGroupsResponse.next_page_token]
-	// that can be used to get the next page of results in subsequent list requests. Default value: 100.
-	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Page token. Set [page_token]
-	// to the [ListNetworkSecurityGroupsResponse.next_page_token]
-	// returned by a previous list request to get the next page of results.
-	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkSecurityGroupsRequest) Reset() {
-	*x = ListNetworkSecurityGroupsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkSecurityGroupsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkSecurityGroupsRequest) ProtoMessage() {}
-
-func (x *ListNetworkSecurityGroupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[13]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkSecurityGroupsRequest.ProtoReflect.Descriptor instead.
-func (*ListNetworkSecurityGroupsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{13}
-}
-
-func (x *ListNetworkSecurityGroupsRequest) GetNetworkId() string {
-	if x != nil {
-		return x.NetworkId
-	}
-	return ""
-}
-
-func (x *ListNetworkSecurityGroupsRequest) GetPageSize() int64 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListNetworkSecurityGroupsRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-type ListNetworkSecurityGroupsResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of security groups that belong to the network which is specified in the request.
-	SecurityGroups []*SecurityGroup `protobuf:"bytes,1,rep,name=security_groups,json=securityGroups,proto3" json:"security_groups,omitempty"`
-	// This token allows you to get the next page of results for list requests. If the number of results
-	// is larger than [ListNetworkSecurityGroupsRequest.page_size], use
-	// the [next_page_token] as the value
-	// for the [ListNetworkSecurityGroupsRequest.page_token] query parameter
-	// in the next list request. Subsequent list requests will have their own
-	// [next_page_token] to continue paging through the results.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkSecurityGroupsResponse) Reset() {
-	*x = ListNetworkSecurityGroupsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkSecurityGroupsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkSecurityGroupsResponse) ProtoMessage() {}
-
-func (x *ListNetworkSecurityGroupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkSecurityGroupsResponse.ProtoReflect.Descriptor instead.
-func (*ListNetworkSecurityGroupsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *ListNetworkSecurityGroupsResponse) GetSecurityGroups() []*SecurityGroup {
-	if x != nil {
-		return x.SecurityGroups
-	}
-	return nil
-}
-
-func (x *ListNetworkSecurityGroupsResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
-type ListNetworkRouteTablesRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Network resource to list route tables for.
-	NetworkId string `protobuf:"bytes,1,opt,name=network_id,json=networkId,proto3" json:"network_id,omitempty"`
-	// The maximum number of results per page that should be returned. If the number of available
-	// results is larger than [page_size],
-	// the service returns a [ListNetworkRouteTablesResponse.next_page_token]
-	// that can be used to get the next page of results in subsequent list requests. Default value: 100.
-	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Page token. Set [page_token]
-	// to the [ListNetworkRouteTablesResponse.next_page_token]
-	// returned by a previous list request to get the next page of results.
-	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkRouteTablesRequest) Reset() {
-	*x = ListNetworkRouteTablesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkRouteTablesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkRouteTablesRequest) ProtoMessage() {}
-
-func (x *ListNetworkRouteTablesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkRouteTablesRequest.ProtoReflect.Descriptor instead.
-func (*ListNetworkRouteTablesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *ListNetworkRouteTablesRequest) GetNetworkId() string {
-	if x != nil {
-		return x.NetworkId
-	}
-	return ""
-}
-
-func (x *ListNetworkRouteTablesRequest) GetPageSize() int64 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListNetworkRouteTablesRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-type ListNetworkRouteTablesResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of route tables that belong to the network which is specified in the request.
-	RouteTables []*RouteTable `protobuf:"bytes,1,rep,name=route_tables,json=routeTables,proto3" json:"route_tables,omitempty"`
-	// This token allows you to get the next page of results for list requests. If the number of results
-	// is larger than [ListNetworkRouteTablesRequest.page_size], use
-	// the [next_page_token] as the value
-	// for the [ListNetworkRouteTablesRequest.page_token] query parameter
-	// in the next list request. Subsequent list requests will have their own
-	// [next_page_token] to continue paging through the results.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListNetworkRouteTablesResponse) Reset() {
-	*x = ListNetworkRouteTablesResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListNetworkRouteTablesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListNetworkRouteTablesResponse) ProtoMessage() {}
-
-func (x *ListNetworkRouteTablesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListNetworkRouteTablesResponse.ProtoReflect.Descriptor instead.
-func (*ListNetworkRouteTablesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *ListNetworkRouteTablesResponse) GetRouteTables() []*RouteTable {
-	if x != nil {
-		return x.RouteTables
-	}
-	return nil
-}
-
-func (x *ListNetworkRouteTablesResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
 type ListNetworkOperationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Network resource to list operations for.
@@ -1103,7 +722,7 @@ type ListNetworkOperationsRequest struct {
 
 func (x *ListNetworkOperationsRequest) Reset() {
 	*x = ListNetworkOperationsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1115,7 +734,7 @@ func (x *ListNetworkOperationsRequest) String() string {
 func (*ListNetworkOperationsRequest) ProtoMessage() {}
 
 func (x *ListNetworkOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1128,7 +747,7 @@ func (x *ListNetworkOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListNetworkOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{17}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListNetworkOperationsRequest) GetNetworkId() string {
@@ -1167,7 +786,7 @@ type ListNetworkOperationsResponse struct {
 
 func (x *ListNetworkOperationsResponse) Reset() {
 	*x = ListNetworkOperationsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[18]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +798,7 @@ func (x *ListNetworkOperationsResponse) String() string {
 func (*ListNetworkOperationsResponse) ProtoMessage() {}
 
 func (x *ListNetworkOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[18]
+	mi := &file_kacho_cloud_vpc_v1_network_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +811,7 @@ func (x *ListNetworkOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNetworkOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListNetworkOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{18}
+	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListNetworkOperationsResponse) GetOperations() []*operation.Operation {
@@ -1213,7 +832,7 @@ var File_kacho_cloud_vpc_v1_network_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/vpc/v1/network_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a'kacho/cloud/vpc/v1/security_group.proto\x1a$kacho/cloud/vpc/v1/route_table.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"@\n" +
+	"(kacho/cloud/vpc/v1/network_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"@\n" +
 	"\x11GetNetworkRequest\x12+\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\"\xb9\x01\n" +
@@ -1272,37 +891,7 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\"6\n" +
 	"\x15DeleteNetworkMetadata\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x9b\x01\n" +
-	"\x19ListNetworkSubnetsRequest\x12+\n" +
-	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"z\n" +
-	"\x1aListNetworkSubnetsResponse\x124\n" +
-	"\asubnets\x18\x01 \x03(\v2\x1a.kacho.cloud.vpc.v1.SubnetR\asubnets\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa2\x01\n" +
-	" ListNetworkSecurityGroupsRequest\x12+\n" +
-	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x97\x01\n" +
-	"!ListNetworkSecurityGroupsResponse\x12J\n" +
-	"\x0fsecurity_groups\x18\x01 \x03(\v2!.kacho.cloud.vpc.v1.SecurityGroupR\x0esecurityGroups\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9f\x01\n" +
-	"\x1dListNetworkRouteTablesRequest\x12+\n" +
-	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8b\x01\n" +
-	"\x1eListNetworkRouteTablesResponse\x12A\n" +
-	"\froute_tables\x18\x01 \x03(\v2\x1e.kacho.cloud.vpc.v1.RouteTableR\vrouteTables\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9e\x01\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x9e\x01\n" +
 	"\x1cListNetworkOperationsRequest\x12+\n" +
 	"\n" +
 	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12'\n" +
@@ -1358,66 +947,54 @@ func file_kacho_cloud_vpc_v1_network_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_network_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_network_service_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_kacho_cloud_vpc_v1_network_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kacho_cloud_vpc_v1_network_service_proto_goTypes = []any{
-	(*GetNetworkRequest)(nil),                 // 0: kacho.cloud.vpc.v1.GetNetworkRequest
-	(*ListNetworksRequest)(nil),               // 1: kacho.cloud.vpc.v1.ListNetworksRequest
-	(*ListNetworksResponse)(nil),              // 2: kacho.cloud.vpc.v1.ListNetworksResponse
-	(*CreateNetworkRequest)(nil),              // 3: kacho.cloud.vpc.v1.CreateNetworkRequest
-	(*CreateNetworkMetadata)(nil),             // 4: kacho.cloud.vpc.v1.CreateNetworkMetadata
-	(*UpdateNetworkRequest)(nil),              // 5: kacho.cloud.vpc.v1.UpdateNetworkRequest
-	(*UpdateNetworkMetadata)(nil),             // 6: kacho.cloud.vpc.v1.UpdateNetworkMetadata
-	(*AddNetworkCidrBlocksRequest)(nil),       // 7: kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
-	(*RemoveNetworkCidrBlocksRequest)(nil),    // 8: kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
-	(*DeleteNetworkRequest)(nil),              // 9: kacho.cloud.vpc.v1.DeleteNetworkRequest
-	(*DeleteNetworkMetadata)(nil),             // 10: kacho.cloud.vpc.v1.DeleteNetworkMetadata
-	(*ListNetworkSubnetsRequest)(nil),         // 11: kacho.cloud.vpc.v1.ListNetworkSubnetsRequest
-	(*ListNetworkSubnetsResponse)(nil),        // 12: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse
-	(*ListNetworkSecurityGroupsRequest)(nil),  // 13: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsRequest
-	(*ListNetworkSecurityGroupsResponse)(nil), // 14: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse
-	(*ListNetworkRouteTablesRequest)(nil),     // 15: kacho.cloud.vpc.v1.ListNetworkRouteTablesRequest
-	(*ListNetworkRouteTablesResponse)(nil),    // 16: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse
-	(*ListNetworkOperationsRequest)(nil),      // 17: kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	(*ListNetworkOperationsResponse)(nil),     // 18: kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	nil,                                       // 19: kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
-	nil,                                       // 20: kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
-	(*Network)(nil),                           // 21: kacho.cloud.vpc.v1.Network
-	(*fieldmaskpb.FieldMask)(nil),             // 22: google.protobuf.FieldMask
-	(*Subnet)(nil),                            // 23: kacho.cloud.vpc.v1.Subnet
-	(*SecurityGroup)(nil),                     // 24: kacho.cloud.vpc.v1.SecurityGroup
-	(*RouteTable)(nil),                        // 25: kacho.cloud.vpc.v1.RouteTable
-	(*operation.Operation)(nil),               // 26: kacho.cloud.operation.Operation
+	(*GetNetworkRequest)(nil),              // 0: kacho.cloud.vpc.v1.GetNetworkRequest
+	(*ListNetworksRequest)(nil),            // 1: kacho.cloud.vpc.v1.ListNetworksRequest
+	(*ListNetworksResponse)(nil),           // 2: kacho.cloud.vpc.v1.ListNetworksResponse
+	(*CreateNetworkRequest)(nil),           // 3: kacho.cloud.vpc.v1.CreateNetworkRequest
+	(*CreateNetworkMetadata)(nil),          // 4: kacho.cloud.vpc.v1.CreateNetworkMetadata
+	(*UpdateNetworkRequest)(nil),           // 5: kacho.cloud.vpc.v1.UpdateNetworkRequest
+	(*UpdateNetworkMetadata)(nil),          // 6: kacho.cloud.vpc.v1.UpdateNetworkMetadata
+	(*AddNetworkCidrBlocksRequest)(nil),    // 7: kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
+	(*RemoveNetworkCidrBlocksRequest)(nil), // 8: kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
+	(*DeleteNetworkRequest)(nil),           // 9: kacho.cloud.vpc.v1.DeleteNetworkRequest
+	(*DeleteNetworkMetadata)(nil),          // 10: kacho.cloud.vpc.v1.DeleteNetworkMetadata
+	(*ListNetworkOperationsRequest)(nil),   // 11: kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	(*ListNetworkOperationsResponse)(nil),  // 12: kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	nil,                                    // 13: kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
+	nil,                                    // 14: kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
+	(*Network)(nil),                        // 15: kacho.cloud.vpc.v1.Network
+	(*fieldmaskpb.FieldMask)(nil),          // 16: google.protobuf.FieldMask
+	(*operation.Operation)(nil),            // 17: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_network_service_proto_depIdxs = []int32{
-	21, // 0: kacho.cloud.vpc.v1.ListNetworksResponse.networks:type_name -> kacho.cloud.vpc.v1.Network
-	19, // 1: kacho.cloud.vpc.v1.CreateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
-	22, // 2: kacho.cloud.vpc.v1.UpdateNetworkRequest.update_mask:type_name -> google.protobuf.FieldMask
-	20, // 3: kacho.cloud.vpc.v1.UpdateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
-	23, // 4: kacho.cloud.vpc.v1.ListNetworkSubnetsResponse.subnets:type_name -> kacho.cloud.vpc.v1.Subnet
-	24, // 5: kacho.cloud.vpc.v1.ListNetworkSecurityGroupsResponse.security_groups:type_name -> kacho.cloud.vpc.v1.SecurityGroup
-	25, // 6: kacho.cloud.vpc.v1.ListNetworkRouteTablesResponse.route_tables:type_name -> kacho.cloud.vpc.v1.RouteTable
-	26, // 7: kacho.cloud.vpc.v1.ListNetworkOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 8: kacho.cloud.vpc.v1.NetworkService.Get:input_type -> kacho.cloud.vpc.v1.GetNetworkRequest
-	1,  // 9: kacho.cloud.vpc.v1.NetworkService.List:input_type -> kacho.cloud.vpc.v1.ListNetworksRequest
-	3,  // 10: kacho.cloud.vpc.v1.NetworkService.Create:input_type -> kacho.cloud.vpc.v1.CreateNetworkRequest
-	5,  // 11: kacho.cloud.vpc.v1.NetworkService.Update:input_type -> kacho.cloud.vpc.v1.UpdateNetworkRequest
-	9,  // 12: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
-	7,  // 13: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
-	8,  // 14: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
-	17, // 15: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
-	21, // 16: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
-	2,  // 17: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
-	26, // 18: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
-	26, // 19: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
-	26, // 20: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
-	26, // 21: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	26, // 22: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	18, // 23: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	15, // 0: kacho.cloud.vpc.v1.ListNetworksResponse.networks:type_name -> kacho.cloud.vpc.v1.Network
+	13, // 1: kacho.cloud.vpc.v1.CreateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntry
+	16, // 2: kacho.cloud.vpc.v1.UpdateNetworkRequest.update_mask:type_name -> google.protobuf.FieldMask
+	14, // 3: kacho.cloud.vpc.v1.UpdateNetworkRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntry
+	17, // 4: kacho.cloud.vpc.v1.ListNetworkOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 5: kacho.cloud.vpc.v1.NetworkService.Get:input_type -> kacho.cloud.vpc.v1.GetNetworkRequest
+	1,  // 6: kacho.cloud.vpc.v1.NetworkService.List:input_type -> kacho.cloud.vpc.v1.ListNetworksRequest
+	3,  // 7: kacho.cloud.vpc.v1.NetworkService.Create:input_type -> kacho.cloud.vpc.v1.CreateNetworkRequest
+	5,  // 8: kacho.cloud.vpc.v1.NetworkService.Update:input_type -> kacho.cloud.vpc.v1.UpdateNetworkRequest
+	9,  // 9: kacho.cloud.vpc.v1.NetworkService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteNetworkRequest
+	7,  // 10: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddNetworkCidrBlocksRequest
+	8,  // 11: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveNetworkCidrBlocksRequest
+	11, // 12: kacho.cloud.vpc.v1.NetworkService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListNetworkOperationsRequest
+	15, // 13: kacho.cloud.vpc.v1.NetworkService.Get:output_type -> kacho.cloud.vpc.v1.Network
+	2,  // 14: kacho.cloud.vpc.v1.NetworkService.List:output_type -> kacho.cloud.vpc.v1.ListNetworksResponse
+	17, // 15: kacho.cloud.vpc.v1.NetworkService.Create:output_type -> kacho.cloud.operation.Operation
+	17, // 16: kacho.cloud.vpc.v1.NetworkService.Update:output_type -> kacho.cloud.operation.Operation
+	17, // 17: kacho.cloud.vpc.v1.NetworkService.Delete:output_type -> kacho.cloud.operation.Operation
+	17, // 18: kacho.cloud.vpc.v1.NetworkService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	17, // 19: kacho.cloud.vpc.v1.NetworkService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	12, // 20: kacho.cloud.vpc.v1.NetworkService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListNetworkOperationsResponse
+	13, // [13:21] is the sub-list for method output_type
+	5,  // [5:13] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_network_service_proto_init() }
@@ -1426,16 +1003,13 @@ func file_kacho_cloud_vpc_v1_network_service_proto_init() {
 		return
 	}
 	file_kacho_cloud_vpc_v1_network_proto_init()
-	file_kacho_cloud_vpc_v1_subnet_proto_init()
-	file_kacho_cloud_vpc_v1_security_group_proto_init()
-	file_kacho_cloud_vpc_v1_route_table_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_network_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_network_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
