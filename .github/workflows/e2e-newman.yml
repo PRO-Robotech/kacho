@@ -153,6 +153,22 @@ jobs:
       - name: гейт — самопроверка сводного вердикта
         run: python3 .github/scripts/aggregate-shard-verdicts.py --self-test
 
+      # «Условие не создано» доезжает до вердикта (kacho#655). Механизм из
+      # четырёх звеньев — отметка владельца материализации, её чтение шагом
+      # стенда, пропуск шагов-вердиктов, ПРОПУСК ПРОПУСКА у шага описи, — и
+      # любое разорванное звено возвращает исходный дефект молча: чужая
+      # недоступность снова читается как красный шард, то есть как дефект
+      # продукта. Ломается обычно третье: девятая суита заводится копированием
+      # восьмой, и условие в копию не переносят.
+      #
+      # Место здесь, а не в шарде: гейт статический (плюс исполнение тела шага с
+      # подменённым `make`), стенда не требует и обязан краснеть до того, как на
+      # подъём потрачен первый ранер-час.
+      - name: гейт — «условие не создано» доезжает до вердикта
+        run: |
+          python3 deploy/scripts/assert-stand-precondition-wiring.py --self-test
+          python3 deploy/scripts/assert-stand-precondition-wiring.py
+
       # Планировщик волн обязан ЗАВЕРШАТЬСЯ, когда рядом живут вечные фоновые
       # процессы. Гейт написан вместе с фиксом (ограничитель ждал вечные пробросы
       # портов и вставал навсегда) и НЕ ЗВАЛСЯ НИОТКУДА — его нашёл гейт класса
@@ -456,6 +472,27 @@ jobs:
       #                   своим полным стендом, здесь она — девять образов на шард ни
       #                   для чего. `IMAGES` этого не закрывает: он сужает только
       #                   бэкенд, а модули консоли выводятся из дерева и всегда полны.
+      # ЧЕЙ ЭТО ОТКАЗ — НАШ ИЛИ ЧУЖОГО ХОСТА (kacho#655).
+      #
+      # Подъём стенда тянет десять зависимостей чарта с ПОСТОРОННЕГО хоста, и его
+      # недоступность роняла шард целиком: девять коллекций не выполнялись вовсе,
+      # а в сводке PR это выглядело как красный шард — то есть как дефект
+      # продукта. `e2e-flow.md` §6 требует обратного: «условие не создано — не
+      # вердикт: отдельный шаг, отдельное сообщение».
+      #
+      # Код возврата через `make` не проходит: make отвечает своей двойкой на
+      # любой упавший рецепт. Поэтому причину несёт ОТМЕТКА, которую кладёт
+      # единственный владелец материализации зависимостей — и только когда у него
+      # есть ДОКАЗАТЕЛЬСТВО (строка helm о недостижимом удалённом репозитории).
+      # Отметка снимается в начале каждого прогона, поэтому здоровый стенд её не
+      # застанет; послаблению нечего переживать.
+      #
+      # ШАГ ОСТАЁТСЯ КРАСНЫМ, И ЭТО НАМЕРЕННО: «не выполнилось» не идёт в зачёт
+      # «прошло», а третьего цвета у работы конвейера нет. Меняется то, ЧТО
+      # красное и что об этом сказано: заголовок называет категорию, гейты проб
+      # ниже ПРОПУСКАЮТСЯ (а не краснеют «нет отчётов»), опись несёт причину, и
+      # свод печатает её первой строкой вместо «часть дерева не судилась».
+      # Ровно тем же порядком это устроено в console-e2e.yml.
       - name: стенд (dev-up, только компоненты шарда)
         working-directory: deploy
         run: |
@@ -464,12 +501,26 @@ jobs:
           echo "собираем:    ${{ matrix.shard.images }}"
           echo "нет на стенде (явно, для гейта посадки): ${{ matrix.shard.skip }}"
           echo "консоль:     BUILD_UI=${{ matrix.shard.build_ui }}"
+          rc=0
           make dev-up \
             CLUSTER_NAME="$CLUSTER_NAME" \
             IMAGES="${{ matrix.shard.images }}" \
             BUILD_UI="${{ matrix.shard.build_ui }}" \
             POSTURE_SKIP="${{ matrix.shard.skip }}" \
-            DEV_UP_VALUES="${{ matrix.shard.helm }}"
+            DEV_UP_VALUES="${{ matrix.shard.helm }}" || rc=$?
+          [ "$rc" -eq 0 ] && exit 0
+
+          mark=helm/umbrella/.kacho-deps-precondition-unmet
+          if [ ! -f "$mark" ]; then
+            echo "::error title=Стенд не поднялся::подъём стенда шарда '${{ matrix.shard.id }}' упал (код $rc), и это НАШ отказ: доказательства недоступности постороннего источника чартов нет. Причина названа выводом выше."
+            exit "$rc"
+          fi
+
+          # Отметка есть — причина ЧУЖАЯ. Называем это шагом ниже по течению
+          # (гейты проб) и своду, а не только человеку в журнале.
+          echo "STAND_PRECONDITION_UNMET=1" >> "$GITHUB_ENV"
+          echo "::error title=УСЛОВИЕ НЕ СОЗДАНО (внешний источник чартов)::стенд шарда '${{ matrix.shard.id }}' не поднялся: $(cat "$mark"). Пробы НЕ ВЫПОЛНЯЛИСЬ — это третья категория исхода, не зелёное и не красное: дефекта продукта здесь НЕ показано. Прогон повторяется, а не разбирается как упавшая проба. Предмет — kacho#655."
+          exit "$rc"
 
       - name: что поднялось
         if: always()
@@ -531,8 +582,11 @@ jobs:
             exit 2
           fi
 
+      # Условие не создано ⇒ отчётов нет by construction, и сводка напечатала бы
+      # «0 отчётов» — числа, выглядящие как потеря. Пропуск здесь ничего не
+      # прячет: причина уже названа заголовком шага стенда, а опись её несёт.
       - name: сводка прогона (числа + находки)
-        if: always()
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' }}
         run: python3 .github/scripts/newman-live.py report --services "${{ matrix.shard.suites }}"
 
       # НАСТОЯЩИЕ ГЕЙТЫ. ОДИН скрипт (живёт в iam) применяется к КАЖДОЙ суите — он
@@ -548,49 +602,49 @@ jobs:
       # обрамляющих пробелов `contains('compute storage', 'compute')` был бы верен и
       # для суиты `comp`, если бы такая завелась.
       - name: гейт — newman зелёный (iam)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
         working-directory: services/iam/tests/newman
         env:
           SUITE_LABEL: iam
         run: bash scripts/assert-suites-green.sh
 
       - name: гейт — newman зелёный (vpc)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' vpc ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' vpc ') }}
         working-directory: services/vpc/tests/newman
         env:
           SUITE_LABEL: vpc
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (compute)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' compute ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' compute ') }}
         working-directory: services/compute/tests/newman
         env:
           SUITE_LABEL: compute
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (nlb)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' nlb ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' nlb ') }}
         working-directory: services/nlb/tests/newman
         env:
           SUITE_LABEL: nlb
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (storage)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' storage ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' storage ') }}
         working-directory: services/storage/tests/newman
         env:
           SUITE_LABEL: storage
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (registry)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' registry ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' registry ') }}
         working-directory: services/registry/tests/newman
         env:
           SUITE_LABEL: registry
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (geo)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' geo ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' geo ') }}
         working-directory: services/geo/tests/newman
         env:
           SUITE_LABEL: geo
@@ -601,7 +655,7 @@ jobs:
       # cluster-RBAC админ-поверхность (InternalClusterService на cluster-internal
       # REST-листенере), которой нет ни в одной per-service суите.
       - name: гейт — newman зелёный (api-gateway)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' api-gateway ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' api-gateway ') }}
         working-directory: gateway/tests/newman
         env:
           SUITE_LABEL: api-gateway
@@ -628,8 +682,11 @@ jobs:
       # Отдельный вердикт `INCONCLUSIVE` существует потому, что authz шлюза отвечает
       # раньше резолвера — засчитать такой ответ в изоляцию значило бы позеленеть на
       # непроверенном методе.
+      # Стенда нет ⇒ спрашивать листенер не у кого. Гейт честно отказался бы
+      # («не выполнилось», его же код 2), но красным при этом стал бы ОН — то
+      # есть чужая недоступность снова читалась бы как находка о продукте.
       - name: гейт — ban #6 на внешнем листенере (gRPC, домены шарда)
-        if: always()
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' }}
         run: |
           python3 deploy/scripts/assert-ban6-external-isolation.py \
             --domains "${{ matrix.shard.ban6 }}"
@@ -638,7 +695,7 @@ jobs:
       # а ПОЛ, ниже которого падаем: он ловит регресс (RPC добавили, кейс — нет).
       # Живёт на шарде, который гоняет iam: его коллекции и есть предмет.
       - name: coverage-гейт (proto RPC → newman)
-        if: ${{ always() && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
+        if: ${{ always() && env.STAND_PRECONDITION_UNMET != '1' && contains(format(' {0} ', matrix.shard.suites), ' iam ') }}
         working-directory: services/iam/tests/newman
         env:
           COVERAGE_MIN: "30"
