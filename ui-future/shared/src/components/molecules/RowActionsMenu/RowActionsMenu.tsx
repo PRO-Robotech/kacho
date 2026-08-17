@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Button, Dropdown } from "antd";
+import { Button, Dropdown, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import {
   MoreOutlined,
@@ -13,6 +13,8 @@ import {
 } from "@ant-design/icons";
 import { DeleteDialog, requiresNameConfirm } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
+import { RowVerbDialog } from "@shared/components/molecules/RowActionsMenu/RowVerbDialog";
+import { useSelfUserId } from "@shared/contexts/AuthContext";
 import { getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
@@ -66,7 +68,17 @@ const MOVE_INCAPABLE = [
  * otherwise actionable.
  */
 export function resourceHasRowActions(spec: ResourceSpec): boolean {
-  return spec.ops.update || spec.ops.delete || !MOVE_INCAPABLE.includes(spec.id) || spec.id === "networks";
+  return (
+    spec.ops.update ||
+    spec.ops.delete ||
+    // Объявленный глагол — такое же действие строки, как правка и удаление.
+    // Без этого слагаемого ресурс, у которого ЕДИНСТВЕННОЕ действие — глагол,
+    // не получил бы столбца действий вовсе, и объявление осталось бы формой
+    // без содержания: спека его несёт, а на экране его нет.
+    (spec.rowVerbs?.length ?? 0) > 0 ||
+    !MOVE_INCAPABLE.includes(spec.id) ||
+    spec.id === "networks"
+  );
 }
 
 export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: Props) {
@@ -74,6 +86,10 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const params = useParams();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  // Открытый глагол хранится КЛЮЧОМ, а не флагом: у ресурса их бывает несколько,
+  // и флаг не сказал бы, который из них подтверждают.
+  const [openVerb, setOpenVerb] = useState<string | null>(null);
+  const selfId = useSelfUserId();
 
   const id = getByPath<string>(row, "id") ?? "";
   const name = getByPath<string>(row, "name") ?? id;
@@ -90,6 +106,16 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
 
   const isNetwork = spec.id === "networks";
   const currentProjectId = params.projectId ?? projectId ?? null;
+
+  // Глаголы, применимые к ЭТОЙ строке. `null` от `resolve` означает «действие к
+  // строке не относится вовсе» — и такой пункт не рисуется; недоступность с
+  // названной причиной — это другое состояние, и оно остаётся видимым.
+  const verbs = (spec.rowVerbs ?? [])
+    .map((verb) => ({ verb, state: verb.resolve(row, { selfId }) }))
+    .filter((entry): entry is { verb: (typeof entry)["verb"]; state: NonNullable<(typeof entry)["state"]> } =>
+      entry.state !== null,
+    );
+  const openVerbState = verbs.find((v) => v.verb.key === openVerb)?.state ?? null;
 
   // antd Dropdown menu items рендерятся в portal, но React-event bubble идёт
   // через virtual-tree (а не DOM-tree). Без stopPropagation на domEvent клик по
@@ -145,6 +171,26 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           ),
         }
       : null,
+    // Действия-глаголы ресурса. Подпись выключенного пункта несёт ПРИЧИНУ
+    // подсказкой: пункт, выключенный молча, неотличим от возможности, которой
+    // нет, и пользователь ищет её там, где её нет.
+    ...verbs.map(({ verb, state }) => ({
+      key: `verb-${verb.key}`,
+      icon: state.icon,
+      disabled: !!state.disabledReason,
+      label: state.disabledReason ? (
+        <Tooltip title={state.disabledReason}>
+          <span>{state.label}</span>
+        </Tooltip>
+      ) : (
+        state.label
+      ),
+      danger: state.danger,
+      onClick: stop(() => {
+        if (state.disabledReason) return;
+        setOpenVerb(verb.key);
+      }),
+    })),
     moveCapable
       ? {
           key: "move",
@@ -188,6 +234,15 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           projectId={projectId}
           requireNameConfirm={requiresNameConfirm(spec.id)}
           expectOperation={spec.mutationsReturnOperation !== false}
+        />
+      )}
+
+      {openVerbState && (
+        <RowVerbDialog
+          state={openVerbState}
+          resourceId={spec.id}
+          projectId={projectId}
+          onClose={() => setOpenVerb(null)}
         />
       )}
 

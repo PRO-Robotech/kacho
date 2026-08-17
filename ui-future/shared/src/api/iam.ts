@@ -188,6 +188,24 @@ export function userTokensPath(userId: string): string {
   return `${IAM.users}/${encodeURIComponent(userId)}/tokens`;
 }
 
+// ====== Участие пользователя в аккаунте (UserService.Block / Unblock) ======
+//
+// Запрет участия и его возврат — ДЕЙСТВИЯ, а не правка поля: у действия нет
+// маски, поэтому «забыть поле» и задеть им всех, кого коснулся, здесь
+// невозможно by construction. Оба отвечают `Operation`.
+//
+// Путь строится ЗДЕСЬ, в поверхности API домена, а не в общем виде строки, и
+// это не вкусовщина: перепись глаголов консоли резолвит голову литерала в
+// объявление `IAM` и сверяет получившийся путь с `google.api.http` контракта.
+// Собранный «на месте» из кусочков путь ушёл бы из-под этого надзора — и
+// снятый с контракта глагол остался бы живой кнопкой.
+export function userBlockPath(userId: string): string {
+  return `${IAM.users}/${encodeURIComponent(userId)}:block`;
+}
+export function userUnblockPath(userId: string): string {
+  return `${IAM.users}/${encodeURIComponent(userId)}:unblock`;
+}
+
 // ====== Group ======
 export interface Group {
   id: string;
