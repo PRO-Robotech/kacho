@@ -4,19 +4,14 @@
 // режим, запрет сторонних данных): тогда тулбар обязан работать без сохранения,
 // а не падать вместе со всей таблицей.
 //
-// antd переопределён локально: общий заменитель подменяет `Dropdown` div'ом и
-// его содержимое не рисует — на нём чекбоксы колонок ненаблюдаемы.
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { antdStub } from "@shared/test/antd-stub";
 
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Dropdown: ({ children, dropdownRender }: React.PropsWithChildren<{ dropdownRender?: () => React.ReactNode }>) =>
-    React.createElement("div", null, children, dropdownRender?.()),
-}));
+// Содержимое выпадающего блока приходит пропом `dropdownRender`, а не детьми, —
+// его рисует общий стенд-заменитель. Своей копии здесь больше нет (#570).
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { ColumnSettings, TableSearch, useHiddenColumns } = await import("./TableToolbar");
 

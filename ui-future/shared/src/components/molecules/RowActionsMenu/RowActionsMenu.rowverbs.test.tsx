@@ -2,10 +2,9 @@
 // состоянию строки и то, что уходит к краю при подтверждении.
 //
 // Почему отдельным файлом от `RowActionsMenu.test.tsx`: там предмет — четыре
-// встроенных пункта (просмотр/правка/перемещение/удаление), и его дублёр antd
-// пунктов-подсказок не рисует вовсе. Здесь предмет — ОБЪЯВЛЯЕМОЕ действие, и
-// подсказка с причиной недоступности входит в утверждение: пункт, выключенный
-// молча, неотличим от возможности, которой нет.
+// встроенных пункта (просмотр/правка/перемещение/удаление). Здесь предмет —
+// ОБЪЯВЛЯЕМОЕ действие, и подсказка с причиной недоступности входит в
+// утверждение: пункт, выключенный молча, неотличим от возможности, которой нет.
 //
 // Дублёр `Tooltip` заменён НАМЕРЕННО: общий стенд роняет `title` (подсказка
 // рисуется только детьми), поэтому на нём «причина названа» зеленело бы и при
@@ -18,43 +17,10 @@ import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface MockItem {
-  key?: string;
-  label?: React.ReactNode;
-  type?: string;
-  disabled?: boolean;
-  onClick?: (info: { domEvent: { stopPropagation: () => void } }) => void;
-}
-
 jest.unstable_mockModule("antd", () => ({
   ...antdStub(),
   Tooltip: ({ children, title }: React.PropsWithChildren<{ title?: React.ReactNode }>) =>
     React.createElement("span", { "data-tooltip": typeof title === "string" ? title : "" }, children),
-  Dropdown: ({ children, menu }: React.PropsWithChildren<{ menu?: { items?: MockItem[] } }>) =>
-    React.createElement(
-      "div",
-      null,
-      children,
-      React.createElement(
-        "div",
-        { "data-testid": "menu" },
-        (menu?.items ?? []).map((item, i) =>
-          item.type === "divider"
-            ? React.createElement("hr", { key: `d${i}` })
-            : React.createElement(
-                "button",
-                {
-                  key: item.key ?? i,
-                  type: "button",
-                  disabled: Boolean(item.disabled),
-                  onClick: (e: React.MouseEvent) =>
-                    item.onClick?.({ domEvent: { stopPropagation: () => e.stopPropagation() } }),
-                },
-                item.label,
-              ),
-        ),
-      ),
-    ),
 }));
 
 // Подменяется ТОЛЬКО отправка: остальные экспорты берутся у настоящего модуля.
@@ -80,16 +46,20 @@ jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
 const { REGISTRY } = await import("@shared/lib/resource-registry");
 const { RowActionsMenu, resourceHasRowActions } = await import("./RowActionsMenu");
 
-function menuButtons(): HTMLButtonElement[] {
-  return [...screen.getByTestId("menu").querySelectorAll("button")] as HTMLButtonElement[];
+// Пункт меню — `<li role="menuitem">`, как у настоящего antd, а не кнопка:
+// собственный дублёр здесь заводил `<button disabled>`, то есть роль и свойство,
+// которых настоящее меню не производит. Утверждение о выключенном пункте читает
+// `aria-disabled` — единственное, что об этом говорит НАСТОЯЩИЙ виджет.
+function menuItems(): HTMLElement[] {
+  return screen.getAllByRole("menuitem");
 }
 
 function menuLabels(): string[] {
-  return menuButtons().map((b) => b.textContent ?? "");
+  return menuItems().map((b) => b.textContent ?? "");
 }
 
-function itemByLabel(label: string): HTMLButtonElement | undefined {
-  return menuButtons().find((b) => (b.textContent ?? "").includes(label));
+function itemByLabel(label: string): HTMLElement | undefined {
+  return menuItems().find((b) => (b.textContent ?? "").includes(label));
 }
 
 function Harness({ children }: React.PropsWithChildren) {
@@ -140,9 +110,9 @@ describe("действие-глагол на строке пользовател
     // Пункт назван состоянием, а не отсутствием: «нет пункта» и «пункт выключен»
     // — разные исходы, и первый здесь был бы дефектом.
     expect(menuLabels()).toContain("Запретить участие");
-    expect(itemByLabel("Запретить участие")!.disabled).toBe(true);
+    expect(itemByLabel("Запретить участие")!.getAttribute("aria-disabled")).toBe("true");
     expect(
-      screen.getByTestId("menu").querySelector("[data-tooltip]")?.getAttribute("data-tooltip") ?? "",
+      itemByLabel("Запретить участие")!.querySelector("[data-tooltip]")?.getAttribute("data-tooltip") ?? "",
     ).toMatch(/приглашени/i);
   });
 
