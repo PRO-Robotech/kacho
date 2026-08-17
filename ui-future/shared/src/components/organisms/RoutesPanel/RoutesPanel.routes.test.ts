@@ -109,9 +109,46 @@ describe("routes drafts round-trip", () => {
     );
   });
 
-  it("an address typed over a gateway row replaces the arm, deliberately", () => {
+  // Здесь стояла проба «an address typed over a gateway row replaces the arm,
+  // deliberately». Она закрепляла ОБХОД, а не решение: ветвь шлюза нельзя было
+  // выбрать вовсе, поэтому единственным способом её сменить был набор адреса
+  // поверх. Обратного пути не существовало — снятый шлюз не возвращался ничем,
+  // кроме пересоздания всей таблицы (#375). Ветвь теперь выбирается явно, и
+  // смена выбора — то, что делает пользователь, а не побочный эффект набора.
+
+  it("ветвь называет ВЫБОР строки, а не то, какое поле оказалось заполнено", () => {
+    const drafts = draftsFromRoutes([
+      { destination_prefix: "0.0.0.0/0", gateway_id: "gtw-1" },
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+    ]);
+    expect(drafts[0]._kind).toBe("gateway");
+    expect(drafts[1]._kind).toBe("address");
+  });
+
+  it("выбор ветви шлюза доезжает до тела — строка авторится, а не только переживает сохранение", () => {
+    const drafts = draftsFromRoutes([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
+    drafts[0]._kind = "gateway";
+    drafts[0].gateway_id = "gtw-9";
+    expect(routesFromDrafts(drafts)).toEqual([{ destination_prefix: "10.0.0.0/8", gateway_id: "gtw-9" }]);
+  });
+
+  it("обратный переход тоже доезжает — положительный контроль", () => {
+    // Без него «шлюз доезжает» могло бы означать «адрес перестал доезжать».
     const drafts = draftsFromRoutes([{ destination_prefix: "0.0.0.0/0", gateway_id: "gtw-1" }]);
+    drafts[0]._kind = "address";
     drafts[0].next_hop_address = "10.0.0.1";
     expect(routesFromDrafts(drafts)).toEqual([{ destination_prefix: "0.0.0.0/0", next_hop_address: "10.0.0.1" }]);
+  });
+
+  it("выбранная ветвь без значения — названная нехватка, а не молчаливая потеря", () => {
+    // Отрицание в паре с положительным: строка, где выбран шлюз и он не назван,
+    // обязана быть НАЗВАНА, иначе сохранение (оно заменяет весь список) удалит
+    // маршрут и отчитается успехом.
+    expect(routeGaps([{ destination_prefix: "0.0.0.0/0", next_hop_address: "", _kind: "gateway", gateway_id: "" }])).toEqual(
+      [{ row: 1, missing: ["следующий узел"] }],
+    );
+    expect(
+      routeGaps([{ destination_prefix: "0.0.0.0/0", next_hop_address: "", _kind: "gateway", gateway_id: "gtw-1" }]),
+    ).toEqual([]);
   });
 });

@@ -20,6 +20,16 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
+// Форма группы целей — ОДНА реализация на оба реестра (`@shared` и этот):
+// ветви проверки живости были заведены только в `@shared`, а `/nlb/*` рисует
+// этот модуль, поэтому три ветви из четырёх до пользователя не доезжали (#375).
+import {
+  healthCheckFields,
+  hydrateHealthCheck,
+  sanitizeHealthCheck,
+  sanitizeTargets,
+  targetsField,
+} from "@shared/lib/target-group-form";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
 import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
@@ -610,52 +620,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description:
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
-      {
-        name: "health_check.tcp.port",
-        label: "HC: TCP-порт",
-        type: "int",
-        required: true,
-        default: 80,
-        min: 1,
-        max: 65535,
-        description: "TCP-порт для health-check'а (1..65535). По умолчанию 80.",
-      },
-      {
-        name: "health_check.interval",
-        label: "HC: интервал",
-        type: "string",
-        required: true,
-        default: "2s",
-        description: "Интервал между health-check'ами (Duration в формате 'Ns', range 1s-600s). По умолчанию 2s.",
-      },
-      {
-        name: "health_check.timeout",
-        label: "HC: таймаут",
-        type: "string",
-        required: true,
-        default: "1s",
-        description: "Таймаут одного health-check'а (Duration). По умолчанию 1s.",
-      },
-      {
-        name: "health_check.unhealthy_threshold",
-        label: "Порог отказа проверки",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 2,
-        max: 10,
-        description: "Сколько failed checks подряд до перевода в UNHEALTHY (2..10). По умолчанию 2.",
-      },
-      {
-        name: "health_check.healthy_threshold",
-        label: "Порог успеха проверки",
-        type: "int",
-        required: true,
-        default: 2,
-        min: 2,
-        max: 10,
-        description: "Сколько успешных checks подряд до перевода в HEALTHY (2..10). По умолчанию 2.",
-      },
+      ...healthCheckFields(),
+      targetsField(),
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -666,6 +632,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       region_id: "",
       port: 80,
       deregistration_delay: "300s",
+      _health_check_protocol: "tcp",
       health_check: {
         tcp: { port: 80 },
         interval: "2s",
@@ -675,9 +642,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       labels: {},
     }),
-    // Форма правит секунды числом; контракт принимает Duration.
+    // Форма правит секунды числом; контракт принимает Duration. Плюс ветвь
+    // проверки живости и ветвь идентичности каждой цели: форма держит поля всех
+    // ветвей, в теле остаётся по одной.
     sanitize: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = sanitizeTargets(sanitizeHealthCheck(obj));
       const raw = out["deregistration_delay"];
       // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
       // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
@@ -691,9 +660,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       else delete out["deregistration_delay"];
       return out;
     },
-    // Duration → число, которое рендерит int-поле формы.
+    // Duration → число, которое рендерит int-поле формы; заполненная ветвь
+    // проверки живости → выбор в дискриминаторе.
     hydrate: (obj) => {
-      const out: Record<string, unknown> = { ...obj };
+      const out: Record<string, unknown> = hydrateHealthCheck(obj);
       const raw = out["deregistration_delay"];
       if (typeof raw === "string" && raw.endsWith("s")) {
         const n = Number(raw.slice(0, -1));
