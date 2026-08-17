@@ -12,47 +12,19 @@
 //     идентификатор интерфейса. Оставшийся, он делает всю остальную секцию
 //     бессмысленной: сборщик тела отдаёт только его.
 //
-// `Segmented` общего стенда-заменителя — пустой `<div>`: варианты он не рисует,
-// поэтому переключение режима было бы недостижимо, а утверждение о нём —
-// истинным при любом поведении. Здесь он переопределён кнопками.
+// Переключатель режима берётся из ОБЩЕГО стенда-заменителя. Здесь стояла своя
+// подмена — общий рисовал пустой `<div>`, и варианты были недостижимы. Обход был
+// написан один раз и не переиспользовался, поэтому восемь остальных мест
+// переключателя оставались без наблюдения (#553). Общий заменитель теперь рисует
+// варианты так, как их видит оператор, и подмена снята: одно место об одном
+// предмете.
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface SegOption {
-  value: string;
-  label?: React.ReactNode;
-}
-
-interface SegProps {
-  value?: string;
-  options?: SegOption[];
-  onChange?: (value: string) => void;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Segmented: ({ value, options, onChange }: SegProps) =>
-    React.createElement(
-      "div",
-      { "data-testid": "segmented" },
-      (options ?? []).map((o) =>
-        React.createElement(
-          "button",
-          {
-            key: o.value,
-            type: "button",
-            "aria-pressed": value === o.value,
-            onClick: () => onChange?.(o.value),
-          },
-          o.label,
-        ),
-      ),
-    ),
-}));
+jest.unstable_mockModule("antd", () => antdStub());
 
 const list = jest.fn<(path: string, q?: unknown) => Promise<Record<string, unknown>>>();
 
@@ -106,8 +78,10 @@ beforeEach(() => {
   });
 });
 
-const segButton = (label: string) =>
-  [...screen.getByTestId("segmented").querySelectorAll("button")].find((b) => b.textContent === label)!;
+// Вариант ищется по ДОСТУПНОМУ ИМЕНИ — тому, что читает оператор. Поиск по
+// тестовому атрибуту привязал бы утверждение к форме дублёра: настоящий
+// переключатель такого атрибута не производит.
+const segOption = (label: string) => screen.getByRole("radio", { name: label });
 
 describe("NicSpecFields — публичный адрес", () => {
   it("выбранный адрес снимается при отказе от режима «Список»", () => {
@@ -115,7 +89,7 @@ describe("NicSpecFields — публичный адрес", () => {
       nic({ subnet_id: "sub-1", _ext_mode: "list", _ext_addr_id: "adr-ext", _ext_addr_value: "203.0.113.7" }),
     );
 
-    fireEvent.click(segButton("Без адреса"));
+    fireEvent.click(segOption("Без адреса"));
 
     expect(onChange).toHaveBeenCalled();
     const after = specOf(latest());
@@ -129,7 +103,7 @@ describe("NicSpecFields — публичный адрес", () => {
   it("переход в «Автоматически» тоже снимает ранее выбранный адрес", () => {
     const { latest } = show(nic({ subnet_id: "sub-1", _ext_mode: "list", _ext_addr_id: "adr-ext" }));
 
-    fireEvent.click(segButton("Автоматически"));
+    fireEvent.click(segOption("Автоматически"));
 
     expect(specOf(latest())._ext_mode).toBe("auto");
     expect(specOf(latest())).not.toHaveProperty("_ext_addr_id");
@@ -140,7 +114,7 @@ describe("NicSpecFields — публичный адрес", () => {
     // всегда, — и выбрать адрес стало бы невозможно.
     const { latest } = show(nic({ subnet_id: "sub-1", _ext_mode: "none", _ext_addr_id: "adr-ext" }));
 
-    fireEvent.click(segButton("Список"));
+    fireEvent.click(segOption("Список"));
 
     expect(specOf(latest())._ext_mode).toBe("list");
     expect(specOf(latest())._ext_addr_id).toBe("adr-ext");
