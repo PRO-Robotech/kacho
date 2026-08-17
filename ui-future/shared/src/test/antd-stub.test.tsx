@@ -116,6 +116,58 @@ describe("Tree рисует узлы и вложенность", () => {
   });
 });
 
+describe("Menu доносит РОЛЬ, объявленную вызывающим", () => {
+  // Настоящее меню antd не прибито к своей роли: корень кладёт `role: "menu"` до
+  // `...restProps`, пункт вычисляет роль как `role || "menuitem"` и спреадит
+  // остаток props на `<li>`. Проверено рендером собранного antd 6.5.4 из дерева:
+  // на вход с `role="tablist"` и пунктами `role="tab"` он отдаёт именно их, с
+  // теми же классами `ant-menu-item{,-selected}`.
+  //
+  // Этим пользуется рейл карточки ресурса (`DetailShell`): он объявляет себя
+  // набором ВКЛАДОК, потому что переключает вид, а не запускает команды. Если бы
+  // заменитель роль игнорировал, пробы рейла краснели бы на дублёре при исправном
+  // продукте — то есть говорили бы не о нём.
+  it("объявленная роль доходит и до набора, и до пункта", () => {
+    render(
+      <S.Menu
+        role="tablist"
+        aria-orientation="vertical"
+        selectedKeys={["b"]}
+        items={[
+          { key: "a", label: "Обзор", role: "tab", id: "t-a", "aria-selected": false, "aria-controls": "p" },
+          { key: "b", label: "Теги", role: "tab", id: "t-b", "aria-selected": true, "aria-controls": "p" },
+        ]}
+      />,
+    );
+
+    const набор = screen.getByRole("tablist");
+    expect(набор).toHaveAttribute("aria-orientation", "vertical");
+    expect(
+      within(набор)
+        .getAllByRole("tab")
+        .map((t) => [t.textContent, t.getAttribute("aria-selected")]),
+    ).toEqual([
+      ["Обзор", "false"],
+      ["Теги", "true"],
+    ]);
+    expect(screen.getByRole("tab", { name: "Теги" }).getAttribute("aria-controls")).toBe("p");
+  });
+
+  it("без объявленной роли остаётся меню — контроль в обратную сторону", () => {
+    // Умолчание не изменилось: заменитель, отдающий вкладки всегда, сделал бы
+    // утверждение выше истинным при любом продукте.
+    render(<S.Menu selectedKeys={["a"]} items={[{ key: "a", label: "Профиль" }]} />);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Профиль"]);
+    expect(screen.queryByRole("tab")).toBeNull();
+    // Выбранность своих пунктов настоящее меню помечает КЛАССОМ, а не
+    // `aria-selected`, — заменитель здесь его тоже не выдумывает.
+    expect(screen.getByRole("menuitem")).not.toHaveAttribute("aria-selected");
+    expect(screen.getByRole("menuitem").className).toContain("ant-menu-item-selected");
+  });
+});
+
 describe("Tabs рисует подписи всех вкладок и содержимое активной", () => {
   it("подписи видны, содержимое — только у активной", () => {
     render(
