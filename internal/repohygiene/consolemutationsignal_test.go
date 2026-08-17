@@ -149,7 +149,6 @@ var consoleMutationLedger = []string{
 	"storage/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
 	"storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
 	"storage/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"vpc/src/components/molecules/DeleteButton/DeleteButton.tsx",
 }
 
 // consoleMutationSite — место мутации: координата и текст вызова.
