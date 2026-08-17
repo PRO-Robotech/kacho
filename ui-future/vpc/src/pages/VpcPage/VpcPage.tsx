@@ -41,10 +41,11 @@ export interface VpcPageProps {
   surface?: string;
 }
 
-// Перечень берётся из `lib/scoped-resources`, а не выписывается здесь второй
-// раз: это ТОТ ЖЕ список, что монтирует роутер приложения, и две его копии
-// разошлись бы молча — раздел появился бы в маршрутах и не появился на странице
-// (или наоборот), а `filter(Boolean)` не сказал бы об этом ни слова.
+// Перечень берётся из `lib/scoped-resources`, а не выписывается здесь: id,
+// исчезнувший из общего реестра, `filter(Boolean)` выбрасывает МОЛЧА — раздел
+// просто не появляется. Список, лежащий отдельным модулем, становится предметом
+// проверки (`lib/scoped-resources.test.ts`), и исчезновение спеки перестаёт
+// быть беззвучным.
 const VPC_SCOPED = VPC_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
 
 export const VpcPage: FC<VpcPageProps> = ({ context, surface }) => {
