@@ -156,3 +156,133 @@ test("группа целей создаётся СРАЗУ с целью — в
     )
     .toBe(адрес);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ ОТ ВЕТВИ — тоже исход, и он тоже обязан быть достижим из формы.
+//
+// Пробы выше спрашивают «выбранная ветвь доехала?». Ниже — обратное и не менее
+// важное: «от ветви, которой контракт не требует, можно отказаться?» и «ветвь,
+// объявленная контрактом несоздаваемой, действительно не создаётся?». Обе
+// находки пережили зелёные модульные пробы своих модулей.
+
+/** Балансировщик, прочитанный по имени из списка проекта. */
+async function балансировщикПоИмени(page: Page, projectId: string, имя: string) {
+  const res = await page.request.get(`/nlb/v1/networkLoadBalancers?projectId=${projectId}`);
+  if (!res.ok()) return null;
+  const body = (await res.json()) as { networkLoadBalancers?: Array<Record<string, unknown>> };
+  return body.networkLoadBalancers?.find((b) => b.name === имя) ?? null;
+}
+
+test("внешний балансировщик создаётся ТОЛЬКО на IPv4 — от семейства можно отказаться", async ({ page }) => {
+  // verifies #543 — у формы модуля, который рисует `/nlb/*`, варианта «не
+  // задавать это семейство» не было вовсе. При внешнем размещении режим
+  // «публичный» даёт источник БЕЗУСЛОВНО и стоял умолчанием у обоих семейств,
+  // поэтому на провод уезжали оба, и балансировщик только на IPv4 — ресурс,
+  // который сервис принимает («хотя бы одно семейство»), — был невыразим.
+  // Общий реестр такой вариант несёт, но `/nlb/*` рисует не его.
+  test.setTimeout(240_000);
+  const { projectId } = await tenantWithProject(page);
+  const regionId = await anyRegionId(page);
+  const имя = `lb-v4only-${runTag()}`;
+
+  await page.goto(`/projects/${projectId}/nlb/load-balancers`, { waitUntil: "domcontentloaded" });
+  const создать = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
+  await expect(создать, "на странице балансировщиков нет элемента создания").toBeVisible({ timeout: 30_000 });
+  await создать.click();
+
+  const имяПоле = поле(page, "Имя").locator("input").first();
+  await expect(имяПоле, "форма создания балансировщика не предложила поле имени").toBeVisible({ timeout: 20_000 });
+  await имяПоле.fill(имя);
+  await выбрать(page, "Регион", new RegExp(regionId));
+
+  // Отказ от IPv6 — то, ради чего проба и написана. Кнопка режима живёт в
+  // строке своего семейства и выбирается так же, как её выбрал бы человек.
+  const строкаV6 = page.locator(".ant-form-item", { has: page.getByText("IPv6 Адрес", { exact: false }) }).first();
+  const отказV6 = строкаV6.getByText("Не задавать", { exact: false }).first();
+  await expect(
+    отказV6,
+    "в строке IPv6 нет способа отказаться от семейства: при внешнем размещении оба " +
+      "предложенных режима дают источник, поэтому балансировщик только на IPv4 не собрать",
+  ).toBeVisible({ timeout: 20_000 });
+  await отказV6.click();
+
+  const [ответ] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes("/nlb/v1/networkLoadBalancers") && r.request().method() === "POST", {
+      timeout: 40_000,
+    }),
+    page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click(),
+  ]);
+  expect(ответ.status(), `создание балансировщика отвергнуто краем: ${(await ответ.text()).slice(0, 300)}`).toBe(200);
+
+  // Наблюдаемое — СОЗДАННЫЙ ресурс. Сперва ждём, пока заявленное семейство
+  // материализуется в связанный адрес: без этого «шестого нет» вакуумно —
+  // до саги нет ни одного, при любом выборе.
+  await expect
+    .poll(async () => ((await балансировщикПоИмени(page, projectId, имя))?.v4AddressId as string) ?? "", {
+      message:
+        "заявленное семейство IPv4 не материализовалось в связанный адрес: без него " +
+        "утверждение «IPv6 отсутствует» ничего не значит — до саги отсутствуют оба",
+      timeout: 120_000,
+    })
+    .not.toBe("");
+
+  const балансировщик = (await балансировщикПоИмени(page, projectId, имя)) as Record<string, unknown>;
+  expect(
+    (балансировщик.v6AddressId as string) ?? "",
+    "балансировщик создан С IPv6, хотя от семейства отказались в форме: отказ до контракта " +
+      `не доехал. Что приехало: ${JSON.stringify(балансировщик.v6AddressId)}`,
+  ).toBe("");
+});
+
+test("вид «контейнер» машины не создаёт — отказ приходит и называет вид", async ({ page }) => {
+  // verifies #540 — контракт объявляет `InstanceKind.CONTAINER` несоздаваемым и
+  // обещает синхронный отказ ПО ИМЕНИ ПОЛЯ. Отказ при этом висел на другом поле
+  // (источник ОС), поэтому пара «вид контейнер + образ ХРАНИЛИЩА» проходила
+  // проверку целиком и создавала машину: вид «контейнер» с корневой файловой
+  // системой из образа диска — ресурс, не описываемый ни одной ветвью модели.
+  // Консоль эту пару и слала: вид предлагался без условий, а клиентская проверка
+  // стерегла только источник.
+  //
+  // Утверждается ИСХОД, а не слой, который отказал: машины с этим именем не
+  // существует. Проба остаётся верной, если отказ переедет между консолью и краем.
+  test.setTimeout(240_000);
+  const { projectId } = await tenantWithProject(page);
+  const имя = `vm-ctr-${runTag()}`;
+
+  await page.goto(`/projects/${projectId}/compute/instances/create`, { waitUntil: "domcontentloaded" });
+
+  const имяПоле = поле(page, "Имя").locator("input").first();
+  await expect(имяПоле, "форма создания машины не предложила поле имени").toBeVisible({ timeout: 30_000 });
+  await имяПоле.fill(имя);
+  await выбрать(page, "Тип инстанса", /CONTAINER/);
+
+  await page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click();
+
+  await expect(
+    page.getByText(/Вид «контейнер» пока не создаётся/).first(),
+    "отказ по виду не показан: вид объявлен несоздаваемым, а форма его принимает — " +
+      "арендатор узнаёт об этом отказом на запрос, который не мог пройти",
+  ).toBeVisible({ timeout: 20_000 });
+
+  const списокНесётИмя = async (): Promise<string> => {
+    const res = await page.request.get(`/compute/v1/instances?projectId=${projectId}`);
+    if (!res.ok()) return `список машин недоступен: ${res.status()}`;
+    const body = (await res.json()) as { instances?: Array<Record<string, unknown>> };
+    return (body.instances ?? []).some((i) => i.name === имя) ? "создана" : "не создана";
+  };
+  expect(
+    await списокНесётИмя(),
+    "машина вида «контейнер» создана: вид объявлен контрактом несоздаваемым, а отказ его " +
+      "не назвал — значит связки «вид ↔ источник ОС» на пути создания нет",
+  ).toBe("не создана");
+
+  // (+) положительный контроль на ту же ось: отказ различает вид, а не
+  // срабатывает безусловно. Без него «контейнер не создался» могло бы означать
+  // «форма не создаёт ничего».
+  await выбрать(page, "Тип инстанса", /VM/);
+  await page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click();
+  await expect(
+    page.getByText(/Вид «контейнер» пока не создаётся/),
+    "отказ по виду показан и для VM — он срабатывает безусловно, а не различает вид",
+  ).toBeHidden({ timeout: 20_000 });
+});

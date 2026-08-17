@@ -13,7 +13,7 @@
 
 import { REGISTRY } from "./resource-registry";
 import { oneofBranches } from "@shared/test/oneof-branch-coverage";
-import { instanceBody, localDiskRefusal } from "@shared/test/instance-branch-coverage";
+import { instanceBody, localDiskRefusal, containerKindRefusal } from "@shared/test/instance-branch-coverage";
 
 /** Ветви, которые тело несёт на верхнем уровне (или по указанному пути). */
 function branchesInBody(body: Record<string, unknown>, at: string[] = []): string[] {
@@ -123,6 +123,19 @@ describe("вид машины: каждая ветвь спецификации 
     expect(oneofBranches("compute/v1/instance_service.proto", "AttachedLocalDiskSpec", "type")).toEqual([
       "physical_local_disk",
     ]);
+  });
+
+  it("вид «контейнер» форма отвергает ДО отправки — и у этого есть предикат снятия", () => {
+    // Вид объявлен контрактом несоздаваемым, и отказ читается ИЗ ДЕРЕВА:
+    // станет вид создаваемым — покраснеет эта проба, а не арендатор.
+    expect(containerKindRefusal()).toContain("not creatable");
+    expect(spec.validate!({ instance_kind: "CONTAINER", boot_source: { type: "storage.image", id: "img-1" } })).toMatch(
+      /контейнер/i,
+    );
+    // (+) отрицание в паре с положительным: вид VM тем же путём проходит.
+    expect(
+      spec.validate!({ instance_kind: "VM", boot_source: { type: "storage.image", id: "img-1" } }),
+    ).toBeNull();
   });
 });
 
