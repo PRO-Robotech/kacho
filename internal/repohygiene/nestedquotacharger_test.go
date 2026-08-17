@@ -39,6 +39,11 @@ import (
 // nestedKindsWithoutAChargerYet — виды, у которых списания ещё НЕТ, с причиной
 // и предметом.
 //
+// СЕЙЧАС ПУСТ, и это цель, а не поломка: три записи vpc сняты В ТОМ ЖЕ
+// изменении, где появилась их замена. Освобождение, которому больше нечего
+// освобождать, — находка; перечень поэтому и проверяется на ПРЕДМЕТ, а не только
+// на причину, и пустым он проходит, объявляя перепись.
+//
 // Это не «известное красное» и не отговорка: каждая запись называет ПОЧЕМУ
 // списание не заведено вместе с гейтом, и почему заводить его наспех было бы
 // хуже. Запись САМОИСТЕКАЕТ в обе стороны: вид, получивший списание, обязан уйти
@@ -48,16 +53,7 @@ import (
 // Гейт с этим перечнем всё равно строже, чем его отсутствие: ЧЕТВЁРТЫЙ такой вид
 // завести уже нельзя — он покраснеет здесь в тот же день, а не через полгода на
 // вопрос «почему предел не действует».
-var nestedKindsWithoutAChargerYet = map[string]string{
-	"vpc.network.subnet": "списание требует, чтобы у сети была строка учёта, а её заводит " +
-		"триггер жизненного цикла из проектного резолва вложенной величины — пути, " +
-		"которого у vpc пока нет вовсе. Завести триггер БЕЗ этого пути значило бы " +
-		"отвергать создание подсети в каждой уже существующей сети: строки учёта у неё " +
-		"нет, и списание отвечает «потолок не назван». Предмет — `PRO-Robotech/kacho#353`",
-	"vpc.network.securityGroup": "то же и по той же причине: сеть — носитель, а носителю " +
-		"нужна строка учёта, которую некому завести (`PRO-Robotech/kacho#353`)",
-	"vpc.network.routeTable": "то же и по той же причине (`PRO-Robotech/kacho#353`)",
-}
+var nestedKindsWithoutAChargerYet = map[string]string{}
 
 // TestNestedChargerExemptionsStillHaveSubject — освобождение живёт, пока у него
 // есть предмет.
@@ -296,7 +292,13 @@ func nestedKindChargers(t *testing.T, root string) (charged, lifecycle map[strin
 	charged, lifecycle = map[string]string{}, map[string]string{}
 	chargeRe := regexp.MustCompile(`kacho_quota_count\(([^)]*)\)`)
 	lifeRe := regexp.MustCompile(`kacho_quota_carrier_lifecycle\(([^)]*)\)`)
-	argRe := regexp.MustCompile(`'([^']+)'`)
+	// `[^']*`, а НЕ `[^']+`: среди аргументов законно стоит ПУСТАЯ строка (у vpc
+	// вторая позиция — булев столбец системного ребёнка, и у подсетей его нет).
+	// Требуя непустоты, выражение не сопоставляло пустую пару кавычек как целое и
+	// разъезжалось по кавычкам дальше: следующий настоящий аргумент оказывался
+	// «внутри» ложной пары и не читался вовсе. Ошибка тихая — предикат находил
+	// ЧАСТЬ аргументов и объявлял вид несписываемым при работающем списании.
+	argRe := regexp.MustCompile(`'([^']*)'`)
 	space := regexp.MustCompile(`\s+`)
 
 	for _, path := range files {
@@ -314,11 +316,17 @@ func nestedKindChargers(t *testing.T, root string) (charged, lifecycle map[strin
 		}
 		for _, m := range chargeRe.FindAllStringSubmatch(body, -1) {
 			for _, a := range argRe.FindAllStringSubmatch(m[1], -1) {
+				if a[1] == "" {
+					continue
+				}
 				charged[a[1]] = rel
 			}
 		}
 		for _, m := range lifeRe.FindAllStringSubmatch(body, -1) {
 			for _, a := range argRe.FindAllStringSubmatch(m[1], -1) {
+				if a[1] == "" {
+					continue
+				}
 				lifecycle[a[1]] = rel
 			}
 		}

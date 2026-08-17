@@ -206,14 +206,29 @@ func (g *Guard) materialise(ctx context.Context, projectID string) error {
 	// и потребление её не наполнится никогда, потому что списание идёт по
 	// настоящему носителю.
 	//
-	// Вложенные виды здесь пока НЕ заводятся: их строка принадлежит родителю и
-	// обязана появляться и сниматься той же транзакцией, что сам родитель, —
-	// это отдельная работа, а не побочный эффект материализации проекта. До неё
-	// вид просто не имеет строки учёта у этого владельца, и это честнее, чем
-	// строка, которая никогда не наполнится.
+	// Вложенные виды идут СВОИМ путём, а не в строки учёта проекта: у них есть
+	// проектная ВЕЛИЧИНА («по скольку детей на родителя») и нет проектного
+	// ПОТРЕБЛЕНИЯ — детей считают в каждом родителе отдельно. Строка учёта с
+	// носителем `project` объявляла бы расход, которого никто не производит, и
+	// показывала бы арендатору вечный ноль.
 	rows := make([]kacho.QuotaRow, 0, len(limits))
+	nested := make([]kacho.QuotaRow, 0, len(limits))
 	for _, l := range limits {
 		if l.Carrier != repo.QuotaCarrierProject {
+			// Носитель — родительский тип: это проектный резолв вложенного вида.
+			// `CarrierID` здесь ПРОЕКТ, а не родитель: величина разрешается на
+			// проект, а раздаётся по родителям — их у проекта много, и назвать
+			// одного значило бы выбрать за платформу.
+			nested = append(nested, kacho.QuotaRow{
+				CarrierType:   l.Carrier,
+				CarrierID:     projectID,
+				Kind:          l.Kind,
+				Limit:         l.Value,
+				SourceScope:   l.SourceScope,
+				SourceScopeID: l.SourceScopeID,
+				LimitRevision: limitRevisionUnknown,
+				AccountID:     accountID,
+			})
 			continue
 		}
 		rows = append(rows, kacho.QuotaRow{
@@ -227,9 +242,10 @@ func (g *Guard) materialise(ctx context.Context, projectID string) error {
 			AccountID:     accountID,
 		})
 	}
-	if len(rows) == 0 {
-		// Ответ был, но ни один вид не считается в проекте. Заводить нечего —
-		// и это не разрешение: второй вопрос полосы вернёт «потолок не назван».
+	if len(rows) == 0 && len(nested) == 0 {
+		// Ответ был, но ни один вид не считается ни в проекте, ни в родителе.
+		// Заводить нечего — и это не разрешение: второй вопрос полосы вернёт
+		// «потолок не назван».
 		return nil
 	}
 
@@ -239,6 +255,12 @@ func (g *Guard) materialise(ctx context.Context, projectID string) error {
 	}
 	defer w.Abort()
 	if _, err := w.Quotas().Materialize(ctx, rows); err != nil {
+		return err
+	}
+	// Вложенные — В ТОЙ ЖЕ транзакции. Порознь они разошлись бы ровно там, где
+	// расхождение не видно: проект получил бы проектные пределы и остался без
+	// вложенных, а снаружи это неотличимо от «вложенных у него и не должно быть».
+	if _, err := w.Quotas().MaterializeNestedDefaults(ctx, nested); err != nil {
 		return err
 	}
 	return w.Commit()
