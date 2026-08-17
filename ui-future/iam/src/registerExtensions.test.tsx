@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
-import { antdDouble } from "@/test/antd-double";
+import { antdStub } from "@shared/test/antd-stub";
 
 interface Privilege {
   binding_id: string;
@@ -23,7 +23,7 @@ interface Privilege {
   created_at?: string;
 }
 
-jest.unstable_mockModule("antd", () => antdDouble);
+jest.unstable_mockModule("antd", () => antdStub());
 
 // Клиент iam подменяется ТОЧЕЧНО — слежкой за методами настоящего объекта, а не
 // подменой всего модуля: перечень его экспортов пришлось бы выписывать руками, и
@@ -39,7 +39,11 @@ let privilegesTab: DetailTab;
  * antd подменён, поэтому признак «это ошибка» читается атрибутом `status`, а не
  * ролью — роли у подмены нет by construction.
  */
-const errorPane = (root: HTMLElement) => root.querySelector('[status="error"]');
+// Вид исхода настоящий `Result` выражает КЛАССОМ корня, а не атрибутом `status`
+// (#588): атрибут существовал только потому, что прежний дублёр iam ронял пропы
+// в DOM. На настоящем рендере селектор по атрибуту не нашёл бы ничего никогда —
+// и отрицание ниже зеленело бы ни на чём.
+const errorPane = (root: HTMLElement) => root.querySelector(".ant-result-error");
 
 function renderTab() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

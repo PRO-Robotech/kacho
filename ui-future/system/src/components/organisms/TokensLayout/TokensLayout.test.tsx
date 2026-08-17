@@ -42,6 +42,12 @@ function show(at: string) {
 
 const ПУНКТЫ = ["Ключи сервисных аккаунтов", "Токены пользователей"];
 
+// Пункты ищутся ПО РОЛИ МЕНЮ (#588). Прежде здесь стояло `getByRole("button")`
+// и `aria-current="page"` — ни того, ни другого меню antd не производит: оно
+// рисует `<ul role="menu">` с `<li role="menuitem">`, а открытый пункт помечает
+// классом. Утверждения были прибиты к форме прежнего дублёра.
+const пункт = (имя: string) => screen.getByRole("menuitem", { name: имя });
+
 describe("раздел «Токены и ключи»", () => {
   it("рисует пункты тем же рейлом, что карточка ресурса", () => {
     // Наблюдаемое различие, а не разбор исходника: общий рейл РИСУЕТ свои
@@ -50,19 +56,16 @@ describe("раздел «Токены и ключи»", () => {
     show("/system/tokens/service-account-keys");
 
     for (const п of ПУНКТЫ) {
-      expect(screen.getByRole("button", { name: п })).toBeInTheDocument();
+      expect(пункт(п)).toBeInTheDocument();
     }
   });
 
   it("отмечает открытый пункт", () => {
     show("/system/tokens/user-tokens");
 
-    expect(screen.getByRole("button", { name: "Токены пользователей" })).toHaveAttribute("aria-current", "page");
+    expect(пункт("Токены пользователей").className).toContain("ant-menu-item-selected");
     // Отрицание в паре: отмечен ровно открытый, а не все подряд.
-    expect(screen.getByRole("button", { name: "Ключи сервисных аккаунтов" })).not.toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(пункт("Ключи сервисных аккаунтов").className).not.toContain("ant-menu-item-selected");
   });
 
   it("показывает содержимое открытого пункта", () => {

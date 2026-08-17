@@ -45,6 +45,14 @@ function show(at: string) {
 const ПУНКТЫ = ["Регионы", "Зоны", "Пулы адресов", "Администраторы кластера"];
 
 describe("раздел «Администрирование»", () => {
+  // Пункты ищутся ПО РОЛИ МЕНЮ (#588). Прежде здесь стояло `getByRole("button")`
+  // и `aria-current="page"` — ни того, ни другого меню antd не производит
+  // НИКОГДА: оно рисует `<ul role="menu">` с `<li role="menuitem">`, а открытый
+  // пункт помечает классом. Утверждения были прибиты к форме прежнего дублёра и
+  // пережили бы продукт: переход на настоящий рендер оставил бы их зелёными на
+  // разметке, которой в консоли нет.
+  const пункт = (имя: string) => screen.getByRole("menuitem", { name: имя });
+
   it("рисует пункты тем же рейлом, что карточка ресурса", () => {
     // Наблюдаемое различие, а не разбор исходника: общий рейл РИСУЕТ свои
     // пункты (заменитель antd повторяет это поведение настоящего меню), а
@@ -52,16 +60,16 @@ describe("раздел «Администрирование»", () => {
     show("/system/regions");
 
     for (const п of ПУНКТЫ) {
-      expect(screen.getByRole("button", { name: п })).toBeInTheDocument();
+      expect(пункт(п)).toBeInTheDocument();
     }
   });
 
   it("отмечает открытый пункт", () => {
     show("/system/zones");
 
-    expect(screen.getByRole("button", { name: "Зоны" })).toHaveAttribute("aria-current", "page");
+    expect(пункт("Зоны").className).toContain("ant-menu-item-selected");
     // Отрицание в паре: отмечен ровно открытый, а не все подряд.
-    expect(screen.getByRole("button", { name: "Регионы" })).not.toHaveAttribute("aria-current", "page");
+    expect(пункт("Регионы").className).not.toContain("ant-menu-item-selected");
   });
 
   it("показывает содержимое открытого пункта", () => {

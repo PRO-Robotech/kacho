@@ -10,7 +10,8 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage e2e-newman stand-provenance \
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
+        seed-vpc-pools-check e2e-newman stand-provenance \
         managed-image-pins managed-image-pins-check
 
 SHELL := bash
@@ -483,6 +484,13 @@ dev-up: preflight
 	echo "    отвечает «класс не найден». Зоны привязок спрашиваются у geo, поэтому"; \
 	echo "    шаг идёт СТРОГО после посева каталога размещения."; \
 	$(MAKE) --no-print-directory seed-storage; \
+	echo "=== базовый каталог внешних адресов (полоса аникаста) ==="; \
+	echo "    Внешнее размещение бывает только региональным, значит внешний балансировщик"; \
+	echo "    зоне-независим by construction и берёт публичный адрес из полосы zone_id IS NULL."; \
+	echo "    Пока эта полоса пуста, КАЖДОЕ его создание отвечает «could not allocate load"; \
+	echo "    balancer address», сага сносит handle компенсацией, а GET по названному"; \
+	echo "    идентификатору отдаёт настоящий 404. Ни один «под Ready» этого не показывает."; \
+	$(MAKE) --no-print-directory seed-vpc-pools; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -1345,3 +1353,37 @@ seed-geo: guard-kind-context
 # guard-kind-context: цель ПИШЕТ в базу активного контекста.
 seed-storage: guard-kind-context
 	@POSTURE_SKIP="$(POSTURE_SKIP)" bash ./scripts/seed-storage-catalog.sh
+
+# ─── Базовый каталог внешних адресов vpc (полоса аникаста) ─────────────────
+#
+# Тот же класс беды, что у пустых каталогов geo и хранения, и то же решение.
+# Внешнее размещение бывает ТОЛЬКО региональным (`EXTERNAL_REGIONAL`), а
+# региональный ресурс зоне-независим by construction, поэтому публичный адрес
+# внешнего балансировщика выделяется БЕЗ зоны и резолвится в полосе
+# `zone_id IS NULL` (GetDefaultForZone("")). Полоса стартует пустой: в
+# `services/vpc/internal/migrations/*.sql` нет ни одного INSERT в address_pools —
+# пулы заводит администратор. Пока она пуста, каждое создание внешнего
+# балансировщика отвечает «could not allocate load balancer address», сага сносит
+# durable-handle компенсацией, и GET по названному идентификатору отдаёт
+# НАСТОЯЩИЙ 404. Стенд отчитывается поднятым и непригоден.
+#
+# ПОЧЕМУ НЕ ЧЕРЕЗ ADMIN-RPC: `InternalAddressPoolService` авторизуется на
+# кластерном синглтоне, то есть требует cluster-admin RS256. Полоса консоли
+# такого принципала не выпускает вовсе (её фикстура регистрирует свежего
+# арендатора формой провайдера личности), и завести его там значило бы принести
+# вторую копию машинерии приёмочных фикстур — та же причина, по которой SQL
+# выбран для geo и для каталога хранения.
+#
+# ПОЧЕМУ НЕ МИГРАЦИЕЙ: пустой старт каталога — решение, а адресный план стенда в
+# боевой поставке бессмыслен; применённую миграцию не правят (ban #5).
+#
+# guard-kind-context: цель ПИШЕТ в базу активного контекста.
+seed-vpc-pools: guard-kind-context
+	@POSTURE_SKIP="$(POSTURE_SKIP)" bash ./scripts/seed-vpc-address-pools.sh
+
+# Только УТВЕРЖДЕНИЕ, без записи: «условие создано» — отдельный вопрос от
+# «пробы зелёные», и волна консоли задаёт его отдельным шагом (e2e-flow.md §6).
+# Предикат тот же самый и живёт в одном файле с посевом: вторая его копия
+# разошлась бы с первой молча.
+seed-vpc-pools-check:
+	@POSTURE_SKIP="$(POSTURE_SKIP)" bash ./scripts/seed-vpc-address-pools.sh --check

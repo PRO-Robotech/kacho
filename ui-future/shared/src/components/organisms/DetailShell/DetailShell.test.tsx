@@ -14,47 +14,22 @@
 //     деградация: связанные таблицы поднимают свой тулбар на строку имени и
 //     обязаны переживать использование вне карточки.
 //
-// `Menu` общего стенда-заменителя — пустой `<div>`: пункты он не рисует, поэтому
-// на нём «клик по табу» был бы недостижим, а утверждение о выбранном табе —
-// истинным при любом. Здесь он переопределён так, чтобы пункты были кнопками.
+// `Menu` общего стенда-заменителя рисует пункты по-настоящему, поэтому свой
+// дублёр здесь больше не нужен — см. примечание у подмены модуля ниже.
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface MenuItem {
-  key: string;
-  label?: React.ReactNode;
-}
-
-interface MenuProps {
-  items?: MenuItem[];
-  selectedKeys?: string[];
-  onClick?: (info: { key: string }) => void;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Menu: ({ items, selectedKeys, onClick }: MenuProps) =>
-    React.createElement(
-      "nav",
-      { "data-testid": "rail" },
-      (items ?? []).map((item) =>
-        React.createElement(
-          "button",
-          {
-            key: item.key,
-            type: "button",
-            "aria-current": (selectedKeys ?? []).includes(item.key) ? "page" : undefined,
-            onClick: () => onClick?.({ key: item.key }),
-          },
-          item.label,
-        ),
-      ),
-    ),
-}));
+// Своего дублёра `Menu` здесь БОЛЬШЕ НЕТ (#588). Он рисовал пункты `<button>` с
+// `aria-current="page"` — ни того, ни другого меню antd не производит, поэтому
+// утверждения ниже были прибиты к форме дублёра и пережили бы продукт: переход
+// на настоящий рендер оставил бы их зелёными на разметке, которой в консоли нет.
+// Общий заменитель даёт форму настоящего (`<ul role="menu">` / `<li
+// role="menuitem">`, выбранность — классом `ant-menu-item-selected`), и рейл
+// ищется по роли.
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { DetailShell, HeaderSlotPortal } = await import("./DetailShell");
 
@@ -78,8 +53,11 @@ function show(initial: string, props: Record<string, unknown> = {}) {
   );
 }
 
-const railButtons = () => [...screen.getByTestId("rail").querySelectorAll("button")];
-const selectedTab = () => railButtons().find((b) => b.getAttribute("aria-current") === "page")?.textContent;
+/** Пункты рейла — ПО РОЛИ, как их отдаёт настоящее меню antd. */
+const railButtons = () => screen.getAllByRole("menuitem");
+/** Выбранный пункт настоящее меню помечает КЛАССОМ, а не `aria-current`. */
+const selectedTab = () =>
+  railButtons().find((li) => li.className.includes("ant-menu-item-selected"))?.textContent;
 const address = () => screen.getByTestId("address").textContent;
 
 describe("DetailShell — выбор таба", () => {
