@@ -31,9 +31,15 @@ export interface ResourceColumn {
   header: string;
   // Путь в плоском объекте: "name", "status", "zone_id"
   path: string;
-  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references";
+  format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references" | "bool";
   className?: string;
   render?: (row: Record<string, unknown>) => ReactNode;
+  /** Что означают истина и ложь — ФРАЗОЙ ПРЕДМЕТА, не «Да»/«Нет» (правило 6
+   *  `ui.md`). Обязательно при `format:"bool"`: назвать следствие может только
+   *  тот, кто знает предмет, поэтому умолчания у подписей нет — оно вернуло бы
+   *  ровно тот дефект, ради которого формат заведён. Отсутствие подписей —
+   *  находка гейта `spec-columns.bool-labels`, а не повод напечатать «Да». */
+  boolLabels?: { yes: string; no: string };
 }
 
 /** Фильтр списка, отправляемый в query-параметре (server-side, см. `listFilters`). */

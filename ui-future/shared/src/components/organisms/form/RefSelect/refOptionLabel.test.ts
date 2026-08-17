@@ -86,3 +86,33 @@ describe("refOptionExtra — unrelated resources are untouched", () => {
     expect(refOptionExtra("projects", { id: "prj-1" })).toBe("");
   });
 });
+
+// Тип машины — ресурс ОБЩЕГО реестра (`machine-types`), и поле `machineTypeId`
+// объявлено ссылкой на него там же. Приписки у него не было, поэтому дропдаун
+// показывал одни имена: типы различаются размером, а размер — единственное, ради
+// чего их выбирают. Подпись жила в копии одного модуля, то есть остальные
+// показывали список неразличимых строк.
+describe("refOptionExtra — тип машины называет размер", () => {
+  it("показывает vCPU, память и семейство", () => {
+    expect(refOptionExtra("machine-types", { effective_resources: { v_cpu: 2, memory_mib: "4096" }, family: "STANDARD" })).toBe(
+      "2 vCPU · 4 ГиБ · STANDARD",
+    );
+  });
+
+  it("память приходит строкой — int64 на wire сериализуется строкой", () => {
+    // Число здесь — не косметика: `Number("4096")/1024` даёт 4, а конкатенация
+    // строки дала бы «4096/1024» либо NaN, и подпись молча опустела бы.
+    expect(refOptionExtra("machine-types", { effective_resources: { v_cpu: 1, memory_mib: "1024" } })).toContain("1 ГиБ");
+  });
+
+  it("неназванного размера не выдумывает", () => {
+    // Пустой ответ лучше нуля: «0 vCPU» — утверждение о типе, которого сервер не
+    // делал.
+    expect(refOptionExtra("machine-types", {})).toBe("");
+    expect(refOptionExtra("machine-types", { effective_resources: { memory_mib: 0 } })).toBe("");
+  });
+
+  it("соседний ресурс приписку типа машины не получает (контроль)", () => {
+    expect(refOptionExtra("projects", { effective_resources: { v_cpu: 2 } })).toBe("");
+  });
+});

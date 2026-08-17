@@ -1,9 +1,27 @@
-// Перепись форков: какие символы, объявленные вне `shared/`, уже объявлены в
-// `shared/`. Читают её ДВА потребителя — гейт
-// `shared-organisms-single-source.test.ts` и генератор ведомости
-// `scripts/regen-shared-fork-ledger.mjs`, — и оба обязаны видеть ОДНО И ТО ЖЕ:
-// иначе ведомость собирается одним предикатом, а судится другим, и расхождение
-// проявляется ровно там, где его не видно (на валидном входе оба «согласны»).
+// Перепись форков: что вне `shared/` дублирует `shared/`. Читают её ДВА
+// потребителя — суд гейта `shared-organisms-single-source.test.ts` и пересбор
+// ведомости (`KACHO_REGEN_FORK_LEDGER=1`, живёт в том же гейте), — и оба обязаны
+// видеть ОДНО И ТО ЖЕ: иначе ведомость собирается одним предикатом, а судится
+// другим, и расхождение проявляется ровно там, где его не видно (на валидном
+// входе оба «согласны»).
+//
+// > Здесь стояла ссылка на `scripts/regen-shared-fork-ledger.mjs` — такого файла
+// > в дереве нет; пересбор исполняется внутри самого гейта. Комментарий пережил
+// > свой предмет и посылал читателя искать несуществующий скрипт.
+//
+// ФОРК УЗНАЁТСЯ ПО ДВУМ ПРИЗНАКАМ, и одного мало:
+//
+//   1. СИМВОЛ — файл объявляет имя, которое объявляет `shared/`. Ловит копию,
+//      сохранившую имена.
+//   2. АДРЕС — файл лежит по тому же пути под `src/`, что файл `shared/src/`, и
+//      не является тонкой прослойкой. Ловит копию, имена в которой ПЕРЕИМЕНОВАНЫ.
+//
+// Второй признак заведён потому, что первый на переименовании слеп by
+// construction: копия помощников подписи ссылки объявляет `headLabelFor` и
+// `extraInfoFor` там, где общий объявляет `refOptionHead` и `refOptionExtra`, —
+// один и тот же код под другими именами, для признака по символу невидимый.
+// Именно такая копия и расходится тише всех: она не спорит с общим ни одним
+// именем, поэтому её не видит ни гейт, ни поиск по имени.
 //
 // Файл лежит в `src/test/`, поэтому под собственную перепись не подпадает —
 // тестовые файлы из обхода исключены by construction.
@@ -69,6 +87,31 @@ export function discoverApps(repoRoot: string): string[] {
     .sort();
 }
 
+/**
+ * Тонкая прослойка — файл, который НИЧЕГО не объявляет и не описывает, а только
+ * пробрасывает чужое: `export * from "@shared/…"`, барель `export * from "./X"`,
+ * реэкспорт типов. Это и есть форма, которую требуется писать вместо копии,
+ * поэтому она разрешена без всякой записи в ведомости.
+ *
+ * Предикат — по СОДЕРЖИМОМУ, а не по имени файла: `index.ts` бывает и барелем, и
+ * копией, и судить о нём по имени значило бы мерить соглашение об именовании
+ * вместо предмета.
+ */
+export function isReExportOnly(src: string): boolean {
+  const code = src
+    // Строки и шаблоны не разбираем: в прослойке их не бывает, а вот `//` внутри
+    // адреса (`"@shared/…"`) снятие комментариев испортило бы.
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim();
+  if (code === "") return false; // пустой файл прослойкой не является
+  const statements = code
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  return statements.every((l) => /^(import\b|export\s+(\*|type\s*\{|\{))/.test(l) || /^[}\w"',\s]*;?$/.test(l));
+}
+
 export interface ForkHit {
   /** Путь от корня дерева консоли. */
   file: string;
@@ -76,6 +119,10 @@ export interface ForkHit {
   app: string;
   /** Символы файла, которые уже объявлены в shared/. */
   symbols: string[];
+  /** Файл лежит по тому же пути под `src/`, что файл `shared/src/`, и прослойкой
+   *  не является. Признак ловит копию с ПЕРЕИМЕНОВАННЫМИ символами, которую
+   *  признак по символу не видит вовсе. */
+  pathPaired: boolean;
 }
 
 export interface Sweep {
@@ -87,24 +134,47 @@ export interface Sweep {
   sharedFilesRead: number;
   /** Символов, объявленных в shared/. */
   sharedSymbols: number;
-  /** Файлы вне shared/, объявляющие символ shared. Отсортированы по пути. */
+  /** Файлов приложений, ПАРНЫХ по пути с `shared/src` (вместе с прослойками). */
+  pathPairedFiles: number;
+  /** Из них тонких прослоек — то есть уже сведённых к общему. */
+  shims: number;
+  /** Форки: файл объявляет символ shared ЛИБО парен по пути и прослойкой не
+   *  является. Отсортированы по пути. */
   hits: ForkHit[];
 }
 
 /** Полная перепись дерева консоли. */
 export function sweep(repoRoot: string): Sweep {
-  const sharedFiles = sourceFiles(path.join(repoRoot, "shared/src"));
+  const sharedRoot = path.join(repoRoot, "shared/src");
+  const sharedFiles = sourceFiles(sharedRoot);
   const sharedSymbols = new Set<string>();
-  for (const f of sharedFiles) for (const s of declaredSymbols(readFileSync(f, "utf8"))) sharedSymbols.add(s);
+  const sharedRelPaths = new Set<string>();
+  for (const f of sharedFiles) {
+    for (const s of declaredSymbols(readFileSync(f, "utf8"))) sharedSymbols.add(s);
+    sharedRelPaths.add(path.relative(sharedRoot, f));
+  }
 
   const apps = discoverApps(repoRoot);
   const hits: ForkHit[] = [];
   let filesRead = 0;
+  let pathPairedFiles = 0;
+  let shims = 0;
   for (const app of apps) {
-    for (const file of sourceFiles(path.join(repoRoot, app, "src"))) {
+    const appRoot = path.join(app, "src");
+    for (const file of sourceFiles(path.join(repoRoot, appRoot))) {
       filesRead++;
-      const own = [...declaredSymbols(readFileSync(file, "utf8"))].filter((s) => sharedSymbols.has(s)).sort();
-      if (own.length > 0) hits.push({ file: path.relative(repoRoot, file), app, symbols: own });
+      const src = readFileSync(file, "utf8");
+      const own = [...declaredSymbols(src)].filter((s) => sharedSymbols.has(s)).sort();
+
+      const paired = sharedRelPaths.has(path.relative(path.join(repoRoot, appRoot), file));
+      if (paired) pathPairedFiles++;
+      const shim = paired && isReExportOnly(src);
+      if (shim) shims++;
+      const pathPaired = paired && !shim;
+
+      if (own.length > 0 || pathPaired) {
+        hits.push({ file: path.relative(repoRoot, file), app, symbols: own, pathPaired });
+      }
     }
   }
   hits.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
@@ -114,6 +184,8 @@ export function sweep(repoRoot: string): Sweep {
     filesRead,
     sharedFilesRead: sharedFiles.length,
     sharedSymbols: sharedSymbols.size,
+    pathPairedFiles,
+    shims,
     hits,
   };
 }
