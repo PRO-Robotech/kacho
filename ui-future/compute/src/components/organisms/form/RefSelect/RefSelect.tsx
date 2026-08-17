@@ -21,6 +21,9 @@ import { InlineResourceCreateForm } from "@/components/organisms/InlineResourceC
 import { FormBareProvider } from "@/components/organisms/form/FormShell";
 import { extraInfoFor, headLabelFor } from "./refOptionLabel";
 import { createActionLabel } from "@shared/lib/resource-label";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { useKeptLabel } from "@shared/lib/kept-choice";
 
 interface Props {
   refResource: string;
@@ -70,15 +73,29 @@ export function RefSelect({
 
   const enabled = !!spec && (!refProjectScoped || !!project) && (!needsDynParam || !!dynParamValue);
 
+  // Введённое пользователем. Область поиска решает, что с ним делать: спросить
+  // сервер либо честно сказать, что сужаются только загруженные варианты (#528).
+  // Раньше ввод не покидал браузер НИКОГДА: список читался одной страницей, а
+  // поле отвечало «нет совпадений» — то есть утверждало об отсутствии ресурса
+  // то, чего не спрашивало.
+  const scope = pickerScopeOfSpec(spec);
+  const [term, setTerm] = useState("");
+  const debouncedTerm = useDebouncedValue(term, scope.asksServer ? 250 : 0);
+  const serverQuery = scope.asksServer ? scope.query(debouncedTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const queryTermKey = scope.asksServer ? (serverQuery.filter ?? "") : "";
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: [
       "ref",
       refResource,
       refProjectScoped ? project?.id : null,
       needsDynParam ? (dynParamValue ?? null) : null,
+      queryTermKey,
     ],
     queryFn: () => {
-      const q: Record<string, string> = {};
+      const q: Record<string, string> = { ...serverQuery };
       if (refProjectScoped && project) q["project_id"] = project.id;
       if (refQueryFromField && dynParamValue) q[refQueryFromField.param] = dynParamValue;
       return api.list<Record<string, Array<{ id: string; name: string } & Record<string, unknown>>>>(spec!.apiPath, q);
@@ -87,9 +104,10 @@ export function RefSelect({
     staleTime: 30_000,
   });
 
-  if (!spec) return <div className="text-xs text-rose-600">Неизвестная ссылка: {refResource}</div>;
-
-  const candidates = (data?.[spec.payloadKey] ?? []).filter((it) =>
+  // Состав вариантов считается ДО раннего возврата: ниже стоит хук памяти
+  // выбора, а хук, стоящий за условным `return`, вызывается не на каждом
+  // рендере — это нарушение правил хуков, а не стилистика.
+  const candidates = ((spec ? data?.[spec.payloadKey] : undefined) ?? []).filter((it) =>
     refFilter ? refFilter(it as Record<string, unknown>) : true,
   );
   const options = candidates.map((it) => ({
@@ -97,6 +115,20 @@ export function RefSelect({
     name: headLabelFor(refResource, it as Record<string, unknown>),
     extra: extraInfoFor(refResource, it as Record<string, unknown>),
   }));
+
+
+  const labelOf = (o: { uid: string; name: string; extra?: string }) =>
+    `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`;
+
+  // Выбранное значение обязано пережить сужение: сервер отвечает по ВВОДУ, и
+  // уже сделанный выбор в этот ответ не обязан попадать. Без запоминания метки
+  // поле показывало бы вместо имени идентификатор — ровно то, что канон консоли
+  // (правило 2) и запрещает.
+  const chosen = options.find((o) => o.uid === value);
+  const keptLabel = useKeptLabel(value, chosen ? labelOf(chosen) : null);
+  const keptChoice = value && keptLabel ? [{ value, label: keptLabel }] : [];
+
+  if (!spec) return <div className="text-xs text-rose-600">Неизвестная ссылка: {refResource}</div>;
 
   const CREATE_SENTINEL = "__create__";
 
@@ -110,7 +142,15 @@ export function RefSelect({
         placeholder={placeholder ?? `Выбрать ${spec.singular}…`}
         disabled={disabled || !enabled}
         style={{ width: "100%" }}
-        optionFilterProp="label"
+        title={scope.notice}
+        onSearch={setTerm}
+        // Сузил сервер — клиент НЕ пересеивает: повторное сужение по загруженной
+        // метке вычло бы из ответа края строки, которые он прислал именно по
+        // этому вводу (у ресурса имя может не совпасть с меткой варианта).
+        {...(scope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+        // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила ложь:
+        // «нет совпадений» на месте «нет среди загруженных».
+        notFoundContent={enabled && !isLoading ? scope.emptyText : undefined}
         // CREATE_SENTINEL — действие (открыть inline-create modal), не значение:
         // не зовём onChange (value не меняется → controlled Select откатывается).
         onChange={(v) => {
@@ -121,10 +161,8 @@ export function RefSelect({
           onChange(v || "");
         }}
         options={[
-          ...options.map((o) => ({
-            value: o.uid as string,
-            label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
-          })),
+          ...keptChoice,
+          ...options.map((o) => ({ value: o.uid as string, label: labelOf(o) })),
           ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ ${createActionLabel(createSpec)}…` }] : []),
         ]}
       />
@@ -134,8 +172,12 @@ export function RefSelect({
       )}
       {isLoading && <p className="text-xs text-muted-foreground">Загрузка списка {spec.plural}…</p>}
       {error && <ErrorResult error={error} />}
-      {value && options.length > 0 && !options.find((o) => o.uid === value) && (
-        <p className="text-xs text-amber-600">ID не найден в списке (возможно ресурс удалён или вне фильтра).</p>
+      {/* Предупреждение «нет в списке» судит о ЗАГРУЖЕННОМ, поэтому оно молчит,
+          пока список сужен вводом: там отсутствие выбранного — норма, а не
+          признак удалённого ресурса. Иначе поле пугало бы пользователя ровно в
+          тот момент, когда он ищет другое значение. */}
+      {value && !chosen && !debouncedTerm && options.length > 0 && (
+        <p className="text-xs text-amber-600">ID не найден среди загруженных (возможно ресурс удалён или вне фильтра).</p>
       )}
 
       {creating && createSpec && (

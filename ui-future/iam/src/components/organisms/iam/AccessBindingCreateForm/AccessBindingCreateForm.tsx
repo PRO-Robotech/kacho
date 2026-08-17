@@ -94,6 +94,8 @@ import {
   type Subject,
 } from "@shared/api/iam";
 import { isAlreadyExistsError, mapApiErrorToMessage } from "@shared/lib/permissions";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope, type PickerScope } from "@shared/lib/picker-search";
 
 /** Русская плюрализация слова «роль» для счётчика в сообщении об ошибке. */
 function pluralRole(n: number): string {
@@ -112,6 +114,66 @@ export type ScopeTier = "GLOBAL" | "ACCOUNT" | "PROJECT";
 export type ResourceType = "account" | "project" | "cluster";
 
 const SUBJECT_TYPES: SubjectType[] = ["user", "service_account", "group"];
+
+/**
+ * Чем сужается КАЖДЫЙ список этой формы у своего владельца (#528).
+ *
+ * Раньше ввод не покидал вкладку ни в одном из полей: список читался ОДНОЙ
+ * страницей (`pageSize: 1000`), а сужение шло по загруженной метке. Тысяча
+ * первый субъект был недостижим никаким вводом, а поле отвечало «нет
+ * совпадений» — то есть утверждало об отсутствии человека, учётки или якоря то,
+ * чего не спрашивало. У выпадающего списка нет «показать ещё» by construction,
+ * поэтому узнать правду пользователю было неоткуда.
+ *
+ * Ключей два, и подставить один вместо другого нельзя: iam отвергает `CONTAINS`
+ * на пользователе ЯВНО (`InvalidArgument` на всю страницу, с текстом, называющим
+ * правильное написание), а слова `search` не знает никто, кроме пользователя.
+ * Причина различия не в стиле: у пользователя имени нет вовсе — его узнают по
+ * почте, поэтому владелец завёл выделенное слово, смотрящее на почту И на
+ * идентификатор сразу.
+ */
+const SUBJECT_SCOPE: Record<SubjectType, PickerScope> = {
+  user: pickerScope({ serverTerm: "search" }),
+  // Group и ServiceAccount владелец сужает подстрокой по настоящему полю `name`:
+  // белый список выражения — ровно `name`, разобранный узел применяется через
+  // `ToSQL`, то есть оператор доезжает до SQL, а не схлопывается в равенство.
+  service_account: pickerScope({ serverSearchField: "name" }),
+  group: pickerScope({ serverSearchField: "name" }),
+};
+
+/** Якорь области: Account и Project владелец сужает тем же `name CONTAINS "…"`. */
+const ANCHOR_SCOPE = pickerScope({ serverSearchField: "name" });
+
+/**
+ * Роли назначаемости сервер НЕ сужает — и выдумывать поле запроса нельзя.
+ * `ListAssignableRolesRequest` несёт `resource_type`/`resource_id`/`scope_type`/
+ * `scope_id` и страничную пару; поля выражения фильтра в нём нет вовсе, а
+ * незнакомое имя — не «фильтр без эффекта», а отказ на всю страницу. Значит
+ * остаётся второй законный исход: сузить в браузере и НАЗВАТЬ область в пустом
+ * ответе, а не выдать её за отсутствие роли.
+ */
+const ROLE_SCOPE = pickerScope(undefined);
+
+/**
+ * Метки уже выбранного, пережившие сужение.
+ *
+ * Сервер отвечает по ВВОДУ, и сделанный ранее выбор в этот ответ попадать не
+ * обязан: набрал второе имя — первое из ответа ушло. Без запоминания метки
+ * выбранный субъект показался бы тегом `usr-…`, а якорь области — голым
+ * идентификатором, то есть ровно тем, что канон консоли (правило 2) и
+ * запрещает. Тот же приём, что в `RefSelect`.
+ */
+function keepChosenLabels(
+  memo: { current: Map<string, string> },
+  options: { value: string; label: string }[],
+  selected: string[],
+): { value: string; label: string }[] {
+  for (const o of options) memo.current.set(o.value, o.label);
+  const shown = new Set(options.map((o) => o.value));
+  return selected
+    .filter((v) => !!v && !shown.has(v) && memo.current.has(v))
+    .map((v) => ({ value: v, label: memo.current.get(v) as string }));
+}
 
 /**
  * Маппинг UI-строки SubjectType → имя proto-enum `SubjectType`
@@ -256,20 +318,39 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
   }, []);
 
   // ── Subject data ──
+  // Ввод субъекта уходит запросом ТОМУ владельцу, чей тип сейчас выбран, и
+  // только ему. Разносить по типам обязательно: иначе набранное имя группы
+  // уезжало бы ещё и в список пользователей — запрос, которого никто не просил,
+  // и сброс чужого кэша от чужого ввода.
+  const subjectScope = SUBJECT_SCOPE[subjectType];
+  const [subjectTerm, setSubjectTerm] = useState("");
+  const debouncedSubjectTerm = useDebouncedValue(subjectTerm, subjectScope.asksServer ? 250 : 0);
+  const subjectQueryFor = (t: SubjectType): Record<string, string> =>
+    subjectType === t ? SUBJECT_SCOPE[t].query(debouncedSubjectTerm) : {};
+  const userQuery = subjectQueryFor("user");
+  const saQuery = subjectQueryFor("service_account");
+  const groupQuery = subjectQueryFor("group");
+
   const users = useQuery({
-    queryKey: ["iam", "users", "list"],
-    queryFn: () => iamApi.listUsers({ pageSize: "1000" }),
+    // Ключ несёт ввод: без него react-query отдал бы прежний ответ на новый
+    // вопрос, и сужение выглядело бы сломанным именно там, где оно работает.
+    queryKey: ["iam", "users", "list", userQuery.filter ?? ""],
+    queryFn: () => iamApi.listUsers({ pageSize: "1000", ...userQuery }),
     staleTime: 30_000,
   });
   const sas = useQuery({
-    queryKey: ["iam", "service-accounts", "all"],
+    queryKey: ["iam", "service-accounts", "all", saQuery.filter ?? ""],
     queryFn: async () => {
+      // Перечисление аккаунтов вводом НЕ сужается: набранное относится к имени
+      // служебной учётки, а не аккаунта. Сузив внешний список, мы потеряли бы
+      // аккаунты, в которых искомая учётка как раз и лежит.
       const accs = await iamApi.listAccounts({ pageSize: "1000" });
       const all: ServiceAccount[] = [];
       for (const a of accs.accounts) {
         const r = await iamApi.listServiceAccounts({
           account_id: a.id,
           pageSize: "1000",
+          ...saQuery,
         });
         all.push(...(r.service_accounts ?? []));
       }
@@ -279,12 +360,14 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
     staleTime: 30_000,
   });
   const groups = useQuery({
-    queryKey: ["iam", "groups", "all"],
+    queryKey: ["iam", "groups", "all", groupQuery.filter ?? ""],
     queryFn: async () => {
+      // То же, что у служебных учёток: внешний список — перечисление аккаунтов,
+      // ввод относится к имени группы внутри каждого из них.
       const accs = await iamApi.listAccounts({ pageSize: "1000" });
       const all: Group[] = [];
       for (const a of accs.accounts) {
-        const r = await iamApi.listGroups({ account_id: a.id, pageSize: "1000" });
+        const r = await iamApi.listGroups({ account_id: a.id, pageSize: "1000", ...groupQuery });
         all.push(...(r.groups ?? []));
       }
       return all;
@@ -292,6 +375,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
     enabled: subjectType === "group",
     staleTime: 30_000,
   });
+  const subjectListLoading = users.isLoading || sas.isLoading || groups.isLoading;
 
   const subjectOptions = useMemo(() => {
     switch (subjectType) {
@@ -314,17 +398,30 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
   }, [subjectType, users.data, sas.data, groups.data]);
 
   // ── Scope-anchor data (account/project; GLOBAL — singleton, без picker'а) ──
+  // У каждого якорного поля свой ввод: они рендерятся в разных ветках scope, и
+  // общий ввод означал бы, что набранное для проекта сужает ещё и аккаунты.
   const headerAccountId = account?.id ?? "";
+  const [accountTerm, setAccountTerm] = useState("");
+  const debouncedAccountTerm = useDebouncedValue(accountTerm, ANCHOR_SCOPE.asksServer ? 250 : 0);
+  const accountQuery = ANCHOR_SCOPE.query(debouncedAccountTerm);
+  const [projectTerm, setProjectTerm] = useState("");
+  const debouncedProjectTerm = useDebouncedValue(projectTerm, ANCHOR_SCOPE.asksServer ? 250 : 0);
+  const projectQuery = ANCHOR_SCOPE.query(debouncedProjectTerm);
+
   const accounts = useQuery({
-    queryKey: ["iam", "accounts", "list"],
-    queryFn: () => iamApi.listAccounts({ pageSize: "1000" }),
+    queryKey: ["iam", "accounts", "list", accountQuery.filter ?? ""],
+    queryFn: () => iamApi.listAccounts({ pageSize: "1000", ...accountQuery }),
     enabled: scope === "ACCOUNT",
     staleTime: 30_000,
   });
   const projects = useQuery({
-    queryKey: ["iam", "projects", "by-account", headerAccountId],
+    queryKey: ["iam", "projects", "by-account", headerAccountId, projectQuery.filter ?? ""],
     queryFn: () =>
-      iamApi.listProjects(headerAccountId ? { account_id: headerAccountId, pageSize: "1000" } : { pageSize: "1000" }),
+      iamApi.listProjects(
+        headerAccountId
+          ? { account_id: headerAccountId, pageSize: "1000", ...projectQuery }
+          : { pageSize: "1000", ...projectQuery },
+      ),
     enabled: scope === "PROJECT",
     staleTime: 30_000,
   });
@@ -358,6 +455,22 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
   // Scope «выбран» (для GLOBAL anchor фиксирован — singleton). До выбора поле
   // «Роли» disabled и assignable не фетчится.
   const scopeSelected = !!watchedScope && !!watchedAnchorId;
+
+  // Выбранное обязано пережить сужение — см. `keepChosenLabels`.
+  const watchedSubjectId = Form.useWatch("subject_id", form) as string | undefined;
+  const watchedSubjectIds = (Form.useWatch("subject_ids", form) as string[] | undefined) ?? [];
+  const subjectLabelMemo = useRef(new Map<string, string>());
+  const anchorLabelMemo = useRef(new Map<string, string>());
+  const subjectOptionList = subjectOptions ?? [];
+  const keptSubjects = keepChosenLabels(
+    subjectLabelMemo,
+    subjectOptionList,
+    reconcile ? [watchedSubjectId ?? ""] : watchedSubjectIds,
+  );
+  const subjectSelectOptions = keptSubjects.length > 0 ? [...keptSubjects, ...subjectOptionList] : subjectOptionList;
+  const anchorOptionList = scope === "PROJECT" ? projectOptions : accountOptions;
+  const keptAnchor = keepChosenLabels(anchorLabelMemo, anchorOptionList, [watchedScopeRefId ?? ""]);
+  const anchorSelectOptions = keptAnchor.length > 0 ? [...keptAnchor, ...anchorOptionList] : anchorOptionList;
 
   // listAssignableRoles по resource_type (account/project/cluster) и anchor.
   const assignableResourceType: ResourceType | undefined = watchedScope
@@ -702,10 +815,21 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                 disabled
                 data-testid="access-bindings-subject-id"
                 placeholder={`Выберите ${subjectType}`}
-                options={subjectOptions}
+                options={subjectSelectOptions}
                 showSearch
-                optionFilterProp="label"
-                loading={users.isLoading || sas.isLoading || groups.isLoading}
+                onSearch={setSubjectTerm}
+                // Сузил сервер — клиент НЕ пересеивает: владелец смотрит на почту
+                // и идентификатор (у групп и учёток — на `name`), а метка варианта
+                // склеена из имени и идентификатора, и повторное сужение вычло бы
+                // из ответа строки, присланные именно по этому вводу.
+                {...(subjectScope.asksServer
+                  ? { filterOption: false as const }
+                  : { optionFilterProp: "label" as const })}
+                title={subjectScope.notice}
+                // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила
+                // ложь: «нет совпадений» на месте «нет среди загруженных».
+                notFoundContent={subjectListLoading ? undefined : subjectScope.emptyText}
+                loading={subjectListLoading}
               />
             </Form.Item>
           ) : (
@@ -726,11 +850,16 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                 mode="multiple"
                 data-testid="access-bindings-subject-ids"
                 placeholder={`Выберите ${subjectType} (можно несколько, до 32)`}
-                options={subjectOptions}
+                options={subjectSelectOptions}
                 showSearch
-                optionFilterProp="label"
+                onSearch={setSubjectTerm}
+                {...(subjectScope.asksServer
+                  ? { filterOption: false as const }
+                  : { optionFilterProp: "label" as const })}
+                title={subjectScope.notice}
+                notFoundContent={subjectListLoading ? undefined : subjectScope.emptyText}
                 maxCount={32}
-                loading={users.isLoading || sas.isLoading || groups.isLoading}
+                loading={subjectListLoading}
               />
             </Form.Item>
           )}
@@ -782,19 +911,37 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                   placeholder={
                     headerAccountId ? "Выберите Project" : "Выберите Account в шапке — тогда подгрузятся проекты"
                   }
-                  options={projectOptions}
+                  options={anchorSelectOptions}
                   showSearch
-                  optionFilterProp="label"
+                  onSearch={setProjectTerm}
+                  {...(ANCHOR_SCOPE.asksServer
+                    ? { filterOption: false as const }
+                    : { optionFilterProp: "label" as const })}
+                  title={ANCHOR_SCOPE.notice}
                   loading={projects.isLoading}
-                  notFoundContent={headerAccountId ? undefined : "Сначала выберите Account в шапке секции"}
+                  // Три разных факта, и путать их нельзя: аккаунт в шапке не
+                  // выбран (спрашивать некого) · ответ ещё едет · ответ пуст —
+                  // и вот последний обязан назвать свою область.
+                  notFoundContent={
+                    !headerAccountId
+                      ? "Сначала выберите Account в шапке секции"
+                      : projects.isLoading
+                        ? undefined
+                        : ANCHOR_SCOPE.emptyText
+                  }
                 />
               ) : (
                 <Select
                   data-testid="access-bindings-scope-ref"
                   placeholder="Выберите Account"
-                  options={accountOptions}
+                  options={anchorSelectOptions}
                   showSearch
-                  optionFilterProp="label"
+                  onSearch={setAccountTerm}
+                  {...(ANCHOR_SCOPE.asksServer
+                    ? { filterOption: false as const }
+                    : { optionFilterProp: "label" as const })}
+                  title={ANCHOR_SCOPE.notice}
+                  notFoundContent={accounts.isLoading ? undefined : ANCHOR_SCOPE.emptyText}
                   loading={accounts.isLoading}
                 />
               )}
@@ -914,7 +1061,19 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
                 </Tag>
               )}
               loading={assignableQ.isLoading}
-              notFoundContent={assignableQ.isLoading ? "Загрузка ролей…" : "Нет ролей, доступных для этой области"}
+              title={ROLE_SCOPE.notice}
+              // Три состояния — три РАЗНЫХ факта, и прежняя редакция сводила два
+              // последних в одно: «нет ролей, доступных для этой области» стояло
+              // и тогда, когда роли есть, а введённое просто не совпало ни с
+              // одной загруженной меткой. Сервер этот список не сужает (см.
+              // ROLE_SCOPE), поэтому пустота ввода честно называется областью.
+              notFoundContent={
+                assignableQ.isLoading
+                  ? "Загрузка ролей…"
+                  : assignableRoles.length === 0
+                    ? "Нет ролей, доступных для этой области"
+                    : ROLE_SCOPE.emptyText
+              }
               style={{ width: "100%" }}
             />
           </Form.Item>

@@ -21,7 +21,7 @@
 // Контролируемый компонент: `value: Rule[]` + `onChange`. Валидность набора
 // считается `rulesInvalid()` — submit блокируется вызывающим кодом.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Input, Radio, Select, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -38,9 +38,24 @@ import {
 } from "@shared/api/usePermissionCatalog";
 import { instanceFetcherFor, type InstanceFetcher } from "@shared/lib/resourceInstanceFetchers";
 import { useContext } from "@shared/lib/context-store";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope, pickerScopeOfSpec } from "@shared/lib/picker-search";
 
 // Re-export WILDCARD для обратной совместимости импортёров RulesEditor.
 export { WILDCARD };
+
+/**
+ * Каталог платформы сервер по вводу НЕ сужает (#528).
+ *
+ * Модули, типы ресурсов и глаголы приходят ОДНИМ ответом
+ * `GET /iam/v1/permissionCatalog`; поля выражения фильтра у него нет вовсе, а
+ * выдумывать его нельзя — незнакомое имя это не «фильтр без эффекта», а отказ на
+ * всю страницу. Значит остаётся второй законный исход: сузить в браузере и
+ * НАЗВАТЬ область в пустом ответе. «Нет совпадений» здесь утверждало бы, что
+ * такого модуля или глагола не существует, — а сказать это может только каталог,
+ * а не набранное слово.
+ */
+const CATALOG_SCOPE = pickerScope(undefined);
 
 /** Пустое правило для «Добавить правило» (ARM_ANCHOR по умолчанию). Scalar
  *  `module` (ровно один модуль на правило). */
@@ -444,8 +459,11 @@ function CatalogSelect({
         value={value}
         options={merged.map((o) => ({ value: o, label: o }))}
         // Поиск по подстроке среди опций; ручной ввод новых токенов недоступен
-        // (mode=multiple, не tags) — выбор только из каталога.
+        // (mode=multiple, не tags) — выбор только из каталога. Сервер этот набор
+        // не сужает (CATALOG_SCOPE), поэтому сеем в браузере и говорим об этом.
         optionFilterProp="label"
+        title={CATALOG_SCOPE.notice}
+        notFoundContent={CATALOG_SCOPE.emptyText}
         style={{ width: "100%" }}
         onChange={(raw) => onChange(Array.from(new Set(raw as string[])))}
       />
@@ -489,7 +507,11 @@ function ModuleSelect({
         // single-select scalar: один модуль на правило. value="" → не выбрано.
         value={value || undefined}
         options={merged.map((o) => ({ value: o, label: o }))}
+        // Набор модулей приходит каталогом целиком — сеем в браузере, но пустоту
+        // называем областью, а не отсутствием модуля (CATALOG_SCOPE).
         optionFilterProp="label"
+        title={CATALOG_SCOPE.notice}
+        notFoundContent={CATALOG_SCOPE.emptyText}
         showSearch
         allowClear
         style={{ width: "100%" }}
@@ -606,16 +628,42 @@ function ResourceNamesInstanceSelect({
   const projectId = useContext((s) => s.project?.id ?? "");
   const accountId = useContext((s) => s.account?.id ?? "");
 
+  // Область поиска — общая на всё правило, потому что показанный список склеен
+  // из ответов НЕСКОЛЬКИХ владельцев (правило берёт module × resources). Сервер
+  // спрашиваем, только если сужать умеет КАЖДЫЙ из них: иначе половина ответа
+  // пришла бы суженной, а половина целиком, и пустота значила бы разное для
+  // разных типов в одном и том же списке. Тот же консервативный выбор, что
+  // этажом выше у picker-ability: не светим частичный ответ как полный.
+  const perFetcherScope = useMemo(() => fetchers.map((f) => pickerScopeOfSpec(f.spec)), [fetchers]);
+  const asksServer = perFetcherScope.length > 0 && perFetcherScope.every((s) => s.asksServer);
+  // Подпись и текст пустоты у любого серверного ключа одинаковы — важно ЛИШЬ,
+  // спрошен ли сервер; поэтому берём область первого фетчера, а не изобретаем
+  // третью, которой в общем механизме нет.
+  const scope = asksServer ? perFetcherScope[0] : pickerScope(undefined);
+  const [term, setTerm] = useState("");
+  const debouncedTerm = useDebouncedValue(term, asksServer ? 250 : 0);
+
   // Запрос инстансов по каждому фетчеру. Ключ включает scope-id, чтобы при смене
   // контекста перезапрашивать. Ошибка/пусто → [] (свободный ввод сохраняется).
-  const queries = fetchers.map((f) => {
+  const queries = fetchers.map((f, i) => {
     const q: Record<string, string> = { page_size: "500" };
     if (f.needsProject && projectId) q.project_id = projectId;
     if (f.needsAccount && accountId) q.account_id = accountId;
+    // Ввод уезжает КАЖДОМУ владельцу его собственным ключом: один сужает
+    // подстрокой по полю ресурса, другой — выделенным словом запроса. Подставить
+    // один вместо другого нельзя — незнакомое имя роняет всю страницу.
+    if (asksServer) Object.assign(q, perFetcherScope[i].query(debouncedTerm));
     return { fetcher: f, query: q };
   });
 
-  const queryKey = ["role-rule-instances", fetchers.map((f) => f.spec.id).join(","), projectId, accountId];
+  // Ключ несёт ввод: без него react-query отдал бы прежний ответ на новый вопрос.
+  const queryKey = [
+    "role-rule-instances",
+    fetchers.map((f) => f.spec.id).join(","),
+    projectId,
+    accountId,
+    asksServer ? debouncedTerm : "",
+  ];
 
   const { data: instanceRows } = useQuery({
     queryKey,
@@ -653,6 +701,19 @@ function ResourceNamesInstanceSelect({
     return opts;
   }, [instanceRows]);
 
+  // Уже приколотые имена обязаны пережить сужение. Раньше сужение шло в браузере
+  // и трогало только выпадающий список — набор `options` оставался целым, и теги
+  // выбранного сохраняли имена. Сервер отвечает по ВВОДУ, то есть сам набор
+  // становится короче: без запоминания метки уже выбранный инстанс превратился бы
+  // в тег с голым идентификатором. Тот же приём, что в `RefSelect`.
+  const labelMemo = useRef(new Map<string, string>());
+  for (const o of options) labelMemo.current.set(o.value, o.label);
+  const shown = new Set(options.map((o) => o.value));
+  const keptOptions = value
+    .filter((v) => !shown.has(v) && labelMemo.current.has(v))
+    .map((v) => ({ value: v, label: labelMemo.current.get(v) as string }));
+  const selectOptions = keptOptions.length > 0 ? [...keptOptions, ...options] : options;
+
   return (
     <div data-testid={testid}>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -663,10 +724,18 @@ function ResourceNamesInstanceSelect({
         aria-label="resourceNames"
         placeholder="Выберите инстанс по имени или впишите opaque-id"
         value={value}
-        options={options}
+        options={selectOptions}
         // Поиск по display-name; выбор кладёт id (value). mode=tags разрешает ввести
         // произвольный id, которого нет в списке (pin невидимого).
-        optionFilterProp="label"
+        onSearch={setTerm}
+        // Сузил сервер — клиент НЕ пересеивает: владелец сравнивает со СВОИМ
+        // полем, а показанная метка — это display-name, и повторное сужение
+        // вычло бы из ответа строки, присланные именно по этому вводу.
+        {...(asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+        title={scope.notice}
+        // Пустой ответ обязан называть свою ОБЛАСТЬ, а не выдавать прочитанную
+        // страницу за весь список инстансов.
+        notFoundContent={scope.emptyText}
         tokenSeparators={[",", " "]}
         style={{ width: "100%" }}
         onChange={(raw) => onChange(sanitizeNames(raw as string[]))}

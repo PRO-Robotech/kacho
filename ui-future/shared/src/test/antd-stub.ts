@@ -43,8 +43,13 @@ interface SelectProps {
   children?: React.ReactNode;
   options?: SelectOption[];
   onChange?: (value: string, option?: SelectOption) => void;
+  onSearch?: (value: string) => void;
   value?: string;
   placeholder?: React.ReactNode;
+  showSearch?: boolean;
+  notFoundContent?: React.ReactNode;
+  filterOption?: unknown;
+  optionFilterProp?: unknown;
   [key: string]: unknown;
 }
 
@@ -312,8 +317,32 @@ export function antdStub(): Record<string, unknown> {
   // показывал ни одного варианта и передавал событие: состав списка был
   // ненаблюдаем, а выбор — невоспроизводим, поэтому проба поневоле утверждала
   // бы форму дублёра.
-  const Select = ({ children, options, onChange, value, placeholder, ...props }: SelectProps) =>
-    React.createElement(
+  //
+  // `showSearch` у настоящего `Select` — это ПОЛЕ ВВОДА внутри списка, и ввод в
+  // него уезжает в `onSearch`. Дублёр обязан выполнять контракт настоящего в
+  // той части, которая и есть предмет пробы: без поля ввода нельзя утверждать
+  // ни что ввод уходит запросом на сервер, ни что он не уходит (#528). Поле
+  // добавляется РЯДОМ с `<select>` (внутрь нельзя — это невалидная разметка), а
+  // роль `combobox` остаётся у `<select>`, поэтому прежние пробы не меняются.
+  //
+  // `notFoundContent` рисуется, когда вариантов нет: именно там и живёт
+  // утверждение об области поиска, ради которого дублёр расширен.
+  const Select = ({
+    children,
+    options,
+    onChange,
+    onSearch,
+    value,
+    placeholder,
+    showSearch,
+    notFoundContent,
+    filterOption,
+    optionFilterProp,
+    ...props
+  }: SelectProps) => {
+    void filterOption;
+    void optionFilterProp;
+    const select = React.createElement(
       "select",
       {
         ...props,
@@ -329,6 +358,24 @@ export function antdStub(): Record<string, unknown> {
       ),
       children,
     );
+    if (!showSearch && notFoundContent === undefined) return select;
+    return React.createElement(
+      "div",
+      null,
+      showSearch
+        ? React.createElement("input", {
+            key: "__search__",
+            type: "search",
+            "aria-label": "select-search",
+            onChange: (e: { target: { value: string } }) => onSearch?.(e.target.value),
+          })
+        : null,
+      select,
+      (options ?? []).length === 0 && notFoundContent !== undefined
+        ? React.createElement("div", { key: "__empty__" }, notFoundContent as React.ReactNode)
+        : null,
+    );
+  };
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема

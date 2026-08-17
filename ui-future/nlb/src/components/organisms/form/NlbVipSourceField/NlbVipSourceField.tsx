@@ -37,6 +37,7 @@ import { AddressVpcCascader } from "@/components/organisms/form/AddressVpcCascad
 import { ImmutableField } from "@/components/organisms/form/ImmutableField";
 import { useProjectStore } from "@/lib/context-store";
 import { getByPath, setByPath } from "@/lib/path";
+import { pickerScope } from "@shared/lib/picker-search";
 
 type Family = "v4" | "v6";
 // VipMode — режим источника VIP семейства:
@@ -64,6 +65,17 @@ const ROW_FORM_PROPS = {
   colon: false,
   size: "middle" as const,
 };
+
+// Область поиска в списке зон (#528).
+//
+// Зоны отдаёт geo, и белого списка выражения у него НЕТ: уйти вводу отсюда
+// некуда, а выдумать поле запроса нельзя — незнакомое поле это не «фильтр без
+// эффекта», а отказ на всю страницу. Значит законный исход один: сказать правду
+// об области. Список читается одной страницей и сужается в браузере, поэтому
+// пустой ответ означает «нет среди загруженных», а не «такой зоны нет» — а
+// именно последнее и утверждало прежнее «нет совпадений», при том что у
+// выпадающего списка нет продолжения, которым это можно было бы опровергнуть.
+const ZONE_SCOPE = pickerScope(undefined);
 
 // familyIpVersion — UI-дискриминатор семейства → enum Address.IpVersion на проводе.
 export function familyIpVersion(family: Family): "IPV4" | "IPV6" {
@@ -340,7 +352,13 @@ export function NlbDisabledZonesField({ value, onChange }: Props) {
       mode="multiple"
       allowClear
       showSearch
+      // Сервер этот список не сужает, поэтому сеево по метке остаётся — оно
+      // здесь и есть вся область поиска, и подпись поля говорит об этом.
       optionFilterProp="label"
+      title={ZONE_SCOPE.notice}
+      // Пустой ответ обязан называть свою ОБЛАСТЬ, а не утверждать отсутствие
+      // зоны, которую поле не спрашивало.
+      notFoundContent={isLoading ? undefined : ZONE_SCOPE.emptyText}
       value={selected}
       options={options}
       loading={isLoading}
