@@ -29,13 +29,35 @@ import {
   type MutationVerb,
 } from "@shared/lib/mutation-signal";
 
-export interface SignalledMutationInput<TVars> {
-  verb: MutationVerb;
-  /**
-   * О чём сообщать. Функция — когда имя экземпляра известно только из аргументов
-   * вызова (создание: имя набирают в форме).
-   */
-  subject: MutationSubject | ((vars: TVars) => MutationSubject);
+/**
+ * Формулировка исхода: либо ПРИЧАСТИЕМ CRUD, либо своими словами.
+ *
+ * Второй случай — не поблажка, а другой предмет. Действие-глагол (`…:block`,
+ * `…:unblock`) тремя причастиями не выражается: «участие запрещено» — не
+ * «пользователь обновлён», и подмена сказала бы про ресурс неправду. Форма
+ * объявлена СОЮЗОМ, чтобы «глагол, который никто не читает» был непредставим:
+ * задал свои слова — поля `verb`/`subject` отсутствуют, а не молча игнорируются.
+ */
+export type SignalledMutationWording<TVars> =
+  | {
+      verb: MutationVerb;
+      /**
+       * О чём сообщать. Функция — когда имя экземпляра известно только из
+       * аргументов вызова (создание: имя набирают в форме).
+       */
+      subject: MutationSubject | ((vars: TVars) => MutationSubject);
+      signal?: never;
+    }
+  | {
+      verb?: never;
+      subject?: never;
+      /** Готовые тексты исхода. Причина отказа приходит от края. */
+      signal: { succeeded: string; failed: (reason: string) => string };
+    };
+
+export type SignalledMutationInput<TVars> = SignalledMutationBase<TVars> & SignalledMutationWording<TVars>;
+
+interface SignalledMutationBase<TVars> {
   /** Запрос к краю. Ответ разбирается здесь, вызывающему разбирать нечего. */
   mutationFn: (vars: TVars) => Promise<unknown>;
   /**
@@ -59,23 +81,40 @@ export interface SignalledMutation<TVars> {
 export function useSignalledMutation<TVars = void>(
   input: SignalledMutationInput<TVars>,
 ): SignalledMutation<TVars> {
-  const { verb, subject, mutationFn, expectOperation, onSucceeded, onFailed } = input;
+  const { verb, subject, signal, mutationFn, expectOperation, onSucceeded, onFailed } = input;
 
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
   // Подлежащее фиксируется в момент отправки: к моменту вердикта форма может быть
   // уже очищена, а сообщать надо про то, что отправляли.
   const subjectRef = useRef<MutationSubject | null>(null);
 
+  // Тексты исхода — В ОДНОМ месте на оба вида формулировки. Без этого «нечего
+  // сказать» и «сказать своими словами» разошлись бы по разным веткам, и вторая
+  // молчала бы там, где первая говорит.
+  const successText = useCallback((): string | null => {
+    if (signal) return signal.succeeded;
+    const s = subjectRef.current;
+    return s && verb ? mutationSuccessText(verb, s) : null;
+  }, [signal, verb]);
+  const failureText = useCallback(
+    (message: string): string | null => {
+      if (signal) return signal.failed(message);
+      const s = subjectRef.current;
+      return s && verb ? mutationFailureText(verb, s, message) : null;
+    },
+    [signal, verb],
+  );
+
   const { data: op, error: opFetchError } = useOperation(pendingOpId);
   const outcome = operationOutcome({ opId: pendingOpId, op, fetchError: opFetchError });
 
   const fail = useCallback(
     (message: string) => {
-      const s = subjectRef.current;
-      if (s) toast.error(mutationFailureText(verb, s, message));
+      const text = failureText(message);
+      if (text) toast.error(text);
       onFailed?.(message);
     },
-    [verb, onFailed],
+    [failureText, onFailed],
   );
 
   const mutation = useMutation({
@@ -91,9 +130,9 @@ export function useSignalledMutation<TVars = void>(
         return;
       }
       // Синхронный ответ самим ресурсом — исход известен сразу.
-      const s = subjectRef.current;
       onSucceeded?.();
-      if (s) toast.success(mutationSuccessText(verb, s));
+      const text = successText();
+      if (text) toast.success(text);
     },
     onError: (err) => fail(errorText(err)),
   });
@@ -112,13 +151,14 @@ export function useSignalledMutation<TVars = void>(
     // ЗАКРЫТОЙ для размещения. Операция успешна, поэтому без отдельного показа
     // оператор уйдёт уверенным, что она пригодна к работе.
     for (const w of operationWarnings(op)) toast.error(s ? `${s.label}: ${w}` : w);
-    if (s) toast.success(mutationSuccessText(verb, s));
+    const text = successText();
+    if (text) toast.success(text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
   const run = useCallback(
     (vars: TVars) => {
-      subjectRef.current = typeof subject === "function" ? subject(vars) : subject;
+      subjectRef.current = typeof subject === "function" ? subject(vars) : (subject ?? null);
       mutation.mutate(vars);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
