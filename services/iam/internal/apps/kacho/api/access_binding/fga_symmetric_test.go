@@ -49,6 +49,7 @@ import (
 	role_repo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/role"
 	sa_repo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/service_account"
 	user_repo "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/user"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/visibility"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
 )
 
@@ -1042,3 +1043,17 @@ func (r *abFakeRepo) drainReconcileObjects() []string {
 	r.reconcileObjs = nil
 	return out
 }
+
+// Visibility — дублёр структурных фактов о вызывающем не несёт: они читаются
+// живой БД, и пробы, которые их проверяют, гоняют настоящий Postgres
+// (services/iam/internal/apps/kacho/api/listvisibility). nil здесь означает
+// «сузить нечем», и списочный use-case обязан на нём ОТКАЗАТЬ, а не листать
+// ненаречённое.
+func (rd *abFakeReader) Visibility() visibility.ReaderIface { return nil }
+
+// Visibility — дублёр структурных фактов о вызывающем не несёт: они читаются
+// живой БД, и пробы, которые их проверяют, гоняют настоящий Postgres
+// (services/iam/internal/apps/kacho/api/listvisibility). nil здесь означает
+// «сузить нечем», и списочный use-case обязан на нём ОТКАЗАТЬ, а не листать
+// ненаречённое.
+func (r *abFakeWriter) Visibility() visibility.ReaderIface { return nil }

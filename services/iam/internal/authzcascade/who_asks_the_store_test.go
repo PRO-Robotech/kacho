@@ -120,12 +120,22 @@ var askingSites = map[string]lane{
 	// спрашивать, не объявляя полосы.
 	"internal/authzfilter/visibility.go:batchRelationRound": laneOwnGate,
 	// Проброс обёртки к транспорту: сама вопроса не задаёт, несёт чужой.
-	"internal/clients/openfga_batchcheck.go:BatchCheckWithContext":                                 laneWrapper,
-	"internal/apps/kacho/api/access_binding/helpers.go:fgaHoldsScopeAdmin":                         laneOwnGate,
-	"internal/apps/kacho/api/account/list_all_operations.go:requireAccountViewAuthority":           laneOwnGate,
-	"internal/apps/kacho/api/user/invite_authz.go:cascadeCheck":                                    laneOwnGate,
-	"internal/apps/kacho/api/authorize/caller_authority.go:authorizeCaller":                        laneOwnGate,
-	"internal/authzguard/cluster_admin_shortcircuit.go:subjectIsClusterAdminE":                     laneClusterOnly,
+	"internal/clients/openfga_batchcheck.go:BatchCheckWithContext":                       laneWrapper,
+	"internal/apps/kacho/api/access_binding/helpers.go:fgaHoldsScopeAdmin":               laneOwnGate,
+	"internal/apps/kacho/api/account/list_all_operations.go:requireAccountViewAuthority": laneOwnGate,
+	"internal/apps/kacho/api/user/invite_authz.go:cascadeCheck":                          laneOwnGate,
+	"internal/apps/kacho/api/authorize/caller_authority.go:authorizeCaller":              laneOwnGate,
+	"internal/authzguard/cluster_admin_shortcircuit.go:subjectIsClusterAdminE":           laneClusterOnly,
+	// Тот же вопрос и тот же объект-синглтон, что у соседа выше, только заданный
+	// через контекстную дверь: списочный use-case держит порт запросов, а не стор
+	// (#645). Полоса та же — под кластерным синглтоном структурного факта нет, и
+	// обёртка второго шанса ничего не меняет.
+	//
+	// Отличие ровно одно и оно не про полосу: эта форма СОХРАНЯЕТ отказ. Страница,
+	// набираемая суженной, за этим вопросом ничего не имеет, поэтому «не ответили»
+	// обязано доехать до вызывающего отказом, а не превратиться в «он не
+	// администратор» и молча сузить ответ.
+	"internal/authzguard/subject_question.go:SubjectIsClusterAdminE":                               laneClusterOnly,
 	"internal/authzguard/system_viewer_floor.go:allow":                                             laneClusterOnly,
 	"internal/authzguard/fgaproxy.go:Authorize":                                                    laneClusterOnly,
 	"internal/apps/kacho/api/internal_operations/list_iam_operations.go:requireClusterSystemAdmin": laneClusterOnly,
