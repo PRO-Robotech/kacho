@@ -11,38 +11,16 @@
 //     соседа тихо открывает или закрывает не тот трафик;
 //  4. сводка по направлениям считает то, что в наборе есть.
 //
-// `Collapse` общего стенда-заменителя пунктов не рисует: на нём и подпись
-// правила, и кнопка удаления были бы недостижимы, а утверждения о них —
-// истинными при любом наборе. Здесь он переопределён.
+// Панели гармошки приходят пропом `items`, а не детьми, — их рисует общий
+// стенд-заменитель в форме настоящего antd: заголовок панели несёт
+// `role="button"` и `aria-expanded`, по ним панель здесь и находится. Своей
+// копии заменителя больше нет (#570).
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface PanelItem {
-  key: string;
-  label?: React.ReactNode;
-  extra?: React.ReactNode;
-  children?: React.ReactNode;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Collapse: ({ items }: { items?: PanelItem[] }) =>
-    React.createElement(
-      "ul",
-      { "data-testid": "rules" },
-      (items ?? []).map((it) =>
-        React.createElement(
-          "li",
-          { key: it.key },
-          React.createElement("span", null, it.label),
-          it.extra,
-        ),
-      ),
-    ),
-}));
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { SgRulesEditor } = await import("./SgRulesEditor");
 
@@ -65,7 +43,8 @@ function show(rules: Rule[]) {
   return { onChange, latest: () => (current.rules as Rule[]) ?? [] };
 }
 
-const rows = () => [...screen.getByTestId("rules").querySelectorAll("li")];
+/** Панель правила — заголовок гармошки: единственный узел с `aria-expanded`. */
+const rows = () => screen.queryAllByRole("button", { expanded: false });
 const ingress = (port: number): Rule => ({
   direction: "INGRESS",
   _protocol_mode: "name",
@@ -80,7 +59,7 @@ describe("SgRulesEditor", () => {
     show([]);
 
     expect(screen.getByText("— пусто, трафик блокируется (default-deny) —")).toBeInTheDocument();
-    expect(screen.queryByTestId("rules")).not.toBeInTheDocument();
+    expect(rows()).toHaveLength(0);
   });
 
   it("сводка направлений считает то, что в наборе есть", () => {
