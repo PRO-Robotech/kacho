@@ -4,7 +4,7 @@
 // magic-link из приглашения, либо при первом входе через поставщика личности.
 // Аккаунт берётся из выбранного в разделе IAM.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Button, Cascader, Form, Input, Select, Space, Typography, Alert } from "antd";
 import { LinkOutlined } from "@ant-design/icons";
@@ -16,6 +16,35 @@ import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { useContext } from "@shared/lib/context-store";
 import { toast } from "@shared/lib/toast";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope } from "@shared/lib/picker-search";
+
+/**
+ * Роль владелец сужает подстрокой по настоящему полю `name` (#528): белый список
+ * выражения — ровно `name`, разобранный узел применяется через `ToSQL`, то есть
+ * оператор `CONTAINS` доезжает до SQL, а не схлопывается в равенство.
+ *
+ * Прежде ввод не покидал вкладку: роли читались ОДНОЙ страницей
+ * (`pageSize: 1000`) и сужались по загруженной метке, а поле отвечало «нет
+ * совпадений» — то есть утверждало об отсутствии роли то, чего не спрашивало.
+ */
+const ROLE_SCOPE = pickerScope({ serverSearchField: "name" });
+
+/**
+ * Дерево «аккаунт → проект» сервер сузить ОДНИМ запросом не может, и это
+ * свойство самого дерева, а не недоделка.
+ *
+ * Набранное слово законно относится и к имени аккаунта, и к имени проекта:
+ * сузив внешний список по `name`, мы спрятали бы аккаунт, у которого искомый
+ * проект как раз и есть, — то есть поиск стал бы ХУЖЕ прежнего. Правильный
+ * ответ требует объединения двух сужений по двум осям, а одного запроса на это
+ * нет; выдумывать поле запроса нельзя — незнакомое имя это не «фильтр без
+ * эффекта», а отказ на всю страницу.
+ *
+ * Значит остаётся второй законный исход: сужаем в браузере и НАЗЫВАЕМ область
+ * в пустом ответе вместо «нет совпадений».
+ */
+const SCOPE_TREE_SCOPE = pickerScope(undefined);
 
 export function InviteUserPage() {
   const account = useContext((s) => s.account);
@@ -69,12 +98,32 @@ export function InviteUserPage() {
   const scopeAccountId = scope[0] ?? accountId;
   const scopeProjectId = scope[1];
 
+  const [roleTerm, setRoleTerm] = useState("");
+  const debouncedRoleTerm = useDebouncedValue(roleTerm, ROLE_SCOPE.asksServer ? 250 : 0);
+  const roleQuery = ROLE_SCOPE.query(debouncedRoleTerm);
+
   const roles = useQuery({
-    queryKey: ["iam", "roles", "list"],
-    queryFn: () => iamApi.listRoles({ pageSize: "1000" }),
+    // Ключ несёт ввод: без него react-query отдал бы прежний ответ на новый
+    // вопрос, и сужение выглядело бы сломанным именно там, где оно работает.
+    queryKey: ["iam", "roles", "list", roleQuery.filter ?? ""],
+    queryFn: () => iamApi.listRoles({ pageSize: "1000", ...roleQuery }),
     enabled: !!accountId,
     staleTime: 30_000,
   });
+
+  // Выбранная роль обязана пережить сужение: сервер отвечает по ВВОДУ, и уже
+  // сделанный выбор в этот ответ попадать не обязан. Без запоминания метки поле
+  // показало бы вместо имени роли идентификатор — ровно то, что канон консоли
+  // (правило 2) и запрещает. Тот же приём, что в `RefSelect`.
+  const roleGroups = groupedRoleOptions(roles.data?.roles ?? []);
+  const roleId = Form.useWatch<string | undefined>("role_id", form);
+  const chosenRoleRef = useRef<{ value: string; label: string } | null>(null);
+  const chosenRole = roleGroups.flatMap((g) => g.options).find((o) => o.value === roleId);
+  if (chosenRole) chosenRoleRef.current = chosenRole;
+  const roleOptions =
+    roleId && !chosenRole && chosenRoleRef.current?.value === roleId
+      ? [{ label: "Выбрано", options: [chosenRoleRef.current] }, ...roleGroups]
+      : roleGroups;
 
   const close = () => {
     form.resetFields();
@@ -169,6 +218,12 @@ export function InviteUserPage() {
               }}
               placeholder="Сначала аккаунт, затем проект (необязательно)"
               displayRender={(labels) => labels.join(" / ")}
+              title={SCOPE_TREE_SCOPE.notice}
+              // Пустой ответ обязан называть свою ОБЛАСТЬ: «нет среди
+              // загруженных», а не «такого аккаунта или проекта нет». Дерево
+              // читается двумя ярусами страниц по тысяче, и за их краем ответ
+              // молчит — см. SCOPE_TREE_SCOPE.
+              notFoundContent={SCOPE_TREE_SCOPE.emptyText}
               style={{ width: "100%" }}
             />
           </Form.Item>
@@ -192,8 +247,17 @@ export function InviteUserPage() {
               placeholder="Без роли"
               loading={roles.isLoading}
               showSearch
-              optionFilterProp="label"
-              options={groupedRoleOptions(roles.data?.roles ?? [])}
+              onSearch={setRoleTerm}
+              // Сузил сервер — клиент НЕ пересеивает: владелец сравнивает с полем
+              // `name`, а метка варианта склеена из имени и идентификатора, и
+              // повторное сужение вычло бы из ответа строки, присланные краем
+              // именно по этому вводу.
+              {...(ROLE_SCOPE.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+              title={ROLE_SCOPE.notice}
+              // Пустой ответ обязан называть свою ОБЛАСТЬ. Именно здесь жила
+              // ложь: «нет совпадений» на месте «нет среди загруженных».
+              notFoundContent={roles.isLoading ? undefined : ROLE_SCOPE.emptyText}
+              options={roleOptions}
             />
           </Form.Item>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>

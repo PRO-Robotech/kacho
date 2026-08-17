@@ -230,7 +230,11 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       },
       { label: "Протокол", value: code(getByPath<string>(data, "protocol")) },
       { label: "Порт", value: code(getByPath<number>(data, "port")) },
-      { label: "Порт на цели", value: code(getByPath<number>(data, "target_port")) },
+      // Строка «Порт на цели» снята (#512): она читала `target_port`, чьи номер и
+      // имя у сообщения `Listener` зарезервированы. Край такого поля не отдаёт
+      // никогда, поэтому строка показывала прочерк ВСЕГДА — и прочерк на карточке
+      // читается как «у слушателя это не задано», а не как «такого у слушателя
+      // нет». Порт на цели задаётся составом целевой группы.
       // Целевая группа листенера: привязка перешла сюда со снятых глаголов
       // балансировщика (:attachTargetGroup / :detachTargetGroup). Строка одна, и
       // групп тоже одна: на текущем шаге контракта `target_group_id` и

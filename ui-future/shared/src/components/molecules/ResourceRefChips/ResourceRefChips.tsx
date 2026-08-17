@@ -11,6 +11,9 @@ import { CloseOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { getResource } from "@shared/lib/resource-registry";
 import { useContext } from "@shared/lib/context-store";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { useKeptLabels } from "@shared/lib/kept-choice";
 import { InlineResourceCreateForm } from "@shared/components/organisms/InlineResourceCreateForm";
 import { createActionLabel } from "@shared/lib/resource-label";
 
@@ -78,11 +81,27 @@ export function ResourceRefChips({
   // не триггерит onChange → модалка не открывалась снова после отмены.
   const [selKey, setSelKey] = useState(0);
 
+  // Введённое в селекторе. Область поиска решает, что с ним делать: спросить
+  // владельца либо честно сказать, что сужаются только загруженные варианты
+  // (#528). Раньше ввод не покидал вкладку НИКОГДА: список читался одной
+  // страницей в 500 строк, а селектор отвечал «нет совпадений» — то есть
+  // утверждал об отсутствии адреса или группы то, чего не спрашивал. У
+  // выпадающего списка продолжения нет by construction, поэтому пользователь
+  // читает это как факт о мире и идёт заводить дубликат.
+  const scope = pickerScopeOfSpec(spec);
+  const [term, setTerm] = useState("");
+  const debouncedTerm = useDebouncedValue(term, scope.asksServer ? 250 : 0);
+  const serverQuery = scope.asksServer ? scope.query(debouncedTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const queryTermKey = scope.asksServer ? (serverQuery.filter ?? "") : "";
+
   // Загружаем список ресурсов проекта для resolve id→name + dropdown options.
-  const { data: listData, refetch } = useQuery({
-    queryKey: [refResource, "list", projectId],
+  const { data: listData, isLoading, refetch } = useQuery({
+    queryKey: [refResource, "list", projectId, queryTermKey],
     queryFn: () =>
       api.list<Record<string, unknown>>(spec!.apiPath, {
+        ...serverQuery,
         project_id: projectId,
         pageSize: "500",
       }),
@@ -95,8 +114,6 @@ export function ResourceRefChips({
     const arr = (listData[spec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
     return refFilter ? arr.filter(refFilter) : arr;
   }, [listData, spec, refFilter]);
-
-  const byId = useMemo(() => new Map(rows.map((r) => [(r.id as string) ?? "", r])), [rows]);
 
   const CREATE_SENTINEL = "__create__";
 
@@ -116,6 +133,21 @@ export function ResourceRefChips({
     },
     [refResource],
   );
+
+  // Метка выбранного обязана пережить сужение: сервер отвечает по ВВОДУ, и уже
+  // добавленный адрес в этот ответ попадать не обязан. Без запоминания чипы
+  // деградировали бы до сырых `adr-…` ровно тогда, когда человек ищет ДРУГОЕ
+  // значение, — то есть поле показывало бы идентификатор вместо имени (канон
+  // консоли, правило 2). Кэш накопительный: он помнит всё, что край когда-либо
+  // прислал этому полю, и никогда не выкидывает — цена одна строка на ресурс.
+  const seenLabels = useMemo(
+    () =>
+      rows
+        .map((r) => [((r.id as string) ?? ""), labelFor(r, (r.id as string) ?? "")] as const)
+        .filter(([id]) => id !== ""),
+    [rows, labelFor],
+  );
+  const chipLabel = useKeptLabels(seenLabels);
 
   // Options для dropdown — только те, что ещё не добавлены. KAC-101: при
   // createResource добавляем sentinel-опцию «+ Создать <singular>…».
@@ -176,8 +208,7 @@ export function ResourceRefChips({
         ) : (
           <Space size={[6, 6]} wrap>
             {value.map((id) => {
-              const row = byId.get(id);
-              const name = labelFor(row, id);
+              const name = chipLabel(id);
               return (
                 <Tag
                   key={id}
@@ -203,9 +234,17 @@ export function ResourceRefChips({
           showSearch
           value={draft}
           onChange={onDraftChange}
+          onSearch={setTerm}
           options={options}
           placeholder={disabled ? (disabledHint ?? "Недоступно") : atCap ? `Максимум ${maxItems}` : `Выбрать ${title}`}
-          optionFilterProp="label"
+          title={scope.notice}
+          // Сузил сервер — клиент НЕ пересеивает: повторное сужение по метке
+          // варианта вычло бы из ответа края строки, которые он прислал именно
+          // по этому вводу (метка адреса — «имя: IP», а сервер искал по имени).
+          {...(scope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+          // Пустой ответ обязан называть свою ОБЛАСТЬ. Здесь и жила ложь:
+          // «нет совпадений» на месте «нет среди загруженных».
+          notFoundContent={isLoading ? undefined : scope.emptyText}
           disabled={disabled || atCap}
           style={{ flex: 1 }}
         />

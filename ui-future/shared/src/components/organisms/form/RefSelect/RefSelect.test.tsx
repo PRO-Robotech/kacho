@@ -107,14 +107,14 @@ describe("RefSelect", () => {
   it("значение вне списка кандидатов не выдаётся за выбранное — сказано, что его нет", async () => {
     show({ value: "net-999" });
 
-    expect(await screen.findByText(/ID не найден в списке/)).toBeInTheDocument();
+    expect(await screen.findByText(/ID не найден среди загруженных/)).toBeInTheDocument();
   });
 
   it("значение из списка предупреждения не вызывает", async () => {
     show({ value: "net-1" });
 
     await waitFor(() => expect(optionLabels()).toContain("frontend"));
-    expect(screen.queryByText(/ID не найден в списке/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ID не найден среди загруженных/)).not.toBeInTheDocument();
   });
 
   it("отказ края показан, а не превращён в пустой список", async () => {
@@ -147,5 +147,78 @@ describe("RefSelect", () => {
     show();
 
     expect(optionLabels()[0]).toMatch(/^Выбрать /);
+  });
+
+  // ── область поиска (#528) ───────────────────────────────────────────────────
+  //
+  // Поле подбора читало список ОДНОЙ страницей и искало по нему в браузере.
+  // Отрицание такого поля («нет совпадений») — утверждение о прочитанном, а
+  // выглядит как утверждение о мире: продолжения у выпадающего списка нет, и
+  // пользователь заключает, что ресурса не существует.
+
+  const ввод = () => screen.getByLabelText("select-search");
+
+  it("ввод уходит запросом, если владелец умеет сужать список", async () => {
+    show();
+    await waitFor(() => expect(list).toHaveBeenCalledWith("/vpc/v1/networks", { project_id: "prj-1" }));
+
+    fireEvent.change(ввод(), { target: { value: "front" } });
+
+    // Выражение собрано по грамматике владельца: поле из его белого списка и
+    // оператор подстроки. Точное равенство здесь бесполезно — набирающий имя по
+    // частям не совпадёт никогда.
+    await waitFor(() =>
+      expect(list).toHaveBeenCalledWith("/vpc/v1/networks", {
+        project_id: "prj-1",
+        filter: 'name CONTAINS "front"',
+      }),
+    );
+  });
+
+  it("сужение сервером не пересеивается ещё раз в браузере", async () => {
+    show();
+    fireEvent.change(ввод(), { target: { value: "front" } });
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+
+    // Край ответил по вводу; всё, что он прислал, обязано остаться в выборе.
+    // Повторное сужение по метке варианта вычло бы из ответа края строки,
+    // которые он прислал именно по этому вводу.
+    await waitFor(() => expect(optionLabels()).toContain("backend"));
+  });
+
+  it("выбранное значение переживает сужение и остаётся именем, а не идентификатором", async () => {
+    show({ value: "net-1" });
+    await waitFor(() => expect(optionLabels()).toContain("frontend"));
+
+    // Сервер ответил по вводу, и выбранного в ответе нет — обычное дело.
+    list.mockResolvedValue({ networks: [{ id: "net-2", name: "backend" }] });
+    fireEvent.change(ввод(), { target: { value: "back" } });
+
+    await waitFor(() => expect(optionLabels()).toContain("backend"));
+    // Без запоминания метки поле показало бы `net-1` — идентификатор вместо
+    // имени, ровно то, что канон консоли запрещает.
+    expect(optionLabels()).toContain("frontend");
+  });
+
+  it("пустой ответ края называет свою область, а не утверждает отсутствие", async () => {
+    list.mockResolvedValue({ networks: [] });
+    show();
+
+    expect(await screen.findByText(/искали по всему списку/)).toBeInTheDocument();
+  });
+
+  it("у ресурса без серверного поиска ввод не уходит, и поле об этом говорит", async () => {
+    // Каталог типов машин серверного сужения не объявляет — и не должен:
+    // белого списка выражения у его владельца нет. Тогда единственный законный
+    // исход — сказать правду об области, а не выдавать прочитанную страницу за
+    // список.
+    list.mockResolvedValue({ machine_types: [] });
+    show({ refResource: "machine-types", refProjectScoped: false });
+
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    fireEvent.change(ввод(), { target: { value: "чего-нет" } });
+
+    expect(await screen.findByText(/нет среди загруженных/i)).toBeInTheDocument();
+    expect(list).toHaveBeenCalledTimes(1);
   });
 });

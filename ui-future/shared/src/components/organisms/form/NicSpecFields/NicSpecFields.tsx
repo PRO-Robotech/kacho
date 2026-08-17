@@ -27,6 +27,8 @@ import { Cascader, Modal, Segmented, Select, Switch, Typography } from "antd";
 import { api } from "@shared/api/client";
 import { getResource } from "@shared/lib/resource-registry";
 import { useProjectStore } from "@shared/lib/context-store";
+import { useDebouncedValue } from "@shared/lib/list-search";
+import { pickerScope, pickerScopeOfSpec } from "@shared/lib/picker-search";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
@@ -53,6 +55,23 @@ interface Props {
 
 const CASCADER_CREATE_PREFIX = "__create__:"; // value = "__create__:<subnetId>"
 const CASCADER_NOADDR_PREFIX = "__noaddr__:"; // value = "__noaddr__:<subnetId>"
+
+// Область поиска ДЕРЕВА «сеть → подсеть → адрес» (#528).
+//
+// Владельцы всех трёх списков сужать умеют (`serverSearchField` в реестре), но
+// ДЕРЕВО так сузить нельзя: совпадение на уровне адреса показывается только
+// вместе со своими предками, а ответ, суженный по имени, предков не содержит —
+// подсеть и сеть найденного адреса просто не пришли бы, и лист оказался бы
+// невидим. Поэтому здесь ввод остаётся в браузере ОСОЗНАННО, и поле говорит об
+// этом вместо «нет совпадений»: три списка прочитаны по одной странице каждый,
+// и совпадение за страницей это поле не покажет — но и не утверждает, что его
+// нет. Незакрытым остаётся именно это: адрес (подсеть, сеть) за первой
+// страницей недостижим отсюда; закрыть его можно только другой формой выбора,
+// а не подписью.
+const TREE_SCOPE = pickerScope(undefined);
+const TREE_NOTICE =
+  "Ввод сужает только загруженные варианты: дерево собрано из трёх списков (сети, подсети, адреса), " +
+  "каждый прочитан одной страницей. Совпадение за страницей это поле не покажет — и не утверждает, что его нет.";
 
 export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
   const project = useProjectStore((s) => s.project);
@@ -92,11 +111,39 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
     staleTime: 15_000,
   });
 
+  // Публичные адреса читаются ОТДЕЛЬНЫМ запросом, а не тем же, что кормит
+  // дерево. Причина не в экономии: ввод в этом списке уходит на сервер (#528),
+  // и общий ответ означал бы, что набор в поле «Список» молча сужает ещё и
+  // дерево «сеть → подсеть → адрес» выше — сужение одного поля меняло бы
+  // содержимое другого, которого человек не трогал. Запрос идёт только в режиме
+  // «Список», то есть ровно тогда, когда это поле показано.
+  const extScope = pickerScopeOfSpec(addressesSpec);
+  const [extTerm, setExtTerm] = useState("");
+  const debouncedExtTerm = useDebouncedValue(extTerm, extScope.asksServer ? 250 : 0);
+  const extServerQuery = extScope.asksServer ? extScope.query(debouncedExtTerm) : {};
+  // Ключ запроса несёт ввод ТОЛЬКО когда сужает сервер: иначе каждое нажатие
+  // клавиши сбрасывало бы кэш и перечитывало один и тот же список.
+  const extTermKey = extScope.asksServer ? (extServerQuery.filter ?? "") : "";
+  const extAddressesQ = useQuery({
+    queryKey: ["nic-external-addresses", project?.id, extTermKey],
+    queryFn: () =>
+      api.list<{ addresses: AddressRec[] }>("/vpc/v1/addresses", {
+        ...extServerQuery,
+        project_id: project!.id,
+        pageSize: "1000",
+      }),
+    enabled: enabled && extMode === "list",
+    staleTime: 15_000,
+  });
+
   const networks = useMemo(() => networksQ.data?.networks ?? [], [networksQ.data?.networks]);
   const subnets = useMemo(() => subnetsQ.data?.subnets ?? [], [subnetsQ.data?.subnets]);
   const allAddresses = useMemo(() => addressesQ.data?.addresses ?? [], [addressesQ.data?.addresses]);
   const internalAddrs = useMemo(() => allAddresses.filter((a) => !!a.internal_ipv4_address), [allAddresses]);
-  const externalAddrs = useMemo(() => allAddresses.filter((a) => !!a.external_ipv4_address), [allAddresses]);
+  const externalAddrs = useMemo(
+    () => (extAddressesQ.data?.addresses ?? []).filter((a) => !!a.external_ipv4_address),
+    [extAddressesQ.data?.addresses],
+  );
 
   const cascaderOptions = useMemo(() => {
     const addrsBySubnet = new Map<string, AddressRec[]>();
@@ -194,8 +241,14 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
   };
   const onExtAddrSelect = (id: string) => {
     const a = externalAddrs.find((x) => x.id === id);
+    // Строка, унесённая сужением из ответа края, не имеет права ОБНУЛИТЬ уже
+    // записанное: сохранённый выбор показан в списке отдельным вариантом, и
+    // повторный выбор того же адреса стёр бы IP, который уезжает в тело
+    // запроса (`one_to_one_nat_spec.address`). Для ДРУГОГО адреса пустое
+    // значение остаётся законным — его IP просто ещё не выделен.
+    const kept = id === extAddrId ? ((get("_ext_addr_value") as string | undefined) ?? "") : "";
     let v = setByPath(value, `${pathPrefix}._ext_addr_id`, id);
-    v = setByPath(v, `${pathPrefix}._ext_addr_value`, a?.external_ipv4_address?.address ?? "");
+    v = setByPath(v, `${pathPrefix}._ext_addr_value`, a?.external_ipv4_address?.address ?? kept);
     onChange(v);
   };
 
@@ -253,6 +306,15 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
                   ),
               }}
               placeholder={enabled ? "Выберите сеть → подсеть → адрес" : "Выберите проект в шапке"}
+              // Область поиска названа вслух: сужается ЗАГРУЖЕННОЕ дерево, и
+              // пустой ответ говорит именно это, а не «такого адреса нет».
+              // Пока списки едут, не говорится ничего: «нет среди загруженных»
+              // на недогруженном дереве — утверждение о том, что ещё не
+              // прочитано.
+              title={TREE_NOTICE}
+              notFoundContent={
+                networksQ.isLoading || subnetsQ.isLoading || addressesQ.isLoading ? undefined : TREE_SCOPE.emptyText
+              }
               disabled={!enabled}
               changeOnSelect={false}
               expandTrigger="hover"
@@ -300,7 +362,15 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
                   placeholder={enabled ? "Выберите публичный адрес" : "Выберите проект в шапке"}
                   disabled={!enabled}
                   showSearch
-                  optionFilterProp="label"
+                  onSearch={setExtTerm}
+                  title={extScope.notice}
+                  // Сузил сервер — клиент НЕ пересеивает: метка здесь «имя — IP»,
+                  // а сервер искал по имени, и повторное сужение по метке вычло
+                  // бы из ответа края строки, которые он прислал по этому вводу.
+                  {...(extScope.asksServer ? { filterOption: false as const } : { optionFilterProp: "label" as const })}
+                  // Пустой ответ обязан называть свою ОБЛАСТЬ, а не утверждать
+                  // отсутствие адреса, которого поле не спрашивало.
+                  notFoundContent={extAddressesQ.isLoading ? undefined : extScope.emptyText}
                   onSelect={(v: string) => {
                     if (v === "__create__") {
                       setCreateExternal(true);
@@ -309,6 +379,14 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
                     onExtAddrSelect(v);
                   }}
                   options={[
+                    // Выбранный адрес обязан пережить сужение: сервер отвечает
+                    // по ВВОДУ, и уже сделанный выбор в ответ попадать не
+                    // обязан. Метку берём из формы (`_ext_addr_value` — тот
+                    // самый IP, который туда записал выбор), поэтому поле
+                    // показывает адрес, а не сырой `adr-…`.
+                    ...(extAddrId && !externalAddrs.some((a) => a.id === extAddrId)
+                      ? [{ value: extAddrId, label: (get("_ext_addr_value") as string) || extAddrId }]
+                      : []),
                     ...externalAddrs.map((a) => ({
                       value: a.id,
                       label: `${a.name ? a.name + " — " : ""}${a.external_ipv4_address?.address ?? a.id}`,
@@ -319,12 +397,14 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
                 {extAddrId &&
                   (() => {
                     const a = externalAddrs.find((x) => x.id === extAddrId);
+                    // Подпись под селектором тоже не имеет права деградировать
+                    // до идентификатора, когда сужение унесло выбранный адрес
+                    // из ответа: сам IP уже лежит в объекте формы — его туда
+                    // записал выбор.
+                    const ip = a?.external_ipv4_address?.address ?? ((get("_ext_addr_value") as string) || "");
                     return (
                       <div className="text-xs text-muted-foreground">
-                        {a?.external_ipv4_address?.address ? (
-                          <span className="font-mono">{a.external_ipv4_address.address}</span>
-                        ) : null}{" "}
-                        <CopyableId id={extAddrId} />
+                        {ip ? <span className="font-mono">{ip}</span> : null} <CopyableId id={extAddrId} />
                       </div>
                     );
                   })()}
@@ -386,8 +466,11 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
             projectId={project?.id ?? null}
             onCancel={() => setCreateExternal(false)}
             onSuccess={() => {
+              // Перечитывается ТОТ список, который кормит это поле: у публичных
+              // адресов он теперь свой (сужается вводом), и обновление общего
+              // не добавило бы созданный адрес в выбор.
               const before = new Set(externalAddrs.map((a) => a.id));
-              void addressesQ.refetch().then((r) => {
+              void extAddressesQ.refetch().then((r) => {
                 const after = (r.data?.addresses ?? []).filter((a) => !!a.external_ipv4_address);
                 const fresh = after.find((a) => !before.has(a.id));
                 if (fresh) onExtAddrSelect(fresh.id);

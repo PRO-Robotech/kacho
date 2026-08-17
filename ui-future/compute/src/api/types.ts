@@ -71,7 +71,9 @@ export interface BootSource {
 // ====== compute: kind-gated spec (VmSpec | ContainerSpec) ======
 export interface VmMetadataOptions {
   metadata_endpoint?: "METADATA_OPTION_UNSPECIFIED" | "ENABLED" | "DISABLED" | string;
-  metadata_token_required?: boolean;
+  // `metadata_token_required` не объявляется: у сообщения `MetadataOptions` его
+  // номер и имя зарезервированы (#512). Объявленное поле — обещание ручки,
+  // которой у контракта нет; читатель типа принимает его за доступную настройку.
 }
 
 export interface VmSpec {

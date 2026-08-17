@@ -19,6 +19,15 @@ import { iamApi, type User } from "@shared/api/iam";
 import { useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { resolveMutationResponse } from "@shared/lib/operation-outcome";
+import { pickerScope } from "@shared/lib/picker-search";
+
+/**
+ * Чем сужается список пользователей у владельца: выделенным словом `search`,
+ * а не подстрокой по полю. iam отвергает `CONTAINS` явно (`InvalidArgument` на
+ * всю страницу), поэтому подставить сюда общий механизм списков нельзя — и
+ * ровно ради этого различия у области поиска два ключа, а не один.
+ */
+const USERS_SCOPE = pickerScope({ serverTerm: "search" });
 
 interface Props {
   open: boolean;
@@ -47,13 +56,26 @@ export function GrantAdminModal({ open, onClose }: Props) {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Fetch users when debounced query changes (and modal is open).
+  // Ввод спрашивает СЕРВЕР (#528).
+  //
+  // Прежде здесь читались первые двадцать пользователей и сужались в браузере —
+  // с честным комментарием, что владелец фильтровать не умеет. Комментарий
+  // пережил свой предмет: `ListUsersRequest.filter` принимает выделенное слово
+  // `search="…"` — подстроку по почте И идентификатору сразу (у пользователя
+  // имени нет вовсе, его узнают по почте, поэтому владелец и завёл отдельное
+  // слово вместо `name CONTAINS`).
+  //
+  // Цена прежней формы измеряется одним числом: двадцать. Двадцать первый
+  // администратор был недостижим НИКАКИМ вводом, а поле отвечало «нет
+  // совпадений» — то есть утверждало об отсутствии человека то, чего не
+  // спрашивало. Задержка ввода при этом уже стояла и тратила круг до края,
+  // перечитывая те же двадцать строк.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setOptionsLoading(true);
     iamApi
-      .listUsers({ pageSize: "20" })
+      .listUsers({ pageSize: "20", ...USERS_SCOPE.query(debounced) })
       .then((data) => {
         if (cancelled) return;
         // KAC-196 follow-up: filter out PENDING (invited but not registered via
@@ -73,20 +95,12 @@ export function GrantAdminModal({ open, onClose }: Props) {
           seenEmails.add(key);
           users.push(u);
         }
-        // Client-side filter by email/display_name (UserService.List backend
-        // does not support arbitrary `filter` expressions in this phase —
-        // fetch top-20 and filter locally).
-        const q = debounced.trim().toLowerCase();
-        const filtered = q
-          ? users.filter(
-              (u) =>
-                (u.email ?? "").toLowerCase().includes(q) ||
-                (u.display_name ?? "").toLowerCase().includes(q) ||
-                u.id.toLowerCase().includes(q),
-            )
-          : users;
+        // Сузил сервер — в браузере не пересеиваем: `search` смотрит на почту и
+        // идентификатор, а показанное имя приходит из профиля и с ними может не
+        // совпасть. Повторное сужение вычло бы из ответа края строки, которые он
+        // прислал именно по этому вводу.
         setOptions(
-          filtered.map((u) => ({
+          users.map((u) => ({
             value: u.id,
             label: (
               <span>
@@ -167,7 +181,11 @@ export function GrantAdminModal({ open, onClose }: Props) {
     }
   };
 
-  const placeholder = useMemo(() => "Email, имя или usr_… (минимум 2 символа)", []);
+  // Подпись называет то, чем ИЩЕТСЯ, а не то, что показано. Прежняя обещала
+  // сужение по имени (владелец по нему не ищет: у пользователя имени нет) и
+  // порог в два символа, которого никто не проверял, — два обещания, за
+  // которыми ничего не стояло.
+  const placeholder = useMemo(() => "Почта или usr_… — ищется по всему списку", []);
 
   return (
     <Modal
@@ -225,7 +243,11 @@ export function GrantAdminModal({ open, onClose }: Props) {
                 setQuery(opt.user.email || opt.user.id);
               }}
               placeholder={placeholder}
-              notFoundContent={optionsLoading ? <Spin size="small" /> : "Нет совпадений"}
+              title={USERS_SCOPE.notice}
+              // Пустой ответ называет свою ОБЛАСТЬ. «Нет совпадений» здесь
+              // означало «нет среди двадцати прочитанных» — и читалось как
+              // «такого человека нет».
+              notFoundContent={optionsLoading ? <Spin size="small" /> : USERS_SCOPE.emptyText}
               data-testid="grant-admin-search"
               style={{ width: "100%" }}
             />
