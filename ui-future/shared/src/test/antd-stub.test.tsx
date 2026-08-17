@@ -66,13 +66,20 @@ describe("Dropdown рисует состав меню, а не только тр
 });
 
 describe("Popconfirm рисует вопрос и обе кнопки", () => {
-  it("вопрос, пояснение и подтверждение достижимы", () => {
+  it("вопрос появляется ПО НАЖАТИЮ, а не висит всегда", () => {
     const onConfirm = jest.fn();
     render(
       <S.Popconfirm title="Отозвать ключ?" description="Действие необратимо" okText="Отозвать" onConfirm={onConfirm}>
         <button type="button">Отзыв</button>
       </S.Popconfirm>,
     );
+    // Настоящее подтверждение до нажатия НЕ показано, и это половина его смысла:
+    // необратимое действие стоит за вопросом. Прежняя редакция пробы требовала
+    // обратного — вопрос был виден сразу, — и тем закрепляла поведение дублёра,
+    // которое настоящему компоненту не соответствует. На таком дублёре проба
+    // «отказ от подтверждения НЕ отзывает» не могла бы упасть ни при каком коде.
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Отзыв" }));
     const popup = screen.getByRole("tooltip");
     expect(within(popup).getByText("Отозвать ключ?")).toBeInTheDocument();
     expect(within(popup).getByText("Действие необратимо")).toBeInTheDocument();
