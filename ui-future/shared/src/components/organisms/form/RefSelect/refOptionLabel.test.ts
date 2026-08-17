@@ -112,6 +112,25 @@ describe("refOptionExtra — тип машины называет размер",
     expect(refOptionExtra("machine-types", { effective_resources: { memory_mib: 0 } })).toBe("");
   });
 
+  it("нечисловое число ядер в подпись НЕ попадает", () => {
+    // Ответ края нетипизирован, поэтому «не пусто» здесь ничего не гарантирует:
+    // объект непуст и подставился бы как `[object Object]` — размер, которого
+    // сервер не называл. Проверка «!= null» этот случай пропускала.
+    for (const bad of [{}, { cores: 2 }, [], true]) {
+      const got = refOptionExtra("machine-types", { effective_resources: { v_cpu: bad, memory_mib: "1024" } });
+      expect(got).not.toContain("object");
+      expect(got).not.toContain("vCPU");
+    }
+  });
+
+  it("строковое число ядер в подпись попадает — положительный контроль", () => {
+    // Без него запрет выше выполнялся бы реализацией, которая не показывает
+    // число ядер никогда. int64 на wire — строка, и это законная форма.
+    expect(refOptionExtra("machine-types", { effective_resources: { v_cpu: "8", memory_mib: "1024" } })).toContain(
+      "8 vCPU",
+    );
+  });
+
   it("соседний ресурс приписку типа машины не получает (контроль)", () => {
     expect(refOptionExtra("projects", { effective_resources: { v_cpu: 2 } })).toBe("");
   });

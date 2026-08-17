@@ -173,9 +173,16 @@ export function refOptionExtra(
     //
     // Неназванного размера не выдумываем: «0 vCPU» — утверждение о типе, которого
     // сервер не делал.
+    //
+    // Число ядер приходит из нетипизированной строки ответа, поэтому «не пусто»
+    // проверки НЕ ЗАМЕНЯЕТ: непустым бывает и объект, а он подставился бы в
+    // подпись как `[object Object]` — то есть у типа машины появился бы размер,
+    // которого сервер не называл. Принимаются ровно две формы, в которых число
+    // приходит с провода: число и строка (int64 сериализуется строкой).
     case "machine-types": {
       const er = (row.effective_resources as Record<string, unknown> | undefined) ?? {};
-      const vcpu = er.v_cpu != null ? `${er.v_cpu} vCPU` : "";
+      const vcpuRaw = er.v_cpu;
+      const vcpu = typeof vcpuRaw === "number" || typeof vcpuRaw === "string" ? `${vcpuRaw} vCPU` : "";
       const memMib = typeof er.memory_mib === "string" ? Number.parseInt(er.memory_mib, 10) : Number(er.memory_mib);
       const mem = Number.isFinite(memMib) && memMib > 0 ? `${Math.round(memMib / 1024)} ГиБ` : "";
       const fam = (row.family as string | undefined) ?? "";
