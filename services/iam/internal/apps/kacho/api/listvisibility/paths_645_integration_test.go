@@ -95,6 +95,9 @@ func TestList645_06_DirectGrantBeyondTheThreshold(t *testing.T) {
 		e.seedProject(t, e.foreignAcc, projectName(i))
 	}
 	granted := e.seedProject(t, e.foreignAcc, "prj-granted")
+	// Both legs of the grant: the row in iam's own tables (what the candidate
+	// selection reads) and the tuple (what the model answers from).
+	e.seedAccessBindingFor(t, "user", grantee, e.anySystemRoleID(t), "project", granted)
 	e.fga.Write(t, "user:"+grantee, "v_get", fgaObject("project", granted))
 
 	uc := projectapp.NewListProjectsUseCase(e.repo).WithRelationStore(e.fga.Client)
@@ -130,7 +133,11 @@ func TestList645_07_GrantToAGroupTheCallerBelongsTo(t *testing.T) {
 	}
 	target := e.seedProject(t, e.foreignAcc, "prj-group-granted")
 
-	// The group holds the grant; the member is in the group.
+	// The group holds the grant; the member is in the group. Both facts exist on
+	// both sides: the binding row and the membership row in iam's own tables, the
+	// userset and the membership tuple in the store.
+	e.seedAccessBindingFor(t, "group", grp, e.anySystemRoleID(t), "project", target)
+	e.seedGroupMember(t, grp, "user", member)
 	e.fga.Write(t, "group:"+grp+"#member", "v_get", fgaObject("project", target))
 	e.fga.Write(t, "user:"+member, "member", "group:"+grp)
 
@@ -169,6 +176,7 @@ func TestList645_07b_ServiceAccountPrincipalBeyondTheThreshold(t *testing.T) {
 		e.seedProject(t, e.foreignAcc, projectName(i))
 	}
 	granted := e.seedProject(t, e.foreignAcc, "prj-sa-granted")
+	e.seedAccessBindingFor(t, "service_account", sa, e.anySystemRoleID(t), "project", granted)
 	e.fga.Write(t, "service_account:"+sa, "v_get", fgaObject("project", granted))
 
 	uc := projectapp.NewListProjectsUseCase(e.repo).WithRelationStore(e.fga.Client)

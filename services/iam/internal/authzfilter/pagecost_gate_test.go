@@ -226,6 +226,14 @@ var relationQuestionEntryPoints = map[string]entryPointShape{
 	// loop, so a copy of it moved INTO the page loop would cost a question per row
 	// and contribute to no counter at all.
 	"SubjectIsClusterAdminE": {relationGuardRoot, 2, -1, -1},
+	// SubjectIsClusterAdminPlainE(ctx, checker, subject) — the SAME question as the
+	// two above, over the plain `Check` port instead of the context-carrying one.
+	// It exists because the surfaces that hold only that port must still be able to
+	// keep the FAILURE of this question (access_binding's List), and it is listed
+	// here for the same reason its siblings are: the call sits one package away and
+	// lexically outside any loop, so a copy of it moved INTO a page loop would cost
+	// a question per row and contribute to no counter at all.
+	"SubjectIsClusterAdminPlainE": {relationGuardRoot, 2, -1, -1},
 }
 
 // useCaseTreeRoot — the volume THIS gate inspects; relationClientRoot /

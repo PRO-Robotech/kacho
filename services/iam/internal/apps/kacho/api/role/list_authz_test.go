@@ -386,4 +386,26 @@ func (s *roleFGAStub) BatchCheckWithContext(ctx context.Context, subject, relati
 // (services/iam/internal/apps/kacho/api/listvisibility). nil здесь означает
 // «сузить нечем», и списочный use-case обязан на нём ОТКАЗАТЬ, а не листать
 // ненаречённое.
-func (r *roleListFakeReader) Visibility() visibility.ReaderIface { return nil }
+// Visibility — структурные факты о вызывающем, объявленные НЕСУЖЁННЫМИ.
+//
+// Это НАМЕРЕННО снисходительнее продукта, и цена названа вслух: строк выдачи у
+// этой фикстуры нет вовсе (её гранты живут только в дублёре стора отношений),
+// поэтому назвать кандидатов она не может — а сузив набор до пустого, вернула бы
+// пустую страницу везде и стёрла бы ровно то, о чём эти пробы спрашивают.
+//
+// Отсюда граница: предмет проб этого пакета — ВЕРДИКТ (каким отношением судится
+// строка страницы, как ведут себя полы, что происходит на отказе стора). ОТБОР
+// кандидатов они не проверяют и проверять не могут; он проверяется на настоящем
+// Postgres и настоящей модели прав —
+// services/iam/internal/apps/kacho/api/listvisibility, где снисходительного
+// дублёра нет ни с одной стороны именно потому, что предмет там — ПОРЯДОК между
+// страницей и сужением.
+func (r *roleListFakeReader) Visibility() visibility.ReaderIface { return roleUnrestrictedVisibility{} }
+
+// roleUnrestrictedVisibility — «кандидаты не сужаются»: Candidates(...) вернёт nil,
+// и репозиторий не получит ни одного предиката отбора.
+type roleUnrestrictedVisibility struct{}
+
+func (roleUnrestrictedVisibility) ScopeOf(_ context.Context, _ visibility.Subject) (visibility.Scope, error) {
+	return visibility.Scope{Unrestricted: true, GrantedObjects: map[string][]string{}}, nil
+}

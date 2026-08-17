@@ -182,7 +182,7 @@ func TestList645_23b_AnUnwiredRelationPortRefusesRatherThanReportingNothing(t *t
 
 			s.seedForeign(t, e, 3)
 			own := s.seedOwn(t, e)
-			e.fga.Write(t, fgaUser(e.callerUser), s.pageRelation, fgaObject(s.fgaType, own))
+			grantOwn(t, e, s, own)
 
 			// Control: wired, the object is there.
 			got, _, err := s.list(t, e, ctx, listArgs{pageSize: 1000})

@@ -111,6 +111,32 @@ func queriesOr(e *env, a listArgs) clients.RelationQueries {
 	return e.fga.Client
 }
 
+// grantOwn makes `id` visible to the caller THE WAY PRODUCTION DOES — on BOTH
+// sides of the grant.
+//
+// A grant is a ROW in iam's own database; the relation tuple is its
+// MATERIALIZATION. A probe writing only the tuple describes a state the product
+// never reaches, and it does so in the one direction that matters here: the
+// candidate selection of a narrowed page reads the ROWS, so a grant with no row
+// names no candidate.
+//
+// On five of the seven surfaces the object under test lives in an account the
+// caller owns, so it is a candidate by that route and the missing row never
+// showed. On `account` it is not — the fixture there gives the object to the
+// FOREIGN user on purpose, precisely so that visibility has to come from the
+// grant — and the gap becomes the whole answer. Writing both legs everywhere
+// keeps the fixture describing production uniformly instead of surface by
+// surface.
+//
+// The binding's role is any seeded system role: this helper is about the grant
+// EXISTING in iam's tables (which is what the narrowing reads), while WHICH
+// relation the caller ends up holding is stated by the tuple written beside it.
+func grantOwn(t *testing.T, e *env, s surface, id string) {
+	t.Helper()
+	e.seedAccessBindingFor(t, "user", string(e.callerUser), e.anySystemRoleID(t), s.fgaType, id)
+	e.fga.Write(t, fgaUser(e.callerUser), s.pageRelation, fgaObject(s.fgaType, id))
+}
+
 func storeOr(e *env, a listArgs) clients.RelationStore {
 	if a.unwired {
 		return nil

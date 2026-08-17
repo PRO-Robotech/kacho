@@ -85,7 +85,7 @@ func TestList645_01_OwnObjectIsOnTheFirstPageBeyondTheThreshold(t *testing.T) {
 
 			// And: the caller may read his object — the per-object relation the
 			// reconciler emits in production. Nothing else is granted.
-			e.fga.Write(t, fgaUser(e.callerUser), s.pageRelation, fgaObject(s.fgaType, own))
+			grantOwn(t, e, s, own)
 
 			// When: ONE call, no token.
 			got, next, err := s.list(t, e, ctx, listArgs{pageSize: plan.pageSize})
@@ -164,7 +164,7 @@ func TestList645_01_ControlBelowTheThreshold(t *testing.T) {
 
 			s.seedForeign(t, e, belowThreshold)
 			own := s.seedOwn(t, e)
-			e.fga.Write(t, fgaUser(e.callerUser), s.pageRelation, fgaObject(s.fgaType, own))
+			grantOwn(t, e, s, own)
 
 			got, _, err := s.list(t, e, ctx, listArgs{pageSize: wholePopulationFits})
 			require.NoError(t, err)

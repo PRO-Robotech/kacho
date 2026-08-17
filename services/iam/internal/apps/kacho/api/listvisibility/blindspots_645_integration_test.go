@@ -337,7 +337,7 @@ func TestList645_23_UnresolvableRightsAreUnavailableOnEverySurface(t *testing.T)
 
 			s.seedForeign(t, e, 3)
 			own := s.seedOwn(t, e)
-			e.fga.Write(t, fgaUser(e.callerUser), s.pageRelation, fgaObject(s.fgaType, own))
+			grantOwn(t, e, s, own)
 
 			// Positive half: with the store up, the caller receives his object.
 			// (Small population on purpose — this probe is about the outage, not

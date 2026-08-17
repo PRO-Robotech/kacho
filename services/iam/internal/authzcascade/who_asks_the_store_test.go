@@ -125,7 +125,11 @@ var askingSites = map[string]lane{
 	"internal/apps/kacho/api/account/list_all_operations.go:requireAccountViewAuthority": laneOwnGate,
 	"internal/apps/kacho/api/user/invite_authz.go:cascadeCheck":                          laneOwnGate,
 	"internal/apps/kacho/api/authorize/caller_authority.go:authorizeCaller":              laneOwnGate,
-	"internal/authzguard/cluster_admin_shortcircuit.go:subjectIsClusterAdminE":           laneClusterOnly,
+	// Прежде это имя было НЕэкспортируемым (`subjectIsClusterAdminE`). Экспорт
+	// потребовался поверхности, которая держит простой порт Check и обязана
+	// сохранить ОТКАЗ этого вопроса, — привязкам доступа (#645). Полоса не
+	// изменилась: вопрос и объект-синглтон те же.
+	"internal/authzguard/cluster_admin_shortcircuit.go:SubjectIsClusterAdminPlainE": laneClusterOnly,
 	// Тот же вопрос и тот же объект-синглтон, что у соседа выше, только заданный
 	// через контекстную дверь: списочный use-case держит порт запросов, а не стор
 	// (#645). Полоса та же — под кластерным синглтоном структурного факта нет, и

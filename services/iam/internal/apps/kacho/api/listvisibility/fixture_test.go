@@ -279,6 +279,29 @@ func (e *env) seedAccount(t *testing.T, owner domain.UserID, suffix string) stri
 // than the product.
 func (e *env) seedAccessBinding(t *testing.T, subject domain.UserID, roleID, resourceType, resourceID string) string {
 	t.Helper()
+	return e.seedAccessBindingFor(t, "user", string(subject), roleID, resourceType, resourceID)
+}
+
+// seedAccessBindingFor is seedAccessBinding for ANY subject kind the schema
+// admits ('user' / 'service_account' / 'group').
+//
+// # A grant exists in TWO places, and a fixture writing one of them is blind
+//
+// In production a grant is a ROW in iam's own database, and the relation tuple
+// is its MATERIALIZATION — the row is the authority, the tuple is the copy the
+// model answers from. A probe that writes only the tuple therefore describes a
+// state the product never reaches, and it does so in the one direction that
+// matters here: the candidate selection of a narrowed page reads the ROWS
+// (internal/repo/kacho/visibility), so a grant with no row names no candidate,
+// and the probe reports "invisible" for a caller whose grant is live.
+//
+// That is not the probe's subject. 645-06/07/07b are about the PATHS by which an
+// object becomes visible; each of them needs its path to exist on both sides, or
+// it is measuring the fixture. Hence this helper, and hence seedGroupMember
+// below — the membership leg of path П2 lives in `group_members` and nowhere
+// else.
+func (e *env) seedAccessBindingFor(t *testing.T, subjectType, subjectID, roleID, resourceType, resourceID string) string {
+	t.Helper()
 	ctx := context.Background()
 	id := ids.NewID(domain.PrefixAccessBinding)
 	at := e.at()
@@ -288,15 +311,28 @@ func (e *env) seedAccessBinding(t *testing.T, subject domain.UserID, roleID, res
 	_, err = tx.Exec(ctx, `
 		INSERT INTO access_bindings
 			(id, subject_type, subject_id, role_id, resource_type, resource_id, status, created_at)
-		VALUES ($1, 'user', $2, $3, $4, $5, 'ACTIVE', $6)`,
-		id, string(subject), roleID, resourceType, resourceID, at)
-	require.NoError(t, err, "seed access binding on %s:%s", resourceType, resourceID)
+		VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', $7)`,
+		id, subjectType, subjectID, roleID, resourceType, resourceID, at)
+	require.NoError(t, err, "seed access binding for %s:%s on %s:%s",
+		subjectType, subjectID, resourceType, resourceID)
 	_, err = tx.Exec(ctx, `
 		INSERT INTO access_binding_subjects (binding_id, subject_type, subject_id, ordinal)
-		VALUES ($1, 'user', $2, 0)`, id, string(subject))
+		VALUES ($1, $2, $3, 0)`, id, subjectType, subjectID)
 	require.NoError(t, err, "seed access binding subject")
 	require.NoError(t, tx.Commit(ctx))
 	return id
+}
+
+// seedGroupMember writes the membership leg of path П2. `member_type` is
+// constrained to 'user' / 'service_account' by the schema, and a BEFORE INSERT
+// trigger probes the member's existence — again, no more lenient than the
+// product.
+func (e *env) seedGroupMember(t *testing.T, groupID, memberType, memberID string) {
+	t.Helper()
+	_, err := e.pool.Exec(context.Background(), `
+		INSERT INTO group_members (group_id, member_type, member_id, added_at)
+		VALUES ($1, $2, $3, $4)`, groupID, memberType, memberID, e.at())
+	require.NoError(t, err, "seed group member %s:%s in %s", memberType, memberID, groupID)
 }
 
 // systemRoleIDs — the catalog rows the migrations seed. They are the `role`
