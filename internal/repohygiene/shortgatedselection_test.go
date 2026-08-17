@@ -266,9 +266,14 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// джобе.
 	"services/iam/internal/apps/kacho/api/user": "make test-authz-fga",
 	"services/iam/internal/authzcascade":        "make test-authz-fga",
-	"services/iam/internal/authzmap":            "make test-authz-fga",
-	"services/iam/internal/service":             "make test-authz-fga",
-	"services/iam/internal/testsupport/fgatest": "make test-authz-fga",
+	// Снимок множества доступа (IAM-ID-1-28/29/30): страницы объектов берутся
+	// курсором из своей базы, а вопрос о доступе задаётся НАСТОЯЩЕМУ движку
+	// продовым клиентом — подменив второе, инструмент утверждал бы про свою
+	// копию правил. Юнит-пробы компаратора идут в быстрой джобе.
+	"services/iam/internal/testsupport/accesssnapshot": "make test-authz-fga",
+	"services/iam/internal/authzmap":                   "make test-authz-fga",
+	"services/iam/internal/service":                    "make test-authz-fga",
+	"services/iam/internal/testsupport/fgatest":        "make test-authz-fga",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.

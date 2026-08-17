@@ -192,6 +192,7 @@ AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/authzcascade \
 	./services/iam/internal/authzmap \
 	./services/iam/internal/service \
+	./services/iam/internal/testsupport/accesssnapshot \
 	./services/iam/internal/testsupport/fgatest
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
