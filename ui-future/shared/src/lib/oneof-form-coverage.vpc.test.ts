@@ -20,7 +20,7 @@ function branchesInBody(body: Record<string, unknown>, at: string[] = []): strin
   let node: unknown = body;
   for (const seg of at) node = (node as Record<string, unknown> | undefined)?.[seg];
   if (!node || typeof node !== "object") return [];
-  return Object.keys(node as Record<string, unknown>);
+  return Object.keys(node);
 }
 
 describe("адрес: каждая ветвь спецификации выразима формой", () => {
@@ -41,7 +41,7 @@ describe("адрес: каждая ветвь спецификации выра�
         project_id: "prj-1",
         _address_kind: kind,
         [branch]: branch.startsWith("internal") ? { subnet_id: "sub-1" } : { zone_id: "ru-a" },
-      }) as Record<string, unknown>;
+      });
       return branchesInBody(body).includes(branch);
     });
     expect(выразимо).toEqual(contract);
@@ -53,7 +53,7 @@ describe("адрес: каждая ветвь спецификации выра�
       _address_kind: "internal_v6",
       external_ipv4_address_spec: { zone_id: "ru-a" },
       internal_ipv6_address_spec: { subnet_id: "sub-1" },
-    }) as Record<string, unknown>;
+    });
     expect(body.internal_ipv6_address_spec).toEqual({ subnet_id: "sub-1" });
     expect(body).not.toHaveProperty("external_ipv4_address_spec");
   });
@@ -68,7 +68,7 @@ describe("адрес: каждая ветвь спецификации выра�
         project_id: "prj-1",
         _address_kind: kind,
         [field]: { subnet_id: "sub-1" },
-      }) as Record<string, unknown>;
+      });
       expect(branchesInBody(body, [field])).toEqual(contract);
     }
   });
@@ -84,20 +84,14 @@ describe("шлюз: каждая ветвь вида выразима формо
       egress_only_gateway_spec: "egress_only",
     };
     const выразимо = contract.filter((branch) => {
-      const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: форма[branch] }) as Record<
-        string,
-        unknown
-      >;
+      const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: форма[branch] });
       return branchesInBody(body).includes(branch);
     });
     expect(выразимо).toEqual(contract);
   });
 
   it("вторая ветвь в теле не появляется — отрицание в паре с положительным", () => {
-    const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: "egress_only" }) as Record<
-      string,
-      unknown
-    >;
+    const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: "egress_only" });
     expect(body).toHaveProperty("egress_only_gateway_spec");
     expect(body).not.toHaveProperty("nat_gateway_spec");
   });
@@ -145,7 +139,7 @@ describe("балансировщик: каждая ветвь источника
       v4_source: fam,
       _v6_source: "off",
       v6_source: {},
-    }) as Record<string, unknown>;
+    });
   }
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
