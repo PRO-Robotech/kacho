@@ -24,9 +24,27 @@ import (
 // ошибку «health_check is required» вверх. Threshold/port поля int64 на wire;
 // сужение в int32 guard'ится (domain.*FromProto) — иначе overflow-значение
 // молча алиасит на валидный остаток и обходит HealthCheck.Validate (gosec G115).
+//
+// `effective_port` отвергается ЗДЕСЬ, а не у каждого вызывающего: конвертер —
+// единственное место, через которое тело проверки живости попадает на путь
+// записи (создание и правка), поэтому отказ, поставленный в него, покрывает обе
+// формы правки — маску целиком и точечную — и не может разойтись между ними.
+// Симметрично соседям той же природы (`targetsFromPbForWrite`), только те
+// принимают имя поля параметром: у цели путь индексирован номером в наборе, а у
+// проверки живости он один и тот же на обоих глаголах.
 func healthCheckFromPb(pb *lbv1.HealthCheck) (domain.HealthCheck, error) {
 	if pb == nil {
 		return domain.HealthCheck{}, nil
+	}
+	// Величина выводится сервером (порт пробы, иначе порт группы) и на записи не
+	// читается ничем. Принять её значило бы вернуть успех на запрос, который
+	// ничего не изменил: ответ пересчитает поле сам. Совпадение с выводимым
+	// значением отказа не отменяет — иначе исход зависел бы от того, угадал ли
+	// вызывающий, а поле вернулось бы в разряд принимаемых на первой же смене
+	// правила вывода.
+	if pb.GetEffectivePort() != 0 {
+		return domain.HealthCheck{}, errInvalidArg("health_check.effective_port",
+			"effective_port is output-only; it is derived from the probe port override, otherwise the group's port")
 	}
 	unhealthy, err := domain.HealthThresholdFromProto("unhealthy_threshold", pb.GetUnhealthyThreshold())
 	if err != nil {
