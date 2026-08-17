@@ -1,213 +1,215 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// migrationversionunique_test.go — гейт против двух миграций с ОДНИМ номером в
-// одном сервисе.
+// migrationversionunique_test.go — ЕДИНСТВЕННЫЙ гейт против двух миграций с
+// одним номером в одном каталоге миграций.
 //
-// ПОЧЕМУ ЭТО НЕ КОСМЕТИКА. Номер миграции — не имя, а ключ: сервис хранит в своей
-// базе строку «версия N применена». Две разные миграции с одним N — это два разных
-// изменения схемы под одним ключом, и различить их база уже не может. Инструмент
-// миграций не пытается: он ПАДАЕТ ПАНИКОЙ при сборе списка, до подключения к базе.
-// Паника случается в init-контейнере, поэтому сервис не поднимается вовсе.
+// # Почему это не косметика
 //
-// ПОЧЕМУ ЭТОГО НЕ ЛОВИЛО НИЧТО. Столкновение рождается не в ветке, а в СЛИЯНИИ:
-// две ветки независимо взяли следующий свободный номер, каждая у себя была права,
-// конфликта содержимого нет (файлы разные), поэтому слияние проходит чисто и оба
-// файла оказываются рядом. Ни компилятор, ни обзор диффа этого не видят — виден
-// только каталог целиком, а его никто не смотрит целиком.
+// Номер миграции — не имя, а ключ: сервис хранит в своей базе строку «версия N
+// применена». Две разные миграции с одним N — это два разных изменения схемы
+// под одним ключом, и различить их база уже не может. Инструмент миграций не
+// пытается: он ПАДАЕТ ПАНИКОЙ при сборе списка, до подключения к базе. Паника
+// случается в init-контейнере, поэтому сервис не поднимается вовсе.
+//
+// # Почему этого не ловило ничто
+//
+// Столкновение рождается не в ветке, а в СЛИЯНИИ: две ветки независимо взяли
+// следующий свободный номер, каждая у себя была права, конфликта содержимого
+// нет (файлы разные), поэтому слияние проходит чисто и оба файла оказываются
+// рядом. Ни компилятор, ни обзор диффа этого не видят — виден только каталог
+// целиком, а его никто не смотрит целиком.
 //
 // НАБЛЮДАВШЕЕСЯ СЛЕДСТВИЕ (2026-07-30). На стволе одновременно оказались
-// `0024_instances_cursor_index.sql` и `0024_drop_decoy_pending_idx.sql` в машинах и
-// такая же пара под номером 0012 в хранении. Оба сервиса ушли в цикл падений
-// init-контейнера, и стенд поднять было нельзя. Причём номер 0024 в базе уже стоял
-// применённым — за ним стояла ДРУГАЯ миграция, приехавшая раньше; то есть новая
-// работа молча претендовала на ключ, который уже занят и уже что-то значит.
+// `0024_instances_cursor_index.sql` и `0024_drop_decoy_pending_idx.sql` в
+// машинах и такая же пара под номером 0012 в хранении. Оба сервиса ушли в цикл
+// падений init-контейнера, и стенд поднять было нельзя. Причём номер 0024 в
+// базе уже стоял применённым — за ним стояла ДРУГАЯ миграция, приехавшая
+// раньше; то есть новая работа молча претендовала на ключ, который уже занят и
+// уже что-то значит.
 //
-// ЧТО ДЕЛАТЬ ПРИ ОТКАЗЕ: переномеровать НОВУЮ миграцию на следующий свободный
-// номер. Никогда не переномеровывать ту, что уже применена на живой базе, — её
-// ключ там записан (запрет «не редактировать применённую миграцию»).
+// # Почему каталоги ВЫВОДЯТСЯ из дерева, а не выписываются путём (#567)
+//
+// До 2026-08-17 предмет держали ДВА гейта, и оба брали каталоги выпиской
+// `services/*/internal/migrations`. Мимо проходили `pkg/migrations/common` и
+// `services/compute/migrations` — пять файлов из 268, — а перепись при этом
+// печатала «файлов миграций 263, находок 0». То есть проверка утверждала
+// уникальность, которой не проверяла, и расширение выписки этого не лечит:
+// следующий каталог снова окажется невидим молча.
+//
+// Здесь каталог — СВОЙСТВО дерева: место, где лежит хотя бы один файл вида
+// `<номер>_<что>.sql`, взятое из индекса git (`treecorpus`). Новый сервис,
+// новый общий каталог, переезд раскладки — попадают под надзор в тот же день,
+// без правки этого файла.
+//
+// Двух гейтов на один предмет тоже больше нет. Пока их было два, они
+// печатали две переписи и два разных отказа об одном и том же; сходились они
+// сегодня — и именно поэтому расхождение между ними было бы тихим.
+//
+// # Что делать при отказе
+//
+// Переномеровать НОВУЮ миграцию; ту, что уже применена на живой базе, не
+// трогать — её ключ там записан (запрет «не редактировать применённую
+// миграцию»). Номер новой миграции выводится из номера задачи, а не выбирается
+// из каталога, — см. docs/architecture/migration-version-namespace.md.
+//
+// Доказательство способности упасть — в migrationversionunique_injection_test.go.
 package repohygiene
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
+	"fmt"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
-var migrationFileRe = regexp.MustCompile(`^(\d+)_[^/]*\.sql$`)
-
-type migrationDup struct {
-	service string
-	version string
-	files   []string
+// migrationVersionCollision — находка: один ключ версии занят двумя и более
+// файлами одного каталога. Находка без координаты не действие, поэтому она
+// несёт каталог, номер и ВСЕ имена, которые на него претендуют.
+type migrationVersionCollision struct {
+	Dir     string
+	Version int64
+	Files   []string
 }
 
-// scanMigrationVersions — перепись и находки под указанным корнем. Отдельная функция,
-// потому что запрет обязан быть доказан ИНЪЕКЦИЕЙ, а инъекция требует дерева, которое
-// можно построить (см. TestMigrationVersions_GateProvenByInjection).
-func scanMigrationVersions(t *testing.T, root string) (dirs int, files int, dups []migrationDup) {
-	t.Helper()
-	found, err := filepath.Glob(filepath.Join(root, "services", "*", "internal", "migrations"))
-	if err != nil {
-		t.Fatalf("glob: %v", err)
+func (c migrationVersionCollision) String() string {
+	return fmt.Sprintf(
+		"%s: номер %d занят %d раза(-ами) — %s.\n"+
+			"    Для каталога, который применяет мигратор, это отказ на сборе списка "+
+			"(паника до подключения к базе): под уходит в перезапуск инициализации, "+
+			"сервис не поднимается вовсе.\n"+
+			"    Для каталога, который мигратор не применяет (общая база, источник схемы "+
+			"для генератора), паники не будет — но ключ всё равно занят дважды, и процедура "+
+			"выбора номера там та же.\n"+
+			"    Переномеруй НЕПРИМЕНЁННУЮ сторону: применённую миграцию править нельзя, "+
+			"её ключ уже записан в базе. Номер выводится из номера задачи "+
+			"(`<задача><порядковый:3>_<что>.sql`), а не выбирается из каталога.",
+		c.Dir, c.Version, len(c.Files), strings.Join(c.Files, " и "))
+}
+
+// migrationDirCount — сколько файлов миграций прочитано в одном каталоге.
+type migrationDirCount struct {
+	Dir   string
+	Files int
+}
+
+// migrationUniqueCensus — объём осмотренного. Отдельное утверждение, а не
+// примечание в логе: «ноль находок» обязано быть отличимо от «ноль
+// прочитанного», и разложение по каталогам делает видимым именно тот дефект,
+// ради которого гейт переписан, — каталог, которого обход не увидел.
+type migrationUniqueCensus struct {
+	Dirs  int
+	Files int
+	ByDir []migrationDirCount
+}
+
+func (c migrationUniqueCensus) String() string {
+	parts := make([]string, 0, len(c.ByDir))
+	for _, d := range c.ByDir {
+		parts = append(parts, fmt.Sprintf("%s=%d", d.Dir, d.Files))
 	}
-	sort.Strings(found)
-	for _, dir := range found {
-		service := filepath.Base(filepath.Dir(filepath.Dir(dir)))
-		entries, err := os.ReadDir(dir)
+	return fmt.Sprintf("каталогов миграций %d, файлов миграций %d (%s)",
+		c.Dirs, c.Files, strings.Join(parts, ", "))
+}
+
+// findMigrationVersionCollisions — разбор состава дерева.
+//
+// Вход — пути ОТНОСИТЕЛЬНО корня, слэш-разделённые: у настоящего дерева их даёт
+// индекс git (свойство КОММИТА, а не рабочего каталога), у инъекции — тот же
+// список с подложенной строкой. Разбор ОДИН, поэтому фикстура не может
+// оказаться снисходительнее того, что судит настоящее дерево.
+//
+// Имя файла разбирает [migrationVersionFileRe] — та же регулярка, которой
+// пользуется разбор пространства номеров. Двух разборов одного имени в дереве
+// не заводим: они разъедутся, и разъедутся молча.
+func findMigrationVersionCollisions(rel []string) (migrationUniqueCensus, []migrationVersionCollision) {
+	byDir := map[string]map[int64][]string{}
+	counts := map[string]int{}
+
+	for _, r := range rel {
+		base := path.Base(r)
+		m := migrationVersionFileRe.FindStringSubmatch(base)
+		if m == nil {
+			continue
+		}
+		// Ведущие нули — часть записи, а не значения: `0024` и `24` для
+		// инструмента ОДИН ключ, поэтому сравнивается разобранное ЗНАЧЕНИЕ.
+		v, err := strconv.ParseInt(m[1], 10, 64)
 		if err != nil {
-			t.Fatalf("read %s: %v", dir, err)
+			continue
 		}
-		byVersion := map[string][]string{}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			m := migrationFileRe.FindStringSubmatch(e.Name())
-			if m == nil {
-				continue
-			}
-			files++
-			// Ведущие нули — часть записи, а не значения: `0024` и `24` были бы одним
-			// и тем же ключом для инструмента, поэтому сравниваем ЗНАЧЕНИЕ.
-			v := strings.TrimLeft(m[1], "0")
-			if v == "" {
-				v = "0"
-			}
-			byVersion[v] = append(byVersion[v], e.Name())
+		dir := path.Dir(r)
+		if byDir[dir] == nil {
+			byDir[dir] = map[int64][]string{}
 		}
-		versions := make([]string, 0, len(byVersion))
-		for v := range byVersion {
+		byDir[dir][v] = append(byDir[dir][v], base)
+		counts[dir]++
+	}
+
+	dirs := make([]string, 0, len(byDir))
+	for d := range byDir {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+
+	census := migrationUniqueCensus{Dirs: len(dirs)}
+	var out []migrationVersionCollision
+	for _, d := range dirs {
+		census.Files += counts[d]
+		census.ByDir = append(census.ByDir, migrationDirCount{Dir: d, Files: counts[d]})
+
+		versions := make([]int64, 0, len(byDir[d]))
+		for v := range byDir[d] {
 			versions = append(versions, v)
 		}
-		sort.Strings(versions)
+		sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
 		for _, v := range versions {
-			if len(byVersion[v]) > 1 {
-				sort.Strings(byVersion[v])
-				dups = append(dups, migrationDup{service: service, version: v, files: byVersion[v]})
+			names := byDir[d][v]
+			if len(names) > 1 {
+				sort.Strings(names)
+				out = append(out, migrationVersionCollision{Dir: d, Version: v, Files: names})
 			}
 		}
 	}
-	return len(found), files, dups
+	return census, out
 }
 
-// TestMigrationVersions_UniquePerService.
-func TestMigrationVersions_UniquePerService(t *testing.T) {
-	root := repoRootForMigrations(t)
-	dirs, files, dups := scanMigrationVersions(t, root)
+// TestMigrationVersionsAreUniquePerDirectory — ключ версии живёт в КАТАЛОГЕ
+// миграций (это один набор, применяемый одним инструментом к одной базе).
+// Одинаковый номер в разных каталогах — норма и находкой не является.
+func TestMigrationVersionsAreUniquePerDirectory(t *testing.T) {
+	root := repoRoot(t)
 
-	// ПРЕДПОСЫЛКА ГЕЙТА. Он опирается на два факта о дереве: миграции лежат по пути
-	// services/*/internal/migrations и называются `<номер>_<что>.sql`. Оба могут
-	// измениться, и тогда гейт начнёт молча одобрять всё подряд. Поэтому «ноль
-	// находок» отделено от «ноль прочитанного» ЯВНО — перепись это отдельное
-	// утверждение, а не примечание в логе.
-	if dirs == 0 {
-		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: не найдено ни одного каталога миграций по "+
-			"services/*/internal/migrations (искали от %s). Пока это так, гейт "+
-			"не проверяет ничего.", root)
-	}
-	if files == 0 {
-		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: в %d каталогах миграций не нашлось ни одного файла "+
-			"вида <номер>_<что>.sql — изменилось соглашение об именах, и гейт слеп.", dirs)
-	}
-	t.Logf("перепись: каталогов миграций %d, файлов %d", dirs, files)
-
-	for _, d := range dups {
-		t.Errorf("%s: номер %s занят %d раза — %s.\n"+
-			"    Инструмент миграций падает паникой на сборе списка, до подключения к "+
-			"базе, поэтому сервис не стартует вовсе.\n"+
-			"    Переномеруй НОВУЮ миграцию на следующий свободный номер; ту, что уже "+
-			"применена на живой базе, не трогай.",
-			d.service, d.version, len(d.files), strings.Join(d.files, " и "))
-	}
-}
-
-// TestMigrationVersions_GateProvenByInjection — запрет доказан в ОБЕ стороны.
-//
-// (а) верни дефект — гейт находит его и называет сервис, номер и оба файла;
-// (б) поставь рядом ЗАКОННУЮ конструкцию той же формы (соседние номера, тот же
-//
-//	префикс имени, файл не-.sql с тем же номером) — гейт молчит.
-//
-// Без (б) гейт ловил бы форму, а не существо: «два файла, начинающихся с цифр» —
-// нормальное состояние любого каталога миграций.
-func TestMigrationVersions_GateProvenByInjection(t *testing.T) {
-	write := func(root, service, name string) {
-		dir := filepath.Join(root, "services", service, "internal", "migrations")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatalf("mkdir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("-- x\n"), 0o644); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-
-	t.Run("дефект возвращён — гейт краснеет и называет координату", func(t *testing.T) {
-		root := t.TempDir()
-		write(root, "widget", "0007_first.sql")
-		write(root, "widget", "0007_second.sql")
-		dirs, files, dups := scanMigrationVersions(t, root)
-		if dirs != 1 || files != 2 {
-			t.Fatalf("перепись должна расти: dirs=%d files=%d", dirs, files)
-		}
-		if len(dups) != 1 {
-			t.Fatalf("ожидалась 1 находка, получено %d", len(dups))
-		}
-		if dups[0].service != "widget" || dups[0].version != "7" || len(dups[0].files) != 2 {
-			t.Fatalf("находка не называет координату: %+v", dups[0])
-		}
-	})
-
-	t.Run("законная конструкция той же формы — гейт молчит", func(t *testing.T) {
-		root := t.TempDir()
-		write(root, "widget", "0007_first.sql")
-		write(root, "widget", "0008_second.sql")
-		// Тот же номер, но НЕ миграция: соседний файл в каталоге (README, json-описание)
-		// столкновением не является и не должен им притворяться.
-		write(root, "widget", "0008_notes.md")
-		// Одинаковый номер в РАЗНЫХ сервисах — это норма: ключ версии живёт в базе
-		// сервиса, а базы у сервисов свои.
-		write(root, "gadget", "0007_first.sql")
-		dirs, files, dups := scanMigrationVersions(t, root)
-		if dirs != 2 || files != 3 {
-			t.Fatalf("перепись: dirs=%d files=%d — ожидалось 2 и 3", dirs, files)
-		}
-		if len(dups) != 0 {
-			t.Fatalf("ложное срабатывание на законной конструкции: %+v", dups)
-		}
-	})
-
-	t.Run("ведущие нули не создают двух ключей из одного", func(t *testing.T) {
-		root := t.TempDir()
-		write(root, "widget", "0009_a.sql")
-		write(root, "widget", "9_b.sql")
-		_, _, dups := scanMigrationVersions(t, root)
-		if len(dups) != 1 {
-			t.Fatalf("`0009` и `9` — ОДИН ключ для инструмента; ожидалась находка, получено %d", len(dups))
-		}
-	})
-}
-
-// repoRootForMigrations поднимается до корня репозитория (каталог с go.mod).
-func repoRootForMigrations(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
+	tree, err := treecorpus.NewTree(root)
 	if err != nil {
-		t.Fatalf("getwd: %v", err)
+		t.Fatalf("состав дерева взять неоткуда: %v", err)
 	}
-	for i := 0; i < 8; i++ {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
+	census, collisions := findMigrationVersionCollisions(tree.SortedFiles())
+
+	t.Logf("перепись: файлов в дереве %d, %s, находок %d",
+		tree.Count(), census, len(collisions))
+
+	// ПРЕДПОСЫЛКИ. Каждая — факт о дереве, который может измениться и сделать
+	// «ноль находок» бессмысленным; поэтому гейт проверяет их сам.
+	if tree.Count() == 0 {
+		t.Fatal("ПРЕДПОСЫЛКА ЛОЖНА: индекс дерева пуст — прочитано ноль файлов, " +
+			"и любое «ноль находок» ниже ничего не значит")
 	}
-	t.Fatalf("не найден корень репозитория (каталог с go.mod) выше %s", dir)
-	return ""
+	if census.Dirs == 0 {
+		t.Fatal("ПРЕДПОСЫЛКА ЛОЖНА: в дереве не нашлось ни одного каталога с файлами " +
+			"вида <номер>_<что>.sql — либо раскладка изменилась, либо соглашение об " +
+			"именах; пока это так, гейт не проверяет ничего")
+	}
+	if census.Files == 0 {
+		t.Fatalf("ПРЕДПОСЫЛКА ЛОЖНА: каталогов %d, а файлов миграций ноль — обход сломан",
+			census.Dirs)
+	}
+
+	for _, c := range collisions {
+		t.Error(c.String())
+	}
 }
