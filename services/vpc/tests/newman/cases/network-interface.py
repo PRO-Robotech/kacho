@@ -38,20 +38,20 @@ def _net_subnet_steps(suffix, cidr="10.60.0.0/24"):
 
 def _cleanup_subnet():
     return retry_until_authorized(Step(name="cleanup-subnet", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-                test_script=["pm.test('cleanup subnet (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                test_script=[*assert_cleanup_delete("подсеть", "в подсети остались адреса или интерфейсы"),
                              *save_from_response("j.id", "opId")]))
 
 
 def _cleanup_net():
     return retry_until_authorized(Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                test_script=[*assert_cleanup_delete("сеть", "в сети остались подсети, таблицы маршрутизации или группы"),
                              *save_from_response("j.id", "opId")]))
 
 
 def _cleanup_nic(env="nicId"):
     return [
         retry_until_authorized(Step(name="cleanup-nic", method="DELETE", path=f"/vpc/v1/networkInterfaces/{{{{{env}}}}}",
-             test_script=["pm.test('cleanup nic (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("интерфейс", "интерфейс ещё приаттачен к машине"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
     ]
@@ -320,7 +320,7 @@ CASES.append(Case(
                           "pm.test('v4AddressIds echoed', () => pm.expect(pm.response.json().v4AddressIds || []).to.include(pm.environment.get('addrId')));"])),
         *_cleanup_nic(),
         retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=["pm.test('cleanup addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),
@@ -371,7 +371,7 @@ CASES.append(Case(
                           "pm.test('v6AddressIds echoed', () => pm.expect(pm.response.json().v6AddressIds || []).to.include(pm.environment.get('addrId')));"])),
         *_cleanup_nic(),
         retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=["pm.test('cleanup addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),
@@ -435,11 +435,11 @@ CASES.append(Case(
         # Cleanup снизу вверх: NIC → addresses → subnet → network.
         *_cleanup_nic(),
         Step(name="cleanup-v4-addr", method="DELETE", path="/vpc/v1/addresses/{{v4AddrId}}",
-             test_script=["pm.test('cleanup v4 addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес v4", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="cleanup-v6-addr", method="DELETE", path="/vpc/v1/addresses/{{v6AddrId}}",
-             test_script=["pm.test('cleanup v6 addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес v6", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         _cleanup_subnet(),
@@ -528,7 +528,7 @@ CASES.append(Case(
                           "pm.test('securityGroupIds echoed', () => pm.expect(pm.response.json().securityGroupIds || []).to.include(pm.environment.get('sgId')));"])),
         *_cleanup_nic(),
         Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
-             test_script=["pm.test('cleanup sg (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("группа безопасности", "группа ещё названа интерфейсом"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         _cleanup_subnet(),
@@ -596,11 +596,11 @@ CASES.append(Case(
              ]),
         # Cleanup addresses (NIC не создалось → не блокирует).
         Step(name="del-addrA", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
-             test_script=["pm.test('del addr A 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес A", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-addrB", method="DELETE", path="/vpc/v1/addresses/{{addrIdB}}",
-             test_script=["pm.test('del addr B 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес B", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         _cleanup_subnet(),
@@ -656,11 +656,11 @@ CASES.append(Case(
                  "pm.environment.set('opId', '');",
              ]),
         retry_until_authorized(Step(name="del-addrA-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
-             test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del-addrB-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdB}}",
-             test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),

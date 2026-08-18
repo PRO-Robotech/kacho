@@ -874,15 +874,33 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-LST-SEC-FILTER-SQLI",
-    title="Security: SQL-injection в filter (List) -> НЕ 500; handled (200|400); нет утечки pgx/SQLSTATE (filter параметризован/парсится whitelist) [INV-8]",
+    title="Security: SQL-injection в filter (List) -> 200 и ПУСТАЯ страница; нет утечки pgx/SQLSTATE [INV-8]",
     classes=["SEC", "VAL", "NEG"], priority="P0",
     # verifies CS1-S1-03 (INV-8 leak-guard на filter-пути)
+    #
+    # Прежде здесь стояло `oneOf([200, 400])` под заголовком «handled». Исход при
+    # этом УСТАНОВЛЕН: `name="a\' OR 1=1--"` разбирается штатно (`pkg/filter`.`Parse`
+    # — поле `name` в белом списке use-case\'а `volume.List`, значение в кавычках,
+    # хвоста нет), значение уезжает ПАРАМЕТРОМ запроса, и страница приходит пустой,
+    # потому что тома с таким именем нет. `400` производится только негодным
+    # СИНТАКСИСОМ выражения, которого эта нагрузка не содержит, — то есть прежняя
+    # запись перечисляла исход, которого на этом входе не бывает, и одновременно
+    # приняла бы регрессию разбора фильтра.
+    #
+    # Пустота проверяется по составу ответа: у публичной полосы края
+    # `EmitUnpopulated=true`, поэтому пустой список приходит как `[]`, и у
+    # списочного ответа ровно один массив верхнего уровня.
     steps=[Step(name="lst-filter-sqli", method="GET",
                 path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
                 test_script=[
                     "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                    "pm.test('handled 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                    "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                     "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                    "pm.test('страница пуста: тома с таким именем нет', () => {",
+                    "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+                    "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+                    "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+                    "});",
                     "const body = JSON.stringify(j).toLowerCase();",
                     "pm.test('no pgx/sqlstate/panic leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('pgx'); pm.expect(body).to.not.include('panic'); });",
                 ])],

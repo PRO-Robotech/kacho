@@ -37,13 +37,14 @@ def _cleanup_net():
 
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
-    # (subnet создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
+    # (subnet создан) → DELETE сети блокируется FK RESTRICT (400). Полос две, и
+    # КАЖДАЯ читается своей подписью (`assert_cleanup_delete`), а не принимается скопом.
     # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
     # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент;
     # 200/400 — терминальны, 404 не крутим (сеть не удаляется дважды в этих кейсах).
     return retry_until_authorized(
         Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("сеть", "в сети остались подсети, таблицы маршрутизации или группы"),
                           *save_from_response("j.id", "opId")]),
         retry_on=(403,))
 
