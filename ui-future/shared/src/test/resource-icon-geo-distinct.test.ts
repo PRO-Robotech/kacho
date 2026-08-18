@@ -19,14 +19,39 @@ import { fileURLToPath } from "node:url";
 const UI_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const REL = "src/components/organisms/form/ResourceIcon/ResourceIcon.tsx";
 
-/** Все копии карты иконок в дереве — найденные, а не выписанные. */
-function iconMaps(): { pkg: string; src: string }[] {
+/**
+ * Прослойка — не копия: файл, который только реэкспортирует, карты иконок не
+ * объявляет, и требовать от него ключей значило бы требовать их от чужого файла.
+ *
+ * Распознавание по СОДЕРЖИМОМУ, а не по длине или имени: короткая копия
+ * прослойкой не считается, иначе сведение можно было бы подделать усечением.
+ */
+function isShim(src: string): boolean {
+  const code = src
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !l.startsWith("//") && !l.startsWith("*") && !l.startsWith("/*"));
+  return code.length > 0 && code.every((l) => /^export\s+(\*|\{[^}]*\})\s+from\s+["']/.test(l));
+}
+
+/** Все ФАЙЛЫ карты иконок в дереве — найденные, а не выписанные. */
+function iconFiles(): { pkg: string; src: string }[] {
   return readdirSync(UI_ROOT)
     .filter((name) => !name.startsWith(".") && name !== "node_modules")
     .filter((name) => statSync(path.join(UI_ROOT, name)).isDirectory())
     .map((pkg) => ({ pkg, file: path.join(UI_ROOT, pkg, REL) }))
     .filter((e) => existsSync(e.file))
     .map((e) => ({ pkg: e.pkg, src: readFileSync(e.file, "utf8") }));
+}
+
+/** Настоящие карты — те файлы, которые объявляют иконки сами. */
+function iconMaps(): { pkg: string; src: string }[] {
+  return iconFiles().filter((e) => !isShim(e.src));
+}
+
+/** Прослойки, делегирующие в `shared/`. Считаются отдельно и вслух. */
+function iconShims(): { pkg: string; src: string }[] {
+  return iconFiles().filter((e) => isShim(e.src));
 }
 
 const glyphOf = (src: string, key: string): string =>
@@ -40,7 +65,16 @@ describe("иконки каталога размещения различают 
     // «Ноль нарушений» обязано быть отличимо от «ноль прочитанного»: переезд
     // компонента иначе дал бы пустой обход и зелёный вердикт.
     const maps = iconMaps();
-    expect(maps.length).toBeGreaterThanOrEqual(2);
+    const shims = iconShims();
+    // Порог опущен с двух до одной НАМЕРЕННО и вместе с предметом: карт в дереве
+    // было пять, форк сведён, и осталась одна — общая. Требование «копий не
+    // меньше двух» после этого требовало бы РОВНО ТОГО, что мы устраняли.
+    // Взамен утверждается, что делегирующие прослойки на месте: «карта одна»
+    // должно быть отличимо от «остальные пакеты потеряли компонент вовсе».
+    expect(maps.length).toBeGreaterThanOrEqual(1);
+    expect(shims.length).toBeGreaterThan(0);
+    // eslint-disable-next-line no-console
+    console.log(`[icons] карт: ${maps.length} (${maps.map((m) => m.pkg).join(", ")}); прослоек: ${shims.length}`);
     for (const m of maps) {
       expect({ pkg: m.pkg, regions: glyphOf(m.src, "regions") !== "" }).toEqual({ pkg: m.pkg, regions: true });
       expect({ pkg: m.pkg, zones: glyphOf(m.src, "zones") !== "" }).toEqual({ pkg: m.pkg, zones: true });
