@@ -313,15 +313,44 @@ function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): s
 }
 
 /**
+ * Обработчики событий БРАУЗЕРА, которые контейнеры antd доносят до корневого
+ * узла вместе с остатком props (`<div {...restProps}>`). Перечень закрытый и
+ * назван поимённо: собственные обратные вызовы виджета (`onOpenChange`,
+ * `onSearch`, `onConfirm`, …) событиями DOM не являются, и React ругался бы на
+ * них как на неизвестные свойства обработчика.
+ */
+const DOM_HANDLERS = new Set([
+  "onClick",
+  "onDoubleClick",
+  "onKeyDown",
+  "onKeyUp",
+  "onMouseEnter",
+  "onMouseLeave",
+  "onFocus",
+  "onBlur",
+]);
+
+/**
  * Только те свойства, которые настоящий компонент доносит до DOM: `data-*`,
- * `aria-*`, `id`, `title`. Остальные (`width`, `destroyOnClose`, `maskClosable`,
- * …) — параметры виджета: React ругается на них как на неизвестные атрибуты, а
- * проба, которая начнёт их читать, будет утверждать форму дублёра.
+ * `aria-*`, `id`, `title` и обработчики событий браузера. Остальные (`width`,
+ * `destroyOnClose`, `maskClosable`, …) — параметры виджета: React ругается на
+ * них как на неизвестные атрибуты, а проба, которая начнёт их читать, будет
+ * утверждать форму дублёра.
+ *
+ * Обработчики попали сюда не для полноты: без них заменитель СТРОЖЕ настоящего.
+ * Плашка сервиса на дашборде — обычный контейнер с `onClick`; настоящий antd
+ * этот обработчик до корневого узла доносит, а заменитель ронял его молча, и
+ * нажатие не делало НИЧЕГО. Проба «нажал — перешёл» на таком дублёре красна при
+ * исправном продукте (наблюдалось на dashboard при сведении посадок, #626).
+ * Направление отклонения у дублёра допускается одно — ближе к настоящему,
+ * никогда не мягче и не строже.
  */
 function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
-    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title") out[k] = v;
+    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title" || DOM_HANDLERS.has(k)) {
+      out[k] = v;
+    }
   }
   return out;
 }
