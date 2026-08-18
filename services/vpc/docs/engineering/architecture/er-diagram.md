@@ -265,7 +265,7 @@ erDiagram
 ### Public ресурсы (project-scoped)
 
 #### `networks`
-Контейнер VPC. PK `id` (`net…`). UNIQUE `(project_id, name)` non-partial.
+Контейнер VPC. PK `id` (`net…`). UNIQUE `(project_id, name)` **partial**, `WHERE name <> ''` (миграция `669001`).
 `default_security_group_id` — FK → `security_groups(id) ON DELETE SET NULL` (миграция 0005;
 ранее без FK, nullable после 0005); выставляется inline в `internal/apps/kacho/api/network/create.go`.`doCreate` при
 безусловно, в той же транзакции. `vrf_id` (миграция 0007) — sequence-backed уникальный
