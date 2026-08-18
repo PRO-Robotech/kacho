@@ -278,7 +278,7 @@ func TestSGRulesDomain_ConcurrentWritersExactlyOneWins(t *testing.T) {
 	sgID := ids.NewID(ids.PrefixSecurityGroup)
 	_, err = pool.Exec(ctx, `
 		INSERT INTO security_groups (id, project_id, network_id, name, rules)
-		VALUES ($1, 'proj-sgdom', $2, '', '[]'::jsonb)`, sgID, netID)
+		VALUES ($1, 'proj-sgdom', $2, $1, '[]'::jsonb)`, sgID, netID)
 	require.NoError(t, err)
 
 	// Претенденты бьются в одну строку БЕЗ CAS-предиката: их UPDATE

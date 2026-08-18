@@ -82,7 +82,7 @@ func TestIntegration_Address_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	// Дождаться реального lock-contention (детерминированно вместо фиксированного сна).
 	waitForLockWaiter(t, ctx, pool)
 
-	recA.Name = domain.RcNameVPC("nameA")
+	recA.Name = domain.RcNameVPC("name-a")
 	_, err = wa.Addresses().Update(ctx, &recA.Address)
 	require.NoError(t, err)
 	require.NoError(t, wa.Commit())
@@ -94,7 +94,7 @@ func TestIntegration_Address_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	defer func() { _ = rd.Close() }()
 	got, err := rd.Addresses().Get(ctx, addrID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RcNameVPC("nameA"), got.Name,
+	require.Equal(t, domain.RcNameVPC("name-a"), got.Name,
 		"name set by TX-A must persist (no lost-update)")
 	require.Equal(t, domain.RcDescription("descB"), got.Description,
 		"description set by TX-B must persist (no lost-update)")
@@ -163,7 +163,7 @@ func TestIntegration_NetworkInterface_ConcurrentDisjointUpdate_NoLostUpdate(t *t
 	// Дождаться реального lock-contention (детерминированно вместо фиксированного сна).
 	waitForLockWaiter(t, ctx, pool)
 
-	recA.Name = domain.RcNameVPC("nameA")
+	recA.Name = domain.RcNameVPC("name-a")
 	_, err = wa.NetworkInterfaces().UpdateMeta(ctx, &recA.NetworkInterface)
 	require.NoError(t, err)
 	require.NoError(t, wa.Commit())
@@ -175,7 +175,7 @@ func TestIntegration_NetworkInterface_ConcurrentDisjointUpdate_NoLostUpdate(t *t
 	defer func() { _ = rd.Close() }()
 	got, err := rd.NetworkInterfaces().Get(ctx, nicID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RcNameVPC("nameA"), got.Name,
+	require.Equal(t, domain.RcNameVPC("name-a"), got.Name,
 		"name set by TX-A must persist (no lost-update)")
 	require.Equal(t, domain.RcDescription("descB"), got.Description,
 		"description set by TX-B must persist (no lost-update)")
@@ -236,7 +236,7 @@ func TestIntegration_AddressPool_ConcurrentDisjointUpdate_NoLostUpdate(t *testin
 	waitForLockWaiter(t, ctx, pool)
 
 	pa := recA.AddressPool
-	pa.Name = domain.RcNameVPC("nameA")
+	pa.Name = domain.RcNameVPC("name-a")
 	_, err = wa.AddressPools().Update(ctx, &pa)
 	require.NoError(t, err)
 	require.NoError(t, wa.Commit())
@@ -248,7 +248,7 @@ func TestIntegration_AddressPool_ConcurrentDisjointUpdate_NoLostUpdate(t *testin
 	defer func() { _ = rd.Close() }()
 	got, err := rd.AddressPools().Get(ctx, poolID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RcNameVPC("nameA"), got.Name,
+	require.Equal(t, domain.RcNameVPC("name-a"), got.Name,
 		"name set by TX-A must persist (no lost-update)")
 	require.Equal(t, domain.RcDescription("descB"), got.Description,
 		"description set by TX-B must persist (no lost-update)")

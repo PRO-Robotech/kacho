@@ -104,7 +104,7 @@ func TestIntegration_RouteTable_ConcurrentDisjointUpdate_NoLostUpdate(t *testing
 	waitForLockWaiter(t, ctx, pool)
 
 	// TX-A: ставит name → Update → commit (освобождает lock).
-	recA.Name = domain.RcNameVPC("nameA") // disjoint-поле A
+	recA.Name = domain.RcNameVPC("name-a") // disjoint-поле A
 	_, err = wa.RouteTables().Update(ctx, &recA.RouteTable)
 	require.NoError(t, err)
 	require.NoError(t, wa.Commit())
@@ -116,7 +116,7 @@ func TestIntegration_RouteTable_ConcurrentDisjointUpdate_NoLostUpdate(t *testing
 	defer func() { _ = rd.Close() }()
 	got, err := rd.RouteTables().Get(ctx, rtID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RcNameVPC("nameA"), got.Name,
+	require.Equal(t, domain.RcNameVPC("name-a"), got.Name,
 		"name set by TX-A must persist (no lost-update)")
 	require.Equal(t, domain.RcDescription("descB"), got.Description,
 		"description set by TX-B must persist (no lost-update)")
@@ -349,7 +349,7 @@ func TestIntegration_Network_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	// Дождаться реального lock-contention (детерминированно вместо фиксированного сна).
 	waitForLockWaiter(t, ctx, pool)
 
-	recA.Name = domain.RcNameVPC("nameA")
+	recA.Name = domain.RcNameVPC("name-a")
 	_, err = wa.Networks().Update(ctx, &recA.Network)
 	require.NoError(t, err)
 	require.NoError(t, wa.Commit())
@@ -361,7 +361,7 @@ func TestIntegration_Network_ConcurrentDisjointUpdate_NoLostUpdate(t *testing.T)
 	defer func() { _ = rd.Close() }()
 	got, err := rd.Networks().Get(ctx, netID)
 	require.NoError(t, err)
-	require.Equal(t, domain.RcNameVPC("nameA"), got.Name,
+	require.Equal(t, domain.RcNameVPC("name-a"), got.Name,
 		"name set by TX-A must persist (no lost-update)")
 	require.Equal(t, domain.RcDescription("descB"), got.Description,
 		"description set by TX-B must persist (no lost-update)")

@@ -45,16 +45,16 @@ func TestSubnetList_FilterByZoneAndNetwork_VPC_1_45(t *testing.T) {
 		})
 		require.NoError(t, e)
 	}
-	mkNet("enp_zf1")
-	mkNet("enp_zf2")
+	mkNet("enp-zf1")
+	mkNet("enp-zf2")
 	mkSub := func(name, netID, zone, cidr string) string {
 		s, e := w.Subnets().Insert(ctx, newSubnet("prj_zf", name, netID, zone, []string{cidr}))
 		require.NoError(t, e)
 		return s.ID
 	}
-	_ = mkSub("sub-a", "enp_zf1", "zone-a", "10.10.0.0/24")       // zone-a, net1
-	bZoneB := mkSub("sub-b", "enp_zf1", "zone-b", "10.11.0.0/24") // zone-b, net1
-	cNet2 := mkSub("sub-c", "enp_zf2", "zone-a", "10.12.0.0/24")  // zone-a, net2
+	_ = mkSub("sub-a", "enp-zf1", "zone-a", "10.10.0.0/24")       // zone-a, net1
+	bZoneB := mkSub("sub-b", "enp-zf1", "zone-b", "10.11.0.0/24") // zone-b, net1
+	cNet2 := mkSub("sub-c", "enp-zf2", "zone-a", "10.12.0.0/24")  // zone-a, net2
 	require.NoError(t, w.Commit())
 
 	rd, err := r.Reader(ctx)
@@ -67,8 +67,8 @@ func TestSubnetList_FilterByZoneAndNetwork_VPC_1_45(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, bZoneB, got[0].ID)
 
-	// filter=network_id="enp_zf2" → только cNet2
-	got, _, err = rd.Subnets().List(ctx, kacho.SubnetFilter{ProjectID: "prj_zf", Filter: `network_id="enp_zf2"`}, kacho.Pagination{})
+	// filter=network_id="enp-zf2" → только cNet2
+	got, _, err = rd.Subnets().List(ctx, kacho.SubnetFilter{ProjectID: "prj_zf", Filter: `network_id="enp-zf2"`}, kacho.Pagination{})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, cNet2, got[0].ID)

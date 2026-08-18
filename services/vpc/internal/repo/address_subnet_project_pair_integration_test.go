@@ -78,7 +78,7 @@ func seedNetworkAndSubnet(t *testing.T, ctx context.Context, r kacho.Repository,
 // внешний ключ на пару (проект, подсеть), а не уникальность адреса в подсети.
 func internalAddress(projectID, subnetID string, v6 bool) *domain.Address {
 	a := &domain.Address{
-		ID:        ids.NewID(ids.PrefixAddress),
+		ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 		ProjectID: projectID,
 		Type:      domain.AddressTypeInternal,
 		Reserved:  true,
