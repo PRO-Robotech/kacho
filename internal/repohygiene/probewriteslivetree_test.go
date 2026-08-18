@@ -377,7 +377,7 @@ func (s *liveScope) assign(a *ast.AssignStmt) {
 			continue
 		}
 		rhs := a.Rhs[i]
-		if lits := stringLiterals(rhs); len(lits) > 0 {
+		if lits := exprStringLiterals(rhs); len(lits) > 0 {
 			s.slices[id.Name] = lits
 		}
 		// Присваивание живого делает переменную живой; присваивание любого
@@ -575,7 +575,7 @@ func (s *liveScope) execGitCall(c *ast.CallExpr) {
 // литералов среза, собранного строкой выше (`args := []string{"-C", root, "add"}`).
 func (s *liveScope) subcommand(args []ast.Expr) (string, bool) {
 	for _, a := range args {
-		for _, lit := range stringLiterals(a) {
+		for _, lit := range exprStringLiterals(a) {
 			if gitMutators[lit] {
 				return lit, true
 			}
@@ -591,9 +591,14 @@ func (s *liveScope) subcommand(args []ast.Expr) (string, bool) {
 	return "", false
 }
 
-// stringLiterals — все строковые литералы выражения (сам литерал, элементы
+// exprStringLiterals — все строковые литералы ВЫРАЖЕНИЯ (сам литерал, элементы
 // составного литерала, аргументы `append`).
-func stringLiterals(e ast.Expr) []string {
+//
+// Имя несёт «expr» не для красоты: рядом в пакете живёт `stringLiterals`, берущая
+// литералы ФАЙЛА (гейт тона отказа, задача #718). Обе появились в один день в
+// разных ветках, поэтому столкнулись только при сборке релиза — git конфликта не
+// видел, файлы-то разные. Различай по тому, ЧТО разбирается: выражение или файл.
+func exprStringLiterals(e ast.Expr) []string {
 	var out []string
 	ast.Inspect(e, func(n ast.Node) bool {
 		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
