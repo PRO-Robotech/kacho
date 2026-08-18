@@ -35,7 +35,7 @@ const { RowActionsMenu, resourceHasRowActions } = await import("@/components/mol
 
 /** Ресурс без правки/удаления/перемещения, у которого ЕДИНСТВЕННОЕ действие — глагол. */
 function specWithVerb() {
-  const base = Object.values(REGISTRY)[0] as Record<string, unknown>;
+  const base = Object.values(REGISTRY)[0] as unknown as Record<string, unknown>;
   return {
     ...base,
     // `accounts` — из закрытого списка «перемещать нечем», поэтому ни один из
