@@ -52,6 +52,19 @@ const eslint = new ESLint({ cwd: sharedDir });
 const results = await eslint.lintFiles(["."]);
 
 const actual = {};
+// КООРДИНАТЫ СОХРАНЯЮТСЯ, А НЕ ВЫБРАСЫВАЮТСЯ (#643).
+//
+// Прежняя редакция считала находки по правилу и теряла путь со строкой, хотя
+// линтер отдаёт их в том же сообщении. Читатель, увидев «правило X — 2 шт.»,
+// обязан был воспроизвести прогон, чтобы узнать МЕСТО, — а воспроизвести его
+// не так просто, как кажется: линтер надо звать той же версией и из того же
+// каталога, что и гейт, иначе вердикт будет о другом дереве.
+//
+// Держим до трёх координат на правило. Три, а не все: перечень существует,
+// чтобы отправить читателя в нужный файл, а не чтобы заменить собой вывод
+// линтера; при двадцати находках полный список нечитаем и его перестанут
+// читать целиком — вместе с первой строкой, которая и нужна.
+const where = {};
 let files = 0;
 let problems = 0;
 for (const r of results) {
@@ -59,8 +72,17 @@ for (const r of results) {
   for (const m of r.messages) {
     const rule = m.ruleId ?? "(fatal)";
     actual[rule] = (actual[rule] ?? 0) + 1;
+    (where[rule] ??= []).push(`${path.relative(uiRoot, r.filePath)}:${m.line}:${m.column}`);
     problems += 1;
   }
+}
+
+/** Первые координаты правила — то, с чего начинать разбор. */
+function coords(rule) {
+  const all = where[rule] ?? [];
+  if (all.length === 0) return "";
+  const head = all.slice(0, 3).join(", ");
+  return all.length > 3 ? ` — ${head} и ещё ${all.length - 3}` : ` — ${head}`;
 }
 
 console.log(`осмотрено: файлов ${files}, находок ${problems}, задетых правил ${Object.keys(actual).length}`);
@@ -91,8 +113,8 @@ const debt = JSON.parse(fs.readFileSync(debtPath, "utf8")).rules ?? {};
 const findings = [];
 for (const [rule, n] of Object.entries(actual)) {
   const allowed = debt[rule];
-  if (allowed === undefined) findings.push(`НОВОЕ правило нарушено: ${rule} — ${n} шт. (в долге его нет)`);
-  else if (n > allowed) findings.push(`РОСТ по ${rule}: было ${allowed}, стало ${n}`);
+  if (allowed === undefined) findings.push(`НОВОЕ правило нарушено: ${rule} — ${n} шт. (в долге его нет)${coords(rule)}`);
+  else if (n > allowed) findings.push(`РОСТ по ${rule}: было ${allowed}, стало ${n}${coords(rule)}`);
 }
 for (const [rule, allowed] of Object.entries(debt)) {
   const n = actual[rule] ?? 0;
