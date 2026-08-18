@@ -216,8 +216,21 @@ func requireGrantAuthority(ctx context.Context, repo Repo, relations clients.Rel
 	// the cluster-admin short-circuit (IsClusterAdmin) and missed, so re-checking it
 	// inside fgaHoldsAdmin would be a redundant identical FGA round-trip (#9). The
 	// scope-only variant performs just the per-scope admin-tuple Check.
-	if fgaHoldsScopeAdmin(ctx, relations, resourceType, resourceID) {
+	held, cerr := fgaHoldsScopeAdminE(ctx, relations, resourceType, resourceID)
+	if held {
 		return nil
+	}
+	if cerr != nil {
+		// Путь 2 — ЕДИНСТВЕННЫЙ пообъектный вопрос этого стража: пути 0 и 1
+		// (кластерный супергейт и владелец аккаунта) уже не сработали. Значит
+		// «спросить не удалось» здесь не восполняется ничем, и отказ в правах был
+		// бы утверждением, которого никто не проверял.
+		//
+		// Супергейт пути 0 ошибку глотает намеренно и вправе: несработавший
+		// супергейт просто не срабатывает, а свою недоступность обязан назвать
+		// пообъектный путь — то есть этот. Пока он её глотал, инвариант,
+		// на который супергейт ссылается в своём объяснении, не выполнялся.
+		return authzguard.AuthzBackendUnavailable()
 	}
 
 	return authzguard.PermissionDenied()
@@ -240,36 +253,44 @@ func fgaAdminObject(resourceType, resourceID string) string {
 //
 // Fail-closed: false when the FGA client is unwired (unit tests / degraded mode),
 // the caller is anonymous, or the principal id is empty.
-func fgaHoldsAdmin(ctx context.Context, relations clients.RelationStore, resourceType, resourceID string) bool {
+func fgaHoldsAdminE(ctx context.Context, relations clients.RelationStore, resourceType, resourceID string) (bool, error) {
 	if relations == nil || authzguard.IsAnonymous(ctx) {
-		return false
+		return false, nil
 	}
 	// Cluster-admin short-circuit (RBAC explicit-model 2026 P5, D-9 / КФ-2): the
 	// flat super-gate covers the direct fgaHoldsAdmin call-sites (ListSubjectPrivileges,
 	// D-07) so a cluster-admin retains delegated-admin visibility after the
 	// access-cascade is contracted. Checked before the per-scope admin tuple.
 	if authzguard.IsClusterAdmin(ctx, relations) {
-		return true
+		return true, nil
 	}
-	return fgaHoldsScopeAdmin(ctx, relations, resourceType, resourceID)
+	return fgaHoldsScopeAdminE(ctx, relations, resourceType, resourceID)
 }
 
-// fgaHoldsScopeAdmin reports whether the ctx principal holds the FGA `admin`
+// fgaHoldsScopeAdminE reports whether the ctx principal holds the FGA `admin`
 // relation on the scope object — the per-scope admin-tuple Check ONLY (no
 // cluster-admin short-circuit). Used by requireGrantAuthority's Path 2, which has
 // already evaluated the cluster-admin super-gate in Path 0 (#9 — avoids a duplicate
-// cluster-admin round-trip). Fail-closed: false when FGA is unwired, the caller is
-// anonymous / unknown-type, or the Check errors.
-func fgaHoldsScopeAdmin(ctx context.Context, relations clients.RelationStore, resourceType, resourceID string) bool {
+// cluster-admin round-trip).
+//
+// ПРИЧИНА СОХРАНЯЕТСЯ, и это весь смысл суффикса. Прежняя редакция отдавала
+// `err == nil && allowed`, то есть «хранилище не ответило» было неотличимо от
+// «отношения нет», и вызывающий выдавал ТЕРМИНАЛЬНЫЙ отказ в правах на мигание
+// хранилища. Отказ говорит «вам нельзя» — повторять его бессмысленно;
+// недоступность не говорит о правах ничего.
+//
+// Fail-closed не меняется: `(false, …)` при неподключённом хранилище, у
+// неопознанного вызывающего и на любом отказе — разрешения не выдаётся никогда.
+// Меняется только то, ЧТО об этом узнаёт вызывающий.
+func fgaHoldsScopeAdminE(ctx context.Context, relations clients.RelationStore, resourceType, resourceID string) (bool, error) {
 	if relations == nil {
-		return false
+		return false, nil
 	}
 	subject, ok := authzguard.PrincipalSubject(ctx) // fail-closed: anon / empty / unknown → ""
 	if !ok {
-		return false
+		return false, nil
 	}
-	allowed, err := relations.Check(ctx, subject, "admin", fgaAdminObject(resourceType, resourceID))
-	return err == nil && allowed
+	return relations.Check(ctx, subject, "admin", fgaAdminObject(resourceType, resourceID))
 }
 
 // requireGrantAuthorityViaCreate — shim allowing CreateAccessBindingUseCase to

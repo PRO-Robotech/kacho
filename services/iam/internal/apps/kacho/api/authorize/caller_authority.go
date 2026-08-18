@@ -95,16 +95,34 @@ func (h *Handler) authorizeCaller(ctx context.Context, subject string, res *iamv
 		return nil
 	}
 	// Delegated authority on the specific queried resource.
+	//
+	// unanswered — хотя бы про одно отношение хранилище НЕ ответило. Разрешение
+	// старше неотвеченного вопроса (подтверждённая власть не роняется миганием),
+	// а неотвеченный вопрос старше отказа остальных отношений: про неспрошенное
+	// НЕ ИЗВЕСТНО, даёт оно власть или нет.
+	//
+	// Кластерный супергейт выше ошибку глотает намеренно и вправе: несработавший
+	// супергейт просто не срабатывает. Назвать свою недоступность обязан
+	// пообъектный путь — то есть этот цикл; пока он её глотал, арендатор получал
+	// ТЕРМИНАЛЬНЫЙ отказ на мигании, хотя повтор был бы осмыслен.
+	var unanswered bool
 	if h.authority != nil && res != nil {
 		rType, rID := strings.ToLower(res.GetType()), res.GetId()
 		if rType != "" && rID != "" && rID != "*" {
 			object := rType + ":" + rID
 			for _, rel := range callerAuthorityRelations {
-				if allowed, err := h.authority.Check(ctx, callerSubject, rel, object); err == nil && allowed {
+				allowed, err := h.authority.Check(ctx, callerSubject, rel, object)
+				switch {
+				case err != nil:
+					unanswered = true
+				case allowed:
 					return nil
 				}
 			}
 		}
+	}
+	if unanswered {
+		return authzguard.AuthzBackendUnavailable()
 	}
 	return status.Error(codes.PermissionDenied, "permission denied")
 }

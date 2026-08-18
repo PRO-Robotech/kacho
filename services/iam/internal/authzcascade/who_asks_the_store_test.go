@@ -121,7 +121,7 @@ var askingSites = map[string]lane{
 	"internal/authzfilter/visibility.go:batchRelationRound": laneOwnGate,
 	// Проброс обёртки к транспорту: сама вопроса не задаёт, несёт чужой.
 	"internal/clients/openfga_batchcheck.go:BatchCheckWithContext":                                 laneWrapper,
-	"internal/apps/kacho/api/access_binding/helpers.go:fgaHoldsScopeAdmin":                         laneOwnGate,
+	"internal/apps/kacho/api/access_binding/helpers.go:fgaHoldsScopeAdminE":                        laneOwnGate,
 	"internal/apps/kacho/api/account/list_all_operations.go:requireAccountViewAuthority":           laneOwnGate,
 	"internal/apps/kacho/api/user/invite_authz.go:cascadeCheck":                                    laneOwnGate,
 	"internal/apps/kacho/api/authorize/caller_authority.go:authorizeCaller":                        laneOwnGate,

@@ -431,9 +431,29 @@ func moduleSubject(ctx context.Context) string {
 
 // requireQuotaReader — the narrow gate, shared by both service-facing reads.
 //
-// Returns PermissionDenied (verbatim, non-leaking) on every failure mode:
-// anonymous principal, unwired checker, checker backend error, explicit deny. A
-// checker that cannot answer is not an answer of "yes".
+// ИСХОДА ТРИ, А НЕ ДВА (#665). Проход; отказ в правах; «спросить не удалось».
+// Третий НЕ схлопывается во второй, и это не оттенок:
+//
+//   - отказ в правах говорит «вам нельзя». Решение зависит от тройки
+//     (субъект, отношение, объект), и повтор тождественного вопроса не меняет ни
+//     одного из трёх — значит повторять бессмысленно, и воспитанный клиент не
+//     повторяет;
+//   - недоступность хранилища прав не говорит о правах НИЧЕГО: тот же вопрос
+//     мгновением позже получает ответ.
+//
+// Схлопнув второе в первое, гейт выдавал терминальный вердикт на мигание. Цена
+// не в тянущем величины, а НА ПУТИ МУТАЦИИ: этот же гейт стоит на `Resolve`,
+// который зовётся при создании ресурса, — значит арендатор получал терминальный
+// 403 на создании вместо `UNAVAILABLE`, по которому повтор осмыслен
+// (`retry.OnUnavailable` повторяет ТОЛЬКО `Unavailable`).
+//
+// Fail-closed не меняется ни в одну сторону: запрос отвергнут, ничего не
+// исполнено. Меняется только код — а код и есть весь сигнал. Так же отвечают три
+// соседних стража того же пакета (`RelationWriteGate`, `SystemViewerFloor`,
+// `scope`); этот был единственным отступником.
+//
+// Отказ в правах остаётся у неопознанного вызывающего и у непровязанного гейта:
+// там спрашивать НЕ О КОМ и НЕ У КОГО — это ответ, а не его отсутствие.
 func requireQuotaReader(ctx context.Context, checker authzguard.RelationChecker) error {
 	if checker == nil {
 		return authzguard.PermissionDenied()
@@ -456,19 +476,61 @@ func requireQuotaReader(ctx context.Context, checker authzguard.RelationChecker)
 	// работает от имени арендатора, тот читателем не является, и резолв отказывал
 	// каждой мутации домена. Потом — ТОЛЬКО сертификат: администратор через край
 	// потерял доступ, которым пользуется. Обе проверки нужны вместе.
+	// unanswered — хотя бы про одну личность хранилище НЕ ответило.
+	//
+	// Разрешение старше неотвеченного вопроса (подтверждённый доступ не роняется
+	// миганием), а неотвеченный вопрос старше явного отказа второй личности:
+	// про неспрошенную НЕ ИЗВЕСТНО, читатель она или нет, и отказ соседа этого
+	// не восполняет.
+	var unanswered bool
+
+	ask := func(subject string) (pass bool) {
+		allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID)
+		switch {
+		case err != nil:
+			// Подробность отказа наружу не идёт (`security.md`
+			// §Hardening-инварианты п.1) — она называется в журнале, иначе
+			// «спросить не удалось» неотличимо снаружи от «не положено» и в
+			// журнале тоже.
+			unanswered = true
+			logQuotaReaderUnanswered(ctx, subject, err)
+			return false
+		case allowed:
+			return true
+		default:
+			return false
+		}
+	}
+
+	// ЛИЧНОСТИ СПРАШИВАЮТСЯ ОБЕ, даже когда первая уже отказала: иначе
+	// неотвеченный вопрос про вторую остался бы незамеченным.
 	if subject := moduleSubject(ctx); subject != "" {
-		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+		if ask(subject) {
 			return nil
 		}
 	}
 	if subject, ok := authzguard.PrincipalSubject(ctx); ok {
-		// Ошибка хранилища ответом «да» не является: она просто не даёт
-		// разрешения, а разрешения не дала ни одна личность — значит отказ.
-		if allowed, err := checker.Check(ctx, subject, quotaReaderRelation, "cluster:"+domain.ClusterSingletonID); err == nil && allowed {
+		if ask(subject) {
 			return nil
 		}
 	}
+	if unanswered {
+		return authzguard.AuthzBackendUnavailable()
+	}
 	return authzguard.PermissionDenied()
+}
+
+// logQuotaReaderUnanswered называет причину, по которой хранилище прав не
+// ответило.
+//
+// Отдельной строкой и на уровне предупреждения: наружу уезжает фиксированный
+// непротекающий текст, поэтому без журнала причина не наблюдаема НИГДЕ. Ровно
+// этот разрыв дал в сквозном прогоне отказ, причину которого нечем было назвать.
+func logQuotaReaderUnanswered(ctx context.Context, subject string, err error) {
+	slog.Default().WarnContext(ctx, "quota reader gate: authz backend did not answer",
+		slog.String("subject", subject),
+		slog.String("relation", quotaReaderRelation),
+		slog.String("error", err.Error()))
 }
 
 // finish — terminal Operation of a Create. Method form kept so the Create path

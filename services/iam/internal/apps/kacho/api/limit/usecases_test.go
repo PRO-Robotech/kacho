@@ -187,12 +187,17 @@ type fakeChecker struct {
 	asked []string
 	// only — читателем считается только названный субъект.
 	only string
+	// failOn — хранилище не отвечает про НАЗВАННОГО субъекта, а про остальных
+	// отвечает. Без точечного отказа нельзя отличить «одна из двух личностей
+	// осталась неспрошенной» от «не ответили вовсе»: с общим `fail` обе ветки
+	// гейта дают один и тот же вход, и смешанный случай непредставим.
+	failOn string
 }
 
 func (f *fakeChecker) Check(_ context.Context, subject, relation, object string) (bool, error) {
 	f.subject, f.relation, f.object = subject, relation, object
 	f.asked = append(f.asked, subject)
-	if f.fail {
+	if f.fail || (f.failOn != "" && subject == f.failOn) {
 		return false, grpcstatus.Error(codes.Unavailable, "store unreachable")
 	}
 	// only — «читателем является ТОЛЬКО этот субъект». Пусто означает «любой»,
@@ -485,9 +490,10 @@ func TestDelete_IsIdempotent(t *testing.T) {
 
 // TestResolve_NarrowGate — VPCQ-09, both halves.
 //
-// The four failure modes are asserted TOGETHER because they must all end the same
-// way: an anonymous caller, an unwired gate, a store that cannot answer, and an
-// explicit deny. A gate that cannot answer is not an answer of "yes".
+// Три исхода, кончающиеся ОТКАЗОМ В ПРАВАХ, утверждаются вместе: неопознанный
+// вызывающий, непровязанный гейт и явный отказ. Четвёртый — «хранилище не
+// ответило» — кончается ИНАЧЕ и живёт отдельной пробой ниже: он не есть решение
+// о правах.
 func TestResolve_NarrowGate(t *testing.T) {
 	stated := []domain.Limit{{Scope: domain.LimitScopeDefault, Kind: "vpc.network", Value: 16}}
 
@@ -506,15 +512,6 @@ func TestResolve_NarrowGate(t *testing.T) {
 		_, err := NewResolveUseCase(repo).Execute(callerCtx(), "prj-x", "vpc")
 		require.Equal(t, codes.PermissionDenied, codeOf(t, err),
 			"an unwired gate must fail closed — an unauthorised read of the platform's ceilings is not a lesser failure")
-		require.False(t, repo.touched)
-	})
-
-	t.Run("store cannot answer", func(t *testing.T) {
-		repo := newFakeRepo()
-		repo.stated = stated
-		_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(&fakeChecker{fail: true}).
-			Execute(callerCtx(), "prj-x", "vpc")
-		require.Equal(t, codes.PermissionDenied, codeOf(t, err))
 		require.False(t, repo.touched)
 	})
 
@@ -552,6 +549,87 @@ func TestResolve_NarrowGate(t *testing.T) {
 // членство в группе читателей пределов заведено служебным учётным записям
 // модулей. Ни один арендатор его не имеет и иметь не должен, поэтому резолв
 // отказывал ВСЕГДА, а списание квоты fail-closed роняло каждую мутацию домена.
+// TestResolve_StoreCannotAnswer_IsNotADeny — «хранилище прав не ответило»
+// ОТЛИЧИМО от «не положено», и различие — весь смысл (#665).
+//
+// Отказ в правах говорит «вам нельзя»: решение зависит от тройки
+// (субъект, отношение, объект), и повтор тождественного вопроса не меняет ни
+// одного из трёх — повторять бессмысленно. Недоступность хранилища не говорит о
+// правах НИЧЕГО: тот же вопрос мгновением позже получает ответ. Схлопнув одно в
+// другое, гейт выдаёт терминальный вердикт на мигание.
+//
+// Цена не в тянущем, а НА ПУТИ МУТАЦИИ: тот же гейт стоит на `Resolve`, который
+// зовётся при создании ресурса. Значит мигание хранилища прав давало арендатору
+// терминальный 403 на создании — вместо `UNAVAILABLE`, по которому воспитанный
+// клиент повторит (`retry.OnUnavailable` повторяет ТОЛЬКО `Unavailable`).
+//
+// Fail-closed не меняется ни в одну сторону: запрос отвергнут, ничего не
+// исполнено. Меняется только код — а код и есть весь сигнал.
+//
+// Отрицание стоит В ПАРЕ с положительным контролем: без «явный отказ остался
+// отказом» проба зеленела бы на гейте, который отвечает `UNAVAILABLE` вообще
+// всем.
+func TestResolve_StoreCannotAnswer_IsNotADeny(t *testing.T) {
+	stated := []domain.Limit{{Scope: domain.LimitScopeDefault, Kind: "vpc.network", Value: 16}}
+
+	t.Run("хранилище не ответило — UNAVAILABLE, повтор осмыслен", func(t *testing.T) {
+		repo := newFakeRepo()
+		repo.stated = stated
+		_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(&fakeChecker{fail: true}).
+			Execute(callerCtx(), "prj-x", "vpc")
+		require.Equal(t, codes.Unavailable, codeOf(t, err))
+		require.Equal(t, "authz backend unavailable", grpcstatus.Convert(err).Message(),
+			"текст фиксированный и не несёт подробностей отказа хранилища — утверждать надо СООБЩЕНИЕ, "+
+				"а не только код: рефактор, вернувший подробность, оставил бы пробу зелёной")
+		require.False(t, repo.touched, "fail-closed сохраняется: до строк дело не доходит")
+	})
+
+	t.Run("явный отказ остался отказом — положительный контроль", func(t *testing.T) {
+		repo := newFakeRepo()
+		repo.stated = stated
+		_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(&fakeChecker{answer: false}).
+			Execute(callerCtx(), "prj-x", "vpc")
+		require.Equal(t, codes.PermissionDenied, codeOf(t, err))
+		require.False(t, repo.touched)
+	})
+
+	// ЛИЧНОСТЕЙ ДВЕ, и смешанный исход — не редкость, а обычное состояние пути
+	// мутации: сертификат модуля есть всегда, проброшенный арендатор — тоже.
+	// Неспрошенная личность могла оказаться читателем, поэтому неотвеченный
+	// вопрос старше явного отказа второго.
+	t.Run("одна личность не спрошена, вторая отказала — UNAVAILABLE", func(t *testing.T) {
+		repo := newFakeRepo()
+		repo.stated = stated
+		moduleSubj := "service_account:" + authzguard.ServiceAccountIDForService("compute")
+		checker := &fakeChecker{answer: false, failOn: moduleSubj}
+
+		ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+		ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "user", ID: "usr-tenant"})
+
+		_, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
+		require.Equal(t, codes.Unavailable, codeOf(t, err),
+			"про модуль не ответили — значит про него НЕ ИЗВЕСТНО, читатель он или нет; "+
+				"отказ второй личности этого не восполняет")
+		require.Len(t, checker.asked, 2, "спрошены обе личности, а не одна")
+	})
+
+	// Зеркало предыдущего: разрешение СТАРШЕ неотвеченного вопроса. Иначе
+	// мигание хранилища роняло бы законный доступ, который уже подтверждён.
+	t.Run("одна личность не спрошена, вторая разрешила — проход", func(t *testing.T) {
+		repo := newFakeRepo()
+		repo.stated = stated
+		moduleSubj := "service_account:" + authzguard.ServiceAccountIDForService("compute")
+		checker := &fakeChecker{answer: true, failOn: moduleSubj}
+
+		ctx := grpcsrv.WithCertIdentity(context.Background(), "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute", true)
+		ctx = operations.WithPrincipal(ctx, operations.Principal{Type: "user", ID: "usr-tenant"})
+
+		got, err := NewResolveUseCase(repo).WithQuotaReaderChecker(checker).Execute(ctx, "prj-x", "vpc")
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+	})
+}
+
 // В сквозном прогоне это дало более двух тысяч упавших утверждений, из которых
 // прямо о квоте говорили 66 — остальное каскад.
 //
@@ -693,12 +771,24 @@ func TestResolve_PrecedenceAndCatalogueOrder(t *testing.T) {
 // ── ListChangedSince ─────────────────────────────────────────────────────────
 
 // TestListChanged_Gate — the same narrow gate guards the delta. Both halves.
+//
+// Полос ТРИ, а не две, и третья — предмет #665: тянущий величины упирался в
+// терминальный отказ на мигании хранилища прав и не переживал его, хотя пережил
+// бы (`retry.OnUnavailable` повторяет только `Unavailable`).
 func TestListChanged_Gate(t *testing.T) {
 	repo := newFakeRepo()
 	_, err := NewListChangedUseCase(repo, fakeCursors{}).WithQuotaReaderChecker(&fakeChecker{answer: false}).
 		Execute(callerCtx(), "", 10)
 	require.Equal(t, codes.PermissionDenied, codeOf(t, err))
 	require.False(t, repo.touched)
+
+	repoUnavail := newFakeRepo()
+	_, err = NewListChangedUseCase(repoUnavail, fakeCursors{}).WithQuotaReaderChecker(&fakeChecker{fail: true}).
+		Execute(callerCtx(), "", 10)
+	require.Equal(t, codes.Unavailable, codeOf(t, err),
+		"хранилище не ответило — это не решение о правах; тянущий обязан получить повторяемый исход")
+	require.Equal(t, "authz backend unavailable", grpcstatus.Convert(err).Message())
+	require.False(t, repoUnavail.touched)
 
 	res, err := NewListChangedUseCase(repo, fakeCursors{}).WithQuotaReaderChecker(&fakeChecker{answer: true}).
 		Execute(callerCtx(), "", 10)

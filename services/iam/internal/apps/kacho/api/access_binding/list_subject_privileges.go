@@ -266,5 +266,8 @@ func (u *ListSubjectPrivilegesUseCase) hasAccountViewAuthority(ctx context.Conte
 
 	// Path 2 — delegated admin: principal holds `admin` on account:<id> in FGA
 	// (shared predicate — the single fgaHoldsAdmin used by every authority gate).
-	return fgaHoldsAdmin(ctx, u.relations, "account", string(accountID)), nil
+	//
+	// Отказ хранилища едет НАВЕРХ, а не превращается в «нет прав»: это последний
+	// путь, и после него ответить нечем. Вызывающий облечёт его в свой контракт.
+	return fgaHoldsAdminE(ctx, u.relations, "account", string(accountID))
 }

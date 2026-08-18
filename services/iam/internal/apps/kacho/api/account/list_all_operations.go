@@ -129,11 +129,21 @@ func (u *ListAllOperationsUseCase) requireAccountViewAuthority(ctx context.Conte
 	}
 
 	// Path 2 — delegated admin via FGA.
+	//
+	// Пообъектный путь обязан НАЗВАТЬ свою недоступность. Супергейт пути 1
+	// ошибку глотает намеренно (несработавший супергейт просто не срабатывает),
+	// и его объяснение прямо опирается на то, что «обычный пообъектный путь всё
+	// равно исполняется и о своём отказе сообщает». Пока сообщал не он, а
+	// схлопнутый отказ в правах, инвариант не выполнялся: мигание хранилища
+	// давало терминальный 403 там, где повтор был бы осмыслен.
 	if u.relations != nil {
 		if subject, ok := authzguard.PrincipalSubject(ctx); ok {
 			object := fmt.Sprintf("account:%s", strings.ToLower(accountID))
 			allowed, cerr := u.relations.Check(ctx, subject, "admin", object)
-			if cerr == nil && allowed {
+			switch {
+			case cerr != nil:
+				return authzguard.AuthzBackendUnavailable()
+			case allowed:
 				return nil
 			}
 		}
