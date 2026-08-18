@@ -18,6 +18,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -168,13 +169,20 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 	}
 	tgRegionCheckNeeded := false
 	tgIDToCheck := ""
-	if apply("name") {
-		n := domain.LbName(req.GetName())
-		if err := n.Validate(); err != nil {
-			_ = rd.Close()
-			return nil, err
-		}
-		next.Name = n
+	// Имя на правке судит ЕДИНСТВЕННАЯ функция дерева (validate.NameOnUpdate):
+	// пять исходов маски и значения. Ветка, ради которой она здесь, —
+	// ПОЛНАЯ правка с пустым именем: в proto3 пропущенное и пустое поле
+	// неразличимы, поэтому пустое там означает «не прислали», и имя остаётся
+	// прежним. До этого оно записывалось пустым и умирало на Validate() как
+	// «name is required» — то есть правку описания полным PATCH'ем нельзя было
+	// сделать вовсе, не назвав заодно имя.
+	applyName, nerr := corevalidate.NameOnUpdate("name", mask, req.GetName())
+	if nerr != nil {
+		_ = rd.Close()
+		return nil, nerr
+	}
+	if applyName {
+		next.Name = domain.LbName(req.GetName())
 	}
 	if apply("description") {
 		d := domain.LbDescription(req.GetDescription())

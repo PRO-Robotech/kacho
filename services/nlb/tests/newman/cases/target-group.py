@@ -877,13 +877,21 @@ CASES.extend(http_method_not_allowed_block("TGR", _TG_BASE))
 # Extended matrix
 # ---------------------------------------------------------------------------
 
+# ЗДЕСЬ БЫЛ КЕЙС «имя начинается с цифры → 400». Его предмета больше нет:
+# единая форма имени (DNS label по RFC 1123, `pkg/validate.NameForm`) разрешает
+# цифру первым символом, и `9bad-…` теперь ЗАКОННОЕ имя балансировщика: nlb
+# переведён на общую форму, своя регулярка из его домена снята.
+#
+# Кейс не удалён, а переведён на точку — символ, запрещённый и прежней формой
+# nlb, и новой. Выбор был сделан, когда перевод ещё шёл, и остаётся верным
+# после него: под обеими формами точка именем ресурса не является.
 CASES.append(Case(
-    id="TGR-CR-VAL-NAME-NUMERIC-START",
-    title="Create TG with name starting with digit → InvalidArgument",
+    id="TGR-CR-VAL-NAME-DOT",
+    title="Create TG with a dot in name → InvalidArgument (DNS label, не DNS-имя)",
     classes=["VAL"], priority="P1",
     steps=[
-        Step(name="cr-digit", method="POST", path=_TG_BASE,
-             body={**_TG_BODY, "name": "9bad-{{runId}}"},
+        Step(name="cr-dot", method="POST", path=_TG_BASE,
+             body={**_TG_BODY, "name": "bad.name-{{runId}}"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
     ],
 ))

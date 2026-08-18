@@ -135,7 +135,7 @@ type Image struct {
 }
 
 // Validate проверяет domain-инварианты Image перед созданием. Порядок выдаёт
-// контрактные тексты для input-негативов: name-формат → errIllegalName; source
+// контрактные тексты для input-негативов: name-формат → ErrIllegalName; source
 // exactly-one → required/conflict (F12, STOR-1-24). Cross-service ссылки
 // (region_id→geo, project_id→iam) валидируются peer-API на request-path.
 func (i Image) Validate() error {

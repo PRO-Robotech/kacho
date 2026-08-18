@@ -28,7 +28,7 @@ assert'ов. Закрытие пункта = решение владельца �
 | PROBE-13 | SimulateMaintenanceEvent: возвращает Operation или RPC Unimplemented? | `INST-SME-CRUD-OK` | allow 200\|501 | зафиксировать поведение |
 | PROBE-14 | OperationService.Cancel на done-op: `FailedPrecondition` vs idempotent 200 (с уже-done op) | `OP-CANCEL-NEG-ALREADY-DONE` | allow 200\|400 | зафиксировать |
 | PROBE-15 | DiskType/Zone List игнорируют ли `page_token`? (справочники малы) | `DT-LST-PAGE-TOKEN-GARBAGE` | allow 200\|400 | зафиксировать |
-| PROBE-16 | Compute name regex: точное поведение для пустой строки и edge (одна буква, trailing `_`) | `*-CR-VAL-NAME-EMPTY-OK`, `*-CR-BVA-NAME-*` | empty→200, len63→200, len64→400 | verified contract → `corevalidate.NameCompute` |
+| PROBE-16 | Форма имени: пустая строка и края (одна буква, дефис по краю) | `*-CR-VAL-NAME-EMPTY-OK`, `*-CR-BVA-NAME-*` | empty→200 (имя подставляется из `id`), len63→200, len64→400 | закрыто: контракт — `pkg/validate.NameForm`; прежняя запись называла `corevalidate.NameCompute`, которой в дереве нет |
 | PROBE-17 | malformed/wrong-prefix id (Get/Update/...): конвенция требует sync `InvalidArgument "invalid <res> id '<X>'"` первым стейтментом | (не покрыто отдельным кейсом — тот же gotcha #1, что в VPC) | сейчас → `NotFound` | отступление уже записано (§1) → добрать кейс |
 | PROBE-18 | Image.Create min_disk_size default (когда не указан) — вычисляется из source? | `IMG-CR-CRUD-OK` (assert minDiskSize > 0) | `> 0` | точная семантика |
 | PROBE-19 | Instance fqdn формат при hostname не указан (`<id>.auto.internal`?) | `INST-CR-CRUD-OK` (assert fqdn non-empty) | non-empty string | regex-assert на формат |

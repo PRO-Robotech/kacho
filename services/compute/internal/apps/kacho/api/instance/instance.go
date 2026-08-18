@@ -280,7 +280,9 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if err := validateBootSource(req.BootSource); err != nil {
 		return err
 	}
-	if err := corevalidate.NameCompute("name", req.Name); err != nil {
+	// Форма имени; пустое на создании законно и означает «назови сам» — умолчание
+	// подставит NameOrDefault в Create, когда id уже сгенерирован.
+	if err := corevalidate.NameOnCreate("name", req.Name); err != nil {
 		return err
 	}
 	if err := corevalidate.Description("description", req.Description); err != nil {
@@ -373,6 +375,8 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 	}
 
 	instanceID := ids.NewHyphenID(ids.PrefixInstanceHyphen)
+	// Пустое имя не доживает до записи: ресурса без имени не бывает.
+	req.Name = corevalidate.NameOrDefault(req.Name, instanceID)
 	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
 	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
 	// register-drainer/reconciler backstop, НЕ гейтит op.done.
@@ -584,6 +588,14 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			for _, f := range updates {
 				switch f {
 				case "name":
+					// Пишем ровно тогда, когда общая функция говорит «пиши»: имя,
+					// которого запрос не присылал, не пишется — иначе полный PATCH
+					// описания снимал бы имя молча. Отказ здесь невозможен: тот же
+					// вызов уже прошёл в validateInstanceUpdate до начала записи.
+					applyName, _ := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name)
+					if !applyName {
+						continue
+					}
 					in.Name = req.Name
 					changed = append(changed, "name")
 				case "description":
@@ -683,7 +695,11 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 	for _, f := range instanceUpdatedFields(req.UpdateMask) {
 		switch f {
 		case "name":
-			if err := corevalidate.NameCompute("name", req.Name); err != nil {
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: пять исходов
+			// маски и значения. Пустое имя при ПУСТОЙ маске означает «не прислали»
+			// (в proto3 пропущенное и пустое поле неразличимы), при названной маске —
+			// «сними имя», а снять его нельзя.
+			if _, err := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name); err != nil {
 				return err
 			}
 		case "description":

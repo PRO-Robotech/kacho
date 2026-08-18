@@ -139,10 +139,11 @@ func (u *CreateTargetGroupUseCase) Execute(
 
 	// Sync duplicate-name check (best-effort UX; UNIQUE-violation в worker'е —
 	// атомарный backstop).
-	if string(tg.Name) != "" {
-		if err := u.assertNameUnique(ctx, string(tg.ProjectID), string(tg.Name)); err != nil {
-			return nil, err
-		}
+	//
+	// Условия «имя непусто» здесь нет — см. тот же разбор в create.go балансировщика:
+	// tg.Validate() строкой выше отвергает пустое имя, и ветка недостижима.
+	if err := u.assertNameUnique(ctx, string(tg.ProjectID), string(tg.Name)); err != nil {
+		return nil, err
 	}
 
 	// Учёт числа ресурсов: ранний отказ ДО создания операции (см. разбор в

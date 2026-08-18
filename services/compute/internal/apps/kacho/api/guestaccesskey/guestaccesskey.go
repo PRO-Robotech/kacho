@@ -33,7 +33,10 @@ const (
 	keyResource = "GuestAccessKey"
 	keyPrefix   = "gak"
 
-	maxKeyNameLen   = 63
+	// Здесь стоял собственный предел длины имени. Он снят вместе со своим
+	// вызовом: длина имени входит в единую форму имени ресурса
+	// (corevalidate.NameForm, 1..63), и константа без читателя выглядела бы
+	// действующим правилом, которого нет.
 	maxPublicKeyLen = 16384
 )
 
@@ -148,8 +151,16 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operat
 	if req.ProjectID == "" {
 		return nil, serviceerr.InvalidArg("project_id", "projectId is required")
 	}
-	if l := len(req.Name); l == 0 || l > maxKeyNameLen {
-		return nil, serviceerr.InvalidArg("name", "name must be 1..63 characters")
+	// Имя судится ЕДИНОЙ формой имени ресурса (corevalidate.NameForm), а не
+	// одной длиной: до этого `Foo_BAR!!` и `моё имя с пробелами` проходили — при
+	// том что у соседних ресурсов того же сервиса имя судится формой. Одно поле,
+	// два правила.
+	//
+	// Name, а не NameOnCreate: имя ключа обязательно здесь и сегодня, и сведение
+	// к канону этого не ослабляет. Длина входит в форму (1..63), поэтому
+	// отдельной проверки длины не остаётся — второе правило о том же предмете.
+	if err := corevalidate.Name("name", req.Name); err != nil {
+		return nil, err
 	}
 	if len(req.PublicKey) == 0 || len(req.PublicKey) > maxPublicKeyLen {
 		return nil, serviceerr.InvalidArg("public_key", "publicKey is required and must be at most 16384 bytes")
@@ -252,8 +263,20 @@ func (s *Service) Update(ctx context.Context, req UpdateReq) (*operations.Operat
 	for _, f := range applied {
 		switch f {
 		case "name":
-			if l := len(req.Name); l == 0 || l > maxKeyNameLen {
-				return nil, serviceerr.InvalidArg("name", "name must be 1..63 characters")
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: пять исходов
+			// маски и значения. Ветка, ради которой она здесь, — ПОЛНАЯ правка с
+			// пустым именем: в proto3 пропущенное и пустое поле неразличимы, поэтому
+			// пустое там означает «не прислали». До этого вызывающий, менявший ОДНИ
+			// метки полным PATCH'ем, получал отказ по полю, которого не касался.
+			//
+			// Маска, НАЗВАВШАЯ имя с пустым значением, по-прежнему отвергается: это
+			// «сними имя», а ресурса без имени не бывает.
+			applyName, nerr := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name)
+			if nerr != nil {
+				return nil, nerr
+			}
+			if !applyName {
+				continue
 			}
 			name := req.Name
 			upd.Name = &name

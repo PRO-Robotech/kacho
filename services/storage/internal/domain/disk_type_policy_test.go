@@ -157,10 +157,17 @@ func TestDiskTypeCapabilities_QueriedByName(t *testing.T) {
 	require.Error(t, d.RequireCapability("teleportation"))
 }
 
+// newValidDiskType — класс, законный по ВСЕМ осям сразу.
+//
+// Имя здесь `block-balanced`, а не `Balanced`: имя класса судится единой формой
+// имени ресурса (corevalidate.NameForm, #715), и заглавная буква ей не отвечает.
+// Прежнее значение было законно, пока имя проверялось только длиной, — фикстура
+// с заглавной уронила бы пробы ЯРУСА и ГРАНИЦ по причине, к их предмету
+// отношения не имеющей.
 func newValidDiskType() domain.DiskType {
 	return domain.DiskType{
 		ID:              "block-balanced",
-		Name:            "Balanced",
+		Name:            "block-balanced",
 		Lifecycle:       domain.LifecycleActive,
 		PerformanceTier: domain.TierBalanced,
 	}

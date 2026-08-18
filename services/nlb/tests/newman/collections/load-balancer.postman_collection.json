@@ -21658,11 +21658,11 @@
       ]
     },
     {
-      "name": "NLB-CR-VAL-NAME-NUMERIC-START — Create with name starting with digit → InvalidArgument",
+      "name": "NLB-CR-VAL-NAME-DOT — Create with a dot in name → InvalidArgument (DNS label, не DNS-имя)",
       "description": "class:VAL | priority:P1",
       "item": [
         {
-          "name": "cr-digit",
+          "name": "cr-dot",
           "request": {
             "method": "POST",
             "header": [
@@ -21684,7 +21684,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"9bad-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"bad.name-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

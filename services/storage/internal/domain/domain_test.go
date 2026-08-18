@@ -9,13 +9,22 @@ import "testing"
 // имена ok; too-long(>63)/uppercase/невалидный-символ → фикс. "Illegal argument
 // name" (контрактный текст S1-11, важное #2).
 func TestVolumeNameValidate(t *testing.T) {
-	ok := []string{"", "vol-data-1", "a", "v0", "my-vol-name-9"}
+	// "" остаётся законным ВХОДОМ: на создании оно означает «назови сам» и до
+	// записи не доживает — его заменяет подстановка умолчания в use-case, когда
+	// идентификатор уже сгенерирован (см. name_canon_test.go в use-case тома).
+	// Здесь судится ВХОД, а не записанная строка, и для входа ожидание верно.
+	//
+	// "1vol" переехал сюда из отвергаемых: единая форма имени — DNS label по
+	// RFC 1123, и ведущую цифру он принимает. Прежняя форма storage требовала
+	// букву первым символом; это и было единственное расхождение двух правил
+	// об одном поле (#715).
+	ok := []string{"", "vol-data-1", "a", "v0", "my-vol-name-9", "1vol", "9"}
 	for _, n := range ok {
 		if err := VolumeName(n).Validate(); err != nil {
 			t.Errorf("VolumeName(%q) rejected: %v", n, err)
 		}
 	}
-	bad := []string{"Vol-Data", "vol_data!", "1vol", "-vol", "vol-", "оём",
+	bad := []string{"Vol-Data", "vol_data!", "vol name", "-vol", "vol-", "оём",
 		"way-too-long-name-that-clearly-exceeds-the-sixty-three-char-limit-x",
 		// Полезная нагрузка внедрения отвергается ФОРМОЙ имени, синхронно, тем же
 		// контрактным текстом. Это утверждение — пара к чёрному ящику: кейс suite'ы
@@ -49,14 +58,16 @@ func TestVolumeValidateSizeMessage(t *testing.T) {
 // lowercase-ASCII инвариант, что VolumeName. uppercase / non-ASCII (кириллица
 // "снимок") / >63 / invalid-char → фикс. "Illegal argument name" (не length-only).
 func TestSnapshotNameValidate(t *testing.T) {
-	okNames := []string{"", "snap-01", "s", "my-snap-9"}
+	// "1snap" переехал сюда из отвергаемых по той же причине, что "1vol" выше:
+	// канон — DNS label по RFC 1123, ведущая цифра ему отвечает.
+	okNames := []string{"", "snap-01", "s", "my-snap-9", "1snap"}
 	for _, n := range okNames {
 		s := Snapshot{ProjectID: "prj-1", SourceVolumeID: "vol-1", Name: n, Status: SnapshotStatusReady}
 		if err := s.Validate(); err != nil {
 			t.Errorf("Snapshot name %q rejected: %v", n, err)
 		}
 	}
-	badNames := []string{"Bad_Name", "снимок", "Snap!", "1snap", "-snap",
+	badNames := []string{"Bad_Name", "снимок", "Snap!", "snap name", "-snap",
 		"way-too-long-name-that-clearly-exceeds-the-sixty-three-char-limit-x"}
 	for _, n := range badNames {
 		s := Snapshot{ProjectID: "prj-1", SourceVolumeID: "vol-1", Name: n, Status: SnapshotStatusReady}
@@ -125,14 +136,17 @@ func TestDiskTypeValidate(t *testing.T) {
 	// (use-case) перед валидацией — домен не угадывает намерение админа: класс,
 	// заведённый с опечаткой в этом поле, иначе молча оказался бы принимающим
 	// новые тома. См. disk_type_policy_test.go.
-	valid := DiskType{ID: "network-ssd", Name: "SSD", Lifecycle: LifecycleActive}
+	// Имя `network-ssd`, а не `SSD`: имя класса судится единой формой имени
+	// ресурса (#715), и заглавные буквы ей не отвечают. Прежнее значение было
+	// законно, пока имя проверялось только длиной.
+	valid := DiskType{ID: "network-ssd", Name: "network-ssd", Lifecycle: LifecycleActive}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid disk_type rejected: %v", err)
 	}
-	if err := (DiskType{Name: "SSD", Lifecycle: LifecycleActive}).Validate(); err == nil {
+	if err := (DiskType{Name: "network-ssd", Lifecycle: LifecycleActive}).Validate(); err == nil {
 		t.Error("disk_type without id should be rejected")
 	}
-	if err := (DiskType{ID: "network-ssd", Name: "SSD"}).Validate(); err == nil {
+	if err := (DiskType{ID: "network-ssd", Name: "network-ssd"}).Validate(); err == nil {
 		t.Error("disk_type without lifecycle should be rejected")
 	}
 }

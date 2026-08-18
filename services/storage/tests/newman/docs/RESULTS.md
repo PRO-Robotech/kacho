@@ -183,8 +183,11 @@ RED→GREEN исполняет CI-раннер, локальный newman env-bl
 кейсов. Ни один не требует не-READY / :9091 / attach-CAS (integration-only остаётся вне scope):
 
 - **Volume (+8):** `VOL-CR-BVA-NAME-OVER-64` (BVA len 63+1 → `Illegal argument name`,
-  domain `RuneCount>63`), `VOL-CR-VAL-NAME-{DIGIT,HYPHEN}-START` (ECP первого символа,
-  displayNameRe), `VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED` (слот `block_size` СНЯТ с
+  domain `RuneCount>63`), `VOL-CR-VAL-NAME-{UNDERSCORE,HYPHEN-START}` (ECP набора символов и
+  края; форма имени — единственная в дереве, `pkg/validate.NameForm`. Кейс про
+  цифру первым символом снят вместе со своим предметом: DNS label по RFC 1123 её
+  принимает, а `displayNameRe`, на который здесь ссылались, из домена storage
+  удалён), `VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED` (слот `block_size` СНЯТ с
   контракта — номер и имя зарезервированы; маска, называющая его, отвергается синхронно,
   а прежний пин на текст «неизменяемо после Create» снят: он утверждал бы о поле
   ресурса, которого больше нет) + `VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT`
