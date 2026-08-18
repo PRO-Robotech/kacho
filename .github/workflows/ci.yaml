@@ -1177,7 +1177,7 @@ jobs:
       # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
       - uses: azure/setup-helm@v5
         with:
-          version: v4.2.3
+          version: v4.2.4
 
       # Go нужен ровно одному шагу — проверке умолчаний чужих чартов личности
       # (`-tags helmcharts`): её условие создаёт `helm dependency build`, а не
