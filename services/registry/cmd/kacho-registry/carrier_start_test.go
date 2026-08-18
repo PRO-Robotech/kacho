@@ -74,7 +74,9 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_registry"))
 
 	serveErr := servicehost.Serve(ctx, desc,
-		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, opHandler) },
+		func(reg grpc.ServiceRegistrar) {
+			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil), opHandler)
+		},
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler) },
 	)
 	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {

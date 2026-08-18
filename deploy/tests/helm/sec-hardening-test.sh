@@ -33,7 +33,11 @@ ok() { N=$((N + 1)); }
 # That false-green is the exact class these hardening tests exist to prevent, so
 # detect the impostor explicitly instead of trusting `command -v`.
 command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-yq --version 2>&1 | grep -qi mikefarah || fail \
+# Сверка — БЕЗ трубы: `… | grep -qi` под pipefail даёт ОТКАЗ НА СОВПАДЕНИИ
+# (grep выходит первым, писатель получает SIGPIPE, pipefail поднимает его
+# статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
   "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
 mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
 filters, which would make the assertions below pass without checking anything."
@@ -90,8 +94,8 @@ ok
 # ── 4. openfga-bootstrap RBAC least-privilege (scoped secrets rule) ───────────
 RBAC=$(render charts/openfga-bootstrap/templates/openfga-bootstrap-rbac.yaml --set openfgaBootstrap.enabled=true)
 SCOPED=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "secrets") | select(.resourceNames != null) | .resourceNames | join(",")' 2>/dev/null | head -1)
-echo "$SCOPED" | grep -q "kacho-iam-openfga-store" || fail "openfga-bootstrap Role: secrets rule not scoped to kacho-iam-openfga-store via resourceNames"
-echo "$SCOPED" | grep -q "openfga-model-id" || fail "openfga-bootstrap Role: secrets rule not scoped to openfga-model-id via resourceNames"
+[[ "$SCOPED" == *"kacho-iam-openfga-store"* ]] || fail "openfga-bootstrap Role: secrets rule not scoped to kacho-iam-openfga-store via resourceNames"
+[[ "$SCOPED" == *"openfga-model-id"* ]] || fail "openfga-bootstrap Role: secrets rule not scoped to openfga-model-id via resourceNames"
 # No unrestricted get on all secrets: every rule granting `get` on secrets must carry resourceNames.
 UNSCOPED_GET=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "secrets") | select(.verbs[] == "get") | select(.resourceNames == null) | .verbs | join(",")' 2>/dev/null)
 [ -z "$UNSCOPED_GET" ] || fail "openfga-bootstrap Role: a secrets rule still grants get with no resourceNames"
@@ -100,7 +104,7 @@ UNSCOPED_GET=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.r
 # image/sidecar swap on a compromised bootstrap SA).
 DEP_SCOPED=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "deployments") | select(.resourceNames != null) | .resourceNames | join(",")' 2>/dev/null | head -1)
 for d in kacho-iam api-gateway vpc compute loadbalancer; do
-  echo "$DEP_SCOPED" | grep -q "$d" || fail "openfga-bootstrap Role: deployments rule not scoped to $d via resourceNames"
+  [[ "$DEP_SCOPED" == *"$d"* ]] || fail "openfga-bootstrap Role: deployments rule not scoped to $d via resourceNames"
 done
 # No deployments rule may grant patch/get without resourceNames.
 UNSCOPED_DEP=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "deployments") | select(.resourceNames == null) | .verbs | join(",")' 2>/dev/null)
@@ -110,10 +114,12 @@ ok
 # ── 5. Image digest-pin override (repository@sha256:...) ──────────────────────
 DIG="sha256:0000000000000000000000000000000000000000000000000000000000000000"
 IAM_DIG=$(render charts/kacho-iam/templates/deployment.yaml --set kacho-iam.image.digest="$DIG")
-echo "$IAM_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' | grep -q "@$DIG" \
+IAM_DIG_IMAGE="$(echo "$IAM_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
+[[ "$IAM_DIG_IMAGE" == *"@$DIG"* ]] \
   || fail "kacho-iam: image.digest override not honoured (expected repository@$DIG)"
 GEO_DIG=$(render charts/kacho-geo/templates/deployment.yaml --set kacho-geo.imageDigest="$DIG")
-echo "$GEO_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image' | grep -q "@$DIG" \
+GEO_DIG_IMAGE="$(echo "$GEO_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
+[[ "$GEO_DIG_IMAGE" == *"@$DIG"* ]] \
   || fail "kacho-geo: imageDigest override not honoured (expected repository@$DIG)"
 ok
 

@@ -88,6 +88,19 @@ var quotaTriggerDefiningFiles = map[string][]string{
 		// отчитался бы «ноль находок».
 		"services/storage/internal/migrations/0023_project_resource_quotas.sql",
 
+		// iam — ЕДИНСТВЕННЫЙ владелец, который и назначает величину, и списывает
+		// по ней. Его триггер заводит строку учёта сам, с потреблением ПО ФАКТУ и
+		// с величиной из авторитета, лежащего в этой же базе, — поэтому запись
+		// `used` здесь идёт из того же файла, что и сам механизм, а не из
+		// материализации на стороне Go, которой у него нет.
+		"services/iam/internal/migrations/484002_account_quota_identity_carrier.sql",
+
+		// Вложенная ось vpc: та же функция списания, заменённая целиком через
+		// `CREATE OR REPLACE`, — применённую миграцию править нельзя (ban #5),
+		// поэтому у одной функции два места определения во времени, и оба
+		// обязаны быть названы здесь.
+		"services/vpc/internal/migrations/353002_nested_quota_carrier.sql",
+
 		"services/nlb/internal/migrations/0032_project_resource_quotas.sql",
 		"services/registry/internal/migrations/0015_project_resource_quotas.sql",
 		"services/compute/internal/migrations/0036_project_resource_quotas.sql",

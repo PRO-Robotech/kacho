@@ -181,6 +181,7 @@ func TestNLB1a05_NoLegacyObjectTypeAnywhere(t *testing.T) {
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/AddTargets":                           &lbv1.AddTargetsRequest{TargetGroupId: id},
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/RemoveTargets":                        &lbv1.RemoveTargetsRequest{TargetGroupId: id},
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/ListOperations":                       &lbv1.ListTargetGroupOperationsRequest{TargetGroupId: id},
+		"/kacho.cloud.loadbalancer.v1.QuotaService/List":                                       &lbv1.ListQuotasRequest{ProjectId: id},
 		"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState":    &lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
 		"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/ReportAnnounceState": &lbv1.ReportLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
 	}

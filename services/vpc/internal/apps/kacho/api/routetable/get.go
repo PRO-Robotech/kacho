@@ -19,7 +19,7 @@ import (
 //
 // Видимость единичного чтения энфорсит per-RPC authz-interceptor ПРЯМЫМ
 // per-object Check'ом (`vpc_route_table:<id>` / relation `v_get`, permission_map),
-// ровно как для Update/Delete/AddRoutes. Deny на СУЩЕСТВУЮЩЕМ объекте
+// ровно как для Update и Delete. Deny на СУЩЕСТВУЮЩЕМ объекте
 // interceptor превращает в NotFound (existence-hiding, ErrHideExistence), deny на
 // отсутствующем — в passthrough, и handler отдаёт дословный NotFound из БД. Поэтому
 // use-case никакой собственной authz-проверки не делает и не знает про фильтр.

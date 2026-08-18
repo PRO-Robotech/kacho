@@ -459,7 +459,13 @@ func TestAuditListFilter_ReportsWhatItExamined(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compliant fixture must pass: %v\n--- output ---\n%s", err, out)
 	}
-	for _, want := range []string{"1 adapter file", "1 resource", "1 listing method", "volume.List"} {
+	// Обе стороны переписи названы отдельно: сколько страниц ОБЪЯВЛЕНО на
+	// транспорте и сколько СУДИМО. Пока это одно число, расхождение между ними
+	// видно только отказом — то есть тогда, когда оно уже стоило прогона.
+	for _, want := range []string{
+		"1 adapter file", "transport file(s)", "1 resource",
+		"listing method(s) declared on the transport surface", "1 judged", "volume.List",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gate output must state what it examined (missing %q)\n--- output ---\n%s", want, out)
 		}
@@ -559,4 +565,99 @@ func TestAuditListFilter_RealTreePasses(t *testing.T) {
 		}
 	}
 	t.Log(strings.TrimSpace(out))
+}
+
+// TestAuditListFilter_SeesAListingWithNoRepoOfThatName — страница, объявленная на
+// транспорте, судится ДАЖЕ когда её репозиторий назвал свой метод иначе.
+//
+// Это про КЛАСС, а не про один ресурс. Прежняя полоса обнаружения находила ресурс
+// по форме `func (*<X>Repo) List(`, и любой следующий ресурс, чей репозиторий зовёт
+// своё чтение `ListStates`/`ListPage` — или у которого репозитория нет вовсе, —
+// выпадал из поля зрения ВСЕХ проверок разом. Перепись при этом печатала число,
+// выглядящее полным: гейт не умеет сообщить о том, чего не видел. Найдено переписью
+// дерева (`tools/listfiltergate`), сравнивающей счёт анализатора с независимым
+// обходом; на дне находки лежала ровно одна страница — чтение квот арендатором.
+//
+// Проба идёт В ОБЕ СТОРОНЫ: без объявления страница обязана стать находкой
+// (fail-closed), с объявлением — пройти. Только положительной половины мало: она
+// зеленела бы и на гейте, который просто перестал смотреть.
+func TestAuditListFilter_SeesAListingWithNoRepoOfThatName(t *testing.T) {
+	files := map[string]string{
+		"internal/repo/pg/volume_repo.go":          repoNarrows,
+		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+		// Репозиторий этой страницы существует, но зовётся иначе, и use-case-пакета
+		// у неё нет вовсе — то есть прежней полосе она невидима целиком.
+		"internal/repo/pg/quota.go": `package pg
+
+func (r *QuotaRepo) ListStates() {
+	_ = "SELECT ... FROM project_resource_quotas WHERE project_id = $1"
+}
+`,
+		"internal/handler/quota_handler.go": `package handler
+
+func (h *QuotaHandler) List(ctx context.Context) error { return nil }
+`,
+	}
+
+	undeclared := map[string]auditlistfilter.Listing{
+		"volume.List": {Shape: auditlistfilter.RowFilter},
+	}
+	out, err := runGateArgs(t, files, undeclared)
+	if err == nil {
+		t.Fatalf("страница, объявленная на транспорте, но не объявленная гейту, обязана быть "+
+			"находкой — иначе она не судится ничем\n--- вывод ---\n%s", out)
+	}
+	if !strings.Contains(out, "quota.List") {
+		t.Errorf("находка обязана НАЗВАТЬ страницу\n--- вывод ---\n%s", out)
+	}
+	// Перепись печатает обе стороны: расхождение обязано быть видно числом, а не
+	// только отказом.
+	for _, want := range []string{"transport file(s)", "declared on the transport surface", "judged"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("перепись обязана называть обе стороны (нет %q)\n--- вывод ---\n%s", want, out)
+		}
+	}
+
+	declared := map[string]auditlistfilter.Listing{
+		"volume.List": {Shape: auditlistfilter.RowFilter},
+		"quota.List": {
+			Shape:  auditlistfilter.ClusterScoped,
+			Reason: "свойство проекта, индивидуальных владельцев у строк нет",
+		},
+	}
+	if out, err := runGateArgs(t, files, declared); err != nil {
+		t.Fatalf("объявленная страница обязана проходить: %v\n--- вывод ---\n%s", err, out)
+	}
+}
+
+// TestAuditListFilter_InternalListenerIsTheSameResource — второй слушатель того же
+// ресурса не заводит второго пространства имён.
+//
+// `InternalVolumeHandler` — тот же том на внутреннем слушателе, а не отдельный
+// ресурс. Не снять приставку значило бы требовать ВТОРОГО объявления для одной
+// страницы, и первое же расхождение между ними читалось бы как «разные предметы».
+func TestAuditListFilter_InternalListenerIsTheSameResource(t *testing.T) {
+	files := map[string]string{
+		"internal/repo/pg/volume_repo.go":          repoNarrows,
+		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+		"internal/handler/internal_volume_handler.go": `package handler
+
+func (h *InternalVolumeHandler) ListAttachments(ctx context.Context) error { return nil }
+`,
+	}
+	decls := map[string]auditlistfilter.Listing{
+		"volume.List": {Shape: auditlistfilter.RowFilter},
+		"volume.ListAttachments": {
+			Shape:  auditlistfilter.ClusterScoped,
+			Reason: "внутренний слушатель, тенантского владельца у строки нет",
+		},
+	}
+	out, err := runGateArgs(t, files, decls)
+	if err != nil {
+		t.Fatalf("страница внутреннего слушателя обязана судиться под именем СВОЕГО ресурса: %v"+
+			"\n--- вывод ---\n%s", err, out)
+	}
+	if strings.Contains(out, "internal_volume.") {
+		t.Errorf("приставка слушателя завела второе имя одному предмету\n--- вывод ---\n%s", out)
+	}
 }

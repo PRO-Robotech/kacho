@@ -12,6 +12,8 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaiam"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/quota"
 )
@@ -111,4 +113,16 @@ func scopeName(s iamv1.Limit_Scope) string {
 		return "PROJECT"
 	}
 	return ""
+}
+
+// ListChangedSince тянет ДЕЛЬТУ изменений величин — то, чем снимок догоняет
+// авторитет.
+//
+// Тело — ОБЩЕЕ (`pkg/quota/quotaiam`): перевод дельты доменного не несёт ничего,
+// и пять копий разошлись бы на переводе области, то есть там, где расхождение
+// молча меняет, какие строки снимка правит администратор.
+func (c *LimitClient) ListChangedSince(
+	ctx context.Context, cursor string, pageSize int32,
+) ([]corequota.Change, string, error) {
+	return quotaiam.NewDelta(c.cli, 0).ListChangedSince(ctx, cursor, pageSize)
 }

@@ -108,6 +108,18 @@ const (
 	// objectGate — the page lives inside a single authorizable object; that object
 	// is checked before the page is read.
 	objectGate
+	// scopeProperty — сужать НЕЧЕГО, и это свойство ответа, а не послабление.
+	//
+	// Строки ответа не являются объектами с ИНДИВИДУАЛЬНЫМИ владельцами: они
+	// описывают сам объект области, названный запросом (квоты проекта — такое же
+	// его свойство, как имя или метки). Вопрос ровно один — читаем ли этот объект
+	// вызывающему, — и его решает извлечение области действия на крае. Построчная
+	// проверка отсекала бы ноль строк и создавала бы вид контроля.
+	//
+	// Форма ОБЯЗАНА оставаться редкой: она снимает построчный вопрос, а не
+	// отвечает на него. Ставить её там, где у строк есть владельцы, значит
+	// открыть проект целиком каждому его участнику.
+	scopeProperty
 )
 
 // rule is the enforcement declared for one handler method.
@@ -126,6 +138,13 @@ var enforcement = map[string]rule{
 	"RegistryHandler.ListOperations":   {rowFilter, "filterOperations", "registry_repository of each repo-scoped operation"},
 	"RegistryHandler.ListTags":         {objectGate, "checkRepo", "registry_repository holding the tags"},
 	"RegistryHandler.ListReferrers":    {objectGate, "checkRepository", "registry_repository holding the referrers"},
+	// Чтение квот проекта. Строка квоты — свойство проекта, а не объект с
+	// владельцем: сужать нечего, и доступ решает `viewer` на проекте через
+	// извлечение области действия на крае (`registry.quotas.list`).
+	//
+	// Запись истекает со своим методом: снимите RPC — и она станет находкой
+	// (перепись `Expired` выше).
+	"QuotaHandler.List": {scopeProperty, "", "project named by the request, at the edge"},
 }
 
 // bannedEnumeration are the call shapes that ask the authorization store to list
@@ -410,6 +429,12 @@ func checkHelpersExist(authz map[string]*ast.FuncDecl) []string {
 	seen := map[string]bool{}
 	var out []string
 	for name, r := range enforcement {
+		// Форма «свойство области» помощника не имеет by construction: сужать
+		// нечего, значит и звать нечего. Требовать от неё имени метода значило бы
+		// требовать существования кода, который ничего не делает.
+		if r.shape == scopeProperty {
+			continue
+		}
 		if seen[r.helper] {
 			continue
 		}
@@ -431,6 +456,11 @@ func checkListMethod(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 		return append(out, checkRowFilter(fset, name, fd, r)...)
 	case objectGate:
 		return append(out, checkObjectGate(fset, name, fd, r)...)
+	case scopeProperty:
+		// Проверять здесь нечего ПО ПОСТРОЕНИЮ: форма объявляет, что построчного
+		// вопроса нет. Единственное, что остаётся обязательным, — запрет
+		// перечисления, и он уже применён выше, ДО этого переключателя.
+		return out
 	}
 	return out
 }

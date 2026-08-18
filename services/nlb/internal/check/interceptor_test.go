@@ -515,7 +515,7 @@ func TestAZD019_CatalogCount_26(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Len(t, uniq, 29, catalogCountRationale)
+	require.Len(t, uniq, 30, catalogCountRationale)
 }
 
 // ────────────────────────────────────────────────────────────────────────────

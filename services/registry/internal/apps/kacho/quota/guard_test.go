@@ -6,8 +6,10 @@ package quota
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -218,4 +220,23 @@ func TestGuard_CarrierAskDoesNotMaterialise(t *testing.T) {
 	if res.calls != 0 {
 		t.Fatalf("сосед спрошен %d раз — вопрос про носителя не должен материализовать", res.calls)
 	}
+}
+
+// ListStates отдаёт строки, заведённые материализацией плоских видов, в том же
+// порядке, что настоящий (`ORDER BY kind`).
+//
+// Вложенные (`nested`) сюда НЕ попадают — ровно как в базе: у них своя таблица,
+// потому что проектного потребления у них не существует. Дублёр, отдающий их
+// заодно, сделал бы невидимым отбор по носителю, ради которого он и написан.
+func (s *stubStore) ListStates(_ context.Context, carrierType, carrierID string) ([]quotaread.State, error) {
+	out := make([]quotaread.State, 0, len(s.flat))
+	for _, r := range s.flat {
+		out = append(out, quotaread.State{
+			Kind: r.Kind, Limit: r.Limit,
+			SourceScope: r.SourceScope, SourceScopeID: r.SourceScopeID,
+			CarrierType: carrierType, CarrierID: carrierID,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
+	return out, nil
 }

@@ -8926,7 +8926,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"name\", \"name\": \"adr-renamed-x\"}",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"adr-renamed-x-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9071,7 +9071,7 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('adr-renamed-x'));"
+                  "pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('adr-renamed-x-' + pm.environment.get('runId')));"
                 ]
               }
             }
@@ -10418,7 +10418,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"name,description,labels\", \"name\": \"adr-multi-new\", \"description\": \"multi-desc\", \"labels\": {\"a\": \"1\", \"b\": \"2\"}}",
+              "raw": "{\"updateMask\": \"name,description,labels\", \"name\": \"adr-multi-new-{{runId}}\", \"description\": \"multi-desc\", \"labels\": {\"a\": \"1\", \"b\": \"2\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10564,7 +10564,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('name updated', () => pm.expect(j.name).to.eql('adr-multi-new'));",
+                  "pm.test('name updated', () => pm.expect(j.name).to.eql('adr-multi-new-' + pm.environment.get('runId')));",
                   "pm.test('description updated', () => pm.expect(j.description).to.eql('multi-desc'));",
                   "pm.test('labels a', () => pm.expect((j.labels || {}).a).to.eql('1'));",
                   "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"
@@ -12247,7 +12247,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"name\", \"name\": \"adr-mnnew\", \"description\": \"should-be-ignored\", \"labels\": {\"ignored\": \"y\"}}",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"adr-mnnew-{{runId}}\", \"description\": \"should-be-ignored\", \"labels\": {\"ignored\": \"y\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12393,7 +12393,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('name updated', () => pm.expect(j.name).to.eql('adr-mnnew'));",
+                  "pm.test('name updated', () => pm.expect(j.name).to.eql('adr-mnnew-' + pm.environment.get('runId')));",
                   "pm.test('description preserved', () => pm.expect(j.description).to.eql('init'));",
                   "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"
                 ]

@@ -32,6 +32,7 @@ import (
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/quota"
@@ -263,10 +264,31 @@ func runServe(cfg config.Config) error {
 	// предела»: списание остаётся за триггером, теряется ровно ранний
 	// синхронный отказ — и это состояние объявлено в журнале, чтобы «полосы нет»
 	// было отличимо от «полоса есть и молчит».
+	var quotaHandler *handler.QuotaHandler
 	if limitClient := iamclient.NewLimitClient(iamConn); limitClient != nil {
 		if store := pg.NewQuotaStore(pool); store != nil {
-			registryUC.WithQuotaGuard(quota.NewGuard(store, limitClient, iamAdapter, "registry"))
+			quotaGuard := quota.NewGuard(store, limitClient, iamAdapter, "registry")
+			registryUC.WithQuotaGuard(quotaGuard)
+			// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения
+			// и у полосы ровно два источника, и они одни и те же.
+			quotaHandler = handler.NewQuotaHandler(quotaGuard)
 		}
+
+		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
+		// заведённая один раз, живёт со своей величиной вечно, и смена предела
+		// администратором не доезжает до проекта никогда. Показывать арендатору
+		// такой снимок значило бы громко назвать число, которое не догонит
+		// назначенное, — поэтому чтение и тянущий едут вместе.
+		stopQuotaSync, qerr := corequota.StartLimitSyncer(
+			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
+		if qerr != nil {
+			return fmt.Errorf("start quota limit syncer: %w", qerr)
+		}
+		defer stopQuotaSync()
+	} else {
+		logger.Warn("resource-count quota: no internal iam endpoint, the limit snapshot will " +
+			"NEVER catch up with the authority — the charging trigger still enforces, but an " +
+			"administrator raising or lowering a ceiling has no effect on this process")
 	}
 	logger.Info("quota_guard", "wired", iamConn != nil)
 
@@ -533,7 +555,7 @@ func runServe(cfg config.Config) error {
 	}()
 
 	serveErr := servicehost.Serve(ctx, desc,
-		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, opHandler) },
+		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, quotaHandler, opHandler) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler) },
 	)
 	cancel()
@@ -544,8 +566,15 @@ func runServe(cfg config.Config) error {
 // registerPublic — публичный слушатель :9090: tenant-facing RegistryService плюс
 // опрос длительных операций.
 func registerPublic(reg grpc.ServiceRegistrar, h registryv1.RegistryServiceServer,
-	opHandler operationpb.OperationServiceServer) {
+	quotaHandler *handler.QuotaHandler, opHandler operationpb.OperationServiceServer) {
 	registryv1.RegisterRegistryServiceServer(reg, h)
+	// Чтение квот выставляется, ТОЛЬКО когда полоса учёта собрана. Иначе метод
+	// отвечал бы пустым набором на каждый запрос — то есть «квот нет», ровно то
+	// утверждение, которое контракт запрещает делать. Незарегистрированный метод
+	// отвечает `Unimplemented`, и это честно: возможности здесь действительно нет.
+	if quotaHandler != nil {
+		registryv1.RegisterQuotaServiceServer(reg, quotaHandler)
+	}
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 
