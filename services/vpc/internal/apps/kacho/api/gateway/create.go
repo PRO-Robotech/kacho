@@ -305,12 +305,22 @@ func (u *CreateGatewayUseCase) allocateExternalAddress(ctx context.Context, w Wr
 	addrID := ids.NewID(ids.PrefixAddress)
 	// `Reserved` остаётся ложью осознанно: адрес не заказан арендатором сам по
 	// себе, он возник как следствие создания шлюза, и его жизнь связана со
-	// шлюзом. Имя не задаётся — оно косметический project-scoped ярлык, а
-	// частичный UNIQUE по имени считает пустые имена различными, поэтому
-	// безымянные адреса шлюзов не коллизят между собой.
+	// шлюзом.
+	//
+	// ИМЯ ЗАДАЁТСЯ, И ОНО ПРОИЗВОДНОЕ ОТ `id`. Здесь стояло обратное — «имя не
+	// задаётся, а частичный UNIQUE считает пустые имена различными», — и это
+	// перестало быть правдой в тот момент, когда форма имени стала одной на
+	// дерево: пустое имя больше не доживает до записи, а уникальность держит
+	// полный UNIQUE(project_id, name). Прежнее допущение не просто устарело —
+	// на нём создание шлюза переставало работать целиком.
+	//
+	// Производное от `id` уникально by construction: `id` глобально уникален,
+	// поэтому подбирать свободное имя не нужно, а подбор был бы проверкой
+	// перед вставкой — тем самым check-then-act, который запрещён.
 	if _, err := w.Addresses().Insert(ctx, &domain.Address{
 		ID:           addrID,
 		ProjectID:    g.ProjectID,
+		Name:         domain.GatewayAddressName(addrID),
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv4,
 		ExternalIpv4: &domain.ExternalIpv4Spec{ZoneID: sub.ZoneID},
