@@ -549,7 +549,9 @@ def _make_addr(name_suffix, ip_field="internalIpv4AddressSpec"):
     return [
         Step(name=f"create-addr-{name_suffix}", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}",
-                   "name": f"nic-multi-addr-{name_suffix}-{{{{runId}}}}",
+                   # Суффикс различает шаги и переменные (A/B) и потому остаётся как есть,
+                   # а в ИМЯ ресурса идёт в нижнем регистре — форма (#715).
+                   "name": f"nic-multi-addr-{name_suffix.lower()}-{{{{runId}}}}",
                    ip_field: {"subnetId": "{{subId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", env_var)]),

@@ -19299,7 +19299,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"rt-delAssoc-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"rt-delassoc-net-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -1557,7 +1557,16 @@ CASES.append(Case(
         # Both halves are asserted now, because it is the PAIR that distinguishes
         # full-object PATCH from merge-PATCH, and nothing pinned that before:
         #   (1) a full body without a mask applies EVERY mutable field it carries;
-        #   (2) a partial body without a mask is refused, naming the field it dropped.
+        #   (2) a body that OMITS the name leaves the name alone — an omitted field is
+        #       "not sent", never "clear it" (corevalidate.NameOnUpdate, #715);
+        #   (3) and the refusal half now lives where clearing is actually expressible:
+        #       a mask that NAMES the name with an empty value is refused.
+        #
+        # (2) used to assert 400 here. That was the contract before #715, when a full
+        # body without a name died on "name is required" — which also made it
+        # impossible to patch the description with a full body at all. The refusal did
+        # not disappear, it moved to (3); asserting only (2) as a 200 would have
+        # dropped the tripwire this pair exists for.
         #
         # retry_until_authorized wraps only (1): the first mutating access to the
         # caller's own fresh LB can be denied while the editor tuple materializes. That
@@ -1587,9 +1596,25 @@ CASES.append(Case(
         Step(name="upd-empty-partial-body", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"description": "partial body {{runId}}"},
              test_script=[
+                 "pm.test('a body that omits the name is accepted, not refused', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+             ]),
+        poll_operation_until_done(must_succeed=True),
+        Step(name="get-after-partial-body", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('the field the body carried was applied', () => "
+                          "  pm.expect(pm.response.json().description)"
+                          "    .to.eql(pm.variables.replaceIn('partial body {{runId}}')));",
+                          "pm.test('the name the body omitted was left alone, not cleared', () => "
+                          "  pm.expect(pm.response.json().name)"
+                          "    .to.eql(pm.variables.replaceIn('setup-mask-empty-{{runId}}')));"]),
+        Step(name="upd-mask-names-empty-name", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             body={"updateMask": "name", "name": ""},
+             test_script=[
                  "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('the refusal names the field the body dropped', () => {",
+                 "pm.test('the refusal names the field the mask asked to clear', () => {",
                  "  const j = pm.response.json();",
                  "  const fields = ((j.details || []).flatMap(d => d.fieldViolations || []))"
                  "    .map(v => v.field);",

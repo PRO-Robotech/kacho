@@ -219,7 +219,7 @@ CASES.append(Case(
     # каком из двух ответов, — а ветка `else` подставляла заведомо несуществующий
     # идентификатор, чтобы последующая уборка «тоже прошла». Кейс шёл дальше по
     # несозданному ресурсу и зеленел на промахе.
-    title="Create без name → 200 (имя не обязательно; пустое имя разрешено контрактом)",
+    title="Create без name → 200, имя проставляется от id (пустого имени не существует)",
     classes=["VAL", "CONF"], priority="P2",
     steps=[
         Step(name="cr-no-name", method="POST", path=POOLS, internal=True,
@@ -229,7 +229,12 @@ CASES.append(Case(
                  *assert_status(200),
                  "pm.test('pool id returned', () => pm.expect(pm.response.json().id, JSON.stringify(pm.response.json())).to.be.a('string').and.not.empty);",
                  *save_from_response("j.id", "_noNamePoolId"),
-                 "pm.test('name comes back empty', () => pm.expect(pm.response.json().name || '').to.eql(''));",
+                 # Здесь утверждалось «имя вернулось пустым». Пустого имени больше нет
+                 # (#715): не приславшему имя оно проставляется от id (NameOrDefault),
+                 # и это ровно то, что кейс обязан закреплять — иначе умолчание могло
+                 # бы молча смениться на любое другое и никто бы не заметил.
+                 "pm.test('name defaults to the id', () => { const j = pm.response.json();",
+                 "  pm.expect(j.name, pm.response.text()).to.eql(j.id); });",
              ]),
         Step(name="cleanup", method="DELETE", path=POOLS + "/{{_noNamePoolId}}", internal=True,
              test_script=[*assert_status(200)]),

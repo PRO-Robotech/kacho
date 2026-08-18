@@ -43245,7 +43245,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-dupCidr-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-dupcidr-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -44460,7 +44460,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-luaCount-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-luacount-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -45810,7 +45810,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-luaFrag-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"sub-luafrag-{{runId}}\", \"ipv4CidrBlocks\": [\"10.0.0.0/8\"], \"ipv6CidrBlocks\": [\"fd00::/8\"]}",
               "options": {
                 "raw": {
                   "language": "json"

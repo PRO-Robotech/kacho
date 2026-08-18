@@ -9,7 +9,8 @@ CASES = []
 def _net_steps(suffix="rt"):
     return [
         Step(name="pre-net", method="POST", path="/vpc/v1/networks",
-             body={"projectId": "{{_suiteProjectId}}", "name": f"rt-{suffix}-net-{{{{runId}}}}"},
+             # Суффикс — в нижний регистр: имя обязано отвечать форме (#715).
+             body={"projectId": "{{_suiteProjectId}}", "name": f"rt-{suffix.lower()}-net-{{{{runId}}}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkId", "netId")]),
         poll_operation_until_done(),
