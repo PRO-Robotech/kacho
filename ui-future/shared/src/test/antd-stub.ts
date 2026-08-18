@@ -523,16 +523,53 @@ export function antdStub(): Record<string, unknown> {
   // проверку», а роняло рендер целиком: узел разворачивался в `undefined`.
   const Anchor = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("a", props, children);
-  const Typography = Object.assign(Component, {
-    Text: Component,
-    Title: Component,
-    Paragraph: Component,
+  // Типографика настоящего antd — РАЗНЫЕ теги, и разница видна снаружи: у
+  // заголовка есть роль `heading` с уровнем, у абзаца — своя семантика. Пока
+  // все три были одним `<div>`, «на странице есть заголовок такой-то» было
+  // непроверяемо ВООБЩЕ: ни роли, ни уровня страница не доносила. Это тот же
+  // класс, что #570 — только видимое приходит не пропом, а самим тегом.
+  //
+  // `level` у настоящего заголовка — 1…5, умолчание 1; вне диапазона antd
+  // откатывается к 1, и заменитель делает то же: иначе проба на `level={6}`
+  // утверждала бы о теге, которого продукт не производит.
+  const Title = ({ children, level, ...props }: React.PropsWithChildren<AnyProps>) => {
+    const n = typeof level === "number" && level >= 1 && level <= 5 ? level : 1;
+    return React.createElement(`h${n}`, domAttrs(props), children);
+  };
+  const Text = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("span", domAttrs(props), children);
+  const Paragraph = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("p", domAttrs(props), children);
+  const TypographyRoot = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("article", domAttrs(props), children);
+  const Typography = Object.assign(TypographyRoot, {
+    Text,
+    Title,
+    Paragraph,
     Link: Anchor,
   });
-  const Layout = Object.assign(Component, {
-    Content: Component,
-    Header: Component,
-    Sider: Component,
+
+  // Раскладка настоящего antd — ориентиры страницы: шапка, боковая полоса,
+  // главная зона. Читающий страницу не глазами ходит по ним ролями (`banner`,
+  // `complementary`, `main`), и на трёх одинаковых `<div>` ни одного ориентира
+  // не существует.
+  //
+  // ПРОСТРАНСТВА ИМЁН РАЗВЕДЕНЫ. Прежде и `Typography`, и `Layout` собирались
+  // как `Object.assign(Component, …)` — то есть дописывали свои члены в ОДИН И
+  // ТОТ ЖЕ объект: `Typography === Layout === Component`, а `Component.Sider`
+  // существовал. Проба, обратившаяся к `Typography.Sider`, получила бы рабочий
+  // компонент вместо `undefined`, то есть дублёр был СНИСХОДИТЕЛЬНЕЕ настоящего.
+  const LayoutRoot = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("section", domAttrs(props), children);
+  const Layout = Object.assign(LayoutRoot, {
+    Content: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("main", domAttrs(props), children),
+    Header: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("header", domAttrs(props), children),
+    Sider: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("aside", domAttrs(props), children),
+    Footer: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("footer", domAttrs(props), children),
   });
   // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
   // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
