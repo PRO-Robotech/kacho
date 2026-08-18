@@ -75,6 +75,7 @@ OUTCOME_GREEN = "ЗЕЛЁНЫЙ"
 OUTCOME_RED = "КРАСНЫЙ"
 OUTCOME_PARTIAL = "КРАСНЫЙ · ЧАСТЬ ДЕРЕВА НЕ СУДИЛАСЬ"
 OUTCOME_DIDNOTRUN = "НЕ ВЫПОЛНИЛОСЬ"
+OUTCOME_PRECOND = "НЕ ВЫПОЛНИЛОСЬ · УСЛОВИЕ НЕ СОЗДАНО"
 
 _OUTCOME_GLOSS = {
     OUTCOME_GREEN: "всё дерево судилось, падений нет",
@@ -83,6 +84,9 @@ _OUTCOME_GLOSS = {
                       "числа ниже относятся к меньшему, чем всё дерево"),
     OUTCOME_DIDNOTRUN: ("вердикта нет НИ У ОДНОЙ ревизии: прогон повторяется, "
                         "а не читается как красный e2e"),
+    OUTCOME_PRECOND: ("стенд не поднялся по ВНЕШНЕЙ причине — источник чартов не ответил. "
+                      "Пробы не выполнялись, дефекта продукта здесь НЕ показано; "
+                      "прогон повторяется, а не разбирается как упавшая проба"),
 }
 
 
@@ -93,7 +97,18 @@ def outcome(tot: dict, findings: list[str]) -> tuple[str, str]:
     утверждений», «шарды не отчитались» и «стенды не поднимались» приходили одним
     красным, и первым действием при разборе было выяснение, случилось ли вообще
     что-нибудь. Категория отвечает на этот вопрос первой строкой.
+
+    «УСЛОВИЕ НЕ СОЗДАНО» — подвид «не выполнилось», а не поблажка (kacho#655):
+    исход остаётся ОТКАЗОМ и зелёным не становится ни при каких числах. Названо
+    отдельно потому, что отвечает другому человеку: красное зовёт разбирать
+    продукт, а это — повторить прогон либо снять зависимость от чужого хоста.
+    Даётся ТОЛЬКО когда нехватку целиком объясняют шарды с отметкой И нет ни
+    одного упавшего утверждения: иначе чужая недоступность стала бы способом
+    не показывать свои падения.
     """
+    if tot.get("precondition") and not tot.get("unexplained") \
+            and not (tot["failed"] or tot["unanswered"] or tot["script_failed"] or tot["empty"]):
+        return OUTCOME_PRECOND, _OUTCOME_GLOSS[OUTCOME_PRECOND]
     if tot["reported"] == 0 or tot["assertions"] == 0:
         return OUTCOME_DIDNOTRUN, _OUTCOME_GLOSS[OUTCOME_DIDNOTRUN]
     if tot["reported"] < tot["tree"]:
@@ -101,6 +116,16 @@ def outcome(tot: dict, findings: list[str]) -> tuple[str, str]:
     if findings:
         return OUTCOME_RED, _OUTCOME_GLOSS[OUTCOME_RED]
     return OUTCOME_GREEN, _OUTCOME_GLOSS[OUTCOME_GREEN]
+
+
+def _precondition_shards(verdicts: dict[str, dict]) -> dict[str, str]:
+    """shard-id → причина, по описям, где владелец материализации оставил отметку."""
+    out: dict[str, str] = {}
+    for sid, v in verdicts.items():
+        p = v.get("precondition") or {}
+        if p.get("unmet"):
+            out[sid] = str(p.get("detail") or "причина не названа")
+    return out
 
 
 def _stands_never_started(stages: dict[str, str] | None) -> bool:
@@ -141,6 +166,19 @@ def decide(manifest: dict, verdicts: dict[str, dict], tree_total: int,
             f"третья категория: ни зелёное, ни красное, и в вердикт засчитывается как ОТКАЗ. "
             f"Причина названа в работе «план шардов + гейты покрытия»; пустая таблица "
             f"ниже — её следствие, а не отдельные находки")
+
+    # УСЛОВИЕ НЕ СОЗДАНО — называется РАНЬШЕ производных чисел и один раз.
+    # Шард, чей стенд не поднялся из-за чужого хоста, отчитается нулём коллекций;
+    # без этой строки его ноль читался бы как «пробы упали», то есть как дефект
+    # продукта, — ровно то, ради чего kacho#655 и заведён. Ничего не вычитается:
+    # исход остаётся ОТКАЗОМ, меняется то, ЧТО названо причиной и кому адресовано.
+    precond = _precondition_shards(verdicts)
+    for sid in sorted(precond):
+        findings.append(
+            f"УСЛОВИЕ НЕ СОЗДАНО на шарде '{sid}': {precond[sid]}. Стенд не поднялся по "
+            f"ВНЕШНЕЙ причине — пробы не выполнялись вовсе, и их ноль ниже НЕ является "
+            f"вердиктом о продукте. Это третья категория: ни зелёное, ни красное, "
+            f"в вердикт засчитывается как ОТКАЗ, и прогон повторяется")
 
     for sid in want:
         if sid not in verdicts and not cascade:
@@ -188,6 +226,18 @@ def decide(manifest: dict, verdicts: dict[str, dict], tree_total: int,
     tot["shards_reported"] = len([s for s in want if s in verdicts])
     tot["tree"] = tree_total
     tot["empty"] = len(empty)
+    tot["precondition"] = len(precond)
+
+    # ЧЕМ ОБЪЯСНЕНА НЕХВАТКА. Категория «условие не создано» выдаётся только
+    # тогда, когда КАЖДЫЙ недосчитавшийся шард несёт отметку. Один шард с чужой
+    # недоступностью не вправе объяснять молчание соседнего — иначе отметка стала
+    # бы способом не показывать чужой незапуск.
+    tot["unexplained"] = len([
+        sid for sid in want
+        if sid not in precond and (sid not in verdicts
+                                   or int((verdicts[sid] or {}).get("reported") or 0)
+                                   < int((verdicts[sid] or {}).get("expected") or 0))
+    ])
     return findings, tot
 
 
@@ -229,10 +279,19 @@ def main() -> int:
              f"коллекций **{tot['reported']} из {tot['tree']}** в дереве", "",
              "| шард | суиты | коллекций | запросов | утверждений | УПАЛО | без ответа | скрипт упал |",
              "|---|---|---:|---:|---:|---:|---:|---:|"]
+    precond_rows = _precondition_shards(verdicts)
     for s in manifest["shards"]:
         v = verdicts.get(s["id"])
         if not v:
             lines.append(f"| `{s['id']}` | {' '.join(s['suites'])} | **НЕ ОТЧИТАЛСЯ** | — | — | — | — | — |")
+            continue
+        # Ноль коллекций из-за чужого хоста и ноль из-за упавшего прогона — разные
+        # состояния, и строка таблицы обязана их различать: иначе разбор начинается
+        # с чтения пустого шарда, у которого нечего читать.
+        if s["id"] in precond_rows:
+            lines.append(f"| `{s['id']}` | {' '.join(s['suites'])} | "
+                         f"**УСЛОВИЕ НЕ СОЗДАНО** ({v['reported']}/{v['expected']}) | "
+                         f"— | — | — | — | — |")
             continue
         lines.append(f"| `{s['id']}` | {' '.join(s['suites'])} | {v['reported']}/{v['expected']} | "
                      f"{v['requests']} | {v['assertions']} | **{v['failed']}** | "
@@ -378,6 +437,52 @@ def _self_test() -> int:
 
     run({}, "(и-контроль-2) план зелёный, описей нет — молчать нельзя", want_red=True,
         want_word="НЕ ОТЧИТАЛСЯ", stages={"plan": "success", "shard": "failure"})
+
+    # ─── УСЛОВИЕ НЕ СОЗДАНО (kacho#655) ─────────────────────────────────────
+    #
+    # Инъекция в обе стороны, и вторая половина здесь важнее первой: без неё
+    # отметка стала бы МАСКОЙ — способом подать любой незапуск и любое падение
+    # как «не наша вина». Поэтому рядом с каждым послаблением стоит вход, на
+    # котором оно НЕ выдаётся.
+    def with_precond(sid: str, detail: str = "источник чартов не ответил: https://charts.example/x"):
+        v = full()
+        v[sid]["reported"] = 0
+        v[sid]["assertions"] = 0
+        v[sid]["missing"] = [f"{sid}/all"]
+        v[sid]["precondition"] = {"unmet": True, "kind": "external-chart-source",
+                                  "detail": detail}
+        return v
+
+    run(with_precond(ids[1]),
+        "(к) стенд шарда не поднялся: чужой источник чартов не ответил",
+        want_red=True, want_word="УСЛОВИЕ НЕ СОЗДАНО", want_outcome=OUTCOME_PRECOND)
+
+    # Законный близнец той же формы: тот же ноль коллекций, отметки НЕТ ⇒
+    # по-прежнему «часть дерева не судилась», то есть разбирают продукт.
+    v = full(); v[ids[1]]["reported"] = 0; v[ids[1]]["assertions"] = 0
+    v[ids[1]]["missing"] = [f"{ids[1]}/all"]
+    run(v, "(к-контроль) тот же ноль коллекций БЕЗ отметки — послабления нет",
+        want_red=True, want_outcome=OUTCOME_PARTIAL, forbid_word="УСЛОВИЕ НЕ СОЗДАНО")
+
+    # Отметка НЕ прикрывает упавшие утверждения: они есть — значит пробы шли и
+    # что-то сказали, и это вердикт о продукте.
+    v = with_precond(ids[1]); v[ids[0]]["failed"] = 3
+    run(v, "(к-контроль-2) отметка ЕСТЬ, но 3 утверждения упали — не послабление",
+        want_red=True, want_word="упавших утверждений", want_outcome=OUTCOME_PARTIAL)
+
+    # Отметка одного шарда не объясняет молчание другого.
+    v = with_precond(ids[1]); v.pop(ids[-1])
+    run(v, "(к-контроль-3) отметка у одного, ДРУГОЙ не отчитался — не послабление",
+        want_red=True, want_word="НЕ ОТЧИТАЛСЯ", want_outcome=OUTCOME_PARTIAL)
+
+    # И главное: «условие не создано» НИКОГДА не зелёное. Оно остаётся отказом.
+    findings_k, tot_k = decide(manifest, with_precond(ids[1]), tree, None)
+    if not findings_k:
+        print("  [FAIL] «условие не создано» прошло как ЗЕЛЁНОЕ — третья категория "
+              "превратилась в успех"); ok = False
+    else:
+        print("  [ok ] «условие не создано» остаётся ОТКАЗОМ (находок "
+              f"{len(findings_k)}), зелёным не становится")
 
     print("самопроверка:", "OK" if ok else "FAIL")
     return 0 if ok else 1
