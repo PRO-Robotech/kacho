@@ -148,7 +148,7 @@ func TestRegionInsertDuplicateName_reportsTheName(t *testing.T) {
 
 	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "region-one"})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
-	require.Contains(t, err.Error(), "Region with name Region One already exists",
+	require.Contains(t, err.Error(), "Region with name region-one already exists",
 		"конфликт по имени обязан называть имя")
 	require.NotContains(t, err.Error(), "region-2",
 		"сообщение утверждает конфликт по id, которого не было: id region-2 свободен, занято имя")
@@ -170,7 +170,7 @@ func TestRegionUpdateToTakenName_reportsTheName(t *testing.T) {
 	taken := "taken"
 	_, err = rr.Update(ctx, "region-2", region.UpdateParams{Name: &taken})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
-	require.Contains(t, err.Error(), "Region with name Taken already exists")
+	require.Contains(t, err.Error(), "Region with name taken already exists")
 	require.NotContains(t, err.Error(), "region-2 already exists",
 		"регион region-2 существует — это тот самый, который правят; занято ИМЯ")
 }
@@ -189,7 +189,7 @@ func TestZoneInsertDuplicateName_reportsTheName(t *testing.T) {
 
 	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-b", RegionID: "region-1", Name: "zone-one", Status: domain.ZoneStatusUp})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
-	require.Contains(t, err.Error(), "Zone with name Zone One already exists")
+	require.Contains(t, err.Error(), "Zone with name zone-one already exists")
 	require.NotContains(t, err.Error(), "region-1-b")
 }
 
@@ -215,7 +215,7 @@ func TestZoneCreateFKViolation_NoSuchRegion(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	zr := pg.NewZoneRepo(pool)
-	_, err := zr.Insert(ctx, &domain.Zone{ID: "z-a", RegionID: "no-such-region", Status: domain.ZoneStatusUp})
+	_, err := zr.Insert(ctx, &domain.Zone{ID: "z-a", RegionID: "no-such-region", Name: "z-a", Status: domain.ZoneStatusUp})
 	require.True(t, stderrors.Is(err, geoerrors.ErrFailedPrecondition), "FK violation must surface as FailedPrecondition, got %v", err)
 }
 
@@ -464,7 +464,7 @@ func TestConcurrentZoneInsert_OneWins(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, ierr := zr.Insert(ctx, &domain.Zone{ID: "race-region-a", RegionID: "region-1", Status: domain.ZoneStatusUp})
+			_, ierr := zr.Insert(ctx, &domain.Zone{ID: "race-region-a", RegionID: "region-1", Name: "race-region-a", Status: domain.ZoneStatusUp})
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
