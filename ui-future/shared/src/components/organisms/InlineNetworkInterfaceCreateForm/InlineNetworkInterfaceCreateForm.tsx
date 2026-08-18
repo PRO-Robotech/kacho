@@ -196,7 +196,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
           />
         </Form.Item>
 
-        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")} required>
+        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
 

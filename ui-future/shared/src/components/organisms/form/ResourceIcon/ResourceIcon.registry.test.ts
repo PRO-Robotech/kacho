@@ -74,4 +74,30 @@ describe("карта иконок ресурсов", () => {
     expect(specIds.has("teleporters")).toBe(false);
     expect(specIds.has("networks")).toBe(true);
   });
+
+  // Ресурсы registry держались в форке ИМЕННО из-за этих трёх ключей: общая
+  // карта их не знала, и реестр, репозиторий и тег получали умолчание —
+  // `AppstoreOutlined`, тот же глиф, что у «иконки нет» и у пула адресов. Свести
+  // модуль на общую карту, не перенеся ключи, значило бы снять различимость трёх
+  // ресурсов сразу и не заметить: заглушка выглядит как иконка.
+  it("ресурсы registry имеют собственный глиф, а не умолчание", () => {
+    for (const id of ["registries", "repositories", "tags"]) {
+      expect({ id, hasIcon: iconKeys.includes(id) }).toEqual({ id, hasIcon: true });
+    }
+  });
+
+  it("глифы трёх ресурсов registry различны между собой и не заняты соседями", () => {
+    // Иначе «иконка есть» выполнялось бы тремя одинаковыми картинками — то есть
+    // тем же неразличением, только объявленным.
+    const glyphOf = new Map(
+      [...iconBlock.matchAll(/^\s*"?([a-z][a-z0-9-]*)"?:\s*<(\w+)/gm)].map((m) => [m[1], m[2]] as const),
+    );
+    const mine = ["registries", "repositories", "tags"].map((id) => glyphOf.get(id));
+    expect(new Set(mine).size).toBe(3);
+    // Соседи по карте, чьи глифы форк предлагал занять повторно.
+    expect(mine).not.toContain(glyphOf.get("cidr-groups"));
+    expect(mine).not.toContain(glyphOf.get("placement-groups"));
+    // Умолчание — не иконка: ключ с ним неотличим от отсутствующего.
+    expect(mine).not.toContain("AppstoreOutlined");
+  });
 });

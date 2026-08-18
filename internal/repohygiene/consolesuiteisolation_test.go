@@ -85,10 +85,19 @@ func usesFilesystemModule(literals []string) bool {
 	return false
 }
 
-// consoleFilesystemWriterAllowance — единственное исключение. Ключ — путь; значение
+// consoleFilesystemWriterAllowance — исключения. Ключ — путь; значение
 // — причина, которая обязана оставаться верной.
+//
+// Довод запрета — «запись переживает границу суиты и делает вердикт соседа
+// функцией порядка» — верен для записи В ДЕРЕВО. Запись в СВОЙ временный
+// каталог (`mkdtempSync` от `os.tmpdir()`, снимаемый в `afterEach`) границу не
+// пересекает: имя каталога уникально на каждый прогон, соседу оно неизвестно и
+// прочитано быть не может. Такое исключение допустимо; запись по пути внутри
+// репозитория — нет, и на неё гейт обязан краснеть по-прежнему.
 var consoleFilesystemWriterAllowance = map[string]string{
 	"ui-future/shared/src/test/shared-organisms-single-source.test.ts": "пересобирает ведомость форков под ручкой KACHO_REGEN_FORK_LEDGER=1",
+	"ui-future/shared/src/test/module-reachability.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево модулей в своём mkdtemp-каталоге и снимает его в afterEach: " +
+		"предмет пробы — обходчик реального дерева, и подмена node:fs сделала бы фикстуру снисходительнее продукта",
 }
 
 type fsWriteFinding struct {

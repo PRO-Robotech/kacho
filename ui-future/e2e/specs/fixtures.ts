@@ -176,10 +176,19 @@ async function firstProjectId(page: Page): Promise<string> {
  * здесь он подтверждается чтением ресурса по его собственному адресу — это
  * сильнее проверки `op.error` и не зависит от того, какой службе принадлежит
  * запись операции.
+ *
+ * ОТВЕТ ПРИНИМАЕТСЯ ПО ФОРМЕ, А НЕ ПО ПРОИСХОЖДЕНИЮ. Мутацию рождают два разных
+ * пути пробы, и типы ответов у них РАЗНЫЕ: запрос, отправленный самой пробой
+ * (`page.request.post` → `APIResponse`), и ответ, ПЕРЕХВАЧЕННЫЙ у страницы,
+ * когда мутацию отправила форма (`page.waitForResponse` → `Response`). Помощнику
+ * нужны от обоих ровно два метода, поэтому он их и требует. Привязка к одному из
+ * двух классов заставила бы завести вторую копию этой проверки для форм — и
+ * вторая копия разошлась бы с первой молча, как это уже случалось с помощниками
+ * адресации.
  */
 export async function createdResourceId(
   page: Page,
-  response: Awaited<ReturnType<Page["request"]["post"]>>,
+  response: { status(): number; text(): Promise<string> },
   metadataField: string,
   addressOf: (id: string) => string,
   subject: string,

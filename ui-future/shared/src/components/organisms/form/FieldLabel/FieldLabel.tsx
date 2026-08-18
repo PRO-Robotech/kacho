@@ -1,9 +1,9 @@
 // src/components/form/FieldLabel.tsx
 // FieldLabel — единый label для Form.Item: текст + опц. info-tooltip справа.
-// Звёздочку required рисует не этот компонент, а библиотека формы. Настройка,
-// ставившая её СПРАВА по решению владельца, жила в недостижимом дереве маршрутов
-// vpc и снята вместе с ним (#556); на живых поверхностях её не задаёт никто, и
-// звёздочка идёт слева — открытая находка #562.
+// Звёздочку required рисует не этот компонент, а `requiredMarkAfterLabel`
+// (`@shared/lib/required-mark`), провязанный в `ThemeProvider` — оболочку, через
+// которую проходит каждая форма арендатора. Она ставит звёздочку СПРАВА от
+// подписи по решению владельца (#562).
 // Заменяет 3 разрозненные реализации labelWithInfo (generic/NIC/Subnet).
 import { Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";

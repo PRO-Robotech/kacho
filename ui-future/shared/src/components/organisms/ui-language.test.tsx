@@ -12,8 +12,7 @@
 // (Security Group)» — ровно тот вид, с которого заведена задача).
 
 import { jest } from "@jest/globals";
-import React from "react";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 import { antdStub } from "@shared/test/antd-stub";
@@ -34,26 +33,9 @@ jest.unstable_mockModule("@shared/lib/use-operation", () => ({
   useOperation: () => ({ data: undefined }),
 }));
 
-interface PanelItem {
-  key: string;
-  label?: React.ReactNode;
-  extra?: React.ReactNode;
-  children?: React.ReactNode;
-}
-
-// Стенд-заменитель `Collapse` не рисует пункты, поэтому подпись правила была бы
-// недостижима, а утверждение о ней — истинным при любом наборе.
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Collapse: ({ items }: { items?: PanelItem[] }) =>
-    React.createElement(
-      "ul",
-      null,
-      (items ?? []).map((it) =>
-        React.createElement("li", { key: it.key }, React.createElement("span", null, it.label), it.children),
-      ),
-    ),
-}));
+// Подписи панелей гармошки приходят пропом `items` — их рисует общий
+// стенд-заменитель. Своей копии здесь больше нет (#570).
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { InlineNetworkInterfaceCreateForm } = await import(
   "@shared/components/organisms/InlineNetworkInterfaceCreateForm"
@@ -112,6 +94,10 @@ describe("редактор правил называет источник по-�
       },
     ];
     render(<SgRulesEditor pathPrefix="" value={{ rules }} onChange={jest.fn()} path="rules" />);
+
+    // Панель правила приходит СВЁРНУТОЙ — как у пользователя: её содержимое
+    // видно после раскрытия, и до него подписи вариантов на экране нет.
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
 
     const options = [...document.querySelectorAll("option")].map((o) => o.textContent);
     // Положительный контроль: варианты вообще отрисованы — иначе отрицание ниже
