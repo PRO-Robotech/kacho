@@ -68,7 +68,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-crud-{{runId}}\", \"name\": \"QA Zone-Region CRUD {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-crud-{{runId}}\", \"name\": \"qa-zone-region-crud-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -175,7 +175,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-crud-{{runId}}-a\", \"regionId\": \"qa-zr-crud-{{runId}}\", \"name\": \"QA Zone CRUD {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-crud-{{runId}}-a\", \"regionId\": \"qa-zr-crud-{{runId}}\", \"name\": \"qa-zone-crud-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -392,7 +392,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"9-Bad_Zone!\", \"regionId\": \"qa-any\", \"name\": \"QA Malformed Zone\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"9-Bad_Zone!\", \"regionId\": \"qa-any\", \"name\": \"qa-malformed-zone\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -447,7 +447,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-other-{{runId}}-a\", \"regionId\": \"qa-zr-x-{{runId}}\", \"name\": \"QA Uncoupled Zone {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-other-{{runId}}-a\", \"regionId\": \"qa-zr-x-{{runId}}\", \"name\": \"qa-uncoupled-zone-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -502,7 +502,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-ghost-{{runId}}-a\", \"regionId\": \"qa-ghost-{{runId}}\", \"name\": \"QA Ghost Zone {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-ghost-{{runId}}-a\", \"regionId\": \"qa-ghost-{{runId}}\", \"name\": \"qa-ghost-zone-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -608,7 +608,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-down-{{runId}}\", \"name\": \"QA Zone-Region Down {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-down-{{runId}}\", \"name\": \"qa-zone-region-down-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -715,7 +715,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-down-{{runId}}-a\", \"regionId\": \"qa-zr-down-{{runId}}\", \"name\": \"QA Zone Down {{runId}}\", \"status\": \"DOWN\"}",
+              "raw": "{\"id\": \"qa-zr-down-{{runId}}-a\", \"regionId\": \"qa-zr-down-{{runId}}\", \"name\": \"qa-zone-down-{{runId}}\", \"status\": \"DOWN\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -929,7 +929,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}\", \"name\": \"QA Zone-Region Dflt {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}\", \"name\": \"qa-zone-region-dflt-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1036,7 +1036,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}-a\", \"regionId\": \"qa-zr-dflt-{{runId}}\", \"name\": \"QA Zone Default Status {{runId}}\"}",
+              "raw": "{\"id\": \"qa-zr-dflt-{{runId}}-a\", \"regionId\": \"qa-zr-dflt-{{runId}}\", \"name\": \"qa-zone-default-status-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1248,7 +1248,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-upd-{{runId}}\", \"name\": \"QA Zone-Region Upd {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-upd-{{runId}}\", \"name\": \"qa-zone-region-upd-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1355,7 +1355,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-zr-upd-{{runId}}-a\", \"regionId\": \"qa-zr-upd-{{runId}}\", \"name\": \"QA Zone Upd {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-zr-upd-{{runId}}-a\", \"regionId\": \"qa-zr-upd-{{runId}}\", \"name\": \"qa-zone-upd-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"

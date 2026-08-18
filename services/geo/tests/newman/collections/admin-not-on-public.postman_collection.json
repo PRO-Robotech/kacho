@@ -111,7 +111,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region {{runId}}\"}",
+              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"qa-anp-region-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -223,7 +223,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone-Region {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-anp-zr-{{runId}}\", \"name\": \"qa-anp-zone-region-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -373,7 +373,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zr-{{runId}}-a\", \"regionId\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-anp-zr-{{runId}}-a\", \"regionId\": \"qa-anp-zr-{{runId}}\", \"name\": \"qa-anp-zone-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"

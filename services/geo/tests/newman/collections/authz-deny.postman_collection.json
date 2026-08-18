@@ -243,7 +243,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-deny-reg-{{runId}}\", \"name\": \"QA Deny Region {{runId}}\"}",
+              "raw": "{\"id\": \"qa-deny-reg-{{runId}}\", \"name\": \"qa-deny-region-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -315,7 +315,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-any-{{runId}}-a\", \"regionId\": \"qa-any-{{runId}}\", \"name\": \"QA Deny Zone {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-any-{{runId}}-a\", \"regionId\": \"qa-any-{{runId}}\", \"name\": \"qa-deny-zone-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -818,7 +818,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-anon-reg-{{runId}}\", \"name\": \"QA Anon Region {{runId}}\"}",
+              "raw": "{\"id\": \"qa-anon-reg-{{runId}}\", \"name\": \"qa-anon-region-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -883,7 +883,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"QA Denied Rename {{runId}}\"}",
+              "raw": "{\"name\": \"qa-denied-rename-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
