@@ -169,12 +169,155 @@ def unauth_asserts(case_id):
     ]
 
 
-def allow_asserts(case_id):
+# ---------------------------------------------------------------------------
+# ALLOW-ПОЛОСЫ: ИСХОД ОДИН, УСТАНОВЛЕННЫЙ, И УТВЕРЖДАЕТСЯ ПАРОЙ
+#
+# Здесь стояла ОДНА функция на все 74 ALLOW-позиции матрицы, и она утверждала
+# «код не 403» и «код не 16». Отрицание проходит на любом ответе, кроме этих двух:
+# на успехе, на отказе валидации, на 409, на 500, на 503. То есть строка не
+# отличала исправную систему ни от одной поломки, кроме подписанной 403 — а на
+# полосах ниже она скрывала ДВА живых дефекта самих кейсов (см. lane «sync-reject»).
+# Отдельно: шаг, у которого ВСЕ утверждения о статусе отрицательные, читается
+# гейтами дерева (`internal/repohygiene`) как ПРОБА ОТКАЗА и выпадает из их
+# рассмотрения. verifies #668.
+#
+# Полос четыре, и выбирается полоса ПО ФОРМЕ ЗАПРОСА, а не по имени кейса, —
+# поэтому новая строка матрицы попадает в свою полосу автоматически:
+#
+#   read   — одиночное чтение (`GET /res/{id}`): sync, ответ — сам ресурс.
+#            Пара: HTTP 200 + `id` ответа РАВЕН запрошенному. `google.rpc.Status`
+#            успешное чтение не несёт, поэтому вторым членом пары служит форма.
+#   list   — перечисление (`GET /res` либо `GET /res?scope=`): sync, ответ —
+#            конверт выдачи. Пара: HTTP 200 + верхний уровень тела состоит только
+#            из объявленных полей ответа (`<plural>` + `nextPageToken`), то есть
+#            это НЕ конверт ошибки (`code`/`message`/`details`).
+#   op     — мутация: async по контракту (`api-conventions.md`; все мутирующие RPC
+#            iam возвращают `operation.Operation`). Пара: HTTP 200 + конверт
+#            Operation с iam-префиксом `iop` и объектом `metadata`.
+#   sync-reject — мутация, которую ВЛАДЕЛЕЦ отвергает СИНХРОННО, до Operation,
+#            по телу запроса. Пара: HTTP 400 + `code` 3 + названный текст.
+#
+# ПРЕДМЕТ МАТРИЦЫ ПРИ ЭТОМ СОХРАНЁН СТРОГО. До сервиса доходит только запрос,
+# который край ПРОПУСТИЛ; отказ в правах край отдаёт `403` (полоса DENY) либо
+# скрывает существование `404` (полоса READ-DENY). Значит любой из четырёх исходов
+# выше достижим ровно тем субъектом, которому доступ дан, и регрессия прав валит
+# кейс по первому же утверждению.
+
+
+def _allow_id_expr(path):
+    """Выражение, дающее тот же идентификатор, что ушёл в АДРЕСЕ запроса.
+
+    Подстановка `{{…}}` работает в адресе и теле, но НЕ в скрипте, поэтому
+    ожидаемое значение собирается из того же источника, что и запрос, — двух мест
+    об одном предмете не заводится.
+    """
+    last = path.rstrip("/").rsplit("/", 1)[-1]
+    if last.startswith("{{") and last.endswith("}}"):
+        return f"pm.environment.get('{last[2:-2]}')"
+    return f"'{last}'"
+
+
+def _allow_list_key(path):
+    """Ключ выдачи — последний сегмент КОЛЛЕКЦИИ адреса.
+
+    Он совпадает с именем поля ответа by construction: REST-путь ресурса —
+    `/iam/v1/<plural>`, а поле списка в `List<Res>Response` называется тем же
+    `<plural>` в camelCase (`accounts`, `users`, `roles`, `groups`, `projects`,
+    `serviceAccounts`). Выводить его из адреса, а не принимать параметром, —
+    решение осознанное: параметр `empty_list_key` имеет умолчание `users`, и на
+    вызовах `/accounts` / `/roles` / `/projects` оно неверно; для полосы EMPTY это
+    никогда не выстреливало, потому что EMPTY на них не достижим, но полосе ALLOW
+    досталось бы утверждение про чужой ключ.
+    """
+    return path.split("?")[0].rstrip("/").rsplit("/", 1)[-1]
+
+
+def allow_read_asserts(case_id, id_expr):
+    """ALLOW, одиночное чтение: 200 + ответ есть ЗАПРОШЕННЫЙ ресурс."""
     return [
-        f"pm.test('[{case_id}] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+        f"pm.test('[{case_id}] ALLOW: HTTP 200 (чтение разрешено)', () => "
+        "pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
         "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-        f"pm.test('[{case_id}] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));",
+        f"pm.test('[{case_id}] ALLOW: ответ — запрошенный ресурс, а не конверт отказа', () => {{",
+        "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+        f"  pm.expect(_j.id, JSON.stringify(_j)).to.equal({id_expr});",
+        "});",
     ]
+
+
+def allow_list_asserts(case_id, list_key):
+    """ALLOW, перечисление: 200 + конверт выдачи (а не конверт отказа).
+
+    Ключ выдачи может ОТСУТСТВОВАТЬ — пустая страница законна, и protojson пустое
+    повторяющееся поле не печатает. Поэтому утверждается не «ключ есть», а «сверх
+    объявленных полей ответа в теле ничего нет»: конверт ошибки этим и падает.
+    """
+    return [
+        f"pm.test('[{case_id}] ALLOW: HTTP 200 (перечисление разрешено)', () => "
+        "pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+        "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+        f"pm.test('[{case_id}] ALLOW: конверт выдачи, а не конверт отказа', () => {{",
+        "  pm.expect(_j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+        f"  pm.expect(Object.keys(_j).filter(k => ['{list_key}', 'nextPageToken'].indexOf(k) < 0),",
+        "    'посторонний ключ в конверте выдачи: ' + pm.response.text()).to.eql([]);",
+        f"  pm.expect(_j['{list_key}'] === undefined || Array.isArray(_j['{list_key}']),",
+        f"    'поле {list_key} присутствует и не является массивом: ' + pm.response.text()).to.equal(true);",
+        "});",
+    ]
+
+
+def allow_operation_asserts(case_id):
+    """ALLOW, мутация: 200 + конверт Operation с iam-префиксом.
+
+    Мутации iam async по контракту — все мутирующие RPC возвращают
+    `operation.Operation`. Исход самой операции (конфликт активного гранта, занятое
+    имя) приезжает в `Operation.error` и синхронного статуса не меняет: повторный
+    прогон на том же стенде остаётся 200, а не 409.
+    """
+    return [
+        f"pm.test('[{case_id}] ALLOW: HTTP 200 (мутация принята)', () => "
+        "pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+        "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+        f"pm.test('[{case_id}] ALLOW: конверт Operation', () => {{",
+        "  pm.expect(_j && _j.id, 'operation.id: ' + pm.response.text()).to.match(/^iop[a-z0-9]+$/);",
+        "  pm.expect(_j.metadata, 'operation.metadata').to.be.an('object');",
+        "});",
+    ]
+
+
+def allow_sync_reject_asserts(case_id, message_token):
+    """ALLOW, полоса «край ПРОПУСТИЛ — владелец отверг ТЕЛО, синхронно».
+
+    Пара: HTTP 400 + `code` 3 (`INVALID_ARGUMENT`) + названный текст отказа.
+    Отображение кода в статус задаёт библиотека края (`runtime.HTTPStatusFromCode`;
+    край собирается без `WithErrorHandler`).
+
+    Текст сверяется ВХОЖДЕНИЕМ, а не равенством, и это осознанно: проверка домена
+    склеивает ошибки полей через multierr, поэтому равенство сломалось бы от
+    появления второго нарушения — то есть от изменения, к предмету кейса
+    отношения не имеющего. Названная часть при этом однозначно указывает на
+    производителя отказа.
+    """
+    return [
+        f"pm.test('[{case_id}] ALLOW→отказ тела: HTTP 400', () => "
+        "pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
+        "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+        f"pm.test('[{case_id}] ALLOW→отказ тела: grpc code 3 (INVALID_ARGUMENT)', () => "
+        "pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(3));",
+        f"pm.test('[{case_id}] ALLOW→отказ тела: названный производитель отказа', () => "
+        f"pm.expect((_j && _j.message) || '', JSON.stringify(_j)).to.contain({message_token!r}));",
+    ]
+
+
+def allow_asserts(case_id, method, path, lane=None, message_token=None):
+    """Выбор ALLOW-полосы ПО ФОРМЕ ЗАПРОСА (разбор — в комментарии выше)."""
+    if lane == "sync-reject":
+        return allow_sync_reject_asserts(case_id, message_token)
+    if method == "GET":
+        if _is_single_resource_get(path):
+            return allow_read_asserts(case_id, _allow_id_expr(path))
+        return allow_list_asserts(case_id, _allow_list_key(path))
+    return allow_operation_asserts(case_id)
 
 
 def empty_asserts(case_id, list_key="users"):
@@ -204,7 +347,8 @@ def reject_asserts(case_id):
     ]
 
 
-def emit(case_id_prefix, title, scope, method, path, body, subject, empty_list_key="users"):
+def emit(case_id_prefix, title, scope, method, path, body, subject, empty_list_key="users",
+         allow_lane=None, allow_message_token=None):
     code, label, auth = subject
     decision = EXPECT[scope][code]
     case_id = f"AUTHZ-{case_id_prefix}-{code}"
@@ -231,7 +375,8 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, empty_list_k
         else:
             asserts = deny_asserts(case_id)
     elif decision == "ALLOW":
-        asserts = allow_asserts(case_id)
+        asserts = allow_asserts(case_id, method, path,
+                                lane=allow_lane, message_token=allow_message_token)
     elif decision == "EMPTY":
         asserts = empty_asserts(case_id, empty_list_key)
     else:
@@ -271,10 +416,27 @@ for subj in SUBJECTS:
          "GET", "/iam/v1/accounts/{{accountAId}}", None, subj)
     emit("ACCT-GT-CROSS", "Get account-B", "account-B",
          "GET", "/iam/v1/accounts/{{accountBId}}", None, subj)
+    # ALLOW-полоса этих двух строк — СИНХРОННЫЙ ОТКАЗ ТЕЛА, и это НАХОДКА, а не выбор.
+    #
+    # Имя `"x"` контракту не удовлетворяет: `AccountName.Validate` требует
+    # `^[a-z][-a-z0-9]{2,62}$` (минимум три символа,
+    # `services/iam/internal/domain/types.go`), а `Account.Validate` вызывается
+    # СИНХРОННО — `UpdateAccountUseCase.Execute` зовёт `target.Validate()` до
+    # `operations.NewFromContext`. Значит субъект с правом получает `400` +
+    # `INVALID_ARGUMENT` и Operation не появляется ВООБЩЕ: путь обновления аккаунта
+    # эта строка не проходила ни разу за свою жизнь, а прежнее «код не 403» этого
+    # не показывало.
+    #
+    # Полоса объявлена по ФАКТУ, а тело НЕ чинится здесь намеренно: годное имя
+    # переименовало бы общий посевной аккаунт на каждом прогоне — правка фикстуры
+    # с последствиями для соседних наборов, и она принимается отдельным решением, а
+    # не побочно. Пока полоса названа, «строка не обновляет аккаунт» стало видно.
     emit("ACCT-UP-OWN", "Update account-A", "account-A",
-         "PATCH", "/iam/v1/accounts/{{accountAId}}", {"name": "x", "updateMask": "name"}, subj)
+         "PATCH", "/iam/v1/accounts/{{accountAId}}", {"name": "x", "updateMask": "name"}, subj,
+         allow_lane="sync-reject", allow_message_token="Illegal argument name")
     emit("ACCT-UP-CROSS", "Update account-B", "account-B",
-         "PATCH", "/iam/v1/accounts/{{accountBId}}", {"name": "x", "updateMask": "name"}, subj)
+         "PATCH", "/iam/v1/accounts/{{accountBId}}", {"name": "x", "updateMask": "name"}, subj,
+         allow_lane="sync-reject", allow_message_token="Illegal argument name")
     # garbage-id Delete is per-resource-gated on a non-existent
     # `account:<garbage>` object → `no path` → 403 for every subject (never
     # reaches the repo). See garbage-perresource note in define_account_scoped.
@@ -648,12 +810,33 @@ for subj in SUBJECTS:
 # ---------------------------------------------------------------------------
 
 for subj in SUBJECTS:
+    # ALLOW-полоса приглашения — тоже СИНХРОННЫЙ ОТКАЗ ТЕЛА, и тоже находка.
+    #
+    # Тело несёт `roleId` БЕЗ `projectId`, а `InviteUserUseCase.Execute` объявляет
+    # эти два поля парными: `project_id == "" && role_id != ""` → синхронный
+    # `INVALID_ARGUMENT "Illegal argument project_id: required when role_id is set"`
+    # (`services/iam/internal/apps/kacho/api/user/invite.go`, шаг 1 «Sync validation»).
+    # Проверка `canInviteUsers` идёт ШАГОМ ПОЗЖЕ — значит ALLOW-строки до неё не
+    # доходили никогда, и заявленный предмет кейса (`CanInviteUsers`) ими не
+    # проверялся. Прежнее «код не 403» это скрывало.
+    #
+    # DENY-строки предмет сохраняют: `UserService/Invite` гейтится краем (`editor`
+    # на `account` из `account_id`, запись каталога прав), поэтому субъект без
+    # права получает `403` ДО тела. Отличие ALLOW от DENY остаётся строгим.
+    #
+    # Тело здесь НЕ чинится: добавить `projectId` значит сменить предмет строки
+    # (приглашение в проект — другой сценарий со своей матрицей), а снять `roleId` —
+    # сменить его же. Выбор между ними продуктовый и принимается отдельно.
     emit("INV-A", "Invite user в account-A", "invite-to-account-A",
          "POST", "/iam/v1/users:invite",
-         {"accountId":"{{accountAId}}","email": f"authz-invtarget-{subj[0].lower()}@example.com","roleId":ROLE_VIEW}, subj)
+         {"accountId":"{{accountAId}}","email": f"authz-invtarget-{subj[0].lower()}@example.com","roleId":ROLE_VIEW}, subj,
+         allow_lane="sync-reject",
+         allow_message_token="Illegal argument project_id: required when role_id is set")
     emit("INV-B", "Invite user в account-B", "invite-to-account-B",
          "POST", "/iam/v1/users:invite",
-         {"accountId":"{{accountBId}}","email": f"authz-invtarget-{subj[0].lower()}@example.com","roleId":ROLE_VIEW}, subj)
+         {"accountId":"{{accountBId}}","email": f"authz-invtarget-{subj[0].lower()}@example.com","roleId":ROLE_VIEW}, subj,
+         allow_lane="sync-reject",
+         allow_message_token="Illegal argument project_id: required when role_id is set")
 
 
 # ---------------------------------------------------------------------------

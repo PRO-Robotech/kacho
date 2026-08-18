@@ -230,6 +230,31 @@ jobs:
       # `BadRequest`. Newman нужен, стенд — нет.
       - name: проба внедрения в имя различает отказ и приём (vpc)
         run: python3 services/vpc/tests/newman/scripts/selftest_security_injection_lanes.py
+      # Тот же класс, закрытый в остальных пяти наборах (issue #668). До него ALLOW-
+      # полосы iam / compute / geo / registry / storage утверждали «код не 403» — то
+      # есть проходили на успехе, на отказе валидации, на 500 и на 503, а гейтам
+      # дерева такой шаг виден как проба отказа и в рассмотрение не попадает.
+      #
+      # Каждая проба гоняет НАСТОЯЩИЙ newman по НАСТОЯЩЕЙ сгенерированной коллекции
+      # против подставного сервера и требует трёх вещей: молчания на здоровом ответе,
+      # падения на реальном дефекте С ЕГО ИМЕНЕМ в тексте, и — третьей стороной —
+      # ЗЕЛЕНИ прежней формы на том же дефекте. Без третьей стороны «мы усилили
+      # утверждение» остаётся заявлением. Стенд не нужен; newman нужен и уже поставлен
+      # шагом выше — если его нет, проба выходит НЕнулевым кодом, а не молча.
+      #
+      # Пробы перечислены поимённо, а не собраны шаблоном: шаблон, не нашедший ни
+      # одной пробы, вышел бы успехом, и «ноль исполненного» было бы неотличимо от
+      # «ноль находок».
+      - name: ALLOW-полосы authz различают дефект (iam)
+        run: python3 services/iam/tests/newman/scripts/selftest_authz_allow_lanes.py
+      - name: ALLOW-полосы authz различают дефект (compute)
+        run: python3 services/compute/tests/newman/scripts/selftest_authz_allow_lanes.py
+      - name: ALLOW-полосы authz различают дефект (geo)
+        run: python3 services/geo/tests/newman/scripts/selftest_authz_allow_lanes.py
+      - name: ALLOW-полосы authz различают дефект (registry)
+        run: python3 services/registry/tests/newman/scripts/selftest_authz_allow_lanes.py
+      - name: ALLOW-полосы authz различают дефект (storage)
+        run: python3 services/storage/tests/newman/scripts/selftest_authz_allow_lanes.py
 
       # Шаг удаления, не несущий утверждения, зеленеет при ЛЮБОМ ответе — включая
       # отказ. Перепись по дереву нашла 457 таких на 1359 шагов DELETE. Тихим это

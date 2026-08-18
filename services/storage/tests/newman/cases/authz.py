@@ -117,19 +117,59 @@ CASES.append(Case(
                 auth=_ALICE, test_script=_deny("AUTHZ-VOL-LIST-CROSS-DENY"))],
 ))
 
+def _allow_list(case_id, list_field, project_var):
+    """ALLOW-полоса перечисления: ИСХОД ОДИН — 200 и конверт выдачи.
+
+    ИСХОД УСТАНОВЛЕН, А НЕ ПРИНЯТ НА ВЕРУ. Запись каталога прав для этого
+    перечисления — `viewer` на объекте `project` из поля `project_id`
+    (`gateway/internal/middleware/embed/permission_catalog.json`), а субъект полосы
+    (`jwtProjectAdminA1`) держит биндинг на этот самый проект (шапка файла, фикстура
+    `tests/authz-fixtures/setup.sh`). Значит край пропускает, чтение синхронное,
+    сервис отвечает страницей. Отказать здесь нечему.
+
+    ПАРА, А НЕ ОДИН СТАТУС. Успешное чтение `google.rpc.Status` не несёт — вместо него
+    приходит конверт ответа. Поэтому парой служат СТАТУС и ФОРМА: верхний уровень тела
+    обязан состоять только из объявленных полей ответа (`<list_field>` и
+    `nextPageToken`) и не может быть конвертом ошибки (`code`/`message`/`details`).
+    Ровно тем же способом здесь утверждается и обратная полоса — `_assert_absent`.
+
+    ПОЧЕМУ ПРЕЖНЕЕ УТВЕРЖДЕНИЕ НЕ БЫЛО УТВЕРЖДЕНИЕМ. Здесь стояло «код не 403» и «код
+    не 16». Отрицание проходит на любом ответе, кроме отказа в правах: на отказе
+    валидации (400), на недоступности сервиса (503), на внутренней ошибке (500). То
+    есть строка не отличала исправную систему от той поломки, ради которой кейс
+    написан. verifies #668.
+
+    СТОРОЖ УТЕЧКИ РЕГИСТРИРУЕТСЯ БЕЗУСЛОВНО. Прежде он стоял под `if (j &&
+    Array.isArray(j.volumes))`, то есть при отсутствии ключа выдачи не заводился
+    ВОВСЕ — и его отсутствие в отчёте было неотличимо от его прохождения. Пустая
+    страница — законный исход (утечки в ней нет by construction), незарегистрированное
+    утверждение — нет."""
+    return [
+        f"pm.test('[{case_id}] ALLOW: HTTP 200 (перечисление принято)', () => "
+        "pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
+        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+        f"pm.test('[{case_id}] ALLOW: конверт выдачи, а не конверт отказа', () => {{",
+        "  pm.expect(j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+        f"  pm.expect(Object.keys(j).filter(k => ['{list_field}', 'nextPageToken'].indexOf(k) < 0),",
+        "    'посторонний ключ в конверте выдачи: ' + pm.response.text()).to.eql([]);",
+        f"  pm.expect(j['{list_field}'] === undefined || Array.isArray(j['{list_field}']),",
+        f"    'поле {list_field} присутствует и не является массивом: ' + pm.response.text()).to.equal(true);",
+        "});",
+        f"pm.test('[{case_id}] нет кросс-проектной утечки', () => "
+        f"(j && j['{list_field}'] || []).forEach(v => pm.expect(v.projectId, "
+        f"'утёк объект чужого проекта ' + v.id).to.equal(pm.environment.get('{project_var}'))));",
+    ]
+
+
 CASES.append(Case(
     id="AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK",
-    title="[INV-10] alice List volumes projectId=projectA1 (есть viewer) → not 403; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
+    title="[INV-10] alice List volumes projectId=projectA1 (есть viewer) → 200 + конверт выдачи; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
     classes=["AUTHZ", "SEC", "POS"], priority="P0",
     # verifies CS1-S1-13
     steps=[Step(name="list-own", method="GET", path=f"{VOL}?projectId={{{{projectA1Id}}}}",
                 auth=_ALICE,
-                test_script=[
-                    "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                    "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                    "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] not Unauthenticated (16)', () => pm.expect(j && j.code, JSON.stringify(j)).to.not.equal(16));",
-                    "if (j && Array.isArray(j.volumes)) { pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] no cross-project leak (all projectA1)', () => j.volumes.forEach(v => pm.expect(v.projectId, 'leaked cross-project volume ' + v.id).to.equal(pm.environment.get('projectA1Id')))); }",
-                ])],
+                test_script=_allow_list("AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK",
+                                        "volumes", "projectA1Id"))],
 ))
 
 # ---------------------------------------------------------------------------

@@ -552,70 +552,80 @@ CASES.append(Case(
 ))
 
 # ListTags garbage page_token → rejected. ListTags is EXISTENCE-HIDING (RG-1 overlay
-# A08/ListTags parity): the handler runs the per-repo v_list Check on
-# registry_repository:<reg>/<repo> (public.go:182, deny/absent → NOT_FOUND) BEFORE the
-# adapter decodes the page_token. The probe repo `app-{{runId}}` is never pushed → the
-# existence-hiding 404 preempts token-validation. On a VISIBLE repo the bad token would
-# surface as 400 INVALID_ARGUMENT. Tolerate [400,404]; invariant — a garbage token never
-# yields 200. (Unlike ListRegistries REG-1-31, ListTags is NOT a listauthz short-circuit,
-# so security.md #7 format-before-authz does not mandate 400 for a hidden repo.)
+# ФОРМАТ СТРАНИЦЫ СУДИТСЯ ДО ГЕЙТА ДОСТУПА — значит исход ОДИН, 400.
+#
+# Прежняя редакция объявляла обратный порядок («per-repo v_list Check ... BEFORE the
+# adapter decodes the page_token») и на этом основании терпела 404. Порядок в дереве
+# ПРОТИВОПОЛОЖЕН: `RegistryHandler.ListTags` (internal/handler/public.go) зовёт
+# `registry.ValidateTagListPagination` и только затем `checkRepo(v_list)` — ровно по
+# конвенции «формат → authz → repo» (`security.md` #7), и комментарий у самого кода
+# это говорит. Значит у 404 на этом входе нет производителя, а толерантность
+# перечисляла исход, которого не бывает. verifies #668.
 CASES.append(Case(
     id="REG-LSTTAGS-NEG-BAD-TOKEN",  # index: REG-24
-    title="ListTags garbage page_token → 400 (visible repo) or 404 (existence-hiding preempts on absent repo), never 200",
+    title="ListTags garbage page_token → 400 INVALID_ARGUMENT (формат судится до гейта доступа)",
     classes=["NEG", "VAL"], priority="P2",
     steps=[Step(name="list-tags-bad-token", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageToken=not-a-b64-token",
-                test_script=[
-                    "pm.test('rejected: 400 (bad token) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    "const j = pm.response.json();",
-                    "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));",
-                ])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
-# ListTags by an unauthorized subject (stranger) → existence-hiding: 404 (or 401 if
-# anonymous), never 403, no deny_reasons leak. 200 допустим ТОЛЬКО как пустая страница:
-# смысл скрытия существования в том, что чужак не получает СОДЕРЖИМОГО — поэтому 200
-# обязан нести утверждение о пустоте, иначе кейс пропускает ровно то, что ловит
-# (принятый без единой проверки 200 = отсутствие утверждения, testing.md).
+# ListTags by an unauthorized subject (stranger) → existence-hiding. ИСХОД ОДИН, и он
+# УСТАНОВЛЕН по коду, а не угадан: запись каталога прав объявляет метод `scope_filtered`
+# (`gateway/internal/middleware/embed/permission_catalog.json`) — то есть край гейт по
+# объекту не ставит и требует лишь валидного принципала, а решение принимает сервис.
+# `RegistryHandler.ListTags` (internal/handler/public.go) судит формат страницы, затем
+# зовёт `checkRepo(v_list)` на `registry_repository:<reg>/<repo>`; у чужака нет ни
+# одного отношения, из которых `v_list` выводится, поэтому гейт отвечает
+# `errRepoHideExistence()` — `NotFound "repository not found"` (internal/handler/
+# listauthz.go). Отказать иначе нечему.
+#
+# ПОЧЕМУ ПРЕЖНЯЯ ТОЛЕРАНТНОСТЬ БЫЛА ЛОЖНОЙ, и в трёх местах сразу. Утверждение
+# принимало `oneOf([200, 401, 404])` плюс отдельной строкой «never 403».
+#   * `401` НЕДОСТИЖИМ: шаг несёт `auth="jwtStranger"`, а генератор на незаданном имени
+#     субъекта НЕ отправляет запрос анонимно — он роняет шаг с именем переменной и
+#     пропускает его (`gen.py::_auth_pre_script`, harness-config guard). Значит
+#     анонимного запроса на этом пути не бывает ни при каком входе.
+#   * `200` — это НАСТОЯЩАЯ УТЕЧКА, а не законный исход: пройденный `v_list` у субъекта
+#     без единого гранта означает, что гейт открылся. Прежняя редакция принимала его,
+#     оговорившись «только пустая страница», — то есть кейс скрытия существования
+#     принимал открытый гейт как норму.
+#   * «never 403» отдельной строкой ничего не добавляло: `oneOf` уже исключал 403, а
+#     утверждение отрицанием проходит на любом другом ответе — на 400, 500, 503.
+# verifies #668.
 CASES.append(Case(
     id="REG-LSTTAGS-AZ-NOTFOUND",  # index: REG-24
-    title="ListTags by non-member (stranger) → 404 or 200-EMPTY (existence-hidden), never 403, never any tag",
+    title="ListTags by non-member (stranger) → 404 `repository not found` (existence-hidden), никакого иного исхода",
     classes=["NEG", "AZ"], priority="P1",
     steps=[Step(name="list-tags-stranger", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags", auth="jwtStranger",
-                # existence-hiding касается AUTHENTICATED-но-без-грантов (ответ не раскрывает
-                # существование чужого repo). Для 401 (unauthenticated) deny_reason "subject
-                # unauthenticated" — generic auth-failure, не leak существования → проверку пропускаем.
                 test_script=[
-                    "pm.test('unauthorized -> 401/404/200-empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
-                    "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                    "if (pm.response.code === 200) {",
-                    "  const _t = pm.response.json().tags || [];",
-                    "  pm.test('tags is array', () => pm.expect(_t).to.be.an('array'));",
-                    "  pm.test('stranger receives NO tags of a foreign repository', () => pm.expect(_t.length).to.eql(0));",
-                    "  pm.test('no tag payload leaked (digest/size)', () => pm.expect(pm.response.text()).to.not.include('digest'));",
-                    "}",
-                    "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }",
+                    "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] existence-hidden: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.eql(404));",
+                    "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                    "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.eql(5));",
+                    # Текст — часть контракта скрытия: он обязан совпадать с тем, что тот же
+                    # путь отдаёт на настоящем промахе. Различимый текст и есть оракул.
+                    "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] контрактный тон отказа владельца', () => pm.expect(j && j.message, JSON.stringify(j)).to.eql('repository not found'));",
+                    "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] отказ не несёт ни выдачи, ни причины отказа', () => {",
+                    "  pm.expect(Object.keys(j || {}).filter(k => ['code','message','details'].indexOf(k) < 0), 'посторонний груз в конверте отказа: ' + pm.response.text()).to.eql([]);",
+                    "  pm.expect(JSON.stringify(j), 'причина отказа раскрывает модель прав').to.not.match(/deny_reasons|direct relations|lacks relation/);",
+                    "  pm.expect(pm.response.text(), 'полезная нагрузка тега в теле отказа').to.not.include('digest');",
+                    "});",
                 ])],
 ))
 
 
-# ListTags pageSize > max (1000) → rejected (BVA: отвергается, НЕ clamp'ится). ListTags
-# is existence-hiding: the per-repo v_list Check (public.go:182) fires BEFORE pageSize
-# validation, so on the never-pushed probe repo `app-{{runId}}` the existence-hiding 404
-# preempts. On a VISIBLE repo pageSize=1001 surfaces as 400 INVALID_ARGUMENT. Tolerate
-# [400,404]; invariant — an over-max pageSize is never clamped into a 200 window.
+# ListTags pageSize > max (1000) → отвергается, НЕ clamp'ится (BVA). Исход ОДИН, 400 —
+# тот же порядок «формат → authz», что и у мусорного курсора выше: `ValidateTagListPagination`
+# судит `page_size` первым стейтментом, до `checkRepo`. Прежняя толерантность к 404
+# опиралась на обратный порядок, которого в дереве нет. verifies #668.
 CASES.append(Case(
     id="REG-LSTTAGS-NEG-PAGESIZE-OVERMAX",  # index: REG-24
-    title="ListTags pageSize=1001 (>max) → 400 (visible repo) or 404 (existence-hiding preempts), never clamped to 200",
+    title="ListTags pageSize=1001 (>max) → 400 INVALID_ARGUMENT, никогда не clamp в 200",
     classes=["NEG", "BVA", "VAL"], priority="P2",
     steps=[Step(name="list-tags-ps-overmax", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags?pageSize=1001",
-                test_script=[
-                    "pm.test('rejected: 400 (over-max) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                    "const j = pm.response.json();",
-                    "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));",
-                ])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
 
@@ -763,10 +773,11 @@ CASES.append(Case(
 ))
 
 # Double-delete idempotency — own throwaway registry; first Delete OK, second Delete
-# idempotent (200 op / 404 gone / 409 DELETING forward-only).
+# idempotent: 200 (идемпотентная Operation) либо 404 (кортеж снят, край скрыл
+# существование). Разбор обоих производителей и почему 409 снят — у самого шага.
 CASES.append(Case(
     id="REG-DEL-IDEM-DOUBLE",  # index: REG-09
-    title="Double Delete → first OK, second idempotent (200/404/409)",
+    title="Double Delete → first OK, second idempotent (200 Operation или 404 после снятия кортежа)",
     classes=["IDEM"], priority="P2",
     steps=[
         *_create_registry("dd-{{runId}}", "ddRegId"),
@@ -774,10 +785,39 @@ CASES.append(Case(
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
                           *save_operation_id()]),
         poll_operation_until_done(),
+        # ЗАКОННЫХ ИСХОДОВ ЗДЕСЬ ДВА, у каждого СВОЙ производитель, и оба названы —
+        # это задокументированная толерантность (`api-conventions.md`), а не «на всякий
+        # случай». Первое удаление сняло строку и эмитировало снятие регистрации, но
+        # снятие кортежа доезжает ПОЗЖЕ (at-least-once, `data-integrity.md`), поэтому
+        # второе удаление застаёт одно из двух состояний:
+        #   200 — кортеж ещё жив, край пропускает `v_delete`, namespace пуст, сервис
+        #         заводит идемпотентную Operation (`doDelete`: строка удалена → done
+        #         без повторного разрушительного действия);
+        #   404 — кортеж уже снят, и край, гейтя `v_delete` на `registry_registry:<id>`,
+        #         скрывает существование текстом владельца `Registry <id> not found`
+        #         (`gateway/internal/middleware/permission_denied_response.go`).
+        # КАЖДАЯ ветка несёт своё утверждение — конверт Operation либо пару код+текст.
+        #
+        # `409` УБРАН: производителя у него нет. Перепись по дереву — `codes.Aborted` в
+        # непробном коде registry ноль вхождений, а синхронный путь Delete состояния
+        # вообще не читает (`internal/apps/kacho/api/registry/delete.go`). Комментарий
+        # «409 DELETING forward-only» описывал механику, которой в сервисе нет. Строка
+        # «never 403» тоже снята: `oneOf` уже исключал 403, а отрицание проходило на
+        # 400, 500 и 503. verifies #668.
         Step(name="delete-dd-2", method="DELETE", path=REG + "/{{ddRegId}}",
              test_script=[
-                 "pm.test('second delete idempotent (200/404/409)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404, 409]));",
-                 "pm.test('never 403 (deny→404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                 "pm.test('[REG-DEL-IDEM-DOUBLE] повторное удаление: 200 (идемпотентная Operation) ИЛИ 404 (кортеж снят)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                 "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                 "pm.test('[REG-DEL-IDEM-DOUBLE] исход названной ветки утверждён, а не принят', () => {",
+                 "  if (pm.response.code === 200) {",
+                 f"    pm.expect(j && j.id, 'конверт Operation: ' + pm.response.text()).to.match(/{OP_ENVELOPE}/);",
+                 "    pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                 "    return;",
+                 "  }",
+                 "  pm.expect(j && j.code, JSON.stringify(j)).to.eql(5);",
+                 "  pm.expect(j && j.message, 'текст владельца, байт в байт: ' + JSON.stringify(j))",
+                 "    .to.eql('Registry ' + pm.environment.get('ddRegId') + ' not found');",
+                 "});",
              ]),
     ],
 ))
