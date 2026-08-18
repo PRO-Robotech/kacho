@@ -105,7 +105,7 @@
       ]
     },
     {
-      "name": "AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK — [INV-10] alice List volumes projectId=projectA1 (есть viewer) → not 403; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
+      "name": "AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK — [INV-10] alice List volumes projectId=projectA1 (есть viewer) → 200 + конверт выдачи; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
       "description": "class:AUTHZ | class:SEC | class:POS | priority:P0",
       "item": [
         {
@@ -154,10 +154,16 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] ALLOW: HTTP 200 (перечисление принято)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] not Unauthenticated (16)', () => pm.expect(j && j.code, JSON.stringify(j)).to.not.equal(16));",
-                  "if (j && Array.isArray(j.volumes)) { pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] no cross-project leak (all projectA1)', () => j.volumes.forEach(v => pm.expect(v.projectId, 'leaked cross-project volume ' + v.id).to.equal(pm.environment.get('projectA1Id')))); }"
+                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] ALLOW: конверт выдачи, а не конверт отказа', () => {",
+                  "  pm.expect(j, 'тело не разобралось как JSON: ' + pm.response.text()).to.be.an('object');",
+                  "  pm.expect(Object.keys(j).filter(k => ['volumes', 'nextPageToken'].indexOf(k) < 0),",
+                  "    'посторонний ключ в конверте выдачи: ' + pm.response.text()).to.eql([]);",
+                  "  pm.expect(j['volumes'] === undefined || Array.isArray(j['volumes']),",
+                  "    'поле volumes присутствует и не является массивом: ' + pm.response.text()).to.equal(true);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK] нет кросс-проектной утечки', () => (j && j['volumes'] || []).forEach(v => pm.expect(v.projectId, 'утёк объект чужого проекта ' + v.id).to.equal(pm.environment.get('projectA1Id'))));"
                 ]
               }
             }
