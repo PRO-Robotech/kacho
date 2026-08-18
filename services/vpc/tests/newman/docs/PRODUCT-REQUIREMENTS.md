@@ -144,37 +144,55 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 
 ## C. Имена ресурсов (контракт Kachō name policy)
 
-### REQ-NAME-01 — NameVPC permissive для Network/Subnet/Address/RouteTable/SecurityGroup [P1]
-`name` этих ресурсов — **необязателен** и валидируется permissive-regex `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`
-(пустое / UPPERCASE / underscore — разрешены). НЕ возвращать `"name is required"`.
-- Validated-by: `*-CR-BVA-NAME-EMPTY`, `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`
-- Проверка: `RcNameVPC.Validate` в `internal/domain/types.go` (регекс имени) + поле `Name` этого типа у Network / Subnet / Address / RouteTable / SecurityGroup в `internal/domain/`.
+### REQ-NAME-01 — ОДНА форма имени на все ресурсы сервиса [P1]
+`name` любого ресурса подчиняется единственной форме дерева — DNS label по RFC 1123,
+`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` (строчные буквы, цифры, дефис; первый и последний
+символ — буква или цифра; 1..63). Отдельных «permissive»/«strict» полос больше нет:
+заглавные и подчёркивание отвергаются ВЕЗДЕ, цифра первым символом принимается ВЕЗДЕ.
+- Validated-by: `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`, `*-CR-BVA-NAME-OVER-64`
+- Проверка: `corevalidate.NameForm` — единственное объявление формы в дереве
+  (`pkg/validate/validate.go`); единственность держит гейт
+  `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
 
-### REQ-NAME-02 — Gateway: strict NameGateway [P1]
-`Gateway.name` — strict: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (lowercase, без uppercase/underscore).
-- Validated-by: `GW-CR-VAL-NAME-*` (см. паттерны `*-CR-VAL-NAME-DIGIT-START`/`-HYPHEN-START`/`-SPECIAL-CHARS`/`-UPPERCASE` на app `gat`)
-- Проверка: `corevalidate.NameGateway` в `internal/apps/kacho/api/gateway/`.
+> [!note] Здесь стояли ДВЕ формы — permissive для пяти ресурсов и strict для Gateway
+> Прежние REQ-NAME-01/02 описывали `NameVPC` (пустое / UPPERCASE / underscore разрешены)
+> и `NameGateway` (strict) как два действующих контракта. Обеих функций в дереве нет:
+> четыре валидатора имени сведены к одному решением владельца #715. Заодно снято
+> утверждение «`name` необязателен»: пустая строка остаётся законным ВХОДОМ создания, но
+> ресурсом с пустым именем не становится — см. REQ-NAME-04.
 
-### REQ-NAME-03 — name boundary & format [P1]
-`name` len > 63 → `InvalidArgument`. Начинается с цифры/дефиса, содержит спец-символы → `400`
-(для strict-ресурсов; для permissive — UPPERCASE/underscore допустимы, остальное по regex).
-- Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-DIGIT-START`, `*-CR-VAL-NAME-HYPHEN-START`, `*-CR-VAL-NAME-SPECIAL-CHARS`
-- Проверка: regex'ы в `pkg/validate/validate.go`.
+### REQ-NAME-02 — пустого имени не существует [P1]
+Пустая строка на **создании** законна и означает «назови сам»: сервер подставляет имя,
+производное от `id`, и возвращает его в ответе. Ресурса с пустым `name` не бывает.
+Правка на пустое имя (маска НАЗЫВАЕТ поле `name`, значение пустое) → `INVALID_ARGUMENT`
+с именем поля: снять имя нельзя, его не бывает.
+- Validated-by: `*-CR-BVA-NAME-EMPTY` (создание без имени → ресурс с НЕПУСТЫМ именем),
+  `*-UPD-NEG-NAME-EMPTY`
+- Проверка: `corevalidate.NameOnCreate` (форма входа) + `corevalidate.NameOrDefault`
+  (что записывается) — производство умолчания объявлено в дереве один раз, держит гейт
+  `TestDefaultNameDerivationIsDeclaredOnce`.
 
-### REQ-NAME-04 — UNIQUE (project_id, name) [P1]
-В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
-async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`)
-— **у всех ресурсов без исключений**: расхождение Network (полный индекс, из-за которого вторая
-сеть с пустым именем получала `ALREADY_EXISTS`) снято миграцией
-`669001_networks_empty_name_partial_unique.sql`, задача #669.
+### REQ-NAME-03 — границы формы [P1]
+`name` длиной > 63 → `InvalidArgument`. Заглавные, подчёркивание, точка, слэш, пробел,
+краевой дефис → `400`. **Цифра первым символом — ПРИНИМАЕТСЯ** (RFC 1123); прежние
+валидаторы её отвергали, и кейс, утверждающий отказ на `1bad`, теперь неверен.
+- Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-HYPHEN-START`,
+  `*-CR-VAL-NAME-SPECIAL-CHARS`, `*-CR-VAL-NAME-UPPERCASE`
+- Проверка: `pkg/validate/validate.go` (`Name`), плюс DB-CHECK `<таблица>_name_check`,
+  приведённый к той же форме миграцией `715001` — до неё база отвергала цифру первой,
+  которую сервис уже принимал.
+
+### REQ-NAME-04 — UNIQUE (project_id, name), индекс ПОЛНЫЙ [P1]
+В пределах project не может быть двух ресурсов одного типа с одинаковым `name` →
+async `ALREADY_EXISTS`. Освобождать пустое имя от уникальности больше не от чего:
+пустого имени не бывает, поэтому частичный предикат `WHERE name <> ''` снят миграцией
+`715001` у всех ресурсов сервиса.
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
 - Проверка: `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`) плюс сами индексы. Число
   ресурсов в заголовке НЕ стоит намеренно: оно росло молча (запись «все 7» пережила восьмой
-  индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом:
-  предикатом ниже. Простой `grep` для этого НЕ годится и даёт неверное число: он
-  считает и комментарии, и определения из `-- +goose Down`, и ОТМЕНЁННУЮ форму —
-  `0001` держит `networks` полным, а `669001` пересоздаёт его частичным, поэтому
-  читать надо ПОСЛЕДНЕЕ определение каждого индекса, а не первое вхождение строки.
+  индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом ниже. Простой
+  `grep` для этого НЕ годится: он считает и комментарии, и определения из `-- +goose Down`,
+  поэтому читать надо ПОСЛЕДНЕЕ определение каждого индекса, а не первое вхождение строки.
 
   ```sh
   python3 - <<'EOF'
@@ -190,8 +208,12 @@ async `ALREADY_EXISTS`. Пустое `name` от уникальности осв
   EOF
   ```
 
-  На 2026-08-18 (после #669): **8 индексов, полных 0**. Число — ориентир с датой,
-  а «полных 0» — то свойство, ради которого предикат здесь и стоит.
+  Предикат читает только выписанные `CREATE UNIQUE INDEX`; семь индексов приводит к полной
+  форме миграция `715001` циклом (`EXECUTE format(...)`), поэтому её результат этим
+  предикатом НЕ виден — свойство «частичных не осталось» проверяется на поднятой базе:
+  `SELECT count(*) FROM pg_indexes WHERE schemaname='kacho_vpc' AND indexdef LIKE '%, name)%'
+  AND indexdef LIKE '%WHERE%'` → **0**. Это ограничение предиката названо здесь намеренно:
+  иначе его «полных 0» читалось бы как действующее свойство дерева.
 
 ---
 
@@ -712,8 +734,9 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 `name`/`description`/`labels`/`filter` с SQLi / XSS / cmd-injection / path-traversal / null-byte / union / long-payload →
 **никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE. Исход при этом не «какой-нибудь 2xx/4xx», а определён полосой:
 
-- **`name`** — все семь нагрузок лежат вне класса символов самого разрешительного контракта имени
-  (`corevalidate.NameVPC`; у Gateway контракт строже), поэтому отказ синхронный и один:
+- **`name`** — все семь нагрузок лежат вне класса символов единственной формы имени
+  (`corevalidate.NameForm`; она одна на все ресурсы дерева, отдельного разрешительного
+  контракта больше нет — #715), поэтому отказ синхронный и один:
   `400` + `INVALID_ARGUMENT` (code `3`) + `BadRequest.fieldViolations[].field == "name"`.
   `200` недостижим ни для одной нагрузки; `413` край не производит ни для одного кода
   (`api-conventions.md` §«gRPC-код → HTTP-статус»);

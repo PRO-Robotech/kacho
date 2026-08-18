@@ -94,7 +94,7 @@ default_route_table_id      TEXT NULL FK→route_tables      -- 0015 объяв�
 vrf_id                      BIGINT UNIQUE NOT NULL    -- 0007; internal-only (InternalNetworkService)
 created_at                  TIMESTAMPTZ
 
-networks_project_id_name_key  UNIQUE (project_id, name) WHERE name <> ''  -- partial с 669001
+networks_project_id_name_key  UNIQUE (project_id, name)                   -- полный (715001)
 INDEX project_idx
 ```
 
@@ -108,10 +108,11 @@ public-поверхности, отдается только через `Interna
 
 > Та же форма — у всех остальных пользовательских ресурсов (`subnets`,
 > `route_tables`, `security_groups`, `gateways`, `addresses`,
-> `network_interfaces`, `cidr_groups`): UNIQUE на `(project_id, name)`
-> — **partial**, `WHERE name <> ''`: пустой `name` допускает несколько ресурсов,
-> дубль непустого → `23505` → `ALREADY_EXISTS`. Исключений нет ни одного; сеть
-> была последним, и приведена миграцией `669001`.
+> `network_interfaces`, `cidr_groups`): UNIQUE на `(project_id, name)` —
+> **полный**, дубль имени → `23505` → `ALREADY_EXISTS`. Исключений нет ни одного.
+> Частичная форма `WHERE name <> ''` снята миграцией `715001` вместе со своим
+> предметом: пустого имени не существует — на создании сервер подставляет имя,
+> производное от `id` (задача #715).
 
 ### `subnets`
 

@@ -163,7 +163,17 @@ func validateCidrGroupUpdate(in UpdateInput) error {
 	for _, f := range updates {
 		switch f {
 		case "name":
-			if err := in.CidrGroup.Name.Validate(); err != nil {
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: она читает
+			// форму запроса (маска × значение) и отвечает сразу на два вопроса —
+			// законен ли ввод и следует ли имя применять. Ту же функцию зовёт
+			// применение маски, поэтому проверка и запись разойтись не могут.
+			//
+			// Пять исходов и их причина — в godoc `validate.NameOnUpdate`; здесь
+			// они не пересказываются, иначе завелось бы два места об одном
+			// предмете. Коротко о том, что здесь неочевидно: при ПУСТОЙ маске
+			// пустое имя законно и означает «не прислано» — в proto3 это
+			// неотличимо от отсутствия поля.
+			if _, err := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.CidrGroup.Name)); err != nil {
 				return err
 			}
 		case "description":
@@ -201,16 +211,32 @@ func labelsInMask(updateMask []string) bool {
 // applyCidrGroupMask применяет подмножество полей. Пустая маска = полная правка
 // всех изменяемых полей; состав не входит в набор ни при какой маске.
 func applyCidrGroupMask(g *domain.CidrGroup, in UpdateInput) {
-	if len(in.UpdateMask) == 0 {
+	// Применять ли имя, решает ТА ЖЕ функция, что вынесла приговор на проверке
+	// входа, — поэтому проверка и запись разойтись не могут by construction.
+	// Здесь читается только её булева половина: отказ уже случился бы синхронно,
+	// до создания операции.
+	//
+	// Решение вынесено ИЗ ОБЕИХ ветвей маски намеренно. Прежде ветвь полной
+	// правки присваивала имя безусловно, и пустое значение уезжало в строку: в
+	// proto3 «поле не прислано» неотличимо от «поле пусто», поэтому полная
+	// правка, НЕ ТРОГАВШАЯ имя, имя стирала. После миграции 715001, поставившей
+	// на столбец ограничение формы, это перестало быть «странным именем» и стало
+	// отказом БАЗЫ на пути, где вызывающий не сделал ничего неверного.
+	//
+	// Ошибка здесь отбрасывается сознательно: на ней функция возвращает false,
+	// то есть путь, почему-либо миновавший проверку входа, тоже НЕ запишет
+	// негодное имя — отказ направлен в безопасную сторону.
+	applyName, _ := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.CidrGroup.Name))
+	if applyName {
 		g.Name = in.CidrGroup.Name
+	}
+	if len(in.UpdateMask) == 0 {
 		g.Description = in.CidrGroup.Description
 		g.Labels = in.CidrGroup.Labels
 		return
 	}
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "name":
-			g.Name = in.CidrGroup.Name
 		case "description":
 			g.Description = in.CidrGroup.Description
 		case "labels":

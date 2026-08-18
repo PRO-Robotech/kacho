@@ -311,7 +311,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya57",
+          "name": "cleanup-delete-rya59",
           "request": {
             "method": "DELETE",
             "header": [
@@ -886,7 +886,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya58",
+          "name": "cleanup-first-rya60",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1936,7 +1936,7 @@
           ]
         },
         {
-          "name": "list-subnets-rya59",
+          "name": "list-subnets-rya61",
           "request": {
             "method": "GET",
             "header": [
@@ -1988,7 +1988,7 @@
           ]
         },
         {
-          "name": "cleanup-rya60",
+          "name": "cleanup-rya62",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2282,7 +2282,7 @@
           ]
         },
         {
-          "name": "cleanup-rya61",
+          "name": "cleanup-rya63",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2576,7 +2576,7 @@
           ]
         },
         {
-          "name": "cleanup-rya62",
+          "name": "cleanup-rya64",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2762,7 +2762,7 @@
           ]
         },
         {
-          "name": "list-ops-rya63",
+          "name": "list-ops-rya65",
           "request": {
             "method": "GET",
             "header": [
@@ -2819,7 +2819,7 @@
           ]
         },
         {
-          "name": "cleanup-rya64",
+          "name": "cleanup-rya66",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3545,7 +3545,7 @@
           ]
         },
         {
-          "name": "get-after-delete-rya65",
+          "name": "get-after-delete-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -3706,7 +3706,7 @@
       ]
     },
     {
-      "name": "NET-CR-BVA-NAME-EMPTY — Create с empty name → 200 (пустое имя разрешено контрактом)",
+      "name": "NET-CR-BVA-NAME-EMPTY — Create с empty name → 200, имя подставлено идентификатором ресурса",
       "description": "class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -3822,7 +3822,60 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya12",
+          "name": "cr-empty-name-substituted-rya12",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{ecpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{ecpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('пустое имя заменено идентификатором ресурса', () => pm.expect(pm.response.json().name, pm.response.text()).to.eql(pm.environment.get('ecpId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ecp-cleanup-rya13",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3946,11 +3999,11 @@
       ]
     },
     {
-      "name": "NET-CR-BVA-NAME-MAX-63 — Create с name len=63 (max) → ok",
-      "description": "class:BVA | priority:P2",
+      "name": "NET-UPD-NEG-NAME-EMPTY — Update с mask=name и пустым name → 400 'name is required' (подстановка бывает только на Create)",
+      "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
-          "name": "cr-max63",
+          "name": "cr-for-upd-empty",
           "request": {
             "method": "POST",
             "header": [
@@ -3972,7 +4025,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"net-updempty-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4062,7 +4115,73 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya13",
+          "name": "upd-name-empty-rya14",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{ecpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks",
+                "{{ecpId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('отказ называет требование имени, а не форму', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name is required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ecp-cleanup-rya15",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4186,11 +4305,11 @@
       ]
     },
     {
-      "name": "NET-CR-BVA-NAME-OVER-64 — Create с name len=64 (over-max) → InvalidArgument",
-      "description": "class:BVA | class:VAL | priority:P1",
+      "name": "NET-CR-BVA-NAME-MAX-63 — Create с name len=63 (max) → ok",
+      "description": "class:BVA | priority:P2",
       "item": [
         {
-          "name": "cr-over",
+          "name": "cr-max63",
           "request": {
             "method": "POST",
             "header": [
@@ -4212,60 +4331,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
-      "description": "class:VAL | priority:P2",
-      "item": [
-        {
-          "name": "cr-upper",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4355,7 +4421,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya14",
+          "name": "ecp-cleanup-rya16",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4479,11 +4545,11 @@
       ]
     },
     {
-      "name": "NET-CR-VAL-NAME-DIGIT-START — Create с name начинающимся с цифры → 400 (нарушение name-regex)",
-      "description": "class:VAL | priority:P1",
+      "name": "NET-CR-BVA-NAME-OVER-64 — Create с name len=64 (over-max) → InvalidArgument",
+      "description": "class:BVA | class:VAL | priority:P1",
       "item": [
         {
-          "name": "cr-digit",
+          "name": "cr-over",
           "request": {
             "method": "POST",
             "header": [
@@ -4505,7 +4571,114 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 400 (форма имени: только строчные)",
+      "description": "class:VAL | class:NEG | priority:P2",
+      "item": [
+        {
+          "name": "cr-upper",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NET-CR-VAL-NAME-UNDERSCORE — Create с подчёркиванием в name → 400 (форма имени: буквы, цифры, дефис)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-underscore",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/networks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "networks"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"bad_name-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4754,7 +4927,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya15",
+          "name": "ecp-cleanup-rya17",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5153,7 +5326,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya16",
+          "name": "ecp-cleanup-rya18",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5614,7 +5787,7 @@
           ]
         },
         {
-          "name": "list-p2-rya66",
+          "name": "list-p2-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -5724,7 +5897,7 @@
           ]
         },
         {
-          "name": "poll-1-rya67",
+          "name": "poll-1-rya69",
           "request": {
             "method": "GET",
             "header": [
@@ -5835,7 +6008,7 @@
           ]
         },
         {
-          "name": "cleanup-rya17",
+          "name": "cleanup-rya19",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6005,7 +6178,7 @@
           ]
         },
         {
-          "name": "patch-rya18",
+          "name": "patch-rya20",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6127,7 +6300,7 @@
           ]
         },
         {
-          "name": "verify-rya19",
+          "name": "verify-rya21",
           "request": {
             "method": "GET",
             "header": [
@@ -6180,7 +6353,7 @@
           ]
         },
         {
-          "name": "cleanup-rya20",
+          "name": "cleanup-rya22",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6422,7 +6595,7 @@
           ]
         },
         {
-          "name": "patch-rya21",
+          "name": "patch-rya23",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6544,7 +6717,7 @@
           ]
         },
         {
-          "name": "verify-rya22",
+          "name": "verify-rya24",
           "request": {
             "method": "GET",
             "header": [
@@ -6597,7 +6770,7 @@
           ]
         },
         {
-          "name": "cleanup-rya23",
+          "name": "cleanup-rya25",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6839,7 +7012,7 @@
           ]
         },
         {
-          "name": "patch-rya24",
+          "name": "patch-rya26",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6961,7 +7134,7 @@
           ]
         },
         {
-          "name": "verify-rya25",
+          "name": "verify-rya27",
           "request": {
             "method": "GET",
             "header": [
@@ -7015,7 +7188,7 @@
           ]
         },
         {
-          "name": "cleanup-rya26",
+          "name": "cleanup-rya28",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7497,7 +7670,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya27",
+          "name": "patch-multi-rya29",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7619,7 +7792,7 @@
           ]
         },
         {
-          "name": "verify-all-rya28",
+          "name": "verify-all-rya30",
           "request": {
             "method": "GET",
             "header": [
@@ -7676,7 +7849,7 @@
           ]
         },
         {
-          "name": "cleanup-rya29",
+          "name": "cleanup-rya31",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7954,7 +8127,7 @@
           ]
         },
         {
-          "name": "cleanup-rya68",
+          "name": "cleanup-rya70",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8196,7 +8369,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst30",
+          "name": "list-filtered-lst32",
           "request": {
             "method": "GET",
             "header": [
@@ -8250,7 +8423,7 @@
           ]
         },
         {
-          "name": "cleanup-rya31",
+          "name": "cleanup-rya33",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8376,7 +8549,7 @@
       ]
     },
     {
-      "name": "NET-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+      "name": "NET-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; имя подставляется)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -8492,7 +8665,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya32",
+          "name": "ecp-cleanup-rya34",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9084,7 +9257,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya69",
+          "name": "cleanup-first-rya71",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9326,7 +9499,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya33",
+          "name": "patch-name-only-rya35",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9448,7 +9621,7 @@
           ]
         },
         {
-          "name": "verify-rya34",
+          "name": "verify-rya36",
           "request": {
             "method": "GET",
             "header": [
@@ -9504,7 +9677,7 @@
           ]
         },
         {
-          "name": "cleanup-rya35",
+          "name": "cleanup-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9746,7 +9919,7 @@
           ]
         },
         {
-          "name": "get-timed-rya36",
+          "name": "get-timed-rya38",
           "request": {
             "method": "GET",
             "header": [
@@ -9799,7 +9972,7 @@
           ]
         },
         {
-          "name": "cleanup-rya70",
+          "name": "cleanup-rya72",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10091,7 +10264,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya37",
+          "name": "ecp-cleanup-rya39",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10631,7 +10804,7 @@
           ]
         },
         {
-          "name": "cr-sub-rya71",
+          "name": "cr-sub-rya73",
           "request": {
             "method": "POST",
             "header": [
@@ -10770,7 +10943,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya38",
+          "name": "del-net-blocked-rya40",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10827,7 +11000,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya39",
+          "name": "cleanup-sub-rya41",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10951,7 +11124,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya40",
+          "name": "cleanup-net-rya42",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11203,7 +11376,7 @@
           ]
         },
         {
-          "name": "cr-rt-rya72",
+          "name": "cr-rt-rya74",
           "request": {
             "method": "POST",
             "header": [
@@ -11342,7 +11515,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya41",
+          "name": "del-net-blocked-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11399,7 +11572,7 @@
           ]
         },
         {
-          "name": "cleanup-rt-rya73",
+          "name": "cleanup-rt-rya75",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11523,7 +11696,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya42",
+          "name": "cleanup-net-rya44",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11775,7 +11948,7 @@
           ]
         },
         {
-          "name": "cr-sg-rya74",
+          "name": "cr-sg-rya76",
           "request": {
             "method": "POST",
             "header": [
@@ -11914,7 +12087,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya43",
+          "name": "del-net-blocked-rya45",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11971,7 +12144,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya75",
+          "name": "cleanup-sg-rya77",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12095,7 +12268,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya44",
+          "name": "cleanup-net-rya46",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12347,7 +12520,7 @@
           ]
         },
         {
-          "name": "net-names-default-sg-rya45",
+          "name": "net-names-default-sg-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -12404,7 +12577,7 @@
           ]
         },
         {
-          "name": "check-default-sg-lst46",
+          "name": "check-default-sg-lst48",
           "request": {
             "method": "GET",
             "header": [
@@ -12458,7 +12631,7 @@
           ]
         },
         {
-          "name": "del-net-rya47",
+          "name": "del-net-rya49",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12571,7 +12744,7 @@
           ]
         },
         {
-          "name": "assert-success-rya76",
+          "name": "assert-success-rya78",
           "request": {
             "method": "GET",
             "header": [
@@ -12623,7 +12796,7 @@
           ]
         },
         {
-          "name": "get-after-del-rya77",
+          "name": "get-after-del-rya79",
           "request": {
             "method": "GET",
             "header": [
@@ -12807,7 +12980,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya48",
+          "name": "get-default-sg-id-rya50",
           "request": {
             "method": "GET",
             "header": [
@@ -12866,7 +13039,7 @@
           ]
         },
         {
-          "name": "get-default-sg-alive-rya49",
+          "name": "get-default-sg-alive-rya51",
           "request": {
             "method": "GET",
             "header": [
@@ -12919,7 +13092,7 @@
           ]
         },
         {
-          "name": "del-net-rya50",
+          "name": "del-net-rya52",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13032,7 +13205,7 @@
           ]
         },
         {
-          "name": "assert-net-deleted-rya78",
+          "name": "assert-net-deleted-rya80",
           "request": {
             "method": "GET",
             "header": [
@@ -13083,7 +13256,7 @@
           ]
         },
         {
-          "name": "get-default-sg-gone-rya79",
+          "name": "get-default-sg-gone-rya81",
           "request": {
             "method": "GET",
             "header": [
@@ -13268,7 +13441,7 @@
           ]
         },
         {
-          "name": "cr-sub-rya80",
+          "name": "cr-sub-rya82",
           "request": {
             "method": "POST",
             "header": [
@@ -13407,7 +13580,7 @@
           ]
         },
         {
-          "name": "cr-nic-rya81",
+          "name": "cr-nic-rya83",
           "request": {
             "method": "POST",
             "header": [
@@ -13546,7 +13719,7 @@
           ]
         },
         {
-          "name": "del-net-blocked-rya51",
+          "name": "del-net-blocked-rya53",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13603,7 +13776,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya82",
+          "name": "cleanup-nic-rya84",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13725,7 +13898,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya52",
+          "name": "cleanup-sub-rya54",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13847,7 +14020,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya53",
+          "name": "cleanup-net-rya55",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14097,7 +14270,7 @@
           ]
         },
         {
-          "name": "listops-before-rya83",
+          "name": "listops-before-rya85",
           "request": {
             "method": "GET",
             "header": [
@@ -14152,7 +14325,7 @@
           ]
         },
         {
-          "name": "del-net-rya54",
+          "name": "del-net-rya56",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14274,7 +14447,7 @@
           ]
         },
         {
-          "name": "listops-after-delete-rya84",
+          "name": "listops-after-delete-rya86",
           "request": {
             "method": "GET",
             "header": [
@@ -15070,7 +15243,7 @@
           ]
         },
         {
-          "name": "get-1-rya55",
+          "name": "get-1-rya57",
           "request": {
             "method": "GET",
             "header": [
@@ -15123,7 +15296,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst56",
+          "name": "lst-includes-lst58",
           "request": {
             "method": "GET",
             "header": [
@@ -15177,7 +15350,7 @@
           ]
         },
         {
-          "name": "upd-rya85",
+          "name": "upd-rya87",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15299,7 +15472,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya86",
+          "name": "get-after-upd-rya88",
           "request": {
             "method": "GET",
             "header": [
@@ -15352,7 +15525,7 @@
           ]
         },
         {
-          "name": "del-rya87",
+          "name": "del-rya89",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15510,7 +15683,7 @@
           ]
         },
         {
-          "name": "get-404-rya88",
+          "name": "get-404-rya90",
           "request": {
             "method": "GET",
             "header": [

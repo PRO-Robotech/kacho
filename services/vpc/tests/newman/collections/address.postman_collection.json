@@ -294,7 +294,7 @@
           ]
         },
         {
-          "name": "pre-sub-rya80",
+          "name": "pre-sub-rya82",
           "request": {
             "method": "POST",
             "header": [
@@ -433,7 +433,7 @@
           ]
         },
         {
-          "name": "create-rya81",
+          "name": "create-rya83",
           "request": {
             "method": "POST",
             "header": [
@@ -1109,7 +1109,7 @@
           ]
         },
         {
-          "name": "cleanup-rya82",
+          "name": "cleanup-rya84",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1412,7 +1412,7 @@
           ]
         },
         {
-          "name": "pre-sub-rya83",
+          "name": "pre-sub-rya85",
           "request": {
             "method": "POST",
             "header": [
@@ -1551,7 +1551,7 @@
           ]
         },
         {
-          "name": "create-both-rya84",
+          "name": "create-both-rya86",
           "request": {
             "method": "POST",
             "header": [
@@ -2612,7 +2612,7 @@
           ]
         },
         {
-          "name": "pre-sub-rya85",
+          "name": "pre-sub-rya87",
           "request": {
             "method": "POST",
             "header": [
@@ -2751,7 +2751,7 @@
           ]
         },
         {
-          "name": "cr-in-sub-rya86",
+          "name": "cr-in-sub-rya88",
           "request": {
             "method": "POST",
             "header": [
@@ -3676,7 +3676,7 @@
           ]
         },
         {
-          "name": "cleanup-rya87",
+          "name": "cleanup-rya89",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4331,7 +4331,7 @@
           ]
         },
         {
-          "name": "cleanup-rya88",
+          "name": "cleanup-rya90",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5014,7 +5014,7 @@
           ]
         },
         {
-          "name": "get-after-del-rya89",
+          "name": "get-after-del-rya91",
           "request": {
             "method": "GET",
             "header": [
@@ -5194,7 +5194,7 @@
           ]
         },
         {
-          "name": "pre-sub-rya90",
+          "name": "pre-sub-rya92",
           "request": {
             "method": "POST",
             "header": [
@@ -5333,7 +5333,7 @@
           ]
         },
         {
-          "name": "cr-int-v4-rya91",
+          "name": "cr-int-v4-rya93",
           "request": {
             "method": "POST",
             "header": [
@@ -5583,7 +5583,7 @@
           ]
         },
         {
-          "name": "cr-int-v6-rya92",
+          "name": "cr-int-v6-rya94",
           "request": {
             "method": "POST",
             "header": [
@@ -6826,7 +6826,7 @@
       ]
     },
     {
-      "name": "ADR-CR-BVA-NAME-EMPTY — Create с empty name → 200 (пустое имя разрешено контрактом)",
+      "name": "ADR-CR-BVA-NAME-EMPTY — Create с empty name → 200, имя подставлено идентификатором ресурса",
       "description": "class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -6942,7 +6942,60 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya31",
+          "name": "cr-empty-name-substituted-rya31",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{ecpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{ecpId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('пустое имя заменено идентификатором ресурса', () => pm.expect(pm.response.json().name, pm.response.text()).to.eql(pm.environment.get('ecpId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ecp-cleanup-rya32",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7066,11 +7119,11 @@
       ]
     },
     {
-      "name": "ADR-CR-BVA-NAME-MAX-63 — Create с name len=63 (max) → ok",
-      "description": "class:BVA | priority:P2",
+      "name": "ADR-UPD-NEG-NAME-EMPTY — Update с mask=name и пустым name → 400 'name is required' (подстановка бывает только на Create)",
+      "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
-          "name": "cr-max63",
+          "name": "cr-for-upd-empty",
           "request": {
             "method": "POST",
             "header": [
@@ -7092,7 +7145,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"adr-updempty-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7182,7 +7235,73 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya32",
+          "name": "upd-name-empty-rya33",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{ecpId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{ecpId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"name\", \"name\": \"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('отказ называет требование имени, а не форму', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name is required'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ecp-cleanup-rya34",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7306,11 +7425,11 @@
       ]
     },
     {
-      "name": "ADR-CR-BVA-NAME-OVER-64 — Create с name len=64 (over-max) → InvalidArgument",
-      "description": "class:BVA | class:VAL | priority:P1",
+      "name": "ADR-CR-BVA-NAME-MAX-63 — Create с name len=63 (max) → ok",
+      "description": "class:BVA | priority:P2",
       "item": [
         {
-          "name": "cr-over",
+          "name": "cr-max63",
           "request": {
             "method": "POST",
             "header": [
@@ -7332,60 +7451,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "ADR-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
-      "description": "class:VAL | priority:P2",
-      "item": [
-        {
-          "name": "cr-upper",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n63-{{runId}}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7475,7 +7541,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya33",
+          "name": "ecp-cleanup-rya35",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7599,11 +7665,11 @@
       ]
     },
     {
-      "name": "ADR-CR-VAL-NAME-DIGIT-START — Create с name начинающимся с цифры → 400 (нарушение name-regex)",
-      "description": "class:VAL | priority:P1",
+      "name": "ADR-CR-BVA-NAME-OVER-64 — Create с name len=64 (over-max) → InvalidArgument",
+      "description": "class:BVA | class:VAL | priority:P1",
       "item": [
         {
-          "name": "cr-digit",
+          "name": "cr-over",
           "request": {
             "method": "POST",
             "header": [
@@ -7625,7 +7691,114 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"9invalid-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"n64abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADR-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 400 (форма имени: только строчные)",
+      "description": "class:VAL | class:NEG | priority:P2",
+      "item": [
+        {
+          "name": "cr-upper",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"InvalidUpperCase-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ADR-CR-VAL-NAME-UNDERSCORE — Create с подчёркиванием в name → 400 (форма имени: буквы, цифры, дефис)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-underscore",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"bad_name-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7874,7 +8047,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya34",
+          "name": "ecp-cleanup-rya36",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8273,7 +8446,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya35",
+          "name": "ecp-cleanup-rya37",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8734,7 +8907,7 @@
           ]
         },
         {
-          "name": "list-p2-rya93",
+          "name": "list-p2-rya95",
           "request": {
             "method": "GET",
             "header": [
@@ -8903,7 +9076,7 @@
           ]
         },
         {
-          "name": "patch-rya36",
+          "name": "patch-rya38",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9025,7 +9198,7 @@
           ]
         },
         {
-          "name": "verify-rya37",
+          "name": "verify-rya39",
           "request": {
             "method": "GET",
             "header": [
@@ -9078,7 +9251,7 @@
           ]
         },
         {
-          "name": "cleanup-rya38",
+          "name": "cleanup-rya40",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9320,7 +9493,7 @@
           ]
         },
         {
-          "name": "patch-rya39",
+          "name": "patch-rya41",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9442,7 +9615,7 @@
           ]
         },
         {
-          "name": "verify-rya40",
+          "name": "verify-rya42",
           "request": {
             "method": "GET",
             "header": [
@@ -9495,7 +9668,7 @@
           ]
         },
         {
-          "name": "cleanup-rya41",
+          "name": "cleanup-rya43",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9737,7 +9910,7 @@
           ]
         },
         {
-          "name": "patch-rya42",
+          "name": "patch-rya44",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9859,7 +10032,7 @@
           ]
         },
         {
-          "name": "verify-rya43",
+          "name": "verify-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -9913,7 +10086,7 @@
           ]
         },
         {
-          "name": "cleanup-rya44",
+          "name": "cleanup-rya46",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10395,7 +10568,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya45",
+          "name": "patch-multi-rya47",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10517,7 +10690,7 @@
           ]
         },
         {
-          "name": "verify-all-rya46",
+          "name": "verify-all-rya48",
           "request": {
             "method": "GET",
             "header": [
@@ -10574,7 +10747,7 @@
           ]
         },
         {
-          "name": "cleanup-rya47",
+          "name": "cleanup-rya49",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10852,7 +11025,7 @@
           ]
         },
         {
-          "name": "cleanup-rya94",
+          "name": "cleanup-rya96",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11094,7 +11267,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst48",
+          "name": "list-filtered-lst50",
           "request": {
             "method": "GET",
             "header": [
@@ -11148,7 +11321,7 @@
           ]
         },
         {
-          "name": "cleanup-rya49",
+          "name": "cleanup-rya51",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11274,7 +11447,7 @@
       ]
     },
     {
-      "name": "ADR-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+      "name": "ADR-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; имя подставляется)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -11390,7 +11563,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya50",
+          "name": "ecp-cleanup-rya52",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11982,7 +12155,7 @@
           ]
         },
         {
-          "name": "cleanup-first-rya95",
+          "name": "cleanup-first-rya97",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12224,7 +12397,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya51",
+          "name": "patch-name-only-rya53",
           "request": {
             "method": "PATCH",
             "header": [
@@ -12346,7 +12519,7 @@
           ]
         },
         {
-          "name": "verify-rya52",
+          "name": "verify-rya54",
           "request": {
             "method": "GET",
             "header": [
@@ -12402,7 +12575,7 @@
           ]
         },
         {
-          "name": "cleanup-rya53",
+          "name": "cleanup-rya55",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12644,7 +12817,7 @@
           ]
         },
         {
-          "name": "get-timed-rya54",
+          "name": "get-timed-rya56",
           "request": {
             "method": "GET",
             "header": [
@@ -12697,7 +12870,7 @@
           ]
         },
         {
-          "name": "cleanup-rya96",
+          "name": "cleanup-rya98",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12989,7 +13162,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya55",
+          "name": "ecp-cleanup-rya57",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13292,7 +13465,7 @@
           ]
         },
         {
-          "name": "get-reserved-at-birth-rya56",
+          "name": "get-reserved-at-birth-rya58",
           "request": {
             "method": "GET",
             "header": [
@@ -13346,7 +13519,7 @@
           ]
         },
         {
-          "name": "upd-unreserve-rya57",
+          "name": "upd-unreserve-rya59",
           "request": {
             "method": "PATCH",
             "header": [
@@ -13468,7 +13641,7 @@
           ]
         },
         {
-          "name": "get-unreserved-rya58",
+          "name": "get-unreserved-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -13521,7 +13694,7 @@
           ]
         },
         {
-          "name": "cleanup-rya59",
+          "name": "cleanup-rya61",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13787,7 +13960,7 @@
           ]
         },
         {
-          "name": "get-ip-rya60",
+          "name": "get-ip-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -13844,7 +14017,7 @@
           ]
         },
         {
-          "name": "lbv-own-scope-finds-lst61",
+          "name": "lbv-own-scope-finds-lst63",
           "request": {
             "method": "GET",
             "header": [
@@ -13897,7 +14070,7 @@
           ]
         },
         {
-          "name": "lbv-foreign-scope-rya97",
+          "name": "lbv-foreign-scope-rya99",
           "request": {
             "method": "GET",
             "header": [
@@ -13954,7 +14127,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya62",
+          "name": "cleanup-addr-rya64",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15181,7 +15354,7 @@
           ]
         },
         {
-          "name": "get-1-rya63",
+          "name": "get-1-rya65",
           "request": {
             "method": "GET",
             "header": [
@@ -15234,7 +15407,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst64",
+          "name": "lst-includes-lst66",
           "request": {
             "method": "GET",
             "header": [
@@ -15288,7 +15461,7 @@
           ]
         },
         {
-          "name": "upd-rya98",
+          "name": "upd-rya100",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15410,7 +15583,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya99",
+          "name": "get-after-upd-rya101",
           "request": {
             "method": "GET",
             "header": [
@@ -15463,7 +15636,7 @@
           ]
         },
         {
-          "name": "del-rya100",
+          "name": "del-rya102",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15621,7 +15794,7 @@
           ]
         },
         {
-          "name": "get-404-rya101",
+          "name": "get-404-rya103",
           "request": {
             "method": "GET",
             "header": [
@@ -15805,7 +15978,7 @@
           ]
         },
         {
-          "name": "get-x4-rya65",
+          "name": "get-x4-rya67",
           "request": {
             "method": "GET",
             "header": [
@@ -15862,7 +16035,7 @@
           ]
         },
         {
-          "name": "lbv-ext-v4-lst66",
+          "name": "lbv-ext-v4-lst68",
           "request": {
             "method": "GET",
             "header": [
@@ -16104,7 +16277,7 @@
           ]
         },
         {
-          "name": "get-x6-rya67",
+          "name": "get-x6-rya69",
           "request": {
             "method": "GET",
             "header": [
@@ -16161,7 +16334,7 @@
           ]
         },
         {
-          "name": "lbv-ext-v6-lst68",
+          "name": "lbv-ext-v6-lst70",
           "request": {
             "method": "GET",
             "header": [
@@ -16215,7 +16388,7 @@
           ]
         },
         {
-          "name": "cleanup-x6-rya69",
+          "name": "cleanup-x6-rya71",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16339,7 +16512,7 @@
           ]
         },
         {
-          "name": "cleanup-pool-rya102",
+          "name": "cleanup-pool-rya104",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16409,7 +16582,7 @@
           ]
         },
         {
-          "name": "cleanup-x4-rya70",
+          "name": "cleanup-x4-rya72",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16727,7 +16900,7 @@
           ]
         },
         {
-          "name": "get-rya71",
+          "name": "get-rya73",
           "request": {
             "method": "GET",
             "header": [
@@ -16782,7 +16955,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya72",
+          "name": "cleanup-addr-rya74",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16904,7 +17077,7 @@
           ]
         },
         {
-          "name": "cleanup-pool-rya103",
+          "name": "cleanup-pool-rya105",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17089,7 +17262,7 @@
           ]
         },
         {
-          "name": "check-op-failed-rya104",
+          "name": "check-op-failed-rya106",
           "request": {
             "method": "GET",
             "header": [
@@ -17336,7 +17509,7 @@
           ]
         },
         {
-          "name": "get-1-rya73",
+          "name": "get-1-rya75",
           "request": {
             "method": "GET",
             "header": [
@@ -17393,7 +17566,7 @@
           ]
         },
         {
-          "name": "del-1-rya74",
+          "name": "del-1-rya76",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17637,7 +17810,7 @@
           ]
         },
         {
-          "name": "get-2-rya75",
+          "name": "get-2-rya77",
           "request": {
             "method": "GET",
             "header": [
@@ -17690,7 +17863,7 @@
           ]
         },
         {
-          "name": "cleanup-addr2-rya76",
+          "name": "cleanup-addr2-rya78",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17812,7 +17985,7 @@
           ]
         },
         {
-          "name": "cleanup-pool-rya105",
+          "name": "cleanup-pool-rya107",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17997,7 +18170,7 @@
           ]
         },
         {
-          "name": "check-op-failed-rya106",
+          "name": "check-op-failed-rya108",
           "request": {
             "method": "GET",
             "header": [
@@ -18231,7 +18404,7 @@
           ]
         },
         {
-          "name": "check-op-failed-rya107",
+          "name": "check-op-failed-rya109",
           "request": {
             "method": "GET",
             "header": [
@@ -18284,7 +18457,7 @@
           ]
         },
         {
-          "name": "cleanup-pool-rya108",
+          "name": "cleanup-pool-rya110",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18535,7 +18708,7 @@
           ]
         },
         {
-          "name": "check-op-failed-rya109",
+          "name": "check-op-failed-rya111",
           "request": {
             "method": "GET",
             "header": [
@@ -18588,7 +18761,7 @@
           ]
         },
         {
-          "name": "cleanup-pool-rya110",
+          "name": "cleanup-pool-rya112",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18786,7 +18959,7 @@
           ]
         },
         {
-          "name": "get-first-ip-rya77",
+          "name": "get-first-ip-rya79",
           "request": {
             "method": "GET",
             "header": [
@@ -18842,7 +19015,7 @@
           ]
         },
         {
-          "name": "del-first-rya111",
+          "name": "del-first-rya113",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19086,7 +19259,7 @@
           ]
         },
         {
-          "name": "get-second-ip-rya78",
+          "name": "get-second-ip-rya80",
           "request": {
             "method": "GET",
             "header": [
@@ -19146,7 +19319,7 @@
           ]
         },
         {
-          "name": "del-second-rya112",
+          "name": "del-second-rya114",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19396,7 +19569,7 @@
           ]
         },
         {
-          "name": "del-first-rya79",
+          "name": "del-first-rya81",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19518,7 +19691,7 @@
           ]
         },
         {
-          "name": "del-second-fails-rya113",
+          "name": "del-second-fails-rya115",
           "request": {
             "method": "DELETE",
             "header": [

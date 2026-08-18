@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -115,9 +116,16 @@ func (u *CreateAddressPoolUseCase) Validate(ctx context.Context, req CreatePoolR
 			return nil, serviceerr.MapRepoErr(err)
 		}
 	}
+	// Идентификатор чеканится ОТДЕЛЬНОЙ строкой, а не в литерале: умолчание имени
+	// производно от него, и в литерале его было бы неоткуда взять.
+	//
+	// Пустое имя не доживает до записи: ресурса без имени не бывает (#715).
+	// Уникальность имени остаётся за индексом БД — чтения-перед-вставкой здесь нет
+	// и заводить его нельзя (ban #10).
+	poolID := ids.NewID(ids.PrefixAddressPool)
 	p := &domain.AddressPool{
-		ID:               ids.NewID(ids.PrefixAddressPool),
-		Name:             domain.RcNameVPC(req.Name),
+		ID:               poolID,
+		Name:             domain.RcNameVPC(corevalidate.NameOrDefault(req.Name, poolID)),
 		Description:      domain.RcDescription(req.Description),
 		Labels:           domain.LabelsFromMap(req.Labels),
 		V4CIDRBlocks:     req.V4CIDRBlocks,

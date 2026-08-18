@@ -710,7 +710,7 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | `addresses_internal_subnet_ipv6_uniq` | UNIQUE на `((internal_ipv6 ->> 'subnet_id'), (internal_ipv6 ->> 'address'))` (partial) | То же для internal IPv6; conflict-target для `AllocateInternalIPv6` |
 | `addresses_internal_subnet_fkey` | FK `(internal_subnet_id) → subnets(id) ON DELETE RESTRICT` (generated col покрывает v4+v6) | v4/v6-internal-адрес блокирует удаление своей подсети |
 | `network_interfaces_subnet_id_fkey` | FK `(subnet_id) → subnets(id) ON DELETE RESTRICT` | NIC блокирует удаление своей подсети |
-| `{networks,subnets,route_tables,security_groups,gateways,addresses,network_interfaces,cidr_groups}_project_id_name_key` | UNIQUE `(project_id, name)` WHERE `name <> ''` | Имя уникально в project — **одна форма на все 8 пользовательских ресурсов**; пустой `name` именем не является и допускает несколько. Сеть приведена к общей форме миграцией `669001` (до неё индекс был полным, и вторая безымянная сеть в проекте отвергалась) |
+| `{networks,subnets,route_tables,security_groups,gateways,addresses,network_interfaces,cidr_groups}_project_id_name_key` | UNIQUE `(project_id, name)` — **полный** | Имя уникально в project — **одна форма на все 8 пользовательских ресурсов**. Частичный предикат `WHERE name <> ''` снят миграцией `715001`: он существовал ради пустых имён, а пустого имени больше не бывает — сервер подставляет имя от `id` (задача #715) |
 | `address_pools_zone_kind_default_uniq` | UNIQUE `(COALESCE(zone_id,''), kind)` WHERE `is_default=true` | Не более одного дефолтного пула на `(zone, kind)` |
 
 ### 6.3 Индексы (helper)

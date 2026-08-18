@@ -30,7 +30,9 @@ func (c *Client) CreateGateway(ctx context.Context, req *vpcv1.CreateGatewayRequ
 	return c.Gateways.Create(ctx, req, opts...)
 }
 
-// UpdateGateway — async update. NameGateway — strict-контракт (lowercase, без uppercase/underscore).
+// UpdateGateway — async update. Имя судится единственной формой дерева
+// (`validate.NameForm`, RFC 1123 DNS label); маска, назвавшая `name`, требует
+// непустого значения.
 func (c *Client) UpdateGateway(ctx context.Context, req *vpcv1.UpdateGatewayRequest, opts ...grpc.CallOption) (*operationv1.Operation, error) {
 	return c.Gateways.Update(ctx, req, opts...)
 }

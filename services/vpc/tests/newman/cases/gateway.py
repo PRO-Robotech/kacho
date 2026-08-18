@@ -256,7 +256,7 @@ CASES.append(Case(
 # (`corevalidate.NameGateway`: только строчные буквы, цифры и дефис, без
 # заглавных и подчёркиваний). Это by-design, объявленное независимо от прогона:
 # см. `services/vpc/docs/engineering/architecture/07-known-divergences.md` §22.
-CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}, strict_name=True))
+CASES.extend(ecp_name_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(ecp_description_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(ecp_labels_block("GW", "/vpc/v1/gateways", {"natGatewaySpec": {}, "subnetId": "{{gwAnchorSubId}}"}))
 CASES.extend(updatemask_decision_table("GW", "/vpc/v1/gateways"))

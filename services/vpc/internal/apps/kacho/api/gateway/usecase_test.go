@@ -119,7 +119,7 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 
-	// Bad name (strict NameGateway rejects uppercase).
+	// Негодное имя: заглавные единственной формой дерева не приняты.
 	_, err = uc.Execute(context.Background(), domain.Gateway{
 		ProjectID:   "f1",
 		Name:        domain.RcNameVPC("BadCaps"),

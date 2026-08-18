@@ -75,8 +75,9 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 		return nil, status.Error(codes.InvalidArgument, "project_id required")
 	}
 	name := string(g.Name)
-	// Gateway.Name — строгий regex (lowercase, без uppercase/underscore).
-	if err := corevalidate.NameGateway("name", name); err != nil {
+	// Единственная форма имени дерева; пустое на создании законно и означает
+	// «назови сам» — умолчание подставляется ниже, когда id уже сгенерирован.
+	if err := corevalidate.NameOnCreate("name", name); err != nil {
 		return nil, err
 	}
 	// Domain self-validation для description/labels.
@@ -111,6 +112,9 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 	// (в отличие от Network/Subnet/RouteTable/SecurityGroup).
 
 	gwID := ids.NewID(ids.PrefixGateway)
+	// Пустое имя не доживает до записи: ресурса без имени не бывает (#715).
+	name = corevalidate.NameOrDefault(name, gwID)
+	g.Name = domain.RcNameVPC(name)
 	// Учёт числа ресурсов: ранний отказ ДО создания операции.
 	//
 	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —

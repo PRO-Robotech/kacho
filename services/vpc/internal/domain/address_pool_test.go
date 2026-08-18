@@ -42,16 +42,32 @@ func TestAddressPool_vpc8G_B2_Validate_OK(t *testing.T) {
 }
 
 // vpc8G-B3 — невалидный name.
+//
+// Прежняя редакция сверяла сообщение ДОСЛОВНО с формой, объявленной этим
+// сервисом. Своей формы у сервиса нет — она приезжает из `pkg/validate/nameform`
+// (#715), — поэтому текст здесь не выписывается второй раз: он берётся из того
+// же места, что и в проде (`nameFormViolationMsg`), а его совпадение с полосой
+// правки держит `name_message_parity_test.go`. Выписанная сюда копия была бы
+// ТРЕТЬИМ экземпляром одного текста.
 func TestAddressPool_vpc8G_B3_Validate_BadName(t *testing.T) {
 	p := validPool()
-	p.Name = "1bad name!"
+	p.Name = "1bad name!" // пробел и восклицательный знак формой не приняты
 	v := firstViolation(t, p.Validate())
 	if v.Field != "name" {
 		t.Fatalf("field = %q, want name", v.Field)
 	}
-	const want = `name must match ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$ (letters, digits, hyphens, underscores; starts with letter; up to 63 chars; empty allowed)`
-	if v.Msg != want {
-		t.Fatalf("msg = %q, want %q", v.Msg, want)
+	if v.Msg != nameFormViolationMsg {
+		t.Fatalf("msg = %q, want %q", v.Msg, nameFormViolationMsg)
+	}
+}
+
+// vpc8G-B3a — положительный контроль рядом с отрицанием: пул с законным именем
+// проходит. Без него «отвергнуто» было бы неотличимо от «отвергается всё».
+func TestAddressPool_vpc8G_B3a_Validate_LawfulName(t *testing.T) {
+	p := validPool()
+	p.Name = "pool-ext-b"
+	if err := p.Validate(); err != nil {
+		t.Fatalf("lawful name must pass Validate, got %v", err)
 	}
 }
 

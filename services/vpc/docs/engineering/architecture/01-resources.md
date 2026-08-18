@@ -40,8 +40,8 @@ erDiagram
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | text PK, prefix `net` | |
-| `project_id` | text NOT NULL | `networks_project_id_name_key` UNIQUE(project_id, name) WHERE `name <> ''` (669001) |
-| `name` | text | NameVPC permissive |
+| `project_id` | text NOT NULL | `networks_project_id_name_key` UNIQUE(project_id, name) — полный (715001) |
+| `name` | text NOT NULL | единственная форма дерева — DNS label RFC 1123, `corevalidate.Name`; пустого имени не бывает: на создании сервер подставляет имя от `id` (715001) |
 | `description` | text | ≤256 |
 | `labels` | jsonb | ≤64 пар |
 | `default_security_group_id` | text NULL FK→`security_groups` | устанавливается в воркере Create БЕЗУСЛОВНО. ON DELETE SET NULL |

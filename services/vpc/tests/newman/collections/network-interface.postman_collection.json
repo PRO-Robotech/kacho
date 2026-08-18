@@ -13326,7 +13326,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-A-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-a-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13465,7 +13465,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-B-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-b-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -579,48 +579,93 @@ def confirm_created_and_cleanup(create_path: str, id_var: str = "ecpId") -> List
     ]
 
 
-def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
-    """ECP/BVA по полю name: пустое, max, over-max, invalid regex.
+def ecp_name_block(prefix, create_path, body_extra=None):
+    """ECP/BVA по полю name: пустое, max, over-max, форма имени.
 
     body_extra — обязательные поля кроме projectId/name (например для Subnet: networkId+zoneId+cidr).
 
-    strict_name — у ресурса СТРОГИЙ контракт имени (только строчные буквы, цифры
-    и дефис) вместо разрешительного контракта остальных VPC-ресурсов. Это не
-    настройка теста «под поведение», а объявленный контракт: он записан в
-    `pkg/validate.NameGateway`, в godoc `domain.Gateway`, в SDK и закреплён
-    unit-тестом — то есть существует независимо от того, что показал прогон.
-    Отличается ровно один исход — заглавные буквы; всё остальное (пустое имя,
-    границы длины, начало с цифры/дефиса, спецсимволы) у обоих контрактов
-    совпадает, поэтому параметр меняет один кейс, а не набор.
+    Форма имени в дереве ОДНА — DNS label по RFC 1123, `pkg/validate.NameForm`
+    (`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`), поэтому и параметра `strict_name`
+    здесь больше нет. Он существовал ровно ради одного исхода — заглавных букв,
+    которые разрешительный контракт VPC принимал, а строгий контракт Gateway
+    отвергал. Разрешительного контракта не стало: `nameReVPC` снят вместе с
+    тремя другими объявлениями формы (задача #715), заглавные отвергаются у
+    ВСЕХ шести ресурсов, и параметр, у которого больше нет двух значений,
+    остался бы настройкой без предмета.
     """
     body_extra = body_extra or {}
     base = lambda name: {"projectId": "{{_suiteProjectId}}", "name": name, **body_extra}
     cases = []
     # BVA name length: 0, 63 (max), 64 (over)
-    # Имя у VPC-ресурса — разрешительный контракт: пустая строка допустима
-    # (domain.RcNameVPC.Validate). Исход ровно один, поэтому и утверждение одно:
-    # прежнее `oneOf([200, 400])` под именем «accepted or rejected» проходило и при
-    # приёме, и при отказе — то есть не отделяло соблюдение контракта от его нарушения.
+    # Пустое имя на СОЗДАНИИ — законный вход, и означает он не «имя отсутствует»,
+    # а «назови сам»: `validate.NameOnCreate` пропускает пустую строку, а
+    # `validate.NameOrDefault` до записи подставляет вместо неё идентификатор
+    # ресурса. Поэтому ресурс с пустым именем не возникает НИ ПРИ КАКОМ входе, и
+    # утверждать надо именно подстановку, а не приём запроса: кейс, проверяющий
+    # только 200, остаётся зелёным и тогда, когда имя записалось пустым.
     #
-    # ОГОВОРКА ПРО УНИКАЛЬНОСТЬ ПУСТОГО ИМЕНИ — она НЕ общая для семи ресурсов.
-    # Здесь стояло «частичный UNIQUE-индекс исключает `name <> ''`» как утверждение
-    # обо всех. Перепись индексов живой схемы (2026-08-04, `pg_indexes` по
-    # `kacho_vpc`): частичный индекс `WHERE name <> ''` есть у ШЕСТИ ресурсов —
-    # addresses, gateways, network_interfaces, route_tables, security_groups,
-    # subnets; у `networks` индекс `(project_id, name)` ПОЛНЫЙ, поэтому ВТОРАЯ сеть
-    # с пустым именем в одном проекте получает ALREADY_EXISTS (асинхронно, в
-    # операции). Кейсы это переживают только потому, что убирают за собой (см.
-    # confirm_created_and_cleanup); незакрытая сеть от прошлого прогона роняет
-    # следующий. Расхождение с шестью соседями — предмет отдельного разбора со
-    # стороны продукта, а не повод ослабить утверждение.
+    # ЗДЕСЬ СТОЯЛА ОГОВОРКА ПРО УНИКАЛЬНОСТЬ ПУСТОГО ИМЕНИ — она пережила свой
+    # предмет. Она разбирала, у каких ресурсов частичный UNIQUE исключает
+    # `name <> ''`, а у каких индекс полный, и предупреждала, что вторая сеть с
+    # пустым именем получит ALREADY_EXISTS. Этого расхождения больше нет by
+    # construction: пустое имя не доживает до вставки, а подставляемый
+    # идентификатор глобально уникален, поэтому оба вида индекса ведут себя
+    # одинаково и различать их незачем.
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-EMPTY",
-        title="Create с empty name → 200 (пустое имя разрешено контрактом)",
+        title="Create с empty name → 200, имя подставлено идентификатором ресурса",
         classes=["BVA", "VAL"], priority="P2",
         steps=[Step(name="cr-empty", method="POST", path=create_path,
                     body=base(""),
                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-               *confirm_created_and_cleanup(create_path)],
+               poll_operation_until_done(capture_id_to="ecpId"),
+               # Утверждается ПОДСТАНОВКА, а не приём: имя обязано быть равно id
+               # ресурса дословно (validate.NameOrDefault → defaultNameForID = id).
+               # Проверка пустоты («name !== ''») этого не отличает — ей одинаково
+               # годится любая непустая строка, в том числе чужая.
+               retry_until_authorized(Step(
+                   name="cr-empty-name-substituted", method="GET",
+                   path=f"{create_path}/{{{{ecpId}}}}",
+                   test_script=[*assert_status(200),
+                                "pm.test('пустое имя заменено идентификатором ресурса', () => "
+                                "pm.expect(pm.response.json().name, pm.response.text())"
+                                ".to.eql(pm.environment.get('ecpId')));"])),
+               retry_until_authorized(Step(
+                   name="ecp-cleanup", method="DELETE",
+                   path=f"{create_path}/{{{{ecpId}}}}",
+                   test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+               poll_operation_until_done()],
+    ))
+    # Третья сторона контракта имени, и до неё у набора не было НИ ОДНОГО кейса:
+    # пустое имя законно только на СОЗДАНИИ («назови сам»), а на ПРАВКЕ отвергается
+    # — снять имя нельзя, ресурса без имени не бывает. `PRODUCT-REQUIREMENTS.md`
+    # ссылался на `*-UPD-NEG-NAME-EMPTY` как на подтверждение этого требования,
+    # а производил его НИКТО: ссылка «Validated-by» указывала в пустоту.
+    #
+    # Утверждается ЯВНАЯ маска: при пустой маске (полная правка) «поле не прислано»
+    # и «поле пусто» в proto3 неразличимы, поэтому там проверяется только форма —
+    # см. update.go. Кейс на пустую маску сюда не добавлен намеренно: он утверждал
+    # бы противоположный исход на том же входе и читался бы как противоречие.
+    cases.append(Case(
+        id=f"{prefix}-UPD-NEG-NAME-EMPTY",
+        title="Update с mask=name и пустым name → 400 'name is required' (подстановка бывает только на Create)",
+        classes=["VAL", "NEG"], priority="P1",
+        steps=[Step(name="cr-for-upd-empty", method="POST", path=create_path,
+                    body=base(f"{prefix.lower()}-updempty-{{{{runId}}}}"),
+                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+               poll_operation_until_done(capture_id_to="ecpId"),
+               retry_until_authorized(Step(
+                   name="upd-name-empty", method="PATCH",
+                   path=f"{create_path}/{{{{ecpId}}}}",
+                   body={"updateMask": "name", "name": ""},
+                   test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                                "pm.test('отказ называет требование имени, а не форму', () => "
+                                "pm.expect(JSON.stringify(pm.response.json())).to.contain('name is required'));"])),
+               retry_until_authorized(Step(
+                   name="ecp-cleanup", method="DELETE",
+                   path=f"{create_path}/{{{{ecpId}}}}",
+                   test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+               poll_operation_until_done()],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-MAX-63",
@@ -641,34 +686,32 @@ def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
                     body=base("n64" + "abcdefghij"*7),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
     ))
-    # Заглавные буквы — единственный исход, который у двух контрактов имени
-    # расходится. Разрешительный (regex ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$)
-    # их принимает, строгий (^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$) отвергает и
-    # называет поле. Исход ровно один в обоих случаях — одно утверждение, без
-    # `oneOf`, иначе кейс проходил бы при любом поведении продукта.
+    # Заглавные буквы отвергаются у ВСЕХ шести ресурсов: форма имени одна.
+    # Прежде исход здесь зависел от параметра `strict_name` — разрешительный
+    # контракт VPC заглавные принимал, строгий контракт Gateway отвергал, — и
+    # кейс нёс две ветки. Ветка приёма снята вместе со своим контрактом, отказ
+    # остался один и утверждается без `oneOf`.
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-UPPERCASE",
-        title=("Create с UPPERCASE name → 400 (строгий контракт имени: только строчные)"
-               if strict_name else
-               "Create с UPPERCASE name → 200 (заглавные разрешены контрактом)"),
-        classes=["VAL"] + (["NEG"] if strict_name else []), priority="P2",
+        title="Create с UPPERCASE name → 400 (форма имени: только строчные)",
+        classes=["VAL", "NEG"], priority="P2",
         steps=[Step(name="cr-upper", method="POST", path=create_path,
                     body=base("InvalidUpperCase-{{runId}}"),
-                    test_script=(
-                        [*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                         "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"]
-                        if strict_name else
-                        [*assert_status(200), *save_from_response("j.id", "opId")]
-                    ))]
-              # Строгий контракт отвергает синхронно — ресурса нет, снимать нечего.
-              + ([] if strict_name else confirm_created_and_cleanup(create_path)),
+                    test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                                 "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"])],
     ))
+    # ЗДЕСЬ БЫЛ КЕЙС «имя начинается с цифры → 400». Его предмета больше нет:
+    # DNS label по RFC 1123 разрешает цифру первым символом, и `9invalid-…`
+    # теперь ЗАКОННОЕ имя. Кейс не удалён, а переведён на ось, которая у формы
+    # действительно сузилась и до сих пор не имела отрицания ни у одного из
+    # шести ресурсов, — подчёркивание. Оно принималось прежним разрешительным
+    # контрактом VPC (`[-_a-zA-Z0-9]`) и отвергается новым.
     cases.append(Case(
-        id=f"{prefix}-CR-VAL-NAME-DIGIT-START",
-        title="Create с name начинающимся с цифры → 400 (нарушение name-regex)",
-        classes=["VAL"], priority="P1",
-        steps=[Step(name="cr-digit", method="POST", path=create_path,
-                    body=base("9invalid-{{runId}}"),
+        id=f"{prefix}-CR-VAL-NAME-UNDERSCORE",
+        title="Create с подчёркиванием в name → 400 (форма имени: буквы, цифры, дефис)",
+        classes=["VAL", "NEG"], priority="P1",
+        steps=[Step(name="cr-underscore", method="POST", path=create_path,
+                    body=base("bad_name-{{runId}}"),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
     ))
     cases.append(Case(
@@ -1143,7 +1186,7 @@ def neg_invalid_types_block(prefix, create_path, body_create):
         # ответов. Теперь заявлен и проверяется ровно тот исход, который есть.
         Case(
             id=f"{prefix}-CR-VAL-NAME-NULL",
-            title="Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+            title="Create с name=null → 200 (protojson: null = поле не задано; имя подставляется)",
             classes=["VAL"], priority="P2",
             steps=[Step(name="cr-null", method="POST", path=create_path,
                         body={**body_create, "name": None},

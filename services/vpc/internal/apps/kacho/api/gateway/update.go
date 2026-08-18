@@ -165,8 +165,8 @@ func labelsInMask(updateMask []string) bool {
 }
 
 // validateGatewayUpdate — sync-проверка update_mask и значений: description/labels
-// валидируются через domain newtype.Validate(), name — через
-// corevalidate.NameGateway (strict-name).
+// валидируются через domain newtype.Validate(), name — единственной формой дерева
+// (`corevalidate.Name`, #715).
 func validateGatewayUpdate(in UpdateInput) error {
 	// Известный набор — ИМЕНА ПОЛЕЙ КОНТРАКТА, и только изменяемых. Здесь стояло
 	// `gateway_type` — имя СТОЛБЦА БД (`services/vpc/internal/migrations/0001_initial.sql`),
@@ -185,7 +185,17 @@ func validateGatewayUpdate(in UpdateInput) error {
 	for _, f := range updates {
 		switch f {
 		case "name":
-			if err := corevalidate.NameGateway("name", string(in.Gateway.Name)); err != nil {
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: она читает
+			// форму запроса (маска × значение) и отвечает сразу на два вопроса —
+			// законен ли ввод и следует ли имя применять. Ту же функцию зовёт
+			// применение маски, поэтому проверка и запись разойтись не могут.
+			//
+			// Пять исходов и их причина — в godoc `validate.NameOnUpdate`; здесь
+			// они не пересказываются, иначе завелось бы два места об одном
+			// предмете. Коротко о том, что здесь неочевидно: при ПУСТОЙ маске
+			// пустое имя законно и означает «не прислано» — в proto3 это
+			// неотличимо от отсутствия поля.
+			if _, err := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.Gateway.Name)); err != nil {
 				return err
 			}
 		case "description":
@@ -206,16 +216,32 @@ func validateGatewayUpdate(in UpdateInput) error {
 // в набор не входят — они неизменяемы после Create, и присланное в теле без маски
 // по конвенции игнорируется молча (явное указание в маске отвергается выше).
 func applyGatewayMask(g *domain.Gateway, in UpdateInput) {
-	if len(in.UpdateMask) == 0 {
+	// Применять ли имя, решает ТА ЖЕ функция, что вынесла приговор на проверке
+	// входа, — поэтому проверка и запись разойтись не могут by construction.
+	// Здесь читается только её булева половина: отказ уже случился бы синхронно,
+	// до создания операции.
+	//
+	// Решение вынесено ИЗ ОБЕИХ ветвей маски намеренно. Прежде ветвь полной
+	// правки присваивала имя безусловно, и пустое значение уезжало в строку: в
+	// proto3 «поле не прислано» неотличимо от «поле пусто», поэтому полная
+	// правка, НЕ ТРОГАВШАЯ имя, имя стирала. После миграции 715001, поставившей
+	// на столбец ограничение формы, это перестало быть «странным именем» и стало
+	// отказом БАЗЫ на пути, где вызывающий не сделал ничего неверного.
+	//
+	// Ошибка здесь отбрасывается сознательно: на ней функция возвращает false,
+	// то есть путь, почему-либо миновавший проверку входа, тоже НЕ запишет
+	// негодное имя — отказ направлен в безопасную сторону.
+	applyName, _ := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.Gateway.Name))
+	if applyName {
 		g.Name = in.Gateway.Name
+	}
+	if len(in.UpdateMask) == 0 {
 		g.Description = in.Gateway.Description
 		g.Labels = in.Gateway.Labels
 		return
 	}
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "name":
-			g.Name = in.Gateway.Name
 		case "description":
 			g.Description = in.Gateway.Description
 		case "labels":
