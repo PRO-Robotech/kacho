@@ -15,7 +15,13 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 )
 
-// TestIntegration_Compute_NameFormConstraintIsEnforced — задача #721.
+// TestIntegration_Compute_NameFormConstraintIsEnforced — действие ограничения
+// формы имени на живой базе.
+//
+// Ссылки на задачу здесь нет намеренно: гейт `internal/commentlint` этого сервиса
+// запрещает её в комментариях, и предмет называется словами. Предупреждение об
+// этом уже стоило одного круга проб — образец у vpc переносится в compute не
+// дословно.
 //
 // Миграция 715001 ставит форму имени четырём таблицам compute; доказательство
 // того, что форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса, перечень
