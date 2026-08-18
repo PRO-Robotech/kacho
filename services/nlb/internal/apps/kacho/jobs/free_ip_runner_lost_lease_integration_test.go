@@ -157,11 +157,11 @@ func insertPreMigrationSkewedLB(t testing.TB, ctx context.Context, pool *pgxpool
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers
-			(id, project_id, region_id, type, status, placement_type, ip_families,
+			(id, project_id, name, region_id, type, status, placement_type, ip_families,
 			 address_v4, address_id_v4, vip_origin_v4,
 			 address_v6, address_id_v6, vip_origin_v6,
 			 created_at, updated_at)
-		VALUES ($1, $2, 'region-1', 'INTERNAL', 'DELETING', 'REGIONAL', $3,
+		VALUES ($1, $2, $1, 'region-1', 'INTERNAL', 'DELETING', 'REGIONAL', $3,
 		        $4, '', 'auto', $5, '', 'auto', now() - $6::interval, now() - $6::interval)
 	`, id, projectID, families, addrV4, addrV6, age.String())
 	require.NoError(t, err)
