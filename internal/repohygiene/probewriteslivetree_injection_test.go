@@ -6,17 +6,37 @@
 //
 // Инъекция идёт в обе стороны и настоящими формами из дерева:
 //
-//	живой корень → запись файла            → краснеет, называет координату;
-//	живой корень → изменяющая git-команда  → краснеет;
-//	живой корень → помощник, который пишет → краснеет (шаг наружу);
-//	живой корень → ЧТЕНИЕ                  → молчит (иначе запрет на гейты);
-//	живой корень + запись во временный     → молчит;
-//	копия дерева (`Rel` → `Join`)          → молчит;
-//	запрещённая форма в комментарии        → молчит (читается код, не текст).
+//	живой корень → запись файла                  → краснеет, называет координату;
+//	живой корень РАБОЧИМ КАТАЛОГОМ git → мутация → краснеет;
+//	живой корень В АРГУМЕНТАХ git (`-C`)         → краснеет (ветка другая);
+//	живой корень → помощник, который пишет       → краснеет (шаг наружу);
+//	живой корень → ЧТЕНИЕ                        → молчит (иначе запрет на гейты);
+//	СВОЁ дерево рабочим каталогом git → мутация  → молчит;
+//	живой корень + запись во временный           → молчит;
+//	копия дерева (`Rel` → `Join`)                → молчит;
+//	запрещённая форма в комментарии              → молчит (читается код, не текст).
 //
-// Четвёртая и шестая строки — не украшение: обе формы В ДЕРЕВЕ ЕСТЬ, и на
-// шестой первая редакция предиката дала ложную находку (считала `filepath.Rel`
+// # Почему форм git ДВЕ, а не одна (исправлено по рецензии #696)
+//
+// Первая редакция этого файла закрепляла только форму «корень в аргументах»
+// (`gitenv.Command("", "-C", root, "add", …)`). Ею была написана ПРЕЖНЯЯ
+// редакция проб — та самая, которую задача снимала, — и на ней инъекция
+// выглядела полной. Но сам фикс написан ДРУГОЙ формой: `gitenv.Command(root,
+// "add", …)`, корень рабочим каталогом. Ветка гейта у неё своя (`isLive(dir)`),
+// и она не была закреплена ничем: рецензент отключил её целиком, а инъекция
+// осталась зелёной по всем семи случаям — включая тот, что называется
+// «изменяющая git-команда против живого репозитория краснеет».
+//
+// Соотношение форм в корпусе проб на `e22436f1` (предикат — `git grep -c
+// 'gitenv\.Command('` против `'gitenv\.Command("'` по `*_test.go`): всего 43
+// вызова, «корень рабочим каталогом» — 38, «корень в аргументах» — 5. То есть
+// незакреплённой оставалась ПРЕОБЛАДАЮЩАЯ форма, а не редкая.
+//
+// Пятая и восьмая строки — не украшение: обе формы В ДЕРЕВЕ ЕСТЬ, и на восьмой
+// первая редакция предиката дала ложную находку (считала `filepath.Rel`
 // сохраняющим происхождение). Гейт, краснеющий на копии дерева, снимут первым.
+// Шестая строка — дословная форма исправленного кода задачи: гейт, краснеющий
+// на ней, объявил бы собственный фикс дефектом.
 package repohygiene
 
 import "testing"
@@ -69,9 +89,10 @@ func TestInjectsIntoTheLiveTree(t *testing.T) {
 }
 `
 
-// ДЕФЕКТ 2 — изменяющая git-команда против живого репозитория, в том числе в
-// форме «аргументы собраны строкой выше».
-const synthMutatesLiveIndex = `package probe
+// ДЕФЕКТ 2 — изменяющая git-команда, живой корень идёт РАБОЧИМ КАТАЛОГОМ.
+// Форма преобладающая (38 вызовов из 43) и, что важнее, ею написан сам фикс
+// задачи — поэтому именно она обязана держать ветку `isLive(dir)`.
+const synthMutatesLiveIndexViaWorkdir = `package probe
 
 import (
 	"testing"
@@ -79,7 +100,27 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
-func TestStagesIntoTheLiveIndex(t *testing.T) {
+func TestStagesIntoTheLiveIndexViaWorkdir(t *testing.T) {
+	root := treeTop(t)
+	if out, err := gitenv.Command(root, "add", "-f", "--", "ui-future/injected.test.tsx").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+}
+`
+
+// ДЕФЕКТ 3 — та же команда, но корень уехал В АРГУМЕНТЫ (`-C <root>`), а рабочий
+// каталог пуст. Ветка гейта здесь ДРУГАЯ — обход аргументов и разбор среза,
+// собранного строкой выше, — поэтому случай отдельный, а не копия предыдущего.
+// Этой формой была написана прежняя редакция проб, которую задача сняла.
+const synthMutatesLiveIndexViaArgs = `package probe
+
+import (
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
+)
+
+func TestStagesIntoTheLiveIndexViaArgs(t *testing.T) {
 	root := treeTop(t)
 	rels := []string{"ui-future/injected.test.tsx"}
 	addArgs := append([]string{"-C", root, "add", "-f", "--"}, rels...)
@@ -89,7 +130,7 @@ func TestStagesIntoTheLiveIndex(t *testing.T) {
 }
 `
 
-// ДЕФЕКТ 3 — живой корень уезжает в помощника, и пишет уже он. Без шага наружу
+// ДЕФЕКТ 4 — живой корень уезжает в помощника, и пишет уже он. Без шага наружу
 // у запрета была бы дыра шириной в одну функцию.
 const synthWritesViaHelper = `package probe
 
@@ -140,7 +181,47 @@ func TestReadsLiveTreeWritesItsOwn(t *testing.T) {
 }
 `
 
-// ЗАКОННЫЙ БЛИЗНЕЦ 2 — копия дерева во временный каталог. Настоящая форма из
+// ЗАКОННЫЙ БЛИЗНЕЦ 2 — та же изменяющая команда, тем же рабочим каталогом, но
+// каталог СВОЙ. Это дословная форма исправленного кода задачи: завести
+// репозиторий во временном каталоге, положить туда пробы и добавить их в ЕГО
+// индекс.
+//
+// Пара с ДЕФЕКТОМ 2 замыкает ветку `isLive(dir)` с ОБЕИХ сторон, и ни одна
+// сторона не лишняя: отключи ветку — промолчит дефект; защеми её в «всегда
+// живой» — покраснеет этот близнец, то есть гейт объявит находкой собственный
+// фикс. Близнец не копия дефекта: у него другой корень (временный против
+// живого) и другой набор подкоманд.
+const synthMutatesOwnSynthTree = `package probe
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
+)
+
+func TestStagesIntoItsOwnTree(t *testing.T) {
+	root := t.TempDir()
+	if out, err := gitenv.Command(root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	rel := "ui-future/probe.test.tsx"
+	abs := filepath.Join(root, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(abs, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	addArgs := append([]string{"add", "-f", "--"}, rel)
+	if out, err := gitenv.Command(root, addArgs...).CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+}
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ 3 — копия дерева во временный каталог. Настоящая форма из
 // дерева: относительный отрезок берётся от живого корня, а кладётся под
 // временный. Первая редакция предиката краснела ровно здесь.
 const synthCopiesTreeToTemp = `package probe
@@ -179,7 +260,7 @@ func TestCopiesTreeIntoItsOwnDir(t *testing.T) {
 }
 `
 
-// ЗАКОННЫЙ БЛИЗНЕЦ 3 — запрещённая форма в КОММЕНТАРИИ. Гейт, краснеющий на
+// ЗАКОННЫЙ БЛИЗНЕЦ 4 — запрещённая форма в КОММЕНТАРИИ. Гейт, краснеющий на
 // собственном объяснении, снимут первым.
 const synthForbiddenFormInProse = `package probe
 
@@ -201,9 +282,11 @@ func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 	const (
 		producerRel = "internal/synth/producer_test.go"
 		defWrite    = "internal/synth/writes_live_test.go"
-		defGit      = "internal/synth/mutates_index_test.go"
+		defGitDir   = "internal/synth/mutates_index_workdir_test.go"
+		defGitArgs  = "internal/synth/mutates_index_args_test.go"
 		defHelper   = "internal/synth/via_helper_test.go"
 		twinRead    = "internal/synth/reads_live_test.go"
+		twinOwnTree = "internal/synth/own_tree_test.go"
 		twinCopy    = "internal/synth/copies_tree_test.go"
 		twinProse   = "internal/synth/prose_test.go"
 	)
@@ -211,9 +294,11 @@ func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 	findings, census := auditProbeWritesToLiveTree(map[string]string{
 		producerRel: synthLiveRootProducer,
 		defWrite:    synthWritesLiveFile,
-		defGit:      synthMutatesLiveIndex,
+		defGitDir:   synthMutatesLiveIndexViaWorkdir,
+		defGitArgs:  synthMutatesLiveIndexViaArgs,
 		defHelper:   synthWritesViaHelper,
 		twinRead:    synthReadsLiveWritesTemp,
+		twinOwnTree: synthMutatesOwnSynthTree,
 		twinCopy:    synthCopiesTreeToTemp,
 		twinProse:   synthForbiddenFormInProse,
 	})
@@ -234,14 +319,39 @@ func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 		}
 	})
 
-	t.Run("изменяющая git-команда против живого репозитория краснеет", func(t *testing.T) {
-		fs, ok := got[defGit]
+	// Два случая ниже — РАЗНЫЕ ветки гейта, а не одна форма, записанная дважды.
+	// Первый ведёт происхождение через рабочий каталог вызова, второй — через
+	// аргументы. Слить их в одно утверждение «хоть где-то нашлось» нельзя: тогда
+	// отключение любой одной ветки осталось бы зелёным, что и произошло.
+	t.Run("живой корень РАБОЧИМ КАТАЛОГОМ изменяющей git-команды краснеет", func(t *testing.T) {
+		fs, ok := got[defGitDir]
 		if !ok {
-			t.Fatal("`git add` по живому корню НЕ пойман — фантомная запись в индексе " +
+			t.Fatal("`git add` с живым корнем рабочим каталогом НЕ пойман. Этой формой " +
+				"написан сам фикс #696 и 38 вызовов `gitenv.Command` из 43 в корпусе " +
+				"проб: без этого случая отключение ветки `isLive(dir)` инъекция не " +
+				"замечает — проверено рецензией, все семь прежних случаев оставались зелёными")
+		}
+		if fs[0].What != "git add" {
+			t.Errorf("подкоманда названа неверно: %q", fs[0].What)
+		}
+	})
+
+	t.Run("живой корень В АРГУМЕНТАХ изменяющей git-команды краснеет", func(t *testing.T) {
+		fs, ok := got[defGitArgs]
+		if !ok {
+			t.Fatal("`git -C <живой корень> add` НЕ пойман — фантомная запись в индексе " +
 				"осталась бы невидимой ровно для тех гейтов, что берут состав у индекса")
 		}
 		if fs[0].What != "git add" {
 			t.Errorf("подкоманда названа неверно: %q", fs[0].What)
+		}
+	})
+
+	t.Run("изменяющая git-команда против СВОЕГО дерева молчит", func(t *testing.T) {
+		if fs, ok := got[twinOwnTree]; ok {
+			t.Errorf("`git init`/`git add` во временном каталоге объявлены находкой (%+v). "+
+				"Это дословная форма исправленного кода задачи: гейт, краснеющий на ней, "+
+				"объявляет дефектом собственный фикс и будет снят первым же прогоном", fs)
 		}
 	})
 
@@ -282,8 +392,8 @@ func TestProbeWriteGateSeparatesLiveWritesFromReads(t *testing.T) {
 			t.Errorf("производителей живого корня насчитано %d, ожидался 1 — "+
 				"вывод производителя из тела сломан", census.Producers)
 		}
-		if census.Files != 7 {
-			t.Errorf("разобрано файлов %d, ожидалось 7 — часть корпуса не прочитана, "+
+		if census.Files != 9 {
+			t.Errorf("разобрано файлов %d, ожидалось 9 — часть корпуса не прочитана, "+
 				"и молчание по ней ничего не значит", census.Files)
 		}
 		if census.Writes == 0 {
@@ -326,4 +436,103 @@ func TestProbeWriteGateNeedsAProducerToSayAnything(t *testing.T) {
 	// а не молчит (`TestProbesDoNotWriteIntoTheTreeTheyRunFrom`, проверка
 	// предпосылки) — иначе исчезновение источника происхождения выглядело бы
 	// как чистое дерево.
+}
+
+// Производитель живого корня, ВТОРАЯ форма: оттолкнуться от файла самого
+// исходника (`runtime.Caller`) и подняться на известное число каталогов.
+// Маркера («go.mod») она не ищет и ничего не статит. Форма снята с дерева —
+// `services/vpc/tools/newmanverdict/ci_wiring_test.go`.
+const synthCallerRootProducer = `package probe
+
+import (
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+func moduleTop(t *testing.T) string {
+	_, self, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	dir := filepath.Dir(self)
+	for range 4 {
+		dir = filepath.Dir(dir)
+	}
+	return dir
+}
+`
+
+// Дефект, написанный ВТОРОЙ формой производителя. До расширения признака запись
+// по такому корню была гейту невидима: происхождение ведётся ОТ производителя, а
+// производителем эта функция не считалась.
+const synthWritesViaCallerRoot = `package probe
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestInjectsRelativeToItsOwnFile(t *testing.T) {
+	root := moduleTop(t)
+	abs := filepath.Join(root, "ui-future/injected.test.tsx")
+	if err := os.WriteFile(abs, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+}
+`
+
+// КОНТРОЛЬ В ДРУГУЮ СТОРОНУ — помощник, который ТОЛЬКО собирает пути. Он
+// поднимается по каталогам (`filepath.Dir`), но не спрашивает ни рабочий каталог
+// процесса, ни собственный файл, — корня живого репозитория он не производит.
+// Без этого контроля расширение признака сделало бы производителем любую работу
+// с путями, гейт залило бы ложными находками, и снят он был бы первым же.
+const synthPathHelperNotAProducer = `package probe
+
+import "path/filepath"
+
+func parentOf(p string) string {
+	return filepath.Dir(filepath.Clean(p))
+}
+`
+
+// TestProbeWriteGateKnowsBothFormsOfLiveRootProducer — определение производителя
+// одно на два гейта пакета.
+//
+// Корень живого репозитория ищут двумя способами, и второй (`runtime.Caller` →
+// восхождение) соседний гейт того же пакета уже признаёт, а этот — не признавал.
+// Расхождение двух определений одного предмета не роняет ничего само по себе:
+// оно просто делает половину форм невидимой, и «ноль находок» перестаёт значить
+// «ноль записей». Поэтому свойство закрепляется пробой, а не комментарием.
+func TestProbeWriteGateKnowsBothFormsOfLiveRootProducer(t *testing.T) {
+	const (
+		producerRel = "internal/synth2/caller_producer_test.go"
+		helperRel   = "internal/synth2/path_helper_test.go"
+		defectRel   = "internal/synth2/writes_live_test.go"
+	)
+
+	findings, census := auditProbeWritesToLiveTree(map[string]string{
+		producerRel: synthCallerRootProducer,
+		helperRel:   synthPathHelperNotAProducer,
+		defectRel:   synthWritesViaCallerRoot,
+	})
+
+	if census.Files != 3 {
+		t.Fatalf("разобрано файлов %d, ожидалось 3 — молчание по непрочитанному "+
+			"ничего не значит (перепись: %+v)", census.Files, census)
+	}
+	// Ровно ОДИН: форма «от своего файла» обязана узнаваться, а помощник, который
+	// только собирает пути, — нет. Два числа здесь неразделимы: признак, ставший
+	// шире нужного, даёт те же «производители найдены», что и верный.
+	if census.Producers != 1 {
+		t.Fatalf("производителей насчитано %d, ожидался ровно 1. Больше — признак "+
+			"считает производителем любую работу с путями (ложные находки); "+
+			"меньше — форма «от своего файла» не узнана и запись по такому корню "+
+			"невидима (перепись: %+v)", census.Producers, census)
+	}
+	if len(findings) != 1 || findings[0].File != defectRel {
+		t.Fatalf("запись по корню, найденному от СВОЕГО ФАЙЛА, не поймана: %+v "+
+			"(перепись: %+v)", findings, census)
+	}
 }
