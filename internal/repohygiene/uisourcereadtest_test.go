@@ -481,6 +481,32 @@ func dedupSorted(in []string) []string {
 // Гейт по дереву.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// uiProbeTreeRootEnv — имя переменной, которой инъекция называет корень дерева,
+// подлежащего суду.
+//
+// Знает о ней РОВНО ОДИН вызывающий — проба, доказывающая способность гейта
+// упасть. Без такого входа инъекции пришлось бы подкладывать дефект в индекс
+// ЖИВОЙ рабочей копии, из которой запущен прогон (`git add` по её корню), и
+// убирать его в конце тела. Прерывание между этими двумя шагами оставляло записи
+// в индексе, а состав корпуса гейты этого дерева берут именно у индекса — то
+// есть следующий прогон судил бы корпус, которого нет ни на диске, ни в `HEAD`,
+// и «ноль находок» становилось бы неотличимо от «ноль прочитанного» (#696).
+//
+// Подменить корень МОЛЧА нельзя, и это часть контракта: гейт печатает корень,
+// который судит, отдельной строкой, а пустой корпус под названным корнем —
+// отказ, а не пустой успех.
+const uiProbeTreeRootEnv = "KACHO_UI_PROBE_TREE_ROOT"
+
+// uiProbeTreeRoot — корень дерева, состав которого судит гейт. По умолчанию —
+// корень живой рабочей копии.
+func uiProbeTreeRoot(t *testing.T) string {
+	t.Helper()
+	if root := os.Getenv(uiProbeTreeRootEnv); root != "" {
+		return root
+	}
+	return repoRoot(t)
+}
+
 func uiProbeSources(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
@@ -503,7 +529,10 @@ func uiProbeSources(t *testing.T, root string) map[string]string {
 // TestUITestsDoNotReadTheirOwnSourceAsText — проба интерфейса не вправе
 // подтверждать себя чтением модуля консоли как текста.
 func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
-	root := repoRoot(t)
+	root := uiProbeTreeRoot(t)
+	// Корень называется ДО вердикта: «ноль находок» на дереве, которого гейт не
+	// открывал, иначе неотличимо от чистого дерева.
+	t.Logf("гейт судит дерево: %s", root)
 	sources := uiProbeSources(t, root)
 
 	if len(sources) == 0 {
