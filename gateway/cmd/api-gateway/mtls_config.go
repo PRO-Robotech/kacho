@@ -118,6 +118,12 @@ func backendEdge(backendKey string) string {
 		return "iam"
 	case "loadbalancer", "loadbalancerInternal":
 		return "nlb"
+	case "quota":
+		// Пакет общей формы ответа о квотах обслуживает kacho-iam, поэтому ребро
+		// у него ТО ЖЕ, что у iam: другое означало бы второй набор материала для
+		// одного соединения — и разошлись бы они молча, потому что оба
+		// защитимы по отдельности.
+		return "iam"
 	case "geo", "geoInternal":
 		return "geo"
 	case "registry", "registryInternal":

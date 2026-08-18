@@ -39,6 +39,10 @@ import (
 type quotaStore struct {
 	mu   sync.Mutex
 	rows map[quotaKey]*quotaRecord
+	// nested — проектный резолв вложенных величин. Отдельно от строк учёта, как
+	// и в настоящем хранилище: у вложенного вида есть проектная ВЕЛИЧИНА и нет
+	// проектного ПОТРЕБЛЕНИЯ.
+	nested map[quotaKey]int64
 }
 
 type quotaKey struct {
@@ -162,4 +166,29 @@ func (q *quotaMock) ListStates(_ context.Context, carrierType, carrierID string)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
 	return out, nil
+}
+
+// MaterializeNestedDefaults запоминает проектный резолв вложенных видов.
+//
+// Догоняющих строк учёта родителей здесь НЕТ, и это не упрощение: у подставного
+// хранилища нет таблицы родителей, поэтому «догнать» ему нечего. Дублёр обязан
+// не быть СНИСХОДИТЕЛЬНЕЕ настоящего — а он и не бывает: догоняющая запись
+// только ДОБАВЛЯЕТ строки учёта, поэтому её отсутствие здесь делает подставное
+// хранилище строже, а не мягче. Свойство догона проверяется интеграционной
+// пробой на настоящей базе, и другого места у него нет.
+func (q *quotaMock) MaterializeNestedDefaults(
+	_ context.Context, rows []kacho.QuotaRow,
+) (int64, error) {
+	q.store.mu.Lock()
+	defer q.store.mu.Unlock()
+
+	var n int64
+	for _, r := range rows {
+		if q.store.nested == nil {
+			q.store.nested = map[quotaKey]int64{}
+		}
+		q.store.nested[quotaKey{r.CarrierType, r.CarrierID, r.Kind}] = r.Limit
+		n++
+	}
+	return n, nil
 }

@@ -1,0 +1,210 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// browserbeforestand_test.go — браузер добывается ДО подъёма стенда, а не после.
+//
+// # Предмет
+//
+// `playwright install` — это не «скачать файл». Львиная доля его времени уходит
+// на РАСПАКОВКУ: 174 МиБ архива разворачиваются в тысячи файлов. Работа
+// однопоточная по процессору и тяжёлая по диску.
+//
+// Если поставить этот шаг ПОСЛЕ подъёма стенда, распаковка исполняется на
+// ранере, который уже занят целиком: kind-нода, восемь сервисов, Postgres,
+// Hydra, OpenFGA, девять подов консоли и etcd со своими постоянными fsync.
+// Распаковка на таком ранере не укладывается ни в какой разумный предел шага.
+//
+// # Замер, из которого правило выведено (2026-08-17)
+//
+// Шесть прогонов `console-e2e` подряд, шаг добычи браузера: РОВНО 540 с
+// каждый — шесть заходов по 90 с, и ни один не довёл установку до конца.
+//
+// Ключевое — распределение строк в журнале шага, потому что оно называет
+// виновника точно:
+//
+//	внешних заходов (их делал сам шаг)      6
+//	строк «Downloading Chromium»            6
+//	строк «100% of 173.9 MiB»               6
+//	строк «downloaded to»                   0
+//	строк «Downloading FFMPEG»              0
+//
+// Читается это так. Тело архива приходило ПОЛНОСТЬЮ и каждый раз — за ~1 с
+// (182 333 649 байт). Значит раздача исправна, и «зеркало не отвечает» —
+// неверный диагноз.
+//
+// Дальше решает арифметика повторов. Playwright стережёт молчащий сокет сам:
+// `NET_DEFAULT_TIMEOUT` = 30 с, и на срабатывание он повторяет загрузку ДО ПЯТИ
+// раз, ПЕЧАТАЯ «Downloading …» на каждом повторе. За 88 с тишины таких строк
+// добавилось бы две. Их ноль — на шесть заходов ровно шесть строк. Следовательно
+// сокет НЕ простаивал, и процесс в это время вообще не ждал сети.
+//
+// Единственное, что `oopDownloadBrowserMain` делает после загрузки, — это
+// `extract()`, `chmod` и запись маркера. Значит все 88 с уходили в распаковку.
+// На незанятой машине та же распаковка занимает 7.1 с (замерено
+// `DEBUG=pw:install`: «download complete» → «fixing permissions»).
+//
+// Цена ошибки порядка: девять минут ранера на каждом прогоне — и вердикт,
+// полученный в браузере из образа, то есть НЕ в том, к которому пинится набор.
+//
+// # Почему гейт на ПОРЯДОК, а не на предел времени
+//
+// Предел времени лечит симптом и всегда спорен: на незанятом ранере хватает
+// секунд, на занятом не хватит никакого. Порядок же — свойство дерева, оно
+// решает предмет целиком и проверяется механически. Поднять предел, оставив
+// порядок, значит оплатить ту же беду подороже.
+//
+// Побочно порядок даёт то, ради чего разводят третью категорию исхода: если
+// браузера не добыть вовсе, это выясняется на второй минуте, а не после
+// шестнадцати минут подъёма стенда, потраченных впустую.
+//
+// # Читается разобранный документ, а не текст
+//
+// Слова `playwright install` и `dev-up` стоят в этом файле в объяснении, и гейт,
+// ищущий их подстрокой в сыром тексте, покраснел бы на собственном комментарии.
+// Поэтому шаги берутся из РАЗОБРАННОГО YAML, где комментария не существует как
+// узла.
+//
+// # Перепись
+//
+// «Ноль находок» обязано отличаться от «ноль прочитанного»: гейт печатает,
+// сколько файлов конвейеров прочитал, сколько шагов добычи браузера и сколько
+// шагов подъёма стенда в них нашёл. Пустой обход — провал. Ноль шагов добычи
+// браузера — тоже провал: у гейта не осталось предмета, и молчать об этом
+// значит обещать защиту, которой нет.
+package repohygiene
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+// standWorkflowDoc — то немногое из workflow, что нужно этому гейту.
+type standWorkflowDoc struct {
+	Jobs map[string]struct {
+		Steps []struct {
+			Name string `yaml:"name"`
+			Run  string `yaml:"run"`
+		} `yaml:"steps"`
+	} `yaml:"jobs"`
+}
+
+// reBrowserAcquire — добыча САМОГО браузера.
+//
+// `playwright install-deps` под это НЕ подпадает намеренно: он ставит системные
+// пакеты через apt, весит секунды и предметом правила не является. Граница
+// проходит по символу после `install`: у `install-deps` там дефис.
+var reBrowserAcquire = regexp.MustCompile(`playwright\s+install(?:\s|$)`)
+
+// reStandUp — подъём стенда. Цель `dev-up` поднимает kind-кластер целиком и
+// занимает ранер до конца задания.
+var reStandUp = regexp.MustCompile(`\bdev-up\b`)
+
+// browserStandCensus — сколько чего осмотрено.
+type browserStandCensus struct {
+	Files    int
+	Browser  int // шагов добычи браузера
+	StandUps int // шагов подъёма стенда
+}
+
+func (c *browserStandCensus) add(o browserStandCensus) {
+	c.Files += o.Files
+	c.Browser += o.Browser
+	c.StandUps += o.StandUps
+}
+
+// checkBrowserBeforeStand — находки одного файла плюс его перепись. Вынесено
+// отдельно, чтобы обход можно было доказать инъекцией на синтетическом
+// содержимом, не трогая дерево.
+func checkBrowserBeforeStand(path, raw string) ([]string, browserStandCensus) {
+	var doc standWorkflowDoc
+	census := browserStandCensus{Files: 1}
+	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+		return []string{path + ": не разобран YAML: " + err.Error() + " — файл НЕ проверен"}, census
+	}
+
+	var findings []string
+	for name, job := range doc.Jobs {
+		// Первое вхождение каждого вида: именно ОНО задаёт момент, раньше
+		// которого начинается занятость ранера (для стенда) и позже которого
+		// добыча уже обречена (для браузера).
+		firstBrowser, firstStand := -1, -1
+		browserName, standName := "", ""
+		for i, st := range job.Steps {
+			if st.Run == "" {
+				continue
+			}
+			if reBrowserAcquire.MatchString(st.Run) {
+				census.Browser++
+				if firstBrowser < 0 {
+					firstBrowser, browserName = i, st.Name
+				}
+			}
+			if reStandUp.MatchString(st.Run) {
+				census.StandUps++
+				if firstStand < 0 {
+					firstStand, standName = i, st.Name
+				}
+			}
+		}
+		if firstBrowser < 0 || firstStand < 0 {
+			continue
+		}
+		if firstBrowser > firstStand {
+			findings = append(findings, path+": job "+name+" — браузер добывается шагом #"+
+				strconv.Itoa(firstBrowser+1)+" («"+browserName+"»), то есть ПОСЛЕ подъёма стенда "+
+				"шагом #"+strconv.Itoa(firstStand+1)+" («"+standName+"»). Распаковка браузера — "+
+				"тяжёлая работа по процессору и диску, а поднятый стенд занимает ранер целиком: "+
+				"замер 2026-08-17 дал 7.1 с на незанятой машине против несходящихся 88 с на занятом "+
+				"ранере, шесть заходов подряд, шесть прогонов подряд. Переставь добычу браузера "+
+				"ВЫШЕ подъёма стенда — она от стенда не зависит")
+		}
+	}
+	sort.Strings(findings)
+	return findings, census
+}
+
+// TestBrowserIsAcquiredBeforeTheStandTakesTheRunner — по дереву.
+func TestBrowserIsAcquiredBeforeTheStandTakesTheRunner(t *testing.T) {
+	root := repoRoot(t)
+	files := listWorkflows(t, root)
+
+	// Перепись — ОТДЕЛЬНОЕ утверждение: обход, переставший находить workflow,
+	// выходит зелёным на пустом множестве.
+	if len(files) == 0 {
+		t.Fatalf("в %s не найдено ни одного workflow — обход сломан, а не дерево чисто", workflowsDir)
+	}
+
+	var total browserStandCensus
+	var all []string
+	for _, rel := range files {
+		raw, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("не прочитан %s: %v", rel, err)
+		}
+		findings, census := checkBrowserBeforeStand(rel, string(raw))
+		total.add(census)
+		all = append(all, findings...)
+	}
+
+	t.Logf("осмотрено: файлов конвейеров %d, шагов добычи браузера %d, шагов подъёма стенда %d",
+		total.Files, total.Browser, total.StandUps)
+
+	// Предпосылка гейта: предмет существует. Ноль шагов добычи браузера значит,
+	// что сторожить больше нечего, — и об этом надо сказать, а не молча
+	// зеленеть, обещая защиту.
+	if total.Browser == 0 {
+		t.Fatalf("ни одного шага `playwright install` в %s — у гейта не осталось предмета. "+
+			"Либо сквозные пробы браузером уехали из конвейера (тогда снимать надо и этот гейт, "+
+			"вместе с его предметом), либо сломан обход", workflowsDir)
+	}
+
+	for _, f := range all {
+		t.Error(f)
+	}
+}

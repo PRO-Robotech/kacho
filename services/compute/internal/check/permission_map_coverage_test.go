@@ -38,6 +38,9 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 	computev1.InstanceService_ServiceDesc,
 	computev1.GuestAccessKeyService_ServiceDesc,
 	computev1.PlacementGroupService_ServiceDesc,
+	// Чтение квот арендатором. Публичная поверхность и ТОЛЬКО чтение: величины
+	// назначает администратор облака на внутреннем слушателе владельца величин.
+	computev1.QuotaService_ServiceDesc,
 	operationpb.OperationService_ServiceDesc,
 }
 

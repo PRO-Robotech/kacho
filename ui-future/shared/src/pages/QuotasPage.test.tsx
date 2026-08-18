@@ -20,15 +20,29 @@ import { QuotasPage } from "./QuotasPage";
 const realFetch = globalThis.fetch;
 let urls: string[] = [];
 
+/**
+ * Подставной край.
+ *
+ * Страница спрашивает ПЯТЬ владельцев — по одному на домен, который списывает
+ * квоту. Тело отдаётся ТОЛЬКО первому спрошенному (это владелец, чьи виды
+ * называет проба), остальным — пустой набор.
+ *
+ * Один ответ на всех был бы дублёром СНИСХОДИТЕЛЬНЕЕ настоящего края: он вернул
+ * бы одну и ту же строку пять раз, и витрина показала бы пятикратный дубль там,
+ * где настоящий край отдаёт разные виды разных доменов. Проба на таком дублёре
+ * краснела бы на исправной странице — то есть измеряла бы фикстуру, а не предмет.
+ */
 function stub(body: unknown, ok = true) {
   urls = [];
   globalThis.fetch = (input: RequestInfo | URL) => {
-    urls.push(requestUrl(input));
+    const url = requestUrl(input);
+    const first = urls.length === 0;
+    urls.push(url);
     return Promise.resolve({
       ok,
       status: ok ? 200 : 500,
       statusText: ok ? "OK" : "Internal Server Error",
-      text: () => Promise.resolve(JSON.stringify(body)),
+      text: () => Promise.resolve(JSON.stringify(first ? body : { quotas: [] })),
     } as Response);
   };
 }
@@ -88,6 +102,25 @@ describe("витрина квот арендатора", () => {
     const u = new URL(urls[0], "http://x");
     expect(u.pathname).toBe("/vpc/v1/quotas");
     expect(u.searchParams.get("projectId")).toBe("prj-1");
+  });
+
+  it("спрашивает КАЖДОГО владельца, который списывает квоту", async () => {
+    // Предмет пробы — полнота витрины, а не факт запроса. Домен, который
+    // списывает и здесь не спрошен, оставляет своего арендатора упираться в
+    // предел, которого тот не видит: ровно та беда, ради которой чтение и
+    // заводилось. Перечень путей выписан, потому что он и есть утверждение;
+    // вывести его из страницы значило бы сверять страницу с ней же.
+    stub({ quotas: [плоский] });
+    renderPage();
+    await waitFor(() => expect(urls.length).toBe(5));
+    const paths = urls.map((u) => new URL(u, "http://x").pathname).sort();
+    expect(paths).toEqual([
+      "/compute/v1/quotas",
+      "/nlb/v1/quotas",
+      "/registry/v1/quotas",
+      "/storage/v1/quotas",
+      "/vpc/v1/quotas",
+    ]);
   });
 
   it("показывает четвёрку: вид, предел, занято, источник", async () => {

@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -60,6 +62,22 @@ func (q *quotaReader) Admit(ctx context.Context, carrierType, carrierID, kind st
 		return mapPgErr(err, "Quota", "")
 	}
 	return nil
+}
+
+// QuotaSchema — схема, в которой у этого владельца лежит таблица учёта.
+const QuotaSchema = "kacho_nlb"
+
+// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+// квоты.
+//
+// Оператор ОБЩИЙ (`pkg/quota.ListStates`): таблица у всех владельцев одна и та
+// же с точностью до имени схемы, и своя копия здесь разошлась бы с соседями на
+// составе столбцов или на порядке — то есть там, где расхождение не ломает
+// сборку и не видно глазом.
+func (q *quotaReader) ListStates(
+	ctx context.Context, carrierType, carrierID string,
+) ([]quotaread.State, error) {
+	return corequota.ListStates(ctx, q.tx, QuotaSchema, carrierType, carrierID)
 }
 
 // quotaWriter — материализация поверх write-TX.

@@ -6386,6 +6386,143 @@
               }
             }
           ]
+        },
+        {
+          "name": "cleanup-azd-subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{azdSubnetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{azdSubnetId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                  "pm.environment.set('opId', '');",
+                  "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                  "pm.environment.unset('azdSubnetId');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-23",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -6537,7 +6674,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -6698,7 +6835,7 @@
           ]
         },
         {
-          "name": "poll-op-24",
+          "name": "poll-op-25",
           "request": {
             "method": "GET",
             "header": [
@@ -6857,7 +6994,7 @@
           ]
         },
         {
-          "name": "poll-op-25",
+          "name": "poll-op-26",
           "request": {
             "method": "GET",
             "header": [
@@ -7011,7 +7148,7 @@
           ]
         },
         {
-          "name": "poll-op-26",
+          "name": "poll-op-27",
           "request": {
             "method": "GET",
             "header": [
@@ -7187,7 +7324,7 @@
           ]
         },
         {
-          "name": "poll-op-27",
+          "name": "poll-op-28",
           "request": {
             "method": "GET",
             "header": [
@@ -7341,7 +7478,7 @@
           ]
         },
         {
-          "name": "poll-op-28",
+          "name": "poll-op-29",
           "request": {
             "method": "GET",
             "header": [
