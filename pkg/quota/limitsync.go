@@ -175,12 +175,40 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
+// Recorder — сток наблюдаемости тянущего.
+//
+// Интерфейс, а не Prometheus: фундамент остаётся лёгким, а конкретный реестр
+// провязывает владелец в композиционном корне — ровно как у доставки исходящих.
+// Дублёр для проб — `MemRecorder`.
+//
+// Спрашиваются ровно те три величины, которыми «тянущий мёртв» отличается от
+// «величины не меняли»: сколько проходов состоялось, сколько строк снимка
+// поправлено за всё время и КОГДА проход удался в последний раз. Первых двух по
+// отдельности мало: на неизменной конфигурации живой тянущий правит ноль строк,
+// поэтому нулевой счётчик строк сам по себе ни о чём не говорит, а вот нулевой
+// счётчик ПРОХОДОВ говорит, и возраст последнего успеха говорит громче обоих.
+type Recorder interface {
+	// IncPulls — состоявшийся проход (в том числе не применивший ни строки).
+	IncPulls(schema string)
+	// IncPullFailures — проход, окончившийся отказом.
+	IncPullFailures(schema string)
+	// AddAppliedRows — сколько строк снимка поправлено.
+	AddAppliedRows(schema string, rows float64)
+	// SetLastSuccessUnix — момент последнего удавшегося прохода.
+	SetLastSuccessUnix(schema string, unix float64)
+}
+
 // Syncer тянет дельту величин и правит проекцию.
 type Syncer struct {
 	src  Source
 	proj Projection
 	cfg  Config
 	log  *slog.Logger
+
+	// schema / rec — наблюдаемость. Схема здесь ЯРЛЫК величин: домены поднимают
+	// тянущего каждый со своей, и без ярлыка пять рядов слились бы в один.
+	schema string
+	rec    Recorder
 
 	// pullsTotal / rowsTotal — накопительные, ради того чтобы «ни одна строка не
 	// синхронизирована за всё время» было ЗАМЕТНО. Механизм, не тронувший ни
@@ -206,6 +234,41 @@ func NewSyncer(src Source, proj Projection, cfg Config, log *slog.Logger) (*Sync
 	return &Syncer{src: src, proj: proj, cfg: cfg.withDefaults(), log: log}, nil
 }
 
+// WithObserver подключает сток наблюдаемости. Без него тянущий работает так же,
+// но его состояние читается только из журнала и из накопительных столбцов
+// курсора — то есть глазами, а не оповещением.
+func (s *Syncer) WithObserver(schema string, rec Recorder) *Syncer {
+	s.schema, s.rec = schema, rec
+	return s
+}
+
+// observe отдаёт исход прохода стоку. Нулевой сток — законное состояние: сток
+// подключает владелец, и тянущий без него обязан работать, а не падать.
+func (s *Syncer) observe(rows int64, err error) {
+	if s.rec == nil {
+		return
+	}
+	if err != nil {
+		s.rec.IncPullFailures(s.schema)
+		return
+	}
+	s.rec.IncPulls(s.schema)
+	s.rec.AddAppliedRows(s.schema, float64(rows))
+	s.rec.SetLastSuccessUnix(s.schema, float64(time.Now().Unix()))
+}
+
+// RunOnceWithin делает догоняющий проход ПОД СОБСТВЕННЫМ сроком.
+//
+// Отдельный глагол, а не аргумент: бюджет прохода — свойство тянущего, и он
+// объявлен в его настройках. Прежде срок применял только цикл, а догоняющий
+// проход подъёма шёл сырым контекстом процесса — то есть неотвечающий сосед
+// держал бы подъём столько, сколько живёт процесс.
+func (s *Syncer) RunOnceWithin(ctx context.Context) (int64, error) {
+	runCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
+	defer cancel()
+	return s.RunOnce(runCtx)
+}
+
 // RunOnce делает один догоняющий проход и отдаёт число затронутых строк снимка.
 //
 // Страницы тянутся, пока курсор двигается: владелец величин отдаёт дельту
@@ -214,6 +277,7 @@ func NewSyncer(src Source, proj Projection, cfg Config, log *slog.Logger) (*Sync
 func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 	cursor, err := s.proj.LoadCursor(ctx)
 	if err != nil {
+		s.observe(0, err)
 		return 0, fmt.Errorf("load cursor: %w", err)
 	}
 
@@ -221,6 +285,7 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 	for page := 0; page < maxPagesPerRun; page++ {
 		changes, next, err := s.src.ListChangedSince(ctx, cursor, s.cfg.PageSize)
 		if err != nil {
+			s.observe(0, err)
 			return rows, fmt.Errorf("pull changes: %w", err)
 		}
 
@@ -232,11 +297,13 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 				// следующий проход встретит то же самое. Иначе дельта уехала бы
 				// вперёд, а строка осталась бы со старой величиной навсегда —
 				// и снаружи это выглядело бы как исправная синхронизация.
+				s.observe(0, err)
 				return rows, fmt.Errorf("change %s@%s rev %d: %w",
 					ch.Kind, string(ch.Scope), ch.Revision, err)
 			}
 			n, err := s.proj.ApplyChange(ctx, ch)
 			if err != nil {
+				s.observe(0, err)
 				return rows, fmt.Errorf("apply %s@%s rev %d: %w",
 					ch.Kind, string(ch.Scope), ch.Revision, err)
 			}
@@ -256,6 +323,7 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 		// двигала бы счётчик работы там, где работы не было.
 		if !caughtUp || len(changes) > 0 {
 			if err := s.proj.SaveCursor(ctx, next, pageRows); err != nil {
+				s.observe(0, err)
 				return rows, fmt.Errorf("save cursor: %w", err)
 			}
 		}
@@ -270,20 +338,35 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 	// нечего было применять. Иначе остановившийся синхронизатор выглядел бы
 	// точно так же, как живой на неизменной конфигурации.
 	if err := s.proj.Heartbeat(ctx); err != nil {
+		s.observe(0, err)
 		return rows, fmt.Errorf("heartbeat: %w", err)
 	}
 
 	s.pullsTotal++
 	s.rowsTotal += rows
+	s.observe(rows, nil)
 	return rows, nil
 }
 
-// Run гоняет проходы до отмены контекста.
+// Run гоняет проходы до отмены контекста, ЖДАВ ТИК ПЕРЕД КАЖДЫМ, включая первый.
 //
-// Отказ прохода НЕ фатален и НЕ тих: он логируется и повторяется следующим
-// тиком. Величина — не путь запроса, недоступность соседа здесь не должна
-// ронять сервис; но и «молча продолжаем» тоже не годится, поэтому каждый отказ
-// называется, а «ни одной строки за всё время» видно по накопительному счёту.
+// # Почему ждёт, а не начинает с прохода
+//
+// Догоняющий проход подъёма принадлежит ВЫЗЫВАЮЩЕМУ (`StartLimitSyncer` делает
+// его синхронно и называет исход). Начиная с прохода, цикл повторял бы тот же
+// вопрос тому же соседу через десятки миллисекунд после первого — заведомо в том
+// же состоянии сети. Наблюдалось на 12 подъёмах из 12: ровно два отказа подряд,
+// у одного домена с интервалом 32 мс, и второй не добавлял к первому ничего,
+// кроме второй строки в журнале.
+//
+// # Почему отказ не фатален и не тих
+//
+// Величина — не путь запроса. Недоступность соседа означает, что снимок какое-то
+// время постоит со старой величиной; предел при этом продолжает действовать —
+// место занимает триггер в writer-транзакции. Но и «молча продолжаем» не
+// годится, поэтому каждый отказ называется, а состояние «ни одного удавшегося
+// прохода ЗА ВСЮ ЖИЗНЬ» говорит о себе отдельной строкой: без неё мёртвый
+// тянущий неотличим от живого на неизменной конфигурации.
 func (s *Syncer) Run(ctx context.Context) {
 	t := time.NewTicker(s.cfg.Interval)
 	defer t.Stop()
@@ -293,11 +376,26 @@ func (s *Syncer) Run(ctx context.Context) {
 		slog.Int("page_size", int(s.cfg.PageSize)))
 
 	for {
-		runCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
-		rows, err := s.RunOnce(runCtx)
-		cancel()
+		select {
+		case <-ctx.Done():
+			s.log.Info("quota limit syncer stopped",
+				slog.Int64("rows_total", s.rowsTotal),
+				slog.Int64("pulls_total", s.pullsTotal))
+			return
+		case <-t.C:
+		}
+
+		rows, err := s.RunOnceWithin(ctx)
 
 		switch {
+		case err != nil && s.pullsTotal == 0:
+			// Отдельная строка, а не оттенок общей: «ни одного удавшегося прохода
+			// за всю жизнь» — это НЕ отставший снимок, это неработающий механизм.
+			// Пока обе беды писались одинаково, вторая читалась как первая.
+			s.log.Error("quota limit sync has NEVER succeeded",
+				slog.String("error", err.Error()),
+				slog.String("schema", s.schema),
+				slog.Int64("pulls_total", s.pullsTotal))
 		case err != nil:
 			s.log.Error("quota limit sync failed",
 				slog.String("error", err.Error()),
@@ -307,15 +405,6 @@ func (s *Syncer) Run(ctx context.Context) {
 			s.log.Info("quota limits synchronised",
 				slog.Int64("rows", rows),
 				slog.Int64("rows_total", s.rowsTotal))
-		}
-
-		select {
-		case <-ctx.Done():
-			s.log.Info("quota limit syncer stopped",
-				slog.Int64("rows_total", s.rowsTotal),
-				slog.Int64("pulls_total", s.pullsTotal))
-			return
-		case <-t.C:
 		}
 	}
 }

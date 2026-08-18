@@ -15,6 +15,8 @@ package shared
 
 import (
 	stderrors "errors"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -77,7 +79,10 @@ func MapRepoErr(err error) error {
 	case stderrors.Is(err, iamerr.ErrInternal):
 		// hardening-invariant #1: INTERNAL carries a FIXED opaque text, never the
 		// wrapped detail (a wrapped ErrInternal may embed subject/principal ids,
-		// row-counts or pgx/SQL text). Detail stays in the error chain for logs.
+		// row-counts or pgx/SQL text). Detail stays in the error chain for logs —
+		// и ЭТО ОБЕЩАНИЕ ТЕПЕРЬ ИСПОЛНЯЕТСЯ (#666): подробность называется строкой
+		// ниже, иначе она умирает здесь и причину отказа назвать нечем.
+		nameDiscardedDetail(err, "sentinel")
 		return status.Error(codes.Internal, "internal error")
 	}
 	if strings.HasPrefix(err.Error(), "Illegal argument") {
@@ -86,8 +91,49 @@ func MapRepoErr(err error) error {
 	// Defense-in-depth: an unexpected non-sentinel error must never surface its
 	// raw text (could carry pgx/SQL detail) as the gRPC INTERNAL message
 	// (api-conventions.md: INTERNAL = fixed text, no leak). The detail stays in
-	// the error chain for server-side logging.
+	// the error chain for server-side logging — и называется здесь.
+	nameDiscardedDetail(err, "unclassified")
 	return status.Error(codes.Internal, "internal error")
+}
+
+// sqlStater — то, что умеет назвать свой SQLSTATE.
+//
+// Интерфейс, а не импорт `pgconn`: этот пакет импортируют ~40 файлов слоя
+// use-case, и тянуть в их граф сборки драйвер значило бы нарушить правило
+// зависимостей ради одной строки журнала. `*pgconn.PgError` этому интерфейсу
+// удовлетворяет, и разбор от версии драйвера не зависит.
+type sqlStater interface{ SQLState() string }
+
+// nameDiscardedDetail называет подробность отказа В ТОТ МОМЕНТ, когда она
+// перестаёт существовать.
+//
+// # Зачем это здесь, а не у вызывающего
+//
+// Это ЕДИНСТВЕННАЯ воронка, где подробность теряется: наружу уезжает
+// фиксированный непротекающий текст, и после возврата причины нет ни у кого.
+// Два комментария на этом пути обещали журнал («Detail stays in the error chain
+// for logging») — журнала не было, и обещание читалось как факт. Цена измерена:
+// тянущий величины отказывал на каждом подъёме каждого домена, дважды подряд, и
+// назвать причину было нечем — соответствующей строки в журнале не существовало
+// ни одной.
+//
+// # Что именно пишется, и почему НЕ текст ошибки
+//
+// Пишутся SQLSTATE и ТИП корневой ошибки — то есть ровно то, что отвечает на
+// вопрос «почему», и ровно то, что не может оказаться персональными данными.
+// Свободный текст сюда не идёт: обёрнутая ошибка вправе нести значения полей
+// арендатора, а `security.md` запрещает их в журнале — и запрет не имеет
+// исключения «на отладку».
+func nameDiscardedDetail(err error, lane string) {
+	attrs := []any{
+		slog.String("lane", lane),
+		slog.String("error_type", fmt.Sprintf("%T", stderrors.Unwrap(err))),
+	}
+	var st sqlStater
+	if stderrors.As(err, &st) {
+		attrs = append(attrs, slog.String("sqlstate", st.SQLState()))
+	}
+	slog.Default().Error("repo error surfaced as INTERNAL", attrs...)
 }
 
 // MapValidationErr — обертка для результатов `domain.<Type>.Validate()`

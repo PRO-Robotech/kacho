@@ -67,7 +67,11 @@ func StartLimitSyncer(
 		return nil, fmt.Errorf("quota limit syncer: %w", err)
 	}
 
-	if rows, ferr := syncer.RunOnce(ctx); ferr != nil {
+	// Догоняющий проход — ОДИН, синхронный и ПОД СВОИМ сроком. Цикл ниже ждёт
+	// тик перед каждым своим проходом, поэтому второго на подъёме не будет:
+	// прежде их было два, с интервалом в десятки миллисекунд, и второй повторял
+	// тот же вопрос тому же соседу заведомо в том же состоянии сети.
+	if rows, ferr := syncer.RunOnceWithin(ctx); ferr != nil {
 		logger.Warn("resource-count quota: first limit sync failed, retrying in background",
 			slog.String("error", ferr.Error()), slog.String("schema", schema))
 	} else {

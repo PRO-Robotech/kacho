@@ -21,6 +21,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/dbready"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 )
 
@@ -40,6 +41,21 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 	if err == nil {
 		return nil
 	}
+	// ОТКАЗ ДОСТУПА к базе — до разбора SQLSTATE, потому что «сервер не ответил»
+	// бывает и БЕЗ SQLSTATE вовсе: порт закрыт, имя не резолвится, соединение
+	// оборвалось на середине. Такой отказ ожидаем ПО ПОСТРОЕНИЮ — пул строится
+	// лениво, соединения открываются на первом `Acquire`, а не на старте, — и
+	// классифицированный как поломка он не повторяется никем: `retry.OnUnavailable`
+	// повторяет только `Unavailable`.
+	//
+	// Классификатор ОБЩИЙ (`dbready.IsNotReady`), а не своя копия списка кодов:
+	// вторая копия разошлась бы с первой молча и ровно там, где расхождение не
+	// видно ни одной из сторон. Он же отвергает отмену вызывающего — бюджет
+	// кончился у нас, и недоступностью соседа это не является.
+	if dbready.IsNotReady(err) {
+		return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
+	}
+
 	var pgErr *pgconn.PgError
 	if !stderrors.As(err, &pgErr) {
 		return err
@@ -84,10 +100,11 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 		// correctly so a future SERIALIZABLE path surfaces a retryable code.
 		return iamerr.Wrapf(iamerr.ErrAborted, "serialization conflict, retry")
 	}
-	// connection family 08xxx
-	if strings.HasPrefix(pgErr.Code, "08") {
-		return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
-	}
+	// Класса 08 здесь БОЛЬШЕ НЕТ: он покрыт общим предикатом выше вместе с
+	// «сервер стартует / выключается / перегружен» и с транспортными отказами без
+	// SQLSTATE. Держать его вторым списком значило бы завести два места об одном
+	// предмете, из которых верно одно.
+	//
 	// Unmapped SQLSTATE — never return the raw *pgconn.PgError: its Error()
 	// carries table/constraint/column/SQLSTATE and would surface verbatim as the
 	// gRPC INTERNAL message (data-integrity.md: no pgx leak, fixed INTERNAL text).
