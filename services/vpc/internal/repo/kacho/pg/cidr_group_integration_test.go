@@ -370,7 +370,16 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	_, err = w3.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "", nil, nil))
 	w3.Abort()
 	require.Error(t, err, "пустое имя больше не является допустимым значением")
-	assert.ErrorIs(t, err, repo.ErrInvalidArg)
+
+	// Полоса сменилась с ErrInvalidArg на ErrInternal осознанно (задача о двух
+	// смыслах нарушения формы). Проба бьёт writer'ом МИМО use-case, то есть
+	// воспроизводит ровно тот случай, ради которого ограничение таблицы и стоит:
+	// «сервис пропустил негодное имя». Настоящий вызывающий этого пути не
+	// проходит — его имя судит доменный newtype до вставки, — поэтому обвинять
+	// его INVALID_ARGUMENT значит утверждать неправду, да ещё и предлагать
+	// исправить то, чего он не присылал.
+	assert.ErrorIs(t, err, repo.ErrInternal, "форма имени — дефект сервиса, а не ввод вызывающего")
+	assert.NotErrorIs(t, err, repo.ErrInvalidArg, "дефект сервиса не обвиняет вызывающего: %v", err)
 }
 
 // TestCidrGroup_EmptyingAReferencedSetIsRefused — снять ПОСЛЕДНИЙ префикс
