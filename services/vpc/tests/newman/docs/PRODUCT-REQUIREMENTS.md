@@ -831,6 +831,29 @@ REQ-SUB-DEFAULT-RT-BINDING) — и дальше меняется ТОЛЬКО я
 - Validated-by: `RT-DEL-WITH-ASSOC-OK`, integration `route_table_auto_association_integration_test.go::TestIntegration_VPC_AutoAssociation_RT_Delete_FK_SetNull`.
 - Проверка: `internal/migrations/0001_initial.sql` — `subnets.route_table_id text REFERENCES route_tables(id) ON DELETE SET NULL`.
 
+### REQ-RT-QUOTA-NESTED — потолок «сколько таблиц в ОДНОЙ сети» отвергает девятую [P0]
+Вложенный вид `vpc.network.routeTable` (умолчание 8 на сеть, посев
+`services/iam/internal/migrations/0094_limit_kind_nested_form_and_seeds.sql`) списывается
+в СВОЕЙ сети триггером `kacho_quota_count`
+(`internal/migrations/353002_nested_quota_carrier.sql`) в той же транзакции, что вставка
+строки ресурса. Девятая таблица в одной сети ДОЛЖНА быть отвергнута, и арендатор ДОЛЖЕН
+получить отказ в контрактной форме: `RESOURCE_EXHAUSTED` (gRPC 8), машинный признак
+`ErrorInfo.reason = QUOTA_EXCEEDED` с `domain = vpc.kacho.cloud`, и ДОСЛОВНЫЙ текст
+единственного производителя (`pkg/quota/refusal.sql.tmpl` :: `kacho_quota_refuse`) —
+`«<носитель> <id носителя> has reached its limit of <предел> <вид>»`.
+Отказ приезжает ОШИБКОЙ ОПЕРАЦИИ, а не синхронным статусом: вложенную ось совещательная
+полоса (`Guard.Admit`) не спрашивает — она спрашивает только проектную, — поэтому мутация
+принимается (200 + `Operation`, ban #9), а `RESOURCE_EXHAUSTED` стоит в `operation.error.code`.
+HTTP 429 на этой полосе НЕ производится ничем; 429 остаётся формой ПРОЕКТНОГО потолка,
+который отвергает синхронно.
+Отказ НЕ ДОЛЖЕН оставлять ресурса (списание и вставка — одна транзакция) и НЕ ДОЛЖЕН быть
+вечным: снятие одной таблицы возвращает место, и та же девятая проходит.
+- Validated-by: `RT-CR-CONF-QUOTA-NESTED-EXCEEDED`.
+- Проверка: `pkg/quota/refusal.sql.tmpl` (единственный производитель текста и SQLSTATE
+ `KQ001`), `internal/repo/helpers/unique.go` (`classifyQuotaErr`),
+ `internal/apps/kacho/shared/serviceerr/quota.go` (`KQ001` → `ResourceExhausted` +
+ `QUOTA_EXCEEDED`).
+
 ### REQ-VPC-OUTBOX-TRIGGER-EMIT — outbox-эмит для triggered UPDATE'ов subnets [P2]
 Изменения `subnets.route_table_id`, вызванные самой БД (FK SET NULL при RT.Delete),
 ДОЛЖНЫ эмитить `Subnet.UPDATED` событие в `vpc_outbox` — watch-клиенты должны видеть state

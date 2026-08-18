@@ -754,3 +754,207 @@ CASES.append(Case(
         poll_operation_until_done(),
     ],
 ))
+
+
+# ---------------------------------------------------------------------------
+# Потолок числа ресурсов: КРАЙ спрашивается об отказе (задача #663)
+# ---------------------------------------------------------------------------
+# ЧЕГО НЕ БЫЛО. Предел был проверен только изнутри — интеграционные пробы
+# владельцев утверждают SQLSTATE и sentinel. Что видит АРЕНДАТОР, упёршийся в
+# потолок, не спрашивал ни один кейс ни одного из семи наборов. Предикат задачи
+# #663 (поиск признаков отказа учёта по всем `cases/*.py`) давал ОДНО попадание,
+# и то — комментарий в наборе nlb, то есть проза, а не утверждение. Сам предикат
+# здесь НЕ воспроизводится дословно: строка с его образцом считалась бы им самим,
+# и находкой стала бы собственная документация кейса.
+# Цена класса уже измерена и названа в задаче: у iam мост не знал SQLSTATE'ов
+# производителя, и отказ уходил наружу INTERNAL «internal error» — вызывающий
+# читал поломку платформы там, где платформа сработала ровно как задумано.
+# Дефект дожил до сквозного прогона, дал 46 падений, и НИ ОДНО не назвало квоту.
+#
+# ПОЧЕМУ ВЛОЖЕННЫЙ ВИД, А НЕ ПРОЕКТНЫЙ. Проектный потолок (`vpc.routeTable` = 32,
+# посев `services/iam/internal/migrations/0092_resource_count_limits.sql`) — предел,
+# ОБЩИЙ со всеми кейсами суиты: доведя его до края, кейс отказывал бы соседям, и
+# его собственная зелень покупалась бы их краснотой. Вложенный
+# (`vpc.network.routeTable` = 8 на ОДНУ сеть, посев
+# `services/iam/internal/migrations/0094_limit_kind_nested_form_and_seeds.sql`)
+# считается в своей сети — кейс заводит СВОЮ и предел ни с кем не делит.
+#
+# ПОЧЕМУ ИМЕННО ВОСЕМЬ ТЕНАНТСКИХ, А НЕ СЕМЬ. Сеть провижнит системную таблицу
+# маршрутизации вместе с собой (`domain.NewDefaultRouteTable`, `SystemOwned: true`),
+# а списание её пропускает — системный ребёнок ограничен транзитивно числом
+# родителей. Поэтому свежая сеть входит в кейс с нулевым потреблением вложенной оси.
+#
+# ГДЕ ПОЯВЛЯЕТСЯ ОТКАЗ — И ПОЧЕМУ ЗДЕСЬ НЕ 429. Синхронная совещательная полоса
+# (`services/vpc/internal/apps/kacho/shared/quota/guard.go`, `Guard.Admit`)
+# спрашивает ТОЛЬКО проектную строку: `create.go` зовёт её с видом `vpc.routeTable`.
+# Вложенную ось не спрашивает никто — её списывает триггер `kacho_quota_count`
+# (`services/vpc/internal/migrations/353002_nested_quota_carrier.sql`) ВНУТРИ
+# writer-транзакции, а та живёт в воркере (`doCreate`). Значит мутация ПРИНИМАЕТСЯ
+# (200 + Operation, ban #9), а отказ приезжает ОШИБКОЙ ОПЕРАЦИИ: `RESOURCE_EXHAUSTED`
+# (8) стоит в `error.code`, а не в статусе ответа. HTTP 429 эта полоса не производит
+# ничем — написать здесь `oneOf([200, 429])` значило бы объявить исход, которого не
+# бывает, то есть допуск, который не покраснеет никогда (`e2e-flow.md` §3).
+# Проектная полоса 429 действительно даёт, но дешёвого самодостаточного сценария у
+# неё нет — см. абзац «почему вложенный вид» выше.
+#
+# ТЕКСТ ОТКАЗА — КОНТРАКТ, И ПРОИЗВОДИТЕЛЬ У НЕГО ОДИН НА ПЛАТФОРМУ:
+# `pkg/quota/refusal.sql.tmpl` :: `kacho_quota_refuse`, формат
+# «% % has reached its limit of % %». Он рендерится каждому владельцу и держится
+# гейтом байт-идентичности, поэтому пересказывать его здесь нельзя — только
+# цитировать. Носителем вложенного вида триггер называет САМ ВИД, а идентификатором
+# носителя — родителя (`kacho_quota_refuse(v_nested_kind, v_parent, v_nested_kind)`),
+# поэтому строка читается как
+#   vpc.network.routeTable <id сети> has reached its limit of 8 vpc.network.routeTable
+# и собирается ниже тем же порядком, а сверяется ДОСЛОВНО (`to.eql`, не `include`).
+
+# Вложенный потолок: вид, его величина и носитель. Величина ВЫПИСАНА, а не выведена
+# из ответа края: арендаторское чтение `GET /vpc/v1/quotas` отдаёт только виды,
+# чей носитель — ПРОЕКТ (`pkg/quota/quotaread/band.go`, `States` зовёт
+# `ListStates(CarrierProject, …)`), поэтому вложенную величину спросить неоткуда.
+# Расхождение с посевом 0094 покраснеет дословной сверкой текста — там же, где
+# стоит и само число.
+_RTQ_NESTED_KIND = "vpc.network.routeTable"
+_RTQ_NESTED_LIMIT = 8
+
+
+def _rtq_create(sfx, var):
+    """Создание одной таблицы маршрутизации в сети кейса + чтение ИСХОДА операции.
+
+    Идентификатор берётся опросом, а не из ответа мутации: Operation несёт
+    предвыделенный id в `metadata` ДАЖЕ когда завершилась ошибкой, и захват из POST
+    опубликовал бы координату несуществующего ресурса.
+    """
+    return [
+        Step(name="rtq-create-" + sfx, method="POST", path="/vpc/v1/routeTables",
+             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{rtqNetId}}",
+                   "name": "rt-q8-{{runId}}-" + sfx, "staticRoutes": []},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to=var,
+                                  id_expr="j.metadata && j.metadata.routeTableId"),
+    ]
+
+
+def _rtq_delete(sfx, var):
+    """Уборка одной таблицы. Свою свежую удаляем под обёрткой окна видимости прав."""
+    return [
+        retry_until_authorized(Step(
+            name="rtq-del-" + sfx, method="DELETE",
+            path="/vpc/v1/routeTables/{{" + var + "}}",
+            test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+    ]
+
+
+def _rtq_steps():
+    live = [(str(i), "rtq%dId" % i) for i in range(1, _RTQ_NESTED_LIMIT + 1)]
+
+    # Отказ вложенной оси: мутация принята, операция отказала.
+    refused_create = Step(
+        name="rtq-create-over", method="POST", path="/vpc/v1/routeTables",
+        body={"projectId": "{{_suiteProjectId}}", "networkId": "{{rtqNetId}}",
+              "name": "rt-q8-{{runId}}-over", "staticRoutes": []},
+        test_script=[
+            # 200 утверждается ТОЧНО, а не терпимо. Полоса доставки этого отказа
+            # известна по дереву (триггер списывает вложенную ось внутри writer-TX
+            # воркера), поэтому синхронного отказа у неё не бывает: перечисли здесь
+            # ещё и 4xx — и кейс зеленел бы на любом отказе валидации, ни разу не
+            # дойдя до потолка, ради которого написан.
+            *assert_status(200),
+            *assert_operation_envelope(),
+            *save_from_response("j.id", "opId"),
+        ])
+    refusal_poll = poll_operation_until_done(must_fail=True, must_fail_code=8)
+    refusal_poll.test_script.extend([
+        # Дословно текст ЕДИНСТВЕННОГО производителя (`kacho_quota_refuse`).
+        # Собирается тем же порядком: носитель, его идентификатор, предел, вид.
+        "pm.test('отказ дословно называет носителя, предел и вид', () => {",
+        "  const want = '" + _RTQ_NESTED_KIND + " ' + pm.environment.get('rtqNetId')"
+        " + ' has reached its limit of " + str(_RTQ_NESTED_LIMIT) + " " + _RTQ_NESTED_KIND + "';",
+        "  pm.expect(j.error && j.error.message, JSON.stringify(j.error || j)).to.eql(want);",
+        "});",
+        # Полосу клиент различает МАШИННО — по признаку, а не разбором прозы
+        # (`api-conventions.md` §By-lane code-split). Признак и домен идут парой:
+        # один `reason` без домена не говорит, чей это отказ.
+        "pm.test('машинный признак полосы — QUOTA_EXCEEDED от vpc', () => {",
+        "  const det = ((j.error && j.error.details) || []);",
+        "  const info = det.find(d => String((d || {})['@type'] || '').indexOf('ErrorInfo') !== -1);",
+        "  pm.expect(info, 'ErrorInfo в details: ' + JSON.stringify(j.error || j)).to.be.an('object');",
+        "  pm.expect(info.reason, JSON.stringify(j.error)).to.eql('QUOTA_EXCEEDED');",
+        "  pm.expect(info.domain, JSON.stringify(j.error)).to.eql('vpc.kacho.cloud');",
+        "});",
+        # Отказ по потолку НЕ создаёт ресурса: списание и вставка идут одной
+        # транзакцией, поэтому откат уносит обе. Иначе предел «сработал» бы, а
+        # девятая таблица всё равно жила бы — и уборка ниже её бы не тронула.
+        "pm.test('отказавшая операция не оставила ресурса', () => {",
+        "  pm.expect(j.response, JSON.stringify(j)).to.eql(undefined);",
+        "});",
+    ])
+
+    steps = [
+        # ПРЕДУСЛОВИЕ, А НЕ ВЕРДИКТ. «Стенд не готов» обязано быть отличимо от
+        # «продукт сломан» (`e2e-flow.md` §6): если проектного запаса меньше девяти,
+        # девятую таблицу отвергнет ДРУГОЙ потолок — проектный, синхронно и с иным
+        # текстом, — и кейс покраснел бы, обвинив невиновного.
+        Step(name="rtq-precond-quota", method="GET",
+             path="/vpc/v1/quotas?projectId={{_suiteProjectId}}",
+             test_script=[
+                 *assert_status(200),
+                 "pm.test('предусловие: домен отвечает о потолках проекта', () => {",
+                 "  const q = (pm.response.json().quotas) || [];",
+                 "  pm.expect(q.length, JSON.stringify(pm.response.json())).to.be.above(0);",
+                 "});",
+                 "pm.test('предусловие: проектного запаса хватает на девять таблиц', () => {",
+                 "  const q = (pm.response.json().quotas) || [];",
+                 "  const row = q.find(r => r.kind === 'vpc.routeTable');",
+                 "  pm.expect(row, 'строки vpc.routeTable нет в ответе: ' + JSON.stringify(q))"
+                 ".to.be.an('object');",
+                 "  const head = Number(row.limit || 0) - Number(row.used || 0);",
+                 "  pm.expect(head, 'проектный запас vpc.routeTable мал — предмет кейса (вложенный "
+                 "потолок) до края не доедет; это НЕ ГОТОВНОСТЬ СТЕНДА, а не дефект продукта')"
+                 ".to.be.at.least(9);",
+                 "});",
+             ]),
+        # Своя сеть — носитель вложенного потолка. Её создание и есть то, что делает
+        # кейс самодостаточным: предел считается в ней и больше нигде.
+        Step(name="rtq-net", method="POST", path="/vpc/v1/networks",
+             body={"projectId": "{{_suiteProjectId}}", "name": "rt-q8-net-{{runId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(capture_id_to="rtqNetId",
+                                  id_expr="j.metadata && j.metadata.networkId"),
+    ]
+    # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: все восемь проходят. Без него отрицание ниже зеленело
+    # бы на сломанном создании вообще — «девятая отвергнута» неотличимо от «здесь
+    # не создаётся ничего».
+    for sfx, var in live:
+        steps += _rtq_create(sfx, var)
+    steps += [refused_create, refusal_poll]
+    # ВТОРОЙ ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: потолок — это потолок, а не защёлка. Сняв одну
+    # таблицу, ту же девятую заводим снова, и она проходит. Иначе «девятая
+    # отвергнута» осталось бы верным и в мире, где вложенная ось не возвращает
+    # место на удалении (`data-integrity.md` §Lease-recycle-on-delete): отказ был бы
+    # вечным, а кейс этого не заметил бы.
+    steps += _rtq_delete("8", "rtq8Id")
+    steps += _rtq_create("again", "rtqAgainId")
+    # Уборка: семь оставшихся + перезаведённая + сама сеть. Сеть удаляется последней —
+    # внешний ключ таблиц на неё RESTRICT.
+    for sfx, var in live[:-1]:
+        steps += _rtq_delete(sfx, var)
+    steps += _rtq_delete("again", "rtqAgainId")
+    steps += [
+        retry_until_authorized(Step(name="rtq-net-cleanup", method="DELETE",
+                                    path="/vpc/v1/networks/{{rtqNetId}}",
+                                    test_script=[*assert_status(200),
+                                                 *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+    ]
+    return steps
+
+
+CASES.append(Case(
+    id="RT-CR-CONF-QUOTA-NESTED-EXCEEDED",
+    title="Девятая таблица маршрутизации в одной сети → отказ потолка "
+          "(RESOURCE_EXHAUSTED / QUOTA_EXCEEDED, дословный текст производителя)",
+    classes=["CONF", "NEG", "BVA"],
+    priority="P0",
+    steps=_rtq_steps(),
+))
