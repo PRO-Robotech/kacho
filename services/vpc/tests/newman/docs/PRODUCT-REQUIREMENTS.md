@@ -161,12 +161,18 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 - Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-DIGIT-START`, `*-CR-VAL-NAME-HYPHEN-START`, `*-CR-VAL-NAME-SPECIAL-CHARS`
 - Проверка: regex'ы в `pkg/validate/validate.go`.
 
-### REQ-NAME-04 — UNIQUE (project_id, name) — все 7 ресурсов [P1]
+### REQ-NAME-04 — UNIQUE (project_id, name) [P1]
 В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
-async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`,
-кроме Network — там non-partial).
+async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`)
+— **кроме Network: там индекс полный**, поэтому ВТОРАЯ сеть с пустым именем в одном проекте
+получает `ALREADY_EXISTS` (расхождение с соседями; предмет отдельной задачи, не этой).
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
-- Проверка: `internal/migrations/0001_initial.sql` (`networks_project_id_name_key` и одноимённые индексы прочих ресурсов — вся name-уникальность живёт в начальной миграции); `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`).
+- Проверка: `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`) плюс сами индексы. Число
+  ресурсов в заголовке НЕ стоит намеренно: оно росло молча (запись «все 7» пережила восьмой
+  индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом:
+  `grep -rn "project_id, name" services/vpc/internal/migrations/*.sql` — на 2026-08-18 он даёт
+  **8** индексов: семь в `0001_initial.sql` (шесть частичных + полный `networks_project_id_name_key`)
+  и один частичный в `0035_cidr_groups.sql`. Число — ориентир с датой, а не гейт.
 
 ---
 
@@ -683,9 +689,18 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 
 ## K. Security probes (resilience)
 
-### REQ-SEC-01 — injection-payloads в полях не вызывают 5xx [P0]
+### REQ-SEC-01 — injection-payloads в полях не вызывают 5xx, и исход КАЖДОЙ полосы назван [P0]
 `name`/`description`/`labels`/`filter` с SQLi / XSS / cmd-injection / path-traversal / null-byte / union / long-payload →
-обработано (`InvalidArgument`/`200`), **никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE.
+**никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE. Исход при этом не «какой-нибудь 2xx/4xx», а определён полосой:
+
+- **`name`** — все семь нагрузок лежат вне класса символов самого разрешительного контракта имени
+  (`corevalidate.NameVPC`; у Gateway контракт строже), поэтому отказ синхронный и один:
+  `400` + `INVALID_ARGUMENT` (code `3`) + `BadRequest.fieldViolations[].field == "name"`.
+  `200` недостижим ни для одной нагрузки; `413` край не производит ни для одного кода
+  (`api-conventions.md` §«gRPC-код → HTTP-статус»);
+- **`filter`** — разбор идёт по whitelist полей, значение берётся в двойных кавычках и уезжает
+  ПАРАМЕТРОМ запроса (`pkg/filter`.`ToSQL` → `$N`), поэтому синтаксически годное выражение
+  принимается и отдаёт пустую страницу: `200`. Отказ (`400`) даёт только негодный СИНТАКСИС.
 - Validated-by: `*-CR-SEC-SQLI`/`-XSS`/`-CMD`/`-PATH`/`-NULLBYTE`/`-UNION`/`-LONGPAYLOAD`, `*-LST-SEC-FILTER-SQLI`
 - Проверка: параметризованные запросы (pgx) во всех `internal/repo/kacho/pg/*.go`; `serviceerr.MapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).
 

@@ -185,13 +185,13 @@
 | `*-CR-PAIRWISE-06` | CRUD,VAL | P2 | 1 (sub) | Pairwise [6]: zone=zone-c prefix=/24 |
 | `*-CR-PAIRWISE-07` | CRUD,VAL | P2 | 1 (sub) | Pairwise [7]: zone=zone-c prefix=/28 |
 | `*-CR-PAIRWISE-08` | CRUD,VAL | P2 | 1 (sub) | Pairwise [8]: zone=zone-c prefix=/16 |
-| `*-CR-SEC-CMD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: cmd in name → handled, no 500 |
-| `*-CR-SEC-LONGPAYLOAD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: longpayload in name → handled, no 500 |
-| `*-CR-SEC-NULLBYTE` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: nullbyte in name → handled, no 500 |
-| `*-CR-SEC-PATH` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: path in name → handled, no 500 |
-| `*-CR-SEC-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: sqli in name → handled, no 500 |
-| `*-CR-SEC-UNION` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: union in name → handled, no 500 |
-| `*-CR-SEC-XSS` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: xss in name → handled, no 500 |
+| `*-CR-SEC-CMD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: cmd in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-LONGPAYLOAD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: longpayload in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-NULLBYTE` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: nullbyte in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-PATH` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: path in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: sqli in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-UNION` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: union in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-XSS` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: xss in name → 400 InvalidArgument 'name', без утечки |
 | `*-CR-VAL-BOTH-SPEC` | VAL | P0 | 1 (add) | Create с обоими spec (external+internal) → InvalidArgument |
 | `*-CR-VAL-CIDR-HOSTBITS` | VAL | P0 | 1 (sub) | Create с host-bits в CIDR (10.0.0.5/24) → InvalidArgument |
 | `*-CR-VAL-CIDR-REQUIRED` | VAL | P0 | 1 (sub) | Create без v4_cidr_blocks → InvalidArgument |

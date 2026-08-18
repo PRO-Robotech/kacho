@@ -1809,7 +1809,61 @@ def pairwise_subnet_pack():
 
 def security_injection_block(prefix, create_path, list_path, body_create):
     """Security probes: SQL/command/XSS injection в name + filter.
-    Никогда не должно возвращать 500 или утечку pgx/stack trace.
+
+    Никогда не должно возвращать 500 или утечку pgx/stack trace — и это НЕ
+    единственное, что здесь установлено.
+
+    ИСХОД КАЖДОЙ ИЗ СЕМИ НАГРУЗОК ОПРЕДЕЛЁН, поэтому утверждается ПАРА
+    (HTTP-статус И код `google.rpc.Status`), а не перечень.
+
+    Здесь стояло одно утверждение `oneOf([200, 400, 413])` под именем
+    «handled 2xx/4xx». Оно принимало И успех, И отказ, то есть не отделяло
+    соблюдение контракта от его нарушения — и приняло бы ровно ту регрессию
+    валидации имени, ради обнаружения которой проба и написана. Это не «две
+    полосы с разными производителями» (как у `assert_absent_id_rejected` и
+    соседей, где перечисляются РАЗНЫЕ линии), а ОДНА полоса с неустановленным
+    исходом.
+
+    Почему исход установим — по каждому звену тракта:
+
+      * имя проверяется САМЫМ РАЗРЕШИТЕЛЬНЫМ из контрактов имени
+        (`domain.RcNameVPC.Validate` / `corevalidate.NameVPC`, регекс
+        `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`), и ни одна из семи
+        нагрузок ему не соответствует: апостроф, угловая скобка, точка, слэш,
+        точка с запятой и пробел лежат вне класса символов, а «A»×1000 длиннее
+        63. У Gateway контракт СТРОЖЕ (`corevalidate.NameGateway` — без
+        uppercase и underscore), значит он отвергает то же подмножество и сверх
+        него. То есть `200` недостижим ни для одной нагрузки ни на одном из
+        шести ресурсов;
+      * отказ СИНХРОННЫЙ и стоит ДО обращения к соседям и до создания Operation
+        (`Execute` каждого из шести ресурсов), поэтому код именно
+        `INVALID_ARGUMENT`, а не `FAILED_PRECONDITION` peer-полосы и не
+        `NOT_FOUND` полосы прямого чтения;
+      * край переводит `INVALID_ARGUMENT` в **400** — таблица
+        `api-conventions.md` §«gRPC-код → HTTP-статус» (мультиплексор края
+        собирается БЕЗ `WithErrorHandler`, отображение задаёт
+        `runtime.HTTPStatusFromCode`). `413` в этой таблице НЕ ПРОИЗВОДИТСЯ НИ
+        ОДНИМ кодом — прежний перечень называл исход, у которого нет
+        производителя, и покраснеть на нём было нельзя никогда;
+      * поле отказа НАЗВАНО: `BadRequest.fieldViolations[].field == "name"` —
+        обе ветки строят деталь одинаково (`serviceerr.FromValidation` у пяти
+        ресурсов, `coreerrors.Builder.AddFieldViolation` у Gateway).
+
+    Прецедент, уже зелёный на том же пути и том же классе ввода:
+    `*-CR-VAL-NAME-SPECIAL-CHARS` из `ecp_name_block` (`name!@#-…`) утверждает
+    ту же пару `400` + `code 3` у всех шести ресурсов.
+
+    Предмет пробы («никогда 500», «никогда утечка panic/sqlstate/goroutine») от
+    этого не меняется и утверждается СВОИМИ строками — усиление формы отказа его
+    не замещает.
+
+    Замечание о нагрузке `nullbyte`: в дереве она несёт `x`, ПРОБЕЛ, `y`
+    (проверено побайтно), а не нулевой байт. Исход тот же — пробел вне класса
+    символов имени ровно так же, как и нулевой байт, — но имя нагрузки шире
+    того, что она шлёт.
+
+    Способность этих утверждений упасть доказана инъекцией в обе стороны:
+    `scripts/selftest_security_injection_lanes.py`.
     """
     injections = [
         ("sqli", "test' OR 1=1--"),
@@ -1824,13 +1878,15 @@ def security_injection_block(prefix, create_path, list_path, body_create):
     for name, payload in injections:
         cases.append(Case(
             id=f"{prefix}-CR-SEC-{name.upper()}",
-            title=f"Security probe: {name} in name → handled, no 500",
+            title=f"Security probe: {name} in name → 400 InvalidArgument 'name', без утечки",
             classes=["VAL", "NEG"], priority="P0",
             steps=[Step(name=f"cr-{name}", method="POST", path=create_path,
                         body={**body_create, "name": payload[:1000]},
                         test_script=[
                             "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                            "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                            *assert_status(400),
+                            *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                            *assert_field_violation("name"),
                             "const body = JSON.stringify(pm.response.json() || {});",
                             "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                             "  const low = body.toLowerCase();",
