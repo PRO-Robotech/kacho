@@ -42,6 +42,14 @@ sed 's|changed="$(git diff --name-only "$trunk"\.\.\.HEAD 2> /dev/null \|\| true
 grep -q '@{upstream}' "$BROKEN" || { echo "дефект не воссоздан — подмена не сработала" >&2; exit 2; }
 chmod +x "$BROKEN"
 
+# Второй дефектный вариант: диапазон отправки ИГНОРИРУЕТСЯ, база всегда ствол.
+# Ровно та форма, что стояла до issue #719. Свой дефект нужен каждому свойству:
+# на первом дефекте новые утверждения проехали бы, потому что он диапазон читает.
+BROKEN_RANGE="$tmp/prepush-groups-ignores-range.sh"
+sed 's|if \[ -n "${KACHO_PUSH_RANGE:-}" \]; then|if false; then|' "$PRODUCER" > "$BROKEN_RANGE"
+grep -q 'if false; then' "$BROKEN_RANGE" || { echo "дефект диапазона не воссоздан — подмена не сработала" >&2; exit 2; }
+chmod +x "$BROKEN_RANGE"
+
 repo="$tmp/repo"; mkdir -p "$repo"
 g() { git -C "$repo" -c user.email=p@i -c user.name=p -c commit.gpgsign=false "$@"; }
 
@@ -80,6 +88,16 @@ g checkout -q -b line-ui trunk~1
 echo 'export const mine = 1' >> "$repo/ui-future/vpc/a.ts"
 g add -A; g commit -qm "линия правит консоль"
 
+# Третья линия — НАКОПИТЕЛЬНАЯ: чужая правка консоли уже в её истории, а эта
+# отправка несёт только серверный коммит. Именно здесь прежняя база лгала:
+# ветка «трогает консоль», хотя отправляемый диапазон её не касается.
+g checkout -q -b line-accum trunk~1
+echo 'export const foreign = 1' >> "$repo/ui-future/vpc/a.ts"
+g add -A; g commit -qm "чужая линия правит консоль"
+accum_pushed="$(g rev-parse HEAD)"          # то, что УЖЕ на origin
+echo 'package b' >> "$repo/services/b.go"
+g add -A; g commit -qm "моя правка сервера"
+
 run() { (cd "$repo" && KACHO_TRUNK_REF=trunk bash "$1"); }
 
 # Набор утверждений. Текст идёт читателю, ЧИСЛО провалов — в файл $3.
@@ -96,6 +114,15 @@ assert_all() { # $1 — производитель, $2 — метка прого
     got="$(run "$p")"
     if [ "$got" = "proto go" ]; then printf '  ok   [%s] догон ствола НЕ добавляет ui-types\n' "$tag"
     else printf '  FAIL [%s] догон ствола: ждали «proto go», получили «%s»\n' "$tag" "$got"; f=$((f+1)); fi
+
+    g checkout -q line-accum
+    got="$(cd "$repo" && KACHO_TRUNK_REF=trunk KACHO_PUSH_RANGE="$accum_pushed..HEAD" bash "$p")"
+    if [ "$got" = "proto go" ]; then printf '  ok   [%s] чужая правка консоли ВНЕ диапазона отправки не добавляет ui-types\n' "$tag"
+    else printf '  FAIL [%s] чужая правка вне диапазона: ждали «proto go», получили «%s»\n' "$tag" "$got"; f=$((f+1)); fi
+
+    got="$(cd "$repo" && KACHO_TRUNK_REF=trunk KACHO_PUSH_RANGE="${accum_pushed}~1..HEAD" bash "$p")"
+    if [ "$got" = "proto go ui-types" ]; then printf '  ok   [%s] консоль ВНУТРИ диапазона добавляет ui-types\n' "$tag"
+    else printf '  FAIL [%s] консоль внутри диапазона: ждали «proto go ui-types», получили «%s»\n' "$tag" "$got"; f=$((f+1)); fi
 
     got="$(cd "$repo" && KACHO_TRUNK_REF=trunk KACHO_PREPUSH_GROUP=go bash "$p")"
     if [ "$got" = "go" ]; then printf '  ok   [%s] названный набор сильнее вывода\n' "$tag"
@@ -115,11 +142,17 @@ echo "── прогон против воссозданного дефекта
 assert_all "$BROKEN" дефект "$tmp/broken.n"; broken_fails="$(cat "$tmp/broken.n")"
 
 echo
-printf 'prepush-groups-inject: утверждений на прогон 4, прогонов 2\n'
+echo "── прогон против дефекта «диапазон игнорируется» (ждём хотя бы один провал)"
+assert_all "$BROKEN_RANGE" дефект-диапазона "$tmp/brange.n"; brange_fails="$(cat "$tmp/brange.n")"
+
+echo
+printf 'prepush-groups-inject: утверждений на прогон 6, прогонов 3\n'
 printf '  провалов у настоящего: %s (норма 0)\n' "$real_fails"
-printf '  провалов у дефекта:    %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
+printf '  провалов у дефекта базы:      %s (норма ≥1 — иначе проба ничего не проверяет)\n' "$broken_fails"
+printf '  провалов у дефекта диапазона: %s (норма ≥1 — своё свойство, свой дефект)\n' "$brange_fails"
 
 rc=0
 [ "$real_fails" = "0" ]  || { echo "ОТКАЗ: настоящий производитель не проходит собственных утверждений" >&2; rc=1; }
-[ "${broken_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на возвращённом дефекте — она не проверяет свой предмет" >&2; rc=1; }
+[ "${broken_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на возвращённом дефекте базы — она не проверяет свой предмет" >&2; rc=1; }
+[ "${brange_fails:-0}" -ge 1 ] || { echo "ОТКАЗ: проба ЗЕЛЁНАЯ на дефекте «диапазон игнорируется» — новое свойство не проверяется" >&2; rc=1; }
 exit "$rc"
