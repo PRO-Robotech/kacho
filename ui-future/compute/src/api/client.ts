@@ -12,18 +12,17 @@
 //   vpc:        /vpc/v1/addresses, /vpc/v1/networkInterfaces,
 //               /vpc/v1/networks/{id}/subnets, /vpc/v1/networks/{id}/route_tables,
 //               /vpc/v1/networks/{id}/security_groups
-//   iam:        /iam/v1/accounts, /iam/v1/projects, /iam/v1/users,
-//               /iam/v1/serviceAccounts, /iam/v1/groups, /iam/v1/roles,
-//               /iam/v1/accessBindings, /iam/v1/me, /iam/v1/permissionCatalog
+//   iam:        /iam/v1/users, /iam/v1/me
 //   operations: /operations/{id}
 //
 // Вне proto: /iam/v1/auth/me — HTTP-роут самого api-gateway (личность за сессией
 // развёрнутого провайдера), google.api.http annotation у него нет.
 //
-// Перечень iam вырос на /iam/v1/permissionCatalog не потому, что приложение стало
-// звать больше: клиент, разбор отказа и справочник прав сведены к единственной
-// реализации в `shared/` (#405), и обход теперь читает адресацию ЗА ШИМОМ. Прежде
-// она была не видна предикату — не потому, что её не было.
+// Перечень iam сузился до трёх строк не потому, что приложение стало звать меньше:
+// вместе с дофедеративным скелетом снят шим `api/iam.ts`, а обход читает адресацию
+// ЗА ШИМОМ (#591). Всё, что этот шим втягивал из `shared/` — каталог прав, аккаунты,
+// проекты, служебные учётки, группы, роли, привязки, — приложением не адресовалось
+// ни через один живой путь; ушёл шим, ушла и его адресация.
 //
 // Оговорка о достижимости: /vpc/v1/addresses и три подколлекции сети (subnets,
 // route_tables, security_groups) адресует только dependency-graph, а его ветки
