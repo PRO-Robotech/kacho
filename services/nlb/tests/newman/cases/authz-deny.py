@@ -966,6 +966,22 @@ CASES.append(Case(
                  "pm.test('stranger sees 404 (FGA tuple cleanup complete)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
              ]),
+        # Подсеть кейса нарезана в ОБЩЕЙ посеянной сети и не снималась ни разу, тогда
+        # как «сколько подсетей помещается в одной сети» — вложенный потолок
+        # (`vpc.network.subnet`, умолчание 16). Снимаем ПОСЛЕ балансировщика: пока жив
+        # он, его VIP держит подсеть занятой. Тем же предъявителем, что её и создал.
+        # Уборка best-effort и НИКОГДА не роняет кейс — предмет утверждений выше.
+        Step(name="cleanup-azd-subnet", method="DELETE",
+             path=f"{_VPC_SUBNETS}/{{{{azdSubnetId}}}}", auth="jwtProjectEditorA",
+             test_script=[
+                 "pm.test('subnet reclaim best-effort (never fails the case)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                 "pm.environment.set('opId', '');",
+                 "if (pm.response.code === 200) { try { const j = pm.response.json();"
+                 " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                 "pm.environment.unset('azdSubnetId');",
+             ]),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
