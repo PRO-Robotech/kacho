@@ -6,14 +6,19 @@
 //
 // Инъекция без законного близнеца доказывает только чувствительность к форме:
 // гейт, краснеющий на всём, отключат при первом же ложном срабатывании. Поэтому
-// каждая проба здесь идёт парой — дефект и та же конструкция без дефекта.
+// каждая проба здесь идёт парой — дефект и НЕ ЕГО КОПИЯ, а другая конструкция
+// той же формы, в которой дефекта нет.
 //
 // Разбор зовётся ТОТ ЖЕ, что и на настоящем дереве (`analyseNameFormDBCoverage`
 // из не-тестового файла): своя копия доказывала бы способность упасть у кода,
 // который не исполняется.
+//
+// Вход — настоящий Go: гейт разбирает синтаксис, и на выдуманном тексте разбор
+// отказал бы, а инъекция доказала бы отказ вместо свойства.
 package repohygiene
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -23,6 +28,10 @@ import (
 // TestResourceNameFormIsDeclaredOnce.
 const injCanon = `^INJECTED-FORM$`
 
+// injEntry — входные методы двигателя, которые инъекция подаёт вместо
+// прочитанных из дерева: гейт обязан судить по тому, что ему дали.
+var injEntry = map[string]bool{"Run": true, "Check": true}
+
 func injMigration(svc string, carriesForm bool) (string, string) {
 	body := "ALTER TABLE t ADD CONSTRAINT t_name_check CHECK (name ~ 'что-то другое');"
 	if carriesForm {
@@ -31,34 +40,256 @@ func injMigration(svc string, carriesForm bool) (string, string) {
 	return "services/" + svc + "/internal/migrations/715001_resource_name_single_form.sql", body
 }
 
+// injProbeSource — файл пробы в законной форме дерева: импорт двигателя и вызов
+// входного метода на составном литерале прямо в теле теста.
+func injProbeSource(pkg string) string {
+	return `package ` + pkg + `
+
+import (
+	"context"
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+)
+
+func TestIntegration_NameForm(t *testing.T) {
+	ctx := context.Background()
+	nameformdb.Probe{Schema: "kacho_x"}.Run(ctx, t, nil)
+}
+`
+}
+
 func TestNameFormDBCoverage_FailsOnInjectedDefect(t *testing.T) {
-	t.Run("законный близнец: миграция и проба у одного сервиса — находок ноль", func(t *testing.T) {
+	t.Run("законный близнец: миграция и вызов у одного сервиса — находок ноль", func(t *testing.T) {
 		mig, body := injMigration("alpha", true)
 		files := map[string]string{
 			mig: body,
-			"services/alpha/internal/repo/name_form_constraint_integration_test.go": "nameformdb.Probe{Schema: \"kacho_alpha\"}",
+			"services/alpha/internal/repo/name_form_constraint_integration_test.go": injProbeSource("repo_test"),
 		}
-		cov := analyseNameFormDBCoverage(files, injCanon)
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		if got := cov.Unproven(); len(got) != 0 {
-			t.Errorf("сервис с пробой объявлен недоказанным: %v", got)
+			t.Errorf("сервис с исполняемым вызовом объявлен недоказанным: %v", got)
 		}
-		if cov.MigrationsRead != 1 || cov.TestsRead != 1 {
-			t.Errorf("перепись: прочитано миграций %d, проб %d — ожидалось по одному",
-				cov.MigrationsRead, cov.TestsRead)
+		if cov.MigrationsRead != 1 || cov.TestsRead != 1 || cov.TestsParsed != 1 {
+			t.Errorf("перепись: миграций %d, проб %d, разобрано %d — ожидалось по одному",
+				cov.MigrationsRead, cov.TestsRead, cov.TestsParsed)
+		}
+		if len(cov.Unparsed) != 0 {
+			t.Errorf("законный файл не разобрался: %v", cov.Unparsed)
 		}
 	})
 
-	t.Run("проба ОТСУТСТВУЕТ — находка называет сервис", func(t *testing.T) {
+	// Дефект, которым рецензент опроверг прежнюю редакцию гейта (2026-08-19):
+	// от пробы остался комментарий, гейт остался зелёным. Подслучая ровно этой
+	// формы в наборе не было — были только «вызова нет вовсе» и «вызов у чужого
+	// сервиса», а выпотрошенная проба ОТ ОБОИХ отличается тем, что имя двигателя
+	// в файле есть.
+	t.Run("проба ВЫПОТРОШЕНА до комментария — находка называет сервис", func(t *testing.T) {
 		mig, body := injMigration("beta", true)
 		files := map[string]string{
 			mig: body,
-			// Проба у сервиса есть, но она про другое: марке́ра двигателя в ней нет.
-			"services/beta/internal/repo/other_integration_test.go": "func TestSomethingElse(t *testing.T) {}",
+			"services/beta/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+// Здесь когда-то звался nameformdb.Probe
+`,
 		}
-		cov := analyseNameFormDBCoverage(files, injCanon)
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		got := cov.Unproven()
 		if len(got) != 1 || got[0] != "beta" {
-			t.Errorf("ожидалась ровно одна находка про beta, получено %v", got)
+			t.Fatalf("ожидалась ровно одна находка про beta, получено %v", got)
+		}
+		// Упоминание обязано попасть в диагностику: без него находка посылала бы
+		// заводить пробу заново там, где её надо восстановить.
+		if len(cov.Mentioned["beta"]) != 1 {
+			t.Errorf("текстовое упоминание двигателя не отмечено: %v", cov.Mentioned["beta"])
+		}
+	})
+
+	t.Run("имя двигателя в СТРОКЕ вызовом не является", func(t *testing.T) {
+		// Второй вид того же класса: подстрока найдётся и в литерале. Разбор
+		// синтаксиса оставляет её `*ast.BasicLit`, а не вызовом.
+		mig, body := injMigration("gamma", true)
+		files := map[string]string{
+			mig: body,
+			"services/gamma/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import "testing"
+
+func TestSomething(t *testing.T) {
+	t.Log("проба зовётся так: nameformdb.Probe{}.Run(ctx, t, pool)")
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		got := cov.Unproven()
+		if len(got) != 1 || got[0] != "gamma" {
+			t.Errorf("ожидалась находка про gamma, получено %v", got)
+		}
+	})
+
+	t.Run("вызов в МЁРТВОМ помощнике не доказывает ничего", func(t *testing.T) {
+		// Достижимость — то, чем «исполняемый» отличается от «написанный».
+		// Помощник, которого не зовёт ни одна точка входа, не исполняется, и
+		// его вызов доказывает ровно столько же, сколько комментарий.
+		mig, body := injMigration("delta", true)
+		files := map[string]string{
+			mig: body,
+			"services/delta/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+)
+
+func deadHelper(ctx context.Context, t *testing.T) {
+	nameformdb.Probe{Schema: "kacho_delta"}.Run(ctx, t, nil)
+}
+
+func TestSomethingElse(t *testing.T) {
+	t.Log("помощника выше не зовёт никто")
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		got := cov.Unproven()
+		if len(got) != 1 || got[0] != "delta" {
+			t.Errorf("ожидалась находка про delta, получено %v", got)
+		}
+	})
+
+	t.Run("законный близнец: тот же помощник, но ПОЗВАННЫЙ из теста — молчание", func(t *testing.T) {
+		// Близнец к предыдущему подслучаю отличается ОДНОЙ строкой — вызовом
+		// помощника. Без него гейт ловил бы форму «вызов не в теле теста», а не
+		// исполняемость, и запретил бы законную раскладку с помощником.
+		mig, body := injMigration("epsilon", true)
+		files := map[string]string{
+			mig: body,
+			"services/epsilon/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+)
+
+func liveHelper(ctx context.Context, t *testing.T) {
+	nameformdb.Probe{Schema: "kacho_epsilon"}.Run(ctx, t, nil)
+}
+
+func TestIntegration_NameForm(t *testing.T) {
+	liveHelper(context.Background(), t)
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if got := cov.Unproven(); len(got) != 0 {
+			t.Errorf("законная раскладка с помощником объявлена недоказанной: %v", got)
+		}
+	})
+
+	t.Run("законный близнец: помощник ВОЗВРАЩАЕТ пробу, метод зовут у результата", func(t *testing.T) {
+		// Форма, уже применённая в дереве (инъекция geo): проба собирается
+		// помощником, а входной метод зовётся у возвращённого значения. Вход
+		// намеренно другой, а не копия предыдущего близнеца: там доказывалась
+		// достижимость, здесь — опознание значения, полученного не литералом.
+		mig, body := injMigration("zeta", true)
+		files := map[string]string{
+			mig: body,
+			"services/zeta/internal/repo/probe_fixture_test.go": `package repo_test
+
+import "github.com/PRO-Robotech/kacho/internal/nameformdb"
+
+func zetaProbe() nameformdb.Probe {
+	return nameformdb.Probe{Schema: "kacho_zeta"}
+}
+`,
+			// Второй файл того же пакета ДВИГАТЕЛЯ НЕ ИМПОРТИРУЕТ — и это
+			// законно: тип приезжает возвратом помощника. Значит достижимость и
+			// опознание обязаны считаться по пакету, а не по файлу.
+			"services/zeta/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import (
+	"context"
+	"testing"
+)
+
+func TestIntegration_NameForm(t *testing.T) {
+	if _, err := zetaProbe().Check(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if got := cov.Unproven(); len(got) != 0 {
+			t.Errorf("проба через помощника объявлена недоказанной: %v", got)
+		}
+		if cov.TestsParsed != 2 {
+			t.Errorf("разобрано файлов %d — оба файла пакета обязаны попасть в разбор, "+
+				"иначе помощник в соседнем файле невидим", cov.TestsParsed)
+		}
+	})
+
+	t.Run("законный близнец: импорт под ПСЕВДОНИМОМ — молчание", func(t *testing.T) {
+		// Гейт судит по типу, а не по написанию: требование одного написания
+		// мерило бы стиль импорта, а не наличие доказательства.
+		mig, body := injMigration("eta", true)
+		files := map[string]string{
+			mig: body,
+			"services/eta/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import (
+	"context"
+	"testing"
+
+	nf "github.com/PRO-Robotech/kacho/internal/nameformdb"
+)
+
+func TestIntegration_NameForm(t *testing.T) {
+	nf.Probe{Schema: "kacho_eta"}.Run(context.Background(), t, nil)
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if got := cov.Unproven(); len(got) != 0 {
+			t.Errorf("вызов через псевдоним импорта не засчитан: %v", got)
+		}
+		// Текстовое упоминание `nameformdb.Probe` здесь отсутствует — то есть
+		// ПРЕЖНЯЯ, подстрочная редакция гейта на этом законном входе краснела бы.
+		if len(cov.Mentioned["eta"]) != 0 {
+			t.Errorf("вход подобран неверно: он обязан НЕ содержать текстового упоминания, "+
+				"иначе не отличает разбор синтаксиса от поиска подстроки; получено %v",
+				cov.Mentioned["eta"])
+		}
+	})
+
+	t.Run("метод НЕ из входного набора доказательством не является", func(t *testing.T) {
+		// Перечень входных методов приезжает параметром из двигателя. Вызов
+		// чего-то ещё на пробе её не исполняет.
+		mig, body := injMigration("theta", true)
+		files := map[string]string{
+			mig: body,
+			"services/theta/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+
+import (
+	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/nameformdb"
+)
+
+func TestIntegration_NameForm(t *testing.T) {
+	p := nameformdb.Probe{Schema: "kacho_theta"}
+	t.Log(p.String())
+}
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		got := cov.Unproven()
+		if len(got) != 1 || got[0] != "theta" {
+			t.Errorf("ожидалась находка про theta, получено %v", got)
 		}
 	})
 
@@ -66,31 +297,31 @@ func TestNameFormDBCoverage_FailsOnInjectedDefect(t *testing.T) {
 		// Двигатель зовут, но из другого сервиса: доказательство принадлежит
 		// той схеме, которую оно обходит, и «где-то в дереве есть проба» —
 		// не то же самое, что «эта схема доказана».
-		migA, bodyA := injMigration("gamma", true)
-		migB, bodyB := injMigration("delta", true)
+		migA, bodyA := injMigration("iota", true)
+		migB, bodyB := injMigration("kappa", true)
 		files := map[string]string{
 			migA: bodyA,
 			migB: bodyB,
-			"services/delta/internal/repo/name_form_constraint_integration_test.go": "nameformdb.Probe{}",
+			"services/kappa/internal/repo/name_form_constraint_integration_test.go": injProbeSource("repo_test"),
 		}
-		cov := analyseNameFormDBCoverage(files, injCanon)
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		got := cov.Unproven()
-		if len(got) != 1 || got[0] != "gamma" {
-			t.Errorf("ожидалась ровно одна находка про gamma, получено %v", got)
+		if len(got) != 1 || got[0] != "iota" {
+			t.Errorf("ожидалась ровно одна находка про iota, получено %v", got)
 		}
 	})
 
 	t.Run("вызов двигателя в ПРОД-коде доказательством не является", func(t *testing.T) {
-		mig, body := injMigration("epsilon", true)
+		mig, body := injMigration("lambda", true)
 		files := map[string]string{
 			mig: body,
-			// Не `_test.go`: упоминание в прод-коде ничего не исполняет.
-			"services/epsilon/internal/repo/helper.go": "nameformdb.Probe{}",
+			// Не `_test.go`: прогон проб этот файл не исполняет.
+			"services/lambda/internal/repo/helper.go": injProbeSource("repo"),
 		}
-		cov := analyseNameFormDBCoverage(files, injCanon)
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		got := cov.Unproven()
-		if len(got) != 1 || got[0] != "epsilon" {
-			t.Errorf("ожидалась находка про epsilon, получено %v", got)
+		if len(got) != 1 || got[0] != "lambda" {
+			t.Errorf("ожидалась находка про lambda, получено %v", got)
 		}
 	})
 
@@ -98,8 +329,8 @@ func TestNameFormDBCoverage_FailsOnInjectedDefect(t *testing.T) {
 		// Положительный контроль к самому отбору: сервис, который формы не
 		// ставит, не обязан ничего доказывать. Без этого подслучая гейт
 		// требовал бы пробу от каждого сервиса дерева.
-		mig, body := injMigration("zeta", false)
-		cov := analyseNameFormDBCoverage(map[string]string{mig: body}, injCanon)
+		mig, body := injMigration("mu", false)
+		cov := analyseNameFormDBCoverage(map[string]string{mig: body}, injCanon, injEntry)
 		if len(cov.Constrained) != 0 {
 			t.Errorf("сервис без формы попал под гейт: %v", cov.Services())
 		}
@@ -113,12 +344,33 @@ func TestNameFormDBCoverage_FailsOnInjectedDefect(t *testing.T) {
 		// Иначе перепись завела бы фантомный «сервис» с именем каталога, и
 		// гейт потребовал бы пробу у того, у кого схемы нет.
 		files := map[string]string{
-			"pkg/db/migrations/0001_x.sql":      "CHECK (name ~ '" + injCanon + "')",
-			"internal/nameformdb/nameformdb.go": "nameformdb.Probe",
+			"pkg/db/migrations/0001_x.sql":           "CHECK (name ~ '" + injCanon + "')",
+			"internal/nameformdb/nameformdb_test.go": injProbeSource("nameformdb_test"),
 		}
-		cov := analyseNameFormDBCoverage(files, injCanon)
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
 		if len(cov.Constrained) != 0 || len(cov.Probed) != 0 {
 			t.Errorf("путь вне services/ учтён: ставят %v, несут %v", cov.Services(), probedServices(cov))
+		}
+	})
+
+	t.Run("НЕРАЗБИРАЕМЫЙ файл проб попадает в перепись, а не в «вызова нет»", func(t *testing.T) {
+		// «Не разобрали» и «вызова нет» — разные утверждения, и гейт обязан их
+		// различать: иначе сломанный файл читался бы как отсутствие пробы, а
+		// починка пошла бы не туда.
+		mig, body := injMigration("nu", true)
+		files := map[string]string{
+			mig: body,
+			"services/nu/internal/repo/name_form_constraint_integration_test.go": `package repo_test
+это не Go, но путь пакета-двигателя тут есть: internal/nameformdb
+`,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Unparsed) != 1 ||
+			!strings.HasSuffix(cov.Unparsed[0], "name_form_constraint_integration_test.go") {
+			t.Fatalf("неразбираемый файл не назван переписью: %v", cov.Unparsed)
+		}
+		if got := cov.Unproven(); len(got) != 1 || got[0] != "nu" {
+			t.Errorf("ожидалась находка про nu, получено %v", got)
 		}
 	})
 }

@@ -19,7 +19,7 @@ import (
 //
 // Миграция 715001 ставит форму имени трём таблицам nlb; доказательство того, что
 // форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса, перечень утверждений и
-// почему положительный контроль обязателен — `internal/nameform`.
+// почему положительный контроль обязателен — `internal/nameformdb`.
 func TestIntegration_NLB_NameFormConstraintIsEnforced(t *testing.T) {
 	ctx := context.Background()
 	dsn := setupTestDB(t) // сам пропускается под -short

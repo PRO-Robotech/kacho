@@ -18,7 +18,7 @@ import (
 // Миграция 715001 ставит форму имени в пяти схемах; доказательство того, что
 // форма ДЕЙСТВУЕТ, было у одной. Здесь — доказательство для geo. Разбор класса,
 // перечень утверждений и почему положительный контроль обязателен —
-// `internal/nameform`.
+// `internal/nameformdb`.
 func TestIntegration_Geo_NameFormConstraintIsEnforced(t *testing.T) {
 	ctx := context.Background()
 	pool := newTestPool(t) // сам пропускается под -short

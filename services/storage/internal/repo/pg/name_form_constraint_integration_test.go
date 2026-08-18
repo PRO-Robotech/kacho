@@ -18,7 +18,7 @@ import (
 // Миграция 715001 ставит форму имени трём тенантным таблицам storage;
 // доказательство того, что форма ДЕЙСТВУЕТ, было только у vpc. Разбор класса,
 // перечень утверждений и почему положительный контроль обязателен —
-// `internal/nameform`.
+// `internal/nameformdb`.
 func TestIntegration_Storage_NameFormConstraintIsEnforced(t *testing.T) {
 	ctx := context.Background()
 	pool := newTestPool(t) // сам пропускается под -short; сеет каталог классов и учёт

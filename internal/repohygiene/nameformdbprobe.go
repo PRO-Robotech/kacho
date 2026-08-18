@@ -4,8 +4,13 @@
 package repohygiene
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -15,16 +20,47 @@ import (
 // Вынесено в не-тестовый файл пакета, чтобы инъекционная проба звала тот же
 // разбор, а не свою копию: копия разошлась бы с оригиналом молча и доказывала бы
 // способность упасть у кода, который не исполняется.
-
-// nameFormProbeMarker — вызов общего двигателя пробы. Ищется подстрокой, а не
-// разбором синтаксиса, намеренно: двигатель зовётся составным литералом
-// (`nameformdb.Probe{…}.Run(…)`), и любая законная форма вызова — присваивание,
-// возврат из помощника, поле фикстуры — содержит эту подстроку. Разбор дал бы ту
-// же находку дороже.
 //
-// Собственный файл гейта под обход не подпадает: обходятся только пути
-// `services/…`.
-const nameFormProbeMarker = "nameformdb.Probe"
+// # Почему разбор синтаксиса, а не поиск подстроки (перемерено 2026-08-19)
+//
+// Прежняя редакция искала подстроку `nameformdb.Probe` в сыром тексте файла и
+// потому не отличала ВЫЗОВ от УПОМИНАНИЯ. Рецензент выпотрошил пробу compute до
+// одной строки `// Здесь когда-то звался nameformdb.Probe` — гейт остался
+// ЗЕЛЁНЫМ и продолжал числить compute доказанным. Это ровно `testing.md`
+// §«Гейт на класс» п.4: проверка обязана читать исполняемую часть, а не текст.
+//
+// Теперь доказательством считается только то, что прогон действительно
+// исполняет: вызов входного метода двигателя на значении типа `Probe`, стоящий
+// в функции, ДОСТИЖИМОЙ от точки входа проб того же пакета. Комментарий и
+// строковый литерал в синтаксическое дерево не попадают by construction —
+// разбор идёт без `parser.ParseComments`, а строка остаётся `*ast.BasicLit` и
+// вызовом не становится.
+
+// nameFormEnginePkgPath — путь пакета-двигателя. Служит ДВУМ разным целям, и обе
+// названы, чтобы вторую не приняли за возврат к поиску подстрокой:
+//
+//   - отбор каталогов-кандидатов: файл, зовущий двигатель, обязан его
+//     импортировать, а строка импорта содержит этот путь. Каталог, где путь не
+//     встречается ни в одном файле, вызова не содержит by construction, и его
+//     не нужно разбирать (иначе разбор шёл бы по всем ~1700 файлам проб дерева);
+//   - опознание локального имени пакета в разобранном файле — с учётом
+//     псевдонима импорта.
+//
+// Отбор кандидатов доказательством НЕ является: попавший в кандидаты файл всё
+// равно проходит разбор, и упоминание пути в комментарии даст ноль вызовов.
+const nameFormEnginePkgPath = "internal/nameformdb"
+
+// nameFormEngineType — тип двигателя, вызов метода которого и есть
+// доказательство.
+const nameFormEngineType = "Probe"
+
+// nameFormProbeMention — прежний, ТЕКСТОВЫЙ признак. Оставлен ровно для
+// диагностики и никогда — для вердикта: он позволяет находке сказать «имя
+// двигателя в файле есть, исполняемого вызова нет», то есть отличить
+// выпотрошенную пробу от пробы, которой не было никогда. Без этого отличия
+// сообщение гейта посылало бы читателя заводить пробу заново там, где её надо
+// восстановить.
+const nameFormProbeMention = "nameformdb." + nameFormEngineType
 
 // nameFormDBCoverage — исход обхода: кто ставит форму имени в базе и кто
 // доказывает её действие.
@@ -34,10 +70,22 @@ const nameFormProbeMarker = "nameformdb.Probe"
 type nameFormDBCoverage struct {
 	MigrationsRead int
 	TestsRead      int
+	// TestsParsed — сколько файлов проб дошло до разбора синтаксиса. Всегда
+	// меньше TestsRead: разбираются только каталоги, где двигатель вообще
+	// импортируется. Число печатается, чтобы отбор кандидатов был виден и
+	// проверяем, а не молчаливо сужал предмет.
+	TestsParsed int
+	// Unparsed — файлы, которые разобрать не удалось. Гейт обязан отказаться
+	// судить дерево, часть которого он не прочитал: «не разобрали» не может
+	// молча означать «вызова нет».
+	Unparsed []string
 	// Constrained — сервис → файлы миграций, объявляющие канон формы.
 	Constrained map[string][]string
-	// Probed — сервис → файлы проб, зовущих общий двигатель.
+	// Probed — сервис → файлы проб с ИСПОЛНЯЕМЫМ вызовом двигателя.
 	Probed map[string][]string
+	// Mentioned — сервис → файлы проб, где имя двигателя встречается ТЕКСТОМ.
+	// Диагностика, не вердикт (см. nameFormProbeMention).
+	Mentioned map[string][]string
 }
 
 // Services возвращает сервисы, ставящие форму, в устойчивом порядке.
@@ -48,6 +96,28 @@ func (c nameFormDBCoverage) Services() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// ProofFiles — сколько файлов несут исполняемый вызов. Часть переписи: без него
+// «доказано» не отличить от «доказано одним файлом, который завтра снимут», а
+// расхождение с числом ТЕКСТОВЫХ упоминаний (Mentioned) — прямой признак того,
+// что где-то осталась выпотрошенная проба.
+func (c nameFormDBCoverage) ProofFiles() int {
+	n := 0
+	for _, fs := range c.Probed {
+		n += len(fs)
+	}
+	return n
+}
+
+// MentionFiles — сколько файлов упоминают двигатель ТЕКСТОМ (прежний, отменённый
+// признак). Печатается рядом с ProofFiles именно ради их сравнения.
+func (c nameFormDBCoverage) MentionFiles() int {
+	n := 0
+	for _, fs := range c.Mentioned {
+		n += len(fs)
+	}
+	return n
 }
 
 // Unproven — сервисы, которые форму ставят и действие её ничем не доказывают.
@@ -65,10 +135,16 @@ func (c nameFormDBCoverage) Unproven() []string {
 //
 // Принимает уже прочитанное, а не читает само, чтобы инъекция подавала
 // синтетическое дерево тем же входом, каким гейт получает настоящее.
-func analyseNameFormDBCoverage(files map[string]string, canonPattern string) nameFormDBCoverage {
+//
+// entryMethods — входные методы двигателя. Приезжают ПАРАМЕТРОМ из самого
+// двигателя (гейт выводит их разбором `internal/nameformdb`), а не выписаны
+// здесь: выписанный перечень разошёлся бы с двигателем молча — переименовали бы
+// `Run`, и гейт перестал бы видеть все пробы разом, объявив дерево сломанным.
+func analyseNameFormDBCoverage(files map[string]string, canonPattern string, entryMethods map[string]bool) nameFormDBCoverage {
 	cov := nameFormDBCoverage{
 		Constrained: map[string][]string{},
 		Probed:      map[string][]string{},
+		Mentioned:   map[string][]string{},
 	}
 
 	paths := make([]string, 0, len(files))
@@ -76,6 +152,11 @@ func analyseNameFormDBCoverage(files map[string]string, canonPattern string) nam
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+
+	// Файлы проб группируются по каталогу: достижимость вызова от точки входа
+	// разрешается В ПРЕДЕЛАХ ПАКЕТА, а помощник, возвращающий пробу, вправе
+	// лежать в соседнем файле того же каталога.
+	testsByDir := map[string][]string{}
 
 	for _, p := range paths {
 		rel := filepath.ToSlash(p)
@@ -97,12 +178,339 @@ func analyseNameFormDBCoverage(files map[string]string, canonPattern string) nam
 			}
 		case strings.HasSuffix(rel, "_test.go"):
 			cov.TestsRead++
-			if strings.Contains(body, nameFormProbeMarker) {
-				cov.Probed[svc] = append(cov.Probed[svc], rel)
+			testsByDir[path.Dir(rel)] = append(testsByDir[path.Dir(rel)], rel)
+			if strings.Contains(body, nameFormProbeMention) {
+				cov.Mentioned[svc] = append(cov.Mentioned[svc], rel)
 			}
 		}
 	}
+
+	dirs := make([]string, 0, len(testsByDir))
+	for d := range testsByDir {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+
+	for _, dir := range dirs {
+		rels := testsByDir[dir]
+		if !dirImportsNameFormEngine(files, rels) {
+			continue
+		}
+		cov.TestsParsed += len(rels)
+		proofs, unparsed := scanPackageForProbeCalls(files, rels, entryMethods)
+		cov.Unparsed = append(cov.Unparsed, unparsed...)
+		for _, rel := range proofs {
+			svc, ok := nameFormServiceOf(rel)
+			if !ok {
+				continue
+			}
+			cov.Probed[svc] = append(cov.Probed[svc], rel)
+		}
+	}
+	for svc := range cov.Probed {
+		cov.Probed[svc] = uniqueSorted(cov.Probed[svc])
+	}
+	sort.Strings(cov.Unparsed)
 	return cov
+}
+
+// dirImportsNameFormEngine — есть ли в каталоге хоть один файл, где встречается
+// путь пакета-двигателя. См. оговорку у nameFormEnginePkgPath: это отбор
+// кандидатов на разбор, а не признак доказательства.
+func dirImportsNameFormEngine(files map[string]string, rels []string) bool {
+	for _, rel := range rels {
+		if strings.Contains(files[rel], nameFormEnginePkgPath) {
+			return true
+		}
+	}
+	return false
+}
+
+// scanPackageForProbeCalls возвращает файлы каталога, несущие ИСПОЛНЯЕМЫЙ вызов
+// входного метода двигателя, и файлы, которые разобрать не удалось.
+//
+// Достижимость считается по графу вызовов внутри пакета: корни — точки входа
+// прогона (`Test*`/`Benchmark*`/`Fuzz*`/`Example*`), рёбра — имена вызываемых
+// функций и методов. Это ОГРУБЛЕНИЕ в сторону достижимости: метод и функция с
+// одинаковым именем для графа неразличимы, поэтому граф скорее признает
+// достижимым лишнее, чем пропустит настоящее. Огрубление выбрано осознанно —
+// ложное красное на живой пробе отключило бы гейт, а ложное зелёное здесь
+// требует, чтобы у мёртвого помощника нашёлся одноимённый живой.
+//
+// Слепое пятно названо прямо: вызов ВНЕ объявления функции (в инициализаторе
+// пакетной переменной) разбор не ищет. Такой формы в дереве нет, а появится она
+// ЗАМЕТНО — гейт объявит сервис недоказанным, то есть пятно отказывает в
+// сторону красного, а не тихого зелёного.
+func scanPackageForProbeCalls(files map[string]string, rels []string, entryMethods map[string]bool) (proofs []string, unparsed []string) {
+	type parsedFile struct {
+		rel   string
+		file  *ast.File
+		local string // локальное имя пакета-двигателя в этом файле ("" — не импортирован)
+	}
+
+	fset := token.NewFileSet()
+	var ps []parsedFile
+	for _, rel := range rels {
+		// Без parser.ParseComments: комментарии в дерево не попадают вовсе,
+		// поэтому «упоминание в комментарии» не может стать вызовом ни при
+		// какой ошибке ниже по коду.
+		f, err := parser.ParseFile(fset, rel, files[rel], parser.SkipObjectResolution)
+		if err != nil {
+			unparsed = append(unparsed, rel)
+			continue
+		}
+		ps = append(ps, parsedFile{rel: rel, file: f, local: nameFormEngineLocalName(f)})
+	}
+
+	// Пакетное знание: какие функции ВОЗВРАЩАЮТ пробу. Без него помощник вида
+	// `func geoNameFormProbe(...) nameformdb.Probe` и вызов
+	// `geoNameFormProbe(t, pool).Check(...)` остались бы незамеченными —
+	// а это законная и уже применённая в дереве форма.
+	probeReturning := map[string]bool{}
+	for _, p := range ps {
+		if p.local == "" {
+			continue
+		}
+		for _, d := range p.file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Type.Results == nil {
+				continue
+			}
+			for _, res := range fn.Type.Results.List {
+				if isNameFormProbeType(res.Type, p.local) {
+					probeReturning[fn.Name.Name] = true
+				}
+			}
+		}
+	}
+
+	// Граф вызовов пакета и множество функций, несущих доказательство.
+	callees := map[string]map[string]bool{}
+	proofFuncs := map[string][]string{} // имя функции → файлы, где найден вызов
+
+	for _, p := range ps {
+		for _, d := range p.file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			name := fn.Name.Name
+			if callees[name] == nil {
+				callees[name] = map[string]bool{}
+			}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				switch f := call.Fun.(type) {
+				case *ast.Ident:
+					callees[name][f.Name] = true
+				case *ast.SelectorExpr:
+					callees[name][f.Sel.Name] = true
+				}
+				return true
+			})
+
+			// Локального имени двигателя у файла может не быть вовсе, и это
+			// законно: значение приезжает возвратом помощника из соседнего
+			// файла пакета. Пустое имя ни с одним идентификатором не совпадёт,
+			// поэтому опознание по типу просто не сработает, а опознание по
+			// помощнику — сработает.
+			bound := nameFormProbeBindings(fn, p.local, probeReturning)
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || !entryMethods[sel.Sel.Name] {
+					return true
+				}
+				if !nameFormExprYieldsProbe(sel.X, p.local, bound, probeReturning) {
+					return true
+				}
+				proofFuncs[name] = append(proofFuncs[name], p.rel)
+				return true
+			})
+		}
+	}
+
+	if len(proofFuncs) == 0 {
+		return nil, unparsed
+	}
+
+	// Достижимость от точек входа прогона.
+	reachable := map[string]bool{}
+	var queue []string
+	for name := range callees {
+		if isTestEntryFuncName(name) {
+			reachable[name] = true
+			queue = append(queue, name)
+		}
+	}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for callee := range callees[cur] {
+			if reachable[callee] {
+				continue
+			}
+			if _, declared := callees[callee]; !declared {
+				continue
+			}
+			reachable[callee] = true
+			queue = append(queue, callee)
+		}
+	}
+
+	for fn, where := range proofFuncs {
+		if !reachable[fn] {
+			continue
+		}
+		proofs = append(proofs, where...)
+	}
+	return uniqueSorted(proofs), unparsed
+}
+
+// nameFormEngineLocalName — под каким именем файл знает пакет-двигатель.
+// Псевдоним импорта учитывается: гейт не вправе требовать одного написания.
+func nameFormEngineLocalName(f *ast.File) string {
+	for _, imp := range f.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		if !strings.HasSuffix(p, "/"+nameFormEnginePkgPath) && p != nameFormEnginePkgPath {
+			continue
+		}
+		if imp.Name != nil {
+			// `_` и `.` пробу не называют: под первым к пакету не обратиться,
+			// второй здесь не встречается и опознан быть не может.
+			if imp.Name.Name == "_" || imp.Name.Name == "." {
+				return ""
+			}
+			return imp.Name.Name
+		}
+		return path.Base(p)
+	}
+	return ""
+}
+
+// isNameFormProbeType — тип `<local>.Probe` или указатель на него.
+func isNameFormProbeType(e ast.Expr, local string) bool {
+	switch t := e.(type) {
+	case *ast.StarExpr:
+		return isNameFormProbeType(t.X, local)
+	case *ast.SelectorExpr:
+		id, ok := t.X.(*ast.Ident)
+		return ok && id.Name == local && t.Sel.Name == nameFormEngineType
+	}
+	return false
+}
+
+// nameFormProbeBindings — имена внутри функции, за которыми стоит проба:
+// параметры и получатель нужного типа плюс переменные, которым пробу присвоили.
+//
+// Обход повторяется дважды, чтобы поймать цепочку `a := <проба>; b := a`:
+// одного прохода для неё не хватает, а полноценного анализа потока данных
+// предмет не стоит.
+func nameFormProbeBindings(fn *ast.FuncDecl, local string, probeReturning map[string]bool) map[string]bool {
+	bound := map[string]bool{}
+
+	addFields := func(fl *ast.FieldList) {
+		if fl == nil {
+			return
+		}
+		for _, f := range fl.List {
+			if !isNameFormProbeType(f.Type, local) {
+				continue
+			}
+			for _, n := range f.Names {
+				bound[n.Name] = true
+			}
+		}
+	}
+	addFields(fn.Recv)
+	addFields(fn.Type.Params)
+
+	for pass := 0; pass < 2; pass++ {
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch s := n.(type) {
+			case *ast.AssignStmt:
+				for i, lhs := range s.Lhs {
+					if i >= len(s.Rhs) {
+						break
+					}
+					id, ok := lhs.(*ast.Ident)
+					if ok && nameFormExprYieldsProbe(s.Rhs[i], local, bound, probeReturning) {
+						bound[id.Name] = true
+					}
+				}
+			case *ast.ValueSpec:
+				for i, nm := range s.Names {
+					if i < len(s.Values) &&
+						nameFormExprYieldsProbe(s.Values[i], local, bound, probeReturning) {
+						bound[nm.Name] = true
+					}
+					if s.Type != nil && isNameFormProbeType(s.Type, local) {
+						bound[nm.Name] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	return bound
+}
+
+// nameFormExprYieldsProbe — даёт ли выражение значение пробы.
+func nameFormExprYieldsProbe(e ast.Expr, local string, bound, probeReturning map[string]bool) bool {
+	switch x := e.(type) {
+	case *ast.ParenExpr:
+		return nameFormExprYieldsProbe(x.X, local, bound, probeReturning)
+	case *ast.UnaryExpr:
+		return nameFormExprYieldsProbe(x.X, local, bound, probeReturning)
+	case *ast.StarExpr:
+		return nameFormExprYieldsProbe(x.X, local, bound, probeReturning)
+	case *ast.CompositeLit:
+		return isNameFormProbeType(x.Type, local)
+	case *ast.Ident:
+		return bound[x.Name]
+	case *ast.CallExpr:
+		if id, ok := x.Fun.(*ast.Ident); ok {
+			return probeReturning[id.Name]
+		}
+		if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+			return probeReturning[sel.Sel.Name]
+		}
+	}
+	return false
+}
+
+// isTestEntryFuncName — точка входа прогона. `TestMain` под тот же признак
+// подпадает и это верно: из него исполняется всё, что он зовёт.
+func isTestEntryFuncName(name string) bool {
+	for _, p := range []string{"Test", "Benchmark", "Fuzz", "Example"} {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueSorted(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	sort.Strings(in)
+	out := in[:1]
+	for _, s := range in[1:] {
+		if s != out[len(out)-1] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // nameFormServiceOf выделяет имя сервиса из пути `services/<svc>/…`.
