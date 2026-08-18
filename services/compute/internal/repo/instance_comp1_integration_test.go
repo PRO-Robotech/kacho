@@ -92,11 +92,14 @@ func TestIntegration_Instance_COMP_1_30_ConcurrentNameRace(t *testing.T) {
 	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), "prj-other", contestName))
 	require.NoError(t, err)
 
-	// пустой name дважды в одном проекте → оба OK (partial-UNIQUE не ловит name='').
+	// Здесь стояло «пустой name дважды в одном проекте → оба OK»: частичный
+	// UNIQUE действительно не ловил name=''. Ни того, ни другого больше нет —
+	// миграция 715001 заменила частичный индекс полным и запретила пустое имя
+	// формой (#715). Escape-hatch «машина без имени» упразднён вместе с ним:
+	// имя проставляется от id на создании. Утверждение перевёрнуто, а не снято,
+	// иначе исчез бы контроль на то, что безымянная строка не заводится.
 	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
-	require.NoError(t, err)
-	_, _, err = instRepo.Insert(ctx, comp1Instance(ids.NewHyphenID(ids.PrefixInstanceHyphen), project, ""))
-	require.NoError(t, err, "пустой name — id-only escape-hatch, partial-UNIQUE не применяется")
+	require.Error(t, err, "пустое имя больше не является допустимым значением")
 }
 
 // TestIntegration_Instance_COMP_1_37_DeleteNameRecycle (COMP-1-37): hard-delete строки

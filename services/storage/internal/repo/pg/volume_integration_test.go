@@ -473,9 +473,14 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	_, _, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
 	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "got %v", err)
 
+	// Здесь стояло «очистка имени разрешена (частичный UNIQUE игнорирует '')».
+	// Ни очистки, ни частичного индекса больше нет: форма (#715) пустую строку
+	// не принимает, а миграция 715001 заменила частичный индекс полным.
+	// Утверждение перевёрнуто, а не снято, — иначе пропал бы контроль на то,
+	// что правкой имя нельзя опустошить.
 	empty := ""
 	_, _, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &empty})
-	require.NoError(t, err, "clearing name allowed (partial UNIQUE ignores '')")
+	require.Error(t, err, "очистка имени правкой больше не допускается")
 
 	desc := "patched"
 	_, _, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Description: &desc})
@@ -483,5 +488,6 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 	got, err := r.Get(ctx, vb.ID)
 	require.NoError(t, err)
 	require.Equal(t, "patched", got.Description)
-	require.Empty(t, got.Name)
+	// Имя осталось прежним: очистить его правкой больше нельзя (см. выше).
+	require.Equal(t, "beta", got.Name)
 }

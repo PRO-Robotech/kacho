@@ -224,9 +224,12 @@ func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 	volID := imgFixtureVolumeRow(t, pool, "prj-1", "vol-x", "region-1-a", "", 1<<30)
 
 	// оба источника → CHECK 23514 (единственный инвариант, который SET NULL нарушить не может).
+	// Имя задаётся явно: без него колонка берёт умолчание — пустую строку, —
+	// а она не отвечает форме (#715), и строка умирает на images_name_check
+	// раньше, чем дойдёт до инварианта, ради которого написана проба.
 	_, err := pool.Exec(ctx, `INSERT INTO images
-		(id, project_id, region_id, source_snapshot_id, source_volume_id, format, state)
-		VALUES ($1,'prj-1','ru-central1',$2,$3,'STANDARD','READY')`,
+		(id, project_id, region_id, name, source_snapshot_id, source_volume_id, format, state)
+		VALUES ($1,'prj-1','ru-central1','img-two-sources',$2,$3,'STANDARD','READY')`,
 		ids.NewID(domain.PrefixImage), snapID, volID)
 	require.Error(t, err, "both sources must violate images_source_at_most_one CHECK")
 	require.Contains(t, err.Error(), "images_source_at_most_one")
@@ -234,8 +237,8 @@ func TestImageSourceMutualExclusionDBCheck(t *testing.T) {
 	// ни одного источника → DB ДОПУСКАЕТ (source-less — валидное пост-SET-NULL состояние;
 	// at-least-one на Create — забота domain.Validate(), не DB-CHECK).
 	_, err = pool.Exec(ctx, `INSERT INTO images
-		(id, project_id, region_id, format, state)
-		VALUES ($1,'prj-1','ru-central1','STANDARD','READY')`,
+		(id, project_id, region_id, name, format, state)
+		VALUES ($1,'prj-1','ru-central1','img-no-source','STANDARD','READY')`,
 		ids.NewID(domain.PrefixImage))
 	require.NoError(t, err, "zero sources is a valid DB state (post SET-NULL); at-least-one enforced in domain sync-validate")
 }

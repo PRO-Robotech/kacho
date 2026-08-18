@@ -66,8 +66,8 @@ func TestGuestKeyBinding_ForeignKeyNeverAttaches(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	keyRepo := repo.NewGuestAccessKeyRepo(pool)
 
-	own := seedGuestKey(t, ctx, keyRepo, "proj-own", "свой")
-	foreign := seedGuestKey(t, ctx, keyRepo, "proj-other", "чужой")
+	own := seedGuestKey(t, ctx, keyRepo, "proj-own", "key-own")
+	foreign := seedGuestKey(t, ctx, keyRepo, "proj-other", "key-foreign")
 
 	t.Run("свой ключ привязывается и виден в ответе", func(t *testing.T) {
 		in, ierr := seedInstanceWithKeys(t, ctx, instRepo, "proj-own", []string{own})
@@ -122,8 +122,8 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	keyRepo := repo.NewGuestAccessKeyRepo(pool)
 
-	held := seedGuestKey(t, ctx, keyRepo, "proj-del", "занятый")
-	free := seedGuestKey(t, ctx, keyRepo, "proj-del", "свободный")
+	held := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-held")
+	free := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-free")
 
 	in, ierr := seedInstanceWithKeys(t, ctx, instRepo, "proj-del", []string{held})
 	require.NoError(t, ierr)

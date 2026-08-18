@@ -86,13 +86,31 @@ func newRepo(t testing.TB, dsn string) (*kachopg.Repository, func()) {
 	return kachopg.New(pool, nil), func() { pool.Close() }
 }
 
+// fixtureLbName возвращает имя, отвечающее единственной форме дерева (#715).
+//
+// Пробам ниже имя чаще всего безразлично — они спрашивают про внешние ключи,
+// гонки и тон отказа, — и потому исторически передавали пустую строку. Пустого
+// имени больше не существует: миграция 715001 вешает форму ограничением БД.
+// Поэтому пустой аргумент означает «имя неважно, дай годное», а не «без имени».
+//
+// Имя генерируется УНИКАЛЬНЫМ, а не постоянным: уникальность имени в проекте
+// теперь полная, и два безымянных ресурса одного проекта столкнулись бы между
+// собой. Проба, которой нужен ИМЕННО дубль имени, передаёт его явно — как
+// TestListener_NLB_1_49_ConcurrentInsertSameName со своим "race-lst".
+func fixtureLbName(name string) domain.LbName {
+	if name == "" {
+		return domain.LbName(ids.NewUID())
+	}
+	return domain.LbName(name)
+}
+
 // newLB строит свежий domain.LoadBalancer для тестов.
 func newLB(projectID, name string) *domain.LoadBalancer {
 	return &domain.LoadBalancer{
 		ID:              domain.ResourceID(ids.NewID(ids.PrefixLoadBalancer)),
 		ProjectID:       domain.ProjectID(projectID),
 		RegionID:        "ru-central1",
-		Name:            domain.LbName(name),
+		Name:            fixtureLbName(name),
 		Description:     "test lb",
 		Labels:          domain.LabelsFromMap(map[string]string{"test": "1"}),
 		Type:            domain.LBTypeExternal,
@@ -108,7 +126,7 @@ func newListener(lbID domain.ResourceID, projectID, name string, port int32) *do
 		LoadBalancerID: lbID,
 		ProjectID:      domain.ProjectID(projectID),
 		RegionID:       "ru-central1",
-		Name:           domain.LbName(name),
+		Name:           fixtureLbName(name),
 		Description:    "",
 		Labels:         domain.LbLabels{},
 		Protocol:       domain.ProtoTCP,
@@ -123,7 +141,7 @@ func newTG(projectID, name string) *domain.TargetGroup {
 		ID:                  domain.ResourceID(ids.NewID(ids.PrefixTargetGroup)),
 		ProjectID:           domain.ProjectID(projectID),
 		RegionID:            "ru-central1",
-		Name:                domain.LbName(name),
+		Name:                fixtureLbName(name),
 		Description:         "",
 		Labels:              domain.LbLabels{},
 		DeregistrationDelay: domain.LbDuration(300 * time.Second),
