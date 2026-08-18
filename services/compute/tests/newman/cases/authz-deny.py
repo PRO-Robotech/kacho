@@ -38,20 +38,60 @@ def deny_asserts(case_id):
     ]
 
 
-def allow_asserts(case_id):
-    """ALLOW — субъект, у которого доступ ЕСТЬ, обязан его получить: не 403 и не 401.
+# Единственный законный исход ALLOW-полосы Create — СИНХРОННЫЙ отказ предусловия,
+# и он УСТАНОВЛЕН по коду владельца, а не угадан.
+#
+# Тело Create этой матрицы (см. `define_resource_cases`) — машина вида VM без
+# внешнего адреса и без снятия стража недостижимости. `ValidateCreateInstanceReq`
+# (`services/compute/internal/apps/kacho/api/instance/instance.go`, F5) отвергает
+# такой вход СИНХРОННО — до создания Operation — кодом `FAILED_PRECONDITION` и
+# дословно этим текстом; отображение кода в статус задаёт библиотека края
+# (`runtime.HTTPStatusFromCode`, край собирается без `WithErrorHandler`), поэтому
+# `FAILED_PRECONDITION` — это **400**, а не 412 (`api-conventions.md`
+# §«gRPC-код → HTTP-статус»). Тот же исход утверждает и уже зелёный кейс того же
+# набора `INST-RD-CR-VAL-UNREACHABLE-GUARD` (cases/instance-redesign.py) на
+# идентичном теле — то есть полоса подтверждена не только чтением.
+#
+# ПОЧЕМУ ЭТО НЕ ПОДМЕНА ПРЕДМЕТА. Предмет матрицы — решение о ДОСТУПЕ, и он
+# сохранён строго: до валидатора доходит только запрос, который край ПРОПУСТИЛ, а
+# мутацию без права край отвергает `403` (полоса DENY ниже). Значит 400+9 на этом
+# входе может получить ровно тот субъект, которому доступ дан. Отличие ALLOW от
+# DENY остаётся однозначным, но теперь оно утверждается ИСХОДОМ, а не его
+# отрицанием.
+#
+# ПОЧЕМУ ПРЕЖНЕЕ УТВЕРЖДЕНИЕ НЕ БЫЛО УТВЕРЖДЕНИЕМ. Здесь стояло «не 403 и не 401»
+# (плюс те же два отрицания по коду `google.rpc.Status`) с оговоркой, что
+# downstream-валидация вправе ответить чем угодно. Отрицание проходит на успехе,
+# на отказе валидации, на 500 и на 503 — то есть не отличает исправную систему ни
+# от одной поломки, кроме той единственной, что подписана 403. Заодно шаг,
+# у которого ВСЕ утверждения о статусе отрицательные, читается гейтами дерева
+# (`internal/repohygiene`) как ПРОБА ОТКАЗА и выпадает из их рассмотрения.
+# verifies #668.
+#
+# ЕСЛИ ТЕЛО CREATE ПОМЕНЯЕТСЯ — ПОМЕНЯЕТСЯ И ЭТА ПОЛОСА. Связь названа здесь
+# намеренно: полоса привязана к КОНКРЕТНОМУ входу, и это её свойство, а не изъян.
+# Добавили `acknowledgeUnreachable` либо внешний адрес — вход проходит F5, и
+# законным исходом становится другой отказ (следующий по порядку резолв ссылки);
+# тогда правится и утверждение, осознанно, а не подгоняется под зелёный.
+_ALLOW_PRECONDITION_MESSAGE = ("VM will be RUNNING but unreachable (no external address); "
+                               "set acknowledgeUnreachable:true to proceed")
 
-    Строгое утверждение, ровно как у vpc, эталона этой матрицы. Downstream-валидация
-    вправе ответить 400/404/409 (тело кейса умышленно не резолвится — предмет матрицы
-    решение о доступе, а не создание), но authz-отказ на ALLOW-строке — регрессия прав,
-    и она обязана валить кейс. Толерантность к 403 здесь была бы отсутствием
-    утверждения: строка зеленела бы ровно на том отказе, который обязана поймать."""
+
+def allow_asserts(case_id):
+    """ALLOW-полоса Create: край ПРОПУСТИЛ, владелец упёрся в НАЗВАННОЕ предусловие.
+
+    Утверждается ПАРА — HTTP-статус и `code` из `google.rpc.Status` — плюс
+    контрактный тон отказа. Разбор, почему исход один и почему предмет матрицы при
+    этом сохранён, — в комментарии над этой функцией.
+    """
     return [
-        f"pm.test('[{case_id}] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-        f"pm.test('[{case_id}] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+        f"pm.test('[{case_id}] ALLOW→предусловие: HTTP 400', () => "
+        f"pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
         "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-        f"pm.test('[{case_id}] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-        f"pm.test('[{case_id}] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));",
+        f"pm.test('[{case_id}] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => "
+        f"pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+        f"pm.test('[{case_id}] ALLOW→предусловие: контрактный тон отказа', () => "
+        f"pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('{_ALLOW_PRECONDITION_MESSAGE}'));",
     ]
 
 
@@ -74,7 +114,10 @@ def list_allow_asserts(case_id, list_key):
     подтверждение, не требующее модели: строки Create для этого же субъекта и project'а
     уже требуют «не 403», а Create гейтится `editor` — отношением сильнее, чем нужный
     списку `viewer`; поэтому и «грант мог не доехать» здесь не защита, он ронял бы
-    сначала Create. Паритет с vpc/tests/newman/cases/authz-deny.py, эталоном матрицы."""
+    сначала Create. Та же форма — у vpc (`services/vpc/tests/newman/cases/authz-deny.py`,
+    `list_allow_asserts`); там свойство держит не звание эталона, а проба инъекции
+    `services/vpc/tests/newman/scripts/selftest_authz_allow_lanes.py` — здесь ей
+    отвечает `scripts/selftest_authz_allow_lanes.py` этого набора."""
     return [
         "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
         f"pm.test('[{case_id}] LIST grant: 200 (scope-filtered page)', () => "
@@ -155,7 +198,9 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
     ходили через матрицу, и ALLOW-ветка вынуждена была принимать И успех, И отказ
     (`oneOf([200,400,403,404,409])`) — то есть не утверждала ничего и не могла упасть на
     регрессии прав. Режим определяется тем, что кейс реально спрашивает, и каждый режим
-    требует ОДНОГО исхода. Паритет с vpc, эталоном матрицы."""
+    требует ОДНОГО исхода. Та же раскладка полос — в
+    `services/vpc/tests/newman/cases/authz-deny.py`; звания эталона у неё нет, свойство
+    держит проба инъекции рядом с ней."""
     code, label, auth = subject
     case_id = f"AUTHZ-{case_id_prefix}-{code}"
     if mode in ("nf", "deny"):
@@ -217,7 +262,8 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
         # ALLOW на резолвимом scope: Create несёт `projectId` — ровно то поле, которое
         # извлекает каталог (`InstanceService/Create` → scope_extractor {project,
         # project_id}), — поэтому scope резолвится и защитимого authz-first 403 у
-        # ALLOW-субъекта не остаётся. Утверждение строгое: 403 здесь = регрессия прав.
+        # ALLOW-субъекта не остаётся. Утверждение называет ИСХОД (400+9 на предусловии
+        # F5), а не его отрицание: 403 здесь = регрессия прав и валит кейс.
         asserts = allow_asserts(case_id)
     CASES.append(Case(
         id=case_id,
