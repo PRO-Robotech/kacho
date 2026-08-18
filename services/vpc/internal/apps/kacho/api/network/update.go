@@ -169,7 +169,17 @@ func validateNetworkUpdate(in UpdateInput) error {
 	for _, f := range updates {
 		switch f {
 		case "name":
-			if err := in.Network.Name.Validate(); err != nil {
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: она читает
+			// форму запроса (маска × значение) и отвечает сразу на два вопроса —
+			// законен ли ввод и следует ли имя применять. Ту же функцию зовёт
+			// применение маски, поэтому проверка и запись разойтись не могут.
+			//
+			// Пять исходов и их причина — в godoc `validate.NameOnUpdate`; здесь
+			// они не пересказываются, иначе завелось бы два места об одном
+			// предмете. Коротко о том, что здесь неочевидно: при ПУСТОЙ маске
+			// пустое имя законно и означает «не прислано» — в proto3 это
+			// неотличимо от отсутствия поля.
+			if _, err := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.Network.Name)); err != nil {
 				return err
 			}
 		case "description":
@@ -208,16 +218,32 @@ func labelsInMask(updateMask []string) bool {
 // applyNetworkMask — применяет subset полей к существующему domain.Network.
 // Пустая маска = full PATCH (применяются все mutable-поля).
 func applyNetworkMask(n *domain.Network, in UpdateInput) {
-	if len(in.UpdateMask) == 0 {
+	// Применять ли имя, решает ТА ЖЕ функция, что вынесла приговор на проверке
+	// входа, — поэтому проверка и запись разойтись не могут by construction.
+	// Здесь читается только её булева половина: отказ уже случился бы синхронно,
+	// до создания операции.
+	//
+	// Решение вынесено ИЗ ОБЕИХ ветвей маски намеренно. Прежде ветвь полной
+	// правки присваивала имя безусловно, и пустое значение уезжало в строку: в
+	// proto3 «поле не прислано» неотличимо от «поле пусто», поэтому полная
+	// правка, НЕ ТРОГАВШАЯ имя, имя стирала. После миграции 715001, поставившей
+	// на столбец ограничение формы, это перестало быть «странным именем» и стало
+	// отказом БАЗЫ на пути, где вызывающий не сделал ничего неверного.
+	//
+	// Ошибка здесь отбрасывается сознательно: на ней функция возвращает false,
+	// то есть путь, почему-либо миновавший проверку входа, тоже НЕ запишет
+	// негодное имя — отказ направлен в безопасную сторону.
+	applyName, _ := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.Network.Name))
+	if applyName {
 		n.Name = in.Network.Name
+	}
+	if len(in.UpdateMask) == 0 {
 		n.Description = in.Network.Description
 		n.Labels = in.Network.Labels
 		return
 	}
 	for _, field := range in.UpdateMask {
 		switch field {
-		case "name":
-			n.Name = in.Network.Name
 		case "description":
 			n.Description = in.Network.Description
 		case "labels":

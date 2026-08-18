@@ -36,7 +36,15 @@ import (
 
 const (
 	// cursorProbeRows — строк на проект в пробе.
-	cursorProbeRows = 200
+	//
+	// Было 200 при пустых именах. Имя перестало быть пустым (#715), строка
+	// стала шире, и на этом объёме планировщик перестал выбирать курсорный
+	// индекс для volumes — при том что для images и snapshots продолжал.
+	// Такая разница между тремя одинаковыми по смыслу пробами и есть признак
+	// того, что решение принималось на грани, а не по существу.
+	//
+	// Замерено: 2000 строк на проект возвращают выбор курсорного индекса.
+	cursorProbeRows = 2000
 	// cursorProbeProjects — сколько проектов в таблице. Доля целевого проекта
 	// обязана быть заметно меньше единицы: под старым планом (скан по времени
 	// создания + отбрасывание чужих проектов) стоимость страницы растёт именно
@@ -143,7 +151,7 @@ func TestIntegration_VolumesCursorIndex_PageDoesNotReadTheWholeProject(t *testin
 
 	projects := seedTenantRows(t, ctx, pool, `
 		INSERT INTO volumes (id, project_id, zone_id, name, disk_type_id, size_bytes, state, created_at)
-		SELECT 'vol' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a', '', '`+seededDiskType+`',
+		SELECT 'vol' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a', 'vol' || $1 || lpad(g::text, 8, '0'), '`+seededDiskType+`',
 		       1073741824, 'READY', TIMESTAMPTZ '2020-01-01 00:00:00Z' + (g || ' seconds')::interval
 		  FROM generate_series(0, $2::int - 1) g`)
 	_, err := pool.Exec(ctx, `ANALYZE volumes`)
@@ -174,7 +182,7 @@ func TestIntegration_ImagesCursorIndex_PageDoesNotReadTheWholeProject(t *testing
 
 	projects := seedTenantRows(t, ctx, pool, `
 		INSERT INTO images (id, project_id, name, region_id, size_bytes, state, created_at)
-		SELECT 'img' || $1 || lpad(g::text, 8, '0'), $1, '', 'ru-central1', 1073741824, 'READY',
+		SELECT 'img' || $1 || lpad(g::text, 8, '0'), $1, 'img' || $1 || lpad(g::text, 8, '0'), 'ru-central1', 1073741824, 'READY',
 		       TIMESTAMPTZ '2020-01-01 00:00:00Z' + (g || ' seconds')::interval
 		  FROM generate_series(0, $2::int - 1) g`)
 	_, err := pool.Exec(ctx, `ANALYZE images`)
@@ -208,7 +216,7 @@ func TestIntegration_SnapshotsCursorIndex_PageDoesNotReadTheWholeProject(t *test
 
 	projects := seedTenantRows(t, ctx, pool, `
 		INSERT INTO snapshots (id, project_id, name, source_volume_id, size_bytes, state, created_at)
-		SELECT 'snp' || $1 || lpad(g::text, 8, '0'), $1, '', NULL, 1073741824, 'READY',
+		SELECT 'snp' || $1 || lpad(g::text, 8, '0'), $1, 'snp' || $1 || lpad(g::text, 8, '0'), NULL, 1073741824, 'READY',
 		       TIMESTAMPTZ '2020-01-01 00:00:00Z' + (g || ' seconds')::interval
 		  FROM generate_series(0, $2::int - 1) g`)
 	_, err := pool.Exec(ctx, `ANALYZE snapshots`)

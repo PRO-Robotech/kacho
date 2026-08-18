@@ -103,7 +103,7 @@ jobs:
       # .github/scripts/check-pinned-tools.sh --divergence-only.
       - uses: azure/setup-helm@v5
         with:
-          version: v4.2.3
+          version: v4.2.4
       - uses: azure/setup-kubectl@v5
 
       # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим

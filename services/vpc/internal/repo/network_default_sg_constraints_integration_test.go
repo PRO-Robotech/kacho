@@ -40,7 +40,7 @@ func TestIntegration_DefaultSG_FKSetsNullOnDelete(t *testing.T) {
 		if _, e := w.Networks().Insert(ctx, &domain.Network{ID: netID, ProjectID: "f-dsg", Name: domain.RcNameVPC("n-dsg")}); e != nil {
 			return e
 		}
-		if _, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: sgID, ProjectID: "f-dsg", NetworkID: netID, DefaultForNetwork: true}); e != nil {
+		if _, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: sgID, Name: domain.RcNameVPC(sgID), ProjectID: "f-dsg", NetworkID: netID, DefaultForNetwork: true}); e != nil {
 			return e
 		}
 		_, e := w.Networks().SetDefaultSGID(ctx, netID, sgID)
@@ -96,12 +96,12 @@ func TestIntegration_OneDefaultSGPerNetwork(t *testing.T) {
 		if _, e := w.Networks().Insert(ctx, &domain.Network{ID: netID, ProjectID: "f-dsg", Name: domain.RcNameVPC("n-dsg3")}); e != nil {
 			return e
 		}
-		_, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: ids.NewID(ids.PrefixSecurityGroup), ProjectID: "f-dsg", NetworkID: netID, DefaultForNetwork: true})
+		_, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: ids.NewID(ids.PrefixSecurityGroup), Name: fixtureName(), ProjectID: "f-dsg", NetworkID: netID, DefaultForNetwork: true})
 		return e
 	}))
 	// Вторая default-SG в той же сети → partial UNIQUE violation.
 	_, err = pgPool.Exec(ctx,
-		`INSERT INTO security_groups (id, project_id, network_id, default_for_network) VALUES ($1, 'f-dsg', $2, true)`,
+		`INSERT INTO security_groups (id, name, project_id, network_id, default_for_network) VALUES ($1, $1, 'f-dsg', $2, true)`,
 		ids.NewID(ids.PrefixSecurityGroup), netID)
 	require.Error(t, err, "a network must have at most one default security group")
 }

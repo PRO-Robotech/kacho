@@ -70,7 +70,7 @@ func TestAddressPool_ListAddressesByPool_CursorWalk(t *testing.T) {
 	poolID := ids.NewID(ids.PrefixAddressPool)
 	_, err = pgPool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, v4_cidr_blocks, kind)
-		VALUES ($1, $2, ARRAY['203.0.113.0/24']::text[], 1)`, poolID, t.Name())
+		VALUES ($1, $2, ARRAY['203.0.113.0/24']::text[], 1)`, poolID, "pool-list")
 	require.NoError(t, err)
 
 	const projA = "listaddrprojaaaa000"
@@ -86,8 +86,8 @@ func TestAddressPool_ListAddressesByPool_CursorWalk(t *testing.T) {
 		}
 		addrID := ids.NewID(ids.PrefixAddress)
 		_, err = pgPool.Exec(ctx, `
-			INSERT INTO addresses (id, project_id, addr_type, ip_version, created_at, external_ipv4)
-			VALUES ($1, $2, 1, 1, now() + $3::interval,
+			INSERT INTO addresses (id, name, project_id, addr_type, ip_version, created_at, external_ipv4)
+			VALUES ($1, $1, $2, 1, 1, now() + $3::interval,
 					jsonb_build_object('address', $4::text, 'address_pool_id', $5::text))`,
 			addrID, project, fmt.Sprintf("%d seconds", i), fmt.Sprintf("203.0.113.%d", i+1), poolID)
 		require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestAddressPool_ListAddressesByPool_EmptyPool(t *testing.T) {
 	poolID := ids.NewID(ids.PrefixAddressPool)
 	_, err = pgPool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, v4_cidr_blocks, kind)
-		VALUES ($1, $2, ARRAY['203.0.113.0/24']::text[], 1)`, poolID, t.Name())
+		VALUES ($1, $2, ARRAY['203.0.113.0/24']::text[], 1)`, poolID, "pool-list")
 	require.NoError(t, err)
 
 	rd, err := r.Reader(ctx)

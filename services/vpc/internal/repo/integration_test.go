@@ -254,7 +254,7 @@ func TestIntegration_AddressRepo_ExternalAndInternal(t *testing.T) {
 	}))
 
 	intAddr := &domain.Address{
-		ID:        ids.NewUID(),
+		ID: ids.NewUID(), Name: fixtureName(),
 		ProjectID: "project-1",
 		Type:      domain.AddressTypeInternal,
 		IpVersion: domain.IpVersionIPv4,

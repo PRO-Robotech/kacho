@@ -59,7 +59,7 @@ CASES.append(Case(
     classes=["STATE", "CRUD"], priority="P0",
     steps=[
         Step(name="create-region-for-op", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-op-{{runId}}", "name": "QA Region Op {{runId}}", "countryCode": "RU", "status": "UP"},
+             body={"id": "qa-reg-op-{{runId}}", "name": "qa-region-op-{{runId}}", "countryCode": "RU", "status": "UP"},
              test_script=[
                  *assert_operation_envelope(),
                  "const j = pm.response.json();",

@@ -75,8 +75,9 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 		return nil, status.Error(codes.InvalidArgument, "project_id required")
 	}
 	name := string(g.Name)
-	// Gateway.Name — строгий regex (lowercase, без uppercase/underscore).
-	if err := corevalidate.NameGateway("name", name); err != nil {
+	// Единственная форма имени дерева; пустое на создании законно и означает
+	// «назови сам» — умолчание подставляется ниже, когда id уже сгенерирован.
+	if err := corevalidate.NameOnCreate("name", name); err != nil {
 		return nil, err
 	}
 	// Domain self-validation для description/labels.
@@ -111,6 +112,9 @@ func (u *CreateGatewayUseCase) Execute(ctx context.Context, g domain.Gateway) (*
 	// (в отличие от Network/Subnet/RouteTable/SecurityGroup).
 
 	gwID := ids.NewID(ids.PrefixGateway)
+	// Пустое имя не доживает до записи: ресурса без имени не бывает (#715).
+	name = corevalidate.NameOrDefault(name, gwID)
+	g.Name = domain.RcNameVPC(name)
 	// Учёт числа ресурсов: ранний отказ ДО создания операции.
 	//
 	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —
@@ -301,12 +305,22 @@ func (u *CreateGatewayUseCase) allocateExternalAddress(ctx context.Context, w Wr
 	addrID := ids.NewID(ids.PrefixAddress)
 	// `Reserved` остаётся ложью осознанно: адрес не заказан арендатором сам по
 	// себе, он возник как следствие создания шлюза, и его жизнь связана со
-	// шлюзом. Имя не задаётся — оно косметический project-scoped ярлык, а
-	// частичный UNIQUE по имени считает пустые имена различными, поэтому
-	// безымянные адреса шлюзов не коллизят между собой.
+	// шлюзом.
+	//
+	// ИМЯ ЗАДАЁТСЯ, И ОНО ПРОИЗВОДНОЕ ОТ `id`. Здесь стояло обратное — «имя не
+	// задаётся, а частичный UNIQUE считает пустые имена различными», — и это
+	// перестало быть правдой в тот момент, когда форма имени стала одной на
+	// дерево: пустое имя больше не доживает до записи, а уникальность держит
+	// полный UNIQUE(project_id, name). Прежнее допущение не просто устарело —
+	// на нём создание шлюза переставало работать целиком.
+	//
+	// Производное от `id` уникально by construction: `id` глобально уникален,
+	// поэтому подбирать свободное имя не нужно, а подбор был бы проверкой
+	// перед вставкой — тем самым check-then-act, который запрещён.
 	if _, err := w.Addresses().Insert(ctx, &domain.Address{
 		ID:           addrID,
 		ProjectID:    g.ProjectID,
+		Name:         domain.GatewayAddressName(addrID),
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv4,
 		ExternalIpv4: &domain.ExternalIpv4Spec{ZoneID: sub.ZoneID},

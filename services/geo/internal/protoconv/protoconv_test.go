@@ -64,10 +64,10 @@ func TestPublicRegion_TwoProjection_NoStatusNoInfra(t *testing.T) {
 func TestZone_Derived(t *testing.T) {
 	created := time.Date(2026, 7, 5, 12, 30, 45, 500000000, time.UTC)
 	got := protoconv.Zone(&domain.Zone{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A",
+		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a",
 		Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, CreatedAt: created,
 	})
-	if got.GetId() != "ru-central1-a" || got.GetRegionId() != "ru-central1" || got.GetName() != "Zone A" {
+	if got.GetId() != "ru-central1-a" || got.GetRegionId() != "ru-central1" || got.GetName() != "zone-a" {
 		t.Fatalf("field mismatch: %+v", got)
 	}
 	if !got.GetOpenForPlacement() {
@@ -90,7 +90,7 @@ func TestZone_Derived(t *testing.T) {
 // openZoneCountHint° rollup; created_at усечён.
 func TestRegion_Derived(t *testing.T) {
 	created := time.Date(2026, 7, 5, 12, 30, 45, 987654321, time.UTC)
-	got := protoconv.Region(&domain.Region{ID: "ru-central1", Name: "RU Central 1", CountryCode: "RU", Status: domain.GeoStatusUp, OpenZoneCount: 2, CreatedAt: created})
+	got := protoconv.Region(&domain.Region{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RU", Status: domain.GeoStatusUp, OpenZoneCount: 2, CreatedAt: created})
 	if got.GetCountryCode() != "RU" || !got.GetOpenForPlacement() || got.GetOpenZoneCountHint() != 2 {
 		t.Fatalf("region projection mismatch: %+v", got)
 	}
@@ -103,14 +103,14 @@ func TestRegion_Derived(t *testing.T) {
 // status + полный infra° (readable-плоскость).
 func TestInternalProjections_CarryStatusInfra(t *testing.T) {
 	iz := protoconv.InternalZone(&domain.Zone{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp,
+		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, HostClasses: []string{"std-v3", "mem-v2"}, FailureDomainCount: 3, UnderlayAnchor: "fd00:ru1a::/48", CapacityHint: "AMPLE"},
 	})
 	if iz.GetStatus() != geov1.GeoStatus_UP || iz.GetInfra().GetNumericInfraId() != 10402 ||
 		len(iz.GetInfra().GetHostClasses()) != 2 || iz.GetInfra().GetCapacityHint() != "AMPLE" {
 		t.Fatalf("InternalZone projection mismatch: %+v", iz)
 	}
-	ir := protoconv.InternalRegion(&domain.Region{ID: "ru-central1", Name: "RU Central 1", CountryCode: "RU", Status: domain.GeoStatusUp, Infra: domain.RegionInfra{NumericInfraID: 900}})
+	ir := protoconv.InternalRegion(&domain.Region{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RU", Status: domain.GeoStatusUp, Infra: domain.RegionInfra{NumericInfraID: 900}})
 	if ir.GetStatus() != geov1.GeoStatus_UP || ir.GetInfra().GetNumericInfraId() != 900 {
 		t.Fatalf("InternalRegion projection mismatch: %+v", ir)
 	}

@@ -358,15 +358,19 @@ func TestCidrGroup_NameUniquePerProject(t *testing.T) {
 	require.NoError(t, err, "уникальность оказалась глобальной, а не проектной")
 	require.NoError(t, w2.Commit())
 
-	// Положительный контроль №2: два безымянных набора в одном проекте законны.
+	// Здесь стоял положительный контроль «два безымянных набора в одном проекте
+	// законны». Его предмета больше нет: миграция 715001 сняла частичный индекс
+	// `WHERE name <> ''` вместе с самой возможностью пустого имени, потому что
+	// форма имени (#715) пустую строку не принимает. Контроль, переживший свой
+	// предмет, утверждал бы о дереве неправду — поэтому он заменён на проверку
+	// того, что теперь верно: безымянный набор не заводится вовсе.
 	w3, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w3.Abort()
 	_, err = w3.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "", nil, nil))
-	require.NoError(t, err)
-	_, err = w3.CidrGroups().Insert(ctx, newCidrGroup("prj-1", "", nil, nil))
-	require.NoError(t, err, "пустое имя образовало дубль — частичный индекс объявлен неверно")
-	require.NoError(t, w3.Commit())
+	w3.Abort()
+	require.Error(t, err, "пустое имя больше не является допустимым значением")
+	assert.ErrorIs(t, err, repo.ErrInvalidArg)
 }
 
 // TestCidrGroup_EmptyingAReferencedSetIsRefused — снять ПОСЛЕДНИЙ префикс

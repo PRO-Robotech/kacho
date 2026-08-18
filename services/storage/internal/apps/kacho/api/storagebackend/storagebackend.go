@@ -105,6 +105,19 @@ func (u *UseCase) Create(ctx context.Context, b *domain.StorageBackend) (*domain
 // объектами, и смена вида на живых данных означала бы, что мы обращаемся к чужому
 // хранилищу под своими именами.
 func (u *UseCase) UpdateAdmin(ctx context.Context, id string, upd Update) (*domain.StorageBackend, error) {
+	// Имя судится ТЕМ ЖЕ правилом, что на создании. Прежде правка не смотрела на
+	// него вовсе: создание отвергало пустое имя, правка записывала его молча —
+	// асимметрия, у которой есть цена. Индекс имени ПОЛНЫЙ (0015), поэтому
+	// второй бэкенд, переименованный в пустое, столкнулся бы с первым, и узнал
+	// бы об этом от драйвера, а не от контракта.
+	//
+	// nil здесь означает «не менять», и это НЕ то же, что пустая строка: правку,
+	// не называющую имя, судить именем незачем — она его не касается.
+	if upd.Name != nil {
+		if err := domain.ValidateBackendName(*upd.Name); err != nil {
+			return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
+		}
+	}
 	if upd.CredentialsRef != nil {
 		if err := upd.CredentialsRef.Validate(); err != nil {
 			return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())

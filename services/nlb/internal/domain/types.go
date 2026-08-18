@@ -22,6 +22,7 @@ import (
 	"github.com/H-BF/corlib/pkg/dict"
 	"github.com/H-BF/corlib/pkg/option"
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
 // ---- ID newtypes -----------------------------------------------------------
@@ -54,9 +55,9 @@ type (
 // ---- Семантические строковые поля ------------------------------------------
 
 type (
-	// LbName — strict-name resource (regex `^[a-z][-a-z0-9]{1,61}[a-z0-9]$`,
-	// 3..63 chars). NLB следует strict-policy — пустое имя / underscore /
-	// uppercase запрещены (с фиксированным текстом).
+	// LbName — имя ресурса nlb: единая форма имени дерева
+	// (corevalidate.NameForm) ПЛЮС требование имени. Требование — собственное
+	// решение nlb, и оно сохранено: пустое имя отвергается своим сообщением.
 	LbName string
 
 	// LbDescription — UTF-8 длиной ≤ 256.
@@ -106,31 +107,32 @@ type (
 // ---- Regex -----------------------------------------------------------------
 
 var (
-	// strict-name контракт NLB.
-	lbNameRe = regexp.MustCompile(`^[a-z][-a-z0-9]{1,61}[a-z0-9]$`)
-
 	// label-key контракт (зеркалит kacho-vpc).
 	lbLabelKeyRe = regexp.MustCompile(`^[a-z][-_./\\@a-z0-9]{0,62}$`)
 )
 
+// Здесь стояла ВТОРАЯ форма имени ресурса — `^[a-z][-a-z0-9]{1,61}[a-z0-9]$`.
+//
+// С единственной формой дерева (corevalidate.NameForm) она расходилась по двум
+// осям, и ни одна нигде не обоснована: минимальная длина 3 (имя из одного-двух
+// символов было невыразимо) и запрет ведущей цифры. Расхождение накопилось
+// молча — как и три остальных, сведённых тем же изменением (#715).
+//
+// Требование имени nlb этим НЕ ослаблено: его выражает вызов validate.Name
+// (пустая строка → «name is required»), а не форма.
+
 // ---- Validate ------------------------------------------------------------
 
-// Validate проверяет, что value соответствует strict-name контракту NLB
-// regex плюс required (пустая строка → отдельная
-// ошибка для верности UX — `name is required` вместо regex-mismatch).
+// Validate проверяет имя: единая форма дерева ПЛЮС требование имени.
+//
+// Зовётся именно validate.Name, а не NameOnCreate: nlb требует имя на создании,
+// и сведение к канону этого НЕ ослабляет. Пустая строка отвергается ОТДЕЛЬНЫМ
+// сообщением («name is required»), а не общим отказом по форме — вызывающий,
+// забывший поле, и вызывающий, приславший `My_Name`, ошиблись по-разному, и
+// отказ обязан это различать. Оба сообщения производит канон, поэтому текст
+// отказа не может разойтись с самой формой.
 func (n LbName) Validate() error {
-	if n == "" {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation("name", "name is required").
-			Err()
-	}
-	if !lbNameRe.MatchString(string(n)) {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation("name",
-				`name must match ^[a-z][-a-z0-9]{1,61}[a-z0-9]$ (lowercase letters, digits, hyphens; 3..63 chars; starts with letter; ends with letter or digit)`).
-			Err()
-	}
-	return nil
+	return corevalidate.Name("name", string(n))
 }
 
 // Validate проверяет длину description (UTF-8 rune count ≤ MaxDescriptionLen).

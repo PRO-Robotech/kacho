@@ -81,11 +81,11 @@ func (s *MachineTypeService) List(ctx context.Context, f MachineTypeFilter, p Pa
 
 // Create инициирует создание machine-type (admin-only, async Operation).
 func (s *MachineTypeService) Create(ctx context.Context, req CreateMachineTypeReq) (*operations.Operation, error) {
-	if err := corevalidate.NameCompute("name", req.Name); err != nil {
+	// Имя типа машины — глобально уникальный ключ каталога (machine_types_name_uniq),
+	// а не косметическая метка: оно обязательно и здесь, и было обязательным прежде.
+	// Отдельная проверка на пустое снята — Name отвергает пустое сам.
+	if err := corevalidate.Name("name", req.Name); err != nil {
 		return nil, err
-	}
-	if req.Name == "" {
-		return nil, serviceerr.InvalidArg("name", "name is required")
 	}
 	if !req.Family.Valid() {
 		return nil, serviceerr.InvalidArg("family", "family is required (STANDARD, COMPUTE, MEMORY or GPU)")

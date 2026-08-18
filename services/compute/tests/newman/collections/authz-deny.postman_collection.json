@@ -1006,11 +1006,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW→предусловие: HTTP 400', () => pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW→предусловие: контрактный тон отказа', () => pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }
@@ -1480,11 +1479,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW→предусловие: HTTP 400', () => pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW→предусловие: контрактный тон отказа', () => pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }
@@ -2024,11 +2022,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW→предусловие: HTTP 400', () => pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW→предусловие: контрактный тон отказа', () => pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }
@@ -2428,11 +2425,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW→предусловие: HTTP 400', () => pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW→предусловие: контрактный тон отказа', () => pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }
@@ -2499,11 +2495,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW→предусловие: HTTP 400', () => pm.expect(pm.response.code, pm.response.text()).to.equal(400));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW→предусловие: grpc code 9 (FAILED_PRECONDITION)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(9));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW→предусловие: контрактный тон отказа', () => pm.expect(_j && _j.message, JSON.stringify(_j)).to.equal('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }

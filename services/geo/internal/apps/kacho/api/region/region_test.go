@@ -48,7 +48,7 @@ func TestGet_malformedID_invalidArg(t *testing.T) {
 func TestCreate_freshDOWN_warnsLoud(t *testing.T) {
 	mock := &repomock.RegionRepo{InsertFunc: echoInsert}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: "eu-west1", Name: "EU West 1", CountryCode: "NL"})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: "eu-west1", Name: "eu-west-1", CountryCode: "NL"})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestCreate_freshDOWN_warnsLoud(t *testing.T) {
 func TestCreate_explicitUP_open_noWarning(t *testing.T) {
 	mock := &repomock.RegionRepo{InsertFunc: echoInsert}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central1", Name: "RU Central 1", CountryCode: "RU", Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RU", Status: domain.GeoStatusUp})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
@@ -110,7 +110,7 @@ func TestCreate_emptyName_invalidArg(t *testing.T) {
 // TestCreate_invalidCountryCode_invalidArg — GEO-1-39: countryCode "RUS" → InvalidArgument.
 func TestCreate_invalidCountryCode_invalidArg(t *testing.T) {
 	uc, _ := newUC(&repomock.RegionRepo{})
-	_, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central1", Name: "RU Central 1", CountryCode: "RUS"})
+	_, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RUS"})
 	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
 		t.Fatalf("err = %v, want ErrInvalidArg", err)
 	}
@@ -122,7 +122,7 @@ func TestCreate_duplicate_opError_alreadyExists(t *testing.T) {
 		return nil, geoerrors.ErrAlreadyExists
 	}}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central2", Name: "RU Central 1", Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: "ru-central2", Name: "ru-central-1", Status: domain.GeoStatusUp})
 	if err != nil {
 		t.Fatalf("Create accept err = %v (dup must land in op.error, not sync)", err)
 	}

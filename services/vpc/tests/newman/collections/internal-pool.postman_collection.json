@@ -1149,7 +1149,7 @@
       ]
     },
     {
-      "name": "IPL-CR-VAL-MISSING-NAME — Create без name → 200 (имя не обязательно; пустое имя разрешено контрактом)",
+      "name": "IPL-CR-VAL-MISSING-NAME — Create без name → 200, имя проставляется от id (пустого имени не существует)",
       "description": "class:VAL | class:CONF | priority:P2",
       "item": [
         {
@@ -1196,7 +1196,8 @@
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('_noNamePoolId', String(v));",
                   "} catch (e) {}",
-                  "pm.test('name comes back empty', () => pm.expect(pm.response.json().name || '').to.eql(''));"
+                  "pm.test('name defaults to the id', () => { const j = pm.response.json();",
+                  "  pm.expect(j.name, pm.response.text()).to.eql(j.id); });"
                 ]
               }
             }

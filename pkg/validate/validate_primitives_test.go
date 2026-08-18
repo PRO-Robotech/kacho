@@ -3,8 +3,10 @@
 
 package validate
 
-// Табличные unit-тесты для общих валидационных примитивов, которые ранее не
-// имели покрытия (Name/NameCompute/NameGateway/Description/Labels/UpdateMask).
+// Табличные unit-тесты для общих валидационных примитивов
+// (Description/Labels/UpdateMask). Пробы имени ресурса живут отдельно, в
+// name_test.go: у имени одна форма на всё дерево, и она проверяется в одном
+// месте — см. #715.
 // Эти функции несут security-/parity-критичные контракты (regex label-key,
 // update_mask discipline: неизвестное поле → InvalidArgument).
 //
@@ -35,98 +37,6 @@ func requireInvalidArgument(t *testing.T, err error, ctx string) {
 	}
 	if st.Code() != codes.InvalidArgument {
 		t.Fatalf("%s: expected InvalidArgument, got %v", ctx, st.Code())
-	}
-}
-
-func TestName_Strict(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{name: "empty-rejected", input: "", wantErr: true}, // strict: пустое не матчит (нужна ≥1 буква)
-		{name: "single-letter-ok", input: "a"},
-		{name: "lowercase-hyphen-digit", input: "abc-09"},
-		{name: "max-63", input: strings.Repeat("a", 63)},
-		{name: "uppercase-rejected", input: "Abc", wantErr: true},
-		{name: "underscore-rejected", input: "a_b", wantErr: true},
-		{name: "starts-digit-rejected", input: "1ab", wantErr: true},
-		{name: "ends-hyphen-rejected", input: "ab-", wantErr: true},
-		{name: "too-long-64", input: strings.Repeat("a", 64), wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := Name("name", tc.input)
-			if tc.wantErr {
-				requireInvalidArgument(t, err, tc.input)
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.input, err)
-			}
-		})
-	}
-}
-
-func TestNameCompute(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{name: "empty-ok", input: ""},
-		{name: "lowercase", input: "abc"},
-		{name: "underscore-ok", input: "abc_def"},
-		{name: "hyphen-ok", input: "abc-def"},
-		{name: "max-63", input: strings.Repeat("a", 63)},
-		{name: "uppercase-rejected", input: "BadCAPS", wantErr: true},
-		{name: "starts-digit-rejected", input: "1bad", wantErr: true},
-		{name: "starts-underscore-rejected", input: "_bad", wantErr: true},
-		{name: "ends-hyphen-rejected", input: "bad-", wantErr: true},
-		{name: "too-long-64", input: strings.Repeat("a", 64), wantErr: true},
-		{name: "slash-rejected", input: "a/b", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := NameCompute("name", tc.input)
-			if tc.wantErr {
-				requireInvalidArgument(t, err, tc.input)
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.input, err)
-			}
-		})
-	}
-}
-
-func TestNameGateway(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		wantErr bool
-	}{
-		{name: "empty-ok", input: ""},
-		{name: "lowercase-digit-hyphen", input: "gw-1"},
-		{name: "single-letter", input: "g"},
-		{name: "max-63", input: strings.Repeat("a", 63)},
-		{name: "uppercase-rejected", input: "GW", wantErr: true},
-		{name: "underscore-rejected", input: "gw_1", wantErr: true},
-		{name: "starts-digit-rejected", input: "1gw", wantErr: true},
-		{name: "ends-hyphen-rejected", input: "gw-", wantErr: true},
-		{name: "too-long-64", input: strings.Repeat("a", 64), wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := NameGateway("name", tc.input)
-			if tc.wantErr {
-				requireInvalidArgument(t, err, tc.input)
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.input, err)
-			}
-		})
 	}
 }
 

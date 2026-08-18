@@ -49,7 +49,7 @@ func TestRegionHandler_Get_emptyID_invalidArgument(t *testing.T) {
 func TestRegionHandler_Get_happy(t *testing.T) {
 	mock := &repomock.RegionRepo{
 		GetFunc: func(_ context.Context, id string) (*domain.Region, error) {
-			return &domain.Region{ID: id, Name: "Region 1"}, nil
+			return &domain.Region{ID: id, Name: "region-1"}, nil
 		},
 	}
 	uc := region.New(mock, mock, repomock.NewOpsRepo(), serviceerr.ToStatus)
@@ -58,7 +58,7 @@ func TestRegionHandler_Get_happy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get err = %v", err)
 	}
-	if resp.GetId() != "region-1" || resp.GetName() != "Region 1" {
+	if resp.GetId() != "region-1" || resp.GetName() != "region-1" {
 		t.Fatalf("Get resp = %+v", resp)
 	}
 }
@@ -148,7 +148,7 @@ func TestInternalZoneHandler_Create_happy(t *testing.T) {
 	uc := zone.New(mock, mock, ops, serviceerr.ToStatus)
 	h := handler.NewInternalZoneHandler(uc)
 	op, err := h.Create(context.Background(), &geov1.CreateZoneRequest{
-		Id: "region-1-a", RegionId: "region-1", Status: geov1.GeoStatus_UP, Name: "Region 1 A",
+		Id: "region-1-a", RegionId: "region-1", Status: geov1.GeoStatus_UP, Name: "region-1-a",
 	})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
@@ -179,8 +179,8 @@ func TestRegionHandler_List_happy_mapsItemsAndPropagatesToken(t *testing.T) {
 		ListFunc: func(_ context.Context, p region.Pagination) ([]*domain.Region, string, error) {
 			gotPage = p
 			return []*domain.Region{
-				{ID: "region-1", Name: "Region 1"},
-				{ID: "region-2", Name: "Region 2"},
+				{ID: "region-1", Name: "region-1"},
+				{ID: "region-2", Name: "region-2"},
 			}, "next-tok", nil
 		},
 	}
@@ -193,7 +193,7 @@ func TestRegionHandler_List_happy_mapsItemsAndPropagatesToken(t *testing.T) {
 	if got := len(resp.GetRegions()); got != 2 {
 		t.Fatalf("len(regions) = %d, want 2", got)
 	}
-	if resp.GetRegions()[0].GetId() != "region-1" || resp.GetRegions()[0].GetName() != "Region 1" {
+	if resp.GetRegions()[0].GetId() != "region-1" || resp.GetRegions()[0].GetName() != "region-1" {
 		t.Fatalf("region[0] = %+v", resp.GetRegions()[0])
 	}
 	if resp.GetNextPageToken() != "next-tok" {
@@ -230,8 +230,8 @@ func TestZoneHandler_List_happy_mapsItemsAndPropagatesToken(t *testing.T) {
 		ListFunc: func(_ context.Context, p zone.Pagination) ([]*domain.Zone, string, error) {
 			gotPage = p
 			return []*domain.Zone{
-				{ID: "region-1-a", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "Region 1 A"},
-				{ID: "region-1-b", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "Region 1 B"},
+				{ID: "region-1-a", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "region-1-a"},
+				{ID: "region-1-b", RegionID: "region-1", Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, Name: "region-1-b"},
 			}, "z-next", nil
 		},
 	}

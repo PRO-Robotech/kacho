@@ -3,7 +3,11 @@
 
 package domain
 
-import "fmt"
+import (
+	"fmt"
+
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+)
 
 // PerformanceTier — ярус класса диска. ЗАКРЫТЫЙ словарь, а не свободная строка.
 //
@@ -161,7 +165,16 @@ func (d DiskType) Validate() error {
 	if d.ID == "" {
 		return fmt.Errorf("disk_type id is required")
 	}
-	if err := validateName("disk_type name", d.Name); err != nil {
+	// Имя класса судится ТОЙ ЖЕ формой, что имена прочих ресурсов дерева
+	// (corevalidate.NameForm): прежде оно проверялось только длиной и без набора
+	// символов, то есть на одном дереве жили два правила об одном предмете.
+	//
+	// NameOnCreate, а не Name: пустое имя класса остаётся законным входом.
+	// Подстановки умолчания у него нет и быть не может — идентификатор здесь
+	// слаг, назначаемый администратором, и канону он ничем не обязан, поэтому
+	// выведенное из него имя могло бы канону не соответствовать. Требовать имя
+	// значило бы отвергать правку описания у класса, заведённого без имени.
+	if err := corevalidate.NameOnCreate("name", d.Name); err != nil {
 		return err
 	}
 	if !d.PerformanceTier.Valid() {

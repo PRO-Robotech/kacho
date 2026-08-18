@@ -204,6 +204,28 @@ type Profile struct {
 	// the point: the next form does not wait for an incident to be noticed.
 	EnumerationSources []EnumerationSource
 
+	// EnumerationInapplicable states why the enumerate-then-narrow ban has nothing
+	// to apply to in this service — for the one case where that is PROVABLE rather
+	// than asserted: no listing this profile declares narrows at all.
+	//
+	// The ban is about how a page is narrowed. A service whose every listing is
+	// answered without narrowing (a global catalog, a store query whose enumeration
+	// IS the response, a surface that never serves) has no page that could be taken
+	// from an enumeration, and naming an enumeration source there would be a
+	// declaration with nothing behind it — the copied-from-a-neighbour answer this
+	// gate exists to refuse.
+	//
+	// The gate PROVES the premise: if any listing it judges carries a narrowing
+	// shape, this entry is a FINDING. So the exemption expires with its subject —
+	// the first listing that narrows takes it away — and it cannot be used to
+	// silence a service that does narrow.
+	//
+	// What it does NOT claim, said so nobody reads more into it: not that the
+	// service has no authorization surface at all, only that no page here is
+	// narrowed. Declare it together with EnumerationSources and that is a finding
+	// too: two declarations of one thing, of which one is wrong.
+	EnumerationInapplicable string
+
 	// SubjectScopers are the call names that narrow a page by the AUTHENTICATED
 	// caller taken from the context — not by an id the request supplied. The
 	// canonical one is operations.ListForCaller, which every service's
@@ -240,11 +262,66 @@ type Profile struct {
 // existing takes its whole derived ban with it, silently, and the ban is the thing
 // this field exists to produce.
 type EnumerationSource struct {
-	// Dir holds the declaration, relative to Options.Root.
+	// Dir holds the declaration, relative to Options.Root — or, when Shared is set,
+	// relative to the MODULE root.
 	Dir string
 	// Type is the declared interface or receiver type name.
 	Type string
+
+	// Role says what this source's method set holds TODAY, so that the premise of
+	// the derivation is checked instead of assumed. The zero value is the strict
+	// one: an author who forgets the field gets the premise that fails closed.
+	Role SourceRole
+
+	// Shared marks a declaration that is NOT service code — the shared foundation
+	// under pkg/, resolved from the module root instead of Options.Root.
+	//
+	// Every consumer service asks kacho-iam through the same narrow port, and that
+	// port fronts the RPC that enumerates. Leaving it out would mean each consumer
+	// watched only the client it declares itself, while the shortest path from
+	// "narrow this page" to "enumerate the universe" ran through a package no
+	// profile named.
+	//
+	// What a shared source must NOT be, recorded because it was considered and
+	// rejected rather than overlooked: the NARROWER itself. Its narrowing entry
+	// point takes the page's identifiers and answers with the visible subset, and
+	// its page-predicate lookup answers with the relations of a type — both
+	// []string, both correct, neither an enumeration. Naming it would derive a ban on
+	// the very call that does the narrowing, and a gate that fires on correct code is
+	// a gate somebody switches off. The shape rule reads RESULTS only, so it cannot
+	// tell those apart by itself; what keeps it honest is naming the port through
+	// which the question is ASKED, not the machinery that asks it.
+	Shared bool
 }
+
+// SourceRole is which of the two premises a declared source stands on.
+//
+// The distinction is not decoration: it decides what an EMPTY derivation means, and
+// the two kinds mean opposite things by it (see the package comment of
+// enumeration.go).
+type SourceRole int
+
+const (
+	// Enumerates — the source answers "which objects may this subject act on"
+	// TODAY. A method set that holds no such shape means the shape rule stopped
+	// matching the tree: the ban this source produces went empty in silence, which
+	// is worse than a wrong ban because nothing says it happened. That is a finding.
+	//
+	// This is the zero value deliberately. A forgotten field must land on the
+	// premise that can fail, not on the one that cannot.
+	Enumerates SourceRole = iota
+
+	// AsksVerdicts — the source answers ABOUT identifiers the caller already holds
+	// and enumerates NOTHING today. It is named so that the FIRST method added to it
+	// that answers with a set of identifiers is banned inside every narrowing
+	// listing the day it is written — the ban arriving before the first caller
+	// rather than after the incident that revealed one (#684).
+	//
+	// An empty derivation here is the declared state, not a finding; the census says
+	// so on every run, so "watched, nothing to ban" stays distinguishable from
+	// "not watched".
+	AsksVerdicts
+)
 
 // Shape is how one listing method's visibility is decided.
 //
@@ -413,6 +490,11 @@ type Report struct {
 	Listings []string
 	// ClusterScoped are the listing methods declared as needing no narrowing.
 	ClusterScoped []string
+	// Narrowing are the listing methods the enumerate-then-narrow ban applies to.
+	// Kept in the census because it is the premise of EnumerationInapplicable: a
+	// service claiming the ban cannot apply must be able to show the number is zero,
+	// and a reader must be able to see that it was counted rather than assumed.
+	Narrowing []string
 	// Undeclared are listing methods with no Profile entry — each is also a finding.
 	Undeclared []string
 	// Unattributed are public List declarations that resolved to no resource —
@@ -451,6 +533,13 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 	// leave every listing judged against a narrower ban than the profile declares,
 	// and the run would still say OK.
 	enum := deriveEnumerations(root, p.EnumerationSources)
+	if p.EnumerationInapplicable != "" && len(p.EnumerationSources) > 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"Profile declares BOTH EnumerationInapplicable and %d EnumerationSource(s) — two "+
+				"statements about one thing, of which one is wrong: either the ban has nothing to "+
+				"apply to here, or these sources derive it. Keep the one that is true",
+			len(p.EnumerationSources)))
+	}
 	rep.EnumerationSources = enum.Sources
 	rep.DerivedEnumerations = enum.Names
 	rep.Findings = append(rep.Findings, enum.Findings...)
@@ -599,8 +688,28 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 			if l.Shape == ClusterScoped {
 				rep.ClusterScoped = append(rep.ClusterScoped, key)
 			}
+			// The same predicate checkListing applies the ban under, counted here so
+			// EnumerationInapplicable is judged against what was actually seen rather
+			// than against what the profile says about itself.
+			if banApplies(l.Shape) {
+				rep.Narrowing = append(rep.Narrowing, key)
+			}
 			rep.Findings = append(rep.Findings, checkListing(p, banned, enum.Origin, key, l, a, protos)...)
 		}
+	}
+
+	sort.Strings(rep.Narrowing)
+	// The premise of EnumerationInapplicable, proved rather than taken: the ban is
+	// inapplicable only while nothing here narrows. The first listing that does takes
+	// the exemption away, so it cannot outlive its subject — and it cannot be reached
+	// for by a service that simply has not declared a source.
+	if p.EnumerationInapplicable != "" && len(rep.Narrowing) > 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"Profile.EnumerationInapplicable says the enumerate-then-narrow ban has nothing to "+
+				"apply to here, but %d listing method(s) narrow: %s. The premise is gone — either "+
+				"declare the authorization surfaces the ban is derived from (EnumerationSources), "+
+				"or state why these pages are not narrowed after all",
+			len(rep.Narrowing), strings.Join(rep.Narrowing, ", ")))
 	}
 
 	return finish(p, rep, out)
@@ -624,6 +733,17 @@ type anchorDecl struct {
 	unit   *unit
 }
 
+// banApplies reports whether the enumerate-then-narrow ban has anything to say
+// about a listing of this shape.
+//
+// It is one function rather than the same condition written twice because the
+// census of narrowing listings is the PREMISE of Profile.EnumerationInapplicable:
+// were the two to drift, a service could be excused by a count taken under one rule
+// while its listings were judged under another.
+func banApplies(sh Shape) bool {
+	return sh != ClusterScoped && sh != StoreQuery && sh != NeverServes
+}
+
 // checkListing judges one listing declaration against the shape it declares.
 //
 // banned is the EFFECTIVE ban — the profile's floor plus what was derived from its
@@ -639,7 +759,7 @@ func checkListing(
 
 	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
 	// is about HOW a page is narrowed, not about which shape does it.
-	if l.Shape != ClusterScoped && l.Shape != StoreQuery && l.Shape != NeverServes {
+	if banApplies(l.Shape) {
 		for _, b := range banned {
 			if !called[b] {
 				continue
@@ -1538,7 +1658,18 @@ func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 	for _, line := range rep.EnumerationSources {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]:   source %s\n", p.Service, line)
 	}
-	if len(p.EnumerationSources) == 0 {
+	switch {
+	case len(p.EnumerationSources) > 0:
+		// already stated, one line per source, above
+	case p.EnumerationInapplicable != "":
+		// A declared absence is NOT the same output as an undeclared one, and the
+		// difference is the whole of #684: one says "nothing to apply, and here is
+		// the count that proves it", the other says "nobody looked".
+		_, _ = fmt.Fprintf(out,
+			"audit-list-filter[%s]:   no enumeration source, and none can apply: %d of %d "+
+				"declared listing(s) narrow — %s\n",
+			p.Service, len(rep.Narrowing), len(rep.Listings), p.EnumerationInapplicable)
+	default:
 		_, _ = fmt.Fprintf(out,
 			"audit-list-filter[%s]:   no enumeration source declared — the ban above is the "+
 				"hand-written list ONLY, and a form this service invents in its own tables would "+

@@ -75,7 +75,21 @@ func (u *UpdateAddressPoolUseCase) Validate(req UpdatePoolReq) error {
 			return serviceerr.InvalidArg(f, f+" is immutable via Update; use AddCidrBlocks/RemoveCidrBlocks")
 		}
 	}
-	return corevalidate.UpdateMask("update_mask", req.UpdateMask, updatablePoolFields)
+	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, updatablePoolFields); err != nil {
+		return err
+	}
+	// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: она читает форму
+	// запроса (маска × значение) и отвечает сразу на два вопроса — законен ли
+	// ввод и следует ли имя применять. Ту же функцию зовёт применение маски,
+	// поэтому проверка и запись разойтись не могут.
+	//
+	// Пять исходов и их причина — в godoc `validate.NameOnUpdate`. Коротко о том,
+	// что здесь неочевидно: при ПУСТОЙ маске пустое имя законно и означает «не
+	// прислано» — в proto3 это неотличимо от отсутствия поля.
+	if _, err := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Execute применяет частичное обновление.
@@ -100,15 +114,30 @@ func (u *UpdateAddressPoolUseCase) Execute(ctx context.Context, req UpdatePoolRe
 	}
 	cur := curRec.AddressPool
 
-	// Пустой mask → full-PATCH всех мутабельных полей.
+	// Применять ли имя, решает ТА ЖЕ функция, что вынесла приговор в `Validate`, —
+	// поэтому проверка и запись разойтись не могут by construction. Здесь
+	// читается только её булева половина: отказ уже случился бы синхронно.
+	//
+	// Имя ВЫВЕДЕНО из перечня полной правки ниже намеренно. Прежде оно там стояло
+	// и присваивалось безусловно, а в proto3 «поле не прислано» неотличимо от
+	// «поле пусто» — значит полная правка, не трогавшая имя, имя СТИРАЛА. После
+	// миграции 715001, поставившей на столбец ограничение формы, это стало
+	// отказом БАЗЫ на пути, где вызывающий не сделал ничего неверного.
+	//
+	// Ошибка отбрасывается сознательно: на ней функция возвращает false, то есть
+	// негодное имя не запишется даже на пути, миновавшем проверку входа.
+	applyName, _ := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name)
+	if applyName {
+		cur.Name = domain.RcNameVPC(req.Name)
+	}
+
+	// Пустой mask → full-PATCH остальных мутабельных полей.
 	updates := req.UpdateMask
 	if len(updates) == 0 {
-		updates = []string{"name", "description", "labels", "is_default", "selector_labels", "selector_priority"}
+		updates = []string{"description", "labels", "is_default", "selector_labels", "selector_priority"}
 	}
 	for _, f := range updates {
 		switch f {
-		case "name":
-			cur.Name = domain.RcNameVPC(req.Name)
 		case "description":
 			cur.Description = domain.RcDescription(req.Description)
 		case "labels":

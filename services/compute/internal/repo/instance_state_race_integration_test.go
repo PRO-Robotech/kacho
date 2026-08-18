@@ -42,7 +42,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentStopOnStopped(t *testing.T) 
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
-		ID: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
@@ -114,7 +114,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentRestartOnRunning(t *testing.
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
-		ID: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
@@ -190,7 +190,7 @@ func TestIntegration_InstanceSetStatusCAS_StopRestartRace(t *testing.T) {
 
 	inID := ids.NewID(ids.PrefixInstance)
 	in := &domain.Instance{
-		ID: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: "f-state-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},

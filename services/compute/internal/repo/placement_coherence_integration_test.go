@@ -50,7 +50,7 @@ func seedInstanceInGroup(t *testing.T, ctx context.Context, r *repo.InstanceRepo
 	t.Helper()
 	inID := ids.NewID(ids.PrefixInstance)
 	in, _, err := r.Insert(ctx, &domain.Instance{
-		ID: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: zone, RegionID: region, Status: domain.InstanceStatusRunning,
 		FQDN: inID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
@@ -78,9 +78,9 @@ func TestPlacementCoherence_ZoneMustMatchAndRegionalIsTheControl(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)
 
-	zonalA := seedGroup(t, ctx, grpRepo, "proj-plg", "зональная-A", domain.PlacementTypeZonal, zoneA, "")
-	regional := seedGroup(t, ctx, grpRepo, "proj-plg", "региональная", domain.PlacementTypeRegional, "", regionA)
-	foreign := seedGroup(t, ctx, grpRepo, "proj-other", "чужая", domain.PlacementTypeZonal, zoneA, "")
+	zonalA := seedGroup(t, ctx, grpRepo, "proj-plg", "plg-zonal-a", domain.PlacementTypeZonal, zoneA, "")
+	regional := seedGroup(t, ctx, grpRepo, "proj-plg", "plg-regional", domain.PlacementTypeRegional, "", regionA)
+	foreign := seedGroup(t, ctx, grpRepo, "proj-other", "plg-foreign", domain.PlacementTypeZonal, zoneA, "")
 
 	t.Run("зональная группа своей зоны принимает машину", func(t *testing.T) {
 		in, ierr := seedInstanceInGroup(t, ctx, instRepo, "proj-plg", zoneA, regionA, zonalA)
@@ -153,8 +153,8 @@ func TestPlacementGroupDelete_RefusesWhileItHoldsInstances(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)
 
-	held := seedGroup(t, ctx, grpRepo, "proj-del-plg", "занятая", domain.PlacementTypeZonal, zoneA, "")
-	free := seedGroup(t, ctx, grpRepo, "proj-del-plg", "свободная", domain.PlacementTypeZonal, zoneA, "")
+	held := seedGroup(t, ctx, grpRepo, "proj-del-plg", "plg-held", domain.PlacementTypeZonal, zoneA, "")
+	free := seedGroup(t, ctx, grpRepo, "proj-del-plg", "plg-free", domain.PlacementTypeZonal, zoneA, "")
 
 	in, ierr := seedInstanceInGroup(t, ctx, instRepo, "proj-del-plg", zoneA, regionA, held)
 	require.NoError(t, ierr)
@@ -191,7 +191,7 @@ func TestPlacementCoherence_ConcurrentClaimsAreDecidedByTheStatement(t *testing.
 
 	instRepo := repo.NewInstanceRepo(pool)
 	grpRepo := repo.NewPlacementGroupRepo(pool)
-	group := seedGroup(t, ctx, grpRepo, "proj-race", "зональная", domain.PlacementTypeZonal, zoneA, "")
+	group := seedGroup(t, ctx, grpRepo, "proj-race", "plg-zonal", domain.PlacementTypeZonal, zoneA, "")
 
 	const pairs = 8
 	var wg sync.WaitGroup

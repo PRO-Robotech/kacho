@@ -15284,7 +15284,7 @@
       ]
     },
     {
-      "name": "LST-CR-VAL-NAME-NUMERIC-START — Create with name starting with digit → InvalidArgument",
+      "name": "LST-CR-VAL-NAME-DOT — Create with a dot in name → InvalidArgument (DNS label, не DNS-имя)",
       "description": "class:VAL | priority:P1",
       "item": [
         {
@@ -15310,7 +15310,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-digit-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-name-dot-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15509,7 +15509,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-digit-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-name-dot-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15694,7 +15694,7 @@
           ]
         },
         {
-          "name": "cr-digit-rya64",
+          "name": "cr-dot-rya64",
           "request": {
             "method": "POST",
             "header": [
@@ -15716,7 +15716,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"9bad-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"bad.name-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80}",
               "options": {
                 "raw": {
                   "language": "json"

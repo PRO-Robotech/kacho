@@ -63,8 +63,35 @@ var Profile = listfiltergate.Profile{
 	// Named for completeness: geo has no per-object filter because it has nothing to
 	// narrow. If a listing here ever stops being catalog data, its declaration has to
 	// change and these are the calls the new shape would be asserted against.
-	Filters:        []string{"FilterVisiblePage", "FilterVisibleIDs"},
-	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	Filters: []string{"FilterVisiblePage", "FilterVisibleIDs"},
+	Banned:  []string{"ListAllowedIDs", "ListObjects"},
+	// Why there is no EnumerationSources here, and why that is a DECLARATION rather
+	// than the silence it used to be (#684).
+	//
+	// Until this line, geo printed "no enumeration source declared" on every run —
+	// the gate saying that the enumerate-then-narrow ban was the two hand-written
+	// names and nothing else. For its four neighbours the remedy is to name the
+	// surfaces the ban is derived from. geo has none to name, and naming one anyway
+	// — copying a neighbour's answer — would be a declaration with nothing behind
+	// it, which is the class this gate exists to refuse.
+	//
+	// The measurement, so the claim is checkable rather than asserted: geo declares
+	// no authorization client of its own (no internal/clients, no internal/authzfilter,
+	// no internal/check), and its per-RPC Check is the shared interceptor's, wired in
+	// the composition root. Predicate: `grep -rn "BatchCheck\|listnarrow" services/geo
+	// --include=*.go` → nothing outside tests.
+	//
+	// What is DECLARED instead is the property the gate can prove: both listings are
+	// the admin-curated placement catalog, answered without narrowing, so no page
+	// here can be taken from an enumeration. The gate counts the narrowing listings
+	// on every run and this entry is a FINDING the moment that count stops being
+	// zero — so the exemption cannot outlive its subject, and it cannot be reached
+	// for by a service that simply has not looked.
+	EnumerationInapplicable: "Region and Zone are answered from the global placement catalog without " +
+		"narrowing, so there is no page here that could be taken from an enumeration: the ban has " +
+		"nothing to apply to. geo declares no authorization surface of its own — its per-RPC Check is " +
+		"the shared interceptor's — so there is no method set to derive the ban from either. The " +
+		"exemption expires the moment any listing here narrows.",
 	SubjectScopers: []string{"ListForCaller"},
 
 	Listings: map[string]listfiltergate.Listing{

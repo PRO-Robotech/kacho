@@ -159,10 +159,13 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 
-	// invalid name (starts with digit, NameVPC permissive но цифра в начале запрещена).
+	// Негодное имя. Здесь стояло "1bad" — ведущая цифра. Единственная форма дерева
+	// (RFC 1123 DNS label, #715) ведущую цифру ДОПУСКАЕТ, поэтому прежний вход стал
+	// законным и проба перестала бы проверять хоть что-нибудь. Взято то, что форма
+	// действительно отвергает: заглавные и подчёркивание.
 	_, err = uc.Execute(context.Background(), domain.Network{
 		ProjectID: "f1",
-		Name:      domain.RcNameVPC("1bad"),
+		Name:      domain.RcNameVPC("Bad_Name"),
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)

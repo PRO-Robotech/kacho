@@ -40,7 +40,7 @@ func TestCreate_couplingViolation_invalidArg(t *testing.T) {
 		return nil, nil
 	}}
 	uc, _ := newUC(mock)
-	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "eu-west1", Name: "Zone A"})
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "eu-west1", Name: "zone-a"})
 	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
 		t.Fatalf("err = %v, want ErrInvalidArg", err)
 	}
@@ -52,7 +52,7 @@ func TestCreate_couplingViolation_invalidArg(t *testing.T) {
 // TestCreate_strictStartsWith_reject — GEO-1-30: 'ru-central10-a' под 'ru-central1' → REJECT.
 func TestCreate_strictStartsWith_reject(t *testing.T) {
 	uc, _ := newUC(&repomock.ZoneRepo{})
-	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central10-a", RegionID: "ru-central1", Name: "Zone A"})
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central10-a", RegionID: "ru-central1", Name: "zone-a"})
 	if !stderrors.Is(err, geoerrors.ErrInvalidArg) {
 		t.Fatalf("strict startsWith failed: err = %v, want ErrInvalidArg", err)
 	}
@@ -63,7 +63,7 @@ func TestCreate_strictStartsWith_reject(t *testing.T) {
 func TestCreate_freshDOWN_warns(t *testing.T) {
 	mock := &repomock.ZoneRepo{InsertFunc: openInsert}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-d", RegionID: "ru-central1", Name: "RU Central 1 — Zone D"})
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-d", RegionID: "ru-central1", Name: "ru-central-1-zone-d"})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
@@ -88,7 +88,7 @@ func TestCreate_freshDOWN_warns(t *testing.T) {
 func TestCreate_openUP_noWarning(t *testing.T) {
 	mock := &repomock.ZoneRepo{InsertFunc: openInsert}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp})
 	if err != nil {
 		t.Fatalf("Create err = %v", err)
 	}
@@ -118,7 +118,7 @@ func TestCreate_absentRegion_FKopError(t *testing.T) {
 		return nil, geoerrors.ErrFailedPrecondition // repo маппит FK 23503 → sentinel
 	}}
 	uc, _ := newUC(mock)
-	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "eu-west1-a", RegionID: "eu-west1", Name: "Zone A"})
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: "eu-west1-a", RegionID: "eu-west1", Name: "zone-a"})
 	if err != nil {
 		t.Fatalf("Create accept err = %v (FK must land in op.error)", err)
 	}

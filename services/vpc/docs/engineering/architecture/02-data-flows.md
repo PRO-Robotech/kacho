@@ -29,7 +29,7 @@ sequenceDiagram
 
   U->>H: Create(project_id, name, …)
   H->>S: Create
-  S->>S: sync validate (NameVPC, labels, mask)
+  S->>S: sync validate (Name, labels, mask)
   S->>S: ids.NewID(PrefixNetwork) → "net..."
   S->>DB: INSERT operation (sync, done=false)
   S-->>H: Operation{id, metadata:{networkId}}
@@ -62,7 +62,7 @@ sequenceDiagram
 Особенности:
 - Группа правил по умолчанию создаётся в воркере БЕЗУСЛОВНО, в той же транзакции: настройки и поля запроса, которые бы это отменяли, снята вместе с самой возможностью получить сеть без неё (интерфейс её наследует, поэтому сеть без группы означала бы интерфейс без единого правила).
 - `Network` несет internal-only инфра-идентификатор `vrf_id` (отдается только через `InternalNetworkService`, на публичной поверхности его нет).
-- Mapping: `ALREADY_EXISTS` на `networks_project_id_name_key` UNIQUE(project_id, name). Для остальных 6 ресурсов аналогичный partial UNIQUE `(project_id, name) WHERE name <> ''`.
+- Mapping: `ALREADY_EXISTS` на `networks_project_id_name_key` UNIQUE `(project_id, name)` — **полный** (`715001`). Ровно та же форма — у остальных 7 пользовательских ресурсов сервиса: пустого имени не существует, поэтому освобождать его от уникальности больше не от чего.
 
 ---
 
@@ -78,7 +78,7 @@ sequenceDiagram
   participant DB as pg-vpc
 
   U->>S: Create(project_id, network_id, placement_type, zone_id|region_id, ipv4_cidr_primary?, …)
-  S->>S: sync validate:<br/>  NameVPC, placement_type (обязателен, immutable),<br/>  zone_id|region_id — existence через ZoneRegistry/RegionRegistry (peer geo),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR ⊆ супернета сети (validateSubnetWithinSupernet)
+  S->>S: sync validate:<br/>  Name, placement_type (обязателен, immutable),<br/>  zone_id|region_id — existence через ZoneRegistry/RegionRegistry (peer geo),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR ⊆ супернета сети (validateSubnetWithinSupernet)
   S-->>U: Operation{subnetId}
 
   rect rgb(255,247,230)

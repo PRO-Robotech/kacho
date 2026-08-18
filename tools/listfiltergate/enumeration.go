@@ -36,12 +36,41 @@ package listfiltergate
 // is the safe direction — it over-reports and never under-reports — but it is a real
 // cost, and a service that hits it should say so in its profile rather than widen
 // the shape rule until the gate stops meaning anything.
+//
+// # Two premises, because there are two kinds of source (#684)
+//
+// iam's sources enumerate TODAY, so a method set that holds no enumerating shape
+// means the shape rule stopped matching the tree — a silently empty ban. Every
+// consumer service is the other way round: the surface through which it asks the
+// authorization question answers verdicts and enumerates NOTHING, and that is the
+// entire point of naming it. The ban has to arrive BEFORE the first enumerating
+// method, not after the incident that revealed one.
+//
+// A source therefore declares which of the two it is (SourceRole), and the premise
+// that can rot in silence is the one that is checked: a source declared as the
+// service's enumeration surface must still hold one. The other direction — a
+// verdict surface that starts enumerating — needs no finding, because the ban
+// extends by itself and the census says so out loud; making it red as well would
+// fire on correct code, and a gate that fires on correct code is a gate somebody
+// switches off.
+//
+// # Where a source is resolved from
+//
+// A service's own declarations are resolved from Options.Root. The port through
+// which consumer services ask kacho-iam is NOT service code — it is shared
+// foundation (pkg/…), and it is the shortest path from "narrow this page" to
+// "enumerate the universe", because the RPC it fronts is the one that enumerates.
+// Such a source declares Shared, and is resolved from the MODULE root, which is
+// found by walking up from Options.Root to the directory holding go.mod. A module
+// root that cannot be found is a FINDING, never a skipped source.
 
 import (
 	"fmt"
 	"go/ast"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 // enumerationCensus is what one derivation found, kept so a passing run can state
@@ -71,9 +100,30 @@ func deriveEnumerations(root string, sources []EnumerationSource) enumerationCen
 	out := enumerationCensus{Origin: map[string]string{}}
 	seen := map[string]bool{}
 
+	// The module root is resolved ONCE, and only when something needs it: a service
+	// whose sources are all its own must not fail because the copy it is pointed at
+	// happens to carry no go.mod.
+	moduleRoot := ""
+	if anyShared(sources) {
+		mr, err := moduleRootOf(root)
+		if err != nil {
+			out.Findings = append(out.Findings, err.Error())
+		}
+		moduleRoot = mr
+	}
+
 	for _, src := range sources {
 		label := src.Dir + "." + src.Type
-		dir := filepath.Join(root, src.Dir)
+		base := root
+		if src.Shared {
+			if moduleRoot == "" {
+				// Already reported above; deriving from the service root instead
+				// would silently read the wrong tree — or nothing — and call it a ban.
+				continue
+			}
+			base = moduleRoot
+		}
+		dir := filepath.Join(base, src.Dir)
 		u, err := loadUnit(dir, "")
 		if err != nil {
 			out.Findings = append(out.Findings, fmt.Sprintf(
@@ -95,21 +145,36 @@ func deriveEnumerations(root string, sources []EnumerationSource) enumerationCen
 				derived = append(derived, m.name)
 			}
 		}
-		// The premise, checked rather than assumed: this source was named BECAUSE it
-		// answers "which objects". A method set that no longer holds a single such
-		// shape means the shape rule stopped matching the tree — a silently empty ban,
-		// which is worse than a wrong one because nothing says it happened.
-		if len(derived) == 0 {
+		// The premise, checked rather than assumed — and which premise it is comes
+		// from the declaration, because the two kinds of source rot in opposite
+		// directions (see the package comment).
+		if len(derived) == 0 && src.Role == Enumerates {
 			out.Findings = append(out.Findings, fmt.Sprintf(
-				"Profile.EnumerationSources names %q, whose %d method(s) hold no enumerating shape at "+
-					"all: nothing there answers with a set of identifiers ([]string). Either the type is "+
-					"no longer the service's enumeration surface — drop the entry — or the answer changed "+
-					"form and this rule now derives an EMPTY ban from it",
+				"Profile.EnumerationSources names %q as this service's ENUMERATION surface, but its "+
+					"%d method(s) hold no enumerating shape at all: nothing there answers with a set of "+
+					"identifiers ([]string). Either the type is no longer that surface — drop the entry, "+
+					"or declare it AsksVerdicts — or the answer changed form and this rule now derives "+
+					"an EMPTY ban from it",
 				label, len(methods)))
 		}
 		sort.Strings(derived)
-		out.Sources = append(out.Sources, fmt.Sprintf("%s: %d method(s), %d enumerating",
-			label, len(methods), len(derived)))
+		line := fmt.Sprintf("%s: %d method(s), %d enumerating", label, len(methods), len(derived))
+		switch {
+		case src.Role == AsksVerdicts && len(derived) == 0:
+			// Said out loud, because this is the state the entry exists FOR: the
+			// surface answers verdicts today, and the ban it will produce is the one
+			// nobody has written yet. A census that printed nothing here would make
+			// "watched, and there is nothing to ban" look like "not watched".
+			line += " (verdicts only, as declared — the ban arrives with the first method that enumerates)"
+		case src.Role == AsksVerdicts:
+			// The safe direction: the ban extended by itself. Not a finding — the
+			// protection is the finding, at the call site, with a coordinate — but it
+			// must not pass unread either.
+			line += fmt.Sprintf(" (declared verdicts-only, and it NOW ENUMERATES: %s — the ban extended "+
+				"by itself; check that each is legitimate and correct the declaration)",
+				strings.Join(derived, ", "))
+		}
+		out.Sources = append(out.Sources, line)
 		for _, n := range derived {
 			if !seen[n] {
 				seen[n] = true
@@ -268,4 +333,48 @@ func mergeSorted(a, b []string) []string {
 func isErrorType(e ast.Expr) bool {
 	id, ok := e.(*ast.Ident)
 	return ok && id.Name == "error"
+}
+
+// anyShared reports whether any source is resolved from the module root.
+func anyShared(sources []EnumerationSource) bool {
+	for _, s := range sources {
+		if s.Shared {
+			return true
+		}
+	}
+	return false
+}
+
+// moduleRootOf walks up from root until it finds the directory holding go.mod.
+//
+// The module root is a FACT about the tree — a file that is there or is not —
+// rather than a count of path segments above the service. "services/<x> is two
+// levels below the root" is a layout habit, and a habit changed by a move must not
+// change what the gate reads; a missing go.mod, by contrast, says plainly that the
+// tree it was pointed at is not a module.
+//
+// Not finding one is a FINDING, never an empty answer: a shared source that
+// silently resolved to nothing would take its whole derived ban with it while the
+// run went on printing OK — the exact shape this gate exists to refuse.
+func moduleRootOf(root string) (string, error) {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf(
+			"Profile.EnumerationSources declares a Shared source, but %s has no absolute path (%v) — "+
+				"the module root it is resolved from cannot be found, and a source that resolves to "+
+				"nothing removes the ban it derives while the run reports OK", root, err)
+	}
+	for dir := abs; ; {
+		if st, serr := os.Stat(filepath.Join(dir, "go.mod")); serr == nil && !st.IsDir() {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf(
+				"Profile.EnumerationSources declares a Shared source, but no go.mod was found walking "+
+					"up from %s — the module root it is resolved from does not exist here, so the ban "+
+					"it derives would silently disappear while the gate reported OK", abs)
+		}
+		dir = parent
+	}
 }

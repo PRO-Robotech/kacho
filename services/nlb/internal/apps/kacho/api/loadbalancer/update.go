@@ -16,6 +16,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
@@ -138,7 +139,10 @@ func (u *UpdateLoadBalancerUseCase) Execute(
 		return nil, mapDomainErr(err)
 	}
 
-	updated := applyUpdateMask(cur.LoadBalancer, req, mask)
+	updated, err := applyUpdateMask(cur.LoadBalancer, req, mask)
+	if err != nil {
+		return nil, mapDomainErr(err)
+	}
 	if err := updated.Validate(); err != nil {
 		return nil, mapDomainErr(err)
 	}
@@ -287,7 +291,7 @@ func (u *UpdateLoadBalancerUseCase) doUpdate(ctx context.Context, lb domain.Load
 // mutable полностью перезаписываются из req; immutable silent-ignored.
 func applyUpdateMask(
 	cur domain.LoadBalancer, req *lbv1.UpdateNetworkLoadBalancerRequest, mask []string,
-) domain.LoadBalancer {
+) (domain.LoadBalancer, error) {
 	apply := func(field string) bool {
 		if len(mask) == 0 {
 			return true
@@ -300,7 +304,18 @@ func applyUpdateMask(
 		return false
 	}
 	out := cur
-	if apply("name") {
+	// Имя на правке судит ЕДИНСТВЕННАЯ функция дерева (validate.NameOnUpdate):
+	// пять исходов маски и значения. Ветка, ради которой она здесь, —
+	// ПОЛНАЯ правка с пустым именем: в proto3 пропущенное и пустое поле
+	// неразличимы, поэтому пустое там означает «не прислали», и имя остаётся
+	// прежним. До этого оно записывалось пустым и умирало на Validate() как
+	// «name is required» — то есть правку описания полным PATCH'ем нельзя было
+	// сделать вовсе, не назвав заодно имя.
+	applyName, nerr := corevalidate.NameOnUpdate("name", mask, req.GetName())
+	if nerr != nil {
+		return domain.LoadBalancer{}, nerr
+	}
+	if applyName {
 		out.Name = domain.LbName(req.GetName())
 	}
 	if apply("description") {
@@ -337,5 +352,5 @@ func applyUpdateMask(
 	if apply("security_group_ids") {
 		out.SecurityGroupIDs = normalizeSecurityGroupIDs(req.GetSecurityGroupIds())
 	}
-	return out
+	return out, nil
 }

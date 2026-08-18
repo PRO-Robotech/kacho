@@ -5,6 +5,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -76,7 +77,7 @@ func TestIntegration_SecurityGroup_UpdateRules_ConcurrentOCC(t *testing.T) {
 			ID:        ids.NewID(ids.PrefixSecurityGroup),
 			ProjectID: "project-occ",
 			NetworkID: net.ID,
-			Name:      "",
+			Name:      domain.RcNameVPC(fmt.Sprintf("sg-occ-%d", i)),
 			Rules: []domain.SecurityGroupRule{
 				{ID: "seed", Direction: domain.SecurityGroupRuleDirectionIngress, ProtocolName: "ANY", FromPort: -1, ToPort: -1, V4CidrBlocks: []string{"0.0.0.0/0"}},
 			},

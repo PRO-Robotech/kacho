@@ -800,7 +800,7 @@ def _seed_alt_placement(prefix, region_id, zone_id, region_js):
         # на материализации РЕСУРСА, что этому кейсу и нужно.
         Step(name=f"{prefix}-region-create", method="POST", path="/geo/v1/internal/regions",
              internal=True,
-             body={"id": region_id, "name": f"QA Storage {prefix} Region {{{{runId}}}}", "status": "UP"},
+             body={"id": region_id, "name": f"qa-storage-{prefix}-region-{{{{runId}}}}", "status": "UP"},
              test_script=[*assert_status(200)]),
         retry_until_authorized(Step(name=f"{prefix}-region-confirm", method="GET",
              path=f"/geo/v1/regions/{region_id}",
@@ -808,7 +808,7 @@ def _seed_alt_placement(prefix, region_id, zone_id, region_js):
         Step(name=f"{prefix}-zone-create", method="POST", path="/geo/v1/internal/zones",
              internal=True,
              body={"id": zone_id, "regionId": region_id,
-                   "name": f"QA Storage {prefix} Zone {{{{runId}}}}", "status": "UP"},
+                   "name": f"qa-storage-{prefix}-zone-{{{{runId}}}}", "status": "UP"},
              test_script=[*assert_status(200)]),
         retry_until_authorized(Step(name=f"{prefix}-zone-confirm", method="GET",
              path=f"/geo/v1/zones/{zone_id}",

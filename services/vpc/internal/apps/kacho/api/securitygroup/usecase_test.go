@@ -164,14 +164,16 @@ func TestCreateUseCase_ValidationError(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Equal(t, "network_id required", st.Message())
 
-	// Невалидное имя: NameVPC разрешителен, но цифра в начале запрещена.
+	// Негодное имя. Здесь стояло "1bad" — ведущая цифра; единственная форма дерева
+	// (RFC 1123 DNS label, #715) её ДОПУСКАЕТ, поэтому вход стал законным и проба
+	// перестала бы проверять хоть что-нибудь. Взято то, что форма отвергает.
 	// Сидим валидную Network, чтобы пройти gate обязательности/существования network_id.
 	netID := ids.NewID(ids.PrefixNetwork)
 	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netID, ProjectID: "f1", Name: domain.RcNameVPC("net")})
 	_, err = uc.Execute(context.Background(), domain.SecurityGroup{
 		ProjectID: "f1",
 		NetworkID: netID,
-		Name:      domain.RcNameVPC("1bad"),
+		Name:      domain.RcNameVPC("Bad_Name"),
 	})
 	require.Error(t, err)
 	st, _ = status.FromError(err)
@@ -312,8 +314,8 @@ func TestCreateUseCase_CrossNetworkRule_InvalidArgument(t *testing.T) {
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
 	netB := ids.NewID(ids.PrefixNetwork)
-	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
-	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netB, ProjectID: "P", Name: "net-B"})
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netB, ProjectID: "P", Name: "net-b"})
 	sgB := seedMockSG(t, sgr, "P", netB, "sg-target-B")
 
 	uc := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, or).WithSGReader(newSGReaderMock(sgr))
@@ -333,7 +335,7 @@ func TestCreateUseCase_SameNetworkRule_OK(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
-	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
 	sgA := seedMockSG(t, sgr, "P", netA, "sg-target-A")
 
 	uc := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, or).WithSGReader(newSGReaderMock(sgr))
@@ -354,7 +356,7 @@ func TestCreateUseCase_TargetNotFound_InvalidArgument(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
-	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
 
 	const absentTarget = "enp11111111111111111"
 	uc := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, or).WithSGReader(newSGReaderMock(sgr))

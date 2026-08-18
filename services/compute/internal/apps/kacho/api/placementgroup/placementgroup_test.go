@@ -26,6 +26,7 @@ const someGroup = "plg-abcdefghjkmnpqrst"
 
 type fakeGroupRepo struct {
 	inserted  *domain.PlacementGroup
+	all       []*domain.PlacementGroup
 	updateArg ports.PlacementGroupUpdate
 	updated   bool
 }
@@ -38,8 +39,20 @@ func (f *fakeGroupRepo) List(context.Context, string, string, ports.Pagination) 
 	return nil, "", nil
 }
 
+// Insert несёт UNIQUE(project_id, name) схемы (миграция 0033_placement_groups).
+//
+// Дублёр обязан выполнять контракт настоящего: молча приняв вторую строку с тем
+// же именем в том же проекте, он скрыл бы ровно тот класс, ради которого его
+// подставляют, — умолчание имени, производное НЕ от идентификатора, столкнулось
+// бы здесь и больше нигде, а проба про имена осталась бы зелёной.
 func (f *fakeGroupRepo) Insert(_ context.Context, g *domain.PlacementGroup) (*domain.PlacementGroup, []ownerregister.Registration, error) {
+	for _, x := range f.all {
+		if x.ProjectID == g.ProjectID && x.Name == g.Name {
+			return nil, nil, ports.ErrAlreadyExists
+		}
+	}
 	f.inserted = g
+	f.all = append(f.all, g)
 	return g, nil, nil
 }
 

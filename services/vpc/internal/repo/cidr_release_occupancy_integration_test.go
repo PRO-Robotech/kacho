@@ -177,7 +177,7 @@ func TestIntegration_SubnetCIDR_RemoveInUse_FailedPrecondition(t *testing.T) {
 	// Живой внутренний адрес во ВТОРИЧНОМ блоке.
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Addresses().Insert(ctx, &domain.Address{
-			ID:           ids.NewID(ids.PrefixAddress),
+			ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 			ProjectID:    "b1gtestproject00000",
 			Type:         domain.AddressTypeInternal,
 			IpVersion:    domain.IpVersionIPv4,
@@ -264,7 +264,7 @@ func TestIntegration_Subnet_ReadPathCost_Bounded(t *testing.T) {
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		for i := 1; i < 200; i++ {
 			if _, e := w.Addresses().Insert(ctx, &domain.Address{
-				ID:        ids.NewID(ids.PrefixAddress),
+				ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 				ProjectID: "b1gtestproject00000",
 				Type:      domain.AddressTypeInternal,
 				IpVersion: domain.IpVersionIPv4,
@@ -322,7 +322,7 @@ func TestIntegration_Subnet_DeletePrecondition_MessageBounded(t *testing.T) {
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		for i := 0; i < nicCount; i++ {
 			if _, e := w.NetworkInterfaces().Insert(ctx, &domain.NetworkInterface{
-				ID:        ids.NewID(ids.PrefixNetworkInterface),
+				ID: ids.NewID(ids.PrefixNetworkInterface), Name: fixtureName(),
 				ProjectID: "b1gtestproject00000",
 				SubnetID:  subnetID,
 				MAC:       fmt.Sprintf("02:00:00:00:%02x:%02x", i/256, i%256),
@@ -373,7 +373,7 @@ func TestIntegration_SubnetCIDR_InternalAllocate_WaitsForRangeMutation(t *testin
 	addrID := ids.NewID(ids.PrefixAddress)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
 		_, e := w.Addresses().Insert(ctx, &domain.Address{
-			ID:           addrID,
+			ID: addrID, Name: domain.RcNameVPC(addrID),
 			ProjectID:    "b1gtestproject00000",
 			Type:         domain.AddressTypeInternal,
 			IpVersion:    domain.IpVersionIPv4,
@@ -469,7 +469,7 @@ func TestIntegration_CIDRRelease_MirrorFamilies(t *testing.T) {
 			return e
 		}
 		_, e := w.Addresses().Insert(ctx, &domain.Address{
-			ID:           ids.NewID(ids.PrefixAddress),
+			ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 			ProjectID:    "b1gtestproject00000",
 			Type:         domain.AddressTypeInternal,
 			IpVersion:    domain.IpVersionIPv6,

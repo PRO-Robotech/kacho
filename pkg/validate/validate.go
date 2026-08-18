@@ -8,10 +8,11 @@
 // `BadRequest.field_violations[]` через `kacho-corelib/errors.InvalidArgument()`.
 //
 // Контракт валидации полей:
-//   - Name: 1..63 символа, regex `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (короткое
-//     имя из строчных букв, цифр и дефисов; начинается с буквы; не оканчивается
-//     дефисом; одна буква — валидна). Пустое имя — отдельная проверка
-//     `name is required`.
+//   - Name: единственная форма имени ресурса в дереве — DNS label по RFC 1123,
+//     `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` (строчные буквы, цифры, дефис;
+//     первый и последний символ — буква или цифра; 1..63). Пустая строка именем
+//     не является: на правке она отвергается `<field> is required`, на создании
+//     означает «назови сам» и заменяется NameOrDefault на имя, производное от id.
 //   - Description: до 256 символов.
 //   - Labels: до 64 пар; ключ `^[a-z][-_./\\@a-z0-9]{0,62}$` (1..63 байта);
 //     значение 0..63 байта.
@@ -30,40 +31,16 @@ import (
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 )
 
-// nameRe — строгий regex имени для strict-policy ресурсов (Folder, Cloud).
-// Шаблон `/[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`.
+// NameForm — единственная форма имени ресурса в дереве (RFC 1123 DNS label).
 //
-// Ровно: первый символ — строчная буква; далее — буквы, цифры, дефис; последний
-// символ — буква или цифра (не дефис). Длина 1..63 (одиночная буква валидна —
-// хвостовая группа `(...)?` опциональна).
-var nameRe = regexp.MustCompile(`^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$`)
-
-// nameReVPC — нестрогий regex имени для VPC ресурсов
-// (Network/Subnet/Address/RouteTable). Шаблон
-// `/|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?/`. Допускает:
-//   - empty string,
-//   - заглавные буквы,
-//   - underscore.
-//
-// VPC.Network/Subnet/Address/RouteTable принимают `BadCAPS`, `abc_def`, `""`,
-// но отклоняют имя, начинающееся с цифры или превышающее 63 символа.
-var nameReVPC = regexp.MustCompile(`^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`)
-
-// nameReCompute — нестрогий regex имени для Compute ресурсов
-// (Disk/Image/Snapshot/Instance). Шаблон
-// `"|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"` — **lowercase**-only + digits + hyphens +
-// underscore, empty allowed, начинается с буквы, не оканчивается дефисом, длина
-// 0..63. Отличие от nameReVPC: НЕТ uppercase.
-var nameReCompute = regexp.MustCompile(`^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`)
-
-// nameReGateway — regex имени для VPC Gateway: строгий lowercase + цифры +
-// дефисы с разрешенной пустой строкой. Шаблон
-// `/|[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`. Без uppercase / underscore (в отличие
-// от nameReVPC). Тот же контракт для других strict-policy ресурсов с
-// разрешенной пустой строкой.
-var nameReGateway = regexp.MustCompile(`^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$`)
+// Сама строка объявлена в `pkg/validate/nameform` — пакете БЕЗ транспорта,
+// потому что ту же форму обязан читать слой домена, которому grpc запрещён
+// (см. документацию того пакета). Здесь — только ссылка: копии литерала не
+// заводится, поэтому расходиться нечему.
+const NameForm = nameform.Form
 
 // labelKeyRe — regex ключа label: строчные + цифры + `-_./\@`. Шаблон
 // `[a-z][-_./\\@0-9a-z]*`, где `@` входит в character class.
@@ -86,62 +63,143 @@ const (
 	DefaultPageSize int64 = 50
 )
 
-// Name проверяет, что value соответствует name-контракту для strict-policy
-// ресурсов (Cloud, Folder; шаблон `/[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`).
+// Name проверяет имя ресурса против единственной формы дерева (NameForm).
 //
-// Возвращает err типа InvalidArgument с FieldViolation, либо nil если ok.
-// Не проверяет «is required» — это делает caller отдельной проверкой
-// `value == ""`, чтобы сообщение было понятным.
+// Пустая строка — НЕ имя. Она отвергается отдельным сообщением `<field> is
+// required`, а не общим сообщением о форме: вызывающий, забывший поле, и
+// вызывающий, приславший `My_Name`, ошиблись по-разному, и отказ обязан это
+// различать.
+//
+// На пути СОЗДАНИЯ пустая строка остаётся законным входом — там зовут не эту
+// функцию, а пару NameOnCreate (форма) + NameOrDefault (что записать).
 func Name(field, value string) error {
-	if !nameRe.MatchString(value) {
+	if value == "" {
 		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, field+` must match ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ (lowercase letters, digits, hyphens; starts with letter, ends with letter or digit; 1..63 chars)`).
+			AddFieldViolation(field, field+" is required").
+			Err()
+	}
+	if !nameform.OK(value) {
+		return coreerrors.InvalidArgument().
+			AddFieldViolation(field, field+" must match "+NameForm+
+				" (lowercase letters, digits, hyphens; starts and ends with a letter or digit; 1..63 chars)").
 			Err()
 	}
 	return nil
 }
 
-// NameVPC проверяет, что value соответствует нестрогому name-контракту для
-// VPC ресурсов (Network, Subnet, Address, RouteTable; шаблон
-// `/|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?/`).
+// defaultNameForID — ЕДИНСТВЕННОЕ производство имени по умолчанию в дереве.
+// Намеренно НЕ экспортировано: сервис обязан звать NameOrDefault, а не выводить
+// умолчание сам — иначе через месяц в двух сервисах будут две формы умолчания и
+// разойдутся они молча, ровно как разошлись четыре регулярки. Единственность
+// держит гейт internal/repohygiene TestDefaultNameDerivationIsDeclaredOnce.
 //
-// Допускается: empty string, заглавные буквы, underscore. Длина 0..63.
-// Имя, начинающееся с цифры или с дефиса, — InvalidArgument.
-func NameVPC(field, value string) error {
-	if !nameReVPC.MatchString(value) {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, field+` must match ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$ (letters, digits, hyphens, underscores; starts with letter; up to 63 chars; empty allowed)`).
-			Err()
-	}
-	return nil
-}
-
-// NameCompute проверяет, что value соответствует нестрогому name-контракту для
-// Compute ресурсов (Disk, Image, Snapshot, Instance; шаблон
-// `"|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"`).
+// Умолчанием служит САМ id, без преобразования, и это не экономия строки:
 //
-// Допускается: empty string, underscore. Только lowercase (в отличие от NameVPC).
-// Начинается с буквы; не оканчивается дефисом; длина 0..63.
-func NameCompute(field, value string) error {
-	if !nameReCompute.MatchString(value) {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, field+` must match ^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$ (lowercase letters, digits, hyphens, underscores; starts with letter; up to 63 chars; empty allowed)`).
-			Err()
-	}
-	return nil
+//   - id уже удовлетворяет NameForm by construction — prefix'ы строчные, тело
+//     crockford-base32 в строчном алфавите (pkg/ids), разделитель hyphen-формы —
+//     дефис в середине. Свойство закреплено пробой по КАЖДОМУ известному prefix'у
+//     обеих форм, а не рассуждением;
+//   - id глобально уникален by construction, значит производное имя уникально в
+//     проекте БЕЗ проверки-перед-вставкой. Любое «посмотреть, занято ли, и взять
+//     следующее» — software check-then-act, запрещённый ban #10: под конкуренцией
+//     два создания увидят одно и то же свободное имя;
+//   - всякая иная форма («resource-<id>», счётчик, случайность) добавила бы второе
+//     правило и выбор, на котором сервисы разойдутся.
+//
+// Остаточный случай назван честно, потому что он не невозможен, а лишь требует
+// умысла: NameForm — общее пространство, поэтому арендатор ВПРАВЕ занять именем
+// строку, равную id другого своего ресурса в том же проекте. Тогда вставка того
+// ресурса вернёт ALREADY_EXISTS — законный отказ, а не порча данных. Разбиения,
+// исключающего это by construction, не существует: оно потребовало бы второй
+// формы имени, то есть ровно того, что здесь снимается.
+func defaultNameForID(id string) string {
+	return id
 }
 
-// NameGateway — name-контракт для Gateway: strict (lowercase + digits +
-// hyphens) с разрешенной пустой строкой. Шаблон
-// `/|[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`. Без uppercase и underscore (в отличие
-// от NameVPC).
-func NameGateway(field, value string) error {
-	if !nameReGateway.MatchString(value) {
-		return coreerrors.InvalidArgument().
-			AddFieldViolation(field, field+` must match ^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$ (lowercase letters, digits, hyphens; starts with letter; up to 63 chars; empty allowed)`).
-			Err()
+// NameOnCreate — форма имени на пути СОЗДАНИЯ: пустая строка законна, непустая
+// обязана соответствовать NameForm.
+//
+// Пустое здесь означает не «имя отсутствует», а «назови сам»: до записи оно
+// заменяется умолчанием (NameOrDefault), и ресурс с пустым именем не возникает.
+// Требовать имя на создании значило бы ломающее изменение у каждого создающего
+// глагола ради величины косметической: адресуется ресурс по неизменяемому id
+// (ban #15).
+//
+// Отвечает на вопрос «допустим ли ввод», а НЕ «что будет записано» — второй
+// вопрос задают в момент, когда id уже сгенерирован, и отвечает на него
+// NameOrDefault. Два вопроса, два момента, две функции.
+func NameOnCreate(field, value string) error {
+	if value == "" {
+		return nil
 	}
-	return nil
+	return Name(field, value)
+}
+
+// NameOrDefault — имя, которое СЛЕДУЕТ ЗАПИСАТЬ: пустое заменяется умолчанием,
+// производным от id.
+//
+// Зовётся в use-case создания в точке, где id уже сгенерирован. Точка вызова у
+// каждого сервиса своя, и это нормально; общей обязана быть функция — правило
+// «пустое имя не доживает до записи», рассыпанное по сервисам как
+// `if name == "" { name = … }`, разойдётся ровно так же, как разошлись четыре
+// регулярки.
+//
+// Гонки нет by construction: значение известно ДО вставки, вставка одна,
+// конфликту взяться неоткуда. Форму value эта функция НЕ проверяет — её
+// проверил NameOnCreate на входе.
+func NameOrDefault(value, id string) string {
+	if value == "" {
+		return defaultNameForID(id)
+	}
+	return value
+}
+
+// NameOnUpdate — ЕДИНСТВЕННОЕ решение «что делать с именем на правке».
+//
+// Возвращает, следует ли записывать имя, и отказ, если присланное недопустимо.
+// Пять исходов, и они выведены из того, что proto3 НЕ РАЗЛИЧАЕТ «поле не
+// прислано» и «поле пусто»:
+//
+//	маска пуста, имя пусто          → (false, nil) — полная правка, имени не касались
+//	маска пуста, имя непусто        → (true, форма)
+//	маска не называет name          → (false, nil)
+//	маска называет name, имя пусто  → (false, `<field> is required`)
+//	маска называет name, непусто    → (true, форма)
+//
+// Почему пустая маска НЕ отвергает пустое имя. Полная правка — законный способ
+// изменить описание или метки, не трогая имя; отказ там сломал бы каждого, кто
+// правит объект целиком. Почему она при этом не ЗАПИСЫВАЕТ пустое: записать
+// значило бы вернуть безымянный ресурс той самой дверью, которую закрывает
+// отказ строкой ниже, — и упереться в ограничение формы уже на стороне базы,
+// отдав вызывающему внутреннюю ошибку вместо контрактного отказа.
+//
+// Почему функция общая. Правило горизонтально — оно про форму запроса, а не про
+// предмет сервиса, и рассыпанное по use-case'ам разойдётся ровно так же, как
+// разошлись четыре регулярки. Первая его редакция и завелась копией в одном
+// сервисе; здесь она сведена к одной (#715).
+func NameOnUpdate(field string, mask []string, value string) (bool, error) {
+	named := len(mask) == 0
+	for _, m := range mask {
+		if m == field {
+			named = true
+			break
+		}
+	}
+	if !named {
+		return false, nil
+	}
+	if value == "" {
+		if len(mask) == 0 {
+			// Полная правка: «не прислали», а не «сними имя».
+			return false, nil
+		}
+		// Маска НАЗВАЛА имя, значение пусто — это «сними имя», а снять его нельзя.
+		return false, Name(field, value)
+	}
+	if err := Name(field, value); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Description проверяет длину поля description (UTF-8).

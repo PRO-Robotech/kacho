@@ -161,6 +161,24 @@ type StorageBackend struct {
 	UpdatedAt      time.Time
 }
 
+// ValidateBackendName — правило имени бэкенда, одно на создание и на правку.
+//
+// Вынесено из Validate именно затем, чтобы правка могла позвать ЕГО, а не свою
+// копию: до этого правка не звала ничего, и создание с правкой расходились в том
+// единственном месте, где расхождение стоит дорого — имя уникально по всей
+// установке полным индексом (0015).
+//
+// Имя обязательно, хотя у прочих ресурсов домена пустое имя законно: имя —
+// единственный человекочитаемый ключ бэкенда. Пустое здесь не «безымянный
+// ресурс», а занятая единственная безымянная строка, после которой второй
+// бэкенд без имени не заводится.
+func ValidateBackendName(name string) error {
+	if name == "" {
+		return fmt.Errorf("storage_backend name is required")
+	}
+	return validateName("storage_backend name", name)
+}
+
 // Validate проверяет domain-инварианты бэкенда перед сохранением.
 func (b StorageBackend) Validate() error {
 	if b.ID == "" {
@@ -170,10 +188,7 @@ func (b StorageBackend) Validate() error {
 	// единственный человекочитаемый ключ бэкенда и уникально по всей установке
 	// (0015). Пустое имя здесь не «безымянный ресурс», а занятая единственная
 	// безымянная строка, после которой второй бэкенд без имени не заводится.
-	if b.Name == "" {
-		return fmt.Errorf("storage_backend name is required")
-	}
-	if err := validateName("storage_backend name", b.Name); err != nil {
+	if err := ValidateBackendName(b.Name); err != nil {
 		return err
 	}
 	if !b.Kind.Valid() {

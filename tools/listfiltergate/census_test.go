@@ -84,7 +84,13 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 			"measurement:\n%s", svc, out)
 	}
 	total := 0
-	re := regexp.MustCompile(`(\d+) listing method\(s\)`)
+	// The count is read from the CENSUS SENTENCE, not from anywhere the words
+	// happen to appear: the census is the only line that follows the number with the
+	// breakdown in brackets. An unanchored match summed every sentence in the
+	// output, so a service that merely MENTIONED its listing methods in a second line
+	// scored twice — and the failure read "the tree declares 2 but the analyser
+	// judged 4", which points at the analyser rather than at this regexp.
+	re := regexp.MustCompile(`(\d+) listing method\(s\) \(`)
 	for _, m := range re.FindAllStringSubmatch(string(out), -1) {
 		n := 0
 		for _, c := range m[1] {
@@ -92,13 +98,31 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 		}
 		total += n
 	}
-	// registry's analyser is older and words its census differently; it reports
-	// "N List RPC(s)". Read that form too rather than silently scoring it zero — a
-	// service whose census this test cannot parse must not look like a service with
-	// no listing methods.
-	if total == 0 {
-		re2 := regexp.MustCompile(`(\d+) List RPC\(s\)`)
-		for _, m := range re2.FindAllStringSubmatch(string(out), -1) {
+	// Older analysers word their census differently, and each such wording is read
+	// EXPLICITLY rather than by loosening the anchored match above — loosening is what
+	// made the count double before, and the fix for one service must not re-open that
+	// for the others.
+	//
+	//   registry — "N List RPC(s)"
+	//   storage  — "N listing method(s) declared on the transport surface"
+	//
+	// storage's form was invisible the moment the anchored match began requiring the
+	// bracket that the newer census prints (#684 tightened it for the five profiles it
+	// migrated; storage is a sixth service carrying this tool and was not among them).
+	// Its census then read as zero — and the count of a service whose census cannot be
+	// parsed must never be indistinguishable from the count of a service that has no
+	// listings, which is precisely what the guard below refuses.
+	//
+	// Each fallback is tried only while nothing has been read, so a service cannot be
+	// scored twice by matching two forms at once.
+	for _, alt := range []*regexp.Regexp{
+		regexp.MustCompile(`(\d+) List RPC\(s\)`),
+		regexp.MustCompile(`(\d+) listing method\(s\) declared`),
+	} {
+		if total != 0 {
+			break
+		}
+		for _, m := range alt.FindAllStringSubmatch(string(out), -1) {
 			n := 0
 			for _, c := range m[1] {
 				n = n*10 + int(c-'0')

@@ -423,6 +423,11 @@ func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Oper
 		regionZones = zones
 	}
 	i.ID = ids.NewID(domain.PrefixImage)
+	// Пустое имя не доживает до записи (#715). Подстановка стоит ЗДЕСЬ, после
+	// чеканки идентификатора: умолчание выводится из него. Два безымянных образа
+	// в одном проекте не спорят за UNIQUE(project,name) — идентификатор
+	// уникален глобально by construction.
+	i.Name = validate.NameOrDefault(i.Name, i.ID)
 	// Имя объекта у бэкенда ВЫВОДИТСЯ здесь и нигде больше не принимается: оно
 	// вычислимо арендатором (идентификатор он видит), поэтому авторизация на его
 	// неугадываемость нигде не опирается, а идемпотентность повтора держится тем,
@@ -525,10 +530,15 @@ func (u *UseCase) Register(ctx context.Context, in RegisterInput) (*domain.Image
 			return nil, u.errStatus(err)
 		}
 	}
+	// Идентификатор чеканится ОТДЕЛЬНОЙ строкой, а не внутри литерала: из него
+	// выводится имя по умолчанию, и внутри литерала на него сослаться нечем.
+	imageID := ids.NewID(domain.PrefixImage)
 	i := &domain.Image{
-		ID:           ids.NewID(domain.PrefixImage),
-		ProjectID:    in.ProjectID,
-		Name:         in.Name,
+		ID:        imageID,
+		ProjectID: in.ProjectID,
+		// Пустое имя не доживает до записи и на ЭТОМ пути тоже (#715): правило
+		// принадлежит записи, а не глаголу, а путей появления образа три.
+		Name:         validate.NameOrDefault(in.Name, imageID),
 		Description:  in.Description,
 		Labels:       in.Labels,
 		RegionID:     in.RegionID,
@@ -673,10 +683,21 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 		}
 		return false
 	}
-	if apply("name") {
-		if err := domain.ImageName(name).Validate(); err != nil {
-			return ImageUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
-		}
+	// Решение «что делать с именем на правке» принимает ЕДИНСТВЕННАЯ функция
+	// дерева (validate.NameOnUpdate): пять исходов маски и значения — правило
+	// горизонтальное, оно про форму запроса, а не про предмет сервиса.
+	//
+	// Наружу отказ уходит контрактным ТОНОМ storage, а не ошибкой канона:
+	// «Illegal argument name» — часть контракта (§1.7), он сам называет поле, и
+	// его пинят кейсы чёрного ящика на пути правки. Канон отвечает generic'ом с
+	// именем поля в деталях; отдать его как есть значило бы сменить наблюдаемое
+	// у landed-кейсов. Пересборка через err.Error() запрещена отдельно — она
+	// приклеила бы к сообщению обёртку gRPC.
+	applyName, nerr := validate.NameOnUpdate("name", mask, name)
+	if nerr != nil {
+		return ImageUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, domain.ErrIllegalName)
+	}
+	if applyName {
 		n := name
 		u.Name = &n
 	}
@@ -800,6 +821,16 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 		SourceImageID: src.ID,
 	}
 	copyItem.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, copyItem.ID)
+	// Копия НЕ проверяла имя вовсе: малформ доезжал до images_name_check и
+	// возвращался АСИНХРОННО в ошибке операции, тогда как копия снимка отвергает
+	// его синхронно. Один контракт, два исполнения — и то из них, что молчит,
+	// заставляло вызывающего искать причину в чужом слое.
+	if verr := copyItem.Validate(); verr != nil {
+		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, verr.Error()))
+	}
+	// Подстановка — ПОСЛЕ проверки формы и до записи: копия минтит свой
+	// идентификатор, значит и своё умолчание (#715).
+	copyItem.Name = validate.NameOrDefault(copyItem.Name, copyItem.ID)
 
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Copy image %s to region %s", in.ImageID, in.TargetRegionID),

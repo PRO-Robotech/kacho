@@ -51,11 +51,11 @@ const GatewayReferrerType = "vpc_gateway"
 // Validate проверяет name/description/labels по domain-контракту. Вызывается
 // use-case-слоем ПЕРЕД repo.Insert / repo.Update.
 //
-// Замечание: Gateway.Name держится здесь как `RcNameVPC` (permissive) — единый
-// newtype-набор для всех ресурсов. Strict-name regex (`corevalidate.NameGateway`
-// — lowercase, без uppercase/underscore) применяется дополнительно в service-слое
-// после `g.Validate()` (см.
-// internal/apps/kacho/api/gateway/update.go::validateGatewayUpdate).
+// Gateway.Name — тот же `RcNameVPC`, что и у остальных ресурсов, и это больше
+// не «единый newtype при разных формах»: форма у всех ОДНА
+// (`validate.NameForm`). Второй, более строгой проверки в service-слое у шлюза
+// нет — она была следствием собственной, более широкой формы сервиса, снятой
+// вместе с ней (#715).
 func (g Gateway) Validate() error {
 	return combineValidation(
 		g.Name.Validate(),

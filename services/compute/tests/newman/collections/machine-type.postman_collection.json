@@ -609,7 +609,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text mentions name required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('name is required'));"
+                  "pm.test('field violation names name', () => {  const d = (pm.response.json().details||[]);  const v = d.flatMap(x => x.fieldViolations || x.field_violations || []);  pm.expect(v.map(f => f.field)).to.include('name');});"
                 ]
               }
             }

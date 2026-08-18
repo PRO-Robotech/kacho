@@ -12099,7 +12099,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-multi-addr-A-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-multi-addr-a-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12238,7 +12238,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-multi-addr-B-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-multi-addr-b-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13326,7 +13326,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-A-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-a-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13465,7 +13465,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-B-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nic-m6-b-{{runId}}\", \"internalIpv6AddressSpec\": {\"subnetId\": \"{{subId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"

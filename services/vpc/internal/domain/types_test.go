@@ -20,34 +20,48 @@ func isValidationError(err error) bool {
 	return stderrors.As(err, &ve)
 }
 
-// TestValidate_ReturnsDomainValidationError — domain Validate() возвращает
+// TestValidate_ReturnsDomainValidationError — проверки домена возвращают
 // stdlib-ошибку `*domain.ValidationError` (без зависимости от gRPC/corelib),
 // несущую FieldViolation'ы. gRPC-трансляция — отдельным слоем (serviceerr).
+//
+// Имя входит в это утверждение НАРАВНЕ с остальными полями, хотя его форму домен
+// больше не объявляет: форма приезжает из `pkg/validate/nameform` — пакета без
+// транспорта, — а решение и его носитель остаются доменными.
 func TestValidate_ReturnsDomainValidationError(t *testing.T) {
 	// bad name → *domain.ValidationError с violation на поле "name".
-	err := domain.RcNameVPC("1bad").Validate()
-	require.Error(t, err)
-
-	var ve *domain.ValidationError
-	require.True(t, stderrors.As(err, &ve), "Validate() must return *domain.ValidationError")
-	require.Len(t, ve.Violations, 1)
-	assert.Equal(t, "name", ve.Violations[0].Field)
-	assert.NotEmpty(t, ve.Violations[0].Msg)
+	nerr := domain.RcNameVPC("Bad_Name").Validate()
+	var nve *domain.ValidationError
+	require.True(t, stderrors.As(nerr, &nve), "Validate() must return *domain.ValidationError")
+	require.Len(t, nve.Violations, 1)
+	assert.Equal(t, "name", nve.Violations[0].Field)
 
 	// description over-limit → violation на "description".
 	derr := domain.RcDescription(strings.Repeat("a", 257)).Validate()
-	require.True(t, stderrors.As(derr, &ve))
+	var ve *domain.ValidationError
+	require.True(t, stderrors.As(derr, &ve), "Validate() must return *domain.ValidationError")
+	require.Len(t, ve.Violations, 1)
 	assert.Equal(t, "description", ve.Violations[0].Field)
+	assert.NotEmpty(t, ve.Violations[0].Msg)
 
-	// composite Network с bad name → тоже *domain.ValidationError на "name".
-	cerr := domain.Network{Name: domain.RcNameVPC("1bad")}.Validate()
+	// composite Network с bad description → тоже *domain.ValidationError.
+	cerr := domain.Network{Description: domain.RcDescription(strings.Repeat("a", 257))}.Validate()
 	require.True(t, stderrors.As(cerr, &ve))
-	assert.Equal(t, "name", ve.Violations[0].Field)
+	assert.Equal(t, "description", ve.Violations[0].Field)
 }
 
 // Unit-тесты Validate() у domain-newtypes: валидация живет в domain, а не в
 // corevalidate.*; проверяем, что regex/length-контракт сохранен.
 
+// TestRcNameVPC_Validate — форма имени взята из ЕДИНСТВЕННОГО объявления дерева
+// (RFC 1123 DNS label). Три строки таблицы перевернулись относительно прежней
+// редакции, и каждая — потому что своя, более широкая форма сервиса снята (#715):
+// заглавные и подчёркивание больше не принимаются, ведущая цифра — принимается.
+// Именно расхождение по этим трём осям и было предметом задачи.
+//
+// Тип ошибки — снова доменный `*domain.ValidationError`: форма приезжает из
+// `pkg/validate/nameform`, пакета БЕЗ транспорта, поэтому домен судит имя сам и
+// остаётся stdlib-чистым. Утверждается и исход, и носитель: транспортная ошибка
+// отсюда означала бы, что слой снова протёк.
 func TestRcNameVPC_Validate(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -56,10 +70,11 @@ func TestRcNameVPC_Validate(t *testing.T) {
 	}{
 		{"empty allowed", "", false},
 		{"simple", "net-a", false},
-		{"uppercase allowed", "BadCAPS", false},
-		{"underscore allowed", "abc_def", false},
-		{"starts with digit forbidden", "1abc", true},
+		{"uppercase forbidden", "BadCAPS", true},
+		{"underscore forbidden", "abc_def", true},
+		{"starts with digit allowed", "1abc", false},
 		{"starts with hyphen forbidden", "-abc", true},
+		{"ends with hyphen forbidden", "abc-", true},
 		{"63 chars OK", "a" + strings.Repeat("b", 62), false},
 		{"64 chars forbidden", "a" + strings.Repeat("b", 63), true},
 	}
@@ -134,8 +149,8 @@ func TestNetwork_Validate_Composes(t *testing.T) {
 	}
 	assert.NoError(t, n.Validate())
 
-	// bad name → *domain.ValidationError
-	bad := domain.Network{Name: domain.RcNameVPC("1bad")}
+	// bad name → *domain.ValidationError (заглавные и подчёркивание формой не приняты)
+	bad := domain.Network{Name: domain.RcNameVPC("Bad_Name")}
 	err := bad.Validate()
 	require.Error(t, err)
 	assert.True(t, isValidationError(err), "want *domain.ValidationError")
@@ -160,8 +175,8 @@ func TestNetworkInterface_Validate_Composes(t *testing.T) {
 	}
 	assert.NoError(t, n2.Validate())
 
-	// bad name → *domain.ValidationError
-	bad := domain.NetworkInterface{Name: domain.RcNameVPC("1bad")}
+	// bad name → *domain.ValidationError (заглавные и подчёркивание формой не приняты)
+	bad := domain.NetworkInterface{Name: domain.RcNameVPC("Bad_Name")}
 	err := bad.Validate()
 	require.Error(t, err)
 	assert.True(t, isValidationError(err), "want *domain.ValidationError")

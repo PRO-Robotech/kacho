@@ -313,15 +313,44 @@ function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): s
 }
 
 /**
+ * Обработчики событий БРАУЗЕРА, которые контейнеры antd доносят до корневого
+ * узла вместе с остатком props (`<div {...restProps}>`). Перечень закрытый и
+ * назван поимённо: собственные обратные вызовы виджета (`onOpenChange`,
+ * `onSearch`, `onConfirm`, …) событиями DOM не являются, и React ругался бы на
+ * них как на неизвестные свойства обработчика.
+ */
+const DOM_HANDLERS = new Set([
+  "onClick",
+  "onDoubleClick",
+  "onKeyDown",
+  "onKeyUp",
+  "onMouseEnter",
+  "onMouseLeave",
+  "onFocus",
+  "onBlur",
+]);
+
+/**
  * Только те свойства, которые настоящий компонент доносит до DOM: `data-*`,
- * `aria-*`, `id`, `title`. Остальные (`width`, `destroyOnClose`, `maskClosable`,
- * …) — параметры виджета: React ругается на них как на неизвестные атрибуты, а
- * проба, которая начнёт их читать, будет утверждать форму дублёра.
+ * `aria-*`, `id`, `title` и обработчики событий браузера. Остальные (`width`,
+ * `destroyOnClose`, `maskClosable`, …) — параметры виджета: React ругается на
+ * них как на неизвестные атрибуты, а проба, которая начнёт их читать, будет
+ * утверждать форму дублёра.
+ *
+ * Обработчики попали сюда не для полноты: без них заменитель СТРОЖЕ настоящего.
+ * Плашка сервиса на дашборде — обычный контейнер с `onClick`; настоящий antd
+ * этот обработчик до корневого узла доносит, а заменитель ронял его молча, и
+ * нажатие не делало НИЧЕГО. Проба «нажал — перешёл» на таком дублёре красна при
+ * исправном продукте (наблюдалось на dashboard при сведении посадок, #626).
+ * Направление отклонения у дублёра допускается одно — ближе к настоящему,
+ * никогда не мягче и не строже.
  */
 function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
-    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title") out[k] = v;
+    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title" || DOM_HANDLERS.has(k)) {
+      out[k] = v;
+    }
   }
   return out;
 }
@@ -523,16 +552,53 @@ export function antdStub(): Record<string, unknown> {
   // проверку», а роняло рендер целиком: узел разворачивался в `undefined`.
   const Anchor = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("a", props, children);
-  const Typography = Object.assign(Component, {
-    Text: Component,
-    Title: Component,
-    Paragraph: Component,
+  // Типографика настоящего antd — РАЗНЫЕ теги, и разница видна снаружи: у
+  // заголовка есть роль `heading` с уровнем, у абзаца — своя семантика. Пока
+  // все три были одним `<div>`, «на странице есть заголовок такой-то» было
+  // непроверяемо ВООБЩЕ: ни роли, ни уровня страница не доносила. Это тот же
+  // класс, что #570 — только видимое приходит не пропом, а самим тегом.
+  //
+  // `level` у настоящего заголовка — 1…5, умолчание 1; вне диапазона antd
+  // откатывается к 1, и заменитель делает то же: иначе проба на `level={6}`
+  // утверждала бы о теге, которого продукт не производит.
+  const Title = ({ children, level, ...props }: React.PropsWithChildren<AnyProps>) => {
+    const n = typeof level === "number" && level >= 1 && level <= 5 ? level : 1;
+    return React.createElement(`h${n}`, domAttrs(props), children);
+  };
+  const Text = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("span", domAttrs(props), children);
+  const Paragraph = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("p", domAttrs(props), children);
+  const TypographyRoot = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("article", domAttrs(props), children);
+  const Typography = Object.assign(TypographyRoot, {
+    Text,
+    Title,
+    Paragraph,
     Link: Anchor,
   });
-  const Layout = Object.assign(Component, {
-    Content: Component,
-    Header: Component,
-    Sider: Component,
+
+  // Раскладка настоящего antd — ориентиры страницы: шапка, боковая полоса,
+  // главная зона. Читающий страницу не глазами ходит по ним ролями (`banner`,
+  // `complementary`, `main`), и на трёх одинаковых `<div>` ни одного ориентира
+  // не существует.
+  //
+  // ПРОСТРАНСТВА ИМЁН РАЗВЕДЕНЫ. Прежде и `Typography`, и `Layout` собирались
+  // как `Object.assign(Component, …)` — то есть дописывали свои члены в ОДИН И
+  // ТОТ ЖЕ объект: `Typography === Layout === Component`, а `Component.Sider`
+  // существовал. Проба, обратившаяся к `Typography.Sider`, получила бы рабочий
+  // компонент вместо `undefined`, то есть дублёр был СНИСХОДИТЕЛЬНЕЕ настоящего.
+  const LayoutRoot = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("section", domAttrs(props), children);
+  const Layout = Object.assign(LayoutRoot, {
+    Content: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("main", domAttrs(props), children),
+    Header: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("header", domAttrs(props), children),
+    Sider: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("aside", domAttrs(props), children),
+    Footer: ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+      React.createElement("footer", domAttrs(props), children),
   });
   // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
   // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а

@@ -54,7 +54,7 @@ func opWith(meta *anypb.Any) operations.Operation {
 
 func TestResolve_CreateRegion_present_done(t *testing.T) {
 	rs := operationresolver.New(operationresolver.Readers{
-		Region: stubRegionReader{region: &geov1.Region{Id: "region-1", Name: "Region 1"}},
+		Region: stubRegionReader{region: &geov1.Region{Id: "region-1", Name: "region-1"}},
 	}, nil)
 	res, err := rs.Resolve(context.Background(), opWith(mustAny(t, &geov1.CreateRegionMetadata{RegionId: "region-1"})))
 	if err != nil {

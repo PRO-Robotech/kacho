@@ -162,10 +162,22 @@ func (a repoAuthz) namespaceGate(ctx context.Context, registryID string) error {
 }
 
 // checkRepo — per-repo verb-Check (ListTags v_list / DeleteTag v_delete). deny →
-// NOT_FOUND (existence-hiding — не раскрывать существование чужого repo); az-error →
-// UNAVAILABLE.
+// NOT_FOUND "repository not found" (existence-hiding — не раскрывать существование
+// чужого repo); az-error → UNAVAILABLE.
+//
+// Текст — РЕПОЗИТОРНЫЙ, тот же, что у checkRepository, и это не косметика. Обе
+// функции гейтят ОДИН И ТОТ ЖЕ объект (`repositoryObjectRef`), а отвечали разными
+// текстами: checkRepository — контрактным тоном владельца, checkRepo —
+// namespace-тоном «not found». Тогда отказ по репозиторию отличался от ОТСУТСТВИЯ
+// репозитория, который слой хранения называет «repository not found»
+// (repo/kacho/pg/repository_config.go), — то есть скрытие существования
+// переставало скрывать: различимый текст и есть existence-oracle
+// (security.md, hardening-инвариант #6 — байт-в-байт с настоящим miss'ом).
+//
+// Namespace-тон остаётся у namespaceGate/registryGate: они гейтят РЕЕСТР, а не
+// репозиторий, и их предмет другой.
 func (a repoAuthz) checkRepo(ctx context.Context, registryID, repository, relation string) error {
-	return a.gate(ctx, relation, repositoryObjectRef(registryID, repository), errHideExistence())
+	return a.gate(ctx, relation, repositoryObjectRef(registryID, repository), errRepoHideExistence())
 }
 
 // checkRepository — per-repo verb-Check config-overlay Repository RPC (GetRepository

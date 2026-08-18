@@ -94,7 +94,7 @@ default_route_table_id      TEXT NULL FK→route_tables      -- 0015 объяв�
 vrf_id                      BIGINT UNIQUE NOT NULL    -- 0007; internal-only (InternalNetworkService)
 created_at                  TIMESTAMPTZ
 
-networks_project_id_name_key  UNIQUE (project_id, name)         -- non-partial (baseline)
+networks_project_id_name_key  UNIQUE (project_id, name)                   -- полный (715001)
 INDEX project_idx
 ```
 
@@ -106,10 +106,13 @@ INDEX project_idx
 `vrf_id` — инфра-чувствительный per-network идентификатор data-plane: не публикуется на
 public-поверхности, отдается только через `InternalNetworkService.GetNetwork`.
 
-> Для остальных 5 ресурсов (`subnets`, `route_tables`, `security_groups`,
-> `gateways`, `addresses`) UNIQUE на `(project_id, name)`
-> — **partial**, `WHERE name <> ''`: пустой `name` допускает несколько ресурсов,
-> дубль непустого → `23505` → `ALREADY_EXISTS`.
+> Та же форма — у всех остальных пользовательских ресурсов (`subnets`,
+> `route_tables`, `security_groups`, `gateways`, `addresses`,
+> `network_interfaces`, `cidr_groups`): UNIQUE на `(project_id, name)` —
+> **полный**, дубль имени → `23505` → `ALREADY_EXISTS`. Исключений нет ни одного.
+> Частичная форма `WHERE name <> ''` снята миграцией `715001` вместе со своим
+> предметом: пустого имени не существует — на создании сервер подставляет имя,
+> производное от `id` (задача #715).
 
 ### `subnets`
 

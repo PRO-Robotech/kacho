@@ -33,6 +33,9 @@ func InvalidArg(field, desc string) error {
 // конвертация в transport-ошибку живет здесь, в shared-пакете рядом с use-case'ами,
 // которые его и так импортируют.
 //
+// Форма имени домен тоже НЕ уводит в транспорт: она берётся из
+// `pkg/validate/nameform` — пакета без gRPC (#715).
+//
 // Wire-контракт: code=InvalidArgument, message="invalid argument", details — один
 // BadRequest с FieldViolation'ами в исходном порядке.
 //

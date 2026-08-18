@@ -51,7 +51,7 @@ func TestAddressPoolChecks_vpc8G_C1_ConstraintsPresent(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 	for _, want := range []string{
-		"address_pools_name_chk",
+		"address_pools_name_check",
 		"address_pools_description_len_chk",
 		"address_pools_kind_chk",
 		"address_pools_selector_priority_chk",
@@ -93,12 +93,12 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	// (а) прямой SQL → 23514 на address_pools_name_chk.
+	// (а) прямой SQL → 23514 на address_pools_name_check.
 	_, err = pool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, kind) VALUES ($1, '1bad!', 1)`, ids.NewID("apl"))
 	pgErr := mustPgError(t, err)
 	assert.Equal(t, "23514", pgErr.Code)
-	assert.Contains(t, pgErr.ConstraintName, "name_chk")
+	assert.Contains(t, pgErr.ConstraintName, "name_check")
 
 	// (б) repo writer Insert (минуя use-case Validate) → ErrInvalidArg, без leak'а SQL.
 	r := kachopg.New(pool, nil)

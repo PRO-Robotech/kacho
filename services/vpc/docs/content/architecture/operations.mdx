@@ -62,7 +62,7 @@ polling. Чтения (`Get` / `List`) — синхронны и `Operation` **�
   <tbody>
     <tr>
       <td><strong>SYNC</strong> (до ответа)</td>
-      <td>Формат-валидация и санитизация входа (<code>NameVPC</code>, <code>labels</code>, <code>updateMask</code>, CIDR host-bits, oneof spec, <code>resourceId</code>-prefix), генерация id ресурса, создание <code>Operation</code> (<code>done=false</code>) в таблице <code>operations</code>, запуск worker-горутины</td>
+      <td>Формат-валидация и санитизация входа (<code>Name</code>, <code>labels</code>, <code>updateMask</code>, CIDR host-bits, oneof spec, <code>resourceId</code>-prefix), генерация id ресурса, создание <code>Operation</code> (<code>done=false</code>) в таблице <code>operations</code>, запуск worker-горутины</td>
       <td>Возвращаются <strong>синхронно</strong> как gRPC-status (<code>InvalidArgument</code> и т.п.) — <code>Operation</code> при этом <strong>не создается</strong></td>
     </tr>
     <tr>
@@ -91,7 +91,7 @@ sync-проверок при гонке — FK / UNIQUE / EXCLUDE) приход�
   {dedent`
     func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operation, error) {
         // 1. SYNC: формат-валидация + санитизация
-        if err := corevalidate.NameVPC("name", req.Name); err != nil {
+        if err := corevalidate.NameOnCreate("name", req.Name); err != nil {
             return nil, err  // → InvalidArgument СРАЗУ, Operation не создается
         }
 
@@ -274,7 +274,7 @@ sequenceDiagram
 
   U->>H: Create(projectId, name, …)
   H->>S: Create
-  S->>S: SYNC: формат-валидация (NameVPC, labels, updateMask)
+  S->>S: SYNC: формат-валидация (Name, labels, updateMask)
   alt sync-валидация провалена
     S-->>H: gRPC error (InvalidArgument)
     H-->>U: ошибка — Operation НЕ создается

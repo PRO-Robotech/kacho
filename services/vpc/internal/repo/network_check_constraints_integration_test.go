@@ -59,14 +59,19 @@ func TestIntegration_NetworkRepo_CheckConstraints(t *testing.T) {
 	}
 	require.NoError(t, insertNet(t, good))
 
-	// 2. Имя начинающееся с цифры — отклоняется DB-CHECK regex.
+	// 2. Имя не по форме — отклоняется DB-CHECK regex.
+	//
+	// Здесь стояло "1bad" с пояснением «начинающееся с цифры». Прежняя форма
+	// требовала букву первым символом, единственная форма дерева (#715) —
+	// не требует: "1bad" ей ОТВЕЧАЕТ, и проба на нём зеленела бы вхолостую.
+	// Отвергается теперь подчёркивание — его в форме нет.
 	bad := &domain.Network{
 		ID:        ids.NewID(ids.PrefixNetwork),
 		ProjectID: "project-check",
-		Name:      domain.RcNameVPC("1bad"),
+		Name:      domain.RcNameVPC("bad_name"),
 	}
 	err = insertNet(t, bad)
-	require.Error(t, err, "name начинающееся с цифры должно быть отклонено CHECK")
+	require.Error(t, err, "имя не по форме должно быть отклонено CHECK")
 	require.Truef(t, errors.Is(err, helpers.ErrInvalidArg),
 		"expected helpers.ErrInvalidArg from CHECK violation, got: %v", err)
 
@@ -86,11 +91,20 @@ func TestIntegration_NetworkRepo_CheckConstraints(t *testing.T) {
 	require.Truef(t, errors.Is(err, helpers.ErrInvalidArg),
 		"expected helpers.ErrInvalidArg from CHECK violation, got: %v", err)
 
-	// 4. Пустое имя — OK (разрешительная политика валидации допускает empty).
+	// 4. Пустое имя — ОТКЛОНЯЕТСЯ.
+	//
+	// Прежде проба утверждала обратное («разрешительная политика допускает
+	// empty»). Это перестало быть правдой вместе с формой (#715): пустая строка
+	// ей не отвечает, а миграция 715001 сняла и частичный уникальный индекс,
+	// существовавший ради пустых имён. Утверждение перевёрнуто, а не снято, —
+	// иначе пропал бы контроль на то, что пустое имя до записи не доживает.
 	empty := &domain.Network{
 		ID:        ids.NewID(ids.PrefixNetwork),
 		ProjectID: "project-check",
 		Name:      domain.RcNameVPC(""),
 	}
-	require.NoError(t, insertNet(t, empty), "empty name разрешен permissive name-regex (пустое имя допустимо)")
+	err = insertNet(t, empty)
+	require.Error(t, err, "пустое имя больше не является допустимым значением")
+	require.Truef(t, errors.Is(err, helpers.ErrInvalidArg),
+		"expected helpers.ErrInvalidArg from CHECK violation, got: %v", err)
 }

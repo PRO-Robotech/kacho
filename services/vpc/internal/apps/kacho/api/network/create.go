@@ -15,6 +15,7 @@ import (
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -147,6 +148,13 @@ func (u *CreateNetworkUseCase) Execute(ctx context.Context, n domain.Network) (*
 	}
 
 	netID := ids.NewID(ids.PrefixNetwork)
+	// Пустое имя не доживает до записи: ресурса без имени не бывает (#715).
+	// Подстановка стоит ПОСЛЕ чеканки идентификатора (умолчание производно от
+	// него) и ДО сборки строки — и она же снимает нужду в проверке «а не занято
+	// ли»: идентификатор глобально уникален by construction, поэтому уникальность
+	// имени остаётся за индексом БД, а не за чтением-перед-вставкой (ban #10).
+	name = corevalidate.NameOrDefault(name, netID)
+	n.Name = domain.RcNameVPC(name)
 	// Учёт числа ресурсов: ранний отказ ДО создания операции.
 	//
 	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —

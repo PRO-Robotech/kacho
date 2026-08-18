@@ -130,7 +130,7 @@
 | `*-CR-BVA-DESC-OVER-257` | BVA,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с description len=257 (over-max) → InvalidArgument |
 | `*-CR-BVA-LABELS-MAX-64` | BVA | P2 | 6 (add,gat,net,rou,sec,sub) | Create с 64 labels (max) → ok |
 | `*-CR-BVA-LABELS-OVER-65` | BVA,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с 65 labels (over-max) → 400 |
-| `*-CR-BVA-NAME-EMPTY` | BVA,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с empty name → VPC permissive (200) или 400 |
+| `*-CR-BVA-NAME-EMPTY` | BVA,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с empty name → 200; имя подставлено идентификатором ресурса (NameOrDefault), пустым не остаётся |
 | `*-CR-BVA-NAME-MAX-63` | BVA | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name len=63 (max) → ok |
 | `*-CR-BVA-NAME-OVER-64` | BVA,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name len=64 (over-max) → InvalidArgument |
 | `*-CR-CONF-PROJECT-NF-TEXT` | CONF,NEG | P1 | 2 (add,net) | Create network в garbage project → 'Project .. not found' |
@@ -185,13 +185,13 @@
 | `*-CR-PAIRWISE-06` | CRUD,VAL | P2 | 1 (sub) | Pairwise [6]: zone=zone-c prefix=/24 |
 | `*-CR-PAIRWISE-07` | CRUD,VAL | P2 | 1 (sub) | Pairwise [7]: zone=zone-c prefix=/28 |
 | `*-CR-PAIRWISE-08` | CRUD,VAL | P2 | 1 (sub) | Pairwise [8]: zone=zone-c prefix=/16 |
-| `*-CR-SEC-CMD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: cmd in name → handled, no 500 |
-| `*-CR-SEC-LONGPAYLOAD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: longpayload in name → handled, no 500 |
-| `*-CR-SEC-NULLBYTE` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: nullbyte in name → handled, no 500 |
-| `*-CR-SEC-PATH` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: path in name → handled, no 500 |
-| `*-CR-SEC-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: sqli in name → handled, no 500 |
-| `*-CR-SEC-UNION` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: union in name → handled, no 500 |
-| `*-CR-SEC-XSS` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: xss in name → handled, no 500 |
+| `*-CR-SEC-CMD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: cmd in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-LONGPAYLOAD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: longpayload in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-NULLBYTE` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: nullbyte in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-PATH` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: path in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: sqli in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-UNION` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: union in name → 400 InvalidArgument 'name', без утечки |
+| `*-CR-SEC-XSS` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: xss in name → 400 InvalidArgument 'name', без утечки |
 | `*-CR-VAL-BOTH-SPEC` | VAL | P0 | 1 (add) | Create с обоими spec (external+internal) → InvalidArgument |
 | `*-CR-VAL-CIDR-HOSTBITS` | VAL | P0 | 1 (sub) | Create с host-bits в CIDR (10.0.0.5/24) → InvalidArgument |
 | `*-CR-VAL-CIDR-REQUIRED` | VAL | P0 | 1 (sub) | Create без v4_cidr_blocks → InvalidArgument |
@@ -204,11 +204,11 @@
 | `*-CR-VAL-LABELS-UPPERCASE-KEY` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE label key → 400 |
 | `*-CR-VAL-MALFORMED-JSON` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с malformed JSON → 400 |
 | `*-CR-VAL-MISSING-TYPE` | NEG,VAL | P1 | 1 (gat) | Create Gateway без gateway type oneof → 400 |
-| `*-CR-VAL-NAME-DIGIT-START` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name начинающимся с цифры → 400 (контракт Kachō regex) |
+| `*-CR-VAL-NAME-UNDERSCORE` | NEG,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с подчёркиванием в name → 400 (форма RFC 1123: буквы, цифры, дефис). Заменил `*-CR-VAL-NAME-DIGIT-START`: цифра первым символом теперь ЗАКОННА |
 | `*-CR-VAL-NAME-HYPHEN-START` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name начинающимся с дефиса → 400 |
-| `*-CR-VAL-NAME-NULL` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено контрактом) |
+| `*-CR-VAL-NAME-NULL` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name=null → 200 (protojson: null = поле не задано; имя подставляется идентификатором) |
 | `*-CR-VAL-NAME-SPECIAL-CHARS` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с спец-символами в name → 400 |
-| `*-CR-VAL-NAME-UPPERCASE` | VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE name → 200 у разрешительного контракта (add,net,rou,sec,sub); 400 с именем поля у строгого (gat) |
+| `*-CR-VAL-NAME-UPPERCASE` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE name → 400 с именем поля у ВСЕХ шести (форма имени одна, разрешительного контракта нет) |
 | `*-CR-VAL-NETWORK-REQUIRED` | NEG,VAL | P0 | 2 (rou,sec) | Create без network_id → InvalidArgument |
 | `*-CR-VAL-REQ-PROJECTID` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'projectId' → отказ синхронно (403 unscoped, authz-first); Operation не чеканится |
 | `*-CR-VAL-REQ-NETWORKID` | VAL | P0 | 3 (rou,sec,sub) | Create без required поля 'networkId' → отказ: sync 400 либо Operation с ошибкой |
@@ -438,6 +438,7 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-UPD-STATE-IMMUTABLE-ZONE-ID` | CONF,STATE,VAL | P1 | 1 (sub) | Update mask='zone_id' (immutable) → 400 InvalidArgument (точный текст) |
 | `*-UPD-VAL-MASK-EMPTY` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с пустой mask → full PATCH (200) |
 | `*-UPD-VAL-MASK-MULTIPLE-UNKNOWN` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update с несколькими unknown полями в mask → 400 |
+| `*-UPD-NEG-NAME-EMPTY` | NEG,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Update с mask=name и пустым name → 400 `name is required` (пустое имя законно только на Create, где его заменяет NameOrDefault) |
 | `*-UPD-VAL-MASK-NAME-ONLY` | STATE,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Update mask=name → только name меняется, description/labels не трогаются |
 | `*-UPD-VAL-UNKNOWN-MASK` | STATE,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Update с unknown field в UpdateMask → InvalidArgument |
 | `SUB-UPD-V6-NOOP` | STATE,CRUD | P2 | 1 (sub) | Update с `v6_cidr_blocks` в body+mask → 200, операция done без error (soft-immutable: меняется не через Update, у нас no-op — реальное изменение через `:add-cidr-blocks`/`:remove-cidr-blocks`). Verifies REQ-UPD-05. |

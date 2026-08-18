@@ -208,10 +208,14 @@ func (u *CreateLoadBalancerUseCase) Execute(
 	}
 
 	// Sync duplicate-name check (worker-Insert UNIQUE — атомарный backstop).
-	if string(lb.Name) != "" {
-		if err := u.assertNameUnique(ctx, string(lb.ProjectID), string(lb.Name)); err != nil {
-			return nil, err
-		}
+	//
+	// Условия «имя непусто» здесь нет: оно было тождественно истинным. lb.Validate()
+	// выше отвергает пустое имя (nlb требует имя на создании), и между ним и этой
+	// строкой имя не присваивается, — то есть ветка «имя пусто» недостижима by
+	// construction. Проверка, которая не может не выполниться, читается как
+	// защита от случая, которого нет, и переживает своё основание.
+	if err := u.assertNameUnique(ctx, string(lb.ProjectID), string(lb.Name)); err != nil {
+		return nil, err
 	}
 
 	// Учёт числа ресурсов: ранний отказ ДО создания операции.
