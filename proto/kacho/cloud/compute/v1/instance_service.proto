@@ -643,11 +643,6 @@ message DeleteInstanceMetadata {
   string instance_id = 1;
 }
 
-message UpdateInstanceMetadataMetadata {
-  // ID of the instance that is being updated.
-  string instance_id = 1;
-}
-
 message GetInstanceSerialPortOutputRequest {
   // ID of the instance to return the serial port output for.
   string instance_id = 1 [
@@ -830,16 +825,6 @@ message DetachInstanceNetworkInterfaceMetadata {
 
   // ID of the kacho-vpc NetworkInterface (NIC) being detached.
   string nic_id = 3;
-}
-
-message AddInstanceOneToOneNatMetadata {
-  // ID of the instance.
-  string instance_id = 1;
-}
-
-message RemoveInstanceOneToOneNatMetadata {
-  // ID of the instance.
-  string instance_id = 1;
 }
 
 message SimulateInstanceMaintenanceEventRequest {
@@ -1037,9 +1022,10 @@ message OneToOneNatSpec {
   string address = 2; //set static IP by value
 
   // Field 3 held `dns_record_specs`. WITHDRAWN — same story as on PrimaryAddressSpec
-  // above, plus one more closed door: this message is also reached from
-  // `AddInstanceOneToOneNatRequest`, whose RPC has no handler either. Number and name
-  // stay reserved.
+  // above. The note here used to name a second door, a request message of an
+  // add-one-to-one-NAT verb; neither that verb nor that message exists in the tree,
+  // so the note pointed at a coordinate that could not be resolved (kacho#581).
+  // Number and name stay reserved.
   reserved 3;
   reserved "dns_record_specs";
 }

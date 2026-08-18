@@ -10,6 +10,7 @@
 package computev1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
@@ -625,7 +626,7 @@ var File_kacho_cloud_compute_v1_guest_access_key_service_proto protoreflect.File
 
 const file_kacho_cloud_compute_v1_guest_access_key_service_proto_rawDesc = "" +
 	"\n" +
-	"5kacho/cloud/compute/v1/guest_access_key_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a-kacho/cloud/compute/v1/guest_access_key.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"I\n" +
+	"5kacho/cloud/compute/v1/guest_access_key_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a-kacho/cloud/compute/v1/guest_access_key.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"I\n" +
 	"\x18GetGuestAccessKeyRequest\x12-\n" +
 	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId\"\x8f\x01\n" +
 	"\x1aListGuestAccessKeysRequest\x12\x1d\n" +
@@ -674,22 +675,25 @@ const file_kacho_cloud_compute_v1_guest_access_key_service_proto_rawDesc = "" +
 	"\x1bDeleteGuestAccessKeyRequest\x12-\n" +
 	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId\"M\n" +
 	"\x1cDeleteGuestAccessKeyMetadata\x12-\n" +
-	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId2\xaa\f\n" +
+	"\x13guest_access_key_id\x18\x01 \x01(\tR\x10guestAccessKeyId2\xc8\r\n" +
 	"\x15GuestAccessKeyService\x12\xfd\x01\n" +
 	"\x03Get\x120.kacho.cloud.compute.v1.GetGuestAccessKeyRequest\x1a&.kacho.cloud.compute.v1.GuestAccessKey\"\x9b\x01\x8a\xb5\x18\x1dcompute.guest_access_keys.get\x92\xb5\x18\x05v_get\x9a\xb5\x18/\n" +
 	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x023\x121/compute/v1/guestAccessKeys/{guest_access_key_id}\x12\xde\x01\n" +
 	"\x04List\x122.kacho.cloud.compute.v1.ListGuestAccessKeysRequest\x1a3.kacho.cloud.compute.v1.ListGuestAccessKeysResponse\"m\x8a\xb5\x18\x1ecompute.guest_access_keys.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/guestAccessKeys\x12\xd3\x01\n" +
-	"\x06Create\x123.kacho.cloud.compute.v1.CreateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"r\x8a\xb5\x18 compute.guest_access_keys.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1d\x12\x1b/compute/v1/guestAccessKeys\x12\x86\x02\n" +
+	"\x06Create\x123.kacho.cloud.compute.v1.CreateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18 compute.guest_access_keys.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/guestAccessKeys\x12\x86\x02\n" +
-	"\x06Update\x123.kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xa4\x01\x8a\xb5\x18 compute.guest_access_keys.update\x92\xb5\x18\bv_update\x9a\xb5\x18/\n" +
-	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x026:\x01*21/compute/v1/guestAccessKeys/{guest_access_key_id}\x12\xca\x02\n" +
+	"project_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
+	"\x1cCreateGuestAccessKeyMetadata\x12\x0eGuestAccessKey\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/compute/v1/guestAccessKeys\x12\xb8\x02\n" +
+	"\x06Update\x123.kacho.cloud.compute.v1.UpdateGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xd6\x01\x8a\xb5\x18 compute.guest_access_keys.update\x92\xb5\x18\bv_update\x9a\xb5\x18/\n" +
+	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +
+	"\x1cUpdateGuestAccessKeyMetadata\x12\x0eGuestAccessKey\x82\xd3\xe4\x93\x026:\x01*21/compute/v1/guestAccessKeys/{guest_access_key_id}\x12\xca\x02\n" +
 	"\x0eListOperations\x12;.kacho.cloud.compute.v1.ListGuestAccessKeyOperationsRequest\x1a<.kacho.cloud.compute.v1.ListGuestAccessKeyOperationsResponse\"\xbc\x01\x8a\xb5\x182compute.guest_access_key_operations.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18/\n" +
-	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02>\x12</compute/v1/guestAccessKeys/{guest_access_key_id}/operations\x12\x83\x02\n" +
-	"\x06Delete\x123.kacho.cloud.compute.v1.DeleteGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xa1\x01\x8a\xb5\x18 compute.guest_access_keys.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18/\n" +
-	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x023*1/compute/v1/guestAccessKeys/{guest_access_key_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
+	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02>\x12</compute/v1/guestAccessKeys/{guest_access_key_id}/operations\x12\xbc\x02\n" +
+	"\x06Delete\x123.kacho.cloud.compute.v1.DeleteGuestAccessKeyRequest\x1a .kacho.cloud.operation.Operation\"\xda\x01\x8a\xb5\x18 compute.guest_access_keys.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18/\n" +
+	"\x18compute_guest_access_key\x12\x13guest_access_key_id\xa2\xb5\x18\x011\xb2\xd2*5\n" +
+	"\x1cDeleteGuestAccessKeyMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x023*1/compute/v1/guestAccessKeys/{guest_access_key_id}BHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1b\x06proto3"
 
 var (
 	file_kacho_cloud_compute_v1_guest_access_key_service_proto_rawDescOnce sync.Once
