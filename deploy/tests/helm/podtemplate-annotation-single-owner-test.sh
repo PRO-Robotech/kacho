@@ -361,8 +361,8 @@ elif ! run_with_injection "$IAM_DEP" \
   echo "  ПРОВАЛ (A) дефект НЕ ВНЕСЁН — у инъекции пропал производитель"
   show "$INJ_ERR"; st=1
 elif [ $INJ_RC -ne 0 ] \
-     && printf '%s' "$INJ_OUT" | grep -q 'openfga-model-id-rev' \
-     && printf '%s' "$INJ_OUT" | grep -q 'kacho-iam'; then
+     && [[ "$INJ_OUT" == *'openfga-model-id-rev'* ]] \
+     && [[ "$INJ_OUT" == *'kacho-iam'* ]]; then
   echo "  ОК  (A) второй писатель → КРАСНЫЙ с ключом и координатой"
 else
   echo "  ПРОВАЛ (A) двойное владение не поймано (exit=$INJ_RC)"
@@ -402,7 +402,7 @@ elif ! run_with_injection "$BOOT_BODY" \
 ' after; then
   echo "  ПРОВАЛ (C) контроль НЕ ВНЕСЁН — у инъекции пропал производитель"
   show "$INJ_ERR"; st=1
-elif [ $INJ_RC -eq 0 ] && printf '%s' "$INJ_OUT" | grep -q 'self-test-unowned'; then
+elif [ $INJ_RC -eq 0 ] && [[ "$INJ_OUT" == *'self-test-unowned'* ]]; then
   echo "  ОК  (C) координата патча без объявления в чарте → УВИДЕНА и НЕ покрашена"
 else
   echo "  ПРОВАЛ (C) контроль справа не прошёл (exit=$INJ_RC)"

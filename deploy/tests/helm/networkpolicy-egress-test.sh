@@ -186,7 +186,7 @@ PY
   ri="$(mktemp)"
   { helm template kacho-iam "$IAM" 2>/dev/null; echo '---'; cat "$pol"; } > "$ri"
   out="$(check "$ri")"
-  if printf '%s' "$out" | grep -q "контейнера OPA в нём нет"; then
+  if [[ "$out" == *"контейнера OPA в нём нет"* ]]; then
     echo "  (A) метка сайдкара безусловна                  → КРАСНЫЙ с координатой"
   else echo "  (A) метка сайдкара безусловна                  → ПРОПУСТИЛ"; rc=1; fi
   restore_injected
@@ -212,7 +212,7 @@ PY
   r="$(render -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true)" \
     || fail "инъекция A2 сломала рендер"
   out="$(check "$r")"
-  if printf '%s' "$out" | grep -q "отрезан от собственной базы"; then
+  if [[ "$out" == *"отрезан от собственной базы"* ]]; then
     echo "  (A2) снято правило :5432 (сайдкар включён)     → КРАСНЫЙ с координатой"
   else echo "  (A2) снято правило :5432 (сайдкар включён)     → ПРОПУСТИЛ"; rc=1; fi
   rm -f "$r"; restore_injected

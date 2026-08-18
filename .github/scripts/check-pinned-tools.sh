@@ -37,6 +37,18 @@
 #   доказательство инъекцией:      bash .github/scripts/check-pinned-tools.sh --self-test
 set -uo pipefail
 
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 2
 
@@ -476,8 +488,8 @@ if [ "${1:-}" = "--self-test" ]; then
   { echo 'jobs:'; echo '  b:'; echo '    steps:'; kindline "$B"; } >"$src/two.yml"
   hits="$(probe kind)"
   if [ "$(distinct kind)" -gt 1 ] \
-     && printf '%s\n' "$hits" | grep -q '^\.github/workflows/one\.yml:.*:'"$A"'$' \
-     && printf '%s\n' "$hits" | grep -q '^\.github/workflows/two\.yml:.*:'"$B"'$'; then
+     && any_line_matches "$hits" '^\.github/workflows/one\.yml:.*:'"$A"'$' \
+     && any_line_matches "$hits" '^\.github/workflows/two\.yml:.*:'"$B"'$'; then
     echo "  ОК  расхождение видно и названы ОБА файла ($A / $B)"
   else
     echo "  ПРОВАЛ расхождение в двух файлах не найдено или назван не весь состав"
@@ -556,8 +568,8 @@ if [ "${1:-}" = "--self-test" ]; then
   dockerline "$M" >"$tmp/svc-b/Dockerfile"
   hits="$(probe node)"
   if [ "$(distinct node)" -gt 1 ] \
-     && printf '%s\n' "$hits" | grep -q '^svc-a/Dockerfile:.*:'"$N"'$' \
-     && printf '%s\n' "$hits" | grep -q '^svc-b/Dockerfile:.*:'"$M"'$'; then
+     && any_line_matches "$hits" '^svc-a/Dockerfile:.*:'"$N"'$' \
+     && any_line_matches "$hits" '^svc-b/Dockerfile:.*:'"$M"'$'; then
     echo "  ОК  расхождение базового образа видно вне определений конвейера"
   else
     echo "  ПРОВАЛ Dockerfile не попал в домен зонда образа"
@@ -597,7 +609,7 @@ if [ "${1:-}" = "--self-test" ]; then
   # (ненулевой код функции) уронила бы весь конвейер, и проверка прочла бы «не нашли»
   # ровно тогда, когда нашли.
   act_out="$(actions_divergence "$tmp" 2>/dev/null || true)"
-  if printf '%s\n' "$act_out" | grep -q 'never-listed-action'; then
+  if [[ "$act_out" == *'never-listed-action'* ]]; then
     echo "  ОК  расхождение действия найдено БЕЗ записи в каталоге"
   else
     echo "  ПРОВАЛ действие вне каталога не проверяется"; st_rc=1

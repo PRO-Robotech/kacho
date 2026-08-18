@@ -40,6 +40,18 @@
 # зелёным и не значило бы ничего.
 set -euo pipefail
 
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
+
 NS="${KACHO_NS:-kacho}"
 
 # ПЕРЕЧЕНЬ ВЫВОДИТСЯ ИЗ ДЕРЕВА, а не выписывается здесь: процесс, чей
@@ -120,7 +132,7 @@ while read -r process; do
     red+=("$process: ответ $code вместо 200 по адресу $pod_ip:$port")
     continue
   fi
-  if ! printf '%s' "$body" | grep -q '^kacho_'; then
+  if ! any_line_matches "$body" '^kacho_'; then
     failed=$((failed + 1))
     red+=("$process: ответ 200, но ни одной серии kacho_ — поверхность отвечает, а величин на ней нет")
     continue

@@ -197,7 +197,7 @@ else
   grep -v 'kacho.cloud/image-id' "$bak" >"$VICTIM"
   out="$(bash "$0" 2>&1)"; ist=$?
   cp "$bak" "$VICTIM"; rm -f "$bak"
-  if [ $ist -ne 0 ] && printf '%s' "$out" | grep -qi "geo"; then
+  if [ $ist -ne 0 ] && [[ "${out,,}" == *geo* ]]; then
     echo "  ОК  (A) снятая привязка → КРАСНЫЙ с координатой"
   else
     echo "  ПРОВАЛ (A) без привязки гейт остался зелёным (exit=$ist)"

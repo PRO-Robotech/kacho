@@ -298,10 +298,10 @@ for _attempt in 1 2 3 4 5; do
   jwks="$(curl -sk --max-time 5 https://127.0.0.1:19097/.well-known/jwks.json 2>/dev/null || true)"
   kill "$pf_pid" >/dev/null 2>&1 || true
   wait "$pf_pid" 2>/dev/null || true
-  printf '%s' "$jwks" | grep -q '"keys"' && break
+  [[ "$jwks" == *'"keys"'* ]] && break
   sleep 2
 done
-if printf '%s' "$jwks" | grep -q '"keys"'; then
+if [[ "$jwks" == *'"keys"'* ]]; then
   log "iam :9097 JWKS OK (serves a keys set — JWKS-flip is coherent)."
 else
   warn "iam :9097 JWKS did NOT return a keys set — registry token-verify will 401. Check kacho-iam is on main-c744f956 (serves :9097, #323) and the jwks-proxy listener."
